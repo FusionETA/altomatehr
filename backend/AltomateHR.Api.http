@@ -1,0 +1,6 @@
+@AltomateHR.Api_HostAddress = http://localhost:5191
+
+GET {{AltomateHR.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

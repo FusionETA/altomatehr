@@ -1,0 +1,76 @@
+using System.Security.Cryptography;
+
+namespace AltomateHR.Api.Modules.Attendance;
+
+// Local-disk storage for off-site clock-in/out photos. Mirrors the claim receipt
+// storage but images only (a clock photo is a selfie/site snapshot, never a PDF).
+public class AttendancePhotoStorage : IAttendancePhotoStorage
+{
+    private const long MaxPhotoBytes = 8 * 1024 * 1024;
+    private const string PhotoRoutePrefix = "/attendance/photos";
+
+    private static readonly Dictionary<string, string> AllowedContentTypes = new()
+    {
+        ["image/jpeg"] = ".jpg",
+        ["image/png"] = ".png",
+        ["image/webp"] = ".webp",
+        ["image/heic"] = ".heic",
+        ["image/heif"] = ".heif",
+    };
+
+    private readonly IWebHostEnvironment _environment;
+
+    public AttendancePhotoStorage(IWebHostEnvironment environment) => _environment = environment;
+
+    public async Task<AttendancePhotoUploadResult> StoreAsync(AttendancePhotoUpload upload)
+    {
+        if (upload.Length <= 0)
+            throw new ArgumentException("Photo file is empty.");
+
+        if (upload.Length > MaxPhotoBytes)
+            throw new ArgumentException("Photo must be 8 MB or smaller.");
+
+        if (!AllowedContentTypes.TryGetValue(upload.ContentType, out var fallbackExtension))
+            throw new ArgumentException("Upload a JPG, PNG, WEBP, HEIC, or HEIF photo.");
+
+        var extension = GetSafeExtension(upload.FileName, fallbackExtension);
+        var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(8).ToLowerInvariant()}{extension}";
+        var uploadDirectory = GetUploadDirectory();
+
+        Directory.CreateDirectory(uploadDirectory);
+
+        var path = Path.Combine(uploadDirectory, fileName);
+        await using var output = File.Create(path);
+        await upload.Content.CopyToAsync(output);
+
+        return new AttendancePhotoUploadResult($"{PhotoRoutePrefix}/{fileName}");
+    }
+
+    public Task<AttendancePhotoFileResult?> GetAsync(string fileName)
+    {
+        var safeFileName = Path.GetFileName(fileName);
+        if (!string.Equals(fileName, safeFileName, StringComparison.Ordinal))
+            return Task.FromResult<AttendancePhotoFileResult?>(null);
+
+        var extension = Path.GetExtension(safeFileName).ToLowerInvariant();
+        var contentType = AllowedContentTypes.FirstOrDefault(pair => pair.Value == extension).Key;
+        if (contentType is null)
+            return Task.FromResult<AttendancePhotoFileResult?>(null);
+
+        var path = Path.Combine(GetUploadDirectory(), safeFileName);
+        if (!File.Exists(path))
+            return Task.FromResult<AttendancePhotoFileResult?>(null);
+
+        return Task.FromResult<AttendancePhotoFileResult?>(
+            new AttendancePhotoFileResult(path, contentType, safeFileName));
+    }
+
+    private static string GetSafeExtension(string fileName, string fallbackExtension)
+    {
+        var extension = Path.GetExtension(Path.GetFileName(fileName)).ToLowerInvariant();
+        return AllowedContentTypes.ContainsValue(extension) ? extension : fallbackExtension;
+    }
+
+    private string GetUploadDirectory() =>
+        Path.Combine(_environment.ContentRootPath, "storage", "attendance-photos");
+}

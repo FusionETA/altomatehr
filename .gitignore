@@ -1,0 +1,28 @@
+# ---- Node / Vite (frontend) ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# ---- .NET (backend) ----
+bin/
+obj/
+.vs/
+*.user
+
+# ---- Uploaded user files (never source) ----
+backend/storage/
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+*.pfx
+appsettings.*.local.json
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
