@@ -120,7 +120,7 @@ public class AuthServiceTests
         private int _accessTokenCount;
         private int _refreshTokenCount;
 
-        public string CreateToken(string userId, string email, string role) =>
+        public string CreateToken(string userId, string email, string role, string organizationId) =>
             $"access-token-{++_accessTokenCount}";
 
         public string CreateRefreshToken() =>
@@ -144,6 +144,16 @@ public class AuthServiceTests
         public Task<User?> GetByEmailAsync(string email) =>
             Task.FromResult(_users.FirstOrDefault(u =>
                 string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+
+        public Task<User?> GetByIdAsync(string id) =>
+            Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
+
+        public Task<List<User>> GetAllAsync() => Task.FromResult(_users.ToList());
+
+        public Task<List<User>> GetBySupervisorAsync(string supervisorId) =>
+            Task.FromResult(_users.Where(u => u.SupervisorId == supervisorId).ToList());
+
+        public Task UpdateAsync(User user) => Task.CompletedTask;
     }
 
     private sealed class FakeRefreshTokenRepository : IRefreshTokenRepository
