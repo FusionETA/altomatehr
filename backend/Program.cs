@@ -7,6 +7,7 @@ using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
+using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Projects;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -121,12 +122,18 @@ builder.Services.AddScoped<IChartOfAccountService, ChartOfAccountService>();
 builder.Services.AddScoped<IAttendanceRepository, AttendanceRepository>();
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
+builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
+builder.Services.AddScoped<ILeaveApplicationRepository, LeaveApplicationRepository>();
+builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
+builder.Services.AddScoped<ILeaveService, LeaveService>();
 
 // Modules
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
@@ -180,7 +187,8 @@ using (var scope = app.Services.CreateScope())
     var organizations = scope.ServiceProvider.GetRequiredService<IOrganizationRepository>();
     var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
     var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
-    await DbSeeder.SeedAsync(organizations, users, claims);
+    var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
+    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes);
 }
 
 app.Run();

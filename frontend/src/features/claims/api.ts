@@ -11,6 +11,7 @@ export type Claim = {
   status: string;
   claimType: string;
   employeeId: string;
+  employeeEmail?: string | null; // populated for team/approver views
   spentAt: string;
   submittedAt: string;
   projectId?: string | null;
@@ -38,7 +39,8 @@ export type UploadReceiptResponse = {
   receiptUrl: string;
 };
 
-export const getClaims = () => apiGet<Claim[]>("/claims");
+export const getMyClaims = () => apiGet<Claim[]>("/claims");
+export const getTeamClaims = () => apiGet<Claim[]>("/claims/team");
 export const createClaim = (body: CreateClaimRequest) => apiPost<Claim>("/claims", body);
 export const approveClaim = (id: string) => apiPost<Claim>(`/claims/${id}/approve`);
 export const rejectClaim = (id: string, reviewNotes?: string) =>

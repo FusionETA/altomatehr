@@ -18,7 +18,12 @@ public class User : ITenantScoped
     public string PasswordHash { get; set; } = string.Empty;   // BCrypt hash — never the raw password
 
     [MaxLength(20)]
-    public string Role { get; set; } = "Employee";
+    public string Role { get; set; } = "Employee";   // Employee | Supervisor | Admin | Owner
+
+    // The user's approving supervisor (another User in the same org). Null =
+    // unassigned. Leave/claim approvals route to this person.
+    [MaxLength(40)]
+    public string? SupervisorId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 }

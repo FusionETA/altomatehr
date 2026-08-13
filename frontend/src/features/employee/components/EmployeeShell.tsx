@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Bell, LogOut, Settings, UserCircle } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
-import { ClaimsView } from "@/features/claims/components/ClaimsView";
+import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
+import { LeaveView } from "@/features/leave/components/LeaveView";
 import { SettingsView } from "@/features/settings/components/SettingsView";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
@@ -126,20 +127,9 @@ export function EmployeeShell({
         <main className="flex-1 pb-32 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {activeView === "dashboard" ? <DashboardView user={user} /> : null}
-            {activeView === "claims" ? <ClaimsView /> : null}
+            {activeView === "claims" ? <ClaimsPage role={user.role} /> : null}
             {activeView === "attendance" ? <AttendanceView /> : null}
-            {activeView === "leave" ? (
-              <EmptyModule
-                title="Leave"
-                body="Next we can port leave balances, applications, attachments, and supervisor approvals."
-              />
-            ) : null}
-            {activeView === "appraisals" ? (
-              <EmptyModule
-                title="Appraisals"
-                body="This area will hold review cycles, assigned forms, and appraisal history."
-              />
-            ) : null}
+            {activeView === "leave" ? <LeaveView role={user.role} /> : null}
             {activeView === "payslips" ? (
               <EmptyModule
                 title="Payslips"

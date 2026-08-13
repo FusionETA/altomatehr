@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Accounts.Entities;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,8 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
+    public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +47,11 @@ public class AppDbContext : DbContext
         attendance.HasIndex(r => new { r.Status, r.Date });
         attendance.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
 
+        modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
+        modelBuilder.Entity<LeaveApplication>()
+            .Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<LeaveApplication>().HasIndex(a => a.EmployeeId);
+
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
@@ -58,6 +66,10 @@ public class AppDbContext : DbContext
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(
             r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<LeaveType>().HasQueryFilter(
+            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

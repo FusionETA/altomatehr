@@ -1,6 +1,8 @@
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims;
+using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using BC = BCrypt.Net.BCrypt;
@@ -17,12 +19,47 @@ public static class DbSeeder
     public static async Task SeedAsync(
         IOrganizationRepository organizations,
         IUserRepository users,
-        IClaimsRepository claims)
+        IClaimsRepository claims,
+        ILeaveTypeRepository leaveTypes)
     {
         await SeedOrganizationAsync(organizations);
         await EnsureUserAsync(users, "usr-admin", "admin@altomate.com", "Admin");
+        await EnsureUserAsync(users, "usr-super", "supervisor@altomate.com", "Supervisor");
         await EnsureUserAsync(users, "usr-emp", "employee@altomate.com", "Employee");
+        await AssignSupervisorAsync(users, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
+        await SeedLeaveTypesAsync(leaveTypes);
+    }
+
+    // Point an employee at their approving supervisor (idempotent).
+    private static async Task AssignSupervisorAsync(IUserRepository users, string employeeId, string supervisorId)
+    {
+        var employee = await users.GetByIdAsync(employeeId);
+        if (employee is null || employee.SupervisorId == supervisorId) return;
+
+        employee.SupervisorId = supervisorId;
+        await users.UpdateAsync(employee);
+    }
+
+    private static async Task SeedLeaveTypesAsync(ILeaveTypeRepository leaveTypes)
+    {
+        if ((await leaveTypes.GetAllAsync()).Count > 0) return;
+
+        var now = DateTime.UtcNow;
+        LeaveType make(string code, string name, bool paid, double days) => new()
+        {
+            OrganizationId = DemoOrgId,   // set explicitly — no request context during seeding
+            Code = code,
+            Name = name,
+            Paid = paid,
+            DefaultDays = days,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        await leaveTypes.AddAsync(make("AL", "Annual Leave", true, 14));
+        await leaveTypes.AddAsync(make("MC", "Medical Leave", true, 14));
+        await leaveTypes.AddAsync(make("UL", "Unpaid Leave", false, 0));
     }
 
     private static async Task SeedOrganizationAsync(IOrganizationRepository organizations)

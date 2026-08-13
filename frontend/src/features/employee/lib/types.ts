@@ -5,7 +5,6 @@ export type EmployeeView =
   | "claims"
   | "attendance"
   | "leave"
-  | "appraisals"
   | "payslips"
   | "settings";
 

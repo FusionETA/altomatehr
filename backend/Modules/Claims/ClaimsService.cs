@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Accounts;
+using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims.Entities;
 
 namespace AltomateHR.Api.Modules.Claims;
@@ -10,23 +11,46 @@ public class ClaimsService : IClaimsService
     private readonly IClaimsRepository _repo;
     private readonly IClaimReceiptStorage _receiptStorage;
     private readonly IChartOfAccountService _accounts;
+    private readonly ISupervisionService _supervision;
 
     public ClaimsService(
         IClaimsRepository repo,
         IClaimReceiptStorage receiptStorage,
-        IChartOfAccountService accounts)
+        IChartOfAccountService accounts,
+        ISupervisionService supervision)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
         _accounts = accounts;
+        _supervision = supervision;
     }
 
-    public async Task<IEnumerable<Claim>> GetAllAsync() => await _repo.GetAllAsync();
+    // The caller's own claims.
+    public async Task<IEnumerable<Claim>> GetMineAsync(string userId) =>
+        await _repo.GetByEmployeeIdAsync(userId);
 
-    public async Task<IEnumerable<Claim>> GetVisibleForUserAsync(string userId, bool isAdmin) =>
-        isAdmin
-            ? await _repo.GetAllAsync()
-            : await _repo.GetByEmployeeIdAsync(userId);
+    // Claims the caller can act on: an org approver sees the whole org; a
+    // supervisor sees only their direct reports. Each row is labelled with the
+    // applicant's email so the approver knows who filed it.
+    public async Task<IEnumerable<Claim>> GetTeamAsync(string userId, string? role)
+    {
+        List<Claim> claims;
+        if (_supervision.IsOrgApprover(role))
+        {
+            claims = await _repo.GetAllAsync();
+        }
+        else
+        {
+            var reports = (await _supervision.GetReportIdsAsync(userId)).ToHashSet();
+            if (reports.Count == 0) return [];
+            claims = (await _repo.GetAllAsync()).Where(c => reports.Contains(c.EmployeeId)).ToList();
+        }
+
+        var emails = await _supervision.GetEmailsAsync(claims.Select(c => c.EmployeeId).Distinct());
+        foreach (var c in claims)
+            c.EmployeeEmail = emails.GetValueOrDefault(c.EmployeeId);
+        return claims;
+    }
 
     public Task<Claim?> GetByIdAsync(string id) => _repo.GetByIdAsync(id);
 
@@ -97,11 +121,11 @@ public class ClaimsService : IClaimsService
 
     public Task<bool> DeleteAsync(string id) => _repo.DeleteAsync(id);
 
-    public Task<ClaimStatusTransitionResult> ApproveAsync(string id) =>
-        TransitionStatusAsync(id, ClaimStatus.APPROVED, reviewNotes: null);
+    public Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId, string? role) =>
+        TransitionStatusAsync(id, approverId, role, ClaimStatus.APPROVED, reviewNotes: null);
 
-    public Task<ClaimStatusTransitionResult> RejectAsync(string id, string? reviewNotes) =>
-        TransitionStatusAsync(id, ClaimStatus.REJECTED, reviewNotes);
+    public Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes) =>
+        TransitionStatusAsync(id, approverId, role, ClaimStatus.REJECTED, reviewNotes);
 
     public Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload) =>
         _receiptStorage.StoreAsync(upload);
@@ -127,11 +151,18 @@ public class ClaimsService : IClaimsService
 
     private async Task<ClaimStatusTransitionResult> TransitionStatusAsync(
         string id,
+        string approverId,
+        string? role,
         ClaimStatus nextStatus,
         string? reviewNotes)
     {
         var claim = await _repo.GetByIdAsync(id);
         if (claim is null)
+            return new ClaimStatusTransitionResult(false, false, null);
+
+        // Only the applicant's supervisor (or an org approver) may act; others
+        // are treated as not-found so the claim stays hidden.
+        if (!await _supervision.CanApproveAsync(claim.EmployeeId, approverId, role))
             return new ClaimStatusTransitionResult(false, false, null);
 
         if (claim.Status != ClaimStatus.PENDING)

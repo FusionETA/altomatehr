@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Search } from "lucide-react";
-import { getClaims, type Claim } from "../api";
+import { getMyClaims, type Claim } from "../api";
 import {
   claimMatchesStatus,
   claimStatusLabels,
@@ -31,7 +31,7 @@ export function ClaimsView() {
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    getClaims()
+    getMyClaims()
       .then(setClaims)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));

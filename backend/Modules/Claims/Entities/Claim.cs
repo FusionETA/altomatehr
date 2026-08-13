@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using AltomateHR.Api.Common;
 using Microsoft.EntityFrameworkCore;
 
@@ -52,6 +53,11 @@ public class Claim : ITenantScoped
     public string? ReceiptUrl { get; set; }
 
     public string? ReviewNotes { get; set; }                      // long text, nullable
+
+    // Transient (not a DB column) — the applicant's email, filled only for
+    // supervisor/admin team views so an approver can see who filed the claim.
+    [NotMapped]
+    public string? EmployeeEmail { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

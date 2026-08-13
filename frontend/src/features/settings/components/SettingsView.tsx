@@ -1,15 +1,19 @@
 import { useState } from "react";
-import { Building2, FolderKanban, Wallet, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, FolderKanban, Users, Wallet, type LucideIcon } from "lucide-react";
 import { OrganizationSettings } from "./OrganizationSettings";
 import { ProjectsSettings } from "./ProjectsSettings";
 import { AccountsSettings } from "./AccountsSettings";
+import { LeaveTypesSettings } from "./LeaveTypesSettings";
+import { EmployeesSettings } from "./EmployeesSettings";
 
-type SettingsTab = "organization" | "projects" | "accounts";
+type SettingsTab = "organization" | "employees" | "projects" | "accounts" | "leave";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "organization", label: "Organization", icon: Building2 },
+  { id: "employees", label: "Employees", icon: Users },
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "accounts", label: "Accounts", icon: Wallet },
+  { id: "leave", label: "Leave", icon: CalendarDays },
 ];
 
 export function SettingsView() {
@@ -39,8 +43,10 @@ export function SettingsView() {
       </div>
 
       {tab === "organization" ? <OrganizationSettings /> : null}
+      {tab === "employees" ? <EmployeesSettings /> : null}
       {tab === "projects" ? <ProjectsSettings /> : null}
       {tab === "accounts" ? <AccountsSettings /> : null}
+      {tab === "leave" ? <LeaveTypesSettings /> : null}
     </div>
   );
 }

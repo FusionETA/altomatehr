@@ -15,10 +15,17 @@ public class ClaimsController : ControllerBase
 
     public ClaimsController(IClaimsService claims) => _claims = claims;
 
-    // GET /claims
+    // GET /claims — the caller's own claims.
     [HttpGet]
-    public async Task<IActionResult> GetAll() =>
-        Ok(await _claims.GetVisibleForUserAsync(GetUserId(), User.IsInRole("Admin")));
+    public async Task<IActionResult> GetMine() =>
+        Ok(await _claims.GetMineAsync(GetUserId()));
+
+    // GET /claims/team — claims the caller can approve (their direct reports;
+    // the whole org for admins/owners).
+    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    [HttpGet("team")]
+    public async Task<IActionResult> GetTeam() =>
+        Ok(await _claims.GetTeamAsync(GetUserId(), GetRole()));
 
     // GET /claims/{id}
     [HttpGet("{id}")]
@@ -94,21 +101,21 @@ public class ClaimsController : ControllerBase
         return ok ? NoContent() : NotFound();
     }
 
-    // POST /claims/{id}/approve — Admins only (RBAC)
-    [Authorize(Roles = "Admin")]
+    // POST /claims/{id}/approve — supervisor of the claimant (or admin/owner).
+    [Authorize(Roles = "Admin,Owner,Supervisor")]
     [HttpPost("{id}/approve")]
     public async Task<IActionResult> Approve(string id)
     {
-        var result = await _claims.ApproveAsync(id);
+        var result = await _claims.ApproveAsync(id, GetUserId(), GetRole());
         return ToStatusTransitionResponse(result);
     }
 
-    // POST /claims/{id}/reject — Admins only (RBAC)
-    [Authorize(Roles = "Admin")]
+    // POST /claims/{id}/reject — supervisor of the claimant (or admin/owner).
+    [Authorize(Roles = "Admin,Owner,Supervisor")]
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> Reject(string id, RejectClaimDto dto)
     {
-        var result = await _claims.RejectAsync(id, dto.ReviewNotes);
+        var result = await _claims.RejectAsync(id, GetUserId(), GetRole(), dto.ReviewNotes);
         return ToStatusTransitionResponse(result);
     }
 
@@ -116,6 +123,8 @@ public class ClaimsController : ControllerBase
         User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub)
         ?? throw new InvalidOperationException("Authenticated user id is missing.");
+
+    private string? GetRole() => User.FindFirstValue(ClaimTypes.Role);
 
     private IActionResult ToStatusTransitionResponse(ClaimStatusTransitionResult result)
     {
