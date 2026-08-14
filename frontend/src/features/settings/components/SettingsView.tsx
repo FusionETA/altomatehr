@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarDays,
   FolderKanban,
+  Network,
   ShieldCheck,
   Users,
   Wallet,
@@ -14,14 +15,23 @@ import { AccountsSettings } from "./AccountsSettings";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { EmployeesSettings } from "./EmployeesSettings";
 import { PoliciesSettings } from "./PoliciesSettings";
+import { TeamsSettings } from "./TeamsSettings";
 
-type SettingsTab = "organization" | "employees" | "policies" | "projects" | "accounts" | "leave";
+type SettingsTab =
+  | "organization"
+  | "employees"
+  | "policies"
+  | "projects"
+  | "teams"
+  | "accounts"
+  | "leave";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "employees", label: "Employees", icon: Users },
   { id: "policies", label: "Policies", icon: ShieldCheck },
   { id: "projects", label: "Projects", icon: FolderKanban },
+  { id: "teams", label: "Teams", icon: Network },
   { id: "accounts", label: "Accounts", icon: Wallet },
   { id: "leave", label: "Leave", icon: CalendarDays },
 ];
@@ -56,6 +66,7 @@ export function SettingsView() {
       {tab === "employees" ? <EmployeesSettings /> : null}
       {tab === "policies" ? <PoliciesSettings /> : null}
       {tab === "projects" ? <ProjectsSettings /> : null}
+      {tab === "teams" ? <TeamsSettings /> : null}
       {tab === "accounts" ? <AccountsSettings /> : null}
       {tab === "leave" ? <LeaveTypesSettings /> : null}
     </div>

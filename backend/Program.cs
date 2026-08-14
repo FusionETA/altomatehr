@@ -11,6 +11,7 @@ using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Teams;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -130,6 +131,10 @@ builder.Services.AddScoped<ILeaveService, LeaveService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
+builder.Services.AddScoped<ITeamRepository, TeamRepository>();
+builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>();
+builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
+builder.Services.AddScoped<ITeamService, TeamService>();
 
 // Modules
 builder.Services.AddScoped<IAuthService, AuthService>();
