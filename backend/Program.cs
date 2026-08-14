@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
@@ -126,6 +127,9 @@ builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
 builder.Services.AddScoped<ILeaveApplicationRepository, LeaveApplicationRepository>();
 builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
 builder.Services.AddScoped<ILeaveService, LeaveService>();
+builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
+builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
+builder.Services.AddScoped<IPolicyService, PolicyService>();
 
 // Modules
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -188,7 +192,8 @@ using (var scope = app.Services.CreateScope())
     var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
     var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
     var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
-    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes);
+    var policies = scope.ServiceProvider.GetRequiredService<IEmployeePolicyRepository>();
+    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes, policies);
 }
 
 app.Run();

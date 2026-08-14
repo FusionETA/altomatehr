@@ -2,6 +2,9 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Policies.Dtos;
+using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService
 
 namespace AltomateHR.Api.Tests.Leave;
@@ -78,6 +81,19 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task GetBalancesAsync_UsesPolicyEntitlementOverride()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            policy: new FakePolicyService(new Dictionary<string, double> { ["t-al"] = 20 }));
+
+        var al = (await service.GetBalancesAsync("usr-emp")).Single(b => b.Code == "AL");
+
+        Assert.Equal(20, al.EntitlementDays);   // policy override wins over the type default (14)
+        Assert.Equal(20, al.RemainingDays);
+    }
+
+    [Fact]
     public async Task ApproveAsync_AllowsAssignedSupervisor()
     {
         var service = MakeService(
@@ -150,11 +166,13 @@ public class LeaveServiceTests
     private static LeaveService MakeService(
         IEnumerable<LeaveType>? types = null,
         IEnumerable<LeaveApplication>? apps = null,
-        ISupervisionService? supervision = null) =>
+        ISupervisionService? supervision = null,
+        IPolicyService? policy = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
-            supervision ?? new FakeSupervisionService());
+            supervision ?? new FakeSupervisionService(),
+            policy ?? new FakePolicyService());
 
     private static LeaveType MakeType(string id, string code, double days, bool paid = true, bool archived = false) => new()
     {
@@ -202,5 +220,23 @@ public class LeaveServiceTests
             Task.FromResult(_apps.Where(a => a.EmployeeId == employeeId).ToList());
         public Task<LeaveApplication> AddAsync(LeaveApplication app) { _apps.Add(app); return Task.FromResult(app); }
         public Task UpdateAsync(LeaveApplication app) => Task.CompletedTask;
+    }
+
+    private sealed class FakePolicyService : IPolicyService
+    {
+        private readonly IReadOnlyDictionary<string, double> _entitlements;
+        public FakePolicyService(IReadOnlyDictionary<string, double>? entitlements = null) =>
+            _entitlements = entitlements ?? new Dictionary<string, double>();
+
+        public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
+            Task.FromResult(_entitlements);
+        public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(true);
+        public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) =>
+            Task.FromResult<EmployeePolicy?>(null);
+        public Task<IEnumerable<PolicyDto>> GetAllAsync() => throw new NotImplementedException();
+        public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotImplementedException();
+        public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
+        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
+        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
     }
 }

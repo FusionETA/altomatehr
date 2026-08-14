@@ -45,6 +45,7 @@ public class EmployeeService : IEmployeeService
 
         user.Role = role;
         user.SupervisorId = supervisorId;
+        user.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
         await _users.UpdateAsync(user);
 
         var emailById = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Email);
@@ -60,5 +61,6 @@ public class EmployeeService : IEmployeeService
         SupervisorEmail = u.SupervisorId is not null && emailById.TryGetValue(u.SupervisorId, out var email)
             ? email
             : null,
+        PolicyId = u.PolicyId,
     };
 }

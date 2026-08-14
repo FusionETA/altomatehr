@@ -6,11 +6,13 @@ export type Employee = {
   role: string;
   supervisorId: string | null;
   supervisorEmail: string | null;
+  policyId: string | null;
 };
 
 export type UpdateEmployee = {
   role: string;
   supervisorId?: string | null;
+  policyId?: string | null;
 };
 
 export const ROLES = ["Employee", "Supervisor", "Admin", "Owner"] as const;

@@ -2,6 +2,7 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
 
 namespace AltomateHR.Api.Modules.Attendance;
@@ -19,19 +20,22 @@ public class AttendanceService : IAttendanceService
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
     private readonly IAttendancePhotoStorage _photos;
+    private readonly IPolicyService _policies;
 
     public AttendanceService(
         IAttendanceRepository repo,
         IProjectService projects,
         IOrganizationService organizations,
         ICurrentUser currentUser,
-        IAttendancePhotoStorage photos)
+        IAttendancePhotoStorage photos,
+        IPolicyService policies)
     {
         _repo = repo;
         _projects = projects;
         _organizations = organizations;
         _currentUser = currentUser;
         _photos = photos;
+        _policies = policies;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -64,7 +68,7 @@ public class AttendanceService : IAttendanceService
         }
 
         var effectiveProjectId = dto.ProjectId ?? existing?.ProjectId;
-        var (_, distance, offSite) = await EvaluateGeofenceAsync(effectiveProjectId, dto.Lat, dto.Lng);
+        var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
 
@@ -118,7 +122,7 @@ public class AttendanceService : IAttendanceService
         if (record.TimeOut is not null)
             return new AttendanceActionResult(false, ToDto(record), "You've already clocked out today.");
 
-        var (_, distance, offSite) = await EvaluateGeofenceAsync(record.ProjectId, dto.Lat, dto.Lng);
+        var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
 
@@ -159,18 +163,22 @@ public class AttendanceService : IAttendanceService
     //   geofenced + no GPS → off-site (presence can't be verified).
     //   geofenced + GPS    → off-site when distance exceeds the org radius.
     private async Task<(bool Geofenced, double? Distance, bool OffSite)> EvaluateGeofenceAsync(
-        string? projectId, double? lat, double? lng)
+        string employeeId, string? projectId, double? lat, double? lng)
     {
         if (string.IsNullOrEmpty(projectId)) return (false, null, false);
 
         var project = await _projects.GetByIdAsync(projectId);
         if (project?.Latitude is null || project.Longitude is null) return (false, null, false);
 
-        if (lat is null || lng is null) return (true, null, true);
+        // Policy gate: an employee whose policy doesn't require the geofence
+        // still has their distance captured, but is never flagged off-site.
+        var enforce = await _policies.RequiresGeofenceAsync(employeeId);
+
+        if (lat is null || lng is null) return (true, null, enforce);   // no GPS → off-site only when enforced
 
         var distance = Geo.HaversineMeters(lat.Value, lng.Value, project.Latitude.Value, project.Longitude.Value);
         var radius = await GetRadiusAsync();
-        return (true, distance, distance > radius);
+        return (true, distance, enforce && distance > radius);
     }
 
     private async Task<int> GetRadiusAsync()

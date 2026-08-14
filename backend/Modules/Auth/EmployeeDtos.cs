@@ -10,6 +10,7 @@ public class EmployeeDto
     public string Role { get; set; } = string.Empty;
     public string? SupervisorId { get; set; }
     public string? SupervisorEmail { get; set; }
+    public string? PolicyId { get; set; }
 }
 
 // What an admin sends to change a user's role and/or assigned supervisor.
@@ -20,4 +21,7 @@ public class UpdateEmployeeDto
 
     [MaxLength(40)]
     public string? SupervisorId { get; set; }   // null clears the assignment
+
+    [MaxLength(40)]
+    public string? PolicyId { get; set; }        // null → falls back to the org default policy
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { getEmployees, ROLES, updateEmployee, type Employee } from "@/features/employees/api";
+import { getPolicies, type Policy } from "@/features/policies/api";
 import {
   Select,
   SelectContent,
@@ -20,24 +21,32 @@ function message(err: unknown, fallback: string) {
 
 export function EmployeesSettings() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
-    getEmployees()
-      .then(setEmployees)
+    Promise.all([getEmployees(), getPolicies()])
+      .then(([emps, pols]) => {
+        setEmployees(emps);
+        setPolicies(pols);
+      })
       .catch((e: unknown) => setError(message(e, "Could not load employees.")))
       .finally(() => setLoading(false));
   }, []);
 
-  async function save(emp: Employee, patch: { role?: string; supervisorId?: string | null }) {
+  async function save(
+    emp: Employee,
+    patch: { role?: string; supervisorId?: string | null; policyId?: string | null },
+  ) {
     setSavingId(emp.id);
     setError(null);
     try {
       const updated = await updateEmployee(emp.id, {
         role: patch.role ?? emp.role,
         supervisorId: patch.supervisorId !== undefined ? patch.supervisorId : emp.supervisorId,
+        policyId: patch.policyId !== undefined ? patch.policyId : emp.policyId,
       });
       setEmployees((cur) => cur.map((e) => (e.id === updated.id ? updated : e)));
     } catch (err) {
@@ -63,12 +72,13 @@ export function EmployeesSettings() {
         <p className="text-sm text-muted-foreground">Loading employees…</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border/60">
                 <th className={TH}>Email</th>
                 <th className={TH}>Role</th>
                 <th className={TH}>Supervisor</th>
+                <th className={TH}>Policy</th>
               </tr>
             </thead>
             <tbody>
@@ -111,6 +121,26 @@ export function EmployeesSettings() {
                           .map((o) => (
                             <SelectItem key={o.id} value={o.id}>
                               {o.email}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Select
+                      value={emp.policyId ?? NONE}
+                      onValueChange={(v) => save(emp, { policyId: v === NONE ? null : v })}
+                    >
+                      <SelectTrigger className="h-10 w-[170px] bg-card">
+                        <SelectValue placeholder="Default" />
+                      </SelectTrigger>
+                      <SelectContent searchPlaceholder="Search policies…">
+                        <SelectItem value={NONE}>Default policy</SelectItem>
+                        {policies
+                          .filter((p) => !p.isArchived)
+                          .map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
                             </SelectItem>
                           ))}
                       </SelectContent>

@@ -25,5 +25,9 @@ public class User : ITenantScoped
     [MaxLength(40)]
     public string? SupervisorId { get; set; }
 
+    // The employee's assigned policy (rules bundle). Null = use the org default.
+    [MaxLength(40)]
+    public string? PolicyId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }

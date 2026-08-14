@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Policies;
 
 namespace AltomateHR.Api.Modules.Leave;
 
@@ -12,15 +13,18 @@ public class LeaveService : ILeaveService
     private readonly ILeaveApplicationRepository _apps;
     private readonly ILeaveTypeRepository _types;
     private readonly ISupervisionService _supervision;
+    private readonly IPolicyService _policies;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
         ILeaveTypeRepository types,
-        ISupervisionService supervision)
+        ISupervisionService supervision,
+        IPolicyService policies)
     {
         _apps = apps;
         _types = types;
         _supervision = supervision;
+        _policies = policies;
     }
 
     // The caller's own applications.
@@ -57,10 +61,13 @@ public class LeaveService : ILeaveService
     {
         var types = (await _types.GetAllAsync()).Where(t => !t.IsArchived).ToList();
         var apps = await _apps.GetByEmployeeAsync(employeeId);
+        // Per-policy entitlement overrides; fall back to the leave type's default.
+        var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var year = DateTime.UtcNow.Year;
 
         return types.Select(t =>
         {
+            var entitlement = overrides.GetValueOrDefault(t.Id, t.DefaultDays);
             var forType = apps.Where(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year).ToList();
             var taken = forType.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
             var pending = forType.Where(a => a.Status == LeaveStatus.PENDING).Sum(a => a.TotalDays);
@@ -70,10 +77,10 @@ public class LeaveService : ILeaveService
                 Code = t.Code,
                 Name = t.Name,
                 Paid = t.Paid,
-                EntitlementDays = t.DefaultDays,
+                EntitlementDays = entitlement,
                 TakenDays = taken,
                 PendingDays = pending,
-                RemainingDays = t.DefaultDays - taken,
+                RemainingDays = entitlement - taken,
             };
         });
     }

@@ -5,6 +5,8 @@ using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Policies.Entities;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Data;
@@ -20,7 +22,8 @@ public static class DbSeeder
         IOrganizationRepository organizations,
         IUserRepository users,
         IClaimsRepository claims,
-        ILeaveTypeRepository leaveTypes)
+        ILeaveTypeRepository leaveTypes,
+        IEmployeePolicyRepository policies)
     {
         await SeedOrganizationAsync(organizations);
         await EnsureUserAsync(users, "usr-admin", "admin@altomate.com", "Admin");
@@ -29,6 +32,25 @@ public static class DbSeeder
         await AssignSupervisorAsync(users, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
+        await SeedPolicyAsync(policies);
+    }
+
+    private static async Task SeedPolicyAsync(IEmployeePolicyRepository policies)
+    {
+        if ((await policies.GetAllAsync()).Count > 0) return;
+
+        var now = DateTime.UtcNow;
+        await policies.AddAsync(new EmployeePolicy
+        {
+            OrganizationId = DemoOrgId,   // set explicitly — no request context during seeding
+            Name = "Full-time",
+            Description = "Default policy: geofenced attendance, standard leave.",
+            IsDefault = true,
+            RequireGeofence = true,
+            SalaryType = SalaryType.MONTHLY,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
     }
 
     // Point an employee at their approving supervisor (idempotent).

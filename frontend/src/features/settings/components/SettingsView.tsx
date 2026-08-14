@@ -1,16 +1,26 @@
 import { useState } from "react";
-import { Building2, CalendarDays, FolderKanban, Users, Wallet, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  FolderKanban,
+  ShieldCheck,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { OrganizationSettings } from "./OrganizationSettings";
 import { ProjectsSettings } from "./ProjectsSettings";
 import { AccountsSettings } from "./AccountsSettings";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { EmployeesSettings } from "./EmployeesSettings";
+import { PoliciesSettings } from "./PoliciesSettings";
 
-type SettingsTab = "organization" | "employees" | "projects" | "accounts" | "leave";
+type SettingsTab = "organization" | "employees" | "policies" | "projects" | "accounts" | "leave";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "employees", label: "Employees", icon: Users },
+  { id: "policies", label: "Policies", icon: ShieldCheck },
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "accounts", label: "Accounts", icon: Wallet },
   { id: "leave", label: "Leave", icon: CalendarDays },
@@ -44,6 +54,7 @@ export function SettingsView() {
 
       {tab === "organization" ? <OrganizationSettings /> : null}
       {tab === "employees" ? <EmployeesSettings /> : null}
+      {tab === "policies" ? <PoliciesSettings /> : null}
       {tab === "projects" ? <ProjectsSettings /> : null}
       {tab === "accounts" ? <AccountsSettings /> : null}
       {tab === "leave" ? <LeaveTypesSettings /> : null}
