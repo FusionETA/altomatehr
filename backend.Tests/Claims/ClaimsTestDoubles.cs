@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Accounts.Dtos;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Tests.Claims;
 
@@ -13,6 +14,7 @@ internal static class ClaimsTestFactory
 {
     public static ClaimsService CreateService(
         IEnumerable<Claim> claims,
+        IApprovalRouter? router = null,
         ISupervisionService? supervision = null,
         IChartOfAccountService? accounts = null,
         IClaimReceiptStorage? receiptStorage = null) =>
@@ -20,7 +22,8 @@ internal static class ClaimsTestFactory
             new FakeClaimsRepository(claims),
             receiptStorage ?? new FakeClaimReceiptStorage(),
             accounts ?? new FakeChartOfAccountService(),
-            supervision ?? new FakeSupervisionService());
+            supervision ?? new FakeSupervisionService(),
+            router ?? new FakeApprovalRouter());
 
     public static Claim NewClaim(
         string id,
@@ -139,4 +142,29 @@ internal sealed class FakeSupervisionService : ISupervisionService
     public Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds) =>
         Task.FromResult<IReadOnlyDictionary<string, string>>(
             userIds.Distinct().Where(_emails.ContainsKey).ToDictionary(id => id, id => _emails[id]));
+}
+
+// Configurable approval router. `chains` maps an applicant id to its ordered
+// steps, each step being the approver ids at that step — e.g. a single
+// supervisor is { ["usr-emp"] = [["usr-super"]] }; a two-step chain is
+// { ["usr-emp"] = [["usr-super"], ["usr-admin"]] }.
+internal sealed class FakeApprovalRouter : IApprovalRouter
+{
+    private static readonly HashSet<string> OrgRoles = new(StringComparer.OrdinalIgnoreCase) { "Admin", "Owner" };
+    private readonly Dictionary<string, List<List<string>>> _chains;
+
+    public FakeApprovalRouter(Dictionary<string, List<List<string>>>? chains = null) =>
+        _chains = chains ?? new();
+
+    public bool IsOrgApprover(string? role) => role is not null && OrgRoles.Contains(role);
+
+    public Task<IReadOnlyList<string>> CurrentApproversAsync(ApprovalModule module, string applicantId, int currentStep)
+    {
+        var steps = _chains.GetValueOrDefault(applicantId) ?? [];
+        return Task.FromResult<IReadOnlyList<string>>(
+            currentStep >= 0 && currentStep < steps.Count ? steps[currentStep] : []);
+    }
+
+    public Task<int> StepCountAsync(ApprovalModule module, string applicantId) =>
+        Task.FromResult((_chains.GetValueOrDefault(applicantId) ?? []).Count);
 }

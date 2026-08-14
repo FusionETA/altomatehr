@@ -5,7 +5,8 @@ using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
-using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService
+using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
 
 namespace AltomateHR.Api.Tests.Leave;
 
@@ -94,12 +95,12 @@ public class LeaveServiceTests
     }
 
     [Fact]
-    public async Task ApproveAsync_AllowsAssignedSupervisor()
+    public async Task ApproveAsync_AllowsCurrentStepApprover()
     {
         var service = MakeService(
             types: [MakeType("t-al", "AL", 14)],
             apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.PENDING)],
-            supervision: new FakeSupervisionService(supervisorOf: new() { ["usr-emp"] = "usr-super" }));
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var result = await service.ApproveAsync("a1", "usr-super", "Supervisor");
 
@@ -108,12 +109,12 @@ public class LeaveServiceTests
     }
 
     [Fact]
-    public async Task ApproveAsync_HidesApplicationFromNonAssignedSupervisor()
+    public async Task ApproveAsync_HidesApplicationFromNonCurrentApprover()
     {
         var service = MakeService(
             types: [MakeType("t-al", "AL", 14)],
             apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.PENDING)],
-            supervision: new FakeSupervisionService(supervisorOf: new() { ["usr-emp"] = "usr-super" }));
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var result = await service.ApproveAsync("a1", "usr-other-super", "Supervisor");
 
@@ -121,7 +122,29 @@ public class LeaveServiceTests
     }
 
     [Fact]
-    public async Task GetTeamAsync_ReturnsOnlyReportsAndLabelsWithEmail()
+    public async Task ApproveAsync_AdvancesThroughAMultiStepChain()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"], ["usr-mgr"]] }));
+
+        var first = await service.ApproveAsync("a1", "usr-super", "Supervisor");   // step 0 → advance
+        Assert.True(first.Transitioned);
+        Assert.Equal(LeaveStatus.PENDING, first.Application!.Status);
+        Assert.Equal(1, app.CurrentStep);
+
+        // The step-0 approver can no longer act.
+        Assert.False((await service.ApproveAsync("a1", "usr-super", "Supervisor")).Found);
+
+        var second = await service.ApproveAsync("a1", "usr-mgr", "Supervisor");    // step 1 → final
+        Assert.True(second.Transitioned);
+        Assert.Equal(LeaveStatus.APPROVED, second.Application!.Status);
+    }
+
+    [Fact]
+    public async Task GetTeamAsync_ReturnsOnlyCurrentApproverApplicationsWithEmail()
     {
         var service = MakeService(
             types: [MakeType("t-al", "AL", 14)],
@@ -130,9 +153,8 @@ public class LeaveServiceTests
                 MakeApp("mine", "usr-emp", "t-al", 1, LeaveStatus.PENDING),
                 MakeApp("other", "usr-other", "t-al", 1, LeaveStatus.PENDING),
             ],
-            supervision: new FakeSupervisionService(
-                supervisorOf: new() { ["usr-emp"] = "usr-super" },
-                emails: new() { ["usr-emp"] = "employee@altomate.com" }));
+            supervision: new FakeSupervisionService(emails: new() { ["usr-emp"] = "employee@altomate.com" }),
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var team = (await service.GetTeamAsync("usr-super", "Supervisor")).ToList();
 
@@ -167,12 +189,14 @@ public class LeaveServiceTests
         IEnumerable<LeaveType>? types = null,
         IEnumerable<LeaveApplication>? apps = null,
         ISupervisionService? supervision = null,
-        IPolicyService? policy = null) =>
+        IPolicyService? policy = null,
+        IApprovalRouter? router = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
             supervision ?? new FakeSupervisionService(),
-            policy ?? new FakePolicyService());
+            policy ?? new FakePolicyService(),
+            router ?? new FakeApprovalRouter());
 
     private static LeaveType MakeType(string id, string code, double days, bool paid = true, bool archived = false) => new()
     {

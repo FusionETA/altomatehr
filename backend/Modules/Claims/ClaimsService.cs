@@ -2,27 +2,33 @@ using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Modules.Claims;
 
 // Business logic: DTO → entity mapping + business rules.
 public class ClaimsService : IClaimsService
 {
+    private const ApprovalModule Module = ApprovalModule.CLAIMS;
+
     private readonly IClaimsRepository _repo;
     private readonly IClaimReceiptStorage _receiptStorage;
     private readonly IChartOfAccountService _accounts;
     private readonly ISupervisionService _supervision;
+    private readonly IApprovalRouter _router;
 
     public ClaimsService(
         IClaimsRepository repo,
         IClaimReceiptStorage receiptStorage,
         IChartOfAccountService accounts,
-        ISupervisionService supervision)
+        ISupervisionService supervision,
+        IApprovalRouter router)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
         _accounts = accounts;
         _supervision = supervision;
+        _router = router;
     }
 
     // The caller's own claims.
@@ -34,16 +40,20 @@ public class ClaimsService : IClaimsService
     // applicant's email so the approver knows who filed it.
     public async Task<IEnumerable<Claim>> GetTeamAsync(string userId, string? role)
     {
+        var all = await _repo.GetAllAsync();
         List<Claim> claims;
-        if (_supervision.IsOrgApprover(role))
+        if (_router.IsOrgApprover(role))
         {
-            claims = await _repo.GetAllAsync();
+            claims = all;
         }
         else
         {
-            var reports = (await _supervision.GetReportIdsAsync(userId)).ToHashSet();
-            if (reports.Count == 0) return [];
-            claims = (await _repo.GetAllAsync()).Where(c => reports.Contains(c.EmployeeId)).ToList();
+            claims = [];
+            foreach (var c in all.Where(c => c.Status == ClaimStatus.PENDING))
+            {
+                var approvers = await _router.CurrentApproversAsync(Module, c.EmployeeId, c.CurrentStep);
+                if (approvers.Contains(userId)) claims.Add(c);
+            }
         }
 
         var emails = await _supervision.GetEmailsAsync(claims.Select(c => c.EmployeeId).Distinct());
@@ -121,11 +131,34 @@ public class ClaimsService : IClaimsService
 
     public Task<bool> DeleteAsync(string id) => _repo.DeleteAsync(id);
 
-    public Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId, string? role) =>
-        TransitionStatusAsync(id, approverId, role, ClaimStatus.APPROVED, reviewNotes: null);
+    public async Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId, string? role)
+    {
+        var (claim, error) = await AuthorizeAsync(id, approverId, role);
+        if (error is not null) return error;
 
-    public Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes) =>
-        TransitionStatusAsync(id, approverId, role, ClaimStatus.REJECTED, reviewNotes);
+        var stepCount = await _router.StepCountAsync(Module, claim!.EmployeeId);
+        var isFinal = _router.IsOrgApprover(role) || claim.CurrentStep + 1 >= stepCount;
+        if (isFinal)
+            claim.Status = ClaimStatus.APPROVED;
+        else
+            claim.CurrentStep += 1;   // advance to the next step; stays PENDING
+
+        claim.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(claim);
+        return new ClaimStatusTransitionResult(true, true, claim);
+    }
+
+    public async Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes)
+    {
+        var (claim, error) = await AuthorizeAsync(id, approverId, role);
+        if (error is not null) return error;
+
+        claim!.Status = ClaimStatus.REJECTED;
+        claim.ReviewNotes = reviewNotes;
+        claim.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(claim);
+        return new ClaimStatusTransitionResult(true, true, claim);
+    }
 
     public Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload) =>
         _receiptStorage.StoreAsync(upload);
@@ -149,36 +182,28 @@ public class ClaimsService : IClaimsService
     private static string GenerateClaimNumber() =>
         $"CLM-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..6].ToUpperInvariant()}";
 
-    private async Task<ClaimStatusTransitionResult> TransitionStatusAsync(
-        string id,
-        string approverId,
-        string? role,
-        ClaimStatus nextStatus,
-        string? reviewNotes)
+    // Loads the claim and checks the caller may act at its current step. Returns
+    // an error result (to return as-is) on any failure; otherwise the claim.
+    private async Task<(Claim? Claim, ClaimStatusTransitionResult? Error)> AuthorizeAsync(
+        string id, string approverId, string? role)
     {
         var claim = await _repo.GetByIdAsync(id);
         if (claim is null)
-            return new ClaimStatusTransitionResult(false, false, null);
+            return (null, new ClaimStatusTransitionResult(false, false, null));
 
-        // Only the applicant's supervisor (or an org approver) may act; others
-        // are treated as not-found so the claim stays hidden.
-        if (!await _supervision.CanApproveAsync(claim.EmployeeId, approverId, role))
-            return new ClaimStatusTransitionResult(false, false, null);
-
-        if (claim.Status != ClaimStatus.PENDING)
+        // Only a current-step approver (or an org approver) may act; others are
+        // treated as not-found so the claim stays hidden.
+        if (!_router.IsOrgApprover(role))
         {
-            return new ClaimStatusTransitionResult(
-                true,
-                false,
-                claim,
-                "Only pending claims can be approved or rejected.");
+            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+            if (!approvers.Contains(approverId))
+                return (null, new ClaimStatusTransitionResult(false, false, null));
         }
 
-        claim.Status = nextStatus;
-        claim.ReviewNotes = reviewNotes;
-        claim.UpdatedAt = DateTime.UtcNow;
-        await _repo.UpdateAsync(claim);
+        if (claim.Status != ClaimStatus.PENDING)
+            return (claim, new ClaimStatusTransitionResult(true, false, claim,
+                "Only pending claims can be approved or rejected."));
 
-        return new ClaimStatusTransitionResult(true, true, claim);
+        return (claim, null);
     }
 }

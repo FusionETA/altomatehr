@@ -43,13 +43,11 @@ public class ClaimsServiceOwnershipTests
     }
 
     [Fact]
-    public async Task GetTeamAsync_ReturnsOnlyDirectReportsForSupervisor()
+    public async Task GetTeamAsync_ReturnsOnlyCurrentStepApproverClaimsForSupervisor()
     {
-        var supervision = new FakeSupervisionService(
-            supervisorOf: new() { ["usr-emp"] = "usr-super" });
         var service = CreateService(
             [NewClaim("own", "usr-emp"), NewClaim("other", "usr-other")],
-            supervision);
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var claims = await service.GetTeamAsync("usr-super", "Supervisor");
 

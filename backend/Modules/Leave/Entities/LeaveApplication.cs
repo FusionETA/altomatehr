@@ -27,6 +27,11 @@ public class LeaveApplication : ITenantScoped
     public string? Reason { get; set; }
 
     public LeaveStatus Status { get; set; } = LeaveStatus.PENDING;
+
+    // Current position in the approval chain (0-based). Advances as each step's
+    // approver signs off; the request stays PENDING until the final step.
+    public int CurrentStep { get; set; }
+
     public string? ReviewNotes { get; set; }
     public DateTime? DecidedAt { get; set; }
 

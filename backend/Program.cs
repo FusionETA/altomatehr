@@ -134,6 +134,7 @@ builder.Services.AddScoped<IPolicyService, PolicyService>();
 builder.Services.AddScoped<ITeamRepository, TeamRepository>();
 builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>();
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
+builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 
 // Modules

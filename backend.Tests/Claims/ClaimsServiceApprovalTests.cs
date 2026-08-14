@@ -64,12 +64,11 @@ public class ClaimsServiceApprovalTests
     }
 
     [Fact]
-    public async Task ApproveAsync_AllowsTheApplicantsAssignedSupervisor()
+    public async Task ApproveAsync_AllowsTheCurrentStepApprover()
     {
         var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.PENDING);
-        var supervision = new FakeSupervisionService(
-            supervisorOf: new() { ["usr-emp"] = "usr-super" });
-        var service = CreateService([claim], supervision);
+        var service = CreateService([claim],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var result = await service.ApproveAsync("claim-1", "usr-super", "Supervisor");
 
@@ -78,17 +77,35 @@ public class ClaimsServiceApprovalTests
     }
 
     [Fact]
-    public async Task ApproveAsync_HidesClaimFromANonAssignedSupervisor()
+    public async Task ApproveAsync_HidesClaimFromANonCurrentApprover()
     {
         var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.PENDING);
-        var supervision = new FakeSupervisionService(
-            supervisorOf: new() { ["usr-emp"] = "usr-super" });
-        var service = CreateService([claim], supervision);
+        var service = CreateService([claim],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
-        // A different supervisor (not usr-emp's) is treated as not-found.
+        // Not the current-step approver → treated as not-found.
         var result = await service.ApproveAsync("claim-1", "usr-other-super", "Supervisor");
 
         Assert.False(result.Found);
         Assert.Equal(ClaimStatus.PENDING, claim.Status);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_AdvancesThroughAMultiStepChain()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.PENDING);
+        var service = CreateService([claim],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"], ["usr-mgr"]] }));
+
+        var first = await service.ApproveAsync("claim-1", "usr-super", "Supervisor");   // step 0 → advance
+        Assert.True(first.Transitioned);
+        Assert.Equal(ClaimStatus.PENDING, claim.Status);
+        Assert.Equal(1, claim.CurrentStep);
+
+        Assert.False((await service.ApproveAsync("claim-1", "usr-super", "Supervisor")).Found);
+
+        var second = await service.ApproveAsync("claim-1", "usr-mgr", "Supervisor");    // step 1 → final
+        Assert.True(second.Transitioned);
+        Assert.Equal(ClaimStatus.APPROVED, claim.Status);
     }
 }

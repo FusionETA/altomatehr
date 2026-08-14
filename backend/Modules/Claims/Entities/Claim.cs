@@ -35,6 +35,11 @@ public class Claim : ITenantScoped
     public DateTime SubmittedAt { get; set; }
 
     public ClaimStatus Status { get; set; } = ClaimStatus.PENDING;
+
+    // Current position in the approval chain (0-based). Advances as each step's
+    // approver signs off; stays PENDING until the final step.
+    public int CurrentStep { get; set; }
+
     public ClaimType ClaimType { get; set; } = ClaimType.EXPENSE;
     public PaymentType PaymentType { get; set; } = PaymentType.PERSONAL;
 
