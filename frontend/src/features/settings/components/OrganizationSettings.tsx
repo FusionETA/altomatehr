@@ -33,6 +33,7 @@ export function OrganizationSettings() {
         name: org.name,
         defaultCurrency: org.defaultCurrency,
         defaultMileageRate: org.defaultMileageRate,
+        mileageUnit: org.mileageUnit,
         geofenceRadiusMeters: org.geofenceRadiusMeters,
       });
       setOrg(updated);
@@ -95,6 +96,18 @@ export function OrganizationSettings() {
             value={org.defaultMileageRate}
             onChange={(e) => setOrg({ ...org, defaultMileageRate: Number(e.target.value) })}
           />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="org-mileage-unit" className={LABEL}>Mileage unit</label>
+          <select
+            id="org-mileage-unit"
+            className={INPUT}
+            value={org.mileageUnit}
+            onChange={(e) => setOrg({ ...org, mileageUnit: e.target.value as "KM" | "MILE" })}
+          >
+            <option value="KM">Kilometres</option>
+            <option value="MILE">Miles</option>
+          </select>
         </div>
         <div className="space-y-2">
           <label htmlFor="org-geofence" className={LABEL}>Geofence radius (metres)</label>

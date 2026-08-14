@@ -102,7 +102,7 @@ public class LeaveServiceTests
             apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.PENDING)],
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
-        var result = await service.ApproveAsync("a1", "usr-super", "Supervisor");
+        var result = await service.ApproveAsync("a1", "usr-super");
 
         Assert.True(result.Transitioned);
         Assert.Equal(LeaveStatus.APPROVED, result.Application!.Status);
@@ -116,7 +116,7 @@ public class LeaveServiceTests
             apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.PENDING)],
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
-        var result = await service.ApproveAsync("a1", "usr-other-super", "Supervisor");
+        var result = await service.ApproveAsync("a1", "usr-other-super");
 
         Assert.False(result.Found);
     }
@@ -130,15 +130,15 @@ public class LeaveServiceTests
             apps: [app],
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"], ["usr-mgr"]] }));
 
-        var first = await service.ApproveAsync("a1", "usr-super", "Supervisor");   // step 0 → advance
+        var first = await service.ApproveAsync("a1", "usr-super");   // step 0 → advance
         Assert.True(first.Transitioned);
         Assert.Equal(LeaveStatus.PENDING, first.Application!.Status);
         Assert.Equal(1, app.CurrentStep);
 
         // The step-0 approver can no longer act.
-        Assert.False((await service.ApproveAsync("a1", "usr-super", "Supervisor")).Found);
+        Assert.False((await service.ApproveAsync("a1", "usr-super")).Found);
 
-        var second = await service.ApproveAsync("a1", "usr-mgr", "Supervisor");    // step 1 → final
+        var second = await service.ApproveAsync("a1", "usr-mgr");    // step 1 → final
         Assert.True(second.Transitioned);
         Assert.Equal(LeaveStatus.APPROVED, second.Application!.Status);
     }
@@ -156,7 +156,7 @@ public class LeaveServiceTests
             supervision: new FakeSupervisionService(emails: new() { ["usr-emp"] = "employee@altomate.com" }),
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
-        var team = (await service.GetTeamAsync("usr-super", "Supervisor")).ToList();
+        var team = (await service.GetTeamAsync("usr-super")).ToList();
 
         Assert.Single(team);
         Assert.Equal("mine", team[0].Id);

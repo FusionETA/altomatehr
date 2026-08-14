@@ -1,15 +1,20 @@
-import { apiGet, apiGetBlob, apiPost, apiPostForm } from "@/shared/lib/api-client";
+import { apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
 
 // Mirrors the backend Claim (later: generate this from the OpenAPI spec).
 export type Claim = {
   id: string;
   claimNumber: string;
   title: string;
+  description: string;
   category: string;
   amount: number;
   currency: string;
   status: string;
   claimType: string;
+  paymentType: string;
+  payViaAccountId?: string | null;
+  spendingWith?: string | null;
+  spendingAt?: string | null;
   employeeId: string;
   employeeEmail?: string | null; // populated for team/approver views
   spentAt: string;
@@ -17,6 +22,11 @@ export type Claim = {
   projectId?: string | null;
   chartOfAccountId?: string | null;
   exceedsLimit: boolean;
+  distance?: number | null;
+  mileageOriginAddress?: string | null;
+  mileageDestinationAddress?: string | null;
+  mileageRateUsed?: number | null;
+  mileageUnitUsed?: "KM" | "MILE" | null;
   receiptUrl?: string | null;
   reviewNotes?: string | null;
 };
@@ -25,13 +35,19 @@ export type CreateClaimRequest = {
   title: string;
   description: string;
   category: string;
-  amount: number;
+  amount?: number;
   currency: string;
   spentAt: string;
   claimType: string;
   paymentType: string;
+  payViaAccountId?: string;
+  spendingWith?: string;
+  spendingAt?: string;
   projectId?: string;
   chartOfAccountId?: string;
+  distance?: number;
+  mileageOriginAddress?: string;
+  mileageDestinationAddress?: string;
   receiptUrl?: string;
 };
 
@@ -42,8 +58,9 @@ export type UploadReceiptResponse = {
 export const getMyClaims = () => apiGet<Claim[]>("/claims");
 export const getTeamClaims = () => apiGet<Claim[]>("/claims/team");
 export const createClaim = (body: CreateClaimRequest) => apiPost<Claim>("/claims", body);
+export const updateClaim = (id: string, body: CreateClaimRequest) => apiPut<Claim>(`/claims/${id}`, body);
 export const approveClaim = (id: string) => apiPost<Claim>(`/claims/${id}/approve`);
-export const rejectClaim = (id: string, reviewNotes?: string) =>
+export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 
 export function uploadClaimReceipt(file: File) {

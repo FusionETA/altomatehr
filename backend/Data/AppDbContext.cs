@@ -44,6 +44,12 @@ public class AppDbContext : DbContext
         claim.Property(c => c.ClaimType).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.PaymentType).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.Category).HasConversion<string>().HasMaxLength(20);
+        claim.Property(c => c.MileageUnitUsed).HasConversion<string>().HasMaxLength(20);
+
+        modelBuilder.Entity<Organization>()
+            .Property(o => o.MileageUnit)
+            .HasConversion<string>()
+            .HasMaxLength(20);
 
         modelBuilder.Entity<RefreshToken>().HasIndex(t => t.Token).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();

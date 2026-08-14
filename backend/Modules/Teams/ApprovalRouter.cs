@@ -5,10 +5,9 @@ namespace AltomateHR.Api.Modules.Teams;
 // Resolves WHO must approve a request right now, and how many steps there are:
 // the team chain for the module, or — when the employee has no chain — a single
 // supervisor step (the flat fallback), so nothing breaks mid-migration.
+// Approval is purely by team seat: role (Admin/Owner/…) grants no approval power.
 public interface IApprovalRouter
 {
-    bool IsOrgApprover(string? role);
-
     // Approver ids for the request at `currentStep`. Empty when there's no one.
     Task<IReadOnlyList<string>> CurrentApproversAsync(ApprovalModule module, string applicantId, int currentStep);
 
@@ -27,8 +26,6 @@ public class ApprovalRouter : IApprovalRouter
         _chain = chain;
         _supervision = supervision;
     }
-
-    public bool IsOrgApprover(string? role) => _supervision.IsOrgApprover(role);
 
     public async Task<IReadOnlyList<string>> CurrentApproversAsync(
         ApprovalModule module, string applicantId, int currentStep)

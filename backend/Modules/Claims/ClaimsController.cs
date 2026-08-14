@@ -20,12 +20,11 @@ public class ClaimsController : ControllerBase
     public async Task<IActionResult> GetMine() =>
         Ok(await _claims.GetMineAsync(GetUserId()));
 
-    // GET /claims/team — claims the caller can approve (their direct reports;
-    // the whole org for admins/owners).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // GET /claims/team — claims awaiting the caller as the current-step approver
+    // (by team seat; any authenticated user may have a queue).
     [HttpGet("team")]
     public async Task<IActionResult> GetTeam() =>
-        Ok(await _claims.GetTeamAsync(GetUserId(), GetRole()));
+        Ok(await _claims.GetTeamAsync(GetUserId()));
 
     // GET /claims/{id}
     [HttpGet("{id}")]
@@ -39,8 +38,15 @@ public class ClaimsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateClaimDto dto)
     {
-        var claim = await _claims.CreateAsync(dto, GetUserId());
-        return CreatedAtAction(nameof(GetById), new { id = claim.Id }, claim);
+        try
+        {
+            var claim = await _claims.CreateAsync(dto, GetUserId());
+            return CreatedAtAction(nameof(GetById), new { id = claim.Id }, claim);
+        }
+        catch (ClaimValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message, field = ex.Field });
+        }
     }
 
     // POST /claims/receipts
@@ -88,8 +94,15 @@ public class ClaimsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, CreateClaimDto dto)
     {
-        var ok = await _claims.UpdateAsync(id, dto, GetUserId(), User.IsInRole("Admin"));
-        return ok ? NoContent() : NotFound();
+        try
+        {
+            var claim = await _claims.UpdateAsync(id, dto, GetUserId(), User.IsInRole("Admin"));
+            return claim is null ? NotFound() : Ok(claim);
+        }
+        catch (ClaimValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message, field = ex.Field });
+        }
     }
 
     // DELETE /claims/{id}  — Admins only (RBAC)
@@ -101,21 +114,19 @@ public class ClaimsController : ControllerBase
         return ok ? NoContent() : NotFound();
     }
 
-    // POST /claims/{id}/approve — supervisor of the claimant (or admin/owner).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // POST /claims/{id}/approve — the current-step approver in the claimant's chain.
     [HttpPost("{id}/approve")]
     public async Task<IActionResult> Approve(string id)
     {
-        var result = await _claims.ApproveAsync(id, GetUserId(), GetRole());
+        var result = await _claims.ApproveAsync(id, GetUserId());
         return ToStatusTransitionResponse(result);
     }
 
-    // POST /claims/{id}/reject — supervisor of the claimant (or admin/owner).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // POST /claims/{id}/reject — the current-step approver in the claimant's chain.
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> Reject(string id, RejectClaimDto dto)
     {
-        var result = await _claims.RejectAsync(id, GetUserId(), GetRole(), dto.ReviewNotes);
+        var result = await _claims.RejectAsync(id, GetUserId(), dto.ReviewNotes);
         return ToStatusTransitionResponse(result);
     }
 
@@ -123,8 +134,6 @@ public class ClaimsController : ControllerBase
         User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub)
         ?? throw new InvalidOperationException("Authenticated user id is missing.");
-
-    private string? GetRole() => User.FindFirstValue(ClaimTypes.Role);
 
     private IActionResult ToStatusTransitionResponse(ClaimStatusTransitionResult result)
     {

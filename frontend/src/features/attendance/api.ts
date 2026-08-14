@@ -38,10 +38,16 @@ export type ClockInRequest = {
   projectId?: string;
   location?: string;
   remark?: string;
+  photoUrl?: string;
   lat?: number;
   lng?: number;
 };
-export type ClockOutRequest = { remark?: string; lat?: number; lng?: number };
+export type ClockOutRequest = {
+  remark?: string;
+  photoUrl?: string;
+  lat?: number;
+  lng?: number;
+};
 
 // /attendance/today returns 204 (→ undefined) when there's no record yet today.
 export const getTodayAttendance = async () =>

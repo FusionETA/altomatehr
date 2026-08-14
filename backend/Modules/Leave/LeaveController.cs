@@ -20,12 +20,11 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> GetMine() =>
         Ok(await _leave.GetMineAsync(GetUserId()));
 
-    // GET /leave/team — applications the caller can approve (their direct
-    // reports; the whole org for admins/owners).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // GET /leave/team — applications awaiting the caller as the current-step
+    // approver. By team seat, so any authenticated user may have a queue.
     [HttpGet("team")]
     public async Task<IActionResult> GetTeam() =>
-        Ok(await _leave.GetTeamAsync(GetUserId(), GetRole()));
+        Ok(await _leave.GetTeamAsync(GetUserId()));
 
     // GET /leave/balances — the caller's per-type balances for this year.
     [HttpGet("balances")]
@@ -40,17 +39,15 @@ public class LeaveController : ControllerBase
         return result.Ok ? Ok(result.Application) : BadRequest(new { message = result.Error });
     }
 
-    // POST /leave/{id}/approve — supervisor of the applicant (or admin/owner).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // POST /leave/{id}/approve — the current-step approver in the applicant's chain.
     [HttpPost("{id}/approve")]
     public async Task<IActionResult> Approve(string id) =>
-        ToTransitionResponse(await _leave.ApproveAsync(id, GetUserId(), GetRole()));
+        ToTransitionResponse(await _leave.ApproveAsync(id, GetUserId()));
 
-    // POST /leave/{id}/reject — supervisor of the applicant (or admin/owner).
-    [Authorize(Roles = "Admin,Owner,Supervisor")]
+    // POST /leave/{id}/reject — the current-step approver in the applicant's chain.
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> Reject(string id, RejectLeaveDto dto) =>
-        ToTransitionResponse(await _leave.RejectAsync(id, GetUserId(), GetRole(), dto.ReviewNotes));
+        ToTransitionResponse(await _leave.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 
     // POST /leave/{id}/cancel — the owner cancels their own pending request.
     [HttpPost("{id}/cancel")]
@@ -68,6 +65,4 @@ public class LeaveController : ControllerBase
         User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub)
         ?? throw new InvalidOperationException("Authenticated user id is missing.");
-
-    private string? GetRole() => User.FindFirstValue(ClaimTypes.Role);
 }

@@ -13,11 +13,11 @@ public interface ILeaveTypeService
 public interface ILeaveService
 {
     Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId);
-    Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId, string? role);
+    Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId);
     Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId);
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
-    Task<LeaveTransitionResult> ApproveAsync(string id, string approverId, string? role);
-    Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes);
+    Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
+    Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
 }
 

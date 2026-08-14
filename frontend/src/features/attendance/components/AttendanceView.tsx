@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
 
 const TZ = "Asia/Kuala_Lumpur";
 const NO_SELECTION = "__none__";
@@ -87,7 +88,7 @@ function GeoChip({ distance, radius }: { distance: number | null; radius: number
   );
 }
 
-export function AttendanceView() {
+export function AttendanceView({ sub = "att-dashboard" }: { sub?: string }) {
   const [today, setToday] = useState<AttendanceRecord | null>(null);
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -217,6 +218,7 @@ export function AttendanceView() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {sub === "att-dashboard" ? (
       <section className={`${CARD} p-6 sm:p-8`}>
         <div className="flex flex-col items-center text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -377,7 +379,9 @@ export function AttendanceView() {
           {error ? <p className="mt-4 text-sm font-medium text-destructive">{error}</p> : null}
         </div>
       </section>
+      ) : null}
 
+      {sub === "att-history" ? (
       <section className={CARD}>
         <div className="border-b border-border/60 px-5 py-4 sm:px-6">
           <h2 className="text-lg font-black text-foreground">Recent attendance</h2>
@@ -405,6 +409,26 @@ export function AttendanceView() {
           </ul>
         )}
       </section>
+      ) : null}
+
+      {sub === "att-overtime" ? (
+        <EmptyModule
+          title="Overtime"
+          body="Your overtime accrual and history will live here."
+        />
+      ) : null}
+      {sub === "att-approvals" ? (
+        <EmptyModule
+          title="Approvals"
+          body="Attendance clock approvals for your team will live here."
+        />
+      ) : null}
+      {sub === "att-team" ? (
+        <EmptyModule
+          title="Team"
+          body="Your team's live attendance roll-call will live here."
+        />
+      ) : null}
     </div>
   );
 }

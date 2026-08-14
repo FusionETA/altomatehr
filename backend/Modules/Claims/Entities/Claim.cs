@@ -44,6 +44,15 @@ public class Claim : ITenantScoped
     public PaymentType PaymentType { get; set; } = PaymentType.PERSONAL;
 
     [MaxLength(40)]
+    public string? PayViaAccountId { get; set; }                 // COMPANY claims: bank account that paid
+
+    [MaxLength(200)]
+    public string? SpendingWith { get; set; }                    // optional client/vendor/team
+
+    [MaxLength(200)]
+    public string? SpendingAt { get; set; }                      // COMPANY claims: merchant/vendor
+
+    [MaxLength(40)]
     public string EmployeeId { get; set; } = string.Empty;        // FK (id only, for now)
 
     [MaxLength(40)]
@@ -53,6 +62,17 @@ public class Claim : ITenantScoped
     public string? ChartOfAccountId { get; set; }                 // FK → ChartOfAccounts (settings)
 
     public bool ExceedsLimit { get; set; }                        // amount blew past the account's spend limit
+
+    [Precision(10, 2)]
+    public decimal? Distance { get; set; }                        // MILEAGE only
+
+    public string? MileageOriginAddress { get; set; }             // MILEAGE only
+    public string? MileageDestinationAddress { get; set; }        // MILEAGE only
+
+    [Precision(10, 4)]
+    public decimal? MileageRateUsed { get; set; }                 // MILEAGE snapshot
+
+    public MileageUnit? MileageUnitUsed { get; set; }             // MILEAGE snapshot
 
     [MaxLength(1000)]
     public string? ReceiptUrl { get; set; }

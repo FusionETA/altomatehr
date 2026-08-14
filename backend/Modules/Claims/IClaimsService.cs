@@ -6,14 +6,14 @@ namespace AltomateHR.Api.Modules.Claims;
 public interface IClaimsService
 {
     Task<IEnumerable<Claim>> GetMineAsync(string userId);
-    Task<IEnumerable<Claim>> GetTeamAsync(string userId, string? role);
+    Task<IEnumerable<Claim>> GetTeamAsync(string userId);
     Task<Claim?> GetByIdAsync(string id);
     Task<Claim?> GetVisibleByIdAsync(string id, string userId, bool isAdmin);
     Task<Claim> CreateAsync(CreateClaimDto dto, string employeeId);
-    Task<bool> UpdateAsync(string id, CreateClaimDto dto, string userId, bool isAdmin);
+    Task<Claim?> UpdateAsync(string id, CreateClaimDto dto, string userId, bool isAdmin);
     Task<bool> DeleteAsync(string id);
-    Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId, string? role);
-    Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes);
+    Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId);
+    Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
 }

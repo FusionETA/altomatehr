@@ -14,6 +14,7 @@ import {
 } from "../api";
 import { LeaveStatusBadge } from "./LeaveStatusBadge";
 import { ApplyLeaveModal } from "./ApplyLeaveModal";
+import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm";
@@ -29,7 +30,7 @@ function fmtRange(start: string, end: string) {
   return start === end ? fmtDate(start) : `${fmtDate(start)} – ${fmtDate(end)}`;
 }
 
-export function LeaveView({ role }: { role: string }) {
+export function LeaveView({ sub, role }: { sub: string; role: string }) {
   const canApprove = role !== "Employee";
 
   const [types, setTypes] = useState<LeaveType[]>([]);
@@ -121,66 +122,70 @@ export function LeaveView({ role }: { role: string }) {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      {quotaBalances.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {quotaBalances.map((b) => (
-            <div key={b.leaveTypeId} className={`${CARD} p-5`}>
-              <p className="text-sm font-semibold text-foreground">{b.name}</p>
-              <p className="mt-2 text-3xl font-black tabular-nums text-foreground">
-                {b.remainingDays}
-                <span className="text-base font-semibold text-muted-foreground"> / {b.entitlementDays}</span>
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {b.takenDays} taken{b.pendingDays > 0 ? ` · ${b.pendingDays} pending` : ""}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
-      {/* My leave */}
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-black text-foreground">My leave</h2>
-        <button
-          type="button"
-          onClick={() => setApplyOpen(true)}
-          disabled={activeTypes.length === 0}
-          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90 disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          Apply
-        </button>
-      </div>
-      <section className={CARD}>
-        {loading ? (
-          <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">Loading…</p>
-        ) : mine.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">No leave applications yet.</p>
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {mine.map((a) =>
-              row(
-                a,
-                a.status === "PENDING" ? (
-                  <button
-                    type="button"
-                    disabled={busyId === a.id}
-                    onClick={() => cancelMine(a.id)}
-                    className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                ) : null,
-              ),
-            )}
-          </ul>
-        )}
-      </section>
+      {/* ── My Leave: balances + my applications ─────────────────────── */}
+      {sub === "leave-mine" ? (
+        <>
+          {quotaBalances.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {quotaBalances.map((b) => (
+                <div key={b.leaveTypeId} className={`${CARD} p-5`}>
+                  <p className="text-sm font-semibold text-foreground">{b.name}</p>
+                  <p className="mt-2 text-3xl font-black tabular-nums text-foreground">
+                    {b.remainingDays}
+                    <span className="text-base font-semibold text-muted-foreground"> / {b.entitlementDays}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {b.takenDays} taken{b.pendingDays > 0 ? ` · ${b.pendingDays} pending` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
-      {/* Team approvals */}
-      {canApprove ? (
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-lg font-black text-foreground">My leave</h2>
+            <button
+              type="button"
+              onClick={() => setApplyOpen(true)}
+              disabled={activeTypes.length === 0}
+              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-panel transition hover:opacity-90 disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+              Apply
+            </button>
+          </div>
+          <section className={CARD}>
+            {loading ? (
+              <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">Loading…</p>
+            ) : mine.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">No leave applications yet.</p>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {mine.map((a) =>
+                  row(
+                    a,
+                    a.status === "PENDING" ? (
+                      <button
+                        type="button"
+                        disabled={busyId === a.id}
+                        onClick={() => cancelMine(a.id)}
+                        className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    ) : null,
+                  ),
+                )}
+              </ul>
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {/* ── Approvals: my team's leave requests ──────────────────────── */}
+      {sub === "leave-approvals" && canApprove ? (
         <>
           <h2 className="text-lg font-black text-foreground">Team approvals</h2>
           <section className={CARD}>
@@ -221,6 +226,14 @@ export function LeaveView({ role }: { role: string }) {
             )}
           </section>
         </>
+      ) : null}
+
+      {/* ── Team Balances: not yet rebuilt ───────────────────────────── */}
+      {sub === "leave-team" ? (
+        <EmptyModule
+          title="Team Balances"
+          body="An org-wide view of every team member's leave balances will live here."
+        />
       ) : null}
 
       {applyOpen ? (

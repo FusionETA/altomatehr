@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AltomateHR.Api.Common;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Modules.Organizations.Entities;
@@ -18,6 +19,8 @@ public class Organization
 
     [Precision(10, 4)]
     public decimal DefaultMileageRate { get; set; }
+
+    public MileageUnit MileageUnit { get; set; } = MileageUnit.KM;
 
     // How far (metres) from a project's geofence centre still counts as on-site.
     public int GeofenceRadiusMeters { get; set; } = 200;

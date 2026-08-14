@@ -5,12 +5,14 @@ export type Organization = {
   name: string;
   defaultCurrency: string;
   defaultMileageRate: number;
+  mileageUnit: "KM" | "MILE";
   geofenceRadiusMeters: number;
 };
 export type UpdateOrganization = {
   name: string;
   defaultCurrency: string;
   defaultMileageRate: number;
+  mileageUnit: "KM" | "MILE";
   geofenceRadiusMeters: number;
 };
 

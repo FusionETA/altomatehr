@@ -36,25 +36,17 @@ public class LeaveService : ILeaveService
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
         (await _apps.GetByEmployeeAsync(userId)).Select(ToDto);
 
-    // Applications the caller can act on right now: org approvers see the whole
-    // org; otherwise only PENDING applications where the caller is an approver at
-    // the application's current chain step.
-    public async Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId, string? role)
+    // Applications the caller can act on right now: PENDING applications where
+    // the caller is an approver at the application's current chain step. Purely
+    // by team seat — a role alone (Admin/Owner) grants nothing here.
+    public async Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId)
     {
         var all = await _apps.GetAllAsync();
-        List<LeaveApplication> visible;
-        if (_router.IsOrgApprover(role))
+        var visible = new List<LeaveApplication>();
+        foreach (var a in all.Where(a => a.Status == LeaveStatus.PENDING))
         {
-            visible = all;
-        }
-        else
-        {
-            visible = [];
-            foreach (var a in all.Where(a => a.Status == LeaveStatus.PENDING))
-            {
-                var approvers = await _router.CurrentApproversAsync(Module, a.EmployeeId, a.CurrentStep);
-                if (approvers.Contains(userId)) visible.Add(a);
-            }
+            var approvers = await _router.CurrentApproversAsync(Module, a.EmployeeId, a.CurrentStep);
+            if (approvers.Contains(userId)) visible.Add(a);
         }
 
         var emails = await _supervision.GetEmailsAsync(visible.Select(a => a.EmployeeId).Distinct());
@@ -122,14 +114,14 @@ public class LeaveService : ILeaveService
         return new LeaveApplyResult(true, ToDto(application), null);
     }
 
-    public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId, string? role)
+    public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId, role);
+        var (app, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
         var now = DateTime.UtcNow;
         var stepCount = await _router.StepCountAsync(Module, app!.EmployeeId);
-        var isFinal = _router.IsOrgApprover(role) || app.CurrentStep + 1 >= stepCount;
+        var isFinal = app.CurrentStep + 1 >= stepCount;
         if (isFinal)
         {
             app.Status = LeaveStatus.APPROVED;
@@ -144,9 +136,9 @@ public class LeaveService : ILeaveService
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
-    public async Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? role, string? reviewNotes)
+    public async Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId, role);
+        var (app, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
         var now = DateTime.UtcNow;
@@ -177,18 +169,15 @@ public class LeaveService : ILeaveService
     // Loads the app and checks the caller may act at its current step. Returns
     // an error result (to return as-is) on any failure; otherwise the app.
     private async Task<(LeaveApplication? App, LeaveTransitionResult? Error)> AuthorizeAsync(
-        string id, string approverId, string? role)
+        string id, string approverId)
     {
         var app = await _apps.GetByIdAsync(id);
         if (app is null)
             return (null, new LeaveTransitionResult(false, false, null));
 
-        if (!_router.IsOrgApprover(role))
-        {
-            var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
-            if (!approvers.Contains(approverId))
-                return (null, new LeaveTransitionResult(false, false, null));   // not the current approver → hide
-        }
+        var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+        if (!approvers.Contains(approverId))
+            return (null, new LeaveTransitionResult(false, false, null));   // not the current approver → hide
 
         if (app.Status != LeaveStatus.PENDING)
             return (app, new LeaveTransitionResult(true, false, ToDto(app),

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AltomateHR.Api.Common;
 
 namespace AltomateHR.Api.Modules.Organizations.Dtos;
 
@@ -13,6 +14,8 @@ public class UpdateOrganizationDto
 
     [Range(0, 100)]
     public decimal DefaultMileageRate { get; set; }
+
+    public MileageUnit MileageUnit { get; set; } = MileageUnit.KM;
 
     [Range(10, 100_000)]
     public int GeofenceRadiusMeters { get; set; } = 200;

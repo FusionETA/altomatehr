@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { openClaimReceipt } from "../api";
 
 export function ViewReceiptButton({
@@ -10,7 +10,8 @@ export function ViewReceiptButton({
 }) {
   const [opening, setOpening] = useState(false);
 
-  async function handleOpen() {
+  async function handleOpen(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
     setOpening(true);
     try {
       await openClaimReceipt(receiptUrl);

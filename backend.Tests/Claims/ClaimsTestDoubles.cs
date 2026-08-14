@@ -1,8 +1,11 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Accounts.Dtos;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Tests.Claims;
@@ -17,13 +20,17 @@ internal static class ClaimsTestFactory
         IApprovalRouter? router = null,
         ISupervisionService? supervision = null,
         IChartOfAccountService? accounts = null,
-        IClaimReceiptStorage? receiptStorage = null) =>
+        IClaimReceiptStorage? receiptStorage = null,
+        IOrganizationService? organizations = null,
+        ICurrentUser? currentUser = null) =>
         new(
             new FakeClaimsRepository(claims),
             receiptStorage ?? new FakeClaimReceiptStorage(),
             accounts ?? new FakeChartOfAccountService(),
             supervision ?? new FakeSupervisionService(),
-            router ?? new FakeApprovalRouter());
+            router ?? new FakeApprovalRouter(),
+            organizations ?? new FakeOrganizationService(),
+            currentUser ?? new FakeCurrentUser());
 
     public static Claim NewClaim(
         string id,
@@ -95,7 +102,37 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
     private readonly Dictionary<string, ChartOfAccountDto> _accounts;
 
     public FakeChartOfAccountService(params ChartOfAccountDto[] accounts) =>
-        _accounts = accounts.ToDictionary(a => a.Id);
+        _accounts = accounts.Length > 0
+            ? accounts.ToDictionary(a => a.Id)
+            : new[]
+            {
+                new ChartOfAccountDto
+                {
+                    Id = "acct-expense",
+                    Code = "6100",
+                    Name = "Travel Expenses",
+                    Type = "EXPENSE",
+                    IsSelectable = true,
+                },
+                new ChartOfAccountDto
+                {
+                    Id = "acct-mileage",
+                    Code = "6200",
+                    Name = "Mileage Claims",
+                    Type = "EXPENSE",
+                    IsSelectable = false,
+                    AllowMileageClaim = true,
+                    MileageRate = 0.8m,
+                },
+                new ChartOfAccountDto
+                {
+                    Id = "acct-bank",
+                    Code = "1000",
+                    Name = "Company Bank",
+                    Type = "BANK",
+                    IsSelectable = true,
+                },
+            }.ToDictionary(a => a.Id);
 
     public Task<IEnumerable<ChartOfAccountDto>> GetAllAsync() =>
         Task.FromResult<IEnumerable<ChartOfAccountDto>>(_accounts.Values.ToList());
@@ -106,6 +143,37 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
     public Task<ChartOfAccountDto> CreateAsync(SaveChartOfAccountDto dto) => throw new NotImplementedException();
     public Task<ChartOfAccountDto?> UpdateAsync(string id, SaveChartOfAccountDto dto) => throw new NotImplementedException();
     public Task<ChartOfAccountDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
+}
+
+internal sealed class FakeOrganizationService : IOrganizationService
+{
+    private readonly OrganizationDto _organization;
+
+    public FakeOrganizationService(OrganizationDto? organization = null) =>
+        _organization = organization ?? new OrganizationDto
+        {
+            Id = "org-demo",
+            Name = "AltomateHR",
+            DefaultCurrency = "MYR",
+            DefaultMileageRate = 0.6m,
+            MileageUnit = MileageUnit.KM,
+            GeofenceRadiusMeters = 200,
+        };
+
+    public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
+        Task.FromResult<OrganizationDto?>(_organization.Id == organizationId ? _organization : null);
+
+    public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>
+        throw new NotImplementedException();
+}
+
+internal sealed class FakeCurrentUser : ICurrentUser
+{
+    public string? UserId { get; init; } = "usr-emp";
+    public string? OrganizationId { get; init; } = "org-demo";
+    public string? Role { get; init; } = "Employee";
+    public bool IsAdmin => Role is "Admin" or "Owner";
+    public bool IsAuthenticated => UserId is not null;
 }
 
 // Mirrors the real routing logic: org approvers (Admin/Owner) may act on
@@ -150,13 +218,10 @@ internal sealed class FakeSupervisionService : ISupervisionService
 // { ["usr-emp"] = [["usr-super"], ["usr-admin"]] }.
 internal sealed class FakeApprovalRouter : IApprovalRouter
 {
-    private static readonly HashSet<string> OrgRoles = new(StringComparer.OrdinalIgnoreCase) { "Admin", "Owner" };
     private readonly Dictionary<string, List<List<string>>> _chains;
 
     public FakeApprovalRouter(Dictionary<string, List<List<string>>>? chains = null) =>
         _chains = chains ?? new();
-
-    public bool IsOrgApprover(string? role) => role is not null && OrgRoles.Contains(role);
 
     public Task<IReadOnlyList<string>> CurrentApproversAsync(ApprovalModule module, string applicantId, int currentStep)
     {

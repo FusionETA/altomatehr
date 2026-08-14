@@ -1,13 +1,9 @@
 import { ClaimsView } from "./ClaimsView";
 import { ClaimsApprovals } from "./ClaimsApprovals";
 
-// Employee portal Claims tab: everyone gets their own claims (ClaimsView);
-// supervisors/admins also get a team approvals queue below it.
-export function ClaimsPage({ role }: { role: string }) {
-  return (
-    <div className="space-y-6">
-      <ClaimsView />
-      {role !== "Employee" ? <ClaimsApprovals /> : null}
-    </div>
-  );
+// Claims tab: the sidebar sub-tab decides which view to show —
+// "My claims" (ClaimsView) or the supervisor "Claims queue" (ClaimsApprovals).
+export function ClaimsPage({ sub }: { sub: string }) {
+  if (sub === "claims-queue") return <ClaimsApprovals />;
+  return <ClaimsView />;
 }

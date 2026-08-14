@@ -25,6 +25,7 @@ public class OrganizationService : IOrganizationService
         org.Name = dto.Name;
         org.DefaultCurrency = dto.DefaultCurrency;
         org.DefaultMileageRate = dto.DefaultMileageRate;
+        org.MileageUnit = dto.MileageUnit;
         org.GeofenceRadiusMeters = dto.GeofenceRadiusMeters;
         await _repo.UpdateAsync(org);
 
@@ -37,6 +38,7 @@ public class OrganizationService : IOrganizationService
         Name = o.Name,
         DefaultCurrency = o.DefaultCurrency,
         DefaultMileageRate = o.DefaultMileageRate,
+        MileageUnit = o.MileageUnit,
         GeofenceRadiusMeters = o.GeofenceRadiusMeters,
     };
 }

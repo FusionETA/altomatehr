@@ -5,11 +5,17 @@ export type EmployeeView =
   | "claims"
   | "attendance"
   | "leave"
-  | "payslips"
-  | "settings";
+  | "payslips";
+
+export type EmployeeSubItem = {
+  id: string;
+  label: string;
+  supervisorOnly?: boolean;
+};
 
 export type EmployeeNavItem = {
   id: EmployeeView;
   label: string;
   icon: LucideIcon;
+  children?: EmployeeSubItem[];
 };

@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Claims;
 using static AltomateHR.Api.Tests.Claims.ClaimsTestFactory;
 
 namespace AltomateHR.Api.Tests.Claims;
@@ -30,26 +31,13 @@ public class ClaimsServiceOwnershipTests
     }
 
     [Fact]
-    public async Task GetTeamAsync_ReturnsAllClaimsForOrgApprover()
-    {
-        var service = CreateService([
-            NewClaim("own", "usr-emp"),
-            NewClaim("other", "usr-other"),
-        ]);
-
-        var claims = await service.GetTeamAsync("usr-admin", "Admin");
-
-        Assert.Equal(2, claims.Count());
-    }
-
-    [Fact]
-    public async Task GetTeamAsync_ReturnsOnlyCurrentStepApproverClaimsForSupervisor()
+    public async Task GetTeamAsync_ReturnsOnlyCurrentStepApproverClaims()
     {
         var service = CreateService(
             [NewClaim("own", "usr-emp"), NewClaim("other", "usr-other")],
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
-        var claims = await service.GetTeamAsync("usr-super", "Supervisor");
+        var claims = await service.GetTeamAsync("usr-super");
 
         Assert.Collection(claims, claim => Assert.Equal("own", claim.Id));
     }
@@ -61,7 +49,7 @@ public class ClaimsServiceOwnershipTests
 
         var updated = await service.UpdateAsync("other", CreateClaimDto(), "usr-emp", isAdmin: false);
 
-        Assert.False(updated);
+        Assert.Null(updated);
     }
 
     [Fact]
@@ -72,9 +60,53 @@ public class ClaimsServiceOwnershipTests
 
         var updated = await service.UpdateAsync("own", CreateClaimDto(title: "Updated"), "usr-emp", isAdmin: false);
 
-        Assert.True(updated);
+        Assert.NotNull(updated);
         Assert.Equal("usr-emp", claim.EmployeeId);
         Assert.Equal("Updated", claim.Title);
+    }
+
+    [Theory]
+    [InlineData(ClaimStatus.APPROVED)]
+    [InlineData(ClaimStatus.REVIEWED)]
+    [InlineData(ClaimStatus.REJECTED)]
+    public async Task UpdateAsync_DoesNotAllowReviewedClaimsToBeEdited(ClaimStatus status)
+    {
+        var claim = NewClaim("own", "usr-emp", status);
+        var service = CreateService([claim]);
+
+        var error = await Assert.ThrowsAsync<ClaimValidationException>(() =>
+            service.UpdateAsync("own", CreateClaimDto(title: "Updated"), "usr-emp", isAdmin: false));
+
+        Assert.Equal("This claim has already been reviewed and can no longer be edited.", error.Message);
+        Assert.Equal("Lunch", claim.Title);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DoesNotAllowClaimTypeToChange()
+    {
+        var claim = NewClaim("own", "usr-emp", ClaimStatus.PENDING);
+        var service = CreateService([claim]);
+        var dto = CreateClaimDto();
+        dto.ClaimType = ClaimType.MILEAGE;
+
+        var error = await Assert.ThrowsAsync<ClaimValidationException>(() =>
+            service.UpdateAsync("own", dto, "usr-emp", isAdmin: false));
+
+        Assert.Equal("Claim type cannot be changed after submission.", error.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DoesNotAllowPaymentTypeToChange()
+    {
+        var claim = NewClaim("own", "usr-emp", ClaimStatus.PENDING);
+        var service = CreateService([claim]);
+        var dto = CreateClaimDto();
+        dto.PaymentType = PaymentType.COMPANY;
+
+        var error = await Assert.ThrowsAsync<ClaimValidationException>(() =>
+            service.UpdateAsync("own", dto, "usr-emp", isAdmin: false));
+
+        Assert.Equal("Payment source cannot be changed after submission.", error.Message);
     }
 
     private static CreateClaimDto CreateClaimDto(string title = "Lunch") => new()
@@ -87,5 +119,6 @@ public class ClaimsServiceOwnershipTests
         SpentAt = DateTime.UtcNow,
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,
+        ChartOfAccountId = "acct-expense",
     };
 }

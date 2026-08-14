@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import { LoginForm } from "./features/auth/components/LoginForm";
 import { logout, refresh } from "./features/auth/api";
-import { EmployeeShell } from "./features/employee/components/EmployeeShell";
-import type { EmployeeView } from "./features/employee/lib/types";
+import { AdminShell } from "./features/admin/components/AdminShell";
+import { EmployeeShell } from "./features/employee-portal/components/EmployeeShell";
 import { LoadingScreen } from "./shared/components/LoadingScreen";
 import { setAuthToken } from "./shared/lib/api-client";
 import type { SignedInUser } from "./shared/types/session";
 
+// Admins and owners get the admin portal; everyone else (supervisors,
+// employees) gets the employee portal. Approval duties are decided by team
+// seat inside the employee portal, not by this split.
+function isAdminRole(role: string) {
+  return role === "Admin" || role === "Owner";
+}
+
 function App() {
   const [user, setUser] = useState<SignedInUser | null>(null);
-  const [activeView, setActiveView] = useState<EmployeeView>("dashboard");
   const [booting, setBooting] = useState(true);
 
   // Access tokens live in memory, so refresh restores the session after a page reload.
@@ -35,25 +41,22 @@ function App() {
         onSuccess={(res) => {
           setAuthToken(res.token);
           setUser({ email: res.email, role: res.role });
-          setActiveView("dashboard");
         }}
       />
     );
   }
 
-  return (
-    <EmployeeShell
-      user={user}
-      activeView={activeView}
-      onChangeView={setActiveView}
-      onLogout={async () => {
-        await logout().catch(() => {});
-        setAuthToken(null);
-        setUser(null);
-        setActiveView("dashboard");
-      }}
-    />
-  );
+  const handleLogout = async () => {
+    await logout().catch(() => {});
+    setAuthToken(null);
+    setUser(null);
+  };
+
+  if (isAdminRole(user.role)) {
+    return <AdminShell user={user} onLogout={handleLogout} />;
+  }
+
+  return <EmployeeShell user={user} onLogout={handleLogout} />;
 }
 
 export default App;

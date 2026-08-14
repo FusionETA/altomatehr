@@ -1,13 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/manrope";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    /* Manrope — the same face the production app uses for body + headings. */
+    --font-sans: 'Manrope Variable', sans-serif;
+    --font-heading: 'Manrope Variable', sans-serif;
+
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -25,6 +27,7 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -39,82 +42,130 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* Material-style surface + status tokens ported from the monolith. */
+    --color-surface: var(--surface);
+    --color-surface-container: var(--surface-container);
+    --color-surface-low: var(--surface-container-low);
+    --color-surface-high: var(--surface-container-high);
+    --color-surface-lowest: var(--surface-container-lowest);
+    --color-tertiary: var(--tertiary);
+    --color-tertiary-foreground: var(--tertiary-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+
+    /* Brand shadows — soft purple ambient + deeper panel lift. */
+    --shadow-ambient: 0 12px 30px rgba(76, 26, 134, 0.07);
+    --shadow-panel: 0 18px 48px rgba(76, 26, 134, 0.10);
+
+    /* Form-friendly rounded scale: less pill-like for inputs/selects. */
+    --radius-sm: calc(var(--radius) - 2px);
+    --radius-md: var(--radius);
+    --radius-lg: calc(var(--radius) * 1.15);
+    --radius-xl: calc(var(--radius) * 1.3);
+    --radius-2xl: calc(var(--radius) * 1.45);
+    --radius-3xl: calc(var(--radius) * 1.8);
+    --radius-4xl: calc(var(--radius) * 2.2);
 }
 
+/* ── Purple/Mint palette (exact values from the production app) ──────────
+   Purple anchor : #4C1A86  → hsl(268 68% 31%)
+   Mint anchor   : #9AFAE3  → hsl(166 91% 79%)
+──────────────────────────────────────────────────────────────────────── */
 :root {
-    --background: #f7f4fa;
-    --foreground: #1f1230;
-    --card: #fefcff;
-    --card-foreground: #1f1230;
-    --popover: #fefcff;
-    --popover-foreground: #1f1230;
-    --primary: #4c1a86;
-    --primary-foreground: #ffffff;
-    --secondary: #dffbf5;
-    --secondary-foreground: #164f47;
-    --muted: #eee8f2;
-    --muted-foreground: #786c89;
-    --accent: #9afae3;
-    --accent-foreground: #113f39;
-    --destructive: #bd1717;
-    --border: #d9d0e2;
-    --input: #d9d0e2;
-    --ring: #4c1a86;
+    --background: hsl(268 30% 97%);
+    --foreground: hsl(268 50% 10%);
+    --card: hsl(268 35% 99%);
+    --card-foreground: hsl(268 50% 10%);
+    --popover: hsl(268 35% 99%);
+    --popover-foreground: hsl(268 50% 10%);
+    --primary: hsl(268 68% 31%);
+    --primary-foreground: hsl(0 0% 100%);
+    --secondary: hsl(166 55% 90%);
+    --secondary-foreground: hsl(168 50% 22%);
+    --muted: hsl(268 15% 92%);
+    --muted-foreground: hsl(268 12% 45%);
+    --accent: hsl(166 91% 79%);
+    --accent-foreground: hsl(168 65% 14%);
+    --destructive: hsl(0 72% 43%);
+    --destructive-foreground: hsl(0 40% 98%);
+    --border: hsl(268 22% 83%);
+    --input: hsl(268 22% 83%);
+    --ring: hsl(268 68% 31%);
+    --radius: 0.75rem;
+
+    --surface: hsl(268 30% 97%);
+    --surface-container: hsl(268 18% 93%);
+    --surface-container-low: hsl(268 16% 95%);
+    --surface-container-high: hsl(268 14% 90%);
+    --surface-container-lowest: hsl(0 0% 100%);
+    --tertiary: hsl(20 100% 28%);
+    --tertiary-foreground: hsl(0 0% 100%);
+    --tertiary-fixed: hsl(20 100% 90%);
+    --success: hsl(166 68% 32%);
+    --success-foreground: hsl(0 0% 100%);
+
+    /* Neutral sidebar/chart defaults (unused by the brand shells). */
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar: hsl(268 35% 99%);
+    --sidebar-foreground: hsl(268 50% 10%);
+    --sidebar-primary: hsl(268 68% 31%);
+    --sidebar-primary-foreground: hsl(0 0% 100%);
+    --sidebar-accent: hsl(268 16% 95%);
+    --sidebar-accent-foreground: hsl(268 50% 10%);
+    --sidebar-border: hsl(268 22% 83%);
+    --sidebar-ring: hsl(268 68% 31%);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --background: hsl(268 40% 7%);
+    --foreground: hsl(268 20% 96%);
+    --card: hsl(268 35% 11%);
+    --card-foreground: hsl(268 20% 96%);
+    --popover: hsl(268 35% 11%);
+    --popover-foreground: hsl(268 20% 96%);
+    --primary: hsl(268 62% 67%);
+    --primary-foreground: hsl(268 55% 8%);
+    --secondary: hsl(168 28% 20%);
+    --secondary-foreground: hsl(166 75% 88%);
+    --muted: hsl(268 22% 16%);
+    --muted-foreground: hsl(268 16% 66%);
+    --accent: hsl(166 80% 68%);
+    --accent-foreground: hsl(168 65% 11%);
+    --destructive: hsl(0 72% 48%);
+    --destructive-foreground: hsl(0 40% 98%);
+    --border: hsl(268 22% 20%);
+    --input: hsl(268 22% 20%);
+    --ring: hsl(268 62% 67%);
+
+    --surface: hsl(268 40% 7%);
+    --surface-container: hsl(268 32% 10%);
+    --surface-container-low: hsl(268 28% 13%);
+    --surface-container-high: hsl(268 22% 16%);
+    --surface-container-lowest: hsl(268 25% 19%);
+    --tertiary: hsl(17 82% 71%);
+    --tertiary-foreground: hsl(24 67% 12%);
+    --tertiary-fixed: hsl(18 53% 24%);
+    --success: hsl(166 72% 52%);
+    --success-foreground: hsl(168 100% 6%);
+
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar: hsl(268 35% 11%);
+    --sidebar-foreground: hsl(268 20% 96%);
+    --sidebar-primary: hsl(268 62% 67%);
+    --sidebar-primary-foreground: hsl(268 55% 8%);
+    --sidebar-accent: hsl(268 22% 16%);
+    --sidebar-accent-foreground: hsl(268 20% 96%);
+    --sidebar-border: hsl(268 22% 20%);
+    --sidebar-ring: hsl(268 62% 67%);
 }
 
 @layer base {
@@ -127,16 +178,41 @@
     min-height: 100%;
     }
   body {
+    /* Solid brand background — the monolith layers radial + grid washes
+       here, intentionally omitted per the no-gradient preference. */
     @apply bg-background text-foreground antialiased;
     }
   html {
     @apply font-sans;
     }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading), sans-serif;
+    letter-spacing: -0.02em;
+    }
 }
 
-/* Slim, rounded, inset scrollbar for scroll containers (e.g. modal bodies).
-   The thumb is inset via a transparent border + padding-box clip so it never
-   collides with a rounded container edge. */
+/* ── Utilities ported from the monolith ─────────────────────────────── */
+
+/* Frosted panel — white glass in light mode, slate glass in dark. */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(24px);
+}
+.dark .glass-panel {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+
+/* Tonal panel — lowest surface tint + deep panel shadow. */
+.tonal-panel {
+  background-color: var(--surface-container-lowest);
+  box-shadow: 0 18px 48px rgba(76, 26, 134, 0.1);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Slim, rounded, inset scrollbar for scroll containers (e.g. modal bodies). */
 .nice-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(76, 26, 134, 0.28) transparent;
@@ -156,4 +232,15 @@
 }
 .nice-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(76, 26, 134, 0.4);
+}
+
+/* Swipe-scroll with no visible scrollbar (mobile pill nav strips). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

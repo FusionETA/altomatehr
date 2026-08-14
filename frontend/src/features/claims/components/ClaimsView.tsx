@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import type { KeyboardEvent } from "react";
+import { Pencil, Plus, Search } from "lucide-react";
 import { getMyClaims, type Claim } from "../api";
 import {
   claimMatchesStatus,
@@ -17,6 +18,7 @@ import { OverLimitBadge } from "./OverLimitBadge";
 import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { NewClaimModal } from "./NewClaimModal";
 import { ViewReceiptButton } from "./ViewReceiptButton";
+import { ClaimDetailsModal } from "./ClaimDetailsModal";
 import { getAccounts, getProjects } from "@/features/settings/api";
 
 export function ClaimsView() {
@@ -27,6 +29,8 @@ export function ClaimsView() {
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
+  const [editingClaim, setEditingClaim] = useState<Claim | null>(null);
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
 
@@ -55,6 +59,44 @@ export function ClaimsView() {
     const acc = claim.chartOfAccountId ? accountLabels.get(claim.chartOfAccountId) : undefined;
     return [proj, acc].filter(Boolean).join(" · ");
   };
+  const projectLabel = (claim: Claim) =>
+    claim.projectId ? projectNames.get(claim.projectId) ?? "Not assigned" : "Not assigned";
+  const accountLabel = (claim: Claim) =>
+    claim.chartOfAccountId ? accountLabels.get(claim.chartOfAccountId) ?? "Not assigned" : "Not assigned";
+
+  function handleClaimKeyDown(event: KeyboardEvent, claim: Claim) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setSelectedClaim(claim);
+    }
+  }
+
+  function canEditClaim(claim: Claim) {
+    return claim.status === "SUBMITTED" || claim.status === "PENDING";
+  }
+
+  function replaceClaim(updatedClaim: Claim) {
+    setClaims((current) => current.map((claim) => (claim.id === updatedClaim.id ? updatedClaim : claim)));
+    setSelectedClaim((current) => (current?.id === updatedClaim.id ? updatedClaim : current));
+  }
+
+  function editFooter(claim: Claim) {
+    if (!canEditClaim(claim)) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setEditingClaim(claim);
+          setSelectedClaim(null);
+        }}
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+      >
+        <Pencil className="h-4 w-4" />
+        Edit claim
+      </button>
+    );
+  }
 
   const filteredClaims = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -95,7 +137,7 @@ export function ClaimsView() {
 
   return (
     <>
-      <div className="mb-4 overflow-x-auto pb-0.5 md:hidden">
+      <div className="no-scrollbar mb-4 overflow-x-auto pb-0.5 md:hidden">
         <div className="flex gap-2">
           <button
             type="button"
@@ -138,7 +180,7 @@ export function ClaimsView() {
               />
             </div>
 
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="no-scrollbar flex gap-2 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setStatus("ALL")}
@@ -217,7 +259,11 @@ export function ClaimsView() {
             {paginatedClaims.map((claim) => (
               <article
                 key={claim.id}
-                className="rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm sm:p-5"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedClaim(claim)}
+                onKeyDown={(event) => handleClaimKeyDown(event, claim)}
+                className="cursor-pointer rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm transition hover:border-primary/40 focus-visible:border-primary/50 focus-visible:outline-none sm:p-5"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -302,7 +348,10 @@ export function ClaimsView() {
                   {paginatedClaims.map((claim) => (
                     <tr
                       key={claim.id}
-                      className="border-b border-border/60 transition-colors hover:bg-muted/70"
+                      tabIndex={0}
+                      onClick={() => setSelectedClaim(claim)}
+                      onKeyDown={(event) => handleClaimKeyDown(event, claim)}
+                      className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                     >
                       <td className="p-4 pl-6 align-middle">
                         <div>
@@ -382,6 +431,28 @@ export function ClaimsView() {
         <NewClaimModal
           onClose={() => setCreateOpen(false)}
           onCreated={(claim) => setClaims((current) => [claim, ...current])}
+        />
+      ) : null}
+
+      {editingClaim ? (
+        <NewClaimModal
+          editingClaim={editingClaim}
+          onClose={() => setEditingClaim(null)}
+          onCreated={(claim) => setClaims((current) => [claim, ...current])}
+          onUpdated={(claim) => {
+            replaceClaim(claim);
+            setEditingClaim(null);
+          }}
+        />
+      ) : null}
+
+      {selectedClaim ? (
+        <ClaimDetailsModal
+          claim={selectedClaim}
+          accountLabel={accountLabel(selectedClaim)}
+          projectLabel={projectLabel(selectedClaim)}
+          onClose={() => setSelectedClaim(null)}
+          footer={editFooter(selectedClaim)}
         />
       ) : null}
     </>

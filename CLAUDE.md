@@ -101,6 +101,9 @@ The app is multi-tenant. Every request carries its tenant in the JWT `org` claim
   ├── components/     React UI for that feature
   └── lib/            feature-only helpers, constants, options, formatters, types
   ```
+- Use clear feature names for different ownership surfaces. `employee-portal/`
+  means the logged-in employee self-service UI shell; `employees/` means the
+  employee records / management feature.
 - Do **not** leave random helper/config/type files directly in a feature root.
   Examples: `claim-status.ts`, `claim-options.ts`, `employee-formatters.ts`,
   `nav.ts`, and feature-only `types.ts` belong in that feature's `lib/` folder.
