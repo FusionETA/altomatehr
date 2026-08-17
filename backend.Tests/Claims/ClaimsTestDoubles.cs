@@ -70,7 +70,8 @@ internal sealed class FakeClaimsRepository : IClaimsRepository
         Task.FromResult(_claims.FirstOrDefault(c => c.Id == id));
 
     public Task<Claim?> GetByReceiptUrlAsync(string receiptUrl) =>
-        Task.FromResult(_claims.FirstOrDefault(c => c.ReceiptUrl == receiptUrl));
+        Task.FromResult(_claims.FirstOrDefault(c =>
+            c.ReceiptUrl == receiptUrl || c.SupportingDocumentUrls.Contains(receiptUrl)));
 
     public Task<Claim> AddAsync(Claim claim)
     {

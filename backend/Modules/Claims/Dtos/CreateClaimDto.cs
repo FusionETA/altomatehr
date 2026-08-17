@@ -50,4 +50,6 @@ public class CreateClaimDto
 
     [MaxLength(1000)]
     public string? ReceiptUrl { get; set; }
+
+    public List<string>? SupportingDocumentUrls { get; set; }
 }

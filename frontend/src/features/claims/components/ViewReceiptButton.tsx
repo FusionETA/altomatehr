@@ -4,9 +4,11 @@ import { openClaimReceipt } from "../api";
 export function ViewReceiptButton({
   receiptUrl,
   className,
+  label = "View receipt",
 }: {
   receiptUrl: string;
   className: string;
+  label?: string;
 }) {
   const [opening, setOpening] = useState(false);
 
@@ -22,7 +24,7 @@ export function ViewReceiptButton({
 
   return (
     <button type="button" onClick={handleOpen} disabled={opening} className={className}>
-      {opening ? "Opening..." : "View receipt"}
+      {opening ? "Opening..." : label}
     </button>
   );
 }

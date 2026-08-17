@@ -4,8 +4,6 @@ import { Pencil, Plus, Search } from "lucide-react";
 import { getMyClaims, type Claim } from "../api";
 import {
   claimMatchesStatus,
-  claimStatusLabels,
-  visibleClaimStatuses,
   type ClaimStatusFilter,
 } from "../lib/claim-status";
 import {
@@ -19,6 +17,7 @@ import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { NewClaimModal } from "./NewClaimModal";
 import { ViewReceiptButton } from "./ViewReceiptButton";
 import { ClaimDetailsModal } from "./ClaimDetailsModal";
+import { ClaimStatusTabs } from "./ClaimStatusTabs";
 import { getAccounts, getProjects } from "@/features/settings/api";
 
 export function ClaimsView() {
@@ -137,35 +136,7 @@ export function ClaimsView() {
 
   return (
     <>
-      <div className="no-scrollbar mb-4 overflow-x-auto pb-0.5 md:hidden">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setStatus("ALL")}
-            className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-              status === "ALL"
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All
-          </button>
-          {visibleClaimStatuses.map((claimStatus) => (
-            <button
-              key={claimStatus}
-              type="button"
-              onClick={() => setStatus(claimStatus)}
-              className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-                status === claimStatus
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {claimStatusLabels[claimStatus]}
-            </button>
-          ))}
-        </div>
-      </div>
+      <ClaimStatusTabs value={status} onChange={setStatus} className="mb-4 md:hidden" />
 
       <div className="space-y-4 sm:space-y-6">
         <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm md:block">
@@ -180,33 +151,7 @@ export function ClaimsView() {
               />
             </div>
 
-            <div className="no-scrollbar flex gap-2 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setStatus("ALL")}
-                className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-                  status === "ALL"
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                All
-              </button>
-              {visibleClaimStatuses.map((claimStatus) => (
-                <button
-                  key={claimStatus}
-                  type="button"
-                  onClick={() => setStatus(claimStatus)}
-                  className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-                    status === claimStatus
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {claimStatusLabels[claimStatus]}
-                </button>
-              ))}
-            </div>
+            <ClaimStatusTabs value={status} onChange={setStatus} />
 
             <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <p>

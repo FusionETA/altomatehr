@@ -234,6 +234,27 @@
   background-color: rgba(76, 26, 134, 0.4);
 }
 
+/* Shared horizontal scrollbar for tab strips where hidden overflow would be unclear. */
+.horizontal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(76, 26, 134, 0.32) transparent;
+}
+.horizontal-scrollbar::-webkit-scrollbar {
+  height: 10px;
+}
+.horizontal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.horizontal-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(76, 26, 134, 0.24);
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+.horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(76, 26, 134, 0.42);
+}
+
 /* Swipe-scroll with no visible scrollbar (mobile pill nav strips). */
 .no-scrollbar {
   scrollbar-width: none;

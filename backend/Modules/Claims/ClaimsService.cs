@@ -75,6 +75,8 @@ public class ClaimsService : IClaimsService
     {
         var now = DateTime.UtcNow;
         var prepared = await PrepareClaimValuesAsync(dto, employeeId);
+        var supportingDocuments = NormalizeSupportingDocuments(dto);
+        var receiptUrl = Clean(dto.ReceiptUrl);
 
         var claim = new Claim
         {
@@ -101,7 +103,8 @@ public class ClaimsService : IClaimsService
             MileageDestinationAddress = prepared.MileageDestinationAddress,
             MileageRateUsed = prepared.MileageRateUsed,
             MileageUnitUsed = prepared.MileageUnitUsed,
-            ReceiptUrl = dto.ReceiptUrl,
+            ReceiptUrl = receiptUrl,
+            SupportingDocumentUrls = supportingDocuments,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -119,6 +122,9 @@ public class ClaimsService : IClaimsService
             throw new ClaimValidationException("Claim type cannot be changed after submission.", nameof(dto.ClaimType));
         if (dto.PaymentType != claim.PaymentType)
             throw new ClaimValidationException("Payment source cannot be changed after submission.", nameof(dto.PaymentType));
+
+        var supportingDocuments = NormalizeSupportingDocuments(dto);
+        var receiptUrl = Clean(dto.ReceiptUrl);
 
         claim.Title = dto.Title;
         claim.Description = dto.Description;
@@ -140,7 +146,8 @@ public class ClaimsService : IClaimsService
         claim.MileageDestinationAddress = prepared.MileageDestinationAddress;
         claim.MileageRateUsed = prepared.MileageRateUsed;
         claim.MileageUnitUsed = prepared.MileageUnitUsed;
-        claim.ReceiptUrl = dto.ReceiptUrl;
+        claim.ReceiptUrl = receiptUrl;
+        claim.SupportingDocumentUrls = supportingDocuments;
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
         return claim;
@@ -322,6 +329,29 @@ public class ClaimsService : IClaimsService
 
     private static string? Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static List<string> NormalizeSupportingDocuments(CreateClaimDto dto)
+    {
+        var urls = new List<string>();
+
+        if (dto.SupportingDocumentUrls is not null)
+        {
+            urls.AddRange(dto.SupportingDocumentUrls
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Select(url => url.Trim()));
+        }
+
+        urls = urls.Distinct(StringComparer.Ordinal).ToList();
+        if (urls.Count > 10)
+            throw new ClaimValidationException("Attach no more than 10 supporting documents.", nameof(dto.SupportingDocumentUrls));
+
+        if (urls.Any(url => !url.StartsWith("/claims/receipts/", StringComparison.Ordinal)) ||
+            (!string.IsNullOrWhiteSpace(dto.ReceiptUrl) &&
+             !dto.ReceiptUrl.Trim().StartsWith("/claims/receipts/", StringComparison.Ordinal)))
+            throw new ClaimValidationException("Uploaded document URL is invalid.", nameof(dto.SupportingDocumentUrls));
+
+        return urls;
+    }
 
     // Loads the claim and checks the caller may act at its current step. Returns
     // an error result (to return as-is) on any failure; otherwise the claim.

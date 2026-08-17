@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -64,58 +64,84 @@ export function NewClaimModal({
     editingClaim ? toPaymentType(editingClaim.paymentType) : null,
   );
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const { overflow, position, top, width } = document.body.style;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.position = position;
+      document.body.style.top = top;
+      document.body.style.width = width;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="nice-scrollbar max-h-[90vh] w-full max-w-[720px] overflow-y-auto rounded-[32px] border border-white/40 bg-card/95 p-6 shadow-[0_18px_48px_rgba(76,26,134,0.10)] backdrop-blur-xl sm:p-8">
+      <div
+        className="flex max-h-[calc(100svh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-[0_18px_48px_rgba(76,26,134,0.10)] backdrop-blur-xl"
+        style={{ minHeight: "min(620px, calc(100svh - 2rem))" }}
+      >
         <ModalHeader onClose={onClose} isEditing={isEditing} />
 
-        {step === "payment" && !isEditing ? (
-          <PaymentStep
-            onPick={(type) => {
-              setPaymentType(type);
-              setStep("type");
-            }}
-          />
-        ) : null}
+        <div className="nice-scrollbar flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-8 sm:pb-8">
+          {step === "payment" && !isEditing ? (
+            <PaymentStep
+              onPick={(type) => {
+                setPaymentType(type);
+                setStep("type");
+              }}
+            />
+          ) : null}
 
-        {step === "type" && paymentType && !isEditing ? (
-          <TypeStep
-            onBack={() => {
-              setPaymentType(null);
-              setStep("payment");
-            }}
-            onPick={(type) => {
-              setClaimType(type);
-              setStep(type === "MILEAGE" ? "form" : "receipt");
-            }}
-          />
-        ) : null}
+          {step === "type" && paymentType && !isEditing ? (
+            <TypeStep
+              onBack={() => {
+                setPaymentType(null);
+                setStep("payment");
+              }}
+              onPick={(type) => {
+                setClaimType(type);
+                setStep(type === "MILEAGE" ? "form" : "receipt");
+              }}
+            />
+          ) : null}
 
-        {step === "receipt" && claimType === "EXPENSE" && paymentType && !isEditing ? (
-          <ReceiptStep
-            receiptFile={receiptFile}
-            setReceiptFile={setReceiptFile}
-            onBack={() => {
-              setClaimType(null);
-              setStep("type");
-            }}
-            onContinue={() => setStep("form")}
-          />
-        ) : null}
+          {step === "receipt" && claimType === "EXPENSE" && paymentType && !isEditing ? (
+            <ReceiptStep
+              receiptFile={receiptFile}
+              setReceiptFile={setReceiptFile}
+              onBack={() => {
+                setClaimType(null);
+                setStep("type");
+              }}
+              onContinue={() => setStep("form")}
+            />
+          ) : null}
 
-        {step === "form" && claimType && paymentType ? (
-          <ClaimDetailsForm
-            claimType={claimType}
-            paymentType={paymentType}
-            receiptFile={receiptFile}
-            onBack={() => setStep(claimType === "MILEAGE" ? "type" : "receipt")}
-            onClose={onClose}
-            onCreated={onCreated}
-            editingClaim={editingClaim}
-            onUpdated={onUpdated}
-          />
-        ) : null}
+          {step === "form" && claimType && paymentType ? (
+            <ClaimDetailsForm
+              claimType={claimType}
+              paymentType={paymentType}
+              receiptFile={receiptFile}
+              supportingFiles={supportingFiles}
+              setSupportingFiles={setSupportingFiles}
+              onBack={() => setStep(claimType === "MILEAGE" ? "type" : "receipt")}
+              onClose={onClose}
+              onCreated={onCreated}
+              editingClaim={editingClaim}
+              onUpdated={onUpdated}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -123,7 +149,7 @@ export function NewClaimModal({
 
 function ModalHeader({ onClose, isEditing }: { onClose: () => void; isEditing: boolean }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4 border-b border-border/60 pb-4">
+    <div className="mb-6 flex shrink-0 items-start justify-between gap-4 border-b border-border/60 p-6 pb-4 sm:p-8 sm:pb-4">
       <div>
         <h2 className="text-2xl font-black text-foreground">
           {isEditing ? "Edit claim" : "Submit a claim"}
@@ -217,7 +243,7 @@ function ReceiptStep({
 }) {
   return (
     <section className="space-y-5">
-      <StepWithBack eyebrow="Step 3 - Receipt" title="Attach the receipt" onBack={onBack} />
+      <StepWithBack eyebrow="Step 3 - Main document" title="Attach the main receipt" onBack={onBack} />
       <label
         htmlFor="claimReceipt"
         className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-surface-low/50 px-5 py-8 text-center transition hover:border-primary/50"
@@ -226,10 +252,10 @@ function ReceiptStep({
           <Upload className="h-5 w-5" />
         </div>
         <p className="mt-4 text-sm font-bold text-foreground">
-          {receiptFile ? "Receipt attached" : "Upload receipt"}
+          {receiptFile ? "Main receipt attached" : "Upload main receipt"}
         </p>
         <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-          JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. Receipt reading can be added later.
+          JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. This is the primary document for OCR later.
         </p>
         {receiptFile ? (
           <p className="mt-3 max-w-full truncate rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground">
@@ -269,6 +295,8 @@ function ClaimDetailsForm({
   claimType,
   paymentType,
   receiptFile,
+  supportingFiles,
+  setSupportingFiles,
   onBack,
   onClose,
   onCreated,
@@ -278,6 +306,8 @@ function ClaimDetailsForm({
   claimType: ClaimType;
   paymentType: PaymentType;
   receiptFile: File | null;
+  supportingFiles: File[];
+  setSupportingFiles: (files: File[]) => void;
   onBack: () => void;
   onClose: () => void;
   onCreated: (claim: Claim) => void;
@@ -300,7 +330,7 @@ function ClaimDetailsForm({
   const [distance, setDistance] = useState(editingClaim?.distance ? String(editingClaim.distance) : "");
   const [mileageOriginAddress, setMileageOriginAddress] = useState(editingClaim?.mileageOriginAddress ?? "");
   const [mileageDestinationAddress, setMileageDestinationAddress] = useState(editingClaim?.mileageDestinationAddress ?? "");
-  const [replacementReceiptFile, setReplacementReceiptFile] = useState<File | null>(null);
+  const [additionalSupportingFiles, setAdditionalSupportingFiles] = useState<File[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -372,8 +402,14 @@ function ClaimDetailsForm({
     setError(null);
 
     try {
-      const fileToUpload = isEditing ? replacementReceiptFile : receiptFile;
-      const receipt = fileToUpload ? await uploadClaimReceipt(fileToUpload) : null;
+      const existingSupportingDocumentUrls = editingClaim?.supportingDocumentUrls ?? [];
+      const uploadedReceipt = receiptFile ? await uploadClaimReceipt(receiptFile) : null;
+      const filesToUpload = isEditing ? additionalSupportingFiles : supportingFiles;
+      const uploadedSupportingDocuments = await Promise.all(filesToUpload.map((file) => uploadClaimReceipt(file)));
+      const supportingDocumentUrls = [
+        ...existingSupportingDocumentUrls,
+        ...uploadedSupportingDocuments.map((doc) => doc.receiptUrl),
+      ];
       const body: CreateClaimRequest = {
         title: title.trim(),
         description: description.trim(),
@@ -387,7 +423,8 @@ function ClaimDetailsForm({
         payViaAccountId: paymentType === "COMPANY" ? payViaAccountId : undefined,
         spendingAt: spendingAt.trim() || undefined,
         spendingWith: spendingWith.trim() || undefined,
-        receiptUrl: receipt?.receiptUrl ?? editingClaim?.receiptUrl ?? undefined,
+        receiptUrl: uploadedReceipt?.receiptUrl ?? editingClaim?.receiptUrl ?? undefined,
+        supportingDocumentUrls,
       };
 
       if (claimType === "EXPENSE") {
@@ -616,26 +653,27 @@ function ClaimDetailsForm({
         </InfoBox>
       ) : null}
 
-      {isEditing && claimType === "EXPENSE" ? (
-        <label className="block space-y-3 rounded-2xl border border-border/70 bg-surface-low/50 px-4 py-4">
-          <span className={LABEL}>Receipt</span>
-          <span className="block text-sm text-muted-foreground">
-            {replacementReceiptFile
-              ? `New receipt selected: ${replacementReceiptFile.name}`
-              : editingClaim?.receiptUrl
-                ? "Current receipt will be kept unless you replace it."
-                : "No receipt attached yet."}
-          </span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-            onChange={(event) => setReplacementReceiptFile(event.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-[14px] file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-bold file:text-primary-foreground"
-          />
-        </label>
+      {!isEditing ? (
+        <SupportingDocumentsField
+          label="Supporting documents"
+          hint="Optional: invoices, approvals, secondary receipts, or other supporting files."
+          files={supportingFiles}
+          onChange={setSupportingFiles}
+        />
       ) : null}
 
-      {!isEditing && receiptFile ? <InfoBox>Receipt attached: {receiptFile.name}</InfoBox> : null}
+      {isEditing ? (
+        <SupportingDocumentsField
+          label="Add more supporting documents"
+          hint={
+            editingClaim?.supportingDocumentUrls?.length
+              ? "Existing supporting documents will be kept."
+              : "No supporting documents attached yet."
+          }
+          files={additionalSupportingFiles}
+          onChange={setAdditionalSupportingFiles}
+        />
+      ) : null}
 
       {overLimit && selectedAccount ? (
         <p className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -672,6 +710,58 @@ function ClaimDetailsForm({
       </div>
     </form>
   );
+}
+
+function SupportingDocumentsField({
+  label,
+  hint,
+  files,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  files: File[];
+  onChange: (files: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <div>
+        <p className={LABEL}>{label}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="flex h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-left text-sm shadow-sm transition hover:border-primary/50 hover:bg-card"
+      >
+        <Upload className="h-4 w-4 shrink-0 text-primary" />
+        <span className={`min-w-0 flex-1 truncate ${files.length > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+          {formatSelectedFiles(files)}
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+        multiple
+        tabIndex={-1}
+        className="hidden"
+        onChange={(event) => {
+          onChange(Array.from(event.target.files ?? []).slice(0, 10));
+          event.currentTarget.value = "";
+          event.currentTarget.blur();
+        }}
+      />
+    </div>
+  );
+}
+
+function formatSelectedFiles(files: File[]) {
+  if (files.length === 0) return "Tap to add supporting documents";
+  if (files.length === 1) return files[0].name;
+  return `${files.length} files selected - ${files.slice(0, 2).map((file) => file.name).join(", ")}`;
 }
 
 function StepIntro({

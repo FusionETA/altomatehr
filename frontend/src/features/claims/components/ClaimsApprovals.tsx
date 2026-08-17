@@ -4,13 +4,12 @@ import { LoaderCircle, Search, X } from "lucide-react";
 import { approveClaim, getTeamClaims, rejectClaim, type Claim } from "../api";
 import {
   claimMatchesStatus,
-  claimStatusLabels,
-  visibleClaimStatuses,
   type ClaimStatusFilter,
 } from "../lib/claim-status";
 import { formatCurrency, formatShortDate } from "../lib/claim-formatters";
 import { ClaimStatusBadge } from "./ClaimStatusBadge";
 import { ClaimDetailsModal } from "./ClaimDetailsModal";
+import { ClaimStatusTabs } from "./ClaimStatusTabs";
 import { OverLimitBadge } from "./OverLimitBadge";
 import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { getAccounts } from "@/features/settings/api";
@@ -180,39 +179,9 @@ export function ClaimsApprovals() {
     }
   }
 
-  const statusPills = (
-    <>
-      <button
-        type="button"
-        onClick={() => setStatus("ALL")}
-        className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-          status === "ALL"
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        All
-      </button>
-      {visibleClaimStatuses.map((claimStatus) => (
-        <button
-          key={claimStatus}
-          type="button"
-          onClick={() => setStatus(claimStatus)}
-          className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-            status === claimStatus
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {claimStatusLabels[claimStatus]}
-        </button>
-      ))}
-    </>
-  );
-
   return (
     <>
-      <div className="mb-4 no-scrollbar flex gap-2 overflow-x-auto pb-0.5 md:hidden">{statusPills}</div>
+      <ClaimStatusTabs value={status} onChange={setStatus} className="mb-4 md:hidden" />
 
       <div className="space-y-4 sm:space-y-6">
         <section className={`hidden md:block ${CARD}`}>
@@ -227,7 +196,7 @@ export function ClaimsApprovals() {
               />
             </div>
 
-            <div className="no-scrollbar flex gap-2 overflow-x-auto">{statusPills}</div>
+            <ClaimStatusTabs value={status} onChange={setStatus} />
 
             <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <p>

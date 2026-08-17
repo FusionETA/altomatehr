@@ -23,6 +23,7 @@ export function ClaimDetailsModal({
 }) {
   const isMileage = claim.claimType === "MILEAGE";
   const paidWith = claim.paymentType === "COMPANY" ? "Company money" : "My own money";
+  const supportingDocuments = claim.supportingDocumentUrls ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
@@ -123,16 +124,40 @@ export function ClaimDetailsModal({
           </section>
         ) : null}
 
-        <div className="mt-5 flex flex-col gap-3 border-t border-border/60 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            {claim.receiptUrl ? (
-              <ViewReceiptButton
-                receiptUrl={claim.receiptUrl}
-                className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
-              />
-            ) : (
-              <span className="text-sm text-muted-foreground">No receipt attached</span>
-            )}
+        <div className="mt-5 flex flex-col gap-4 border-t border-border/60 pt-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Main receipt
+              </span>
+              {claim.receiptUrl ? (
+                <ViewReceiptButton
+                  receiptUrl={claim.receiptUrl}
+                  label="View main receipt"
+                  className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">No main receipt attached</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Supporting
+              </span>
+              {supportingDocuments.length > 0 ? (
+                supportingDocuments.map((url, index) => (
+                  <ViewReceiptButton
+                    key={url}
+                    receiptUrl={url}
+                    label={supportingDocuments.length === 1 ? "View supporting document" : `Supporting ${index + 1}`}
+                    className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
+                  />
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground">No supporting documents attached</span>
+              )}
+            </div>
           </div>
           {footer}
         </div>

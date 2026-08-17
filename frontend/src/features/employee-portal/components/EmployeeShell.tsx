@@ -6,6 +6,7 @@ import { LeaveView } from "@/features/leave/components/LeaveView";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
+import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
 import { defaultSubOf, employeeNav, findNavItem } from "../lib/nav";
@@ -276,7 +277,10 @@ export function EmployeeShell({
 
         {/* Mobile sub-nav strip for the active tab's sub-pages. */}
         {activeChildren.length > 1 ? (
-          <div className="no-scrollbar flex gap-2 overflow-x-auto px-6 py-3 sm:px-7 lg:hidden">
+          <HorizontalScrollArea
+            className="border-b border-border/50 px-6 sm:px-7 lg:hidden"
+            contentClassName="min-h-11 items-end gap-5"
+          >
             {activeChildren.map((child) => {
               const childActive = child.id === sub;
               return (
@@ -284,18 +288,21 @@ export function EmployeeShell({
                   key={child.id}
                   type="button"
                   onClick={() => selectChild(activeView, child.id)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  className={`relative inline-flex h-11 shrink-0 items-center gap-1.5 border-b-2 px-0.5 text-sm font-bold transition-colors ${
                     childActive
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border/60 bg-card text-muted-foreground"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {child.label}
-                  <CountBadge count={childBadge(child.id)} />
+                  <CountBadge
+                    count={childBadge(child.id)}
+                    className={childActive ? "" : "bg-muted text-muted-foreground"}
+                  />
                 </button>
               );
             })}
-          </div>
+          </HorizontalScrollArea>
         ) : null}
 
         <main className="flex-1 pb-28 lg:pb-10">

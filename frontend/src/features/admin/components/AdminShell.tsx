@@ -9,6 +9,7 @@ import { ProjectsSettings } from "@/features/settings/components/ProjectsSetting
 import { TeamsSettings } from "@/features/settings/components/TeamsSettings";
 import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
 import { AdminAttendance } from "./AdminAttendance";
@@ -140,7 +141,7 @@ export function AdminShell({
         </header>
 
         {/* Mobile module switcher — the desktop sidebar is hidden below lg. */}
-        <div className="flex gap-2 overflow-x-auto px-4 py-3 lg:hidden">
+        <HorizontalScrollArea className="px-4 py-3 lg:hidden" contentClassName="gap-2">
           {adminNav.map((item) => {
             const active = item.id === activeParent;
             const Icon = item.icon;
@@ -160,11 +161,11 @@ export function AdminShell({
               </button>
             );
           })}
-        </div>
+        </HorizontalScrollArea>
 
         {/* Mobile sub-nav for the active module. */}
         {activeItem.children ? (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-2 lg:hidden">
+          <HorizontalScrollArea className="px-4 pb-3 lg:hidden" contentClassName="gap-2">
             {activeItem.children.map((child) => {
               const childActive = child.id === activeChild;
               return (
@@ -182,7 +183,7 @@ export function AdminShell({
                 </button>
               );
             })}
-          </div>
+          </HorizontalScrollArea>
         ) : null}
 
         <main className="flex-1 pb-16 lg:pb-10">

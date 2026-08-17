@@ -16,6 +16,7 @@ import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { EmployeesSettings } from "./EmployeesSettings";
 import { PoliciesSettings } from "./PoliciesSettings";
 import { TeamsSettings } from "./TeamsSettings";
+import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 
 type SettingsTab =
   | "organization"
@@ -41,7 +42,7 @@ export function SettingsView() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="flex gap-2 overflow-x-auto pb-0.5">
+      <HorizontalScrollArea contentClassName="gap-2">
         {tabs.map(({ id, label, icon: Icon }) => {
           const active = id === tab;
           return (
@@ -60,7 +61,7 @@ export function SettingsView() {
             </button>
           );
         })}
-      </div>
+      </HorizontalScrollArea>
 
       {tab === "organization" ? <OrganizationSettings /> : null}
       {tab === "employees" ? <EmployeesSettings /> : null}

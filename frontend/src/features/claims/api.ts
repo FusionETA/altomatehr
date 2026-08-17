@@ -28,6 +28,7 @@ export type Claim = {
   mileageRateUsed?: number | null;
   mileageUnitUsed?: "KM" | "MILE" | null;
   receiptUrl?: string | null;
+  supportingDocumentUrls?: string[] | null;
   reviewNotes?: string | null;
 };
 
@@ -49,6 +50,7 @@ export type CreateClaimRequest = {
   mileageOriginAddress?: string;
   mileageDestinationAddress?: string;
   receiptUrl?: string;
+  supportingDocumentUrls?: string[];
 };
 
 export type UploadReceiptResponse = {

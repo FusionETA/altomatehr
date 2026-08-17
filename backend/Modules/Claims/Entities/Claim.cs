@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using AltomateHR.Api.Common;
 using Microsoft.EntityFrameworkCore;
 
@@ -76,6 +78,23 @@ public class Claim : ITenantScoped
 
     [MaxLength(1000)]
     public string? ReceiptUrl { get; set; }
+
+    [Column("SupportingDocumentUrls")]
+    [JsonIgnore]
+    public string? SupportingDocumentUrlsJson { get; set; }
+
+    [NotMapped]
+    public List<string> SupportingDocumentUrls
+    {
+        get
+        {
+            return string.IsNullOrWhiteSpace(SupportingDocumentUrlsJson)
+                ? []
+                : JsonSerializer.Deserialize<List<string>>(SupportingDocumentUrlsJson) ?? [];
+        }
+        set => SupportingDocumentUrlsJson = JsonSerializer.Serialize(
+            value.Where(url => !string.IsNullOrWhiteSpace(url)).Distinct().ToList());
+    }
 
     public string? ReviewNotes { get; set; }                      // long text, nullable
 

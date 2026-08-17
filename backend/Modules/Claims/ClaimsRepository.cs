@@ -19,8 +19,12 @@ public class ClaimsRepository : IClaimsRepository
     public Task<Claim?> GetByIdAsync(string id) =>
         _db.Claims.FirstOrDefaultAsync(c => c.Id == id);
 
-    public Task<Claim?> GetByReceiptUrlAsync(string receiptUrl) =>
-        _db.Claims.FirstOrDefaultAsync(c => c.ReceiptUrl == receiptUrl);
+    public async Task<Claim?> GetByReceiptUrlAsync(string receiptUrl)
+    {
+        var claims = await _db.Claims.ToListAsync();
+        return claims.FirstOrDefault(c =>
+            c.ReceiptUrl == receiptUrl || c.SupportingDocumentUrls.Contains(receiptUrl));
+    }
 
     public async Task<Claim> AddAsync(Claim claim)
     {
