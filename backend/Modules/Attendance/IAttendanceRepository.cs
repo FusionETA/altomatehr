@@ -5,6 +5,7 @@ namespace AltomateHR.Api.Modules.Attendance;
 public interface IAttendanceRepository
 {
     Task<AttendanceRecord?> GetForEmployeeOnDateAsync(string employeeId, DateTime date);
+    Task<AttendanceRecord?> GetByIdAsync(string id);
     Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl);
     Task<List<AttendanceRecord>> GetByEmployeeAsync(string employeeId);
     Task<List<AttendanceRecord>> GetAllAsync();

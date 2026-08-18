@@ -21,6 +21,12 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetAll() =>
         Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsInRole("Admin")));
 
+    // GET /attendance/team — records awaiting the caller as current-step approver.
+    [HttpGet("team")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> GetTeamApprovals() =>
+        Ok(await _attendance.GetTeamApprovalsAsync(GetUserId()));
+
     // GET /attendance/today — the caller's record for the current local day (204 if none yet).
     [HttpGet("today")]
     public async Task<IActionResult> GetToday()
@@ -38,6 +44,18 @@ public class AttendanceController : ControllerBase
     [HttpPost("clock-out")]
     public async Task<IActionResult> ClockOut(ClockOutDto dto) =>
         ToResponse(await _attendance.ClockOutAsync(GetUserId(), dto));
+
+    // POST /attendance/{id}/approve — current-step approver only.
+    [HttpPost("{id}/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> Approve(string id) =>
+        ToTransitionResponse(await _attendance.ApproveAsync(id, GetUserId()));
+
+    // POST /attendance/{id}/reject — current-step approver only.
+    [HttpPost("{id}/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> Reject(string id, RejectAttendanceDto dto) =>
+        ToTransitionResponse(await _attendance.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 
     // POST /attendance/photo — off-site proof photo. Returns { photoUrl } to
     // include in the clock-in/out request.
@@ -77,6 +95,13 @@ public class AttendanceController : ControllerBase
         result.Ok
             ? Ok(result.Record)
             : BadRequest(new { message = result.Error, code = result.Code, distanceMeters = result.DistanceMeters });
+
+    private IActionResult ToTransitionResponse(AttendanceTransitionResult result)
+    {
+        if (!result.Found) return NotFound();
+        if (!result.Transitioned) return BadRequest(new { message = result.Error });
+        return Ok(result.Record);
+    }
 
     private string GetUserId() =>
         User.FindFirstValue(ClaimTypes.NameIdentifier)

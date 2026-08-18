@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818075114_AddOvertimeRequests")]
+    partial class AddOvertimeRequests
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -77,11 +80,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<string>("ApprovalStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
                     b.Property<double?>("ClockInDistanceMeters")
                         .HasColumnType("double");
 
@@ -111,13 +109,7 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int>("CurrentStep")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("Date")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int?>("DurationMin")
@@ -150,16 +142,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Remark")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("ReviewNotes")
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
-
-                    b.Property<DateTime?>("SubmittedAt")
-                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("TimeIn")
                         .HasColumnType("datetime(6)");
@@ -171,8 +157,6 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ApprovalStatus", "Date");
 
                     b.HasIndex("EmployeeId", "Date")
                         .IsUnique();

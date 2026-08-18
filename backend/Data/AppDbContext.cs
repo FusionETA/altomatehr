@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams.Entities;
@@ -31,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
+    public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
     public DbSet<Team> Teams => Set<Team>();
@@ -58,11 +60,18 @@ public class AppDbContext : DbContext
         attendance.HasIndex(r => new { r.EmployeeId, r.Date }).IsUnique();  // one row per employee per day
         attendance.HasIndex(r => new { r.Status, r.Date });
         attendance.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+        attendance.Property(r => r.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
+        attendance.HasIndex(r => new { r.ApprovalStatus, r.Date });
 
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveApplication>()
             .Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<LeaveApplication>().HasIndex(a => a.EmployeeId);
+
+        var overtime = modelBuilder.Entity<OvertimeRequest>();
+        overtime.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+        overtime.HasIndex(r => r.EmployeeId);
+        overtime.HasIndex(r => new { r.Status, r.WorkDate });
 
         var policy = modelBuilder.Entity<EmployeePolicy>();
         policy.HasIndex(p => new { p.OrganizationId, p.Name }).IsUnique();
@@ -93,6 +102,8 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<OvertimeRequest>().HasQueryFilter(
+            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeePolicy>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PolicyLeaveEntitlement>().HasQueryFilter(

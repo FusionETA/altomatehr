@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams;
@@ -128,6 +129,9 @@ builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
 builder.Services.AddScoped<ILeaveApplicationRepository, LeaveApplicationRepository>();
 builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
 builder.Services.AddScoped<ILeaveService, LeaveService>();
+builder.Services.AddScoped<IOvertimeRepository, OvertimeRepository>();
+builder.Services.AddScoped<IOvertimePhotoStorage, OvertimePhotoStorage>();
+builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
@@ -199,7 +203,9 @@ using (var scope = app.Services.CreateScope())
     var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
     var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
     var policies = scope.ServiceProvider.GetRequiredService<IEmployeePolicyRepository>();
-    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes, policies);
+    var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
+    var attendance = scope.ServiceProvider.GetRequiredService<IAttendanceRepository>();
+    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes, policies, projects, attendance);
 }
 
 app.Run();

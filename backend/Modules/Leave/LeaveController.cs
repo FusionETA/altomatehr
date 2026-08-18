@@ -20,9 +20,9 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> GetMine() =>
         Ok(await _leave.GetMineAsync(GetUserId()));
 
-    // GET /leave/team — applications awaiting the caller as the current-step
-    // approver. By team seat, so any authenticated user may have a queue.
+    // GET /leave/team — applications awaiting the caller as the current-step approver.
     [HttpGet("team")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _leave.GetTeamAsync(GetUserId()));
 
@@ -41,11 +41,13 @@ public class LeaveController : ControllerBase
 
     // POST /leave/{id}/approve — the current-step approver in the applicant's chain.
     [HttpPost("{id}/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
         ToTransitionResponse(await _leave.ApproveAsync(id, GetUserId()));
 
     // POST /leave/{id}/reject — the current-step approver in the applicant's chain.
     [HttpPost("{id}/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectLeaveDto dto) =>
         ToTransitionResponse(await _leave.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 

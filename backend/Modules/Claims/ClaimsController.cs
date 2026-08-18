@@ -20,9 +20,9 @@ public class ClaimsController : ControllerBase
     public async Task<IActionResult> GetMine() =>
         Ok(await _claims.GetMineAsync(GetUserId()));
 
-    // GET /claims/team — claims awaiting the caller as the current-step approver
-    // (by team seat; any authenticated user may have a queue).
+    // GET /claims/team — claims awaiting the caller as the current-step approver.
     [HttpGet("team")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _claims.GetTeamAsync(GetUserId()));
 
@@ -116,6 +116,7 @@ public class ClaimsController : ControllerBase
 
     // POST /claims/{id}/approve — the current-step approver in the claimant's chain.
     [HttpPost("{id}/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id)
     {
         var result = await _claims.ApproveAsync(id, GetUserId());
@@ -124,6 +125,7 @@ public class ClaimsController : ControllerBase
 
     // POST /claims/{id}/reject — the current-step approver in the claimant's chain.
     [HttpPost("{id}/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectClaimDto dto)
     {
         var result = await _claims.RejectAsync(id, GetUserId(), dto.ReviewNotes);

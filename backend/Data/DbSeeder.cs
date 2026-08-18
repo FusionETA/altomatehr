@@ -1,5 +1,7 @@
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Attendance;
+using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
@@ -7,6 +9,8 @@ using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Projects.Entities;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Data;
@@ -23,7 +27,9 @@ public static class DbSeeder
         IUserRepository users,
         IClaimsRepository claims,
         ILeaveTypeRepository leaveTypes,
-        IEmployeePolicyRepository policies)
+        IEmployeePolicyRepository policies,
+        IProjectRepository projects,
+        IAttendanceRepository attendance)
     {
         await SeedOrganizationAsync(organizations);
         await EnsureUserAsync(users, "usr-admin", "admin@altomate.com", "Admin");
@@ -33,7 +39,161 @@ public static class DbSeeder
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
+        var demoProject = await SeedAttendanceProjectAsync(projects);
+        await SeedAttendanceAsync(attendance, demoProject.Id);
     }
+
+    private static async Task<Project> SeedAttendanceProjectAsync(IProjectRepository projects)
+    {
+        var existing = (await projects.GetAllAsync())
+            .FirstOrDefault(p => p.OrganizationId == DemoOrgId && !p.IsArchived);
+        if (existing is not null) return existing;
+
+        return await projects.AddAsync(new Project
+        {
+            Id = "proj-demo-site",
+            OrganizationId = DemoOrgId,
+            Name = "HQ Office",
+            Latitude = 3.1478,
+            Longitude = 101.6953,
+            IsArchived = false,
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    private static async Task SeedAttendanceAsync(IAttendanceRepository attendance, string projectId)
+    {
+        var now = DateTime.UtcNow;
+        var employeeRows = new[]
+        {
+            Row("usr-emp", 0, 9, 26, null, null, AttendanceStatus.LATE, 26, 238),
+            Row("usr-emp", 1, 8, 57, 18, 5, AttendanceStatus.ON_TIME, null, 8),
+            Row("usr-emp", 2, 9, 18, 18, 22, AttendanceStatus.LATE, 18, 316),
+            Row("usr-emp", 3, 8, 51, 17, 45, AttendanceStatus.ON_TIME, null, 5),
+            Row("usr-emp", 4, 9, 7, 18, 16, AttendanceStatus.LATE, 7, 9),
+            Row("usr-emp", 5, null, null, null, null, AttendanceStatus.MISSING, null, null),
+            Row("usr-emp", 6, 8, 54, 18, 1, AttendanceStatus.ON_TIME, null, 4),
+            Row("usr-emp", 8, 8, 59, 18, 7, AttendanceStatus.ON_TIME, null, 7),
+            Row("usr-emp", 9, 9, 24, 18, 30, AttendanceStatus.LATE, 24, 452),
+            Row("usr-emp", 10, 8, 48, 17, 55, AttendanceStatus.ON_TIME, null, 6),
+            Row("usr-emp", 11, 9, 2, 18, 10, AttendanceStatus.LATE, 2, 10),
+            Row("usr-emp", 14, 8, 56, 18, 4, AttendanceStatus.ON_TIME, null, 3),
+            Row("usr-emp", 15, 8, 52, 17, 50, AttendanceStatus.ON_TIME, null, 4),
+            Row("usr-emp", 16, 9, 31, 18, 12, AttendanceStatus.LATE, 31, 287),
+            Row("usr-emp", 17, 8, 58, 18, 3, AttendanceStatus.ON_TIME, null, 6),
+            Row("usr-emp", 18, null, null, null, null, AttendanceStatus.ON_LEAVE, null, null),
+            Row("usr-emp", 21, 8, 50, 18, 2, AttendanceStatus.ON_TIME, null, 5),
+        };
+
+        var supervisorRows = new[]
+        {
+            Row("usr-super", 0, 8, 45, 17, 55, AttendanceStatus.CLOCKED_OUT, null, 2),
+            Row("usr-super", 1, 8, 42, 17, 50, AttendanceStatus.ON_TIME, null, 3),
+            Row("usr-super", 2, 9, 12, 18, 20, AttendanceStatus.LATE, 12, 341),
+            Row("usr-super", 3, 8, 48, 17, 58, AttendanceStatus.ON_TIME, null, 4),
+            Row("usr-super", 4, 8, 55, 18, 5, AttendanceStatus.ON_TIME, null, 5),
+        };
+
+        foreach (var row in employeeRows.Concat(supervisorRows))
+        {
+            var date = AttendanceTime.StartOfLocalDay(now.AddDays(-row.DaysAgo));
+            DateTime? timeIn = row.InHour is null ? null : LocalToUtc(date, row.InHour.Value, row.InMinute!.Value);
+            DateTime? timeOut = row.OutHour is null ? null : LocalToUtc(date, row.OutHour.Value, row.OutMinute!.Value);
+            var duration = timeIn is not null && timeOut is not null
+                ? (int)Math.Round((timeOut.Value - timeIn.Value).TotalMinutes)
+                : (int?)null;
+            var existing = await attendance.GetForEmployeeOnDateAsync(row.EmployeeId, date);
+            if (existing is not null)
+            {
+                ApplyDemoAttendance(existing, row, projectId, date, timeIn, timeOut, duration);
+                await attendance.UpdateAsync(existing);
+                continue;
+            }
+
+            var record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
+            ApplyDemoAttendance(record, row, projectId, date, timeIn, timeOut, duration);
+            await attendance.AddAsync(record);
+        }
+    }
+
+    private static void ApplyDemoAttendance(
+        AttendanceRecord record,
+        DemoAttendanceRow row,
+        string projectId,
+        DateTime date,
+        DateTime? timeIn,
+        DateTime? timeOut,
+        int? duration)
+    {
+        var offSite = row.DistanceMeters > 200;
+
+        record.Date = date;
+        record.TimeIn = timeIn;
+        record.TimeOut = timeOut;
+        record.DurationMin = duration;
+        record.LateByMin = row.LateByMin;
+        record.ProjectId = timeIn is null ? null : projectId;
+        record.Status = row.Status;
+        record.ApprovalStatus =
+            timeIn is null || row.Status == AttendanceStatus.ON_LEAVE
+                ? AttendanceApprovalStatus.APPROVED
+                : row.Status == AttendanceStatus.LATE || offSite
+                    ? AttendanceApprovalStatus.PENDING
+                    : AttendanceApprovalStatus.APPROVED;
+        record.CurrentStep = 0;
+        record.ClockInLat = timeIn is null ? null : offSite ? 3.1509 : 3.1478;
+        record.ClockInLng = timeIn is null ? null : offSite ? 101.6984 : 101.6953;
+        record.ClockInDistanceMeters = row.DistanceMeters;
+        record.ClockOutLat = timeOut is null ? null : offSite ? 3.1510 : 3.1479;
+        record.ClockOutLng = timeOut is null ? null : offSite ? 101.6982 : 101.6952;
+        record.ClockOutDistanceMeters = timeOut is null || row.DistanceMeters is null ? null : row.DistanceMeters + 2;
+        record.Location = timeIn is null ? null : offSite ? "Client site" : "HQ Office";
+        record.Notes = row.Status == AttendanceStatus.ON_LEAVE
+            ? "Annual leave"
+            : offSite
+                ? "Off-site clock recorded for demo data"
+                : null;
+        record.Remark = row.Status == AttendanceStatus.MISSING
+            ? "Demo missing day"
+            : offSite
+                ? "Client visit / field work"
+                : null;
+        record.ReviewNotes = null;
+        record.SubmittedAt = timeIn;
+        record.DecidedAt = record.ApprovalStatus == AttendanceApprovalStatus.APPROVED ? timeOut ?? timeIn : null;
+        record.CreatedAt = timeIn ?? date;
+        record.UpdatedAt = timeOut ?? timeIn ?? date;
+    }
+
+    private static DemoAttendanceRow Row(
+        string employeeId,
+        int daysAgo,
+        int? inHour,
+        int? inMinute,
+        int? outHour,
+        int? outMinute,
+        AttendanceStatus status,
+        int? lateByMin,
+        double? distanceMeters) =>
+        new(employeeId, daysAgo, inHour, inMinute, outHour, outMinute, status, lateByMin, distanceMeters);
+
+    private static DateTime LocalToUtc(DateTime dateKey, int hour, int minute)
+    {
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(AttendanceTime.DefaultTimeZone);
+        var local = new DateTime(dateKey.Year, dateKey.Month, dateKey.Day, hour, minute, 0, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(local, tz);
+    }
+
+    private sealed record DemoAttendanceRow(
+        string EmployeeId,
+        int DaysAgo,
+        int? InHour,
+        int? InMinute,
+        int? OutHour,
+        int? OutMinute,
+        AttendanceStatus Status,
+        int? LateByMin,
+        double? DistanceMeters);
 
     private static async Task SeedPolicyAsync(IEmployeePolicyRepository policies)
     {

@@ -14,6 +14,9 @@ public class AttendanceRepository : IAttendanceRepository
     public Task<AttendanceRecord?> GetForEmployeeOnDateAsync(string employeeId, DateTime date) =>
         _db.AttendanceRecords.FirstOrDefaultAsync(r => r.EmployeeId == employeeId && r.Date == date);
 
+    public Task<AttendanceRecord?> GetByIdAsync(string id) =>
+        _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == id);
+
     public Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl) =>
         _db.AttendanceRecords.FirstOrDefaultAsync(
             r => r.ClockInPhotoUrl == photoUrl || r.ClockOutPhotoUrl == photoUrl);

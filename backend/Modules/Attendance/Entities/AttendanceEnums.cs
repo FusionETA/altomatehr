@@ -16,3 +16,10 @@ public enum AttendanceStatus
     CLOCKED_OUT,
     ON_LEAVE,
 }
+
+public enum AttendanceApprovalStatus
+{
+    PENDING,
+    APPROVED,
+    REJECTED,
+}
