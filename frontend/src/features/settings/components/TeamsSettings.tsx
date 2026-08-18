@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { SearchInput } from "@/shared/components/SearchInput";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm sm:p-6";
@@ -35,6 +36,7 @@ export function TeamsSettings() {
   const [editing, setEditing] = useState<Team | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     Promise.all([getTeams(), getProjects(), getEmployees()])
@@ -50,6 +52,21 @@ export function TeamsSettings() {
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "Project";
   const upsert = (t: Team) =>
     setTeams((cur) => (cur.some((x) => x.id === t.id) ? cur.map((x) => (x.id === t.id ? t : x)) : [...cur, t]));
+  const filteredTeams = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return teams;
+    return teams.filter((team) =>
+      [
+        team.name,
+        projectName(team.projectId),
+        ...team.members.map((member) => member.email ?? member.employeeId),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [projects, searchTerm, teams]);
 
   async function onDelete(team: Team) {
     if (!window.confirm(`Delete team "${team.name}"? Its members are unassigned.`)) return;
@@ -67,23 +84,31 @@ export function TeamsSettings() {
 
   return (
     <div className="space-y-5">
-      <div className={`${CARD} flex items-start justify-between gap-4`}>
-        <div>
-          <h2 className="text-lg font-black text-foreground">Teams</h2>
-          <p className="text-sm text-muted-foreground">
-            Layered teams within a project. Members sit at a layer; approval chains escalate up the
-            layers (next step).
-          </p>
+      <div className={`${CARD} flex flex-col gap-4`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-foreground">Teams</h2>
+            <p className="text-sm text-muted-foreground">
+              Layered teams within a project. Members sit at a layer; approval chains escalate up the
+              layers (next step).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            disabled={projects.length === 0}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            New team
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          disabled={projects.length === 0}
-          className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          New team
-        </button>
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search by team, project, or employee"
+          inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+        />
       </div>
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
@@ -92,8 +117,10 @@ export function TeamsSettings() {
         <p className="text-sm text-muted-foreground">Loading teams…</p>
       ) : teams.length === 0 ? (
         <p className="text-sm text-muted-foreground">No teams yet.</p>
+      ) : filteredTeams.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No teams match this search.</p>
       ) : (
-        teams.map((team) => (
+        filteredTeams.map((team) => (
           <TeamCard
             key={team.id}
             team={team}

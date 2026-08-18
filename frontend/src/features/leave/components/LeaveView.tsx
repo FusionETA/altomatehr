@@ -15,6 +15,8 @@ import {
 import { LeaveStatusBadge } from "./LeaveStatusBadge";
 import { ApplyLeaveModal } from "./ApplyLeaveModal";
 import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
+import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { SearchInput } from "@/shared/components/SearchInput";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm";
@@ -41,6 +43,7 @@ export function LeaveView({ sub, role }: { sub: string; role: string }) {
   const [error, setError] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [teamSearch, setTeamSearch] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -62,6 +65,26 @@ export function LeaveView({ sub, role }: { sub: string; role: string }) {
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
   const quotaBalances = balances.filter((b) => b.entitlementDays > 0);
+  const filteredTeam = useMemo(() => {
+    const query = teamSearch.trim().toLowerCase();
+    if (!query) return team;
+    return team.filter((application) => {
+      const employeeName = application.employeeEmail ? buildName(application.employeeEmail) : "";
+      return [
+        employeeName,
+        application.employeeEmail,
+        typeName(application.leaveTypeId),
+        application.status,
+        application.reason,
+        application.startDate,
+        application.endDate,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [team, teamSearch, types]);
 
   // Approve / reject a team request: preserve the applicant email the response omits.
   async function decide(id: string, fn: (id: string) => Promise<LeaveApplication>) {
@@ -187,17 +210,26 @@ export function LeaveView({ sub, role }: { sub: string; role: string }) {
       {/* ── Approvals: my team's leave requests ──────────────────────── */}
       {sub === "leave-approvals" && canApprove ? (
         <>
-          <h2 className="text-lg font-black text-foreground">Team approvals</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-black text-foreground">Team approvals</h2>
+            <SearchInput
+              value={teamSearch}
+              onChange={setTeamSearch}
+              placeholder="Search employee"
+              className="sm:max-w-sm"
+              inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+            />
+          </div>
           <section className={CARD}>
             {loading ? (
               <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">Loading…</p>
-            ) : team.length === 0 ? (
+            ) : filteredTeam.length === 0 ? (
               <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">
-                No leave from your team yet.
+                No leave approvals match this search.
               </p>
             ) : (
               <ul className="divide-y divide-border/60">
-                {team.map((a) =>
+                {filteredTeam.map((a) =>
                   row(
                     a,
                     a.status === "PENDING" ? (

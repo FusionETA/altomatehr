@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { Pencil, Plus, Search } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { getMyClaims, type Claim } from "../api";
 import {
   claimMatchesStatus,
@@ -19,6 +19,7 @@ import { ViewReceiptButton } from "./ViewReceiptButton";
 import { ClaimDetailsModal } from "./ClaimDetailsModal";
 import { ClaimStatusTabs } from "./ClaimStatusTabs";
 import { getAccounts, getProjects } from "@/features/settings/api";
+import { SearchInput } from "@/shared/components/SearchInput";
 
 export function ClaimsView() {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -136,20 +137,26 @@ export function ClaimsView() {
 
   return (
     <>
-      <ClaimStatusTabs value={status} onChange={setStatus} className="mb-4 md:hidden" />
+      <div className="mb-4 space-y-3 md:hidden">
+        <ClaimStatusTabs value={status} onChange={setStatus} />
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search by claim, title, or account"
+          inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+        />
+      </div>
 
       <div className="space-y-4 sm:space-y-6">
         <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm md:block">
           <div className="space-y-4 px-5 pb-5 pt-3 sm:space-y-5 sm:p-6">
-            <div className="relative w-full max-w-sm">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by claim, title, or account"
-                className="h-12 w-full rounded-2xl border border-border bg-card px-4 py-2 pl-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              />
-            </div>
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by claim, title, or account"
+              className="max-w-sm"
+              inputClassName="h-12 focus-visible:ring-primary"
+            />
 
             <ClaimStatusTabs value={status} onChange={setStatus} />
 

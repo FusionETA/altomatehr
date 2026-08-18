@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import { getAttendanceHistory, type AttendanceRecord } from "@/features/attendance/api";
 import { AttendanceStatusBadge } from "@/features/attendance/components/AttendanceStatusBadge";
 import { getEmployees } from "@/features/employees/api";
 import { getProjects } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { SearchInput } from "@/shared/components/SearchInput";
 
 function timeLabel(iso: string | null): string {
   if (!iso) return "—";
@@ -80,15 +80,12 @@ export function AdminAttendance() {
           Showing <span className="font-semibold text-foreground">{filtered.length}</span> of{" "}
           <span className="font-semibold text-foreground">{records.length}</span> records
         </p>
-        <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by employee, project, or status"
-            className="h-11 w-full rounded-2xl border border-border bg-card px-4 py-2 pl-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search by employee, project, or status"
+          className="max-w-sm"
+        />
       </div>
 
       {loading ? (
