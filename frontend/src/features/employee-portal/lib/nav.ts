@@ -20,8 +20,8 @@ export const employeeNav: EmployeeNavItem[] = [
     icon: CalendarClock,
     children: [
       { id: "att-dashboard", label: "Dashboard" },
-      { id: "att-approvals", label: "Approvals", supervisorOnly: true },
       { id: "att-overtime", label: "Overtime" },
+      { id: "att-approvals", label: "Approvals", supervisorOnly: true },
       { id: "att-history", label: "History" },
       { id: "att-team", label: "Team", supervisorOnly: true },
     ],

@@ -6,7 +6,7 @@ import { LeaveView } from "@/features/leave/components/LeaveView";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
-import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
 import { defaultSubOf, employeeNav, findNavItem } from "../lib/nav";
@@ -277,39 +277,30 @@ export function EmployeeShell({
 
         {/* Mobile sub-nav strip for the active tab's sub-pages. */}
         {activeChildren.length > 1 ? (
-          <HorizontalScrollArea
+          <OverflowTabList
+            items={activeChildren.map((child) => ({
+              id: child.id,
+              label: child.label,
+              badge: childBadge(child.id),
+            }))}
+            value={sub ?? activeChildren[0]?.id ?? ""}
+            onChange={(childId) => selectChild(activeView, childId)}
             className="border-b border-border/50 px-6 sm:px-7 lg:hidden"
-            contentClassName="min-h-11 items-end gap-5"
-          >
-            {activeChildren.map((child) => {
-              const childActive = child.id === sub;
-              return (
-                <button
-                  key={child.id}
-                  type="button"
-                  onClick={() => selectChild(activeView, child.id)}
-                  className={`relative inline-flex h-11 shrink-0 items-center gap-1.5 border-b-2 px-0.5 text-sm font-bold transition-colors ${
-                    childActive
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {child.label}
-                  <CountBadge
-                    count={childBadge(child.id)}
-                    className={childActive ? "" : "bg-muted text-muted-foreground"}
-                  />
-                </button>
-              );
-            })}
-          </HorizontalScrollArea>
+            menuClassName="right-6 sm:right-7"
+            ariaLabel={`${activeItem.label} sections`}
+          />
         ) : null}
 
         <main className="flex-1 pb-28 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl px-6 py-6 sm:px-7 lg:px-8 lg:py-8">
             {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
             {activeView === "claims" ? <ClaimsPage sub={sub ?? "claims-mine"} /> : null}
-            {activeView === "attendance" ? <AttendanceView sub={sub ?? "att-dashboard"} /> : null}
+            {activeView === "attendance" ? (
+              <AttendanceView
+                sub={sub ?? "att-dashboard"}
+                onViewHistory={() => selectChild("attendance", "att-history")}
+              />
+            ) : null}
             {activeView === "leave" ? <LeaveView sub={sub ?? "leave-mine"} role={user.role} /> : null}
             {activeView === "payslips" ? (
               <EmptyModule

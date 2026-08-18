@@ -76,6 +76,10 @@ export function DashboardView({
     });
   }, []);
 
+  useEffect(() => {
+    setProjectId(today?.projectId ?? "");
+  }, [today]);
+
   // Supervisor review counters — only the requests where this user is the
   // current-step approver come back from the team endpoints.
   useEffect(() => {
@@ -159,25 +163,23 @@ export function DashboardView({
             </span>
           </div>
 
-          {state === "OUT" ? (
-            <div className="mt-4">
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Project
-              </p>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a project..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+          <div className="mt-4">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Project
+            </p>
+            <Select value={projectId} onValueChange={setProjectId} disabled={state === "IN"}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a project..." />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="mt-4 rounded-[24px] border border-border/60 bg-surface-low/50 p-5 sm:p-6">
             <div className="flex flex-col items-center gap-3">
