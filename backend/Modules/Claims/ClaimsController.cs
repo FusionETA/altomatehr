@@ -3,12 +3,15 @@ using System.Security.Claims;
 using AltomateHR.Api.Modules.Claims.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Claims;
 
 [ApiController]
 [Route("[controller]")]        // → /claims
 [Authorize]                    // every endpoint here now requires a valid JWT
+[RequireModule("claims")]
 public class ClaimsController : ControllerBase
 {
     private readonly IClaimsService _claims;
@@ -16,17 +19,20 @@ public class ClaimsController : ControllerBase
     public ClaimsController(IClaimsService claims) => _claims = claims;
 
     // GET /claims — the caller's own claims.
+    [RequireScope("claims:read")]
     [HttpGet]
     public async Task<IActionResult> GetMine() =>
         Ok(await _claims.GetMineAsync(GetUserId()));
 
     // GET /claims/team — claims awaiting the caller as the current-step approver.
+    [RequireScope("claims:read")]
     [HttpGet("team")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _claims.GetTeamAsync(GetUserId()));
 
     // GET /claims/{id}
+    [RequireScope("claims:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
@@ -75,6 +81,7 @@ public class ClaimsController : ControllerBase
     }
 
     // GET /claims/receipts/{fileName}
+    [RequireScope("claims:read")]
     [HttpGet("receipts/{fileName}")]
     public async Task<IActionResult> GetReceipt(string fileName)
     {

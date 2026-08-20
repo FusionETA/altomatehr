@@ -25,5 +25,16 @@ public class Organization
     // How far (metres) from a project's geofence centre still counts as on-site.
     public int GeofenceRadiusMeters { get; set; } = 200;
 
+    // ---- Subscription / package (drives module access via OrgModules) ----
+    // Plan/Tier/Addons together decide which modules the org is entitled to.
+    public OrgPlan Plan { get; set; } = OrgPlan.DIY;
+
+    // Only meaningful for DIY. Null for EXPERT.
+    public OrgPlanTier? Tier { get; set; }
+
+    // csv of addon keys ("expense_claim,clock"). Empty = no paid modules.
+    [MaxLength(200)]
+    public string Addons { get; set; } = string.Empty;
+
     public DateTime CreatedAt { get; set; }
 }

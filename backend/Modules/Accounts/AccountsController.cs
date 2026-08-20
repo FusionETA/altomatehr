@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Accounts.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Accounts;
 
@@ -14,6 +15,7 @@ public class AccountsController : ControllerBase
     public AccountsController(IChartOfAccountService accounts) => _accounts = accounts;
 
     // GET /accounts — any authenticated user (employees pick a selectable account when filing a claim).
+    [RequireScope("accounts:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _accounts.GetAllAsync());
 

@@ -3,12 +3,15 @@ using System.Security.Claims;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Attendance;
 
 [ApiController]
 [Route("[controller]")]        // → /attendance
 [Authorize]
+[RequireModule("attendance")]
 public class AttendanceController : ControllerBase
 {
     private readonly IAttendanceService _attendance;
@@ -17,17 +20,20 @@ public class AttendanceController : ControllerBase
 
     // GET /attendance — history. Admins see the whole org (roll call);
     // employees see only their own records.
+    [RequireScope("attendance:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() =>
         Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsInRole("Admin")));
 
     // GET /attendance/team — records awaiting the caller as current-step approver.
+    [RequireScope("attendance:read")]
     [HttpGet("team")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeamApprovals() =>
         Ok(await _attendance.GetTeamApprovalsAsync(GetUserId()));
 
     // GET /attendance/today — the caller's record for the current local day (204 if none yet).
+    [RequireScope("attendance:read")]
     [HttpGet("today")]
     public async Task<IActionResult> GetToday()
     {
@@ -80,6 +86,7 @@ public class AttendanceController : ControllerBase
     }
 
     // GET /attendance/photos/{fileName} — serve a photo (owner or admin only).
+    [RequireScope("attendance:read")]
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)
     {

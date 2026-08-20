@@ -250,7 +250,19 @@ public static class DbSeeder
 
     private static async Task SeedOrganizationAsync(IOrganizationRepository organizations)
     {
-        if (await organizations.GetByIdAsync(DemoOrgId) is not null) return;
+        var existing = await organizations.GetByIdAsync(DemoOrgId);
+        if (existing is not null)
+        {
+            // Backfill the package on the pre-plan demo org so it keeps full access
+            // (Claims + Attendance) after the plan columns shipped.
+            if (existing.Plan == OrgPlan.DIY && existing.Tier is null)
+            {
+                existing.Tier = OrgPlanTier.PAID;
+                existing.Addons = "expense_claim,clock";
+                await organizations.UpdateAsync(existing);
+            }
+            return;
+        }
 
         await organizations.AddAsync(new Organization
         {
@@ -259,6 +271,9 @@ public static class DbSeeder
             DefaultCurrency = "MYR",
             DefaultMileageRate = 0.60m,
             GeofenceRadiusMeters = 200,
+            Plan = OrgPlan.DIY,
+            Tier = OrgPlanTier.PAID,
+            Addons = "expense_claim,clock",
             CreatedAt = DateTime.UtcNow,
         });
     }

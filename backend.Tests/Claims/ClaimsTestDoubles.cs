@@ -169,6 +169,9 @@ internal sealed class FakeOrganizationService : IOrganizationService
 
     public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>
         throw new NotImplementedException();
+
+    public Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto) =>
+        throw new NotImplementedException();
 }
 
 internal sealed class FakeCurrentUser : ICurrentUser

@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Leave.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Leave;
 
@@ -14,6 +15,7 @@ public class LeaveTypesController : ControllerBase
     public LeaveTypesController(ILeaveTypeService types) => _types = types;
 
     // GET /leave-types — any authenticated user (employees pick a type to apply).
+    [RequireScope("leave:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _types.GetAllAsync());
 

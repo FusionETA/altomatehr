@@ -11,6 +11,9 @@ public class EmployeeDto
     public string? SupervisorId { get; set; }
     public string? SupervisorEmail { get; set; }
     public string? PolicyId { get; set; }
+
+    // Per-admin module grant. null = full access (no restriction).
+    public IReadOnlyList<string>? Modules { get; set; }
 }
 
 // What an admin sends to change a user's role and/or assigned supervisor.
@@ -24,6 +27,10 @@ public class UpdateEmployeeDto
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }        // null → falls back to the org default policy
+
+    // Per-admin module grant (subset of OrgModules keys). null = full access;
+    // [] = locked out. Only meaningful for Admin members.
+    public List<string>? Modules { get; set; }
 }
 
 // What an admin sends to ADD a member to their org. If the email already belongs
@@ -47,4 +54,7 @@ public class CreateEmployeeDto
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }
+
+    // Per-admin module grant. null = full access; [] = locked out.
+    public List<string>? Modules { get; set; }
 }

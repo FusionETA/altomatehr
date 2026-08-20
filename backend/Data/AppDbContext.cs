@@ -60,6 +60,10 @@ public class AppDbContext : DbContext
             .Property(o => o.MileageUnit)
             .HasConversion<string>()
             .HasMaxLength(20);
+        modelBuilder.Entity<Organization>()
+            .Property(o => o.Plan).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<Organization>()
+            .Property(o => o.Tier).HasConversion<string>().HasMaxLength(20);
 
         modelBuilder.Entity<RefreshToken>().HasIndex(t => t.Token).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();

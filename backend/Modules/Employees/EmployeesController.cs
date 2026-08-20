@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Employees.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Employees;
 
@@ -14,6 +15,7 @@ public class EmployeesController : ControllerBase
     public EmployeesController(IEmployeeService employees) => _employees = employees;
 
     // GET /employees — everyone in the org, with their role + assigned supervisor.
+    [RequireScope("employees:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _employees.GetAllAsync());
 

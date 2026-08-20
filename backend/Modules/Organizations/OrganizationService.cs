@@ -47,6 +47,11 @@ public class OrganizationService : IOrganizationService
             CreatedAt = DateTime.UtcNow,
             // DefaultCurrency (MYR), MileageUnit (KM), GeofenceRadiusMeters (200)
             // come from the entity defaults; the owner can edit them afterwards.
+            // New companies start on the full package so the owner isn't locked out;
+            // downgrade to FREE happens via UpdatePlanAsync (a billing action).
+            Plan = OrgPlan.DIY,
+            Tier = OrgPlanTier.PAID,
+            Addons = "expense_claim,clock",
         };
         await _repo.AddAsync(org);
 
@@ -65,6 +70,35 @@ public class OrganizationService : IOrganizationService
         return ToDto(org);
     }
 
+    public async Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto)
+    {
+        var org = await _repo.GetByIdAsync(organizationId);
+        if (org is null) return null;
+
+        if (!Enum.TryParse<OrgPlan>(dto.Plan, ignoreCase: true, out var plan))
+            throw new ArgumentException($"Plan must be one of: {string.Join(", ", Enum.GetNames<OrgPlan>())}.");
+
+        OrgPlanTier? tier = null;
+        if (!string.IsNullOrWhiteSpace(dto.Tier))
+        {
+            if (!Enum.TryParse<OrgPlanTier>(dto.Tier, ignoreCase: true, out var parsedTier))
+                throw new ArgumentException($"Tier must be one of: {string.Join(", ", Enum.GetNames<OrgPlanTier>())}.");
+            tier = parsedTier;
+        }
+
+        var addons = dto.Addons.Select(a => a.Trim()).Where(a => a.Length > 0).Distinct().ToList();
+        var unknown = addons.Where(a => !OrgModules.IsKnownAddon(a)).ToList();
+        if (unknown.Count > 0)
+            throw new ArgumentException($"Unknown addon(s): {string.Join(", ", unknown)}.");
+
+        org.Plan = plan;
+        org.Tier = tier;
+        org.Addons = OrgModules.Join(addons);
+        await _repo.UpdateAsync(org);
+
+        return ToDto(org);
+    }
+
     private static OrganizationDto ToDto(Organization o) => new()
     {
         Id = o.Id,
@@ -73,5 +107,11 @@ public class OrganizationService : IOrganizationService
         DefaultMileageRate = o.DefaultMileageRate,
         MileageUnit = o.MileageUnit,
         GeofenceRadiusMeters = o.GeofenceRadiusMeters,
+        Plan = o.Plan.ToString(),
+        Tier = o.Tier?.ToString(),
+        Addons = OrgModules.Split(o.Addons),
+        EnabledModules = OrgModules
+            .DeriveOrgEnabledModules(o.Plan, o.Tier, OrgModules.Split(o.Addons))
+            .ToList(),
     };
 }

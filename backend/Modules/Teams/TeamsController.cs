@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Teams.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Teams;
 
@@ -14,10 +15,12 @@ public class TeamsController : ControllerBase
     public TeamsController(ITeamService teams) => _teams = teams;
 
     // GET /teams — every team in the org, each with its roster.
+    [RequireScope("teams:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _teams.GetAllAsync());
 
     // GET /teams/chain/{employeeId}?module=LEAVE — preview the derived chain for a module.
+    [RequireScope("teams:read")]
     [HttpGet("chain/{employeeId}")]
     public async Task<IActionResult> Chain(string employeeId, [FromQuery] ApprovalModule module = ApprovalModule.CLAIMS) =>
         Ok(await _teams.GetApprovalChainAsync(employeeId, module));

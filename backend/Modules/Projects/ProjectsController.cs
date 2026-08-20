@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Projects.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Projects;
 
@@ -14,6 +15,7 @@ public class ProjectsController : ControllerBase
     public ProjectsController(IProjectService projects) => _projects = projects;
 
     // GET /projects — any authenticated user (employees pick a project when filing claims).
+    [RequireScope("projects:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _projects.GetAllAsync());
 

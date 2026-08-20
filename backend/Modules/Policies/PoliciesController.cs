@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Policies.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Policies;
 
@@ -13,6 +14,7 @@ public class PoliciesController : ControllerBase
 
     public PoliciesController(IPolicyService policies) => _policies = policies;
 
+    [RequireScope("policies:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _policies.GetAllAsync());
 

@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees.Dtos;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Organizations;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Modules.Employees;
@@ -73,12 +74,17 @@ public class EmployeeService : IEmployeeService
                 return new EmployeeSaveResult(false, null, "The chosen supervisor doesn't exist in this organization.");
         }
 
+        var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
+        if (!modulesOk)
+            return new EmployeeSaveResult(false, null, modulesError);
+
         var membership = new OrganizationMembership
         {
             UserId = user.Id,
             Role = role,
             SupervisorId = supervisorId,
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
+            Modules = modulesCsv,
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
@@ -108,9 +114,14 @@ public class EmployeeService : IEmployeeService
                 return new EmployeeSaveResult(false, null, "The chosen supervisor doesn't exist in this organization.");
         }
 
+        var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
+        if (!modulesOk)
+            return new EmployeeSaveResult(false, null, modulesError);
+
         membership.Role = role;
         membership.SupervisorId = supervisorId;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
+        membership.Modules = modulesCsv;
         await _memberships.UpdateAsync(membership);
 
         var emailById = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Email);
@@ -127,5 +138,20 @@ public class EmployeeService : IEmployeeService
             ? se
             : null,
         PolicyId = m.PolicyId,
+        Modules = m.Modules is null ? null : OrgModules.Split(m.Modules),
     };
+
+    // null grant → no restriction (stored as null). Otherwise every entry must be a known
+    // module; an empty list is valid and means "locked out" (stored as "").
+    private static (bool ok, string? error, string? csv) NormalizeModules(List<string>? modules)
+    {
+        if (modules is null) return (true, null, null);
+
+        var cleaned = modules.Select(m => m.Trim()).Where(m => m.Length > 0).Distinct().ToList();
+        var unknown = cleaned.Where(m => !OrgModules.IsKnownModule(m)).ToList();
+        if (unknown.Count > 0)
+            return (false, $"Unknown module(s): {string.Join(", ", unknown)}.", null);
+
+        return (true, null, OrgModules.Join(cleaned));
+    }
 }

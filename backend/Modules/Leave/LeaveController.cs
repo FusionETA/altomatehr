@@ -3,6 +3,7 @@ using System.Security.Claims;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Leave;
 
@@ -16,17 +17,20 @@ public class LeaveController : ControllerBase
     public LeaveController(ILeaveService leave) => _leave = leave;
 
     // GET /leave — the caller's own applications.
+    [RequireScope("leave:read")]
     [HttpGet]
     public async Task<IActionResult> GetMine() =>
         Ok(await _leave.GetMineAsync(GetUserId()));
 
     // GET /leave/team — applications awaiting the caller as the current-step approver.
+    [RequireScope("leave:read")]
     [HttpGet("team")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _leave.GetTeamAsync(GetUserId()));
 
     // GET /leave/balances — the caller's per-type balances for this year.
+    [RequireScope("leave:read")]
     [HttpGet("balances")]
     public async Task<IActionResult> Balances() =>
         Ok(await _leave.GetBalancesAsync(GetUserId()));

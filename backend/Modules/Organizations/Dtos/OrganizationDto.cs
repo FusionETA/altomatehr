@@ -11,4 +11,10 @@ public class OrganizationDto
     public decimal DefaultMileageRate { get; set; }
     public MileageUnit MileageUnit { get; set; }
     public int GeofenceRadiusMeters { get; set; }
+
+    // Subscription / package + the modules it resolves to (read-only view).
+    public string Plan { get; set; } = "DIY";
+    public string? Tier { get; set; }
+    public IReadOnlyList<string> Addons { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> EnabledModules { get; set; } = Array.Empty<string>();
 }

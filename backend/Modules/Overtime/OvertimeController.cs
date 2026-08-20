@@ -3,6 +3,7 @@ using System.Security.Claims;
 using AltomateHR.Api.Modules.Overtime.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Overtime;
 
@@ -15,15 +16,18 @@ public class OvertimeController : ControllerBase
 
     public OvertimeController(IOvertimeService overtime) => _overtime = overtime;
 
+    [RequireScope("overtime:read")]
     [HttpGet]
     public async Task<IActionResult> GetMine() =>
         Ok(await _overtime.GetMineAsync(GetUserId()));
 
+    [RequireScope("overtime:read")]
     [HttpGet("team")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _overtime.GetTeamAsync(GetUserId()));
 
+    [RequireScope("overtime:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
@@ -76,6 +80,7 @@ public class OvertimeController : ControllerBase
         }
     }
 
+    [RequireScope("overtime:read")]
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)
     {

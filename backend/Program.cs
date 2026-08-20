@@ -18,6 +18,7 @@ using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -98,7 +99,14 @@ builder.Services.AddAuthentication(options =>
                 : JwtBearerDefaults.AuthenticationScheme;
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Platform gate: only SUPERADMIN_EMAILS staff (never org Owners) may provision plans.
+    options.AddPolicy(AuthPolicies.Superadmin, policy =>
+        policy.Requirements.Add(new SuperadminRequirement()));
+});
+builder.Services.AddSingleton<ISuperadminRegistry, SuperadminRegistry>();
+builder.Services.AddSingleton<IAuthorizationHandler, SuperadminAuthorizationHandler>();
 
 // Rate limiting protects auth endpoints from brute-force guessing.
 builder.Services.AddRateLimiter(options =>
@@ -147,6 +155,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IChartOfAccountRepository, ChartOfAccountRepository>();

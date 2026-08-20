@@ -32,6 +32,12 @@ public class OrganizationMembership : ITenantScoped
     [MaxLength(40)]
     public string? PolicyId { get; set; }
 
+    // Per-admin module grant (csv of OrgModules keys) — narrows what THIS admin can access
+    // below the org's plan ceiling. null = no restriction (full access, e.g. owners).
+    // Empty string = locked out. Ignored for non-admins.
+    [MaxLength(300)]
+    public string? Modules { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
