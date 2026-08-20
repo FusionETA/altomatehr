@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Accounts;

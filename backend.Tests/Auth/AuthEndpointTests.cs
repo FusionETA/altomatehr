@@ -34,7 +34,7 @@ public class AuthEndpointTests
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("token").GetString()));
         Assert.Equal("admin@altomate.com", json.RootElement.GetProperty("email").GetString());
-        Assert.Equal("Admin", json.RootElement.GetProperty("role").GetString());
+        Assert.Equal("Owner", json.RootElement.GetProperty("role").GetString());
     }
 
     [Fact]

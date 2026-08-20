@@ -1,5 +1,5 @@
-using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Modules.Auth;
@@ -18,9 +18,6 @@ public class UserRepository : IUserRepository
 
     public Task<List<User>> GetAllAsync() =>
         _db.Users.OrderBy(u => u.Email).ToListAsync();
-
-    public Task<List<User>> GetBySupervisorAsync(string supervisorId) =>
-        _db.Users.Where(u => u.SupervisorId == supervisorId).ToListAsync();
 
     public async Task AddAsync(User user)
     {

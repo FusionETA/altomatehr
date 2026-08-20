@@ -15,6 +15,14 @@ public class Project : ITenantScoped
     [MaxLength(160)]
     public string Name { get; set; } = string.Empty;
 
+    [MaxLength(80)]
+    public string? XeroProjectId { get; set; }
+
+    [MaxLength(40)]
+    public string? XeroStatus { get; set; }
+
+    public DateTime? XeroSyncedAt { get; set; }
+
     // Geofence centre. Both null → the project isn't geofenced (attendance
     // clock-ins against it skip the distance check).
     public double? Latitude { get; set; }

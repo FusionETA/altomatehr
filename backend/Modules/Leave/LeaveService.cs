@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;

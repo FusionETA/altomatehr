@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
 
 namespace AltomateHR.Api.Modules.Teams;

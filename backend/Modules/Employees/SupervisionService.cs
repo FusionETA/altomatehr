@@ -1,8 +1,11 @@
-namespace AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Auth;
+
+namespace AltomateHR.Api.Modules.Employees;
 
 // Public read surface over the supervisor relationship, so other modules
-// (leave, claims, …) can route approvals without touching the user repository
-// directly. Roles that approve anything in the org, regardless of assignment.
+// (leave, claims, …) can route approvals without touching the repositories
+// directly. The supervisor is per active-org membership — someone can supervise
+// in one org and be a plain employee in another.
 public interface ISupervisionService
 {
     Task<string?> GetSupervisorIdAsync(string employeeId);
@@ -23,15 +26,22 @@ public class SupervisionService : ISupervisionService
 {
     private static readonly string[] OrgApproverRoles = ["Admin", "Owner"];
 
+    private readonly IOrganizationMembershipRepository _memberships;
     private readonly IUserRepository _users;
 
-    public SupervisionService(IUserRepository users) => _users = users;
+    public SupervisionService(IOrganizationMembershipRepository memberships, IUserRepository users)
+    {
+        _memberships = memberships;
+        _users = users;
+    }
 
+    // The supervisor assigned to this employee IN THE ACTIVE ORG.
     public async Task<string?> GetSupervisorIdAsync(string employeeId) =>
-        (await _users.GetByIdAsync(employeeId))?.SupervisorId;
+        (await _memberships.GetForUserInCurrentOrgAsync(employeeId))?.SupervisorId;
 
+    // Everyone in the active org whose assigned supervisor is this person.
     public async Task<IReadOnlyList<string>> GetReportIdsAsync(string supervisorId) =>
-        (await _users.GetBySupervisorAsync(supervisorId)).Select(u => u.Id).ToList();
+        (await _memberships.GetBySupervisorAsync(supervisorId)).Select(m => m.UserId).ToList();
 
     public async Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds)
     {

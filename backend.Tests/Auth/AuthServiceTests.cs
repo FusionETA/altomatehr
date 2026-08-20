@@ -1,5 +1,7 @@
-using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using Microsoft.Extensions.Configuration;
 using BC = BCrypt.Net.BCrypt;
 
@@ -20,21 +22,68 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task LoginAsync_WithValidCredentials_IssuesAccessAndRefreshTokens()
+    public async Task LoginAsync_WithNoMembership_ReturnsNull()
+    {
+        // Valid credentials, but the account belongs to no org yet → can't scope a token.
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")],
+            refreshTokens: out _,
+            memberships: []);
+
+        var result = await service.LoginAsync("admin@altomate.com", "correct-password");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithValidCredentials_IssuesTokensWithMembershipRoleAndOrg()
     {
         var service = CreateService(
             users: [CreateUser(password: "correct-password")],
-            refreshTokens: out var refreshTokens);
+            refreshTokens: out var refreshTokens,
+            memberships: [Membership("usr-admin", "Admin", "org-1")]);
 
         var result = await service.LoginAsync("admin@altomate.com", "correct-password");
 
         Assert.NotNull(result);
         Assert.Equal("admin@altomate.com", result.Email);
-        Assert.Equal("Admin", result.Role);
+        Assert.Equal("Admin", result.Role);              // role comes from the membership
+        Assert.Equal("org-1", result.OrganizationId);    // active org from the membership
         Assert.Equal("access-token-1", result.AccessToken);
         Assert.Equal("refresh-token-1", result.RefreshToken);
         Assert.Single(refreshTokens.Tokens);
-        Assert.Equal("refresh-token-1", refreshTokens.Tokens[0].Token);
+    }
+
+    [Fact]
+    public async Task SwitchOrgAsync_ToAMemberOrg_IssuesTokenForThatOrgAndRole()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "x")],
+            refreshTokens: out _,
+            memberships:
+            [
+                Membership("usr-admin", "Admin", "org-1"),
+                Membership("usr-admin", "Employee", "org-2"),   // just an employee here
+            ]);
+
+        var result = await service.SwitchOrgAsync("usr-admin", "org-2");
+
+        Assert.NotNull(result);
+        Assert.Equal("org-2", result.OrganizationId);
+        Assert.Equal("Employee", result.Role);   // role is per-org
+    }
+
+    [Fact]
+    public async Task SwitchOrgAsync_ToANonMemberOrg_ReturnsNull()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "x")],
+            refreshTokens: out _,
+            memberships: [Membership("usr-admin", "Admin", "org-1")]);
+
+        var result = await service.SwitchOrgAsync("usr-admin", "org-nope");
+
+        Assert.Null(result);
     }
 
     [Fact]
@@ -46,6 +95,7 @@ public class AuthServiceTests
             UserId = "usr-admin",
             Email = "admin@altomate.com",
             Role = "Admin",
+            OrganizationId = "org-1",
             CreatedAt = DateTime.UtcNow.AddMinutes(-5),
             ExpiresAt = DateTime.UtcNow.AddDays(1),
         };
@@ -87,10 +137,13 @@ public class AuthServiceTests
         Assert.Null(result);
     }
 
+    // --- helpers ---
+
     private static AuthService CreateService(
         IEnumerable<User> users,
         out FakeRefreshTokenRepository refreshTokens,
-        IEnumerable<RefreshToken>? existingRefreshTokens = null)
+        IEnumerable<RefreshToken>? existingRefreshTokens = null,
+        IEnumerable<OrganizationMembership>? memberships = null)
     {
         refreshTokens = new FakeRefreshTokenRepository(existingRefreshTokens ?? []);
 
@@ -98,6 +151,7 @@ public class AuthServiceTests
             tokens: new FakeTokenService(),
             refreshRepo: refreshTokens,
             userRepo: new FakeUserRepository(users),
+            memberships: new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")]),
             config: new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -111,8 +165,14 @@ public class AuthServiceTests
         Id = "usr-admin",
         Email = "admin@altomate.com",
         PasswordHash = BC.HashPassword(password),
-        Role = "Admin",
         CreatedAt = DateTime.UtcNow,
+    };
+
+    private static OrganizationMembership Membership(string userId, string role, string org) => new()
+    {
+        OrganizationId = org,
+        UserId = userId,
+        Role = role,
     };
 
     private sealed class FakeTokenService : ITokenService
@@ -150,10 +210,25 @@ public class AuthServiceTests
 
         public Task<List<User>> GetAllAsync() => Task.FromResult(_users.ToList());
 
-        public Task<List<User>> GetBySupervisorAsync(string supervisorId) =>
-            Task.FromResult(_users.Where(u => u.SupervisorId == supervisorId).ToList());
-
         public Task UpdateAsync(User user) => Task.CompletedTask;
+    }
+
+    private sealed class FakeMembershipRepository : IOrganizationMembershipRepository
+    {
+        private readonly List<OrganizationMembership> _m;
+        public FakeMembershipRepository(IEnumerable<OrganizationMembership> m) => _m = m.ToList();
+
+        public Task<List<OrganizationMembership>> GetByUserAsync(string userId) =>
+            Task.FromResult(_m.Where(x => x.UserId == userId).ToList());
+        public Task<OrganizationMembership?> GetAsync(string organizationId, string userId) =>
+            Task.FromResult(_m.FirstOrDefault(x => x.OrganizationId == organizationId && x.UserId == userId));
+        public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() => Task.FromResult(_m.ToList());
+        public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) =>
+            Task.FromResult(_m.FirstOrDefault(x => x.UserId == userId));
+        public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) =>
+            Task.FromResult(_m.Where(x => x.SupervisorId == supervisorId).ToList());
+        public Task AddAsync(OrganizationMembership m) { _m.Add(m); return Task.CompletedTask; }
+        public Task UpdateAsync(OrganizationMembership m) => Task.CompletedTask;
     }
 
     private sealed class FakeRefreshTokenRepository : IRefreshTokenRepository

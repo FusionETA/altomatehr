@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,8 +15,13 @@ public class AuthController : ControllerBase
     private const string RefreshCookie = "refreshToken";
 
     private readonly IAuthService _auth;
+    private readonly ICurrentUser _currentUser;
 
-    public AuthController(IAuthService auth) => _auth = auth;
+    public AuthController(IAuthService auth, ICurrentUser currentUser)
+    {
+        _auth = auth;
+        _currentUser = currentUser;
+    }
 
     // POST /auth/login
     [AllowAnonymous]
@@ -61,6 +67,32 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    // POST /auth/switch-org/{organizationId} — re-mint the token for another org you belong to.
+    [Authorize]
+    [HttpPost("switch-org/{organizationId}")]
+    public async Task<ActionResult<AuthResponseDto>> SwitchOrg(string organizationId)
+    {
+        var userId = _currentUser.UserId;
+        if (userId is null) return Unauthorized();
+
+        var result = await _auth.SwitchOrgAsync(userId, organizationId);
+        if (result is null)
+            return Forbid();   // you're not a member of that org
+
+        SetRefreshCookie(result);
+        return Ok(ToResponse(result));
+    }
+
+    // GET /auth/orgs — the orgs this account can switch into.
+    [Authorize]
+    [HttpGet("orgs")]
+    public async Task<ActionResult<IReadOnlyList<UserOrgDto>>> Orgs()
+    {
+        var userId = _currentUser.UserId;
+        if (userId is null) return Unauthorized();
+        return Ok(await _auth.GetOrgsAsync(userId));
+    }
+
     // ---- HTTP concerns only (cookies live in the controller — they need Request/Response) ----
 
     private void SetRefreshCookie(AuthResult result)
@@ -78,5 +110,11 @@ public class AuthController : ControllerBase
     }
 
     private static AuthResponseDto ToResponse(AuthResult result) =>
-        new() { Token = result.AccessToken, Email = result.Email, Role = result.Role };
+        new()
+        {
+            Token = result.AccessToken,
+            Email = result.Email,
+            Role = result.Role,
+            ActiveOrganizationId = result.OrganizationId,
+        };
 }

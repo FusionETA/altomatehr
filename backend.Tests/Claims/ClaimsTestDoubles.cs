@@ -1,7 +1,7 @@
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Accounts.Dtos;
-using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations;
@@ -163,6 +163,9 @@ internal sealed class FakeOrganizationService : IOrganizationService
 
     public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
         Task.FromResult<OrganizationDto?>(_organization.Id == organizationId ? _organization : null);
+
+    public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId) =>
+        throw new NotImplementedException();
 
     public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>
         throw new NotImplementedException();

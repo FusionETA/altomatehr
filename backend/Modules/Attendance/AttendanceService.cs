@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;

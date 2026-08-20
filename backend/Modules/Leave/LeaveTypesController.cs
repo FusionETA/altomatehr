@@ -17,7 +17,7 @@ public class LeaveTypesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _types.GetAllAsync());
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveLeaveTypeDto dto)
     {
@@ -25,7 +25,7 @@ public class LeaveTypesController : ControllerBase
         return result.Ok ? Ok(result.Type) : BadRequest(new { message = result.Error });
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveLeaveTypeDto dto)
     {
@@ -34,7 +34,7 @@ public class LeaveTypesController : ControllerBase
         return result.Ok ? Ok(result.Type) : BadRequest(new { message = result.Error });
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
@@ -42,7 +42,7 @@ public class LeaveTypesController : ControllerBase
         return type is null ? NotFound() : Ok(type);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {

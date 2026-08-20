@@ -23,12 +23,23 @@ public class OrganizationsController : ControllerBase
     }
 
     // PUT /organizations/current — update org settings (Admins only).
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPut("current")]
     public async Task<IActionResult> UpdateCurrent(UpdateOrganizationDto dto)
     {
         var org = await _organizations.UpdateAsync(GetOrgId(), dto);
         return org is null ? NotFound() : Ok(org);
+    }
+
+    // POST /organizations — create a new company. Owners only. The creator becomes
+    // the Owner of the new org, so it appears in their org switcher (GET /auth/orgs).
+    [Authorize(Roles = "Owner")]
+    [HttpPost]
+    public async Task<IActionResult> Create(CreateOrganizationDto dto)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (userId is null) return Unauthorized();
+        return Ok(await _organizations.CreateAsync(dto, userId));
     }
 
     // The org id comes from the JWT 'org' claim — never from the client.

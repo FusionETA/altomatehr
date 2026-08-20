@@ -17,12 +17,12 @@ public class AccountsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _accounts.GetAllAsync());
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveChartOfAccountDto dto) =>
         Ok(await _accounts.CreateAsync(dto));
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveChartOfAccountDto dto)
     {
@@ -30,7 +30,7 @@ public class AccountsController : ControllerBase
         return account is null ? NotFound() : Ok(account);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
@@ -38,7 +38,7 @@ public class AccountsController : ControllerBase
         return account is null ? NotFound() : Ok(account);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {

@@ -1,5 +1,7 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Accounts.Entities;
+using AltomateHR.Api.Modules.ApiKeys.Entities;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
@@ -9,6 +11,7 @@ using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams.Entities;
+using AltomateHR.Api.Modules.Xero.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Data;
@@ -27,6 +30,7 @@ public class AppDbContext : DbContext
     public DbSet<Claim> Claims => Set<Claim>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
@@ -37,6 +41,10 @@ public class AppDbContext : DbContext
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
+    public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
+    public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +63,10 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<RefreshToken>().HasIndex(t => t.Token).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
+        modelBuilder.Entity<OrganizationMembership>().HasIndex(m => new { m.OrganizationId, m.UserId }).IsUnique();
+        modelBuilder.Entity<OrganizationMembership>().HasIndex(m => m.UserId);
+        modelBuilder.Entity<ChartOfAccount>().HasIndex(a => new { a.OrganizationId, a.XeroAccountId });
+        modelBuilder.Entity<Project>().HasIndex(p => new { p.OrganizationId, p.XeroProjectId });
 
         var attendance = modelBuilder.Entity<AttendanceRecord>();
         attendance.HasIndex(r => new { r.EmployeeId, r.Date }).IsUnique();  // one row per employee per day
@@ -84,14 +96,24 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamMembership>().HasIndex(m => new { m.TeamId, m.EmployeeId }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => m.EmployeeId);
 
+        modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
+        modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
+        modelBuilder.Entity<XeroOAuthState>().HasIndex(s => s.State).IsUnique();
+
+        modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
+        modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);
+        modelBuilder.Entity<ApiKeyAuditLog>().HasIndex(l => new { l.ApiKeyId, l.CreatedAt });
+
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
         // calls), the filter is a no-op so those flows still work.
         modelBuilder.Entity<Claim>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
-        modelBuilder.Entity<User>().HasQueryFilter(
-            u => _currentUser.OrganizationId == null || u.OrganizationId == _currentUser.OrganizationId);
+        // User is global (not tenant-scoped) — a login account reaches its orgs
+        // through OrganizationMembership, which carries the org filter instead.
+        modelBuilder.Entity<OrganizationMembership>().HasQueryFilter(
+            m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Project>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<ChartOfAccount>().HasQueryFilter(
@@ -112,6 +134,15 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamMembership>().HasQueryFilter(
             m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<XeroConnection>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<XeroOAuthState>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        // ApiKey is tenant-scoped for MANAGEMENT (an Owner only sees their org's keys). The
+        // auth lookup by hash deliberately IgnoreQueryFilters() — it runs before any org is
+        // known. ApiKeyAuditLog is NOT tenant-scoped (internal operational log).
+        modelBuilder.Entity<ApiKey>().HasQueryFilter(
+            k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

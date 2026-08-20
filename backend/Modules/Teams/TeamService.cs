@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees;
 using System.Text.Json;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Teams.Dtos;

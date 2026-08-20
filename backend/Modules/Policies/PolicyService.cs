@@ -1,26 +1,26 @@
-using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
 
 namespace AltomateHR.Api.Modules.Policies;
 
 // Owns policy CRUD and resolves an employee's effective policy for other
-// modules. Reads User.PolicyId via the Auth user repository (a deliberate
-// cross-module read — policy resolution is a Policy-module concern).
+// modules. Reads the employee's PolicyId from their active-org membership
+// (a deliberate cross-module read — policy resolution is a Policy concern).
 public class PolicyService : IPolicyService
 {
     private readonly IEmployeePolicyRepository _policies;
     private readonly IPolicyLeaveEntitlementRepository _entitlements;
-    private readonly IUserRepository _users;
+    private readonly IOrganizationMembershipRepository _memberships;
 
     public PolicyService(
         IEmployeePolicyRepository policies,
         IPolicyLeaveEntitlementRepository entitlements,
-        IUserRepository users)
+        IOrganizationMembershipRepository memberships)
     {
         _policies = policies;
         _entitlements = entitlements;
-        _users = users;
+        _memberships = memberships;
     }
 
     public async Task<IEnumerable<PolicyDto>> GetAllAsync()
@@ -95,8 +95,8 @@ public class PolicyService : IPolicyService
 
     public async Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId)
     {
-        var user = await _users.GetByIdAsync(employeeId);
-        var policy = user?.PolicyId is not null ? await _policies.GetByIdAsync(user.PolicyId) : null;
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var policy = membership?.PolicyId is not null ? await _policies.GetByIdAsync(membership.PolicyId) : null;
         return policy ?? await _policies.GetDefaultAsync();
     }
 

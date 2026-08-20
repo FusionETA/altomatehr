@@ -1,9 +1,11 @@
+using AltomateHR.Api.Modules.Employees;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Accounts;
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
@@ -13,6 +15,8 @@ using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Xero;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +33,8 @@ builder.Services.AddControllers()
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddDataProtection();
+builder.Services.Configure<XeroOptions>(builder.Configuration.GetSection("Xero"));
 
 // CORS — let the Vite frontend (:5173) read our responses from the browser.
 builder.Services.AddCors(options =>
@@ -55,7 +61,15 @@ var jwtKey = jwt["Key"]
     ?? throw new InvalidOperationException(
         "Jwt:Key is not set. Run: dotnet user-secrets set \"Jwt:Key\" \"$(openssl rand -base64 48)\"");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// Two credential types share ONE pipeline. A "Smart" policy scheme peeks at the
+// Authorization header per request and forwards to the right handler by token shape:
+//   • "wp_live_..."  → ApiKey handler (machine / external apps)
+//   • anything else  → JWT handler    (human logins from the frontend)
+// Both produce the same claim shape (sub/org/role), so every controller works unchanged.
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = "Smart";
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -67,6 +81,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwt["Issuer"],
             ValidAudience = jwt["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationDefaults.Scheme, _ => { })
+    .AddPolicyScheme("Smart", "JWT or wp_live_ API key", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            var header = context.Request.Headers.Authorization.ToString();
+            var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? header["Bearer ".Length..]
+                : header;
+            return token.TrimStart().StartsWith(ApiTokenGenerator.Prefix, StringComparison.Ordinal)
+                ? ApiKeyAuthenticationDefaults.Scheme
+                : JwtBearerDefaults.AuthenticationScheme;
         };
     });
 builder.Services.AddAuthorization();
@@ -140,17 +169,23 @@ builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>(
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
 builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<ITeamService, TeamService>();
+builder.Services.AddScoped<IXeroRepository, XeroRepository>();
+builder.Services.AddScoped<IXeroService, XeroService>();
+builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 
 // Modules
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
+builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 
 var app = builder.Build();
 
@@ -191,8 +226,9 @@ app.UseExceptionHandler(errorApp =>
 
 app.UseCors("frontend");
 app.UseRateLimiter();
-app.UseAuthentication();   // WHO are you?  (validates the JWT) — MUST be before UseAuthorization
+app.UseAuthentication();   // WHO are you?  (JWT or wp_live_ key) — MUST be before UseAuthorization
 app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
+app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 
 // Seed the demo org + users (hashed) and backfill any pre-tenancy rows.
@@ -200,12 +236,13 @@ using (var scope = app.Services.CreateScope())
 {
     var organizations = scope.ServiceProvider.GetRequiredService<IOrganizationRepository>();
     var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+    var memberships = scope.ServiceProvider.GetRequiredService<IOrganizationMembershipRepository>();
     var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
     var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
     var policies = scope.ServiceProvider.GetRequiredService<IEmployeePolicyRepository>();
     var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
     var attendance = scope.ServiceProvider.GetRequiredService<IAttendanceRepository>();
-    await DbSeeder.SeedAsync(organizations, users, claims, leaveTypes, policies, projects, attendance);
+    await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance);
 }
 
 app.Run();

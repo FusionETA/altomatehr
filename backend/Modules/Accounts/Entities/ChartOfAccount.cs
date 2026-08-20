@@ -22,6 +22,14 @@ public class ChartOfAccount : ITenantScoped
     [MaxLength(20)]
     public string Type { get; set; } = "EXPENSE";                // EXPENSE | BANK (loose string, like the real app)
 
+    [MaxLength(80)]
+    public string? XeroAccountId { get; set; }                   // Xero AccountID, when synced from Xero
+
+    [MaxLength(40)]
+    public string? XeroStatus { get; set; }                      // ACTIVE | ARCHIVED | ...
+
+    public DateTime? XeroSyncedAt { get; set; }
+
     public bool IsSelectable { get; set; } = true;               // employees can file claims against it
 
     [Precision(12, 2)]

@@ -58,6 +58,9 @@ public class ProjectService : IProjectService
     {
         Id = p.Id,
         Name = p.Name,
+        XeroProjectId = p.XeroProjectId,
+        XeroStatus = p.XeroStatus,
+        XeroSyncedAt = p.XeroSyncedAt,
         Latitude = p.Latitude,
         Longitude = p.Longitude,
         IsArchived = p.IsArchived,

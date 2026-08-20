@@ -1,5 +1,7 @@
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Claims;
@@ -25,6 +27,7 @@ public static class DbSeeder
     public static async Task SeedAsync(
         IOrganizationRepository organizations,
         IUserRepository users,
+        IOrganizationMembershipRepository memberships,
         IClaimsRepository claims,
         ILeaveTypeRepository leaveTypes,
         IEmployeePolicyRepository policies,
@@ -32,10 +35,10 @@ public static class DbSeeder
         IAttendanceRepository attendance)
     {
         await SeedOrganizationAsync(organizations);
-        await EnsureUserAsync(users, "usr-admin", "admin@altomate.com", "Admin");
-        await EnsureUserAsync(users, "usr-super", "supervisor@altomate.com", "Supervisor");
-        await EnsureUserAsync(users, "usr-emp", "employee@altomate.com", "Employee");
-        await AssignSupervisorAsync(users, "usr-emp", "usr-super");
+        await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner");
+        await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor");
+        await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee");
+        await AssignSupervisorAsync(memberships, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
@@ -213,14 +216,15 @@ public static class DbSeeder
         });
     }
 
-    // Point an employee at their approving supervisor (idempotent).
-    private static async Task AssignSupervisorAsync(IUserRepository users, string employeeId, string supervisorId)
+    // Point an employee at their approving supervisor in the demo org (idempotent).
+    private static async Task AssignSupervisorAsync(
+        IOrganizationMembershipRepository memberships, string employeeId, string supervisorId)
     {
-        var employee = await users.GetByIdAsync(employeeId);
-        if (employee is null || employee.SupervisorId == supervisorId) return;
+        var membership = await memberships.GetAsync(DemoOrgId, employeeId);
+        if (membership is null || membership.SupervisorId == supervisorId) return;
 
-        employee.SupervisorId = supervisorId;
-        await users.UpdateAsync(employee);
+        membership.SupervisorId = supervisorId;
+        await memberships.UpdateAsync(membership);
     }
 
     private static async Task SeedLeaveTypesAsync(ILeaveTypeRepository leaveTypes)
@@ -259,28 +263,42 @@ public static class DbSeeder
         });
     }
 
-    // Create the user if missing, or backfill its org if it predates tenancy.
-    private static async Task EnsureUserAsync(IUserRepository users, string id, string email, string role)
+    // Create the login account if missing, then ensure it has a membership (with
+    // its role) in the demo org. Role/supervisor/policy are per-org, so they live
+    // on the membership — not the global User.
+    private static async Task EnsureUserAsync(
+        IUserRepository users, IOrganizationMembershipRepository memberships,
+        string id, string email, string role)
     {
-        var existing = await users.GetByEmailAsync(email);
-        if (existing is null)
+        if (await users.GetByEmailAsync(email) is null)
         {
             await users.AddAsync(new User
             {
                 Id = id,
                 Email = email,
-                OrganizationId = DemoOrgId,
                 PasswordHash = BC.HashPassword("password123"),   // hashed at seed time, never stored plain
-                Role = role,
                 CreatedAt = DateTime.UtcNow,
             });
-            return;
         }
 
-        if (string.IsNullOrEmpty(existing.OrganizationId))
+        var membership = await memberships.GetAsync(DemoOrgId, id);
+        if (membership is null)
         {
-            existing.OrganizationId = DemoOrgId;
-            await users.UpdateAsync(existing);
+            await memberships.AddAsync(new OrganizationMembership
+            {
+                OrganizationId = DemoOrgId,
+                UserId = id,
+                Role = role,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        else if (membership.Role != role)
+        {
+            // Keep the demo seed authoritative for roles (e.g. bumping the founder
+            // to Owner) so an existing DB syncs on the next startup.
+            membership.Role = role;
+            await memberships.UpdateAsync(membership);
         }
     }
 

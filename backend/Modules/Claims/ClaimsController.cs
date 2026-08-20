@@ -106,7 +106,7 @@ public class ClaimsController : ControllerBase
     }
 
     // DELETE /claims/{id}  — Admins only (RBAC)
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Owner")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
