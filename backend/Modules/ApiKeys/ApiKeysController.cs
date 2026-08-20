@@ -1,15 +1,18 @@
 using AltomateHR.Api.Modules.ApiKeys.Dtos;
+using AltomateHR.Api.Modules.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AltomateHR.Api.Modules.ApiKeys;
 
-// Owner-only management of machine credentials for the CURRENT org.
-// Gated to "Owner": a wp_live_ key authenticates as "Admin", so a key can never create
-// or revoke keys — no privilege escalation.
+// SUPERADMIN-only management of machine credentials for the caller's active org.
+// wp_live_ tokens are a Fusioneta-support concern, NOT a customer action — the same rule
+// as the monolith (the Settings → API tab renders only for superadmins). Gating to the
+// Superadmin policy also means a wp_live_ key (no email claim) can never mint or revoke
+// keys — no privilege escalation.
 [ApiController]
 [Route("api-keys")]
-[Authorize(Roles = "Owner")]
+[Authorize(Policy = AuthPolicies.Superadmin)]
 public class ApiKeysController : ControllerBase
 {
     private readonly IApiKeyService _service;
