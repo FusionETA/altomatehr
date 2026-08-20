@@ -87,7 +87,7 @@ export function NewClaimModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
       <div
-        className="flex max-h-[calc(100svh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-[0_18px_48px_rgba(76,26,134,0.10)] backdrop-blur-xl"
+        className="flex max-h-[calc(100svh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl"
         style={{ minHeight: "min(620px, calc(100svh - 2rem))" }}
       >
         <ModalHeader onClose={onClose} isEditing={isEditing} />

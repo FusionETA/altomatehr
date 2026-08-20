@@ -11,7 +11,7 @@ import { getLeaveTypes, type LeaveType } from "@/features/leave/api";
 import { PolicyEditorModal } from "./PolicyEditorModal";
 
 const CARD =
-  "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm sm:p-6";
+  "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
 
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;

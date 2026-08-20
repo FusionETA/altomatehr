@@ -698,7 +698,7 @@ function OvertimeApprovalStatusBadge({ status }: { status: OvertimeRequest["stat
         ? "bg-destructive/10 text-destructive"
         : status === "CANCELLED"
           ? "bg-muted text-muted-foreground"
-          : "bg-[#fff0db] text-[#8a4d00]";
+          : "bg-warning text-warning-foreground";
 
   return (
     <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider ${className}`}>
@@ -826,7 +826,7 @@ function GroupHeader({
           </p>
         </div>
         {late > 0 ? (
-          <span className="shrink-0 rounded-full bg-[#ead7d3] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-[#9b3e00]">
+          <span className="shrink-0 rounded-full bg-warning px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-warning-foreground">
             {late} late
           </span>
         ) : null}
@@ -971,7 +971,7 @@ function EventRow({
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {lateByMin != null ? (
-                  <span className="rounded-full bg-[#fff0db] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#bf4b00]">
+                  <span className="rounded-full bg-warning px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-warning-foreground">
                     Late {lateByMin}m
                   </span>
                 ) : null}

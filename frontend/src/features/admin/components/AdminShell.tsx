@@ -62,7 +62,7 @@ export function AdminShell({
                   onClick={() => selectParent(item.id)}
                   className={`flex w-full items-center gap-3 rounded-[22px] border px-4 py-3 text-left text-sm font-semibold transition-all ${
                     active
-                      ? "border-primary/40 bg-card text-primary shadow-[0_12px_30px_rgba(76,26,134,0.07)]"
+                      ? "border-primary/40 bg-card text-primary shadow-ambient"
                       : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
@@ -114,12 +114,12 @@ export function AdminShell({
               <button
                 type="button"
                 aria-label="Notifications"
-                className="hidden h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/90 text-muted-foreground shadow-[0_12px_30px_rgba(76,26,134,0.07)] transition hover:text-foreground sm:flex"
+                className="hidden h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/90 text-muted-foreground shadow-ambient transition hover:text-foreground sm:flex"
               >
                 <Bell className="h-4 w-4" />
               </button>
 
-              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-2 shadow-[0_12px_30px_rgba(76,26,134,0.07)] sm:gap-3 sm:px-3">
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-2 shadow-ambient sm:gap-3 sm:px-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                   {initials}
                 </div>

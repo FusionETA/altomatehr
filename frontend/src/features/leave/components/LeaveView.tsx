@@ -19,7 +19,7 @@ import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 
 const CARD =
-  "rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm";
+  "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
 function fmtDate(ymd: string) {
   const [y, m, d] = ymd.split("-").map(Number);

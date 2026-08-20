@@ -8,7 +8,7 @@ export function ClaimStatusBadge({ status }: { status: string }) {
       ? "bg-destructive/10 text-destructive"
       : status === "APPROVED" || status === "REVIEWED"
         ? "bg-secondary text-secondary-foreground"
-        : "bg-[#fff0db] text-[#8a4d00]";
+        : "bg-warning text-warning-foreground";
 
   return (
     <span

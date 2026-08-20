@@ -1,7 +1,7 @@
 import type { LeaveStatus } from "../api";
 
 const STYLES: Record<LeaveStatus, string> = {
-  PENDING: "bg-[#fff0db] text-[#8a4d00]",
+  PENDING: "bg-warning text-warning-foreground",
   APPROVED: "bg-secondary text-secondary-foreground",
   REJECTED: "bg-destructive/10 text-destructive",
   CANCELLED: "bg-muted text-muted-foreground",

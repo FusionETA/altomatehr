@@ -148,7 +148,7 @@ export function ClaimsView() {
       </div>
 
       <div className="space-y-4 sm:space-y-6">
-        <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm md:block">
+        <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm md:block">
           <div className="space-y-4 px-5 pb-5 pt-3 sm:space-y-5 sm:p-6">
             <SearchInput
               value={searchTerm}
@@ -189,7 +189,7 @@ export function ClaimsView() {
         </div>
 
         {loading ? (
-          <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm">
+          <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
             Loading claims...
           </section>
         ) : null}
@@ -201,7 +201,7 @@ export function ClaimsView() {
         ) : null}
 
         {!loading && !error && filteredClaims.length === 0 ? (
-          <section className="rounded-[28px] border border-border/70 bg-card/90 p-8 text-center text-sm text-muted-foreground shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm">
+          <section className="rounded-[28px] border border-border/70 bg-card/90 p-8 text-center text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
             No claims match the selected status.
           </section>
         ) : null}
@@ -215,7 +215,7 @@ export function ClaimsView() {
                 tabIndex={0}
                 onClick={() => setSelectedClaim(claim)}
                 onKeyDown={(event) => handleClaimKeyDown(event, claim)}
-                className="cursor-pointer rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm transition hover:border-primary/40 focus-visible:border-primary/50 focus-visible:outline-none sm:p-5"
+                className="cursor-pointer rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-ambient backdrop-blur-sm transition hover:border-primary/40 focus-visible:border-primary/50 focus-visible:outline-none sm:p-5"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -252,7 +252,7 @@ export function ClaimsView() {
                   </div>
                 </div>
                 {claim.reviewNotes ? (
-                  <div className="mt-4 rounded-[20px] border border-border/70 bg-card/94 p-3.5 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm">
+                  <div className="mt-4 rounded-[20px] border border-border/70 bg-card/94 p-3.5 shadow-ambient backdrop-blur-sm">
                     <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       Reviewer note
                     </p>
@@ -271,7 +271,7 @@ export function ClaimsView() {
         ) : null}
 
         {!loading && !error && filteredClaims.length > 0 ? (
-          <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-[0_12px_30px_rgba(76,26,134,0.07)] backdrop-blur-sm md:block">
+          <section className="hidden rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm md:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[880px] caption-bottom text-sm">
                 <thead>
@@ -374,7 +374,7 @@ export function ClaimsView() {
         type="button"
         aria-label="New claim"
         onClick={() => setCreateOpen(true)}
-        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_48px_rgba(76,26,134,0.10)] transition-transform hover:scale-105 active:scale-95 lg:bottom-8 lg:right-8"
+        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-panel transition-transform hover:scale-105 active:scale-95 lg:bottom-8 lg:right-8"
       >
         <Plus className="h-6 w-6" />
       </button>

@@ -59,7 +59,7 @@ function statusClass(status: OvertimeRequest["status"]) {
   if (status === "APPROVED") return "bg-secondary text-secondary-foreground";
   if (status === "REJECTED") return "bg-destructive/10 text-destructive";
   if (status === "CANCELLED") return "bg-muted text-muted-foreground";
-  return "bg-[#fff0db] text-[#8a4d00]";
+  return "bg-warning text-warning-foreground";
 }
 
 function OvertimeStatusBadge({ status }: { status: OvertimeRequest["status"] }) {
@@ -181,7 +181,7 @@ export function OvertimeView() {
         type="button"
         aria-label="Submit overtime"
         onClick={() => setModalOpen(true)}
-        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_48px_rgba(76,26,134,0.10)] transition-transform hover:scale-105 active:scale-95 lg:bottom-8 lg:right-8"
+        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-panel transition-transform hover:scale-105 active:scale-95 lg:bottom-8 lg:right-8"
       >
         <Plus className="h-6 w-6" />
       </button>

@@ -86,7 +86,7 @@ export function TeamEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-[0_18px_48px_rgba(76,26,134,0.10)] backdrop-blur-xl">
+      <div className="w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
         <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
             <h2 className="text-2xl font-black text-foreground">{team ? "Edit team" : "New team"}</h2>
