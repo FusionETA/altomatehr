@@ -1,0 +1,34 @@
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+    volumes:
+      - api_storage:/app/storage   # persist uploaded receipts/photos across redeploys
+    expose:
+      - "8080"                     # internal only — never published to the host
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api         # same-origin; Caddy proxies /api -> api:8080
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN}            # e.g. app.yourdomain.com  (Caddy auto-provisions TLS)
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data           # persist the TLS certificates
+      - caddy_config:/config
+
+volumes:
+  api_storage:
+  caddy_data:
+  caddy_config:

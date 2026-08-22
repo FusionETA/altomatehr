@@ -1,0 +1,17 @@
+# The public domain is supplied at runtime via the DOMAIN env var.
+{$DOMAIN} {
+	encode gzip
+
+	# API: strip the /api prefix and forward to the backend container.
+	# e.g. GET /api/employees  ->  backend GET /employees
+	handle_path /api/* {
+		reverse_proxy api:8080
+	}
+
+	# Everything else = the SPA. Fall back to index.html for client-side routing.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
