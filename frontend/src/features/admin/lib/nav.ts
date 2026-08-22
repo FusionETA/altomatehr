@@ -37,8 +37,8 @@ export const adminNav: AdminNavItem[] = [
     icon: Network,
     built: true,
     children: [
+      { id: "company-structure", label: "Company Structure" },
       { id: "manage-employee", label: "Manage Employee" },
-      { id: "teams", label: "Teams" },
     ],
   },
   { id: "audit", label: "Activity Log", icon: History },

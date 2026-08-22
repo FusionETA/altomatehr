@@ -7,6 +7,10 @@ export type Organization = {
   defaultMileageRate: number;
   mileageUnit: "KM" | "MILE";
   geofenceRadiusMeters: number;
+  plan: string;
+  tier: string | null;
+  addons: string[];
+  enabledModules: string[];
 };
 export type UpdateOrganization = {
   name: string;

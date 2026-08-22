@@ -6,7 +6,7 @@ import { LeaveTypesSettings } from "@/features/settings/components/LeaveTypesSet
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
-import { TeamsSettings } from "@/features/settings/components/TeamsSettings";
+import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
 import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
@@ -212,8 +212,8 @@ function AdminContent({
     // Company / Employee
     case "manage-employee":
       return <EmployeesSettings />;
-    case "teams":
-      return <TeamsSettings />;
+    case "company-structure":
+      return <CompanyStructure />;
 
     // System Settings
     case "settings-organization":

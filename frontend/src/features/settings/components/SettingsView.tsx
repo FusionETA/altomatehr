@@ -15,7 +15,7 @@ import { AccountsSettings } from "./AccountsSettings";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { EmployeesSettings } from "./EmployeesSettings";
 import { PoliciesSettings } from "./PoliciesSettings";
-import { TeamsSettings } from "./TeamsSettings";
+import { CompanyStructure } from "./CompanyStructure";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 
 type SettingsTab =
@@ -67,7 +67,7 @@ export function SettingsView() {
       {tab === "employees" ? <EmployeesSettings /> : null}
       {tab === "policies" ? <PoliciesSettings /> : null}
       {tab === "projects" ? <ProjectsSettings /> : null}
-      {tab === "teams" ? <TeamsSettings /> : null}
+      {tab === "teams" ? <CompanyStructure /> : null}
       {tab === "accounts" ? <AccountsSettings /> : null}
       {tab === "leave" ? <LeaveTypesSettings /> : null}
     </div>

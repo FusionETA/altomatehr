@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
+using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Overtime;
@@ -193,6 +194,7 @@ builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
+builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 
@@ -240,18 +242,32 @@ app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 
-// Seed the demo org + users (hashed) and backfill any pre-tenancy rows.
+// On boot: ensure the schema exists, then (dev only) seed demo data.
 using (var scope = app.Services.CreateScope())
 {
-    var organizations = scope.ServiceProvider.GetRequiredService<IOrganizationRepository>();
-    var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-    var memberships = scope.ServiceProvider.GetRequiredService<IOrganizationMembershipRepository>();
-    var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
-    var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
-    var policies = scope.ServiceProvider.GetRequiredService<IEmployeePolicyRepository>();
-    var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
-    var attendance = scope.ServiceProvider.GetRequiredService<IAttendanceRepository>();
-    await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance);
+    var services = scope.ServiceProvider;
+
+    // Apply any pending EF migrations so the schema is ready — a Droplet deploy needs no
+    // separate `dotnet ef database update`. Guarded to relational providers so the in-memory
+    // test host (which can't migrate) is skipped. Real data comes from the legacy migration.
+    var db = services.GetRequiredService<AppDbContext>();
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+
+    // Demo org + users (admin@altomate.com / password123, …) are DEVELOPMENT-ONLY — never
+    // create these accounts against a real database; they'd be a public backdoor.
+    if (app.Environment.IsDevelopment())
+    {
+        var organizations = services.GetRequiredService<IOrganizationRepository>();
+        var users = services.GetRequiredService<IUserRepository>();
+        var memberships = services.GetRequiredService<IOrganizationMembershipRepository>();
+        var claims = services.GetRequiredService<IClaimsRepository>();
+        var leaveTypes = services.GetRequiredService<ILeaveTypeRepository>();
+        var policies = services.GetRequiredService<IEmployeePolicyRepository>();
+        var projects = services.GetRequiredService<IProjectRepository>();
+        var attendance = services.GetRequiredService<IAttendanceRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance);
+    }
 }
 
 app.Run();
