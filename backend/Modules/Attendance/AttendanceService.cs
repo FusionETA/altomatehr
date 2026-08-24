@@ -20,6 +20,8 @@ public class AttendanceService : IAttendanceService
     private const string OffSiteCode = "OFF_SITE_ACTION_REQUIRED";
 
     private readonly IAttendanceRepository _repo;
+    private readonly IAttendanceSessionRepository _sessions;
+    private readonly IAttendanceBreakRepository _breaks;
     private readonly IProjectService _projects;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
@@ -30,6 +32,8 @@ public class AttendanceService : IAttendanceService
 
     public AttendanceService(
         IAttendanceRepository repo,
+        IAttendanceSessionRepository sessions,
+        IAttendanceBreakRepository breaks,
         IProjectService projects,
         IOrganizationService organizations,
         ICurrentUser currentUser,
@@ -39,6 +43,8 @@ public class AttendanceService : IAttendanceService
         IApprovalRouter router)
     {
         _repo = repo;
+        _sessions = sessions;
+        _breaks = breaks;
         _projects = projects;
         _organizations = organizations;
         _currentUser = currentUser;
@@ -125,6 +131,14 @@ public class AttendanceService : IAttendanceService
                 UpdatedAt = now,
             };
             var saved = await _repo.AddAsync(record);
+            await _sessions.AddAsync(new AttendanceSession
+            {
+                AttendanceRecordId = saved.Id,
+                EmployeeId = employeeId,
+                StartedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
             return new AttendanceActionResult(true, ToDto(saved));
         }
 
@@ -146,6 +160,14 @@ public class AttendanceService : IAttendanceService
         existing.ReviewNotes = null;
         existing.UpdatedAt = now;
         await _repo.UpdateAsync(existing);
+        await _sessions.AddAsync(new AttendanceSession
+        {
+            AttendanceRecordId = existing.Id,
+            EmployeeId = employeeId,
+            StartedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
         return new AttendanceActionResult(true, ToDto(existing));
     }
 
@@ -180,6 +202,15 @@ public class AttendanceService : IAttendanceService
         record.ReviewNotes = null;
         record.UpdatedAt = now;
         await _repo.UpdateAsync(record);
+
+        var session = await _sessions.GetOpenForRecordAsync(record.Id);
+        if (session is not null)
+        {
+            session.EndedAt = now;
+            session.UpdatedAt = now;
+            await _sessions.UpdateAsync(session);
+        }
+
         return new AttendanceActionResult(true, ToDto(record));
     }
 
@@ -223,6 +254,171 @@ public class AttendanceService : IAttendanceService
         record.UpdatedAt = now;
         await _repo.UpdateAsync(record);
         return new AttendanceTransitionResult(true, true, ToDto(record));
+    }
+
+    public async Task<AttendanceBreakActionResult> StartBreakAsync(string employeeId, StartBreakDto dto)
+    {
+        var now = DateTime.UtcNow;
+        var today = AttendanceTime.StartOfLocalDay(now);
+        var record = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
+        if (record is null || record.TimeIn is null || record.TimeOut is not null)
+            return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
+
+        var session = await _sessions.GetOpenForRecordAsync(record.Id);
+        if (session is null)
+            return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
+
+        var openBreak = await _breaks.GetOpenForSessionAsync(session.Id);
+        if (openBreak is not null)
+            return new AttendanceBreakActionResult(false, null, "You're already on break.");
+
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+        var captureGps = policy?.CaptureLocationOnBreakStart != false && dto.Lat is not null && dto.Lng is not null;
+
+        var brk = new AttendanceBreak
+        {
+            AttendanceSessionId = session.Id,
+            AttendanceRecordId = record.Id,
+            EmployeeId = employeeId,
+            StartedAt = now,
+            StartLat = captureGps ? dto.Lat : null,
+            StartLng = captureGps ? dto.Lng : null,
+            Remark = Clean(dto.Remark),
+            ApprovalStatus = AttendanceApprovalStatus.PENDING,
+            CurrentStep = 0,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var saved = await _breaks.AddAsync(brk);
+        return new AttendanceBreakActionResult(true, ToBreakDto(saved));
+    }
+
+    public async Task<AttendanceBreakActionResult> EndBreakAsync(string employeeId, EndBreakDto dto)
+    {
+        var now = DateTime.UtcNow;
+        var today = AttendanceTime.StartOfLocalDay(now);
+        var record = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
+        if (record is null || record.TimeIn is null || record.TimeOut is not null)
+            return new AttendanceBreakActionResult(false, null, "Start a break before ending one.");
+
+        var session = await _sessions.GetOpenForRecordAsync(record.Id);
+        if (session is null)
+            return new AttendanceBreakActionResult(false, null, "Start a break before ending one.");
+
+        var brk = await _breaks.GetOpenForSessionAsync(session.Id);
+        if (brk is null)
+            return new AttendanceBreakActionResult(false, null, "Start a break before ending one.");
+
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+        var captureGps = policy?.CaptureLocationOnBreakEnd != false && dto.Lat is not null && dto.Lng is not null;
+
+        brk.EndedAt = now;
+        brk.EndLat = captureGps ? dto.Lat : null;
+        brk.EndLng = captureGps ? dto.Lng : null;
+        if (!string.IsNullOrWhiteSpace(dto.Remark)) brk.Remark = dto.Remark;
+        // The end event needs its own approval pass, mirroring how ClockOutAsync
+        // resets AttendanceRecord's approval fields on top of clock-in's decision.
+        brk.ApprovalStatus = AttendanceApprovalStatus.PENDING;
+        brk.CurrentStep = 0;
+        brk.SubmittedAt = now;
+        brk.DecidedAt = null;
+        brk.ReviewNotes = null;
+        brk.UpdatedAt = now;
+        await _breaks.UpdateAsync(brk);
+        return new AttendanceBreakActionResult(true, ToBreakDto(brk));
+    }
+
+    public async Task<AttendanceBreakTransitionResult> ApproveBreakAsync(string id, string approverId)
+    {
+        var (brk, error) = await AuthorizeBreakAsync(id, approverId);
+        if (error is not null) return error;
+
+        var now = DateTime.UtcNow;
+        var stepCount = await _router.StepCountAsync(Module, brk!.EmployeeId);
+        var isFinal = brk.CurrentStep + 1 >= stepCount;
+        if (isFinal)
+        {
+            brk.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
+            brk.DecidedAt = now;
+        }
+        else
+        {
+            brk.CurrentStep += 1;
+        }
+
+        brk.UpdatedAt = now;
+        await _breaks.UpdateAsync(brk);
+        return new AttendanceBreakTransitionResult(true, true, ToBreakDto(brk));
+    }
+
+    public async Task<AttendanceBreakTransitionResult> RejectBreakAsync(string id, string approverId, string? reviewNotes)
+    {
+        var (brk, error) = await AuthorizeBreakAsync(id, approverId);
+        if (error is not null) return error;
+
+        var cleanedReviewNotes = Clean(reviewNotes);
+        if (cleanedReviewNotes is null)
+            return new AttendanceBreakTransitionResult(true, false, null,
+                "Enter a rejection remark before rejecting this break.");
+
+        var now = DateTime.UtcNow;
+        brk!.ApprovalStatus = AttendanceApprovalStatus.REJECTED;
+        brk.ReviewNotes = cleanedReviewNotes;
+        brk.DecidedAt = now;
+        brk.UpdatedAt = now;
+        await _breaks.UpdateAsync(brk);
+        return new AttendanceBreakTransitionResult(true, true, ToBreakDto(brk));
+    }
+
+    public async Task<IEnumerable<AttendanceBreakDto>> GetTeamBreakApprovalsAsync(string userId)
+    {
+        var all = await _breaks.GetPendingAsync();
+        var visible = new List<AttendanceBreak>();
+        foreach (var brk in all)
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, brk.EmployeeId, brk.CurrentStep);
+            if (approvers.Contains(userId)) visible.Add(brk);
+        }
+
+        return visible.Select(ToBreakDto);
+    }
+
+    public async Task<AttendanceBreakListResult> GetBreaksForRecordAsync(
+        string recordId,
+        string requestingUserId,
+        string? requestingRole)
+    {
+        var record = await _repo.GetByIdAsync(recordId);
+        if (record is null)
+            return new AttendanceBreakListResult(false, false, null);
+
+        var authorized = requestingUserId == record.EmployeeId
+            || await _supervision.CanApproveAsync(record.EmployeeId, requestingUserId, requestingRole);
+        if (!authorized)
+            return new AttendanceBreakListResult(true, false, null, "Not authorized to view this employee's breaks.");
+
+        var breaks = await _breaks.GetByRecordAsync(recordId);
+        return new AttendanceBreakListResult(true, true, breaks.Select(ToBreakDto));
+    }
+
+    private async Task<(AttendanceBreak? Break, AttendanceBreakTransitionResult? Error)> AuthorizeBreakAsync(
+        string id,
+        string approverId)
+    {
+        var brk = await _breaks.GetByIdAsync(id);
+        if (brk is null)
+            return (null, new AttendanceBreakTransitionResult(false, false, null));
+
+        var approvers = await _router.CurrentApproversAsync(Module, brk.EmployeeId, brk.CurrentStep);
+        if (!approvers.Contains(approverId))
+            return (null, new AttendanceBreakTransitionResult(false, false, null));
+
+        if (brk.ApprovalStatus != AttendanceApprovalStatus.PENDING)
+            return (brk, new AttendanceBreakTransitionResult(true, false, ToBreakDto(brk),
+                "Only pending breaks can be approved or rejected."));
+
+        return (brk, null);
     }
 
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
@@ -344,5 +540,25 @@ public class AttendanceService : IAttendanceService
         DecidedAt = Iso(r.DecidedAt),
         CreatedAt = Iso(r.CreatedAt) ?? string.Empty,
         UpdatedAt = Iso(r.UpdatedAt) ?? string.Empty,
+    };
+
+    private static AttendanceBreakDto ToBreakDto(AttendanceBreak b) => new()
+    {
+        Id = b.Id,
+        AttendanceSessionId = b.AttendanceSessionId,
+        AttendanceRecordId = b.AttendanceRecordId,
+        StartedAt = Iso(b.StartedAt) ?? string.Empty,
+        EndedAt = Iso(b.EndedAt),
+        DurationMin = b.EndedAt is null ? null : (int)Math.Round((b.EndedAt.Value - b.StartedAt).TotalMinutes),
+        StartLat = b.StartLat,
+        StartLng = b.StartLng,
+        EndLat = b.EndLat,
+        EndLng = b.EndLng,
+        Remark = b.Remark,
+        ApprovalStatus = b.ApprovalStatus,
+        CurrentStep = b.CurrentStep,
+        ReviewNotes = b.ReviewNotes,
+        SubmittedAt = Iso(b.SubmittedAt),
+        DecidedAt = Iso(b.DecidedAt),
     };
 }

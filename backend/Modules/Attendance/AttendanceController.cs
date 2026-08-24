@@ -63,6 +63,43 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> Reject(string id, RejectAttendanceDto dto) =>
         ToTransitionResponse(await _attendance.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 
+    // POST /attendance/break/start — start a break on today's active session.
+    [HttpPost("break/start")]
+    public async Task<IActionResult> StartBreak(StartBreakDto dto) =>
+        ToBreakResponse(await _attendance.StartBreakAsync(GetUserId(), dto));
+
+    // POST /attendance/break/end — end the currently-open break.
+    [HttpPost("break/end")]
+    public async Task<IActionResult> EndBreak(EndBreakDto dto) =>
+        ToBreakResponse(await _attendance.EndBreakAsync(GetUserId(), dto));
+
+    // POST /attendance/break/{id}/approve — current-step approver only.
+    [HttpPost("break/{id}/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> ApproveBreak(string id) =>
+        ToBreakTransitionResponse(await _attendance.ApproveBreakAsync(id, GetUserId()));
+
+    // POST /attendance/break/{id}/reject — current-step approver only.
+    [HttpPost("break/{id}/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> RejectBreak(string id, RejectBreakDto dto) =>
+        ToBreakTransitionResponse(await _attendance.RejectBreakAsync(id, GetUserId(), dto.ReviewNotes));
+
+    // GET /attendance/team/breaks — breaks awaiting the caller as current-step approver.
+    [RequireScope("attendance:read")]
+    [HttpGet("team/breaks")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> GetTeamBreakApprovals() =>
+        Ok(await _attendance.GetTeamBreakApprovalsAsync(GetUserId()));
+
+    // GET /attendance/{recordId}/breaks — every break for that day's record.
+    // Self-access (the record's own employee) or anyone who can approve for them.
+    [RequireScope("attendance:read")]
+    [HttpGet("{recordId}/breaks")]
+    public async Task<IActionResult> GetBreaks(string recordId) =>
+        ToBreakListResponse(await _attendance.GetBreaksForRecordAsync(
+            recordId, GetUserId(), User.FindFirstValue(ClaimTypes.Role)));
+
     // POST /attendance/photo — off-site proof photo. Returns { photoUrl } to
     // include in the clock-in/out request.
     [HttpPost("photo")]
@@ -108,6 +145,25 @@ public class AttendanceController : ControllerBase
         if (!result.Found) return NotFound();
         if (!result.Transitioned) return BadRequest(new { message = result.Error });
         return Ok(result.Record);
+    }
+
+    private IActionResult ToBreakResponse(AttendanceBreakActionResult result) =>
+        result.Ok
+            ? Ok(result.Break)
+            : BadRequest(new { message = result.Error, code = result.Code });
+
+    private IActionResult ToBreakTransitionResponse(AttendanceBreakTransitionResult result)
+    {
+        if (!result.Found) return NotFound();
+        if (!result.Transitioned) return BadRequest(new { message = result.Error });
+        return Ok(result.Break);
+    }
+
+    private IActionResult ToBreakListResponse(AttendanceBreakListResult result)
+    {
+        if (!result.Found) return NotFound();
+        if (!result.Authorized) return Forbid();
+        return Ok(result.Breaks);
     }
 
     private string GetUserId() =>

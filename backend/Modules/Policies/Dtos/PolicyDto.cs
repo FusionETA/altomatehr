@@ -22,6 +22,8 @@ public class PolicyDto
     public bool RequireGeofence { get; set; }
     public bool RequireSelfie { get; set; }
     public bool RequireClockOutSelfie { get; set; }
+    public bool CaptureLocationOnBreakStart { get; set; }
+    public bool CaptureLocationOnBreakEnd { get; set; }
     public SalaryType SalaryType { get; set; }
     public bool OtEnabled { get; set; }
     public int OtDailyThresholdMinutes { get; set; }
@@ -46,6 +48,8 @@ public class SavePolicyDto
     public bool RequireGeofence { get; set; } = true;
     public bool RequireSelfie { get; set; }
     public bool RequireClockOutSelfie { get; set; }
+    public bool CaptureLocationOnBreakStart { get; set; } = true;
+    public bool CaptureLocationOnBreakEnd { get; set; } = true;
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;
 

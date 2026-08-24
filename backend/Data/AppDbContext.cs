@@ -34,6 +34,8 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
+    public DbSet<AttendanceBreak> AttendanceBreaks => Set<AttendanceBreak>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
@@ -78,6 +80,17 @@ public class AppDbContext : DbContext
         attendance.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
         attendance.Property(r => r.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
         attendance.HasIndex(r => new { r.ApprovalStatus, r.Date });
+
+        var attendanceSession = modelBuilder.Entity<AttendanceSession>();
+        attendanceSession.HasIndex(s => s.AttendanceRecordId);
+        attendanceSession.HasIndex(s => new { s.AttendanceRecordId, s.EndedAt });
+
+        var attendanceBreak = modelBuilder.Entity<AttendanceBreak>();
+        attendanceBreak.HasIndex(b => b.AttendanceSessionId);
+        attendanceBreak.HasIndex(b => new { b.AttendanceSessionId, b.EndedAt });
+        attendanceBreak.HasIndex(b => b.AttendanceRecordId);
+        attendanceBreak.HasIndex(b => new { b.ApprovalStatus, b.EmployeeId });
+        attendanceBreak.Property(b => b.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
 
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveApplication>()
@@ -124,6 +137,10 @@ public class AppDbContext : DbContext
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(
             r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceSession>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceBreak>().HasQueryFilter(
+            b => _currentUser.OrganizationId == null || b.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveType>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
