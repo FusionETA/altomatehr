@@ -26,11 +26,6 @@ public class AttendanceBreakRepository : IAttendanceBreakRepository
             .OrderBy(b => b.StartedAt)
             .ToListAsync();
 
-    public Task<List<AttendanceBreak>> GetPendingAsync() =>
-        _db.AttendanceBreaks
-            .Where(b => b.ApprovalStatus == Entities.AttendanceApprovalStatus.PENDING)
-            .ToListAsync();
-
     public async Task<AttendanceBreak> AddAsync(AttendanceBreak brk)
     {
         _db.AttendanceBreaks.Add(brk);

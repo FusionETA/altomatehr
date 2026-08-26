@@ -3,11 +3,9 @@ using AltomateHR.Api.Common;
 
 namespace AltomateHR.Api.Modules.Attendance.Entities;
 
-// A break taken during an AttendanceSession. Goes through the same approval
-// router as clock-in/clock-out (ApprovalStatus/CurrentStep, ApprovalModule.
-// ATTENDANCE) — ending a break resets those fields back to PENDING/step 0,
-// mirroring how ClockOutAsync already resets AttendanceRecord's approval
-// fields on top of clock-in's decision.
+// A break taken during an AttendanceSession. Approval lives on
+// AttendanceApprovalRequest (one row per BREAK_START/BREAK_END event), not
+// here — see that entity's comment for why.
 public class AttendanceBreak : ITenantScoped
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -36,12 +34,6 @@ public class AttendanceBreak : ITenantScoped
 
     [MaxLength(1000)]
     public string? Remark { get; set; }
-
-    public AttendanceApprovalStatus ApprovalStatus { get; set; } = AttendanceApprovalStatus.PENDING;
-    public int CurrentStep { get; set; }
-    public string? ReviewNotes { get; set; }
-    public DateTime? SubmittedAt { get; set; }
-    public DateTime? DecidedAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

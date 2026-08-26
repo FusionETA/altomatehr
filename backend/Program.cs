@@ -164,6 +164,7 @@ builder.Services.AddScoped<IChartOfAccountService, ChartOfAccountService>();
 builder.Services.AddScoped<IAttendanceRepository, AttendanceRepository>();
 builder.Services.AddScoped<IAttendanceSessionRepository, AttendanceSessionRepository>();
 builder.Services.AddScoped<IAttendanceBreakRepository, AttendanceBreakRepository>();
+builder.Services.AddScoped<IAttendanceApprovalRequestRepository, AttendanceApprovalRequestRepository>();
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
@@ -268,7 +269,8 @@ using (var scope = app.Services.CreateScope())
         var policies = services.GetRequiredService<IEmployeePolicyRepository>();
         var projects = services.GetRequiredService<IProjectRepository>();
         var attendance = services.GetRequiredService<IAttendanceRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance);
+        var attendanceApprovalRequests = services.GetRequiredService<IAttendanceApprovalRequestRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests);
     }
 }
 

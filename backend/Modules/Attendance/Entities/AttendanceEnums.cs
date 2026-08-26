@@ -23,3 +23,15 @@ public enum AttendanceApprovalStatus
     APPROVED,
     REJECTED,
 }
+
+// Which submittable event an AttendanceApprovalRequest covers. Each kind gets
+// its own row, never overwriting another kind's decision — this is what fixes
+// the old bug where clock-out silently reset clock-in's already-decided
+// approval (and break-end reset break-start's).
+public enum AttendanceApprovalKind
+{
+    CLOCK_IN,
+    CLOCK_OUT,
+    BREAK_START,
+    BREAK_END,
+}

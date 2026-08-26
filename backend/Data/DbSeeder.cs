@@ -32,7 +32,8 @@ public static class DbSeeder
         ILeaveTypeRepository leaveTypes,
         IEmployeePolicyRepository policies,
         IProjectRepository projects,
-        IAttendanceRepository attendance)
+        IAttendanceRepository attendance,
+        IAttendanceApprovalRequestRepository approvalRequests)
     {
         await SeedOrganizationAsync(organizations);
         await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner");
@@ -43,7 +44,7 @@ public static class DbSeeder
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
         var demoProject = await SeedAttendanceProjectAsync(projects);
-        await SeedAttendanceAsync(attendance, demoProject.Id);
+        await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
     }
 
     private static async Task<Project> SeedAttendanceProjectAsync(IProjectRepository projects)
@@ -64,7 +65,10 @@ public static class DbSeeder
         });
     }
 
-    private static async Task SeedAttendanceAsync(IAttendanceRepository attendance, string projectId)
+    private static async Task SeedAttendanceAsync(
+        IAttendanceRepository attendance,
+        IAttendanceApprovalRequestRepository approvalRequests,
+        string projectId)
     {
         var now = DateTime.UtcNow;
         var employeeRows = new[]
@@ -106,20 +110,47 @@ public static class DbSeeder
                 ? (int)Math.Round((timeOut.Value - timeIn.Value).TotalMinutes)
                 : (int?)null;
             var existing = await attendance.GetForEmployeeOnDateAsync(row.EmployeeId, date);
+            AttendanceRecord record;
+            AttendanceApprovalStatus approvalStatus;
             if (existing is not null)
             {
-                ApplyDemoAttendance(existing, row, projectId, date, timeIn, timeOut, duration);
+                approvalStatus = ApplyDemoAttendance(existing, row, projectId, date, timeIn, timeOut, duration);
                 await attendance.UpdateAsync(existing);
-                continue;
+                record = existing;
+            }
+            else
+            {
+                record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
+                approvalStatus = ApplyDemoAttendance(record, row, projectId, date, timeIn, timeOut, duration);
+                record = await attendance.AddAsync(record);
             }
 
-            var record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
-            ApplyDemoAttendance(record, row, projectId, date, timeIn, timeOut, duration);
-            await attendance.AddAsync(record);
+            // Idempotent across restarts: only seed the approval event once per
+            // record — don't stomp a request that manual testing may have since
+            // approved/rejected.
+            if (timeIn is null) continue;
+            var alreadySeeded = (await approvalRequests.GetByRecordIdsAsync([record.Id])).Count > 0;
+            if (alreadySeeded) continue;
+
+            var eventAt = timeOut ?? timeIn.Value;
+            await approvalRequests.AddAsync(new AttendanceApprovalRequest
+            {
+                OrganizationId = DemoOrgId,
+                EmployeeId = row.EmployeeId,
+                Kind = timeOut is null ? AttendanceApprovalKind.CLOCK_IN : AttendanceApprovalKind.CLOCK_OUT,
+                AttendanceRecordId = record.Id,
+                EventAt = eventAt,
+                ApprovalStatus = approvalStatus,
+                CurrentStep = 0,
+                SubmittedAt = timeIn.Value,
+                DecidedAt = approvalStatus == AttendanceApprovalStatus.APPROVED ? eventAt : null,
+                CreatedAt = eventAt,
+                UpdatedAt = eventAt,
+            });
         }
     }
 
-    private static void ApplyDemoAttendance(
+    private static AttendanceApprovalStatus ApplyDemoAttendance(
         AttendanceRecord record,
         DemoAttendanceRow row,
         string projectId,
@@ -137,13 +168,12 @@ public static class DbSeeder
         record.LateByMin = row.LateByMin;
         record.ProjectId = timeIn is null ? null : projectId;
         record.Status = row.Status;
-        record.ApprovalStatus =
+        var approvalStatus =
             timeIn is null || row.Status == AttendanceStatus.ON_LEAVE
                 ? AttendanceApprovalStatus.APPROVED
                 : row.Status == AttendanceStatus.LATE || offSite
                     ? AttendanceApprovalStatus.PENDING
                     : AttendanceApprovalStatus.APPROVED;
-        record.CurrentStep = 0;
         record.ClockInLat = timeIn is null ? null : offSite ? 3.1509 : 3.1478;
         record.ClockInLng = timeIn is null ? null : offSite ? 101.6984 : 101.6953;
         record.ClockInDistanceMeters = row.DistanceMeters;
@@ -161,11 +191,9 @@ public static class DbSeeder
             : offSite
                 ? "Client visit / field work"
                 : null;
-        record.ReviewNotes = null;
-        record.SubmittedAt = timeIn;
-        record.DecidedAt = record.ApprovalStatus == AttendanceApprovalStatus.APPROVED ? timeOut ?? timeIn : null;
         record.CreatedAt = timeIn ?? date;
         record.UpdatedAt = timeOut ?? timeIn ?? date;
+        return approvalStatus;
     }
 
     private static DemoAttendanceRow Row(

@@ -35,10 +35,9 @@ public class AttendanceRecord : ITenantScoped
 
     public AttendanceStatus Status { get; set; } = AttendanceStatus.MISSING;
 
-    // Approval is separate from Status so an attendance outcome can remain
-    // LATE/CLOCKED_OUT while the supervisor decision is still pending.
-    public AttendanceApprovalStatus ApprovalStatus { get; set; } = AttendanceApprovalStatus.PENDING;
-    public int CurrentStep { get; set; }
+    // Approval lives on AttendanceApprovalRequest (one row per clock-in/out
+    // event), not here — a single mutable slot on this row would mean a
+    // clock-out overwrites the clock-in's already-decided approval.
 
     // Geofence capture. Null when the employee clocked without granting
     // location, or the project has no geofence centre. Distance is the haversine
@@ -60,9 +59,6 @@ public class AttendanceRecord : ITenantScoped
 
     public string? Notes { get; set; }    // system-captured context (off-site warnings, etc.)
     public string? Remark { get; set; }   // employee's own free-form remark
-    public string? ReviewNotes { get; set; }
-    public DateTime? SubmittedAt { get; set; }
-    public DateTime? DecidedAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
     public DbSet<AttendanceBreak> AttendanceBreaks => Set<AttendanceBreak>();
+    public DbSet<AttendanceApprovalRequest> AttendanceApprovalRequests => Set<AttendanceApprovalRequest>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
@@ -78,8 +79,6 @@ public class AppDbContext : DbContext
         attendance.HasIndex(r => new { r.EmployeeId, r.Date }).IsUnique();  // one row per employee per day
         attendance.HasIndex(r => new { r.Status, r.Date });
         attendance.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
-        attendance.Property(r => r.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
-        attendance.HasIndex(r => new { r.ApprovalStatus, r.Date });
 
         var attendanceSession = modelBuilder.Entity<AttendanceSession>();
         attendanceSession.HasIndex(s => s.AttendanceRecordId);
@@ -89,8 +88,14 @@ public class AppDbContext : DbContext
         attendanceBreak.HasIndex(b => b.AttendanceSessionId);
         attendanceBreak.HasIndex(b => new { b.AttendanceSessionId, b.EndedAt });
         attendanceBreak.HasIndex(b => b.AttendanceRecordId);
-        attendanceBreak.HasIndex(b => new { b.ApprovalStatus, b.EmployeeId });
-        attendanceBreak.Property(b => b.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
+
+        var approvalRequest = modelBuilder.Entity<AttendanceApprovalRequest>();
+        approvalRequest.Property(a => a.Kind).HasConversion<string>().HasMaxLength(20);
+        approvalRequest.Property(a => a.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
+        approvalRequest.HasIndex(a => a.AttendanceRecordId);
+        approvalRequest.HasIndex(a => a.AttendanceBreakId);
+        approvalRequest.HasIndex(a => new { a.ApprovalStatus, a.Kind });
+        approvalRequest.HasIndex(a => new { a.EmployeeId, a.SubmittedAt });
 
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveApplication>()
@@ -141,6 +146,8 @@ public class AppDbContext : DbContext
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<AttendanceBreak>().HasQueryFilter(
             b => _currentUser.OrganizationId == null || b.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceApprovalRequest>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveType>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(

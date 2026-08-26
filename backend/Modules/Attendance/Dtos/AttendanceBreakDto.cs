@@ -46,9 +46,12 @@ public class AttendanceBreakDto
     public double? EndLat { get; set; }
     public double? EndLng { get; set; }
     public string? Remark { get; set; }
+
+    // "Latest" rollup — see AttendanceRecordDto for the same convention.
     public AttendanceApprovalStatus ApprovalStatus { get; set; }
     public int CurrentStep { get; set; }
     public string? ReviewNotes { get; set; }
     public string? SubmittedAt { get; set; }
     public string? DecidedAt { get; set; }
+    public List<AttendanceApprovalRequestDto> Approvals { get; set; } = [];
 }

@@ -7,7 +7,6 @@ public interface IAttendanceBreakRepository
     Task<AttendanceBreak?> GetOpenForSessionAsync(string attendanceSessionId);
     Task<AttendanceBreak?> GetByIdAsync(string id);
     Task<List<AttendanceBreak>> GetByRecordAsync(string attendanceRecordId);
-    Task<List<AttendanceBreak>> GetPendingAsync();
     Task<AttendanceBreak> AddAsync(AttendanceBreak brk);
     Task UpdateAsync(AttendanceBreak brk);
 }

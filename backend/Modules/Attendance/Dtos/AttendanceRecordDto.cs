@@ -25,14 +25,20 @@ public class AttendanceRecordDto
     public string? ClockInPhotoUrl { get; set; }
     public string? ClockOutPhotoUrl { get; set; }
     public AttendanceStatus Status { get; set; }
+
+    // "Latest" rollup — the most-recently-submitted approval request tied to
+    // this record (clock-in or clock-out), for simple "what's the current
+    // state" reads. Full history (both events, independently) is in Approvals.
     public AttendanceApprovalStatus ApprovalStatus { get; set; }
     public int CurrentStep { get; set; }
-    public string? EmployeeEmail { get; set; }
-    public string? Notes { get; set; }
-    public string? Remark { get; set; }
     public string? ReviewNotes { get; set; }
     public string? SubmittedAt { get; set; }
     public string? DecidedAt { get; set; }
+    public List<AttendanceApprovalRequestDto> Approvals { get; set; } = [];
+
+    public string? EmployeeEmail { get; set; }
+    public string? Notes { get; set; }
+    public string? Remark { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
     public string UpdatedAt { get; set; } = string.Empty;
 }

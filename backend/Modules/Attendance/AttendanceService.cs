@@ -14,14 +14,30 @@ namespace AltomateHR.Api.Modules.Attendance;
 // local business day. Geofence enforcement: clocking against a project that has
 // a geofence centre, from outside the org radius (or with no GPS at all),
 // requires BOTH a remark and a photo — matching the current AltomateHR.
+//
+// Approval lives entirely on AttendanceApprovalRequest — one row per event
+// (clock-in, clock-out, break-start, break-end). See that entity's comment
+// for why: a single mutable slot on the record/break would mean a later
+// event silently overwrites an earlier event's already-decided approval.
 public class AttendanceService : IAttendanceService
 {
     private const ApprovalModule Module = ApprovalModule.ATTENDANCE;
     private const string OffSiteCode = "OFF_SITE_ACTION_REQUIRED";
+    private const int MaxBulkIds = 200;
+
+    private static readonly IReadOnlySet<AttendanceApprovalKind> RecordKinds =
+        new HashSet<AttendanceApprovalKind> { AttendanceApprovalKind.CLOCK_IN, AttendanceApprovalKind.CLOCK_OUT };
+
+    private static readonly IReadOnlySet<AttendanceApprovalKind> BreakKinds =
+        new HashSet<AttendanceApprovalKind> { AttendanceApprovalKind.BREAK_START, AttendanceApprovalKind.BREAK_END };
+
+    private static readonly IReadOnlySet<AttendanceApprovalKind> AllKinds =
+        new HashSet<AttendanceApprovalKind>(RecordKinds.Concat(BreakKinds));
 
     private readonly IAttendanceRepository _repo;
     private readonly IAttendanceSessionRepository _sessions;
     private readonly IAttendanceBreakRepository _breaks;
+    private readonly IAttendanceApprovalRequestRepository _approvalRequests;
     private readonly IProjectService _projects;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
@@ -34,6 +50,7 @@ public class AttendanceService : IAttendanceService
         IAttendanceRepository repo,
         IAttendanceSessionRepository sessions,
         IAttendanceBreakRepository breaks,
+        IAttendanceApprovalRequestRepository approvalRequests,
         IProjectService projects,
         IOrganizationService organizations,
         ICurrentUser currentUser,
@@ -45,6 +62,7 @@ public class AttendanceService : IAttendanceService
         _repo = repo;
         _sessions = sessions;
         _breaks = breaks;
+        _approvalRequests = approvalRequests;
         _projects = projects;
         _organizations = organizations;
         _currentUser = currentUser;
@@ -58,7 +76,9 @@ public class AttendanceService : IAttendanceService
     {
         var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
         var record = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
-        return record is null ? null : ToDto(record);
+        if (record is null) return null;
+        var approvals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
+        return ToDto(record, approvals);
     }
 
     public async Task<IEnumerable<AttendanceRecordDto>> GetHistoryAsync(string userId, bool isAdmin)
@@ -66,26 +86,24 @@ public class AttendanceService : IAttendanceService
         var records = isAdmin
             ? await _repo.GetAllAsync()
             : await _repo.GetByEmployeeAsync(userId);
-        return records.Select(ToDto);
+        var approvals = await _approvalRequests.GetByRecordIdsAsync(records.Select(r => r.Id));
+        var byRecord = approvals.GroupBy(a => a.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
+        return records.Select(r => ToDto(r, byRecord.GetValueOrDefault(r.Id, [])));
     }
 
-    public async Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId)
+    public async Task<IEnumerable<AttendanceApprovalRequestDto>> GetTeamApprovalsAsync(string userId)
     {
-        var all = await _repo.GetAllAsync();
-        var visible = new List<AttendanceRecord>();
-        foreach (var record in all.Where(r => r.ApprovalStatus == AttendanceApprovalStatus.PENDING))
+        var pending = await _approvalRequests.GetOpenByKindsAsync(RecordKinds);
+        var visible = new List<AttendanceApprovalRequest>();
+        foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, record.EmployeeId, record.CurrentStep);
-            if (approvers.Contains(userId)) visible.Add(record);
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            if (approvers.Contains(userId)) visible.Add(request);
         }
 
         var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
-        return visible.Select(record =>
-        {
-            var dto = ToDto(record);
-            dto.EmployeeEmail = emails.GetValueOrDefault(record.EmployeeId);
-            return dto;
-        });
+        return visible.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceActionResult> ClockInAsync(string employeeId, ClockInDto dto)
@@ -96,7 +114,8 @@ public class AttendanceService : IAttendanceService
 
         if (existing is not null && existing.TimeIn is not null)
         {
-            return new AttendanceActionResult(false, ToDto(existing),
+            var currentApprovals = await _approvalRequests.GetByRecordIdsAsync([existing.Id]);
+            return new AttendanceActionResult(false, ToDto(existing, currentApprovals),
                 existing.TimeOut is null
                     ? "You're already clocked in today."
                     : "You've already completed your attendance for today.");
@@ -107,16 +126,15 @@ public class AttendanceService : IAttendanceService
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
 
+        AttendanceRecord record;
         if (existing is null)
         {
-            var record = new AttendanceRecord
+            record = new AttendanceRecord
             {
                 EmployeeId = employeeId,
                 Date = today,
                 TimeIn = now,
                 Status = AttendanceStatus.CLOCKED_IN,
-                ApprovalStatus = AttendanceApprovalStatus.PENDING,
-                CurrentStep = 0,
                 ProjectId = effectiveProjectId,
                 Location = dto.Location,
                 Remark = dto.Remark,
@@ -124,51 +142,51 @@ public class AttendanceService : IAttendanceService
                 ClockInLng = dto.Lng,
                 ClockInDistanceMeters = distance,
                 ClockInPhotoUrl = dto.PhotoUrl,
-                SubmittedAt = now,
-                DecidedAt = null,
-                ReviewNotes = null,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
-            var saved = await _repo.AddAsync(record);
-            await _sessions.AddAsync(new AttendanceSession
-            {
-                AttendanceRecordId = saved.Id,
-                EmployeeId = employeeId,
-                StartedAt = now,
-                CreatedAt = now,
-                UpdatedAt = now,
-            });
-            return new AttendanceActionResult(true, ToDto(saved));
+            record = await _repo.AddAsync(record);
+        }
+        else
+        {
+            // A row already exists for today (e.g. a pre-seeded MISSING/ON_LEAVE day)
+            // but no clock-in yet — fill it in rather than violating the unique key.
+            existing.TimeIn = now;
+            existing.Status = AttendanceStatus.CLOCKED_IN;
+            existing.ProjectId = effectiveProjectId;
+            existing.Location = dto.Location ?? existing.Location;
+            existing.Remark = dto.Remark ?? existing.Remark;
+            existing.ClockInLat = dto.Lat;
+            existing.ClockInLng = dto.Lng;
+            existing.ClockInDistanceMeters = distance;
+            existing.ClockInPhotoUrl = dto.PhotoUrl;
+            existing.UpdatedAt = now;
+            await _repo.UpdateAsync(existing);
+            record = existing;
         }
 
-        // A row already exists for today (e.g. a pre-seeded MISSING/ON_LEAVE day)
-        // but no clock-in yet — fill it in rather than violating the unique key.
-        existing.TimeIn = now;
-        existing.Status = AttendanceStatus.CLOCKED_IN;
-        existing.ApprovalStatus = AttendanceApprovalStatus.PENDING;
-        existing.CurrentStep = 0;
-        existing.ProjectId = effectiveProjectId;
-        existing.Location = dto.Location ?? existing.Location;
-        existing.Remark = dto.Remark ?? existing.Remark;
-        existing.ClockInLat = dto.Lat;
-        existing.ClockInLng = dto.Lng;
-        existing.ClockInDistanceMeters = distance;
-        existing.ClockInPhotoUrl = dto.PhotoUrl;
-        existing.SubmittedAt = now;
-        existing.DecidedAt = null;
-        existing.ReviewNotes = null;
-        existing.UpdatedAt = now;
-        await _repo.UpdateAsync(existing);
-        await _sessions.AddAsync(new AttendanceSession
+        var session = await _sessions.AddAsync(new AttendanceSession
         {
-            AttendanceRecordId = existing.Id,
+            AttendanceRecordId = record.Id,
             EmployeeId = employeeId,
             StartedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
         });
-        return new AttendanceActionResult(true, ToDto(existing));
+
+        var request = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        {
+            EmployeeId = employeeId,
+            Kind = AttendanceApprovalKind.CLOCK_IN,
+            AttendanceRecordId = record.Id,
+            AttendanceSessionId = session.Id,
+            EventAt = now,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        return new AttendanceActionResult(true, ToDto(record, [request]));
     }
 
     public async Task<AttendanceActionResult> ClockOutAsync(string employeeId, ClockOutDto dto)
@@ -181,7 +199,10 @@ public class AttendanceService : IAttendanceService
             return new AttendanceActionResult(false, null, "You haven't clocked in today.");
 
         if (record.TimeOut is not null)
-            return new AttendanceActionResult(false, ToDto(record), "You've already clocked out today.");
+        {
+            var currentApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
+            return new AttendanceActionResult(false, ToDto(record, currentApprovals), "You've already clocked out today.");
+        }
 
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
@@ -190,16 +211,11 @@ public class AttendanceService : IAttendanceService
         record.TimeOut = now;
         record.DurationMin = (int)Math.Round((now - record.TimeIn.Value).TotalMinutes);
         record.Status = AttendanceStatus.CLOCKED_OUT;
-        record.ApprovalStatus = AttendanceApprovalStatus.PENDING;
-        record.CurrentStep = 0;
         record.ClockOutLat = dto.Lat;
         record.ClockOutLng = dto.Lng;
         record.ClockOutDistanceMeters = distance;
         record.ClockOutPhotoUrl = dto.PhotoUrl;
         if (!string.IsNullOrWhiteSpace(dto.Remark)) record.Remark = dto.Remark;
-        record.SubmittedAt = now;
-        record.DecidedAt = null;
-        record.ReviewNotes = null;
         record.UpdatedAt = now;
         await _repo.UpdateAsync(record);
 
@@ -211,49 +227,47 @@ public class AttendanceService : IAttendanceService
             await _sessions.UpdateAsync(session);
         }
 
-        return new AttendanceActionResult(true, ToDto(record));
+        await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        {
+            EmployeeId = employeeId,
+            Kind = AttendanceApprovalKind.CLOCK_OUT,
+            AttendanceRecordId = record.Id,
+            AttendanceSessionId = session?.Id,
+            EventAt = now,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        var allApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
+        return new AttendanceActionResult(true, ToDto(record, allApprovals));
     }
 
     public async Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId)
     {
-        var (record, error) = await AuthorizeAsync(id, approverId);
-        if (error is not null) return error;
+        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
+        if (!found) return new AttendanceTransitionResult(false, false, null);
+        if (error is not null)
+            return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!), error);
 
-        var now = DateTime.UtcNow;
-        var stepCount = await _router.StepCountAsync(Module, record!.EmployeeId);
-        var isFinal = record.CurrentStep + 1 >= stepCount;
-        if (isFinal)
-        {
-            record.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
-            record.DecidedAt = now;
-        }
-        else
-        {
-            record.CurrentStep += 1;
-        }
-
-        record.UpdatedAt = now;
-        await _repo.UpdateAsync(record);
-        return new AttendanceTransitionResult(true, true, ToDto(record));
+        await DecideAsync(request!, approverId, approve: true, reviewNotes: null);
+        return new AttendanceTransitionResult(true, true, await ToRecordDtoAsync(request!));
     }
 
     public async Task<AttendanceTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
-        var (record, error) = await AuthorizeAsync(id, approverId);
-        if (error is not null) return error;
+        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
+        if (!found) return new AttendanceTransitionResult(false, false, null);
+        if (error is not null)
+            return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!), error);
 
         var cleanedReviewNotes = Clean(reviewNotes);
         if (cleanedReviewNotes is null)
-            return new AttendanceTransitionResult(true, false, null,
+            return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!),
                 "Enter a rejection remark before rejecting this attendance record.");
 
-        var now = DateTime.UtcNow;
-        record!.ApprovalStatus = AttendanceApprovalStatus.REJECTED;
-        record.ReviewNotes = cleanedReviewNotes;
-        record.DecidedAt = now;
-        record.UpdatedAt = now;
-        await _repo.UpdateAsync(record);
-        return new AttendanceTransitionResult(true, true, ToDto(record));
+        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+        return new AttendanceTransitionResult(true, true, await ToRecordDtoAsync(request!));
     }
 
     public async Task<AttendanceBreakActionResult> StartBreakAsync(string employeeId, StartBreakDto dto)
@@ -284,14 +298,25 @@ public class AttendanceService : IAttendanceService
             StartLat = captureGps ? dto.Lat : null,
             StartLng = captureGps ? dto.Lng : null,
             Remark = Clean(dto.Remark),
-            ApprovalStatus = AttendanceApprovalStatus.PENDING,
-            CurrentStep = 0,
-            SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
         };
         var saved = await _breaks.AddAsync(brk);
-        return new AttendanceBreakActionResult(true, ToBreakDto(saved));
+
+        var request = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        {
+            EmployeeId = employeeId,
+            Kind = AttendanceApprovalKind.BREAK_START,
+            AttendanceRecordId = record.Id,
+            AttendanceSessionId = session.Id,
+            AttendanceBreakId = saved.Id,
+            EventAt = now,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        return new AttendanceBreakActionResult(true, ToBreakDto(saved, [request]));
     }
 
     public async Task<AttendanceBreakActionResult> EndBreakAsync(string employeeId, EndBreakDto dto)
@@ -317,71 +342,65 @@ public class AttendanceService : IAttendanceService
         brk.EndLat = captureGps ? dto.Lat : null;
         brk.EndLng = captureGps ? dto.Lng : null;
         if (!string.IsNullOrWhiteSpace(dto.Remark)) brk.Remark = dto.Remark;
-        // The end event needs its own approval pass, mirroring how ClockOutAsync
-        // resets AttendanceRecord's approval fields on top of clock-in's decision.
-        brk.ApprovalStatus = AttendanceApprovalStatus.PENDING;
-        brk.CurrentStep = 0;
-        brk.SubmittedAt = now;
-        brk.DecidedAt = null;
-        brk.ReviewNotes = null;
         brk.UpdatedAt = now;
         await _breaks.UpdateAsync(brk);
-        return new AttendanceBreakActionResult(true, ToBreakDto(brk));
+
+        await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        {
+            EmployeeId = employeeId,
+            Kind = AttendanceApprovalKind.BREAK_END,
+            AttendanceRecordId = brk.AttendanceRecordId,
+            AttendanceSessionId = brk.AttendanceSessionId,
+            AttendanceBreakId = brk.Id,
+            EventAt = now,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        var allApprovals = await _approvalRequests.GetByBreakIdsAsync([brk.Id]);
+        return new AttendanceBreakActionResult(true, ToBreakDto(brk, allApprovals));
     }
 
     public async Task<AttendanceBreakTransitionResult> ApproveBreakAsync(string id, string approverId)
     {
-        var (brk, error) = await AuthorizeBreakAsync(id, approverId);
-        if (error is not null) return error;
+        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
+        if (!found) return new AttendanceBreakTransitionResult(false, false, null);
+        if (error is not null)
+            return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!), error);
 
-        var now = DateTime.UtcNow;
-        var stepCount = await _router.StepCountAsync(Module, brk!.EmployeeId);
-        var isFinal = brk.CurrentStep + 1 >= stepCount;
-        if (isFinal)
-        {
-            brk.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
-            brk.DecidedAt = now;
-        }
-        else
-        {
-            brk.CurrentStep += 1;
-        }
-
-        brk.UpdatedAt = now;
-        await _breaks.UpdateAsync(brk);
-        return new AttendanceBreakTransitionResult(true, true, ToBreakDto(brk));
+        await DecideAsync(request!, approverId, approve: true, reviewNotes: null);
+        return new AttendanceBreakTransitionResult(true, true, await ToBreakDtoAsync(request!));
     }
 
     public async Task<AttendanceBreakTransitionResult> RejectBreakAsync(string id, string approverId, string? reviewNotes)
     {
-        var (brk, error) = await AuthorizeBreakAsync(id, approverId);
-        if (error is not null) return error;
+        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
+        if (!found) return new AttendanceBreakTransitionResult(false, false, null);
+        if (error is not null)
+            return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!), error);
 
         var cleanedReviewNotes = Clean(reviewNotes);
         if (cleanedReviewNotes is null)
-            return new AttendanceBreakTransitionResult(true, false, null,
+            return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!),
                 "Enter a rejection remark before rejecting this break.");
 
-        var now = DateTime.UtcNow;
-        brk!.ApprovalStatus = AttendanceApprovalStatus.REJECTED;
-        brk.ReviewNotes = cleanedReviewNotes;
-        brk.DecidedAt = now;
-        brk.UpdatedAt = now;
-        await _breaks.UpdateAsync(brk);
-        return new AttendanceBreakTransitionResult(true, true, ToBreakDto(brk));
+        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+        return new AttendanceBreakTransitionResult(true, true, await ToBreakDtoAsync(request!));
     }
 
-    public async Task<IEnumerable<AttendanceBreakDto>> GetTeamBreakApprovalsAsync(string userId)
+    public async Task<IEnumerable<AttendanceApprovalRequestDto>> GetTeamBreakApprovalsAsync(string userId)
     {
-        var all = await _breaks.GetPendingAsync();
-        var visible = new List<AttendanceBreak>();
-        foreach (var brk in all)
+        var pending = await _approvalRequests.GetOpenByKindsAsync(BreakKinds);
+        var visible = new List<AttendanceApprovalRequest>();
+        foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, brk.EmployeeId, brk.CurrentStep);
-            if (approvers.Contains(userId)) visible.Add(brk);
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            if (approvers.Contains(userId)) visible.Add(request);
         }
 
-        return visible.Select(ToBreakDto);
+        var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
+        return visible.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceBreakListResult> GetBreaksForRecordAsync(
@@ -399,26 +418,74 @@ public class AttendanceService : IAttendanceService
             return new AttendanceBreakListResult(true, false, null, "Not authorized to view this employee's breaks.");
 
         var breaks = await _breaks.GetByRecordAsync(recordId);
-        return new AttendanceBreakListResult(true, true, breaks.Select(ToBreakDto));
+        var approvals = await _approvalRequests.GetByBreakIdsAsync(breaks.Select(b => b.Id));
+        var byBreak = approvals.GroupBy(a => a.AttendanceBreakId!)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
+        return new AttendanceBreakListResult(true, true,
+            breaks.Select(b => ToBreakDto(b, byBreak.GetValueOrDefault(b.Id, []))));
     }
 
-    private async Task<(AttendanceBreak? Break, AttendanceBreakTransitionResult? Error)> AuthorizeBreakAsync(
-        string id,
-        string approverId)
+    public async Task<AttendanceBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId)
     {
-        var brk = await _breaks.GetByIdAsync(id);
-        if (brk is null)
-            return (null, new AttendanceBreakTransitionResult(false, false, null));
+        var overflow = ids.Count > MaxBulkIds;
+        var toProcess = overflow ? [] : ids;
+        var items = new List<AttendanceBulkResultItem>();
+        var toSave = new List<AttendanceApprovalRequest>();
 
-        var approvers = await _router.CurrentApproversAsync(Module, brk.EmployeeId, brk.CurrentStep);
-        if (!approvers.Contains(approverId))
-            return (null, new AttendanceBreakTransitionResult(false, false, null));
+        if (overflow)
+            items.Add(new AttendanceBulkResultItem(string.Empty, false, $"Too many ids — pick fewer than {MaxBulkIds}."));
 
-        if (brk.ApprovalStatus != AttendanceApprovalStatus.PENDING)
-            return (brk, new AttendanceBreakTransitionResult(true, false, ToBreakDto(brk),
-                "Only pending breaks can be approved or rejected."));
+        foreach (var id in toProcess)
+        {
+            var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
+            if (!found) { items.Add(new AttendanceBulkResultItem(id, false, "Not found.")); continue; }
+            if (error is not null) { items.Add(new AttendanceBulkResultItem(id, false, error)); continue; }
 
-        return (brk, null);
+            await DecideInMemoryAsync(request!, approverId, approve: true, reviewNotes: null);
+            toSave.Add(request!);
+            items.Add(new AttendanceBulkResultItem(id, true));
+        }
+
+        if (toSave.Count > 0) await _approvalRequests.UpdateRangeAsync(toSave);
+        return BuildBulkResult(items);
+    }
+
+    public async Task<AttendanceBulkResult> BulkRejectAsync(IReadOnlyList<string> ids, string approverId, string? reviewNotes)
+    {
+        var cleanedReviewNotes = Clean(reviewNotes);
+        if (cleanedReviewNotes is null)
+            return new AttendanceBulkResult(0, ids.Count,
+                ids.Select(id => new AttendanceBulkResultItem(id, false, "Enter a rejection remark before rejecting.")).ToList());
+
+        var overflow = ids.Count > MaxBulkIds;
+        var toProcess = overflow ? [] : ids;
+        var items = new List<AttendanceBulkResultItem>();
+        var toSave = new List<AttendanceApprovalRequest>();
+
+        if (overflow)
+            items.Add(new AttendanceBulkResultItem(string.Empty, false, $"Too many ids — pick fewer than {MaxBulkIds}."));
+
+        foreach (var id in toProcess)
+        {
+            var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
+            if (!found) { items.Add(new AttendanceBulkResultItem(id, false, "Not found.")); continue; }
+            if (error is not null) { items.Add(new AttendanceBulkResultItem(id, false, error)); continue; }
+
+            await DecideInMemoryAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+            toSave.Add(request!);
+            items.Add(new AttendanceBulkResultItem(id, true));
+        }
+
+        if (toSave.Count > 0) await _approvalRequests.UpdateRangeAsync(toSave);
+        return BuildBulkResult(items);
+    }
+
+    public async Task<IEnumerable<AttendanceApprovalRequestDto>> GetAuditLogAsync(
+        string? employeeId, DateTime? from, DateTime? to)
+    {
+        var requests = await _approvalRequests.GetForAuditAsync(employeeId, from, to);
+        var emails = await _supervision.GetEmailsAsync(requests.Select(r => r.EmployeeId).Distinct());
+        return requests.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
     }
 
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
@@ -474,23 +541,88 @@ public class AttendanceService : IAttendanceService
     private static bool OffSiteProofMissing(string? remark, string? photoUrl) =>
         string.IsNullOrWhiteSpace(remark) || string.IsNullOrEmpty(photoUrl);
 
-    private async Task<(AttendanceRecord? Record, AttendanceTransitionResult? Error)> AuthorizeAsync(
+    // Loads an approval request for a decide operation (single or bulk),
+    // shared by every Approve/Reject path so the guards only live in one place.
+    //   not found, wrong kind, or caller isn't a current-step approver → Found=false
+    //     (collapses "not your approval" into "not found" — pre-existing
+    //     behavior from before this change, kept as-is).
+    //   already decided → Found=true with an Error.
+    private async Task<(AttendanceApprovalRequest? Request, bool Found, string? Error)> LoadDecidableRequestAsync(
         string id,
-        string approverId)
+        string approverId,
+        IReadOnlySet<AttendanceApprovalKind> allowedKinds)
     {
-        var record = await _repo.GetByIdAsync(id);
-        if (record is null)
-            return (null, new AttendanceTransitionResult(false, false, null));
+        var request = await _approvalRequests.GetByIdAsync(id);
+        if (request is null || !allowedKinds.Contains(request.Kind))
+            return (null, false, null);
 
-        var approvers = await _router.CurrentApproversAsync(Module, record.EmployeeId, record.CurrentStep);
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
         if (!approvers.Contains(approverId))
-            return (null, new AttendanceTransitionResult(false, false, null));
+            return (null, false, null);
 
-        if (record.ApprovalStatus != AttendanceApprovalStatus.PENDING)
-            return (record, new AttendanceTransitionResult(true, false, ToDto(record),
-                "Only pending attendance records can be approved or rejected."));
+        if (request.ApprovalStatus != AttendanceApprovalStatus.PENDING)
+            return (request, true, "Only pending approvals can be approved or rejected.");
 
-        return (record, null);
+        return (request, true, null);
+    }
+
+    private async Task DecideAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)
+    {
+        await DecideInMemoryAsync(request, approverId, approve, reviewNotes);
+        await _approvalRequests.UpdateAsync(request);
+    }
+
+    private async Task DecideInMemoryAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)
+    {
+        var now = DateTime.UtcNow;
+        request.ReviewerId = approverId;
+
+        if (!approve)
+        {
+            request.ApprovalStatus = AttendanceApprovalStatus.REJECTED;
+            request.ReviewNotes = reviewNotes;
+            request.DecidedAt = now;
+            request.UpdatedAt = now;
+            return;
+        }
+
+        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+        var isFinal = request.CurrentStep + 1 >= stepCount;
+        if (isFinal)
+        {
+            request.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
+            request.DecidedAt = now;
+        }
+        else
+        {
+            request.CurrentStep += 1;
+        }
+
+        request.UpdatedAt = now;
+    }
+
+    private async Task<AttendanceRecordDto?> ToRecordDtoAsync(AttendanceApprovalRequest? request)
+    {
+        if (request is null) return null;
+        var record = await _repo.GetByIdAsync(request.AttendanceRecordId);
+        if (record is null) return null;
+        var approvals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
+        return ToDto(record, approvals);
+    }
+
+    private async Task<AttendanceBreakDto?> ToBreakDtoAsync(AttendanceApprovalRequest? request)
+    {
+        if (request?.AttendanceBreakId is null) return null;
+        var brk = await _breaks.GetByIdAsync(request.AttendanceBreakId);
+        if (brk is null) return null;
+        var approvals = await _approvalRequests.GetByBreakIdsAsync([brk.Id]);
+        return ToBreakDto(brk, approvals);
+    }
+
+    private static AttendanceBulkResult BuildBulkResult(List<AttendanceBulkResultItem> items)
+    {
+        var succeeded = items.Count(i => i.Ok);
+        return new AttendanceBulkResult(succeeded, items.Count - succeeded, items);
     }
 
     private static AttendanceActionResult OffSiteRequired(double? distance) => new(
@@ -511,54 +643,82 @@ public class AttendanceService : IAttendanceService
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    private static AttendanceRecordDto ToDto(AttendanceRecord r) => new()
+    private static AttendanceRecordDto ToDto(AttendanceRecord r, IReadOnlyList<AttendanceApprovalRequest> approvals)
     {
-        Id = r.Id,
-        EmployeeId = r.EmployeeId,
-        Date = r.Date.ToString("yyyy-MM-dd"),
-        TimeIn = Iso(r.TimeIn),
-        TimeOut = Iso(r.TimeOut),
-        DurationMin = r.DurationMin,
-        LateByMin = r.LateByMin,
-        Location = r.Location,
-        ProjectId = r.ProjectId,
-        ClockInLat = r.ClockInLat,
-        ClockInLng = r.ClockInLng,
-        ClockInDistanceMeters = r.ClockInDistanceMeters,
-        ClockOutLat = r.ClockOutLat,
-        ClockOutLng = r.ClockOutLng,
-        ClockOutDistanceMeters = r.ClockOutDistanceMeters,
-        ClockInPhotoUrl = r.ClockInPhotoUrl,
-        ClockOutPhotoUrl = r.ClockOutPhotoUrl,
-        Status = r.Status,
-        ApprovalStatus = r.ApprovalStatus,
-        CurrentStep = r.CurrentStep,
-        Notes = r.Notes,
-        Remark = r.Remark,
-        ReviewNotes = r.ReviewNotes,
-        SubmittedAt = Iso(r.SubmittedAt),
-        DecidedAt = Iso(r.DecidedAt),
-        CreatedAt = Iso(r.CreatedAt) ?? string.Empty,
-        UpdatedAt = Iso(r.UpdatedAt) ?? string.Empty,
-    };
+        var latest = approvals.OrderByDescending(a => a.SubmittedAt).FirstOrDefault();
+        return new AttendanceRecordDto
+        {
+            Id = r.Id,
+            EmployeeId = r.EmployeeId,
+            Date = r.Date.ToString("yyyy-MM-dd"),
+            TimeIn = Iso(r.TimeIn),
+            TimeOut = Iso(r.TimeOut),
+            DurationMin = r.DurationMin,
+            LateByMin = r.LateByMin,
+            Location = r.Location,
+            ProjectId = r.ProjectId,
+            ClockInLat = r.ClockInLat,
+            ClockInLng = r.ClockInLng,
+            ClockInDistanceMeters = r.ClockInDistanceMeters,
+            ClockOutLat = r.ClockOutLat,
+            ClockOutLng = r.ClockOutLng,
+            ClockOutDistanceMeters = r.ClockOutDistanceMeters,
+            ClockInPhotoUrl = r.ClockInPhotoUrl,
+            ClockOutPhotoUrl = r.ClockOutPhotoUrl,
+            Status = r.Status,
+            ApprovalStatus = latest?.ApprovalStatus ?? AttendanceApprovalStatus.PENDING,
+            CurrentStep = latest?.CurrentStep ?? 0,
+            ReviewNotes = latest?.ReviewNotes,
+            SubmittedAt = Iso(latest?.SubmittedAt),
+            DecidedAt = Iso(latest?.DecidedAt),
+            Approvals = approvals.Select(a => ToApprovalRequestDto(a, null)).ToList(),
+            Notes = r.Notes,
+            Remark = r.Remark,
+            CreatedAt = Iso(r.CreatedAt) ?? string.Empty,
+            UpdatedAt = Iso(r.UpdatedAt) ?? string.Empty,
+        };
+    }
 
-    private static AttendanceBreakDto ToBreakDto(AttendanceBreak b) => new()
+    private static AttendanceBreakDto ToBreakDto(AttendanceBreak b, IReadOnlyList<AttendanceApprovalRequest> approvals)
     {
-        Id = b.Id,
-        AttendanceSessionId = b.AttendanceSessionId,
-        AttendanceRecordId = b.AttendanceRecordId,
-        StartedAt = Iso(b.StartedAt) ?? string.Empty,
-        EndedAt = Iso(b.EndedAt),
-        DurationMin = b.EndedAt is null ? null : (int)Math.Round((b.EndedAt.Value - b.StartedAt).TotalMinutes),
-        StartLat = b.StartLat,
-        StartLng = b.StartLng,
-        EndLat = b.EndLat,
-        EndLng = b.EndLng,
-        Remark = b.Remark,
-        ApprovalStatus = b.ApprovalStatus,
-        CurrentStep = b.CurrentStep,
-        ReviewNotes = b.ReviewNotes,
-        SubmittedAt = Iso(b.SubmittedAt),
-        DecidedAt = Iso(b.DecidedAt),
+        var latest = approvals.OrderByDescending(a => a.SubmittedAt).FirstOrDefault();
+        return new AttendanceBreakDto
+        {
+            Id = b.Id,
+            AttendanceSessionId = b.AttendanceSessionId,
+            AttendanceRecordId = b.AttendanceRecordId,
+            StartedAt = Iso(b.StartedAt) ?? string.Empty,
+            EndedAt = Iso(b.EndedAt),
+            DurationMin = b.EndedAt is null ? null : (int)Math.Round((b.EndedAt.Value - b.StartedAt).TotalMinutes),
+            StartLat = b.StartLat,
+            StartLng = b.StartLng,
+            EndLat = b.EndLat,
+            EndLng = b.EndLng,
+            Remark = b.Remark,
+            ApprovalStatus = latest?.ApprovalStatus ?? AttendanceApprovalStatus.PENDING,
+            CurrentStep = latest?.CurrentStep ?? 0,
+            ReviewNotes = latest?.ReviewNotes,
+            SubmittedAt = Iso(latest?.SubmittedAt),
+            DecidedAt = Iso(latest?.DecidedAt),
+            Approvals = approvals.Select(a => ToApprovalRequestDto(a, null)).ToList(),
+        };
+    }
+
+    private static AttendanceApprovalRequestDto ToApprovalRequestDto(AttendanceApprovalRequest a, string? employeeEmail) => new()
+    {
+        Id = a.Id,
+        EmployeeId = a.EmployeeId,
+        EmployeeEmail = employeeEmail,
+        Kind = a.Kind,
+        EventAt = Iso(a.EventAt) ?? string.Empty,
+        ApprovalStatus = a.ApprovalStatus,
+        CurrentStep = a.CurrentStep,
+        ReviewNotes = a.ReviewNotes,
+        ReviewerId = a.ReviewerId,
+        SubmittedAt = Iso(a.SubmittedAt),
+        DecidedAt = Iso(a.DecidedAt),
+        AttendanceRecordId = a.AttendanceRecordId,
+        AttendanceSessionId = a.AttendanceSessionId,
+        AttendanceBreakId = a.AttendanceBreakId,
     };
 }

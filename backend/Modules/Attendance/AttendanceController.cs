@@ -51,17 +51,38 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> ClockOut(ClockOutDto dto) =>
         ToResponse(await _attendance.ClockOutAsync(GetUserId(), dto));
 
-    // POST /attendance/{id}/approve — current-step approver only.
+    // POST /attendance/{id}/approve — {id} is an AttendanceApprovalRequest id
+    // (CLOCK_IN/CLOCK_OUT only). Current-step approver only.
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
         ToTransitionResponse(await _attendance.ApproveAsync(id, GetUserId()));
 
-    // POST /attendance/{id}/reject — current-step approver only.
+    // POST /attendance/{id}/reject — same id space as Approve above.
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectAttendanceDto dto) =>
         ToTransitionResponse(await _attendance.RejectAsync(id, GetUserId(), dto.ReviewNotes));
+
+    // POST /attendance/bulk/approve — approve many approval requests (records
+    // and/or breaks) in one call. Independent per-id success/failure.
+    [HttpPost("bulk/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkApprove(BulkApproveDto dto) =>
+        Ok(await _attendance.BulkApproveAsync(dto.Ids, GetUserId()));
+
+    // POST /attendance/bulk/reject
+    [HttpPost("bulk/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkReject(BulkRejectDto dto) =>
+        Ok(await _attendance.BulkRejectAsync(dto.Ids, GetUserId(), dto.ReviewNotes));
+
+    // GET /attendance/audit-log — every approval decision (any kind), for compliance review.
+    [RequireScope("attendance:read")]
+    [HttpGet("audit-log")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetAuditLog([FromQuery] string? employeeId, [FromQuery] DateTime? from, [FromQuery] DateTime? to) =>
+        Ok(await _attendance.GetAuditLogAsync(employeeId, from, to));
 
     // POST /attendance/break/start — start a break on today's active session.
     [HttpPost("break/start")]
@@ -73,7 +94,8 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> EndBreak(EndBreakDto dto) =>
         ToBreakResponse(await _attendance.EndBreakAsync(GetUserId(), dto));
 
-    // POST /attendance/break/{id}/approve — current-step approver only.
+    // POST /attendance/break/{id}/approve — {id} is an AttendanceApprovalRequest
+    // id (BREAK_START/BREAK_END only). Current-step approver only.
     [HttpPost("break/{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> ApproveBreak(string id) =>
