@@ -15,8 +15,13 @@ namespace AltomateHR.Api.Modules.Attendance;
 public class AttendanceController : ControllerBase
 {
     private readonly IAttendanceService _attendance;
+    private readonly IHoursSummaryService _hoursSummary;
 
-    public AttendanceController(IAttendanceService attendance) => _attendance = attendance;
+    public AttendanceController(IAttendanceService attendance, IHoursSummaryService hoursSummary)
+    {
+        _attendance = attendance;
+        _hoursSummary = hoursSummary;
+    }
 
     // GET /attendance — history. Admins see the whole org (roll call);
     // employees see only their own records.
@@ -39,6 +44,33 @@ public class AttendanceController : ControllerBase
     {
         var record = await _attendance.GetTodayAsync(GetUserId());
         return record is null ? NoContent() : Ok(record);
+    }
+
+    // GET /attendance/hours-summary/me — the caller's own worked-minutes totals for a range.
+    [RequireScope("attendance:read")]
+    [HttpGet("hours-summary/me")]
+    public async Task<IActionResult> GetMyHoursSummary([FromQuery] DateTime from, [FromQuery] DateTime to) =>
+        Ok(await _hoursSummary.GetMyHoursSummaryAsync(GetUserId(), from, to));
+
+    // GET /attendance/hours-summary/org — org-wide totals, one row per Employee/
+    // Supervisor, optionally narrowed to one team. Admin/Owner only.
+    [RequireScope("attendance:read")]
+    [HttpGet("hours-summary/org")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetOrgHoursSummary(
+        [FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string? teamId) =>
+        Ok(await _hoursSummary.GetOrgHoursSummaryAsync(from, to, teamId));
+
+    // GET /attendance/hours-summary/employees/{employeeId} — one employee's totals,
+    // for the employee themself or their approver (supervisor/admin/owner).
+    [RequireScope("attendance:read")]
+    [HttpGet("hours-summary/employees/{employeeId}")]
+    public async Task<IActionResult> GetEmployeeHoursSummary(
+        string employeeId, [FromQuery] DateTime from, [FromQuery] DateTime to)
+    {
+        var result = await _hoursSummary.GetEmployeeHoursSummaryAsync(
+            employeeId, from, to, GetUserId(), User.FindFirstValue(ClaimTypes.Role));
+        return result is null ? Forbid() : Ok(result);
     }
 
     // POST /attendance/clock-in
