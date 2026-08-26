@@ -29,6 +29,24 @@ public interface IAttendanceService
     Task<AttendanceDeleteSelfiesResultDto> DeleteSelfiesInRangeAsync(DateTime from, DateTime to);
 
     Task<AttendanceAdjustmentResult> SubmitTimeAdjustmentAsync(string employeeId, SubmitTimeAdjustmentDto dto);
+
+    // ---- Automation (cron-style) — see Modules/Attendance/Cron/ ----
+
+    // Closes AttendanceSessions still open past cutoffMinutes, capped at
+    // maxCandidates per call. Org-agnostic (runs outside any request context
+    // when called from the background service).
+    Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int cutoffMinutes, int maxCandidates);
+
+    // Employees currently clocked in longer than thresholdMinutes. Tenant
+    // filtering is automatic: scoped to the caller's org when called from an
+    // authenticated request, every org when called from the background
+    // sweep (no request context — matches DbSeeder's behavior).
+    Task<IEnumerable<StillClockedInWarningDto>> GetStillClockedInWarningsAsync(int thresholdMinutes);
+
+    // The caller's own pending-approval count (any kind) — how many
+    // AttendanceApprovalRequest rows they're currently a current-step
+    // approver for.
+    Task<PendingApprovalDigestDto> GetPendingApprovalDigestAsync(string userId);
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case

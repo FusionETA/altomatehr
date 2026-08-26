@@ -41,6 +41,9 @@ public class AttendanceRepository : IAttendanceRepository
                 && (r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null))
             .ToListAsync();
 
+    public Task<List<AttendanceRecord>> GetOpenRecordsAsync() =>
+        _db.AttendanceRecords.Where(r => r.TimeIn != null && r.TimeOut == null).ToListAsync();
+
     public async Task<AttendanceRecord> AddAsync(AttendanceRecord record)
     {
         _db.AttendanceRecords.Add(record);

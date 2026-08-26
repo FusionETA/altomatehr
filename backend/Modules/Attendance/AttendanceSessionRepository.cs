@@ -20,6 +20,13 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
     public Task<AttendanceSession?> GetByIdAsync(string id) =>
         _db.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id);
 
+    public Task<List<AttendanceSession>> GetOpenStartedBeforeAsync(DateTime cutoff, int limit) =>
+        _db.AttendanceSessions
+            .Where(s => s.EndedAt == null && s.StartedAt <= cutoff)
+            .OrderBy(s => s.StartedAt)
+            .Take(limit)
+            .ToListAsync();
+
     public async Task<AttendanceSession> AddAsync(AttendanceSession session)
     {
         _db.AttendanceSessions.Add(session);

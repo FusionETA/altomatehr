@@ -46,6 +46,33 @@ public class AttendanceController : ControllerBase
         return record is null ? NoContent() : Ok(record);
     }
 
+    // POST /attendance/cron/auto-clockout/run — force-run the auto-clockout
+    // sweep now, instead of waiting for the background service's next tick.
+    // Same underlying logic AutoClockOutBackgroundService calls on its timer.
+    [HttpPost("cron/auto-clockout/run")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> RunAutoClockOutSweep(
+        [FromQuery] int? cutoffMinutes, [FromQuery] int? maxCandidates) =>
+        Ok(await _attendance.RunAutoClockOutSweepAsync(cutoffMinutes ?? 720, maxCandidates ?? 200));
+
+    // GET /attendance/warnings/still-clocked-in — employees clocked in longer
+    // than thresholdMinutes (default 600 = 10h). Detection only — no
+    // notification is sent; the AutoClockOutBackgroundService logs the same
+    // detection on a timer, this is the on-demand equivalent. Admin/Owner only.
+    [RequireScope("attendance:read")]
+    [HttpGet("warnings/still-clocked-in")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetStillClockedInWarnings([FromQuery] int? thresholdMinutes) =>
+        Ok(await _attendance.GetStillClockedInWarningsAsync(thresholdMinutes ?? 600));
+
+    // GET /attendance/pending-approvals/digest — the caller's own pending-
+    // approval count. Detection only, same caveat as above.
+    [RequireScope("attendance:read")]
+    [HttpGet("pending-approvals/digest")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> GetPendingApprovalDigest() =>
+        Ok(await _attendance.GetPendingApprovalDigestAsync(GetUserId()));
+
     // GET /attendance/hours-summary/me — the caller's own worked-minutes totals for a range.
     [RequireScope("attendance:read")]
     [HttpGet("hours-summary/me")]

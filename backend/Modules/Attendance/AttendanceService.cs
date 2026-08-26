@@ -651,6 +651,104 @@ public class AttendanceService : IAttendanceService
         return (true, null, created);
     }
 
+    public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int cutoffMinutes, int maxCandidates)
+    {
+        var cutoffBefore = DateTime.UtcNow.AddMinutes(-cutoffMinutes);
+        var candidates = await _sessions.GetOpenStartedBeforeAsync(cutoffBefore, maxCandidates);
+
+        var clockedOut = 0;
+        var errors = 0;
+        foreach (var session in candidates)
+        {
+            try
+            {
+                var record = await _repo.GetByIdAsync(session.AttendanceRecordId);
+                if (record is null || record.TimeOut is not null) continue;   // already handled
+
+                var cutoffAt = session.StartedAt.AddMinutes(cutoffMinutes);
+                var now = DateTime.UtcNow;
+
+                session.EndedAt = cutoffAt;
+                session.UpdatedAt = now;
+                await _sessions.UpdateAsync(session);
+
+                record.TimeOut = cutoffAt;
+                record.DurationMin = (int)Math.Round((cutoffAt - (record.TimeIn ?? cutoffAt)).TotalMinutes);
+                record.Status = AttendanceStatus.CLOCKED_OUT;
+                record.Notes = string.IsNullOrEmpty(record.Notes)
+                    ? "Auto clocked-out by system (forgot to clock out)."
+                    : record.Notes + " | Auto clocked-out by system.";
+                record.UpdatedAt = now;
+                await _repo.UpdateAsync(record);
+
+                // No request-context user to auto-stamp OrganizationId here
+                // (StampTenant no-ops without a current org) — set explicitly.
+                await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+                {
+                    OrganizationId = record.OrganizationId,
+                    EmployeeId = record.EmployeeId,
+                    Kind = AttendanceApprovalKind.CLOCK_OUT,
+                    AttendanceRecordId = record.Id,
+                    AttendanceSessionId = session.Id,
+                    EventAt = cutoffAt,
+                    SubmittedAt = now,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+
+                clockedOut++;
+            }
+            catch
+            {
+                errors++;
+            }
+        }
+
+        return new AttendanceAutoClockOutResultDto
+        {
+            Inspected = candidates.Count,
+            ClockedOut = clockedOut,
+            Errors = errors,
+        };
+    }
+
+    public async Task<IEnumerable<StillClockedInWarningDto>> GetStillClockedInWarningsAsync(int thresholdMinutes)
+    {
+        var now = DateTime.UtcNow;
+        var open = await _repo.GetOpenRecordsAsync();
+        var warnings = open
+            .Where(r => r.TimeIn is not null && (now - r.TimeIn.Value).TotalMinutes >= thresholdMinutes)
+            .Select(r => new StillClockedInWarningDto
+            {
+                EmployeeId = r.EmployeeId,
+                RecordId = r.Id,
+                TimeIn = Iso(r.TimeIn) ?? string.Empty,
+                MinutesClockedIn = (int)Math.Round((now - r.TimeIn!.Value).TotalMinutes),
+            })
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(warnings.Select(w => w.EmployeeId).Distinct());
+        foreach (var w in warnings) w.EmployeeEmail = emails.GetValueOrDefault(w.EmployeeId);
+        return warnings;
+    }
+
+    public async Task<PendingApprovalDigestDto> GetPendingApprovalDigestAsync(string userId)
+    {
+        var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+        var mine = new List<AttendanceApprovalRequest>();
+        foreach (var request in pending)
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            if (approvers.Contains(userId)) mine.Add(request);
+        }
+
+        return new PendingApprovalDigestDto
+        {
+            PendingCount = mine.Count,
+            OldestSubmittedAt = mine.Count == 0 ? null : Iso(mine.Min(r => r.SubmittedAt)),
+        };
+    }
+
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
         _photos.StoreAsync(upload);
 
