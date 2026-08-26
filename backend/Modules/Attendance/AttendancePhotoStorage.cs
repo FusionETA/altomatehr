@@ -65,6 +65,28 @@ public class AttendancePhotoStorage : IAttendancePhotoStorage
             new AttendancePhotoFileResult(path, contentType, safeFileName));
     }
 
+    public Task<bool> DeleteAsync(string fileName)
+    {
+        var safeFileName = Path.GetFileName(fileName);
+        if (!string.Equals(fileName, safeFileName, StringComparison.Ordinal))
+            return Task.FromResult(false);
+
+        var path = Path.Combine(GetUploadDirectory(), safeFileName);
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+            return Task.FromResult(true);
+        }
+        catch (IOException)
+        {
+            return Task.FromResult(false);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Task.FromResult(false);
+        }
+    }
+
     private static string GetSafeExtension(string fileName, string fallbackExtension)
     {
         var extension = Path.GetExtension(Path.GetFileName(fileName)).ToLowerInvariant();

@@ -24,6 +24,9 @@ public interface IAttendanceService
     Task<AttendanceBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId);
     Task<AttendanceBulkResult> BulkRejectAsync(IReadOnlyList<string> ids, string approverId, string? reviewNotes);
     Task<IEnumerable<AttendanceApprovalRequestDto>> GetAuditLogAsync(string? employeeId, DateTime? from, DateTime? to);
+
+    Task<AttendanceSelfieStorageStatsDto> GetSelfieStorageStatsAsync();
+    Task<AttendanceDeleteSelfiesResultDto> DeleteSelfiesInRangeAsync(DateTime from, DateTime to);
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case

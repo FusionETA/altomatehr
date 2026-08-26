@@ -122,6 +122,25 @@ public class AttendanceController : ControllerBase
         ToBreakListResponse(await _attendance.GetBreaksForRecordAsync(
             recordId, GetUserId(), User.FindFirstValue(ClaimTypes.Role)));
 
+    // GET /attendance/selfies/stats — how many selfies are stored and their date range.
+    [RequireScope("attendance:read")]
+    [HttpGet("selfies/stats")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetSelfieStorageStats() =>
+        Ok(await _attendance.GetSelfieStorageStatsAsync());
+
+    // POST /attendance/selfies/delete-range — bulk-delete stored selfies within
+    // an inclusive date range and clear the record's photo URL(s).
+    [HttpPost("selfies/delete-range")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> DeleteSelfiesInRange(DeleteSelfiesInRangeDto dto)
+    {
+        if (dto.From > dto.To)
+            return BadRequest(new { message = "Start date must be on or before end date." });
+
+        return Ok(await _attendance.DeleteSelfiesInRangeAsync(dto.From, dto.To));
+    }
+
     // POST /attendance/photo — off-site proof photo. Returns { photoUrl } to
     // include in the clock-in/out request.
     [HttpPost("photo")]

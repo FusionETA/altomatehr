@@ -488,6 +488,75 @@ public class AttendanceService : IAttendanceService
         return requests.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
     }
 
+    public async Task<AttendanceSelfieStorageStatsDto> GetSelfieStorageStatsAsync()
+    {
+        var records = await _repo.GetWithPhotosAsync();
+        var total = records.Count(r => r.ClockInPhotoUrl is not null)
+            + records.Count(r => r.ClockOutPhotoUrl is not null);
+        return new AttendanceSelfieStorageStatsDto
+        {
+            Total = total,
+            Oldest = records.Count == 0 ? null : records.Min(r => r.Date).ToString("yyyy-MM-dd"),
+            Newest = records.Count == 0 ? null : records.Max(r => r.Date).ToString("yyyy-MM-dd"),
+        };
+    }
+
+    public async Task<AttendanceDeleteSelfiesResultDto> DeleteSelfiesInRangeAsync(DateTime from, DateTime to)
+    {
+        var records = await _repo.GetWithPhotosInRangeAsync(from, to);
+        int scanned = 0, deleted = 0, failed = 0;
+
+        foreach (var record in records)
+        {
+            var changed = false;
+
+            if (record.ClockInPhotoUrl is not null)
+            {
+                scanned++;
+                if (await TryDeletePhotoAsync(record.ClockInPhotoUrl))
+                {
+                    record.ClockInPhotoUrl = null;
+                    changed = true;
+                    deleted++;
+                }
+                else failed++;
+            }
+
+            if (record.ClockOutPhotoUrl is not null)
+            {
+                scanned++;
+                if (await TryDeletePhotoAsync(record.ClockOutPhotoUrl))
+                {
+                    record.ClockOutPhotoUrl = null;
+                    changed = true;
+                    deleted++;
+                }
+                else failed++;
+            }
+
+            if (changed)
+            {
+                record.UpdatedAt = DateTime.UtcNow;
+                await _repo.UpdateAsync(record);
+            }
+        }
+
+        return new AttendanceDeleteSelfiesResultDto { Scanned = scanned, Deleted = deleted, Failed = failed };
+    }
+
+    private async Task<bool> TryDeletePhotoAsync(string photoUrl)
+    {
+        var fileName = Path.GetFileName(photoUrl);
+        try
+        {
+            return await _photos.DeleteAsync(fileName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
         _photos.StoreAsync(upload);
 
