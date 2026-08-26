@@ -84,6 +84,7 @@ public class EmployeeService : IEmployeeService
             Role = role,
             SupervisorId = supervisorId,
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
+            ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
@@ -121,6 +122,7 @@ public class EmployeeService : IEmployeeService
         membership.Role = role;
         membership.SupervisorId = supervisorId;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
+        membership.ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId;
         membership.Modules = modulesCsv;
         await _memberships.UpdateAsync(membership);
 
@@ -138,6 +140,7 @@ public class EmployeeService : IEmployeeService
             ? se
             : null,
         PolicyId = m.PolicyId,
+        ShiftId = m.ShiftId,
         Modules = m.Modules is null ? null : OrgModules.Split(m.Modules),
     };
 

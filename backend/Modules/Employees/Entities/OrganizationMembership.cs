@@ -32,6 +32,11 @@ public class OrganizationMembership : ITenantScoped
     [MaxLength(40)]
     public string? PolicyId { get; set; }
 
+    // The shift that governs this person IN THIS org. Null = use their project's
+    // default shift, falling back further to the org's WorkingHoursStart/End.
+    [MaxLength(40)]
+    public string? ShiftId { get; set; }
+
     // Per-admin module grant (csv of OrgModules keys) — narrows what THIS admin can access
     // below the org's plan ceiling. null = no restriction (full access, e.g. owners).
     // Empty string = locked out. Ignored for non-admins.

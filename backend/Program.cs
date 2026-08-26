@@ -15,6 +15,7 @@ using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using Microsoft.AspNetCore.Authentication;
@@ -55,7 +56,8 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
         "  dotnet user-secrets set \"ConnectionStrings:Default\" \"Server=...;Port=...;Database=...;User=...;Password=...;SslMode=Required\"");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0)),
+        mySqlOptions => mySqlOptions.EnableRetryOnFailure(maxRetryCount: 5)));
 
 // ---- Authentication (JWT) ----
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -177,6 +179,8 @@ builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
+builder.Services.AddScoped<IShiftRepository, ShiftRepository>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<ITeamRepository, TeamRepository>();
 builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>();
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();

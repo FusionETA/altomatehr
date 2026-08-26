@@ -22,4 +22,8 @@ public interface IOrganizationMembershipRepository
 
     Task AddAsync(OrganizationMembership membership);
     Task UpdateAsync(OrganizationMembership membership);
+
+    // How many current-org memberships have this shift assigned — used to block
+    // deleting a shift that's still in use.
+    Task<int> CountByShiftIdAsync(string shiftId);
 }

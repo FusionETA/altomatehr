@@ -29,11 +29,16 @@ public class OrganizationService : IOrganizationService
         var org = await _repo.GetByIdAsync(organizationId);
         if (org is null) return null;
 
+        if (string.Compare(dto.WorkingHoursStart, dto.WorkingHoursEnd, StringComparison.Ordinal) >= 0)
+            throw new ArgumentException("Working hours start must be before end.");
+
         org.Name = dto.Name;
         org.DefaultCurrency = dto.DefaultCurrency;
         org.DefaultMileageRate = dto.DefaultMileageRate;
         org.MileageUnit = dto.MileageUnit;
         org.GeofenceRadiusMeters = dto.GeofenceRadiusMeters;
+        org.WorkingHoursStart = dto.WorkingHoursStart;
+        org.WorkingHoursEnd = dto.WorkingHoursEnd;
         await _repo.UpdateAsync(org);
 
         return ToDto(org);
@@ -107,6 +112,8 @@ public class OrganizationService : IOrganizationService
         DefaultMileageRate = o.DefaultMileageRate,
         MileageUnit = o.MileageUnit,
         GeofenceRadiusMeters = o.GeofenceRadiusMeters,
+        WorkingHoursStart = o.WorkingHoursStart,
+        WorkingHoursEnd = o.WorkingHoursEnd,
         Plan = o.Plan.ToString(),
         Tier = o.Tier?.ToString(),
         Addons = OrgModules.Split(o.Addons),
