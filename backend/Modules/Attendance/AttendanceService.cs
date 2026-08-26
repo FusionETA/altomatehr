@@ -557,6 +557,100 @@ public class AttendanceService : IAttendanceService
         }
     }
 
+    public async Task<AttendanceAdjustmentResult> SubmitTimeAdjustmentAsync(string employeeId, SubmitTimeAdjustmentDto dto)
+    {
+        var reason = Clean(dto.Reason);
+        if (reason is null)
+            return new AttendanceAdjustmentResult(false, "Please add a reason for the adjustment.", []);
+
+        if (dto.RequestedTimeIn is null && dto.RequestedTimeOut is null)
+            return new AttendanceAdjustmentResult(false, "Enter at least one corrected time.", []);
+
+        if (dto.RequestedTimeIn is not null && dto.RequestedTimeOut is not null
+            && dto.RequestedTimeOut <= dto.RequestedTimeIn)
+            return new AttendanceAdjustmentResult(false, "Clock-out must be after clock-in.", []);
+
+        var record = await _repo.GetByIdAsync(dto.RecordId);
+        if (record is null || record.EmployeeId != employeeId)
+            return new AttendanceAdjustmentResult(false, "Attendance record not found.", []);
+
+        var created = new List<AttendanceApprovalRequest>();
+        string? firstError = null;
+
+        if (dto.RequestedTimeIn is not null)
+        {
+            var (ok, error, request) = await UpsertAdjustmentRequestAsync(
+                record, AttendanceApprovalKind.CLOCK_IN, record.TimeIn, dto.RequestedTimeIn.Value, employeeId, reason);
+            if (ok) created.Add(request!); else firstError ??= error;
+        }
+
+        if (dto.RequestedTimeOut is not null)
+        {
+            var (ok, error, request) = await UpsertAdjustmentRequestAsync(
+                record, AttendanceApprovalKind.CLOCK_OUT, record.TimeOut, dto.RequestedTimeOut.Value, employeeId, reason);
+            if (ok) created.Add(request!); else firstError ??= error;
+        }
+
+        if (created.Count == 0)
+            return new AttendanceAdjustmentResult(false, firstError ?? "Nothing to change.", []);
+
+        return new AttendanceAdjustmentResult(true, null, created.Select(a => ToApprovalRequestDto(a, null)).ToList());
+    }
+
+    // At least one of clock-in/clock-out corrections must land; the other is
+    // reported via Error but doesn't fail the whole submission (matches how
+    // the reference app allows a partial adjustment when only one side is bad).
+    private async Task<(bool Ok, string? Error, AttendanceApprovalRequest? Request)> UpsertAdjustmentRequestAsync(
+        AttendanceRecord record,
+        AttendanceApprovalKind kind,
+        DateTime? originalAt,
+        DateTime requestedAt,
+        string employeeId,
+        string reason)
+    {
+        if (originalAt is null)
+            return (false, kind == AttendanceApprovalKind.CLOCK_IN
+                ? "There's no clock-in to correct."
+                : "There's no clock-out to correct.", null);
+
+        if (originalAt.Value == requestedAt)
+            return (false, "The requested time matches the current record — nothing to change.", null);
+
+        var now = DateTime.UtcNow;
+
+        // Reuse an existing PENDING adjustment of the same kind so a re-submission
+        // edits it in place instead of stacking duplicates.
+        var existingForRecord = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
+        var pendingAdjustment = existingForRecord.FirstOrDefault(a =>
+            a.Kind == kind && a.ApprovalStatus == AttendanceApprovalStatus.PENDING && a.OriginalEventAt is not null);
+
+        if (pendingAdjustment is not null)
+        {
+            pendingAdjustment.EventAt = requestedAt;
+            pendingAdjustment.Reason = reason;
+            pendingAdjustment.SubmittedAt = now;
+            pendingAdjustment.UpdatedAt = now;
+            await _approvalRequests.UpdateAsync(pendingAdjustment);
+            return (true, null, pendingAdjustment);
+        }
+
+        var session = await _sessions.GetOpenForRecordAsync(record.Id);   // may be null once fully clocked out — fine, nullable
+        var created = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        {
+            EmployeeId = employeeId,
+            Kind = kind,
+            AttendanceRecordId = record.Id,
+            AttendanceSessionId = session?.Id,
+            EventAt = requestedAt,
+            OriginalEventAt = originalAt,
+            Reason = reason,
+            SubmittedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        return (true, null, created);
+    }
+
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
         _photos.StoreAsync(upload);
 
@@ -661,6 +755,10 @@ public class AttendanceService : IAttendanceService
         {
             request.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
             request.DecidedAt = now;
+            // A time-adjustment request only actually changes the record once
+            // it's fully approved — rejecting it just leaves the record as-is.
+            if (request.OriginalEventAt is not null)
+                await ApplyAdjustmentAsync(request);
         }
         else
         {
@@ -668,6 +766,21 @@ public class AttendanceService : IAttendanceService
         }
 
         request.UpdatedAt = now;
+    }
+
+    private async Task ApplyAdjustmentAsync(AttendanceApprovalRequest request)
+    {
+        var record = await _repo.GetByIdAsync(request.AttendanceRecordId);
+        if (record is null) return;
+
+        if (request.Kind == AttendanceApprovalKind.CLOCK_IN) record.TimeIn = request.EventAt;
+        else if (request.Kind == AttendanceApprovalKind.CLOCK_OUT) record.TimeOut = request.EventAt;
+
+        if (record.TimeIn is not null && record.TimeOut is not null)
+            record.DurationMin = (int)Math.Round((record.TimeOut.Value - record.TimeIn.Value).TotalMinutes);
+
+        record.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(record);
     }
 
     private async Task<AttendanceRecordDto?> ToRecordDtoAsync(AttendanceApprovalRequest? request)
@@ -780,6 +893,8 @@ public class AttendanceService : IAttendanceService
         EmployeeEmail = employeeEmail,
         Kind = a.Kind,
         EventAt = Iso(a.EventAt) ?? string.Empty,
+        OriginalEventAt = Iso(a.OriginalEventAt),
+        Reason = a.Reason,
         ApprovalStatus = a.ApprovalStatus,
         CurrentStep = a.CurrentStep,
         ReviewNotes = a.ReviewNotes,

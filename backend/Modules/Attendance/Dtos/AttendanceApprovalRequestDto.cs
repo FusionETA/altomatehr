@@ -11,7 +11,9 @@ public class AttendanceApprovalRequestDto
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }
     public AttendanceApprovalKind Kind { get; set; }
-    public string EventAt { get; set; } = string.Empty;   // ISO-8601 UTC
+    public string EventAt { get; set; } = string.Empty;   // ISO-8601 UTC — the proposed time, for an adjustment request
+    public string? OriginalEventAt { get; set; }           // set only for a time-adjustment request
+    public string? Reason { get; set; }                    // the employee's stated reason, for a time-adjustment request
     public AttendanceApprovalStatus ApprovalStatus { get; set; }
     public int CurrentStep { get; set; }
     public string? ReviewNotes { get; set; }
@@ -35,4 +37,18 @@ public class BulkRejectDto
     public List<string> Ids { get; set; } = [];
 
     public string? ReviewNotes { get; set; }
+}
+
+// What an employee sends to request a correction to their own clock-in and/or
+// clock-out time. At least one of the two must be set; both may be, in one call.
+public class SubmitTimeAdjustmentDto
+{
+    [Required, MaxLength(40)]
+    public string RecordId { get; set; } = string.Empty;
+
+    public DateTime? RequestedTimeIn { get; set; }
+    public DateTime? RequestedTimeOut { get; set; }
+
+    [Required, MaxLength(1000)]
+    public string Reason { get; set; } = string.Empty;
 }

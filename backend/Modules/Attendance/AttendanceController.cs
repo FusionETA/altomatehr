@@ -51,6 +51,17 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> ClockOut(ClockOutDto dto) =>
         ToResponse(await _attendance.ClockOutAsync(GetUserId(), dto));
 
+    // POST /attendance/adjustments — employee requests a correction to their own
+    // clock-in and/or clock-out time. Takes effect on the record only once a
+    // supervisor approves it via the normal POST /attendance/{id}/approve flow —
+    // rejecting it just leaves the record unchanged.
+    [HttpPost("adjustments")]
+    public async Task<IActionResult> SubmitAdjustment(SubmitTimeAdjustmentDto dto)
+    {
+        var result = await _attendance.SubmitTimeAdjustmentAsync(GetUserId(), dto);
+        return result.Ok ? Ok(result.Requests) : BadRequest(new { message = result.Error });
+    }
+
     // POST /attendance/{id}/approve — {id} is an AttendanceApprovalRequest id
     // (CLOCK_IN/CLOCK_OUT only). Current-step approver only.
     [HttpPost("{id}/approve")]

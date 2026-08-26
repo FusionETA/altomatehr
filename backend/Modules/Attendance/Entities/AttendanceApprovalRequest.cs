@@ -36,8 +36,22 @@ public class AttendanceApprovalRequest : ITenantScoped
     [MaxLength(40)]
     public string? AttendanceBreakId { get; set; }
 
-    // The clock-in/out or break start/end instant this request covers.
+    // The clock-in/out or break start/end instant this request covers. For an
+    // employee-submitted time-adjustment request (CLOCK_IN/CLOCK_OUT only),
+    // this is the PROPOSED corrected time, not the original.
     public DateTime EventAt { get; set; }
+
+    // Set only for employee-submitted time-adjustment requests — the record's
+    // TimeIn/TimeOut value being corrected, preserved for display. Null for an
+    // ordinary clock-in/out/break event (there's nothing to compare against —
+    // the event just happened). On final approval, EventAt is written back
+    // onto the record's TimeIn/TimeOut when this is set.
+    public DateTime? OriginalEventAt { get; set; }
+
+    // The employee's stated reason for a time-adjustment request. Null for an
+    // ordinary clock/break event.
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
 
     public AttendanceApprovalStatus ApprovalStatus { get; set; } = AttendanceApprovalStatus.PENDING;
     public int CurrentStep { get; set; }

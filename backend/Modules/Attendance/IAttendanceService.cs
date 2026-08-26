@@ -27,6 +27,8 @@ public interface IAttendanceService
 
     Task<AttendanceSelfieStorageStatsDto> GetSelfieStorageStatsAsync();
     Task<AttendanceDeleteSelfiesResultDto> DeleteSelfiesInRangeAsync(DateTime from, DateTime to);
+
+    Task<AttendanceAdjustmentResult> SubmitTimeAdjustmentAsync(string employeeId, SubmitTimeAdjustmentDto dto);
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case
@@ -66,3 +68,5 @@ public record AttendanceBreakListResult(
 public record AttendanceBulkResultItem(string Id, bool Ok, string? Error = null);
 
 public record AttendanceBulkResult(int Succeeded, int Failed, IReadOnlyList<AttendanceBulkResultItem> Items);
+
+public record AttendanceAdjustmentResult(bool Ok, string? Error, IReadOnlyList<AttendanceApprovalRequestDto> Requests);
