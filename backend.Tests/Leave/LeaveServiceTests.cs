@@ -464,6 +464,7 @@ public class LeaveServiceTests
                 .Select(id => new OrganizationMembership { UserId = id, Role = "Employee" })
                 .ToList());
         public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) => throw new NotImplementedException();
+        public Task<int> CountByShiftIdAsync(string shiftId) => Task.FromResult(0);
         public Task AddAsync(OrganizationMembership membership) => throw new NotImplementedException();
         public Task UpdateAsync(OrganizationMembership membership) => throw new NotImplementedException();
     }

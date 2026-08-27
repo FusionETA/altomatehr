@@ -348,6 +348,7 @@ public class LeaveCronServiceTests
         public Task<OrganizationMembership?> GetAsync(string o, string u) => throw new NotImplementedException();
         public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string u) => throw new NotImplementedException();
         public Task<List<OrganizationMembership>> GetBySupervisorAsync(string s) => throw new NotImplementedException();
+        public Task<int> CountByShiftIdAsync(string shiftId) => Task.FromResult(0);
         public Task AddAsync(OrganizationMembership m) => throw new NotImplementedException();
         public Task UpdateAsync(OrganizationMembership m) => throw new NotImplementedException();
     }

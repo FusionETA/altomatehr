@@ -220,5 +220,9 @@ public class AttendanceApprovalRegressionTests
         public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(false);
         public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
             Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
+        public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+            GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
+                new Dictionary<string, IReadOnlyDictionary<string, double>>());
     }
 }
