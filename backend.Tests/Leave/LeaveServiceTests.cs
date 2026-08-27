@@ -227,6 +227,36 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_AlsoCancelsAPPROVEDLeave_GivingTheDaysBack()
+    {
+        var service = MakeService(apps: [MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.APPROVED)]);
+
+        var result = await service.CancelAsync("a1", "usr-emp");
+
+        Assert.True(result.Transitioned);
+        Assert.Equal(LeaveStatus.CANCELLED, result.Application!.Status);
+    }
+
+    [Fact]
+    public async Task CancelAsync_IsIdempotent_OnAnAlreadyCancelledRequest()
+    {
+        var service = MakeService(apps: [MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.CANCELLED)]);
+
+        Assert.True((await service.CancelAsync("a1", "usr-emp")).Transitioned);
+    }
+
+    [Fact]
+    public async Task CancelAsync_RefusesREJECTEDLeave()
+    {
+        var service = MakeService(apps: [MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.REJECTED)]);
+
+        var result = await service.CancelAsync("a1", "usr-emp");
+
+        Assert.False(result.Transitioned);
+        Assert.Equal("Only pending or approved leave can be cancelled", result.Error);
+    }
+
+    [Fact]
     public async Task GetOrgBalancesAsync_ReturnsOneRowPerMember_WithTheirOwnBalances()
     {
         var service = MakeService(
@@ -309,7 +339,11 @@ public class LeaveServiceTests
 
         var result = await service.ApproveAsync("a1", "usr-other-super");
 
-        Assert.False(result.Found);
+        // Production returns an explicit refusal here rather than hiding the
+        // request. Found=true + Transitioned=false → 403 at the controller.
+        Assert.True(result.Found);
+        Assert.False(result.Transitioned);
+        Assert.Equal("You are not authorized to review this step", result.Error);
     }
 
     [Fact]
@@ -326,8 +360,10 @@ public class LeaveServiceTests
         Assert.Equal(LeaveStatus.PENDING, first.Application!.Status);
         Assert.Equal(1, app.CurrentStep);
 
-        // The step-0 approver can no longer act.
-        Assert.False((await service.ApproveAsync("a1", "usr-super")).Found);
+        // The step-0 approver can no longer act — they are not the current step.
+        var stale = await service.ApproveAsync("a1", "usr-super");
+        Assert.False(stale.Transitioned);
+        Assert.Equal("You are not authorized to review this step", stale.Error);
 
         var second = await service.ApproveAsync("a1", "usr-mgr");    // step 1 → final
         Assert.True(second.Transitioned);
@@ -360,7 +396,8 @@ public class LeaveServiceTests
         var service = MakeService(apps: [MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING)]);
 
         var byOther = await service.CancelAsync("a1", "usr-other");
-        Assert.False(byOther.Found);
+        Assert.False(byOther.Transitioned);
+        Assert.Equal("Only the applicant can cancel", byOther.Error);
 
         var byOwner = await service.CancelAsync("a1", "usr-emp");
         Assert.True(byOwner.Transitioned);

@@ -12,6 +12,9 @@ public class LeaveTypeService : ILeaveTypeService
     public async Task<IEnumerable<LeaveTypeDto>> GetAllAsync() =>
         (await _repo.GetAllAsync()).Select(ToDto);
 
+    public async Task<int> CountActiveTypesAsync() =>
+        (await _repo.GetAllAsync()).Count(t => !t.IsArchived);
+
     public async Task<int> EnsureDefaultsAsync()
     {
         var existing = (await _repo.GetAllAsync())

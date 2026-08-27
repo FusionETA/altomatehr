@@ -29,6 +29,12 @@ public class LeaveTypesController : ControllerBase
 
     // POST /leave-types/defaults — create any missing default types for this
     // org. Idempotent, so it is safe to call on an org that already has them.
+    // GET /leave-types/count — active (non-archived) types in this org.
+    [RequireScope("leave:read")]
+    [HttpGet("count")]
+    public async Task<IActionResult> Count() =>
+        Ok(new { active = await _types.CountActiveTypesAsync() });
+
     [Authorize(Roles = "Admin,Owner")]
     [HttpPost("defaults")]
     public async Task<IActionResult> EnsureDefaults() =>

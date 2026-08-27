@@ -37,6 +37,86 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> Balances([FromQuery, Range(2000, 2100)] int? year) =>
         Ok(await _leave.GetBalancesAsync(GetUserId(), year ?? DateTime.UtcNow.Year));
 
+    // PUT /leave/entitlements/{employeeId}/{leaveTypeId}?year=YYYY
+    // Override one employee's entitlement. Admin/Owner: it grants days.
+    [HttpPut("entitlements/{employeeId}/{leaveTypeId}")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> SetEntitlement(
+        string employeeId, string leaveTypeId,
+        [FromQuery, Range(2000, 2100)] int? year,
+        SetEntitlementDto dto) =>
+        ToEntitlementResponse(await _leave.SetEntitlementAsync(
+            employeeId, leaveTypeId, year ?? DateTime.UtcNow.Year, dto));
+
+    // POST /leave/entitlements/{employeeId}/{leaveTypeId}/reset?year=YYYY
+    [HttpPost("entitlements/{employeeId}/{leaveTypeId}/reset")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ResetEntitlement(
+        string employeeId, string leaveTypeId,
+        [FromQuery, Range(2000, 2100)] int? year) =>
+        ToEntitlementResponse(await _leave.ResetEntitlementAsync(
+            employeeId, leaveTypeId, year ?? DateTime.UtcNow.Year));
+
+    // POST /leave/entitlements/{employeeId}/seed?year=YYYY — opens the year
+    // for someone who joined after the rollover ran.
+    [HttpPost("entitlements/{employeeId}/seed")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> SeedEntitlements(
+        string employeeId, [FromQuery, Range(2000, 2100)] int? year) =>
+        Ok(new { created = await _leave.SeedEntitlementsAsync(
+            employeeId, year ?? DateTime.UtcNow.Year) });
+
+    // GET /leave/overview?year=YYYY — admin dashboard summary.
+    [RequireScope("leave:read")]
+    [HttpGet("overview")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> Overview([FromQuery, Range(2000, 2100)] int? year) =>
+        Ok(await _leave.GetOverviewAsync(year ?? DateTime.UtcNow.Year));
+
+    // GET /leave/approved-days?employeeId=&from=&to= — days taken in a range.
+    [RequireScope("leave:read")]
+    [HttpGet("approved-days")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> ApprovedDays(
+        [FromQuery, Required] string employeeId,
+        [FromQuery, Required] DateTime from,
+        [FromQuery, Required] DateTime to) =>
+        Ok(new { employeeId, from, to, days = await _leave.GetApprovedDaysInRangeAsync(employeeId, from, to) });
+
+    // Ok=false with no Error means "not in this org" (404); with an Error it's
+    // a rule refusal (400).
+    private IActionResult ToEntitlementResponse(LeaveEntitlementResult r)
+    {
+        if (r.Ok) return Ok(r.Balance);
+        return r.Error is null ? NotFound(new { message = "Employee not found." })
+                               : BadRequest(new { message = r.Error });
+    }
+
+    // GET /leave/team/balances?year=YYYY — balances for the caller's reports.
+    [RequireScope("leave:read")]
+    [HttpGet("team/balances")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> TeamBalances([FromQuery, Range(2000, 2100)] int? year)
+    {
+        var resolved = year ?? DateTime.UtcNow.Year;
+        var rows = await _leave.GetTeamBalancesAsync(GetUserId(), resolved);
+        return Ok(new { data = rows, total = rows.Count(), year = resolved });
+    }
+
+    // GET /leave/on-leave-today?date=YYYY-MM-DD — who is out (approved) today.
+    [RequireScope("leave:read")]
+    [HttpGet("on-leave-today")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> OnLeaveToday([FromQuery] DateTime? date) =>
+        Ok(await _leave.GetOnLeaveTodayAsync(date ?? DateTime.UtcNow));
+
+    // GET /leave/pending-count — badge count for the caller's approval queue.
+    [RequireScope("leave:read")]
+    [HttpGet("pending-count")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> PendingCount() =>
+        Ok(new { pendingLeaveApprovals = await _leave.CountPendingApprovalsAsync(GetUserId()) });
+
     // GET /leave/balances/all?year=YYYY — every employee in the org (admin grid).
     // Declared BEFORE the {employeeId} route: literal segments win in ASP.NET
     // routing, but keeping them adjacent makes the precedence obvious.
@@ -126,6 +206,17 @@ public class LeaveController : ControllerBase
         return result.Ok ? Ok(result.Application) : BadRequest(new { message = result.Error });
     }
 
+    // PUT /leave/{id} — edit your own pending request.
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Edit(string id, CreateLeaveApplicationDto dto)
+    {
+        var result = await _leave.EditAsync(id, dto, GetUserId());
+        if (result.Ok) return Ok(result.Application);
+        return result.Error == "Application not found"
+            ? NotFound(new { message = result.Error })
+            : BadRequest(new { message = result.Error });
+    }
+
     // POST /leave/{id}/approve — the current-step approver in the applicant's chain.
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
@@ -145,9 +236,14 @@ public class LeaveController : ControllerBase
 
     private IActionResult ToTransitionResponse(LeaveTransitionResult result)
     {
-        if (!result.Found) return NotFound();
-        if (!result.Transitioned) return BadRequest(new { message = result.Error });
-        return Ok(result.Application);
+        if (!result.Found) return NotFound(new { message = result.Error ?? "Application not found" });
+        if (result.Transitioned) return Ok(result.Application);
+
+        // Authorization refusals are 403; everything else is a state/rule 400.
+        return result.Error is "You are not authorized to review this step"
+                            or "Only the applicant can cancel"
+            ? StatusCode(StatusCodes.Status403Forbidden, new { message = result.Error })
+            : BadRequest(new { message = result.Error });
     }
 
     private string GetUserId() =>

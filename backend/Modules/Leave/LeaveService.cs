@@ -186,6 +186,170 @@ public class LeaveService : ILeaveService
     // org-membership check first should use GetBalancesForEmployeeAsync.
     // One employee's per-type balances for a given year. Callers that need the
     // org-membership check first should use GetBalancesForEmployeeAsync.
+    // Override ONE employee's entitlement for a year. Production recomputes a
+    // PRO_RATED row's accrued days from the JOIN DATE here; V2 has no join
+    // date, so a pro-rated row keeps its accrued progress capped at the new
+    // entitlement instead. Documented divergence, not an oversight.
+    public async Task<LeaveEntitlementResult> SetEntitlementAsync(
+        string employeeId, string leaveTypeId, int year, SetEntitlementDto dto)
+    {
+        if (dto.EntitledDays < 0)
+            return new LeaveEntitlementResult(false, null, "Entitled days cannot be negative");
+
+        var type = await _types.GetByIdAsync(leaveTypeId);
+        if (type is null) return new LeaveEntitlementResult(false, null, "Leave type not found");
+
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        if (membership is null) return new LeaveEntitlementResult(false, null, null);   // → 404
+
+        var row = await EnsureEntitlementAsync(employeeId, type, year);
+        row.EntitledDays = dto.EntitledDays;
+        row.AccrualMethod = dto.AccrualMethod;
+
+        var effective = dto.AccrualMethod ?? type.AccrualMethod;
+        row.AccruedDays = effective == LeaveAccrualMethod.PRO_RATED
+            ? Math.Min(row.AccruedDays, dto.EntitledDays)   // keep progress, capped
+            : dto.EntitledDays;                             // LUMP_SUM: credit in full
+        row.UpdatedAt = DateTime.UtcNow;
+        await _entitlements.SaveAsync();
+
+        var balance = (await GetBalancesAsync(employeeId, year))
+            .FirstOrDefault(b => b.LeaveTypeId == leaveTypeId);
+        return new LeaveEntitlementResult(true, balance, null);
+    }
+
+    // Clears the override: back to the policy value, else the type default.
+    public async Task<LeaveEntitlementResult> ResetEntitlementAsync(
+        string employeeId, string leaveTypeId, int year)
+    {
+        var type = await _types.GetByIdAsync(leaveTypeId);
+        if (type is null) return new LeaveEntitlementResult(false, null, "Leave type not found");
+
+        var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
+        var days = overrides.GetValueOrDefault(leaveTypeId, type.DefaultDays);
+
+        return await SetEntitlementAsync(employeeId, leaveTypeId, year,
+            new SetEntitlementDto { EntitledDays = days, AccrualMethod = null });
+    }
+
+    // Opens the year for one employee — the per-person half of the rollover,
+    // for someone who joins after the cron has already run.
+    public async Task<int> SeedEntitlementsAsync(string employeeId, int year)
+    {
+        var created = 0;
+        foreach (var type in (await _types.GetAllAsync()).Where(t => !t.IsArchived))
+        {
+            var before = (await _entitlements.GetForEmployeeYearAsync(employeeId, year))
+                .Any(e => e.LeaveTypeId == type.Id);
+            if (before) continue;
+            await EnsureEntitlementAsync(employeeId, type, year);
+            created++;
+        }
+        return created;
+    }
+
+    // Approved leave days overlapping a range — payroll and reporting ask this.
+    public async Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        return (await _apps.GetByEmployeeAsync(employeeId))
+            .Where(a => a.Status == LeaveStatus.APPROVED
+                        && a.StartDate.Date <= end && a.EndDate.Date >= start)
+            .Sum(a => a.TotalDays);
+    }
+
+    // Org dashboard: status totals, days used per type, who's out, and the
+    // most recent requests.
+    public async Task<LeaveOverviewDto> GetOverviewAsync(int year)
+    {
+        var types = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
+        var all = (await _apps.GetAllAsync())
+            .Where(a => a.StartDate.Year == year)
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(all.Select(a => a.EmployeeId).Distinct());
+
+        return new LeaveOverviewDto
+        {
+            Year = year,
+            Totals = new LeaveStatusTotalsDto
+            {
+                Pending = all.Count(a => a.Status == LeaveStatus.PENDING),
+                Approved = all.Count(a => a.Status == LeaveStatus.APPROVED),
+                Rejected = all.Count(a => a.Status == LeaveStatus.REJECTED),
+                Cancelled = all.Count(a => a.Status == LeaveStatus.CANCELLED),
+            },
+            DaysUsedByType = types.Values.Select(t => new LeaveDaysByTypeDto
+            {
+                LeaveTypeId = t.Id,
+                Code = t.Code,
+                Name = t.Name,
+                Paid = t.Paid,
+                DaysUsed = all.Where(a => a.LeaveTypeId == t.Id && a.Status == LeaveStatus.APPROVED)
+                              .Sum(a => a.TotalDays),
+            }).ToList(),
+            OnLeaveToday = await GetOnLeaveTodayAsync(DateTime.UtcNow),
+            RecentApplications = all
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(10)
+                .Select(a =>
+                {
+                    var dto = ToDto(a);
+                    dto.EmployeeEmail = emails.GetValueOrDefault(a.EmployeeId);
+                    return dto;
+                })
+                .ToList(),
+        };
+    }
+
+    // Balances for the caller's direct reports only — the supervisor view of
+    // the admin grid. Reuses the same bulk readers, so it stays one flat set
+    // of queries rather than one per report.
+    public async Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(
+        string supervisorId, int year)
+    {
+        var reportIds = (await _supervision.GetReportIdsAsync(supervisorId)).ToHashSet();
+        if (reportIds.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
+
+        return (await GetOrgBalancesAsync(year))
+            .Where(r => reportIds.Contains(r.UserId));
+    }
+
+    // Who is out on APPROVED leave on `today` — the admin dashboard panel.
+    public async Task<IEnumerable<OnLeaveTodayDto>> GetOnLeaveTodayAsync(DateTime today)
+    {
+        var day = today.Date;
+        var typesById = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
+
+        var out_ = (await _apps.GetAllAsync())
+            .Where(a => a.Status == LeaveStatus.APPROVED
+                        && a.StartDate.Date <= day && day <= a.EndDate.Date)
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(out_.Select(a => a.EmployeeId).Distinct());
+
+        return out_.Select(a =>
+        {
+            typesById.TryGetValue(a.LeaveTypeId, out var type);
+            return new OnLeaveTodayDto
+            {
+                EmployeeId = a.EmployeeId,
+                Email = emails.GetValueOrDefault(a.EmployeeId),
+                LeaveTypeId = a.LeaveTypeId,
+                LeaveTypeCode = type?.Code ?? string.Empty,
+                LeaveTypeName = type?.Name ?? string.Empty,
+                StartDate = a.StartDate,
+                EndDate = a.EndDate,
+                TotalDays = a.TotalDays,
+            };
+        });
+    }
+
+    // Count only — the approval badge shouldn't have to pull the whole queue.
+    public async Task<int> CountPendingApprovalsAsync(string reviewerId) =>
+        (await GetTeamAsync(reviewerId)).Count();
+
     public async Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year)
     {
         var types = (await _types.GetAllAsync()).Where(t => !t.IsArchived).ToList();
@@ -276,7 +440,7 @@ public class LeaveService : ILeaveService
         if (type.Paid)
         {
             var available = await AvailableForApplyAsync(employeeId, type, entitlement, year);
-            if (totalDays > available + 0.0001)
+            if (totalDays > available + Tolerance)
             {
                 var rounded = Math.Round(available * 100) / 100;
                 return new LeaveApplyResult(false, null,
@@ -300,6 +464,67 @@ public class LeaveService : ILeaveService
         };
         await _apps.AddAsync(application);
         return new LeaveApplyResult(true, ToDto(application), null);
+    }
+
+    // Edit a pending request. Rules ported from production's
+    // editLeaveApplication: your own leave only, still pending, and untouched
+    // by an approver — re-editing after someone has reviewed a step would
+    // silently change what they approved.
+    public async Task<LeaveApplyResult> EditAsync(
+        string id, CreateLeaveApplicationDto dto, string actorUserId)
+    {
+        var app = await _apps.GetByIdAsync(id);
+        if (app is null) return new LeaveApplyResult(false, null, "Application not found");
+        if (app.EmployeeId != actorUserId)
+            return new LeaveApplyResult(false, null, "You can only edit your own leave");
+        if (app.Status != LeaveStatus.PENDING)
+            return new LeaveApplyResult(false, null, "Only pending leave can be edited");
+
+        // Production inspects the `approvals` JSON trail. V2 has no such column
+        // yet, so CurrentStep > 0 stands in: the chain only advances once an
+        // approver has acted. Same intent, coarser evidence.
+        if (app.CurrentStep > 0)
+            return new LeaveApplyResult(false, null,
+                "Cannot edit — an approver has already reviewed this leave");
+
+        var type = await _types.GetByIdAsync(dto.LeaveTypeId);
+        if (type is null) return new LeaveApplyResult(false, null, "Leave type not found");
+        if (type.IsArchived) return new LeaveApplyResult(false, null, "Leave type is archived");
+
+        var start = dto.StartDate!.Value.Date;
+        var end = dto.EndDate!.Value.Date;
+        if (end < start)
+            return new LeaveApplyResult(false, null, "End date is before start date");
+
+        var totalDays = (end - start).Days + 1;   // see ApplyAsync: calendar days for now
+        if (totalDays <= 0)
+            return new LeaveApplyResult(false, null, "Selected dates contain no working days");
+
+        var year = start.Year;
+        var entitlement = await EnsureEntitlementAsync(actorUserId, type, year);
+
+        if (type.Paid)
+        {
+            // Exclude THIS request from the pending total, or an edit would be
+            // checked against a balance its own days are already reserving.
+            var available = await AvailableForApplyAsync(
+                actorUserId, type, entitlement, year, excludeApplicationId: id);
+            if (totalDays > available + Tolerance)
+            {
+                var rounded = Math.Round(available * 100) / 100;
+                return new LeaveApplyResult(false, null,
+                    $"Insufficient balance: requesting {totalDays} but only {rounded} available");
+            }
+        }
+
+        app.LeaveTypeId = type.Id;
+        app.StartDate = start;
+        app.EndDate = end;
+        app.TotalDays = totalDays;
+        app.Reason = dto.Reason;
+        app.UpdatedAt = DateTime.UtcNow;
+        await _apps.UpdateAsync(app);
+        return new LeaveApplyResult(true, ToDto(app), null);
     }
 
     // Rows are normally created by the year-rollover cron, but an employee may
@@ -335,11 +560,15 @@ public class LeaveService : ILeaveService
     // Days the employee may book right now. Approved days are already counted
     // by AvailableDays; PENDING days are subtracted too, otherwise three
     // simultaneous requests could each pass the check on the same balance.
+    private const double Tolerance = 0.0001;
+
     private async Task<double> AvailableForApplyAsync(
-        string employeeId, LeaveType type, LeaveEntitlement row, int year)
+        string employeeId, LeaveType type, LeaveEntitlement row, int year,
+        string? excludeApplicationId = null)
     {
         var apps = (await _apps.GetByEmployeeAsync(employeeId))
             .Where(a => a.LeaveTypeId == type.Id && a.StartDate.Year == year)
+            .Where(a => excludeApplicationId is null || a.Id != excludeApplicationId)
             .ToList();
 
         var taken = apps.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
@@ -388,15 +617,24 @@ public class LeaveService : ILeaveService
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
+    // Production cancels PENDING *and* APPROVED requests — cancelling an
+    // approved one gives the days back. Only REJECTED can't be cancelled, and
+    // cancelling an already-cancelled request is a no-op success.
     public async Task<LeaveTransitionResult> CancelAsync(string id, string userId)
     {
         var application = await _apps.GetByIdAsync(id);
-        if (application is null || application.EmployeeId != userId)
-            return new LeaveTransitionResult(false, false, null);
+        if (application is null)
+            return new LeaveTransitionResult(false, false, null, "Application not found");
 
-        if (application.Status != LeaveStatus.PENDING)
+        if (application.EmployeeId != userId)
+            return new LeaveTransitionResult(true, false, null, "Only the applicant can cancel");
+
+        if (application.Status == LeaveStatus.CANCELLED)
+            return new LeaveTransitionResult(true, true, ToDto(application));   // idempotent
+
+        if (application.Status == LeaveStatus.REJECTED)
             return new LeaveTransitionResult(true, false, ToDto(application),
-                "Only pending applications can be cancelled.");
+                "Only pending or approved leave can be cancelled");
 
         application.Status = LeaveStatus.CANCELLED;
         application.UpdatedAt = DateTime.UtcNow;
@@ -411,15 +649,16 @@ public class LeaveService : ILeaveService
     {
         var app = await _apps.GetByIdAsync(id);
         if (app is null)
-            return (null, new LeaveTransitionResult(false, false, null));
-
-        var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
-        if (!approvers.Contains(approverId))
-            return (null, new LeaveTransitionResult(false, false, null));   // not the current approver → hide
+            return (null, new LeaveTransitionResult(false, false, null, "Application not found"));
 
         if (app.Status != LeaveStatus.PENDING)
             return (app, new LeaveTransitionResult(true, false, ToDto(app),
-                "Only pending applications can be approved or rejected."));
+                "Application is not pending"));
+
+        var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+        if (!approvers.Contains(approverId))
+            return (null, new LeaveTransitionResult(true, false, null,
+                "You are not authorized to review this step"));
 
         return (app, null);
     }

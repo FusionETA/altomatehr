@@ -12,6 +12,7 @@ public interface ILeaveTypeService
     // Creates any of the default leave types the current org is missing.
     // Idempotent — matches on code, so re-running adds nothing.
     Task<int> EnsureDefaultsAsync();
+    Task<int> CountActiveTypesAsync();
 }
 
 public interface ILeaveService
@@ -23,8 +24,25 @@ public interface ILeaveService
     Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year);
     Task<LeaveExportResult> ExportBalancesCsvAsync(string employeeId, int year);
     Task<LeaveExportResult> ExportOrgBalancesCsvAsync(int year);
+    Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(string supervisorId, int year);
+    Task<IEnumerable<OnLeaveTodayDto>> GetOnLeaveTodayAsync(DateTime today);
+    Task<int> CountPendingApprovalsAsync(string reviewerId);
+
+    // Per-employee entitlement override for one year. Ok=false carries why.
+    Task<LeaveEntitlementResult> SetEntitlementAsync(
+        string employeeId, string leaveTypeId, int year, SetEntitlementDto dto);
+    Task<LeaveEntitlementResult> ResetEntitlementAsync(
+        string employeeId, string leaveTypeId, int year);
+
+    // Opens the year for ONE employee — the per-person half of the rollover,
+    // for someone who joins after it has run.
+    Task<int> SeedEntitlementsAsync(string employeeId, int year);
+
+    Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to);
+    Task<LeaveOverviewDto> GetOverviewAsync(int year);
     Task<LeaveAttachmentResult> GetAttachmentAsync(string xeroFileId);
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
+    Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
     Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
@@ -38,6 +56,8 @@ public record LeaveApplyResult(bool Ok, LeaveApplicationDto? Application, string
 // Allowed=false → a member, but the caller may not read their balances (403).
 // Checked in that order so an outsider's id is indistinguishable from a
 // nonexistent one, while an in-org refusal is honest about being a refusal.
+public record LeaveEntitlementResult(bool Ok, LeaveBalanceDto? Balance, string? Error);
+
 public record LeaveBalancesResult(
     bool Found,
     bool Allowed,
