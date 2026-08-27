@@ -182,6 +182,24 @@ public class LeaveController : ControllerBase
         return File(result.Content, "application/pdf", result.FileName);
     }
 
+    // GET /leave/export/summary-bulk.zip?year=YYYY&employeeIds=a&employeeIds=b
+    // One PDF per employee, zipped. Omit employeeIds for the whole org.
+    [RequireScope("leave:read")]
+    [HttpGet("export/summary-bulk.zip")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportBulkSummaryZip(
+        [FromQuery, Range(2000, 2100)] int? year,
+        [FromQuery] string[]? employeeIds)
+    {
+        var result = await _leave.ExportBulkSummaryZipAsync(
+            year ?? DateTime.UtcNow.Year, employeeIds);
+
+        if (!result.Found) return NotFound(new { message = "No employees found." });
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, "application/zip", result.FileName);
+    }
+
     // GET /leave/export/summary?employeeId=&year=YYYY — balances as a CSV file.
     // Same three-tier access as the JSON reader. Production returns a PDF here;
     // CSV is the V2 stand-in until a renderer is chosen.

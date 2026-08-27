@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
@@ -271,6 +272,67 @@ public class LeaveService : ILeaveService
         return new LeaveExportResult(true, true,
             LeaveSummaryPdf.Render(report.Report!),
             $"leave-summary-{year}.pdf");
+    }
+
+    public async Task<LeaveExportResult> ExportBulkSummaryZipAsync(
+        int year, IReadOnlyList<string>? employeeIds)
+    {
+        var members = await _memberships.GetForCurrentOrgAsync();
+        var wanted = employeeIds is { Count: > 0 } ? employeeIds.ToHashSet() : null;
+        var targets = members
+            .Select(m => m.UserId)
+            .Where(id => wanted is null || wanted.Contains(id))
+            .Distinct()
+            .ToList();
+
+        if (targets.Count == 0)
+            return new LeaveExportResult(false, true, [], "");
+
+        var emails = await _supervision.GetEmailsAsync(targets);
+
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var employeeId in targets)
+            {
+                var report = await GetSummaryReportAsync(employeeId, year);
+                if (!report.Found || !report.Allowed) continue;   // skip, don't fail the batch
+
+                var label = emails.GetValueOrDefault(employeeId) ?? employeeId;
+                var name = UniqueName(used, $"{SafeFileName(label)}_{year}.pdf");
+
+                var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
+                await using var stream = entry.Open();
+                var pdf = LeaveSummaryPdf.Render(report.Report!);
+                await stream.WriteAsync(pdf);
+            }
+        }
+
+        return new LeaveExportResult(true, true, buffer.ToArray(), $"leave-summaries-{year}.zip");
+    }
+
+    // Two people sharing a name would otherwise overwrite each other inside
+    // the archive, so a clash becomes "Name_2026_2.pdf".
+    private static string UniqueName(HashSet<string> used, string baseName)
+    {
+        if (used.Add(baseName)) return baseName;
+
+        var stem = Path.GetFileNameWithoutExtension(baseName);
+        var ext = Path.GetExtension(baseName);
+        for (var n = 2; ; n++)
+        {
+            var candidate = $"{stem}_{n}{ext}";
+            if (used.Add(candidate)) return candidate;
+        }
+    }
+
+    private static string SafeFileName(string value)
+    {
+        var cleaned = new string(value
+            .Select(c => Path.GetInvalidFileNameChars().Contains(c) || c is '/' or '\\' ? '_' : c)
+            .ToArray());
+        return string.IsNullOrWhiteSpace(cleaned) ? "Employee" : cleaned;
     }
 
     // Override ONE employee's entitlement for a year. Production recomputes a

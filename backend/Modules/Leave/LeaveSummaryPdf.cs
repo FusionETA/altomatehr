@@ -32,7 +32,15 @@ public static class LeaveSummaryPdf
         {
             Frame(page);
             page.Header().Element(h => Header(h, r, $"YEARLY LEAVE SUMMARY – {r.Year}", showReportDate: true));
-            page.Content().PaddingTop(8).Table(table =>
+            page.Content().PaddingTop(8).Element(content =>
+            {
+                if (!r.MonthlyRows.Any())
+                {
+                    content.PaddingTop(32).Text("No leave entitlements for this year.")
+                        .FontSize(8).FontColor(Muted);
+                    return;
+                }
+                content.Table(table =>
             {
                 table.ColumnsDefinition(c =>
                 {
@@ -72,9 +80,7 @@ public static class LeaveSummaryPdf
                     i++;
                 }
             });
-            if (!r.MonthlyRows.Any())
-                page.Content().PaddingTop(40).Text("No leave entitlements for this year.")
-                    .FontSize(8).FontColor(Muted);
+            });
             page.Footer().Element(f => Footer(f, r));
         });
 
@@ -84,7 +90,15 @@ public static class LeaveSummaryPdf
             Frame(page);
             page.Header().Element(h => Header(h, r,
                 $"YEARLY LEAVE SUMMARY – {r.Year}  |  Leave Applications", showReportDate: false));
-            page.Content().PaddingTop(8).Table(table =>
+            page.Content().PaddingTop(8).Element(content =>
+            {
+                if (!r.DetailRows.Any())
+                {
+                    content.PaddingTop(32).Text($"No approved leave applications for {r.Year}.")
+                        .FontSize(8).FontColor(Muted);
+                    return;
+                }
+                content.Table(table =>
             {
                 table.ColumnsDefinition(c =>
                 {
@@ -118,9 +132,7 @@ public static class LeaveSummaryPdf
                     i++;
                 }
             });
-            if (!r.DetailRows.Any())
-                page.Content().PaddingTop(40).Text($"No approved leave applications for {r.Year}.")
-                    .FontSize(8).FontColor(Muted);
+            });
             page.Footer().Element(f => Footer(f, r));
         });
 

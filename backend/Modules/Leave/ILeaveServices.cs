@@ -45,6 +45,11 @@ public interface ILeaveService
     // rendered as production's two-page PDF.
     Task<LeaveSummaryReportResult> GetSummaryReportAsync(string employeeId, int year);
     Task<LeaveExportResult> ExportSummaryPdfAsync(string employeeId, int year);
+
+    // One PDF per employee, bundled into a ZIP. Production's rationale: HR
+    // forwards individual summaries, and splitting a combined document first
+    // is busywork. Empty employeeIds = everyone in the org.
+    Task<LeaveExportResult> ExportBulkSummaryZipAsync(int year, IReadOnlyList<string>? employeeIds);
     Task<LeaveAttachmentResult> GetAttachmentAsync(string xeroFileId);
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
     Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
