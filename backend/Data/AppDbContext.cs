@@ -10,6 +10,7 @@ using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
+using AltomateHR.Api.Modules.Shifts.Entities;
 using AltomateHR.Api.Modules.Teams.Entities;
 using AltomateHR.Api.Modules.Xero.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -34,12 +35,16 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
+    public DbSet<AttendanceBreak> AttendanceBreaks => Set<AttendanceBreak>();
+    public DbSet<AttendanceApprovalRequest> AttendanceApprovalRequests => Set<AttendanceApprovalRequest>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
+    public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
@@ -77,8 +82,23 @@ public class AppDbContext : DbContext
         attendance.HasIndex(r => new { r.EmployeeId, r.Date }).IsUnique();  // one row per employee per day
         attendance.HasIndex(r => new { r.Status, r.Date });
         attendance.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
-        attendance.Property(r => r.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
-        attendance.HasIndex(r => new { r.ApprovalStatus, r.Date });
+
+        var attendanceSession = modelBuilder.Entity<AttendanceSession>();
+        attendanceSession.HasIndex(s => s.AttendanceRecordId);
+        attendanceSession.HasIndex(s => new { s.AttendanceRecordId, s.EndedAt });
+
+        var attendanceBreak = modelBuilder.Entity<AttendanceBreak>();
+        attendanceBreak.HasIndex(b => b.AttendanceSessionId);
+        attendanceBreak.HasIndex(b => new { b.AttendanceSessionId, b.EndedAt });
+        attendanceBreak.HasIndex(b => b.AttendanceRecordId);
+
+        var approvalRequest = modelBuilder.Entity<AttendanceApprovalRequest>();
+        approvalRequest.Property(a => a.Kind).HasConversion<string>().HasMaxLength(20);
+        approvalRequest.Property(a => a.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
+        approvalRequest.HasIndex(a => a.AttendanceRecordId);
+        approvalRequest.HasIndex(a => a.AttendanceBreakId);
+        approvalRequest.HasIndex(a => new { a.ApprovalStatus, a.Kind });
+        approvalRequest.HasIndex(a => new { a.EmployeeId, a.SubmittedAt });
 
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveType>()
@@ -110,6 +130,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PolicyLeaveEntitlement>()
             .HasIndex(e => new { e.PolicyId, e.LeaveTypeId }).IsUnique();
 
+        modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.Name }).IsUnique();
+        modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.IsDefault });
+
         modelBuilder.Entity<Team>().HasIndex(t => new { t.ProjectId, t.Name }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => new { m.TeamId, m.EmployeeId }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => m.EmployeeId);
@@ -138,6 +161,12 @@ public class AppDbContext : DbContext
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(
             r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceSession>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceBreak>().HasQueryFilter(
+            b => _currentUser.OrganizationId == null || b.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<AttendanceApprovalRequest>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveType>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
@@ -150,6 +179,8 @@ public class AppDbContext : DbContext
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PolicyLeaveEntitlement>().HasQueryFilter(
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Shift>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Team>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamMembership>().HasQueryFilter(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import { getEmployees, ROLES, updateEmployee, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
 import {
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { SearchInput } from "@/shared/components/SearchInput";
+import { AddEmployeeModal } from "./AddEmployeeModal";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -27,6 +28,7 @@ export function EmployeesSettings() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
     Promise.all([getEmployees(), getPolicies()])
@@ -87,13 +89,23 @@ export function EmployeesSettings() {
             assigned supervisor.
           </p>
         </div>
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search employees"
-          className="sm:max-w-sm"
-          inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
-        />
+        <div className="flex items-center gap-2">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search employees"
+            className="sm:max-w-sm"
+            inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+          />
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            Add employee
+          </button>
+        </div>
       </div>
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
@@ -185,6 +197,18 @@ export function EmployeesSettings() {
           ) : null}
         </div>
       )}
+
+      {showAdd ? (
+        <AddEmployeeModal
+          employees={employees}
+          policies={policies}
+          onClose={() => setShowAdd(false)}
+          onCreated={(created) => {
+            setEmployees((cur) => [created, ...cur]);
+            setShowAdd(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

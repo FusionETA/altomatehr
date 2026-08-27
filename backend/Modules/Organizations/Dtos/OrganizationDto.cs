@@ -11,6 +11,8 @@ public class OrganizationDto
     public decimal DefaultMileageRate { get; set; }
     public MileageUnit MileageUnit { get; set; }
     public int GeofenceRadiusMeters { get; set; }
+    public string WorkingHoursStart { get; set; } = string.Empty;
+    public string WorkingHoursEnd { get; set; } = string.Empty;
 
     // Subscription / package + the modules it resolves to (read-only view).
     public string Plan { get; set; } = "DIY";

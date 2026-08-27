@@ -174,6 +174,8 @@ public class PolicyService : IPolicyService
         policy.RequireGeofence = dto.RequireGeofence;
         policy.RequireSelfie = dto.RequireSelfie;
         policy.RequireClockOutSelfie = dto.RequireClockOutSelfie;
+        policy.CaptureLocationOnBreakStart = dto.CaptureLocationOnBreakStart;
+        policy.CaptureLocationOnBreakEnd = dto.CaptureLocationOnBreakEnd;
         policy.SalaryType = dto.SalaryType;
         policy.OtEnabled = dto.OtEnabled;
         policy.OtDailyThresholdMinutes = dto.OtDailyThresholdMinutes;
@@ -195,6 +197,8 @@ public class PolicyService : IPolicyService
         RequireGeofence = p.RequireGeofence,
         RequireSelfie = p.RequireSelfie,
         RequireClockOutSelfie = p.RequireClockOutSelfie,
+        CaptureLocationOnBreakStart = p.CaptureLocationOnBreakStart,
+        CaptureLocationOnBreakEnd = p.CaptureLocationOnBreakEnd,
         SalaryType = p.SalaryType,
         OtEnabled = p.OtEnabled,
         OtDailyThresholdMinutes = p.OtDailyThresholdMinutes,

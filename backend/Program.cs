@@ -7,13 +7,16 @@ using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Attendance;
+using AltomateHR.Api.Modules.Attendance.Cron;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
+using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using Microsoft.AspNetCore.Authentication;
@@ -54,7 +57,8 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
         "  dotnet user-secrets set \"ConnectionStrings:Default\" \"Server=...;Port=...;Database=...;User=...;Password=...;SslMode=Required\"");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0)),
+        mySqlOptions => mySqlOptions.EnableRetryOnFailure(maxRetryCount: 5)));
 
 // ---- Authentication (JWT) ----
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -161,8 +165,15 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IChartOfAccountRepository, ChartOfAccountRepository>();
 builder.Services.AddScoped<IChartOfAccountService, ChartOfAccountService>();
 builder.Services.AddScoped<IAttendanceRepository, AttendanceRepository>();
+builder.Services.AddScoped<IAttendanceSessionRepository, AttendanceSessionRepository>();
+builder.Services.AddScoped<IAttendanceBreakRepository, AttendanceBreakRepository>();
+builder.Services.AddScoped<IAttendanceApprovalRequestRepository, AttendanceApprovalRequestRepository>();
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
+builder.Services.AddScoped<IHoursSummaryService, HoursSummaryService>();
+builder.Services.AddHostedService<AutoClockOutBackgroundService>();
+builder.Services.AddHostedService<OtWarningBackgroundService>();
+builder.Services.AddHostedService<ApprovalDigestBackgroundService>();
 builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
 builder.Services.AddScoped<ILeaveApplicationRepository, LeaveApplicationRepository>();
 builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
@@ -175,6 +186,8 @@ builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
+builder.Services.AddScoped<IShiftRepository, ShiftRepository>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<ITeamRepository, TeamRepository>();
 builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>();
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
@@ -195,6 +208,7 @@ builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
+builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 
@@ -242,18 +256,33 @@ app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 
-// Seed the demo org + users (hashed) and backfill any pre-tenancy rows.
+// On boot: ensure the schema exists, then (dev only) seed demo data.
 using (var scope = app.Services.CreateScope())
 {
-    var organizations = scope.ServiceProvider.GetRequiredService<IOrganizationRepository>();
-    var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-    var memberships = scope.ServiceProvider.GetRequiredService<IOrganizationMembershipRepository>();
-    var claims = scope.ServiceProvider.GetRequiredService<IClaimsRepository>();
-    var leaveTypes = scope.ServiceProvider.GetRequiredService<ILeaveTypeRepository>();
-    var policies = scope.ServiceProvider.GetRequiredService<IEmployeePolicyRepository>();
-    var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
-    var attendance = scope.ServiceProvider.GetRequiredService<IAttendanceRepository>();
-    await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance);
+    var services = scope.ServiceProvider;
+
+    // Apply any pending EF migrations so the schema is ready — a Droplet deploy needs no
+    // separate `dotnet ef database update`. Guarded to relational providers so the in-memory
+    // test host (which can't migrate) is skipped. Real data comes from the legacy migration.
+    var db = services.GetRequiredService<AppDbContext>();
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+
+    // Demo org + users (admin@altomate.com / password123, …) are DEVELOPMENT-ONLY — never
+    // create these accounts against a real database; they'd be a public backdoor.
+    if (app.Environment.IsDevelopment())
+    {
+        var organizations = services.GetRequiredService<IOrganizationRepository>();
+        var users = services.GetRequiredService<IUserRepository>();
+        var memberships = services.GetRequiredService<IOrganizationMembershipRepository>();
+        var claims = services.GetRequiredService<IClaimsRepository>();
+        var leaveTypes = services.GetRequiredService<ILeaveTypeRepository>();
+        var policies = services.GetRequiredService<IEmployeePolicyRepository>();
+        var projects = services.GetRequiredService<IProjectRepository>();
+        var attendance = services.GetRequiredService<IAttendanceRepository>();
+        var attendanceApprovalRequests = services.GetRequiredService<IAttendanceApprovalRequestRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests);
+    }
 }
 
 app.Run();

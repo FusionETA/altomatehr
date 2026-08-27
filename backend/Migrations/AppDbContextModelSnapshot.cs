@@ -171,7 +171,7 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("ApiKeyAuditLogs");
                 });
 
-            modelBuilder.Entity("AltomateHR.Api.Modules.Attendance.Entities.AttendanceRecord", b =>
+            modelBuilder.Entity("AltomateHR.Api.Modules.Attendance.Entities.AttendanceApprovalRequest", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
@@ -180,6 +180,148 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<string>("AttendanceBreakId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("AttendanceRecordId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("AttendanceSessionId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CurrentStep")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("EventAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("OriginalEventAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ReviewerId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttendanceBreakId");
+
+                    b.HasIndex("AttendanceRecordId");
+
+                    b.HasIndex("ApprovalStatus", "Kind");
+
+                    b.HasIndex("EmployeeId", "SubmittedAt");
+
+                    b.ToTable("AttendanceApprovalRequests");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Attendance.Entities.AttendanceBreak", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AttendanceRecordId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("AttendanceSessionId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<double?>("EndLat")
+                        .HasColumnType("double");
+
+                    b.Property<double?>("EndLng")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<double?>("StartLat")
+                        .HasColumnType("double");
+
+                    b.Property<double?>("StartLng")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttendanceRecordId");
+
+                    b.HasIndex("AttendanceSessionId");
+
+                    b.HasIndex("AttendanceSessionId", "EndedAt");
+
+                    b.ToTable("AttendanceBreaks");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Attendance.Entities.AttendanceRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
 
                     b.Property<double?>("ClockInDistanceMeters")
                         .HasColumnType("double");
@@ -210,13 +352,7 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int>("CurrentStep")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("Date")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int?>("DurationMin")
@@ -249,16 +385,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Remark")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("ReviewNotes")
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
-
-                    b.Property<DateTime?>("SubmittedAt")
-                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("TimeIn")
                         .HasColumnType("datetime(6)");
@@ -271,14 +401,53 @@ namespace AltomateHR.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ApprovalStatus", "Date");
-
                     b.HasIndex("EmployeeId", "Date")
                         .IsUnique();
 
                     b.HasIndex("Status", "Date");
 
                     b.ToTable("AttendanceRecords");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Attendance.Entities.AttendanceSession", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AttendanceRecordId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttendanceRecordId");
+
+                    b.HasIndex("AttendanceRecordId", "EndedAt");
+
+                    b.ToTable("AttendanceSessions");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Auth.Entities.RefreshToken", b =>
@@ -512,6 +681,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ShiftId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
 
                     b.Property<string>("SupervisorId")
                         .HasMaxLength(40)
@@ -768,6 +941,16 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("WorkingHoursEnd")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<string>("WorkingHoursStart")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("varchar(5)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Organizations");
@@ -863,6 +1046,12 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("CanAccessLeave")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("CaptureLocationOnBreakEnd")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("CaptureLocationOnBreakStart")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1011,6 +1200,62 @@ namespace AltomateHR.Api.Migrations
                     b.HasIndex("OrganizationId", "XeroProjectId");
 
                     b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Shifts.Entities.Shift", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EndTime")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("LunchBreakMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("ProjectId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("StartTime")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("WorkingDays")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "IsDefault");
+
+                    b.HasIndex("ProjectId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Teams.Entities.Team", b =>

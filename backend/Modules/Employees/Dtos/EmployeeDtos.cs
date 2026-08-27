@@ -11,6 +11,7 @@ public class EmployeeDto
     public string? SupervisorId { get; set; }
     public string? SupervisorEmail { get; set; }
     public string? PolicyId { get; set; }
+    public string? ShiftId { get; set; }
 
     // Per-admin module grant. null = full access (no restriction).
     public IReadOnlyList<string>? Modules { get; set; }
@@ -27,6 +28,9 @@ public class UpdateEmployeeDto
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }        // null → falls back to the org default policy
+
+    [MaxLength(40)]
+    public string? ShiftId { get; set; }         // null → falls back to the project's default shift
 
     // Per-admin module grant (subset of OrgModules keys). null = full access;
     // [] = locked out. Only meaningful for Admin members.
@@ -54,6 +58,9 @@ public class CreateEmployeeDto
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }
+
+    [MaxLength(40)]
+    public string? ShiftId { get; set; }
 
     // Per-admin module grant. null = full access; [] = locked out.
     public List<string>? Modules { get; set; }

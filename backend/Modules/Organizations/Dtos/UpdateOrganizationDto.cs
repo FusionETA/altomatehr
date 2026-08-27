@@ -19,4 +19,10 @@ public class UpdateOrganizationDto
 
     [Range(10, 100_000)]
     public int GeofenceRadiusMeters { get; set; } = 200;
+
+    [Required, RegularExpression(@"^([01]\d|2[0-3]):[0-5]\d$", ErrorMessage = "Use HH:MM (24-hour) format")]
+    public string WorkingHoursStart { get; set; } = "09:00";
+
+    [Required, RegularExpression(@"^([01]\d|2[0-3]):[0-5]\d$", ErrorMessage = "Use HH:MM (24-hour) format")]
+    public string WorkingHoursEnd { get; set; } = "18:00";
 }

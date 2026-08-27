@@ -29,6 +29,9 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
     public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) =>
         _db.OrganizationMemberships.Where(m => m.SupervisorId == supervisorId).ToListAsync();
 
+    public Task<int> CountByShiftIdAsync(string shiftId) =>
+        _db.OrganizationMemberships.CountAsync(m => m.ShiftId == shiftId);
+
     public async Task AddAsync(OrganizationMembership membership)
     {
         membership.CreatedAt = membership.CreatedAt == default ? DateTime.UtcNow : membership.CreatedAt;

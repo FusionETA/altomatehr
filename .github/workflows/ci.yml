@@ -1,0 +1,38 @@
+name: CI
+
+# The quality gate. Runs on every Pull Request to main (so a broken build/test
+# is caught BEFORE merge — e.g. a test fake missing a new interface method), and
+# again on main itself after a merge. No secrets needed; this never deploys.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Backend — build & test
+        working-directory: backend.Tests
+        run: dotnet test --nologo
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install & type-check/build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build

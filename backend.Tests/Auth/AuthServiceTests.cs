@@ -227,6 +227,8 @@ public class AuthServiceTests
             Task.FromResult(_m.FirstOrDefault(x => x.UserId == userId));
         public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) =>
             Task.FromResult(_m.Where(x => x.SupervisorId == supervisorId).ToList());
+        public Task<int> CountByShiftIdAsync(string shiftId) =>
+            Task.FromResult(_m.Count(x => x.ShiftId == shiftId));
         public Task AddAsync(OrganizationMembership m) { _m.Add(m); return Task.CompletedTask; }
         public Task UpdateAsync(OrganizationMembership m) => Task.CompletedTask;
     }

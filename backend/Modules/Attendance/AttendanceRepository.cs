@@ -30,6 +30,20 @@ public class AttendanceRepository : IAttendanceRepository
     public Task<List<AttendanceRecord>> GetAllAsync() =>
         _db.AttendanceRecords.OrderByDescending(r => r.Date).ToListAsync();
 
+    public Task<List<AttendanceRecord>> GetWithPhotosAsync() =>
+        _db.AttendanceRecords
+            .Where(r => r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null)
+            .ToListAsync();
+
+    public Task<List<AttendanceRecord>> GetWithPhotosInRangeAsync(DateTime from, DateTime to) =>
+        _db.AttendanceRecords
+            .Where(r => r.Date >= from && r.Date <= to
+                && (r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null))
+            .ToListAsync();
+
+    public Task<List<AttendanceRecord>> GetOpenRecordsAsync() =>
+        _db.AttendanceRecords.Where(r => r.TimeIn != null && r.TimeOut == null).ToListAsync();
+
     public async Task<AttendanceRecord> AddAsync(AttendanceRecord record)
     {
         _db.AttendanceRecords.Add(record);

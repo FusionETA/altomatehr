@@ -36,6 +36,8 @@ public class EmployeePolicy : ITenantScoped
     public bool RequireGeofence { get; set; } = true;         // must be inside the project geofence to clock
     public bool RequireSelfie { get; set; }                   // selfie required on every clock-in
     public bool RequireClockOutSelfie { get; set; }           // selfie required on clock-out
+    public bool CaptureLocationOnBreakStart { get; set; } = true;   // capture GPS when starting a break
+    public bool CaptureLocationOnBreakEnd { get; set; } = true;     // capture GPS when ending a break
 
     // Classification / OT (rates arrive with the OT pass).
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;

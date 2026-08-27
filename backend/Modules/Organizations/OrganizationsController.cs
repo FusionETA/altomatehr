@@ -30,8 +30,15 @@ public class OrganizationsController : ControllerBase
     [HttpPut("current")]
     public async Task<IActionResult> UpdateCurrent(UpdateOrganizationDto dto)
     {
-        var org = await _organizations.UpdateAsync(GetOrgId(), dto);
-        return org is null ? NotFound() : Ok(org);
+        try
+        {
+            var org = await _organizations.UpdateAsync(GetOrgId(), dto);
+            return org is null ? NotFound() : Ok(org);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     // PUT /organizations/{organizationId}/plan — provision a tenant's package (plan / tier /

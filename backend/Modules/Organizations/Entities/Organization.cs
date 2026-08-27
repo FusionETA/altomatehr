@@ -25,6 +25,14 @@ public class Organization
     // How far (metres) from a project's geofence centre still counts as on-site.
     public int GeofenceRadiusMeters { get; set; } = 200;
 
+    // Org-wide default working hours (HH:mm, 24h). Fallback used when an employee
+    // has no assigned Shift and their project has no default Shift either.
+    [MaxLength(5)]
+    public string WorkingHoursStart { get; set; } = "09:00";
+
+    [MaxLength(5)]
+    public string WorkingHoursEnd { get; set; } = "18:00";
+
     // ---- Subscription / package (drives module access via OrgModules) ----
     // Plan/Tier/Addons together decide which modules the org is entitled to.
     public OrgPlan Plan { get; set; } = OrgPlan.DIY;
