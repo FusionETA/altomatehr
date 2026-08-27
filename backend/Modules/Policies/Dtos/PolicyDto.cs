@@ -32,6 +32,12 @@ public class PolicyDto
     public bool OtEnabled { get; set; }
     public int OtDailyThresholdMinutes { get; set; }
     public OtMethod OtMethod { get; set; }
+    public decimal OtRateNormalDay { get; set; }
+    public decimal OtRatePublicHoliday { get; set; }
+    public decimal OtRateRestDay { get; set; }
+    public decimal OtRatePublicHolidayInShift { get; set; }
+    public decimal OtRateRestDayInShift { get; set; }
+    public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }
     public List<PolicyLeaveEntitlementDto> LeaveEntitlements { get; set; } = [];
 }
@@ -65,6 +71,13 @@ public class SavePolicyDto
     public int OtDailyThresholdMinutes { get; set; } = 480;
 
     public OtMethod OtMethod { get; set; } = OtMethod.CASH;
+
+    [Range(0, 99.99)] public decimal OtRateNormalDay { get; set; } = 1.50m;
+    [Range(0, 99.99)] public decimal OtRatePublicHoliday { get; set; } = 3.00m;
+    [Range(0, 99.99)] public decimal OtRateRestDay { get; set; } = 2.00m;
+    [Range(0, 99.99)] public decimal OtRatePublicHolidayInShift { get; set; } = 2.00m;
+    [Range(0, 99.99)] public decimal OtRateRestDayInShift { get; set; } = 1.00m;
+    [Range(0, 99999999.99)] public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }
 
     public List<PolicyLeaveEntitlementDto> LeaveEntitlements { get; set; } = [];

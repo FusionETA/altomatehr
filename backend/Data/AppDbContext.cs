@@ -6,6 +6,7 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Holidays.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
@@ -44,6 +45,7 @@ public class AppDbContext : DbContext
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
     public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
@@ -119,6 +121,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.Name }).IsUnique();
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.IsDefault });
 
+        modelBuilder.Entity<Holiday>().HasIndex(h => new { h.Date, h.ProjectId });
+        modelBuilder.Entity<Holiday>().HasIndex(h => h.ProjectId);
+
         modelBuilder.Entity<Team>().HasIndex(t => new { t.ProjectId, t.Name }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => new { m.TeamId, m.EmployeeId }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => m.EmployeeId);
@@ -165,6 +170,8 @@ public class AppDbContext : DbContext
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Shift>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Holiday>().HasQueryFilter(
+            h => _currentUser.OrganizationId == null || h.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Team>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamMembership>().HasQueryFilter(

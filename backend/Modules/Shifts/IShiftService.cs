@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Shifts.Dtos;
+using AltomateHR.Api.Modules.Shifts.Entities;
 
 namespace AltomateHR.Api.Modules.Shifts;
 
@@ -10,6 +11,11 @@ public interface IShiftService
     Task<ShiftSaveResult> UpdateAsync(string id, UpdateShiftDto dto);
     Task<ShiftDeleteResult> DeleteAsync(string id);
     Task<ShiftSaveResult> SetDefaultAsync(string id);
+
+    // The shift governing this employee: their explicitly assigned one, else
+    // their project's default. Null when neither exists (callers fall back to
+    // the org's working hours).
+    Task<Shift?> GetEffectiveShiftAsync(string employeeId);
 }
 
 // Ok=false, Error=null → 404 (not found). Ok=false, Error!=null → 400 (validation).

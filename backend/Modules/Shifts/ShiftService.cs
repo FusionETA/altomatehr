@@ -105,6 +105,23 @@ public class ShiftService : IShiftService
         return new ShiftSaveResult(true, ToDto(shift));
     }
 
+    public async Task<Shift?> GetEffectiveShiftAsync(string employeeId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        if (membership?.ShiftId is not null)
+        {
+            var assigned = await _shifts.GetByIdAsync(membership.ShiftId);
+            if (assigned is not null) return assigned;
+        }
+
+        // No explicit assignment (or it points at a deleted shift) — fall back
+        // to the default shift of whichever project the employee's shift would
+        // belong to. Without a project association on the membership there's
+        // nothing further to resolve, so return null and let the caller use the
+        // org working hours.
+        return null;
+    }
+
     private static ShiftDto ToDto(Shift s) => new()
     {
         Id = s.Id,

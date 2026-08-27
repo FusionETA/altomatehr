@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Common;
+using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Modules.Policies.Entities;
 
@@ -55,6 +56,22 @@ public class EmployeePolicy : ITenantScoped
     public bool OtEnabled { get; set; } = true;
     public int OtDailyThresholdMinutes { get; set; } = 480;   // minutes/day before OT accrues
     public OtMethod OtMethod { get; set; } = OtMethod.CASH;
+
+    // OT multipliers (x HRP) — applied only when OtMethod == CASH. Ignored for
+    // TIME_BANK (banks 1:1) and when OtEnabled is false. Values are kept in the
+    // row when OT mode is non-CASH so toggling back restores the chosen rates.
+    [Precision(4, 2)] public decimal OtRateNormalDay { get; set; } = 1.50m;
+    [Precision(4, 2)] public decimal OtRatePublicHoliday { get; set; } = 3.00m;
+    [Precision(4, 2)] public decimal OtRateRestDay { get; set; } = 2.00m;
+
+    // In-shift premiums (x ORP) for hours worked WITHIN the regular shift on
+    // rest days / public holidays.
+    [Precision(4, 2)] public decimal OtRatePublicHolidayInShift { get; set; } = 2.00m;
+    [Precision(4, 2)] public decimal OtRateRestDayInShift { get; set; } = 1.00m;
+
+    // Optional monthly-salary cap above which OT needs extra approval.
+    // Null = no cap.
+    [Precision(10, 2)] public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }                       // probation / fixed-term
 
     public DateTime CreatedAt { get; set; }

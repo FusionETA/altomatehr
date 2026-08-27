@@ -150,6 +150,12 @@ public class PolicyService : IPolicyService
         policy.OtEnabled = dto.OtEnabled;
         policy.OtDailyThresholdMinutes = dto.OtDailyThresholdMinutes;
         policy.OtMethod = dto.OtMethod;
+        policy.OtRateNormalDay = dto.OtRateNormalDay;
+        policy.OtRatePublicHoliday = dto.OtRatePublicHoliday;
+        policy.OtRateRestDay = dto.OtRateRestDay;
+        policy.OtRatePublicHolidayInShift = dto.OtRatePublicHolidayInShift;
+        policy.OtRateRestDayInShift = dto.OtRateRestDayInShift;
+        policy.OtSalaryThreshold = dto.OtSalaryThreshold;
         policy.Temporary = dto.Temporary;
         return policy;
     }
@@ -177,6 +183,12 @@ public class PolicyService : IPolicyService
         OtEnabled = p.OtEnabled,
         OtDailyThresholdMinutes = p.OtDailyThresholdMinutes,
         OtMethod = p.OtMethod,
+        OtRateNormalDay = p.OtRateNormalDay,
+        OtRatePublicHoliday = p.OtRatePublicHoliday,
+        OtRateRestDay = p.OtRateRestDay,
+        OtRatePublicHolidayInShift = p.OtRatePublicHolidayInShift,
+        OtRateRestDayInShift = p.OtRateRestDayInShift,
+        OtSalaryThreshold = p.OtSalaryThreshold,
         Temporary = p.Temporary,
         LeaveEntitlements = entitlements
             .Select(e => new PolicyLeaveEntitlementDto { LeaveTypeId = e.LeaveTypeId, DefaultDays = e.DefaultDays })
