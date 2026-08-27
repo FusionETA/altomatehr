@@ -28,6 +28,8 @@ public class PolicyDto
     public bool GeolocationEnabled { get; set; }
     public bool CaptureLocationOnClockIn { get; set; }
     public bool CaptureLocationOnClockOut { get; set; }
+    public bool AutoClockOutEnabled { get; set; }
+    public int? AutoClockOutAfterMinutes { get; set; }
     public SalaryType SalaryType { get; set; }
     public bool OtEnabled { get; set; }
     public int OtDailyThresholdMinutes { get; set; }
@@ -64,6 +66,11 @@ public class SavePolicyDto
     public bool GeolocationEnabled { get; set; } = true;
     public bool CaptureLocationOnClockIn { get; set; } = true;
     public bool CaptureLocationOnClockOut { get; set; } = true;
+    public bool AutoClockOutEnabled { get; set; }
+
+    [Range(1, 1440)]
+    public int? AutoClockOutAfterMinutes { get; set; }
+
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;
 

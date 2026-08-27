@@ -51,6 +51,13 @@ public class EmployeePolicy : ITenantScoped
     public bool CaptureLocationOnClockIn { get; set; } = true;    // per-event, only consulted when GeolocationEnabled
     public bool CaptureLocationOnClockOut { get; set; } = true;
 
+    // Auto clock-out: when true, a background sweep closes sessions still open
+    // after AutoClockOutAfterMinutes ("employee forgot to clock out"). Opt-in —
+    // off by default, so nobody is auto-clocked-out until an admin turns it on.
+    // Null minutes disables it even when the flag is true.
+    public bool AutoClockOutEnabled { get; set; }
+    public int? AutoClockOutAfterMinutes { get; set; }
+
     // Classification / OT (rates arrive with the OT pass).
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;

@@ -146,6 +146,8 @@ public class PolicyService : IPolicyService
         policy.GeolocationEnabled = dto.GeolocationEnabled;
         policy.CaptureLocationOnClockIn = dto.CaptureLocationOnClockIn;
         policy.CaptureLocationOnClockOut = dto.CaptureLocationOnClockOut;
+        policy.AutoClockOutEnabled = dto.AutoClockOutEnabled;
+        policy.AutoClockOutAfterMinutes = dto.AutoClockOutAfterMinutes;
         policy.SalaryType = dto.SalaryType;
         policy.OtEnabled = dto.OtEnabled;
         policy.OtDailyThresholdMinutes = dto.OtDailyThresholdMinutes;
@@ -179,6 +181,8 @@ public class PolicyService : IPolicyService
         GeolocationEnabled = p.GeolocationEnabled,
         CaptureLocationOnClockIn = p.CaptureLocationOnClockIn,
         CaptureLocationOnClockOut = p.CaptureLocationOnClockOut,
+        AutoClockOutEnabled = p.AutoClockOutEnabled,
+        AutoClockOutAfterMinutes = p.AutoClockOutAfterMinutes,
         SalaryType = p.SalaryType,
         OtEnabled = p.OtEnabled,
         OtDailyThresholdMinutes = p.OtDailyThresholdMinutes,

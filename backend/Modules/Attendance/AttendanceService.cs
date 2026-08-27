@@ -47,6 +47,8 @@ public class AttendanceService : IAttendanceService
     private readonly IPolicyService _policies;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
+    private readonly IEmployeePolicyRepository _policyRepo;
+    private readonly IOrganizationMembershipRepository _memberships;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -59,7 +61,9 @@ public class AttendanceService : IAttendanceService
         IAttendancePhotoStorage photos,
         IPolicyService policies,
         ISupervisionService supervision,
-        IApprovalRouter router)
+        IApprovalRouter router,
+        IEmployeePolicyRepository policyRepo,
+        IOrganizationMembershipRepository memberships)
     {
         _repo = repo;
         _sessions = sessions;
@@ -72,6 +76,8 @@ public class AttendanceService : IAttendanceService
         _policies = policies;
         _supervision = supervision;
         _router = router;
+        _policyRepo = policyRepo;
+        _memberships = memberships;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -669,10 +675,33 @@ public class AttendanceService : IAttendanceService
         return (true, null, created);
     }
 
-    public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int cutoffMinutes, int maxCandidates)
+    // Per-policy auto clock-out. Opt-in: an employee is only swept when their
+    // effective policy has AutoClockOutEnabled with a threshold set, so this is
+    // a no-op until an admin configures it. Runs with no request context, so
+    // policy/membership lookups here go through the org-explicit, filter-
+    // bypassing repository methods rather than the "current org" ones.
+    public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates)
     {
-        var cutoffBefore = DateTime.UtcNow.AddMinutes(-cutoffMinutes);
-        var candidates = await _sessions.GetOpenStartedBeforeAsync(cutoffBefore, maxCandidates);
+        var allPolicies = await _policyRepo.GetAllAcrossOrgsAsync();
+        var enabled = allPolicies
+            .Where(p => p.AutoClockOutEnabled && p.AutoClockOutAfterMinutes is > 0)
+            .ToList();
+
+        // Nothing configured anywhere — skip the session query entirely.
+        if (enabled.Count == 0)
+            return new AttendanceAutoClockOutResultDto { Inspected = 0, ClockedOut = 0, Errors = 0 };
+
+        var policyById = allPolicies.ToDictionary(p => p.Id);
+        var defaultByOrg = allPolicies
+            .Where(p => p.IsDefault)
+            .GroupBy(p => p.OrganizationId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // Widest net: anyone open longer than the shortest configured threshold
+        // is a candidate; each is then re-checked against their own policy.
+        var minThreshold = enabled.Min(p => p.AutoClockOutAfterMinutes!.Value);
+        var candidates = await _sessions.GetOpenStartedBeforeAsync(
+            DateTime.UtcNow.AddMinutes(-minThreshold), maxCandidates);
 
         var clockedOut = 0;
         var errors = 0;
@@ -683,7 +712,15 @@ public class AttendanceService : IAttendanceService
                 var record = await _repo.GetByIdAsync(session.AttendanceRecordId);
                 if (record is null || record.TimeOut is not null) continue;   // already handled
 
+                var policy = await ResolvePolicyForSweepAsync(
+                    record.OrganizationId, record.EmployeeId, policyById, defaultByOrg);
+                if (policy is null || !policy.AutoClockOutEnabled || policy.AutoClockOutAfterMinutes is not > 0)
+                    continue;   // not opted in
+
+                var cutoffMinutes = policy.AutoClockOutAfterMinutes.Value;
                 var cutoffAt = session.StartedAt.AddMinutes(cutoffMinutes);
+                if (cutoffAt > DateTime.UtcNow) continue;   // not past THIS employee's threshold yet
+
                 var now = DateTime.UtcNow;
 
                 session.EndedAt = cutoffAt;
@@ -784,6 +821,22 @@ public class AttendanceService : IAttendanceService
             return null;
 
         return await _photos.GetAsync(fileName);
+    }
+
+    // Background-safe policy resolution: mirrors PolicyService.GetEffectivePolicy
+    // (assigned policy, else the org default) but takes the org explicitly and
+    // reads from pre-fetched dictionaries, since the sweep has no request
+    // context for the tenant filter to key off and spans every org.
+    private async Task<EmployeePolicy?> ResolvePolicyForSweepAsync(
+        string organizationId,
+        string employeeId,
+        IReadOnlyDictionary<string, EmployeePolicy> policyById,
+        IReadOnlyDictionary<string, EmployeePolicy> defaultByOrg)
+    {
+        var membership = await _memberships.GetAsync(organizationId, employeeId);
+        if (membership?.PolicyId is not null && policyById.TryGetValue(membership.PolicyId, out var assigned))
+            return assigned;
+        return defaultByOrg.GetValueOrDefault(organizationId);
     }
 
     // Evaluate clock coords against a project's geofence.
