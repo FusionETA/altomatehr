@@ -9,6 +9,8 @@ using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Partners;
+using AltomateHR.Api.Modules.Partners.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
@@ -24,6 +26,11 @@ public static class DbSeeder
 {
     private const string DemoOrgId = "org-altomate";
 
+    // DEV-ONLY partner client secret for Appraisify. In production a real secret is
+    // generated once and delivered out-of-band; only its hash is ever stored. This
+    // fixed dev value lets you exercise POST /partner/token locally.
+    public const string DevAppraisifyClientSecret = "altomate_sk_dev_appraisify_secret_change_me";
+
     public static async Task SeedAsync(
         IOrganizationRepository organizations,
         IUserRepository users,
@@ -33,9 +40,11 @@ public static class DbSeeder
         IEmployeePolicyRepository policies,
         IProjectRepository projects,
         IAttendanceRepository attendance,
-        IAttendanceApprovalRequestRepository approvalRequests)
+        IAttendanceApprovalRequestRepository approvalRequests,
+        IApiClientRepository apiClients)
     {
         await SeedOrganizationAsync(organizations);
+        await SeedApiClientsAsync(apiClients);
         await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner");
         await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor");
         await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee");
@@ -45,6 +54,23 @@ public static class DbSeeder
         await SeedPolicyAsync(policies);
         var demoProject = await SeedAttendanceProjectAsync(projects);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
+    }
+
+    // Register the Appraisify partner app (idempotent). Read-only, employees:read only.
+    private static async Task SeedApiClientsAsync(IApiClientRepository apiClients)
+    {
+        if (await apiClients.GetByNameAsync("appraisify") is not null) return;
+
+        await apiClients.AddAsync(new ApiClient
+        {
+            Id = "client-appraisify",
+            Name = "appraisify",                                   // also the /sso/launch/{app} slug
+            SecretHash = PartnerTokenGenerator.Hash(DevAppraisifyClientSecret),
+            Scopes = "employees:read",                             // least privilege — read-only, one resource
+            RedirectUrl = "https://appraisify.app/auth/altomate-callback",
+            Audience = "appraisify",
+            Active = true,
+        });
     }
 
     private static async Task<Project> SeedAttendanceProjectAsync(IProjectRepository projects)

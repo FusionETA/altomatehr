@@ -14,6 +14,7 @@ using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Overtime;
+using AltomateHR.Api.Modules.Partners;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Shifts;
@@ -32,7 +33,7 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- Services: the DI container ----
-builder.Services.AddControllers()
+builder.Services.AddControllers(o => o.Filters.Add<PartnerAccessFilter>())   // deny-by-default for partner tokens
     .AddJsonOptions(o =>
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
@@ -59,6 +60,17 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0)),
         mySqlOptions => mySqlOptions.EnableRetryOnFailure(maxRetryCount: 5)));
+
+// ---- Distributed cache (Redis) ----
+// Backs the partner-integration ticket/token store (and general caching). If a Redis
+// connection string is configured → real Redis; otherwise an in-memory IDistributedCache
+// so dev/tests run with no Redis installed. Both expose the same IDistributedCache API.
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? builder.Configuration["Redis:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(redisConnection))
+    builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
+else
+    builder.Services.AddDistributedMemoryCache();
 
 // ---- Authentication (JWT) ----
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -90,17 +102,21 @@ builder.Services.AddAuthentication(options =>
     })
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
         ApiKeyAuthenticationDefaults.Scheme, _ => { })
-    .AddPolicyScheme("Smart", "JWT or wp_live_ API key", options =>
+    .AddScheme<AuthenticationSchemeOptions, PartnerTokenAuthenticationHandler>(
+        PartnerAuthenticationDefaults.Scheme, _ => { })
+    .AddPolicyScheme("Smart", "JWT, wp_live_ key, or apx_live_ partner token", options =>
     {
         options.ForwardDefaultSelector = context =>
         {
             var header = context.Request.Headers.Authorization.ToString();
-            var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            var token = (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
                 ? header["Bearer ".Length..]
-                : header;
-            return token.TrimStart().StartsWith(ApiTokenGenerator.Prefix, StringComparison.Ordinal)
-                ? ApiKeyAuthenticationDefaults.Scheme
-                : JwtBearerDefaults.AuthenticationScheme;
+                : header).TrimStart();
+            if (token.StartsWith(ApiTokenGenerator.Prefix, StringComparison.Ordinal))
+                return ApiKeyAuthenticationDefaults.Scheme;                         // wp_live_ → machine key
+            if (token.StartsWith(PartnerTokenGenerator.AccessTokenPrefix, StringComparison.Ordinal))
+                return PartnerAuthenticationDefaults.Scheme;                        // apx_live_ → partner app
+            return JwtBearerDefaults.AuthenticationScheme;                          // anything else → human JWT
         };
     });
 builder.Services.AddAuthorization(options =>
@@ -209,6 +225,9 @@ builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
+builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
+builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
+builder.Services.AddScoped<IPartnerAuthService, PartnerAuthService>();
 
 var app = builder.Build();
 
@@ -279,7 +298,8 @@ using (var scope = app.Services.CreateScope())
         var projects = services.GetRequiredService<IProjectRepository>();
         var attendance = services.GetRequiredService<IAttendanceRepository>();
         var attendanceApprovalRequests = services.GetRequiredService<IAttendanceApprovalRequestRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests);
+        var apiClients = services.GetRequiredService<IApiClientRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients);
     }
 }
 

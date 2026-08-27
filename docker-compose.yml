@@ -6,10 +6,22 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Redis: redis:6379   # → IDistributedCache (partner tickets/tokens + caching)
+    depends_on:
+      - redis
     volumes:
       - api_storage:/app/storage   # persist uploaded receipts/photos across redeploys
     expose:
       - "8080"                     # internal only — never published to the host
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redis_data:/data           # light persistence; tickets/tokens are short-lived anyway
+    expose:
+      - "6379"                     # internal only — reachable as host "redis" from the api container
 
   web:
     build:
@@ -30,5 +42,6 @@ services:
 
 volumes:
   api_storage:
+  redis_data:
   caddy_data:
   caddy_config:
