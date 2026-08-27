@@ -151,6 +151,37 @@ public class LeaveController : ControllerBase
         return Ok(new { data = result.Balances, total = result.Balances.Count(), year = result.Year });
     }
 
+    // GET /leave/summary-report?employeeId=&year=YYYY — the yearly summary as
+    // JSON: the month-by-month matrix plus the approved-request detail. Same
+    // data the PDF renders, for a frontend that would rather draw it itself.
+    [RequireScope("leave:read")]
+    [HttpGet("summary-report")]
+    public async Task<IActionResult> SummaryReport(
+        [FromQuery, Required] string employeeId,
+        [FromQuery, Range(2000, 2100)] int? year)
+    {
+        var result = await _leave.GetSummaryReportAsync(employeeId, year ?? DateTime.UtcNow.Year);
+        if (!result.Found) return NotFound(new { message = "Employee not found." });
+        if (!result.Allowed) return Forbid();
+        return Ok(result.Report);
+    }
+
+    // GET /leave/export/summary.pdf?employeeId=&year=YYYY — production's
+    // two-page A4 landscape summary.
+    [RequireScope("leave:read")]
+    [HttpGet("export/summary.pdf")]
+    public async Task<IActionResult> ExportSummaryPdf(
+        [FromQuery, Required] string employeeId,
+        [FromQuery, Range(2000, 2100)] int? year)
+    {
+        var result = await _leave.ExportSummaryPdfAsync(employeeId, year ?? DateTime.UtcNow.Year);
+        if (!result.Found) return NotFound(new { message = "Employee not found." });
+        if (!result.Allowed) return Forbid();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, "application/pdf", result.FileName);
+    }
+
     // GET /leave/export/summary?employeeId=&year=YYYY — balances as a CSV file.
     // Same three-tier access as the JSON reader. Production returns a PDF here;
     // CSV is the V2 stand-in until a renderer is chosen.

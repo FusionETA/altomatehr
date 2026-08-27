@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
@@ -25,6 +26,7 @@ public class LeaveService : ILeaveService
     private readonly ICurrentUser _currentUser;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly IXeroService _xero;
+    private readonly IOrganizationService _organizations;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -35,7 +37,8 @@ public class LeaveService : ILeaveService
         IOrganizationMembershipRepository memberships,
         ICurrentUser currentUser,
         ILeaveEntitlementRepository entitlements,
-        IXeroService xero)
+        IXeroService xero,
+        IOrganizationService organizations)
     {
         _apps = apps;
         _types = types;
@@ -46,6 +49,7 @@ public class LeaveService : ILeaveService
         _currentUser = currentUser;
         _entitlements = entitlements;
         _xero = xero;
+        _organizations = organizations;
     }
 
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
@@ -186,6 +190,89 @@ public class LeaveService : ILeaveService
     // org-membership check first should use GetBalancesForEmployeeAsync.
     // One employee's per-type balances for a given year. Callers that need the
     // org-membership check first should use GetBalancesForEmployeeAsync.
+    // Ported from production's buildEmployeeSection. Two rules worth keeping
+    // visible: a request is bucketed entirely into its START month (a
+    // 28 Dec - 3 Jan request counts as December), and Balance is
+    // Entitled + Carried - Total, deliberately NOT accrued-based.
+    public async Task<LeaveSummaryReportResult> GetSummaryReportAsync(string employeeId, int year)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        if (membership is null) return new LeaveSummaryReportResult(false, false, null);
+        if (!await CanReadBalancesAsync(employeeId))
+            return new LeaveSummaryReportResult(true, false, null);
+
+        var typesById = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
+        var rows = await _entitlements.GetForEmployeeYearAsync(employeeId, year);
+        var approved = (await _apps.GetByEmployeeAsync(employeeId))
+            .Where(a => a.Status == LeaveStatus.APPROVED && a.StartDate.Year == year)
+            .ToList();
+
+        // leaveTypeId → 12 months of days taken.
+        var usage = new Dictionary<string, double[]>();
+        foreach (var a in approved)
+        {
+            if (!usage.TryGetValue(a.LeaveTypeId, out var months))
+                usage[a.LeaveTypeId] = months = new double[12];
+            months[a.StartDate.Month - 1] += a.TotalDays;
+        }
+
+        var monthlyRows = rows.Select(ent =>
+        {
+            var months = usage.GetValueOrDefault(ent.LeaveTypeId) ?? new double[12];
+            var total = months.Sum();
+            return new LeaveMonthlyRowDto
+            {
+                LeaveTypeName = typesById.GetValueOrDefault(ent.LeaveTypeId)?.Name ?? ent.LeaveTypeId,
+                EntitledDays = ent.EntitledDays,
+                CarriedDays = ent.CarriedDays,
+                Monthly = months.Select(v => v == 0 ? (double?)null : v).ToList(),
+                Total = total,
+                Balance = ent.EntitledDays + ent.CarriedDays - total,
+            };
+        }).ToList();
+
+        var detailRows = approved
+            .OrderBy(a => a.StartDate)
+            .Select(a => new LeaveDetailRowDto
+            {
+                From = a.StartDate,
+                To = a.EndDate,
+                LeaveTypeName = typesById.GetValueOrDefault(a.LeaveTypeId)?.Name ?? a.LeaveTypeId,
+                Days = a.TotalDays,
+                Reason = a.Reason,
+                // Production shows the attachment's filename; V2 stores only the
+                // Xero file id, so that is what surfaces until AttachmentName exists.
+                AttachmentName = a.XeroFileId,
+            })
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync([employeeId]);
+        var org = _currentUser.OrganizationId is { } orgId
+            ? await _organizations.GetByIdAsync(orgId)
+            : null;
+
+        return new LeaveSummaryReportResult(true, true, new LeaveSummaryReportDto
+        {
+            OrganizationName = org?.Name ?? "Organization",
+            EmployeeLabel = emails.GetValueOrDefault(employeeId) ?? employeeId,
+            Year = year,
+            ReportDate = DateTime.UtcNow,
+            MonthlyRows = monthlyRows,
+            DetailRows = detailRows,
+        });
+    }
+
+    public async Task<LeaveExportResult> ExportSummaryPdfAsync(string employeeId, int year)
+    {
+        var report = await GetSummaryReportAsync(employeeId, year);
+        if (!report.Found || !report.Allowed)
+            return new LeaveExportResult(report.Found, report.Allowed, [], "");
+
+        return new LeaveExportResult(true, true,
+            LeaveSummaryPdf.Render(report.Report!),
+            $"leave-summary-{year}.pdf");
+    }
+
     // Override ONE employee's entitlement for a year. Production recomputes a
     // PRO_RATED row's accrued days from the JOIN DATE here; V2 has no join
     // date, so a pro-rated row keeps its accrued progress capped at the new

@@ -40,6 +40,11 @@ public interface ILeaveService
 
     Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to);
     Task<LeaveOverviewDto> GetOverviewAsync(int year);
+
+    // The yearly summary tables for one employee (JSON), and the same
+    // rendered as production's two-page PDF.
+    Task<LeaveSummaryReportResult> GetSummaryReportAsync(string employeeId, int year);
+    Task<LeaveExportResult> ExportSummaryPdfAsync(string employeeId, int year);
     Task<LeaveAttachmentResult> GetAttachmentAsync(string xeroFileId);
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
     Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
@@ -56,6 +61,8 @@ public record LeaveApplyResult(bool Ok, LeaveApplicationDto? Application, string
 // Allowed=false → a member, but the caller may not read their balances (403).
 // Checked in that order so an outsider's id is indistinguishable from a
 // nonexistent one, while an in-org refusal is honest about being a refusal.
+public record LeaveSummaryReportResult(bool Found, bool Allowed, LeaveSummaryReportDto? Report);
+
 public record LeaveEntitlementResult(bool Ok, LeaveBalanceDto? Balance, string? Error);
 
 public record LeaveBalancesResult(

@@ -8,6 +8,8 @@ using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
@@ -432,7 +434,8 @@ public class LeaveServiceTests
             memberships ?? new FakeMembershipRepository("usr-emp"),
             currentUser ?? new FakeCurrentUser("usr-admin", "Admin"),
             new FakeEntitlementRepo(entitlementRows ?? []),
-            xero ?? new FakeXeroService());
+            xero ?? new FakeXeroService(),
+            new FakeOrganizationService());
 
     private static LeaveType MakeType(string id, string code, double days, bool paid = true, bool archived = false) => new()
     {
@@ -520,6 +523,16 @@ public class LeaveServiceTests
 
     // Leave only ever asks Xero for file content; the sync/connect surface is
     // irrelevant here, so it throws if anything else is touched.
+    // Only the name is read, and only by the summary report.
+    private sealed class FakeOrganizationService : IOrganizationService
+    {
+        public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
+            Task.FromResult<OrganizationDto?>(new OrganizationDto { Id = organizationId, Name = "Test Org" });
+        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId) => throw new NotImplementedException();
+        public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) => throw new NotImplementedException();
+        public Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto) => throw new NotImplementedException();
+    }
+
     private sealed class FakeXeroService(XeroFileContent? file = null) : IXeroService
     {
         public Task<XeroFileContent?> GetFileContentAsync(string fileId) => Task.FromResult(file);

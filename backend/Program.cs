@@ -29,6 +29,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
+// QuestPDF requires the licence to be declared before the first render.
+// Community is free for organisations under USD 1M annual revenue —
+// confirm this still applies before shipping to production.
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- Services: the DI container ----
