@@ -7,7 +7,11 @@ public interface ILeaveTypeService
     Task<IEnumerable<LeaveTypeDto>> GetAllAsync();
     Task<LeaveTypeSaveResult> CreateAsync(SaveLeaveTypeDto dto);
     Task<LeaveTypeSaveResult> UpdateAsync(string id, SaveLeaveTypeDto dto);
-    Task<LeaveTypeDto?> SetArchivedAsync(string id, bool archived);
+    Task<LeaveTypeSaveResult> SetArchivedAsync(string id, bool archived);
+
+    // Creates any of the default leave types the current org is missing.
+    // Idempotent — matches on code, so re-running adds nothing.
+    Task<int> EnsureDefaultsAsync();
 }
 
 public interface ILeaveService

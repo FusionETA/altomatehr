@@ -248,16 +248,41 @@ public class LeaveService : ILeaveService
             };
         }).ToList();
 
+    // Order mirrors production's submitLeaveApplication: shape checks, then
+    // ensure the entitlement row exists, then the balance check — which is
+    // SKIPPED for unpaid types (usage is still tracked, negative is allowed).
     public async Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId)
     {
         var type = await _types.GetByIdAsync(dto.LeaveTypeId);
-        if (type is null || type.IsArchived)
-            return new LeaveApplyResult(false, null, "Pick a valid leave type.");
+        if (type is null) return new LeaveApplyResult(false, null, "Leave type not found");
+        if (type.IsArchived) return new LeaveApplyResult(false, null, "Leave type is archived");
 
         var start = dto.StartDate!.Value.Date;
         var end = dto.EndDate!.Value.Date;
         if (end < start)
-            return new LeaveApplyResult(false, null, "The end date can't be before the start date.");
+            return new LeaveApplyResult(false, null, "End date is before start date");
+
+        // NOTE: production counts WORKING days here (computeTotalDays), skipping
+        // non-working weekdays and public holidays. V2 has neither an org
+        // working-days setting nor a holiday calendar yet, so this still counts
+        // calendar days — tracked as a known divergence.
+        var totalDays = (end - start).Days + 1;
+        if (totalDays <= 0)
+            return new LeaveApplyResult(false, null, "Selected dates contain no working days");
+
+        var year = start.Year;
+        var entitlement = await EnsureEntitlementAsync(employeeId, type, year);
+
+        if (type.Paid)
+        {
+            var available = await AvailableForApplyAsync(employeeId, type, entitlement, year);
+            if (totalDays > available + 0.0001)
+            {
+                var rounded = Math.Round(available * 100) / 100;
+                return new LeaveApplyResult(false, null,
+                    $"Insufficient balance: requesting {totalDays} but only {rounded} available");
+            }
+        }
 
         var now = DateTime.UtcNow;
         var application = new LeaveApplication
@@ -266,7 +291,7 @@ public class LeaveService : ILeaveService
             LeaveTypeId = type.Id,
             StartDate = start,
             EndDate = end,
-            TotalDays = (end - start).Days + 1,
+            TotalDays = totalDays,
             Reason = dto.Reason,
             Status = LeaveStatus.PENDING,
             CurrentStep = 0,
@@ -275,6 +300,56 @@ public class LeaveService : ILeaveService
         };
         await _apps.AddAsync(application);
         return new LeaveApplyResult(true, ToDto(application), null);
+    }
+
+    // Rows are normally created by the year-rollover cron, but an employee may
+    // apply before it has run for that year — so create on demand, exactly as
+    // production's ensureEntitlement does.
+    private async Task<LeaveEntitlement> EnsureEntitlementAsync(
+        string employeeId, LeaveType type, int year)
+    {
+        var existing = (await _entitlements.GetForEmployeeYearAsync(employeeId, year))
+            .FirstOrDefault(e => e.LeaveTypeId == type.Id);
+        if (existing is not null) return existing;
+
+        var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
+        var entitled = overrides.GetValueOrDefault(type.Id, type.DefaultDays);
+        var now = DateTime.UtcNow;
+
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = employeeId,
+            LeaveTypeId = type.Id,
+            Year = year,
+            EntitledDays = entitled,
+            // PRO_RATED fills monthly via the cron; LUMP_SUM is whole up front.
+            AccruedDays = type.AccrualMethod == LeaveAccrualMethod.PRO_RATED ? 0 : entitled,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        await _entitlements.AddAsync(row);
+        await _entitlements.SaveAsync();
+        return row;
+    }
+
+    // Days the employee may book right now. Approved days are already counted
+    // by AvailableDays; PENDING days are subtracted too, otherwise three
+    // simultaneous requests could each pass the check on the same balance.
+    private async Task<double> AvailableForApplyAsync(
+        string employeeId, LeaveType type, LeaveEntitlement row, int year)
+    {
+        var apps = (await _apps.GetByEmployeeAsync(employeeId))
+            .Where(a => a.LeaveTypeId == type.Id && a.StartDate.Year == year)
+            .ToList();
+
+        var taken = apps.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
+        var pending = apps.Where(a => a.Status == LeaveStatus.PENDING).Sum(a => a.TotalDays);
+
+        var method = row.AccrualMethod ?? type.AccrualMethod;
+        var available = LeaveAccrualMath.AvailableDays(
+            method, row.EntitledDays, row.AccruedDays, row.CarriedDays, row.CarriedExpired, taken);
+
+        return Math.Max(0, available - pending);
     }
 
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
