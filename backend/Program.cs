@@ -72,17 +72,18 @@ if (!string.IsNullOrWhiteSpace(redisConnection))
 else
     builder.Services.AddDistributedMemoryCache();
 
-// ---- Authentication (JWT) ----
+// ---- Authentication ----
 var jwt = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwt["Key"]
     ?? throw new InvalidOperationException(
         "Jwt:Key is not set. Run: dotnet user-secrets set \"Jwt:Key\" \"$(openssl rand -base64 48)\"");
 
-// Two credential types share ONE pipeline. A "Smart" policy scheme peeks at the
+// THREE credential types share ONE pipeline. A "Smart" policy scheme peeks at the
 // Authorization header per request and forwards to the right handler by token shape:
-//   • "wp_live_..."  → ApiKey handler (machine / external apps)
-//   • anything else  → JWT handler    (human logins from the frontend)
-// Both produce the same claim shape (sub/org/role), so every controller works unchanged.
+//   • "wp_live_..."  → ApiKey handler        (machine keys / external apps)
+//   • "apx_live_..." → PartnerToken handler  (partner apps, e.g. Appraisify)
+//   • anything else  → JWT handler           (human logins from the frontend)
+// All produce the same claim shape (sub/org/role + scopes), so every controller works unchanged.
 builder.Services.AddAuthentication(options =>
     {
         options.DefaultScheme = "Smart";
