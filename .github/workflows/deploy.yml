@@ -1,0 +1,57 @@
+name: Deploy
+
+# MANUAL for now — trigger by hand from the Actions tab ("Run workflow"). Tests run
+# first (below); deploy only proceeds if they pass. Once the DROPLET_* secrets are set
+# and you want auto-deploy on merge, add:
+#   push:
+#     branches: [main]
+on:
+  workflow_dispatch:
+
+jobs:
+  # ---------- CI: the quality gate ----------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Backend — build & test
+        working-directory: backend.Tests
+        run: dotnet test --nologo
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+  # ---------- CD: ship it (only if `test` passed) ----------
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to the Droplet over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/altomatehr-v2
+            git pull origin main
+            docker compose -f docker-compose.test.yml up -d --build
+            docker image prune -f
