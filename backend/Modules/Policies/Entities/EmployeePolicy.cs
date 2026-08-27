@@ -39,6 +39,17 @@ public class EmployeePolicy : ITenantScoped
     public bool CaptureLocationOnBreakStart { get; set; } = true;   // capture GPS when starting a break
     public bool CaptureLocationOnBreakEnd { get; set; } = true;     // capture GPS when ending a break
 
+    // Must clock from an IP in the project's AllowedIps allowlist. Silently
+    // skipped when the project has no allowlist configured.
+    public bool RequireIpWhitelist { get; set; }
+
+    // Master switch for capturing GPS on clock-in/out. When false, coordinates
+    // are never stored and geofence enforcement can't apply (nothing to check
+    // against) — mirrors RequireGeofence auto-implying this should stay on.
+    public bool GeolocationEnabled { get; set; } = true;
+    public bool CaptureLocationOnClockIn { get; set; } = true;    // per-event, only consulted when GeolocationEnabled
+    public bool CaptureLocationOnClockOut { get; set; } = true;
+
     // Classification / OT (rates arrive with the OT pass).
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;

@@ -25,6 +25,7 @@ public class ProjectService : IProjectService
             Name = dto.Name,
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
+            AllowedIps = dto.AllowedIps,
             CreatedAt = DateTime.UtcNow,
             // OrganizationId is auto-stamped by AppDbContext on save.
         };
@@ -40,6 +41,7 @@ public class ProjectService : IProjectService
         project.Name = dto.Name;
         project.Latitude = dto.Latitude;
         project.Longitude = dto.Longitude;
+        project.AllowedIps = dto.AllowedIps;
         await _repo.UpdateAsync(project);
         return ToDto(project);
     }
@@ -63,6 +65,7 @@ public class ProjectService : IProjectService
         XeroSyncedAt = p.XeroSyncedAt,
         Latitude = p.Latitude,
         Longitude = p.Longitude,
+        AllowedIps = p.AllowedIps,
         IsArchived = p.IsArchived,
         CreatedAt = p.CreatedAt,
     };

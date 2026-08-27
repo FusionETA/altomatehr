@@ -142,6 +142,10 @@ public class PolicyService : IPolicyService
         policy.RequireClockOutSelfie = dto.RequireClockOutSelfie;
         policy.CaptureLocationOnBreakStart = dto.CaptureLocationOnBreakStart;
         policy.CaptureLocationOnBreakEnd = dto.CaptureLocationOnBreakEnd;
+        policy.RequireIpWhitelist = dto.RequireIpWhitelist;
+        policy.GeolocationEnabled = dto.GeolocationEnabled;
+        policy.CaptureLocationOnClockIn = dto.CaptureLocationOnClockIn;
+        policy.CaptureLocationOnClockOut = dto.CaptureLocationOnClockOut;
         policy.SalaryType = dto.SalaryType;
         policy.OtEnabled = dto.OtEnabled;
         policy.OtDailyThresholdMinutes = dto.OtDailyThresholdMinutes;
@@ -165,6 +169,10 @@ public class PolicyService : IPolicyService
         RequireClockOutSelfie = p.RequireClockOutSelfie,
         CaptureLocationOnBreakStart = p.CaptureLocationOnBreakStart,
         CaptureLocationOnBreakEnd = p.CaptureLocationOnBreakEnd,
+        RequireIpWhitelist = p.RequireIpWhitelist,
+        GeolocationEnabled = p.GeolocationEnabled,
+        CaptureLocationOnClockIn = p.CaptureLocationOnClockIn,
+        CaptureLocationOnClockOut = p.CaptureLocationOnClockOut,
         SalaryType = p.SalaryType,
         OtEnabled = p.OtEnabled,
         OtDailyThresholdMinutes = p.OtDailyThresholdMinutes,

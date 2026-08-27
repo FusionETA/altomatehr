@@ -24,6 +24,10 @@ public class PolicyDto
     public bool RequireClockOutSelfie { get; set; }
     public bool CaptureLocationOnBreakStart { get; set; }
     public bool CaptureLocationOnBreakEnd { get; set; }
+    public bool RequireIpWhitelist { get; set; }
+    public bool GeolocationEnabled { get; set; }
+    public bool CaptureLocationOnClockIn { get; set; }
+    public bool CaptureLocationOnClockOut { get; set; }
     public SalaryType SalaryType { get; set; }
     public bool OtEnabled { get; set; }
     public int OtDailyThresholdMinutes { get; set; }
@@ -50,6 +54,10 @@ public class SavePolicyDto
     public bool RequireClockOutSelfie { get; set; }
     public bool CaptureLocationOnBreakStart { get; set; } = true;
     public bool CaptureLocationOnBreakEnd { get; set; } = true;
+    public bool RequireIpWhitelist { get; set; }
+    public bool GeolocationEnabled { get; set; } = true;
+    public bool CaptureLocationOnClockIn { get; set; } = true;
+    public bool CaptureLocationOnClockOut { get; set; } = true;
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;
 

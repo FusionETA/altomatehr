@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams;
 
@@ -23,6 +24,7 @@ public class AttendanceService : IAttendanceService
 {
     private const ApprovalModule Module = ApprovalModule.ATTENDANCE;
     private const string OffSiteCode = "OFF_SITE_ACTION_REQUIRED";
+    private const string IpNotAllowedCode = "IP_NOT_ALLOWED";
     private const int MaxBulkIds = 200;
 
     private static readonly IReadOnlySet<AttendanceApprovalKind> RecordKinds =
@@ -122,9 +124,17 @@ public class AttendanceService : IAttendanceService
         }
 
         var effectiveProjectId = dto.ProjectId ?? existing?.ProjectId;
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+
+        if (!await IpAllowedAsync(employeeId, effectiveProjectId, policy))
+            return IpNotAllowed();
+
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
+
+        var (capturedLat, capturedLng) =
+            CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
 
         AttendanceRecord record;
         if (existing is null)
@@ -138,8 +148,8 @@ public class AttendanceService : IAttendanceService
                 ProjectId = effectiveProjectId,
                 Location = dto.Location,
                 Remark = dto.Remark,
-                ClockInLat = dto.Lat,
-                ClockInLng = dto.Lng,
+                ClockInLat = capturedLat,
+                ClockInLng = capturedLng,
                 ClockInDistanceMeters = distance,
                 ClockInPhotoUrl = dto.PhotoUrl,
                 CreatedAt = now,
@@ -156,8 +166,8 @@ public class AttendanceService : IAttendanceService
             existing.ProjectId = effectiveProjectId;
             existing.Location = dto.Location ?? existing.Location;
             existing.Remark = dto.Remark ?? existing.Remark;
-            existing.ClockInLat = dto.Lat;
-            existing.ClockInLng = dto.Lng;
+            existing.ClockInLat = capturedLat;
+            existing.ClockInLng = capturedLng;
             existing.ClockInDistanceMeters = distance;
             existing.ClockInPhotoUrl = dto.PhotoUrl;
             existing.UpdatedAt = now;
@@ -204,15 +214,23 @@ public class AttendanceService : IAttendanceService
             return new AttendanceActionResult(false, ToDto(record, currentApprovals), "You've already clocked out today.");
         }
 
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+
+        if (!await IpAllowedAsync(employeeId, record.ProjectId, policy))
+            return IpNotAllowed();
+
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
 
+        var (capturedLat, capturedLng) =
+            CaptureCoords(policy, policy?.CaptureLocationOnClockOut ?? true, dto.Lat, dto.Lng);
+
         record.TimeOut = now;
         record.DurationMin = (int)Math.Round((now - record.TimeIn.Value).TotalMinutes);
         record.Status = AttendanceStatus.CLOCKED_OUT;
-        record.ClockOutLat = dto.Lat;
-        record.ClockOutLng = dto.Lng;
+        record.ClockOutLat = capturedLat;
+        record.ClockOutLng = capturedLng;
         record.ClockOutDistanceMeters = distance;
         record.ClockOutPhotoUrl = dto.PhotoUrl;
         if (!string.IsNullOrWhiteSpace(dto.Remark)) record.Remark = dto.Remark;
@@ -791,6 +809,36 @@ public class AttendanceService : IAttendanceService
         return (true, distance, enforce && distance > radius);
     }
 
+    // Per-event GPS capture gate. GeolocationEnabled is the master switch; the
+    // per-event flag only matters when it's on. Returns the coords to STORE —
+    // suppressing capture never blocks the clock event, and never suppresses
+    // the geofence decision itself (which still ran on the submitted coords).
+    private static (double? Lat, double? Lng) CaptureCoords(
+        EmployeePolicy? policy, bool perEventEnabled, double? lat, double? lng)
+    {
+        if (policy is not null && !policy.GeolocationEnabled) return (null, null);
+        return perEventEnabled ? (lat, lng) : (null, null);
+    }
+
+    // IP allowlist gate. Only enforced when the employee's policy opts in AND
+    // the project actually has an allowlist configured — a project with no
+    // allowlist is silently skipped so newly-created projects don't lock
+    // everyone out before an admin populates it.
+    private async Task<bool> IpAllowedAsync(string employeeId, string? projectId, EmployeePolicy? policy)
+    {
+        if (policy is null || !policy.RequireIpWhitelist) return true;
+        if (string.IsNullOrEmpty(projectId)) return true;
+
+        var project = await _projects.GetByIdAsync(projectId);
+        var allowed = (project?.AllowedIps ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (allowed.Length == 0) return true;   // not configured → skip
+
+        var ip = _currentUser.IpAddress;
+        if (string.IsNullOrEmpty(ip)) return false;   // enforced but unverifiable → block
+        return allowed.Contains(ip, StringComparer.OrdinalIgnoreCase);
+    }
+
     private async Task<int> GetRadiusAsync()
     {
         var orgId = _currentUser.OrganizationId;
@@ -911,6 +959,14 @@ public class AttendanceService : IAttendanceService
         "You're outside the project geofence. Add a remark and a photo to clock in from here.",
         OffSiteCode,
         distance);
+
+    // Unlike the off-site case, there's no remark/photo override — the IP
+    // allowlist is a hard block, so the client shouldn't offer a retry path.
+    private static AttendanceActionResult IpNotAllowed() => new(
+        false,
+        null,
+        "You're not on an approved network for this project. Connect to the site network and try again.",
+        IpNotAllowedCode);
 
     // Stored instants are UTC; MySQL drops the Kind, so re-stamp it before
     // formatting so the JSON carries the trailing "Z".

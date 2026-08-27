@@ -14,4 +14,9 @@ public class SaveProjectDto
 
     [Range(-180, 180)]
     public double? Longitude { get; set; }
+
+    // Comma-separated IPs allowed to clock in/out against this project. Only
+    // enforced for employees whose policy has RequireIpWhitelist on.
+    [MaxLength(1000)]
+    public string? AllowedIps { get; set; }
 }
