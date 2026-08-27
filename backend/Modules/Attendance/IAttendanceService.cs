@@ -47,6 +47,13 @@ public interface IAttendanceService
     // AttendanceApprovalRequest rows they're currently a current-step
     // approver for.
     Task<PendingApprovalDigestDto> GetPendingApprovalDigestAsync(string userId);
+
+    // Org-wide digest: how many open approvals sit with each current-step
+    // reviewer, across every kind. Runs with no request context (the
+    // ApprovalDigest background sweep), so the tenant filter no-ops and one
+    // pass covers every org — the org-wide counterpart of the per-caller
+    // GetPendingApprovalDigestAsync above.
+    Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case

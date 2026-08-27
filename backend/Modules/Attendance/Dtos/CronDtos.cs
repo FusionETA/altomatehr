@@ -30,3 +30,12 @@ public class PendingApprovalDigestDto
     public int PendingCount { get; set; }
     public string? OldestSubmittedAt { get; set; }   // ISO-8601 UTC, null if PendingCount == 0
 }
+
+// One reviewer's pending-approval count in the org-wide digest sweep — the
+// background service's view (every reviewer), as opposed to the per-caller
+// PendingApprovalDigestDto. Detection only; the cron just logs these.
+public class OrgApprovalDigestEntryDto
+{
+    public string ReviewerId { get; set; } = string.Empty;
+    public int PendingCount { get; set; }
+}
