@@ -16,5 +16,9 @@ public interface IEmployeePolicyRepository
 public interface IPolicyLeaveEntitlementRepository
 {
     Task<List<PolicyLeaveEntitlement>> GetByPolicyAsync(string policyId);
+
+    // EVERY per-policy entitlement row, for building in-memory indexes.
+    // Used by the crons so per-row resolution costs no queries.
+    Task<List<PolicyLeaveEntitlement>> GetAllAsync();
     Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyLeaveEntitlement> entitlements);
 }

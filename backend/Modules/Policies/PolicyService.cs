@@ -103,6 +103,40 @@ public class PolicyService : IPolicyService
     public async Task<bool> RequiresGeofenceAsync(string employeeId) =>
         (await GetEffectivePolicyAsync(employeeId))?.RequireGeofence ?? true;
 
+    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+        GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds)
+    {
+        var ids = employeeIds.Distinct().ToList();
+        var memberships = await _memberships.GetForCurrentOrgAsync();
+        var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId);
+        var fallback = await _policies.GetDefaultAsync();
+
+        // Load each DISTINCT policy's entitlements once.
+        var neededPolicyIds = ids
+            .Select(id => policyByUser.GetValueOrDefault(id) ?? fallback?.Id)
+            .Where(pid => pid is not null)
+            .Distinct()
+            .ToList();
+
+        var byPolicy = new Dictionary<string, IReadOnlyDictionary<string, double>>();
+        foreach (var pid in neededPolicyIds)
+        {
+            var rows = await _entitlements.GetByPolicyAsync(pid!);
+            byPolicy[pid!] = rows.ToDictionary(e => e.LeaveTypeId, e => e.DefaultDays);
+        }
+
+        var empty = new Dictionary<string, double>();
+        return ids.ToDictionary(
+            id => id,
+            id =>
+            {
+                var pid = policyByUser.GetValueOrDefault(id) ?? fallback?.Id;
+                return pid is not null && byPolicy.TryGetValue(pid, out var e)
+                    ? e
+                    : (IReadOnlyDictionary<string, double>)empty;
+            });
+    }
+
     public async Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId)
     {
         var policy = await GetEffectivePolicyAsync(employeeId);

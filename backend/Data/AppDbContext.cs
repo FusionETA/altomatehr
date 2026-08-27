@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
+    public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
@@ -80,6 +81,17 @@ public class AppDbContext : DbContext
         attendance.HasIndex(r => new { r.ApprovalStatus, r.Date });
 
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
+        modelBuilder.Entity<LeaveType>()
+            .Property(t => t.AccrualMethod).HasConversion<string>().HasMaxLength(20);
+
+        var entitlement = modelBuilder.Entity<LeaveEntitlement>();
+        // One row per employee per type per year — the rollover relies on this
+        // to stay idempotent (re-running must update, never duplicate).
+        entitlement.HasIndex(e => new { e.OrganizationId, e.EmployeeId, e.LeaveTypeId, e.Year }).IsUnique();
+        entitlement.HasIndex(e => e.Year);
+        // The monthly sweep looks up "carried, not yet expired" rows.
+        entitlement.HasIndex(e => new { e.CarriedExpired, e.CarriedExpiresAt });
+        entitlement.Property(e => e.AccrualMethod).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<LeaveApplication>()
             .Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<LeaveApplication>().HasIndex(a => a.EmployeeId);
@@ -93,6 +105,8 @@ public class AppDbContext : DbContext
         policy.HasIndex(p => new { p.OrganizationId, p.Name }).IsUnique();
         policy.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
         policy.Property(p => p.OtMethod).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<PolicyLeaveEntitlement>()
+            .Property(e => e.AccrualMethod).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<PolicyLeaveEntitlement>()
             .HasIndex(e => new { e.PolicyId, e.LeaveTypeId }).IsUnique();
 
@@ -128,6 +142,8 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<LeaveEntitlement>().HasQueryFilter(
+            e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<OvertimeRequest>().HasQueryFilter(
             r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeePolicy>().HasQueryFilter(

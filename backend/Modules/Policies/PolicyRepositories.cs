@@ -55,6 +55,9 @@ public class PolicyLeaveEntitlementRepository : IPolicyLeaveEntitlementRepositor
     public Task<List<PolicyLeaveEntitlement>> GetByPolicyAsync(string policyId) =>
         _db.PolicyLeaveEntitlements.Where(e => e.PolicyId == policyId).ToListAsync();
 
+    public Task<List<PolicyLeaveEntitlement>> GetAllAsync() =>
+        _db.PolicyLeaveEntitlements.ToListAsync();
+
     public async Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyLeaveEntitlement> entitlements)
     {
         var existing = await _db.PolicyLeaveEntitlements.Where(e => e.PolicyId == policyId).ToListAsync();

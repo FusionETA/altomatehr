@@ -52,6 +52,9 @@ public class LeaveApplicationRepository : ILeaveApplicationRepository
             .OrderByDescending(a => a.StartDate)
             .ToListAsync();
 
+    public Task<LeaveApplication?> GetByXeroFileIdAsync(string xeroFileId) =>
+        _db.LeaveApplications.FirstOrDefaultAsync(a => a.XeroFileId == xeroFileId);
+
     public async Task<LeaveApplication> AddAsync(LeaveApplication application)
     {
         _db.LeaveApplications.Add(application);
@@ -64,4 +67,34 @@ public class LeaveApplicationRepository : ILeaveApplicationRepository
         _db.LeaveApplications.Update(application);
         await _db.SaveChangesAsync();
     }
+}
+
+public class LeaveEntitlementRepository : ILeaveEntitlementRepository
+{
+    private readonly AppDbContext _db;
+
+    public LeaveEntitlementRepository(AppDbContext db) => _db = db;
+
+    public Task<List<LeaveEntitlement>> GetByYearAsync(int year) =>
+        _db.LeaveEntitlements.Where(e => e.Year == year).ToListAsync();
+
+    public Task<List<LeaveEntitlement>> GetForEmployeeYearAsync(string employeeId, int year) =>
+        _db.LeaveEntitlements
+            .Where(e => e.EmployeeId == employeeId && e.Year == year)
+            .ToListAsync();
+
+    // Carried days that have lapsed and not yet been swept.
+    public Task<List<LeaveEntitlement>> GetCarryExpiringAsync(DateTime asOf) =>
+        _db.LeaveEntitlements
+            .Where(e => !e.CarriedExpired
+                        && e.CarriedDays > 0
+                        && e.CarriedExpiresAt != null
+                        && e.CarriedExpiresAt <= asOf)
+            .ToListAsync();
+
+    public async Task AddAsync(LeaveEntitlement entitlement) =>
+        await _db.LeaveEntitlements.AddAsync(entitlement);
+
+    // Tracked entities are flushed in one batch — the crons touch many rows.
+    public Task SaveAsync() => _db.SaveChangesAsync();
 }

@@ -32,6 +32,12 @@ public class LeaveApplication : ITenantScoped
     // approver signs off; the request stays PENDING until the final step.
     public int CurrentStep { get; set; }
 
+    // Supporting document (MC, etc.) stored in XERO FILES, not locally — the
+    // id only. Content is proxied through the API so the OAuth token never
+    // reaches the browser. Null = no attachment.
+    [MaxLength(80)]
+    public string? XeroFileId { get; set; }
+
     public string? ReviewNotes { get; set; }
     public DateTime? DecidedAt { get; set; }
 

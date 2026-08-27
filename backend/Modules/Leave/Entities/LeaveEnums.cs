@@ -9,3 +9,13 @@ public enum LeaveStatus
     REJECTED,
     CANCELLED,
 }
+
+// How a year's entitlement becomes available.
+//   LUMP_SUM  — the whole entitlement from day one of the year.
+//   PRO_RATED — EntitledDays/12 accrues each month (the monthly cron).
+// Resolved narrowest-wins: LeaveEntitlement → PolicyLeaveEntitlement → LeaveType.
+public enum LeaveAccrualMethod
+{
+    LUMP_SUM,
+    PRO_RATED,
+}

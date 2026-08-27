@@ -239,6 +239,15 @@ public class XeroService : IXeroService
         return refreshed.AccessToken;
     }
 
+    public async Task<XeroFileContent?> GetFileContentAsync(string fileId)
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected) return null;
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        return await _client.GetFileContentAsync(accessToken, connection.TenantId, fileId);
+    }
+
     private async Task<XeroConnection?> GetCurrentConnectionAsync() =>
         await _repo.GetConnectionAsync(RequireOrganization());
 
