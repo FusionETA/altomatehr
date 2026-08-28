@@ -16,15 +16,26 @@ public sealed class RequireScopeAttribute : Attribute, IAsyncActionFilter
 
     public RequireScopeAttribute(string scope) => _scope = scope;
 
+    // The scope this attribute demands — read by PartnerAccessFilter to discover
+    // which scopes an endpoint declares.
+    public string Scope => _scope;
+
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var user = context.HttpContext.User;
-        var isApiKey = user.HasClaim(c => c.Type == ApiKeyAuthenticationDefaults.ApiKeyIdClaim);
 
-        if (isApiKey && !user.HasClaim(ApiKeyAuthenticationDefaults.ScopeClaim, _scope))
+        // Scoped machine callers: wp_live_ keys (apikey_id) and partner apps
+        // (partner_client — mirrors PartnerAuthenticationDefaults.ClientIdClaim,
+        // kept as a literal so this module doesn't depend on Partners). Both carry
+        // granted scopes as ScopeClaim; human (JWT) callers have neither and pass.
+        var isScopedMachine =
+            user.HasClaim(c => c.Type == ApiKeyAuthenticationDefaults.ApiKeyIdClaim) ||
+            user.HasClaim(c => c.Type == "partner_client");
+
+        if (isScopedMachine && !user.HasClaim(ApiKeyAuthenticationDefaults.ScopeClaim, _scope))
         {
             context.Result = new ObjectResult(
-                new { error = new { status = 403, message = $"API key is missing required scope: {_scope}." } })
+                new { error = new { status = 403, message = $"Caller is missing required scope: {_scope}." } })
             {
                 StatusCode = StatusCodes.Status403Forbidden,
             };

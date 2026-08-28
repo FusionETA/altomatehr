@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
+using AltomateHR.Api.Modules.Partners.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts.Entities;
@@ -52,6 +53,7 @@ public class AppDbContext : DbContext
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
+    public DbSet<ApiClient> ApiClients => Set<ApiClient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,6 +137,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);
         modelBuilder.Entity<ApiKeyAuditLog>().HasIndex(l => new { l.ApiKeyId, l.CreatedAt });
+
+        // ApiClient (partner-app registry) is GLOBAL config — not tenant-scoped, so no
+        // query filter. Name is the launch slug (unique); SecretHash is the per-request
+        // client lookup.
+        modelBuilder.Entity<ApiClient>().HasIndex(c => c.Name).IsUnique();
+        modelBuilder.Entity<ApiClient>().HasIndex(c => c.SecretHash);
 
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.

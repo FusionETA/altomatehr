@@ -804,6 +804,23 @@ public class AttendanceService : IAttendanceService
         };
     }
 
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+
+        var countByReviewer = new Dictionary<string, int>();
+        foreach (var request in pending)
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            foreach (var reviewerId in approvers)
+                countByReviewer[reviewerId] = countByReviewer.GetValueOrDefault(reviewerId) + 1;
+        }
+
+        return countByReviewer
+            .Select(kv => new OrgApprovalDigestEntryDto { ReviewerId = kv.Key, PendingCount = kv.Value })
+            .ToList();
+    }
+
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
         _photos.StoreAsync(upload);
 
