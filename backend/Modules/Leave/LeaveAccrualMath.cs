@@ -9,6 +9,54 @@ public static class LeaveAccrualMath
 {
     private const int MonthsPerYear = 12;
 
+    private static readonly int[] DefaultWorkingDays = [1, 2, 3, 4, 5];   // Mon-Fri
+
+    // "1,2,3,4,5" → {Mon..Fri}. Null, blank or unparseable falls back to
+    // Mon-Fri. Same shape and default as the attendance module's parser, so
+    // the two never disagree about what a working week is.
+    public static HashSet<int> ParseWorkingDays(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return [.. DefaultWorkingDays];
+
+        var days = csv.Split(',')
+            .Select(p => int.TryParse(p.Trim(), out var n) ? n : 0)
+            .Where(n => n is >= 1 and <= 7)
+            .ToHashSet();
+
+        return days.Count == 0 ? [.. DefaultWorkingDays] : days;
+    }
+
+    // 1 = Monday … 7 = Sunday, matching how WorkingDays is stored.
+    public static int IsoWeekday(DateTime date) =>
+        date.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)date.DayOfWeek;
+
+    // How many days a request actually costs. Ported from production's
+    // computeTotalDays: half-days are always 0.5, and a full-day range counts
+    // only working weekdays that aren't public holidays. This is why a
+    // Friday-to-Monday request costs 2 days rather than 4.
+    public static double ComputeTotalDays(
+        DateTime startDate,
+        DateTime endDate,
+        LeaveDuration duration,
+        IReadOnlySet<int> workingDays,
+        IReadOnlySet<DateTime> holidays)
+    {
+        if (duration != LeaveDuration.FULL_DAY) return 0.5;
+
+        var start = startDate.Date;
+        var end = endDate.Date;
+        if (end < start) return 0;
+
+        var days = 0;
+        for (var cursor = start; cursor <= end; cursor = cursor.AddDays(1))
+        {
+            if (!workingDays.Contains(IsoWeekday(cursor))) continue;
+            if (holidays.Contains(cursor)) continue;   // production skips these too
+            days++;
+        }
+        return days;
+    }
+
     // One month's accrual, never past the full entitlement.
     public static double NextAccruedDays(double entitledDays, double accruedDays) =>
         Math.Min(entitledDays, accruedDays + entitledDays / MonthsPerYear);

@@ -14,6 +14,7 @@ public class LeaveApplicationDto
     public string StartDate { get; set; } = string.Empty;
     public string EndDate { get; set; } = string.Empty;
     public double TotalDays { get; set; }
+    public LeaveDuration Duration { get; set; }
     public string? Reason { get; set; }
     public LeaveStatus Status { get; set; }
     public string? ReviewNotes { get; set; }
@@ -31,6 +32,10 @@ public class CreateLeaveApplicationDto
 
     [Required]
     public DateTime? EndDate { get; set; }
+
+    // FULL_DAY, or a half day. A half-day must start and end on the same date
+    // and counts as 0.5.
+    public LeaveDuration Duration { get; set; } = LeaveDuration.FULL_DAY;
 
     [MaxLength(1000)]
     public string? Reason { get; set; }

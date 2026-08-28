@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -13,8 +14,35 @@ namespace AltomateHR.Api.Modules.Organizations;
 public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizations;
+    private readonly IOrgHolidayService _holidays;
 
-    public OrganizationsController(IOrganizationService organizations) => _organizations = organizations;
+    public OrganizationsController(
+        IOrganizationService organizations,
+        IOrgHolidayService holidays)
+    {
+        _organizations = organizations;
+        _holidays = holidays;
+    }
+
+    // GET /organizations/holidays?year=YYYY — the org's public-holiday list.
+    // Readable by any signed-in user: leave day-counting depends on it, so an
+    // employee needs to see why a request cost what it did.
+    [RequireScope("organizations:read")]
+    [HttpGet("holidays")]
+    public async Task<IActionResult> GetHolidays([FromQuery, Range(2000, 2100)] int? year) =>
+        Ok(await _holidays.GetAsync(year));
+
+    // PUT /organizations/holidays?year=YYYY — replace that YEAR's calendar.
+    // A whole-year replace, so omitting a date removes it; other years are
+    // untouched. Mirrors production, where an admin edits a year and PUTs it back.
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpPut("holidays")]
+    public async Task<IActionResult> SaveHolidays(
+        [FromQuery, Range(2000, 2100)] int? year, SaveHolidaysDto dto)
+    {
+        var result = await _holidays.ReplaceYearAsync(year ?? DateTime.UtcNow.Year, dto);
+        return result.Ok ? Ok(result.Holidays) : BadRequest(new { message = result.Error });
+    }
 
     // GET /organizations/current — the caller's own org (any authenticated user can read it).
     [RequireScope("organizations:read")]

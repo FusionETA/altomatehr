@@ -28,6 +28,7 @@ public class LeaveService : ILeaveService
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly IXeroService _xero;
     private readonly IOrganizationService _organizations;
+    private readonly IOrgHolidayService _holidays;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -39,7 +40,8 @@ public class LeaveService : ILeaveService
         ICurrentUser currentUser,
         ILeaveEntitlementRepository entitlements,
         IXeroService xero,
-        IOrganizationService organizations)
+        IOrganizationService organizations,
+        IOrgHolidayService holidays)
     {
         _apps = apps;
         _types = types;
@@ -51,6 +53,7 @@ public class LeaveService : ILeaveService
         _entitlements = entitlements;
         _xero = xero;
         _organizations = organizations;
+        _holidays = holidays;
     }
 
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
@@ -575,11 +578,13 @@ public class LeaveService : ILeaveService
         if (end < start)
             return new LeaveApplyResult(false, null, "End date is before start date");
 
-        // NOTE: production counts WORKING days here (computeTotalDays), skipping
-        // non-working weekdays and public holidays. V2 has neither an org
-        // working-days setting nor a holiday calendar yet, so this still counts
-        // calendar days — tracked as a known divergence.
-        var totalDays = (end - start).Days + 1;
+        if (dto.Duration != LeaveDuration.FULL_DAY && start != end)
+            return new LeaveApplyResult(false, null,
+                "Half-day leave must start and end on the same day");
+
+        var (workingDays, holidays) = await ResolveCalendarAsync(start.Year);
+        var totalDays = LeaveAccrualMath.ComputeTotalDays(
+            start, end, dto.Duration, workingDays, holidays);
         if (totalDays <= 0)
             return new LeaveApplyResult(false, null, "Selected dates contain no working days");
 
@@ -604,6 +609,7 @@ public class LeaveService : ILeaveService
             LeaveTypeId = type.Id,
             StartDate = start,
             EndDate = end,
+            Duration = dto.Duration,
             TotalDays = totalDays,
             Reason = dto.Reason,
             Status = LeaveStatus.PENDING,
@@ -645,7 +651,13 @@ public class LeaveService : ILeaveService
         if (end < start)
             return new LeaveApplyResult(false, null, "End date is before start date");
 
-        var totalDays = (end - start).Days + 1;   // see ApplyAsync: calendar days for now
+        if (dto.Duration != LeaveDuration.FULL_DAY && start != end)
+            return new LeaveApplyResult(false, null,
+                "Half-day leave must start and end on the same day");
+
+        var (workingDays, holidays) = await ResolveCalendarAsync(start.Year);
+        var totalDays = LeaveAccrualMath.ComputeTotalDays(
+            start, end, dto.Duration, workingDays, holidays);
         if (totalDays <= 0)
             return new LeaveApplyResult(false, null, "Selected dates contain no working days");
 
@@ -669,11 +681,26 @@ public class LeaveService : ILeaveService
         app.LeaveTypeId = type.Id;
         app.StartDate = start;
         app.EndDate = end;
+        app.Duration = dto.Duration;
         app.TotalDays = totalDays;
         app.Reason = dto.Reason;
         app.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(app);
         return new LeaveApplyResult(true, ToDto(app), null);
+    }
+
+    // The org's working week and public holidays for `year`. Both are org-wide:
+    // production notes leave doesn't need attendance's project-scoped
+    // resolution. Null WorkingDays means Mon-Fri.
+    private async Task<(HashSet<int> WorkingDays, IReadOnlySet<DateTime> Holidays)>
+        ResolveCalendarAsync(int year)
+    {
+        var org = _currentUser.OrganizationId is { } orgId
+            ? await _organizations.GetByIdAsync(orgId)
+            : null;
+
+        return (LeaveAccrualMath.ParseWorkingDays(org?.WorkingDays),
+                await _holidays.GetDatesAsync(year));
     }
 
     // Rows are normally created by the year-rollover cron, but an employee may
@@ -829,6 +856,7 @@ public class LeaveService : ILeaveService
         StartDate = a.StartDate.ToString("yyyy-MM-dd"),
         EndDate = a.EndDate.ToString("yyyy-MM-dd"),
         TotalDays = a.TotalDays,
+        Duration = a.Duration,
         Reason = a.Reason,
         Status = a.Status,
         ReviewNotes = a.ReviewNotes,

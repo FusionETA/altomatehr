@@ -435,7 +435,8 @@ public class LeaveServiceTests
             currentUser ?? new FakeCurrentUser("usr-admin", "Admin"),
             new FakeEntitlementRepo(entitlementRows ?? []),
             xero ?? new FakeXeroService(),
-            new FakeOrganizationService());
+            new FakeOrganizationService(),
+            new FakeHolidayService());
 
     private static LeaveType MakeType(string id, string code, double days, bool paid = true, bool archived = false) => new()
     {
@@ -524,6 +525,15 @@ public class LeaveServiceTests
     // Leave only ever asks Xero for file content; the sync/connect surface is
     // irrelevant here, so it throws if anything else is touched.
     // Only the name is read, and only by the summary report.
+    // No holidays configured — day counting then depends only on working days.
+    private sealed class FakeHolidayService : IOrgHolidayService
+    {
+        public Task<IReadOnlySet<DateTime>> GetDatesAsync(int year) =>
+            Task.FromResult<IReadOnlySet<DateTime>>(new HashSet<DateTime>());
+        public Task<IEnumerable<OrgHolidayDto>> GetAsync(int? year) => throw new NotImplementedException();
+        public Task<HolidaySaveResult> ReplaceYearAsync(int year, SaveHolidaysDto dto) => throw new NotImplementedException();
+    }
+
     private sealed class FakeOrganizationService : IOrganizationService
     {
         public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
