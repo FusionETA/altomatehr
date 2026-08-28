@@ -14,6 +14,14 @@ public class User
     [MaxLength(120)]
     public string Email { get; set; } = string.Empty;
 
+    // The person's display name. Global (one identity across every org they belong to).
+    [MaxLength(160)]
+    public string Name { get; set; } = string.Empty;
+
+    // Optional profile picture URL.
+    [MaxLength(400)]
+    public string? AvatarUrl { get; set; }
+
     [MaxLength(200)]
     public string PasswordHash { get; set; } = string.Empty;   // BCrypt hash — never the raw password
 

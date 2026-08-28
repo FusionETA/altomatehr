@@ -52,6 +52,7 @@ public class AppDbContext : DbContext
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
+    public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -139,6 +140,16 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiClient>().HasIndex(c => c.Name).IsUnique();
         modelBuilder.Entity<ApiClient>().HasIndex(c => c.SecretHash);
 
+        // EmployeeProfile — one rich per-org record per user (the monolith's PayrollProfile).
+        var profile = modelBuilder.Entity<EmployeeProfile>();
+        profile.HasIndex(p => new { p.OrganizationId, p.UserId }).IsUnique();
+        profile.Property(p => p.Gender).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.IdType).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.MaritalStatus).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.SocsoScheme).HasConversion<string>().HasMaxLength(40);
+        profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
+
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
@@ -186,6 +197,8 @@ public class AppDbContext : DbContext
         // known. ApiKeyAuditLog is NOT tenant-scoped (internal operational log).
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
+            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

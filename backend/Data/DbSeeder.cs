@@ -45,9 +45,9 @@ public static class DbSeeder
     {
         await SeedOrganizationAsync(organizations);
         await SeedApiClientsAsync(apiClients);
-        await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner");
-        await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor");
-        await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee");
+        await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner", "Demo Admin", "Founder");
+        await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor", "Sara Supervisor", "Team Lead");
+        await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee", "Evan Employee", "Associate");
         await AssignSupervisorAsync(memberships, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
@@ -337,17 +337,24 @@ public static class DbSeeder
     // on the membership — not the global User.
     private static async Task EnsureUserAsync(
         IUserRepository users, IOrganizationMembershipRepository memberships,
-        string id, string email, string role)
+        string id, string email, string role, string name, string jobTitle)
     {
-        if (await users.GetByEmailAsync(email) is null)
+        var user = await users.GetByEmailAsync(email);
+        if (user is null)
         {
             await users.AddAsync(new User
             {
                 Id = id,
                 Email = email,
+                Name = name,
                 PasswordHash = BC.HashPassword("password123"),   // hashed at seed time, never stored plain
                 CreatedAt = DateTime.UtcNow,
             });
+        }
+        else if (string.IsNullOrEmpty(user.Name))
+        {
+            user.Name = name;   // backfill name on demo rows seeded before profiles existed
+            await users.UpdateAsync(user);
         }
 
         var membership = await memberships.GetAsync(DemoOrgId, id);
@@ -358,16 +365,19 @@ public static class DbSeeder
                 OrganizationId = DemoOrgId,
                 UserId = id,
                 Role = role,
+                JobTitle = jobTitle,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             });
         }
-        else if (membership.Role != role)
+        else
         {
-            // Keep the demo seed authoritative for roles (e.g. bumping the founder
-            // to Owner) so an existing DB syncs on the next startup.
-            membership.Role = role;
-            await memberships.UpdateAsync(membership);
+            // Keep the demo seed authoritative for roles (e.g. bumping the founder to
+            // Owner), and backfill a job title if the row predates the profile fields.
+            var changed = false;
+            if (membership.Role != role) { membership.Role = role; changed = true; }
+            if (string.IsNullOrEmpty(membership.JobTitle)) { membership.JobTitle = jobTitle; changed = true; }
+            if (changed) await memberships.UpdateAsync(membership);
         }
     }
 
