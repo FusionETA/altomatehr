@@ -804,6 +804,12 @@ public class LeaveService : ILeaveService
             return (app, new LeaveTransitionResult(true, false, ToDto(app),
                 "Application is not pending"));
 
+        // DECIDED: 403 with a message, not a 404 that hides the request.
+        // An earlier V2 draft returned 404 so a non-approver couldn't tell the
+        // request existed. We match production instead — and it keeps the module
+        // self-consistent, since /leave/balances/{employeeId} already answers 403
+        // for someone in your org who isn't yours to read. Revisit only if
+        // approvals are ever exposed to an external API-key caller.
         var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
         if (!approvers.Contains(approverId))
             return (null, new LeaveTransitionResult(true, false, null,
