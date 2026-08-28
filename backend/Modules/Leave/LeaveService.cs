@@ -712,7 +712,7 @@ public class LeaveService : ILeaveService
             // Exclude THIS request from the pending total, or an edit would be
             // checked against a balance its own days are already reserving.
             var available = await AvailableForApplyAsync(
-                actorUserId, type, entitlement, year, excludeApplicationId: id, startDate: start);
+                actorUserId, type, entitlement, year, startDate: start);
             if (totalDays > available + Tolerance)
             {
                 var rounded = Math.Round(available * 100) / 100;
@@ -808,17 +808,28 @@ public class LeaveService : ILeaveService
 
     private const double Tolerance = 0.0001;
 
+    // Days the employee may book right now.
+    //
+    // Only APPROVED days are subtracted — PENDING requests do NOT hold their
+    // place. This matches production, where the check reads usedDays and
+    // usedDays only moves on approval; the submit path never looks at PENDING.
+    //
+    // The consequence is real and intentional: requests of 1 + 7 + 6 + 1 days
+    // each pass individually against a 14-day entitlement, leaving 15 days
+    // pending. Nothing sums them. The supervisor is the control — they see the
+    // whole queue and decline what doesn't fit.
+    //
+    // The upside is that an employee can submit alternatives ("either this week
+    // or that week") and let the approver pick. An earlier V2 draft subtracted
+    // pending days, which blocked that and diverged from production.
     private async Task<double> AvailableForApplyAsync(
         string employeeId, LeaveType type, LeaveEntitlement row, int year,
-        string? excludeApplicationId = null, DateTime? startDate = null)
+        DateTime? startDate = null)
     {
-        var apps = (await _apps.GetByEmployeeAsync(employeeId))
+        var taken = (await _apps.GetByEmployeeAsync(employeeId))
             .Where(a => a.LeaveTypeId == type.Id && a.StartDate.Year == year)
-            .Where(a => excludeApplicationId is null || a.Id != excludeApplicationId)
-            .ToList();
-
-        var taken = apps.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
-        var pending = apps.Where(a => a.Status == LeaveStatus.PENDING).Sum(a => a.TotalDays);
+            .Where(a => a.Status == LeaveStatus.APPROVED)
+            .Sum(a => a.TotalDays);
 
         var method = row.AccrualMethod ?? type.AccrualMethod;
 
@@ -835,10 +846,8 @@ public class LeaveService : ILeaveService
             accrued = Math.Max(accrued, forecast);
         }
 
-        var available = LeaveAccrualMath.AvailableDays(
+        return LeaveAccrualMath.AvailableDays(
             method, row.EntitledDays, accrued, row.CarriedDays, row.CarriedExpired, taken);
-
-        return Math.Max(0, available - pending);
     }
 
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
