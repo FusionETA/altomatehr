@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828025431_AddEmployeeProfile")]
+    partial class AddEmployeeProfile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -993,44 +996,6 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("OrganizationMemberships");
                 });
 
-            modelBuilder.Entity("AltomateHR.Api.Modules.Holidays.Entities.Holiday", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("varchar(160)");
-
-                    b.Property<string>("OrganizationId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("ProjectId")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId");
-
-                    b.HasIndex("OrganizationId", "Date", "ProjectId")
-                        .IsUnique();
-
-                    b.ToTable("Holidays");
-                });
-
             modelBuilder.Entity("AltomateHR.Api.Modules.Leave.Entities.LeaveApplication", b =>
                 {
                     b.Property<string>("Id")
@@ -1324,12 +1289,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<int?>("AutoClockOutAfterMinutes")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("AutoClockOutEnabled")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<bool>("CanAccessAttendance")
                         .HasColumnType("tinyint(1)");
 
@@ -1345,21 +1304,12 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("CaptureLocationOnBreakStart")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<bool>("CaptureLocationOnClockIn")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("CaptureLocationOnClockOut")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
-
-                    b.Property<bool>("GeolocationEnabled")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("tinyint(1)");
@@ -1388,37 +1338,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<decimal>("OtRateNormalDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRatePublicHoliday")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRatePublicHolidayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal?>("OtSalaryThreshold")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
-
                     b.Property<bool>("RequireClockOutSelfie")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("RequireGeofence")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("RequireIpWhitelist")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("RequireSelfie")
@@ -1484,10 +1407,6 @@ namespace AltomateHR.Api.Migrations
                 {
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
-
-                    b.Property<string>("AllowedIps")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");

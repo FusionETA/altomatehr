@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828024613_AddEmployeeProfileFields")]
+    partial class AddEmployeeProfileFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -665,271 +668,6 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("Claims");
                 });
 
-            modelBuilder.Entity("AltomateHR.Api.Modules.Employees.Entities.EmployeeProfile", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("AlternateEmail")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("ArchiveReason")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<DateTime?>("ArchivedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("BankAccountHolderName")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("BankAccountNumber")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
-                    b.Property<string>("BankName")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("ChildReliefJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("City")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<bool>("ContributeToEis")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("ContributeToEpf")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("ContributeToSkbbk")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DateOfBirth")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Department")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("EmergencyContactName")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("EmergencyContactPhone")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("EmergencyContactRelation")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
-                    b.Property<decimal>("EpfEmployeeRate")
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)");
-
-                    b.Property<decimal>("EpfEmployeeVoluntary")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<decimal>("EpfEmployerVoluntary")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<string>("EpfNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("FixedAllowancesJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Gender")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<bool>("HasPr")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<decimal?>("HourlyRate")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<string>("IdNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("IdType")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("IncomeTaxNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<bool>("IsArchived")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("IsOku")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("IsResident")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<DateTime?>("JoinDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("LeaveDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("LeaveEntitlementJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Location")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.Property<string>("MaritalStatus")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<decimal?>("MonthlySalary")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<string>("Nationality")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
-                    b.Property<string>("OrganizationId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("PaymentMethod")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("PayrollCycle")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("PayrollDocumentsJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PayrollPolicy")
-                        .HasMaxLength(80)
-                        .HasColumnType("varchar(80)");
-
-                    b.Property<bool>("PcbBorneByEmployer")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("Postcode")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<decimal?>("PrevAllowableDeductions")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<int?>("PrevEmploymentYear")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("PrevEpf")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<bool>("PrevIncludesPriorThisOrgPeriod")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<decimal?>("PrevPcb")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<decimal?>("PrevRemuneration")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<decimal?>("PrevZakat")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<string>("Race")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
-                    b.Property<bool>("ReportedToLhdn")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("SalaryType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("SocsoNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("SocsoScheme")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<bool?>("SpouseDisabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("SpouseIdNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("SpousePcbNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<bool?>("SpouseWorking")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("SsfwNumber")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("State")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
-                    b.Property<DateTime?>("TemporaryReviewDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("WorkSchedule")
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("EmployeeProfiles");
-                });
-
             modelBuilder.Entity("AltomateHR.Api.Modules.Employees.Entities.OrganizationMembership", b =>
                 {
                     b.Property<string>("Id")
@@ -991,44 +729,6 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("OrganizationMemberships");
-                });
-
-            modelBuilder.Entity("AltomateHR.Api.Modules.Holidays.Entities.Holiday", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("varchar(160)");
-
-                    b.Property<string>("OrganizationId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("ProjectId")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId");
-
-                    b.HasIndex("OrganizationId", "Date", "ProjectId")
-                        .IsUnique();
-
-                    b.ToTable("Holidays");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Leave.Entities.LeaveApplication", b =>
@@ -1324,12 +1024,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<int?>("AutoClockOutAfterMinutes")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("AutoClockOutEnabled")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<bool>("CanAccessAttendance")
                         .HasColumnType("tinyint(1)");
 
@@ -1345,21 +1039,12 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("CaptureLocationOnBreakStart")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<bool>("CaptureLocationOnClockIn")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("CaptureLocationOnClockOut")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
-
-                    b.Property<bool>("GeolocationEnabled")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("tinyint(1)");
@@ -1388,37 +1073,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<decimal>("OtRateNormalDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRatePublicHoliday")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRatePublicHolidayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal?>("OtSalaryThreshold")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
-
                     b.Property<bool>("RequireClockOutSelfie")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("RequireGeofence")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("RequireIpWhitelist")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("RequireSelfie")
@@ -1484,10 +1142,6 @@ namespace AltomateHR.Api.Migrations
                 {
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
-
-                    b.Property<string>("AllowedIps")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");

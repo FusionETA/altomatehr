@@ -223,6 +223,8 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
+builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();

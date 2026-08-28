@@ -29,8 +29,8 @@ public class EmployeeService : IEmployeeService
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
     {
         var members = await _memberships.GetForCurrentOrgAsync();
-        var emailById = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Email);
-        return members.Select(m => ToDto(m, emailById));
+        var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
+        return members.Select(m => ToDto(m, usersById));
     }
 
     public async Task<EmployeeSaveResult> CreateAsync(CreateEmployeeDto dto)
@@ -51,10 +51,13 @@ public class EmployeeService : IEmployeeService
         {
             if (string.IsNullOrWhiteSpace(dto.Password))
                 return new EmployeeSaveResult(false, null, "A password is required to create a new account.");
+            if (string.IsNullOrWhiteSpace(dto.Name))
+                return new EmployeeSaveResult(false, null, "A name is required to create a new account.");
 
             user = new User
             {
                 Email = email,
+                Name = dto.Name.Trim(),
                 PasswordHash = BC.HashPassword(dto.Password),
                 CreatedAt = DateTime.UtcNow,
             };
@@ -86,11 +89,13 @@ public class EmployeeService : IEmployeeService
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
+            EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim(),
+            JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
-        var emailById = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Email);
-        return new EmployeeSaveResult(true, ToDto(membership, emailById), null);
+        var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
+        return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
     }
 
     public async Task<EmployeeSaveResult> UpdateAsync(string id, UpdateEmployeeDto dto)
@@ -119,25 +124,44 @@ public class EmployeeService : IEmployeeService
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
 
+        // Name lives on the global User. Patch semantics: null → leave unchanged
+        // (so an update that omits it can't wipe the person's identity).
+        if (dto.Name is not null)
+        {
+            var user = await _users.GetByIdAsync(id);
+            if (user is not null)
+            {
+                user.Name = dto.Name.Trim();
+                await _users.UpdateAsync(user);
+            }
+        }
+
         membership.Role = role;
         membership.SupervisorId = supervisorId;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
         membership.ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId;
         membership.Modules = modulesCsv;
+        membership.EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim();
+        membership.JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim();
         await _memberships.UpdateAsync(membership);
 
-        var emailById = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Email);
-        return new EmployeeSaveResult(true, ToDto(membership, emailById), null);
+        var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
+        return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
     }
 
-    private static EmployeeDto ToDto(OrganizationMembership m, IReadOnlyDictionary<string, string> emailById) => new()
+    private static EmployeeDto ToDto(OrganizationMembership m, IReadOnlyDictionary<string, User> usersById) => new()
     {
         Id = m.UserId,
-        Email = emailById.TryGetValue(m.UserId, out var email) ? email : "",
+        Email = usersById.TryGetValue(m.UserId, out var user) ? user.Email : "",
+        Name = user?.Name ?? "",
+        AvatarUrl = user?.AvatarUrl,
         Role = m.Role,
+        EmployeeNumber = m.EmployeeNumber,
+        JobTitle = m.JobTitle,
+        OtTimeBalanceMin = m.OtTimeBalanceMin,
         SupervisorId = m.SupervisorId,
-        SupervisorEmail = m.SupervisorId is not null && emailById.TryGetValue(m.SupervisorId, out var se)
-            ? se
+        SupervisorEmail = m.SupervisorId is not null && usersById.TryGetValue(m.SupervisorId, out var sup)
+            ? sup.Email
             : null,
         PolicyId = m.PolicyId,
         ShiftId = m.ShiftId,
