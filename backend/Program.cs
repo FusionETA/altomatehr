@@ -12,6 +12,7 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Cron;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Overtime;
@@ -194,6 +195,8 @@ builder.Services.AddScoped<IAttendanceApprovalRequestRepository, AttendanceAppro
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<IHoursSummaryService, HoursSummaryService>();
+builder.Services.AddHostedService<LeaveRolloverBackgroundService>();
+builder.Services.AddHostedService<LeaveAccrualBackgroundService>();
 builder.Services.AddHostedService<AutoClockOutBackgroundService>();
 builder.Services.AddHostedService<OtWarningBackgroundService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();

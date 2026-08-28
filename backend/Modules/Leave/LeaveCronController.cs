@@ -1,16 +1,24 @@
 using System.ComponentModel.DataAnnotations;
-using AltomateHR.Api.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AltomateHR.Api.Modules.Leave;
 
-// Scheduled leave maintenance. Runs SYSTEM-WIDE (every org) — there is no JWT
-// and therefore no tenant context, so the global query filter is a no-op here
-// by design. Authenticated by shared secret, not by user.
+// Manual triggers for the scheduled leave jobs — force a run now instead of
+// waiting for the background service's next tick. Follows the same shape as
+// POST /attendance/cron/auto-clockout/run.
+//
+// The jobs normally run in-process via LeaveRolloverBackgroundService and
+// LeaveAccrualBackgroundService, so no external scheduler or shared secret is
+// involved. These endpoints exist for operators and for testing.
+//
+// Both run SYSTEM-WIDE. The services execute with no request context, so the
+// tenant filter is a no-op there; here the caller has a JWT, but the underlying
+// service still sweeps every org — deliberate, and the reason this is
+// Admin/Owner only.
 [ApiController]
 [Route("leave/cron")]
-[AllowAnonymous]
+[Authorize(Roles = "Admin,Owner")]
 public class LeaveCronController : ControllerBase
 {
     private readonly ILeaveCronService _cron;
@@ -22,11 +30,10 @@ public class LeaveCronController : ControllerBase
         _logger = logger;
     }
 
-    // POST /leave/cron/year-rollover?year=YYYY — opens the target year.
+    // POST /leave/cron/year-rollover?year=YYYY — force-open the target year.
     // `year` defaults to the current UTC year; pass it explicitly to re-open a
     // past year or to pre-open the next one. Safe to re-run: existing rows are
     // skipped, never duplicated (the DB unique index backs that up).
-    [RequireCronSecret]
     [HttpPost("year-rollover")]
     public async Task<IActionResult> YearRollover([FromQuery, Range(2000, 2100)] int? year)
     {
@@ -43,8 +50,7 @@ public class LeaveCronController : ControllerBase
         }
     }
 
-    // POST /leave/cron/monthly-accrual — run on the 1st of each month.
-    [RequireCronSecret]
+    // POST /leave/cron/monthly-accrual — force a monthly accrual + expiry sweep.
     [HttpPost("monthly-accrual")]
     public async Task<IActionResult> MonthlyAccrual()
     {
