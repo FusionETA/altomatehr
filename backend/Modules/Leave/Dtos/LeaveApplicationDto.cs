@@ -37,6 +37,14 @@ public class CreateLeaveApplicationDto
     // and counts as 0.5.
     public LeaveDuration Duration { get; set; } = LeaveDuration.FULL_DAY;
 
+    // Supporting document in Xero Files: the id, plus its display name so a
+    // download can be labelled without calling Xero.
+    [MaxLength(80)]
+    public string? XeroFileId { get; set; }
+
+    [MaxLength(260)]
+    public string? AttachmentName { get; set; }
+
     [MaxLength(1000)]
     public string? Reason { get; set; }
 }

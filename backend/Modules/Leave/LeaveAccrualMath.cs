@@ -57,6 +57,55 @@ public static class LeaveAccrualMath
         return days;
     }
 
+    // How much a PRO_RATED entitlement has accrued by `asOf`, given the
+    // employee's join date. Ported from production's initialProRatedAccrual.
+    //
+    // Two parts: a full 1/12 for every month boundary crossed since their
+    // start month, plus a partial credit for the join month itself
+    // (days worked / days in month x 1/12). Someone joining on the 20th of a
+    // 30-day month gets 11/30 of that month's chunk.
+    //
+    // A null join date means "joined in an earlier year" and is treated as a
+    // full January. Capped at the full entitlement.
+    public static double ProRatedAccrualOnDate(
+        double entitledDays, DateTime? joinDate, int targetYear, DateTime asOf)
+    {
+        if (entitledDays <= 0) return 0;
+        var monthlyChunk = entitledDays / MonthsPerYear;
+
+        int startMonth;              // 0-indexed
+        double partialMonthFraction; // (0, 1]
+
+        var joinYear = joinDate?.Year;
+        if (joinYear is { } jy && jy > targetYear)
+            return 0;                                   // hired in a later year
+        if (joinDate is { } jd && joinYear == targetYear)
+        {
+            startMonth = jd.Month - 1;
+            var daysInMonth = DateTime.DaysInMonth(targetYear, jd.Month);
+            var daysWorked = Math.Max(1, daysInMonth - jd.Day + 1);
+            partialMonthFraction = (double)daysWorked / daysInMonth;
+        }
+        else
+        {
+            startMonth = 0;                             // joined earlier, or unknown
+            partialMonthFraction = 1;
+        }
+
+        int nowMonthInTarget;
+        if (asOf.Year > targetYear) nowMonthInTarget = 11;
+        else if (asOf.Year < targetYear) return 0;
+        else nowMonthInTarget = asOf.Month - 1;
+
+        // Their first day is still ahead of `asOf` — nothing has accrued. Without
+        // this the partial join-month credit would apply before they started.
+        if (nowMonthInTarget < startMonth) return 0;
+
+        var fullMonthsCrossed = Math.Max(0, nowMonthInTarget - startMonth);
+        var seeded = fullMonthsCrossed * monthlyChunk + partialMonthFraction * monthlyChunk;
+        return Math.Min(entitledDays, seeded);
+    }
+
     // One month's accrual, never past the full entitlement.
     public static double NextAccruedDays(double entitledDays, double accruedDays) =>
         Math.Min(entitledDays, accruedDays + entitledDays / MonthsPerYear);

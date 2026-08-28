@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.IO.Compression;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
@@ -246,7 +247,7 @@ public class LeaveService : ILeaveService
                 Reason = a.Reason,
                 // Production shows the attachment's filename; V2 stores only the
                 // Xero file id, so that is what surfaces until AttachmentName exists.
-                AttachmentName = a.XeroFileId,
+                AttachmentName = a.AttachmentName ?? a.XeroFileId,
             })
             .ToList();
 
@@ -593,7 +594,8 @@ public class LeaveService : ILeaveService
 
         if (type.Paid)
         {
-            var available = await AvailableForApplyAsync(employeeId, type, entitlement, year);
+            var available = await AvailableForApplyAsync(
+                employeeId, type, entitlement, year, startDate: start);
             if (totalDays > available + Tolerance)
             {
                 var rounded = Math.Round(available * 100) / 100;
@@ -612,6 +614,8 @@ public class LeaveService : ILeaveService
             Duration = dto.Duration,
             TotalDays = totalDays,
             Reason = dto.Reason,
+            XeroFileId = dto.XeroFileId,
+            AttachmentName = dto.AttachmentName,
             Status = LeaveStatus.PENDING,
             CurrentStep = 0,
             CreatedAt = now,
@@ -619,6 +623,45 @@ public class LeaveService : ILeaveService
         };
         await _apps.AddAsync(application);
         return new LeaveApplyResult(true, ToDto(application), null);
+    }
+
+    // An admin files leave on an employee's behalf. Production lands it
+    // APPROVED, bypassing the supervisor chain, because the admin already has
+    // authority to grant — and stamps AppliedByAdminId plus a synthetic
+    // ADMIN_APPLIED trail entry so the history shows who really created it.
+    //
+    // The same balance check runs first, so an admin can't quietly over-grant
+    // paid leave. Unpaid types stay exempt, as everywhere else.
+    public async Task<LeaveApplyResult> ApplyOnBehalfAsync(
+        string employeeId, CreateLeaveApplicationDto dto, string adminUserId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        if (membership is null) return new LeaveApplyResult(false, null, null);   // → 404
+
+        var result = await ApplyAsync(dto, employeeId);
+        if (!result.Ok) return result;
+
+        var app = await _apps.GetByIdAsync(result.Application!.Id);
+        app!.Status = LeaveStatus.APPROVED;
+        app.DecidedAt = DateTime.UtcNow;
+        app.AppliedByAdminId = adminUserId;
+        AppendTrail(app, app.CurrentStep, adminUserId, "ADMIN_APPLIED", dto.Reason);
+        app.UpdatedAt = DateTime.UtcNow;
+        await _apps.UpdateAsync(app);
+
+        return new LeaveApplyResult(true, ToDto(app), null);
+    }
+
+    // The decision trail. Visible to whoever may read the employee's balances,
+    // so an employee sees their own history and a supervisor sees their team's.
+    public async Task<LeaveAuditResult> GetAuditTrailAsync(string applicationId)
+    {
+        var app = await _apps.GetByIdAsync(applicationId);
+        if (app is null) return new LeaveAuditResult(false, false, null);
+        if (!await CanReadBalancesAsync(app.EmployeeId))
+            return new LeaveAuditResult(true, false, null);
+
+        return new LeaveAuditResult(true, true, ReadTrail(app.Approvals));
     }
 
     // Edit a pending request. Rules ported from production's
@@ -669,7 +712,7 @@ public class LeaveService : ILeaveService
             // Exclude THIS request from the pending total, or an edit would be
             // checked against a balance its own days are already reserving.
             var available = await AvailableForApplyAsync(
-                actorUserId, type, entitlement, year, excludeApplicationId: id);
+                actorUserId, type, entitlement, year, excludeApplicationId: id, startDate: start);
             if (totalDays > available + Tolerance)
             {
                 var rounded = Math.Round(available * 100) / 100;
@@ -736,11 +779,38 @@ public class LeaveService : ILeaveService
     // Days the employee may book right now. Approved days are already counted
     // by AvailableDays; PENDING days are subtracted too, otherwise three
     // simultaneous requests could each pass the check on the same balance.
+    private static readonly JsonSerializerOptions ApprovalJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    private static List<LeaveApprovalEntryDto> ReadTrail(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<List<LeaveApprovalEntryDto>>(json, ApprovalJson) ?? []; }
+        catch (JsonException) { return []; }   // never let a bad trail block a decision
+    }
+
+    private static void AppendTrail(
+        LeaveApplication app, int step, string actorId, string decision, string? notes)
+    {
+        var trail = ReadTrail(app.Approvals);
+        trail.Add(new LeaveApprovalEntryDto
+        {
+            Step = step,
+            ApproverId = actorId,
+            Decision = decision,
+            DecidedAt = DateTime.UtcNow,
+            Notes = notes,
+        });
+        app.Approvals = JsonSerializer.Serialize(trail, ApprovalJson);
+    }
+
     private const double Tolerance = 0.0001;
 
     private async Task<double> AvailableForApplyAsync(
         string employeeId, LeaveType type, LeaveEntitlement row, int year,
-        string? excludeApplicationId = null)
+        string? excludeApplicationId = null, DateTime? startDate = null)
     {
         var apps = (await _apps.GetByEmployeeAsync(employeeId))
             .Where(a => a.LeaveTypeId == type.Id && a.StartDate.Year == year)
@@ -751,8 +821,22 @@ public class LeaveService : ILeaveService
         var pending = apps.Where(a => a.Status == LeaveStatus.PENDING).Sum(a => a.TotalDays);
 
         var method = row.AccrualMethod ?? type.AccrualMethod;
+
+        // For PRO_RATED, production checks what the employee will have accrued
+        // BY THE LEAVE START DATE, not today — so booking December leave in
+        // March is allowed if they'll have earned it by then. Needs a join date;
+        // without one we fall back to the accrued-so-far figure.
+        var accrued = row.AccruedDays;
+        if (method == LeaveAccrualMethod.PRO_RATED && startDate is { } start)
+        {
+            var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+            var forecast = LeaveAccrualMath.ProRatedAccrualOnDate(
+                row.EntitledDays, membership?.JoinDate, year, start);
+            accrued = Math.Max(accrued, forecast);
+        }
+
         var available = LeaveAccrualMath.AvailableDays(
-            method, row.EntitledDays, row.AccruedDays, row.CarriedDays, row.CarriedExpired, taken);
+            method, row.EntitledDays, accrued, row.CarriedDays, row.CarriedExpired, taken);
 
         return Math.Max(0, available - pending);
     }
@@ -763,7 +847,8 @@ public class LeaveService : ILeaveService
         if (error is not null) return error;
 
         var now = DateTime.UtcNow;
-        var stepCount = await _router.StepCountAsync(Module, app!.EmployeeId);
+        AppendTrail(app!, app.CurrentStep, approverId, "APPROVED", null);
+        var stepCount = await _router.StepCountAsync(Module, app.EmployeeId);
         var isFinal = app.CurrentStep + 1 >= stepCount;
         if (isFinal)
         {
@@ -785,7 +870,8 @@ public class LeaveService : ILeaveService
         if (error is not null) return error;
 
         var now = DateTime.UtcNow;
-        app!.Status = LeaveStatus.REJECTED;
+        AppendTrail(app!, app.CurrentStep, approverId, "REJECTED", reviewNotes);
+        app.Status = LeaveStatus.REJECTED;
         app.ReviewNotes = reviewNotes;
         app.DecidedAt = now;
         app.UpdatedAt = now;

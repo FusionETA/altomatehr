@@ -266,6 +266,30 @@ public class LeaveController : ControllerBase
             : BadRequest(new { message = result.Error });
     }
 
+    // POST /leave/on-behalf/{employeeId} — an admin files leave for someone.
+    // Lands APPROVED and records who did it.
+    [HttpPost("on-behalf/{employeeId}")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ApplyOnBehalf(string employeeId, CreateLeaveApplicationDto dto)
+    {
+        var result = await _leave.ApplyOnBehalfAsync(employeeId, dto, GetUserId());
+        if (result.Ok) return Ok(result.Application);
+        return result.Error is null
+            ? NotFound(new { message = "Employee not found." })
+            : BadRequest(new { message = result.Error });
+    }
+
+    // GET /leave/{id}/audit — the decision trail for one request.
+    [RequireScope("leave:read")]
+    [HttpGet("{id}/audit")]
+    public async Task<IActionResult> Audit(string id)
+    {
+        var result = await _leave.GetAuditTrailAsync(id);
+        if (!result.Found) return NotFound(new { message = "Application not found" });
+        if (!result.Allowed) return Forbid();
+        return Ok(result.Entries);
+    }
+
     // POST /leave/{id}/approve — the current-step approver in the applicant's chain.
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]

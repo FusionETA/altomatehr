@@ -53,6 +53,14 @@ public interface ILeaveService
     Task<LeaveAttachmentResult> GetAttachmentAsync(string xeroFileId);
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
     Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
+
+    // An admin files leave FOR an employee. Lands APPROVED — the admin already
+    // has authority to grant — and records who did it.
+    Task<LeaveApplyResult> ApplyOnBehalfAsync(
+        string employeeId, CreateLeaveApplicationDto dto, string adminUserId);
+
+    // The decision trail for one request.
+    Task<LeaveAuditResult> GetAuditTrailAsync(string applicationId);
     Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
@@ -66,6 +74,8 @@ public record LeaveApplyResult(bool Ok, LeaveApplicationDto? Application, string
 // Allowed=false → a member, but the caller may not read their balances (403).
 // Checked in that order so an outsider's id is indistinguishable from a
 // nonexistent one, while an in-org refusal is honest about being a refusal.
+public record LeaveAuditResult(bool Found, bool Allowed, IEnumerable<LeaveApprovalEntryDto>? Entries);
+
 public record LeaveSummaryReportResult(bool Found, bool Allowed, LeaveSummaryReportDto? Report);
 
 public record LeaveEntitlementResult(bool Ok, LeaveBalanceDto? Balance, string? Error);
