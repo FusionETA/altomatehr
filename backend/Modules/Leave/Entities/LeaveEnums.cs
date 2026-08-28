@@ -1,7 +1,7 @@
 namespace AltomateHR.Api.Modules.Leave.Entities;
 
 // Mirrors the Prisma LeaveStatus enum. Stored as a string in the DB and
-// serialized as a string in JSON. (LeaveDuration / half-days deferred.)
+// serialized as a string in JSON.
 public enum LeaveStatus
 {
     PENDING,
@@ -18,4 +18,13 @@ public enum LeaveAccrualMethod
 {
     LUMP_SUM,
     PRO_RATED,
+}
+
+// Half-day leave. MORNING/AFTERNOON must start and end on the same date and
+// count as 0.5 days.
+public enum LeaveDuration
+{
+    FULL_DAY,
+    MORNING,
+    AFTERNOON,
 }

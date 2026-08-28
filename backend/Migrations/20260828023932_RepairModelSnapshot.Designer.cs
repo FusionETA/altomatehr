@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828023932_RepairModelSnapshot")]
+    partial class RepairModelSnapshot
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -510,10 +513,6 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
-                    b.Property<string>("Name")
-                        .HasMaxLength(160)
-                        .HasColumnType("varchar(160)");
-
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -668,9 +667,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<DateTime?>("JoinDate")
-                        .HasColumnType("datetime(6)");
-
                     b.Property<string>("Modules")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
@@ -720,17 +716,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<string>("AppliedByAdminId")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("Approvals")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("AttachmentName")
-                        .HasMaxLength(260)
-                        .HasColumnType("varchar(260)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -739,11 +724,6 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Duration")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.Property<string>("EmployeeId")
                         .IsRequired()
@@ -920,35 +900,6 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("LeaveTypes");
                 });
 
-            modelBuilder.Entity("AltomateHR.Api.Modules.Organizations.Entities.OrgHoliday", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("date");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("varchar(160)");
-
-                    b.Property<string>("OrganizationId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId", "Date")
-                        .IsUnique();
-
-                    b.ToTable("OrgHolidays");
-                });
-
             modelBuilder.Entity("AltomateHR.Api.Modules.Organizations.Entities.Organization", b =>
                 {
                     b.Property<string>("Id")
@@ -990,10 +941,6 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("varchar(20)");
 
                     b.Property<string>("Tier")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("WorkingDays")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 

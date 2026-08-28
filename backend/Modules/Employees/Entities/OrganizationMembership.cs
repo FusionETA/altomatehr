@@ -43,6 +43,14 @@ public class OrganizationMembership : ITenantScoped
     [MaxLength(300)]
     public string? Modules { get; set; }
 
+    // When this person joined THIS org — per-membership, because someone can
+    // join two orgs on different dates. Distinct from CreatedAt, which is when
+    // the row was written: a migrated employee who joined in 2019 would
+    // otherwise look like a new hire.
+    //
+    // Drives first-year proration and production's forecast-availability check.
+    public DateTime? JoinDate { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

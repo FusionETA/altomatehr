@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
+    public DbSet<OrgHoliday> OrgHolidays => Set<OrgHoliday>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
@@ -103,6 +104,15 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveType>()
             .Property(t => t.AccrualMethod).HasConversion<string>().HasMaxLength(20);
+
+        var holiday = modelBuilder.Entity<OrgHoliday>();
+        // One holiday per date per org — an admin re-uploading a calendar
+        // must update, never duplicate.
+        holiday.HasIndex(h => new { h.OrganizationId, h.Date }).IsUnique();
+        holiday.Property(h => h.Date).HasColumnType("date");
+
+        modelBuilder.Entity<LeaveApplication>()
+            .Property(a => a.Duration).HasConversion<string>().HasMaxLength(20);
 
         var entitlement = modelBuilder.Entity<LeaveEntitlement>();
         // One row per employee per type per year — the rollover relies on this
@@ -171,6 +181,8 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<OrgHoliday>().HasQueryFilter(
+            h => _currentUser.OrganizationId == null || h.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveEntitlement>().HasQueryFilter(
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<OvertimeRequest>().HasQueryFilter(
