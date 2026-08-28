@@ -879,9 +879,18 @@ public class LeaveService : ILeaveService
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
-    // Production cancels PENDING *and* APPROVED requests — cancelling an
-    // approved one gives the days back. Only REJECTED can't be cancelled, and
-    // cancelling an already-cancelled request is a no-op success.
+    // Cancel is PENDING-only, and that is a deliberate narrowing.
+    //
+    // Production ships no cancel at all: `cancelLeaveApplication` exists in its
+    // service layer but nothing calls it — an employee's only escape hatch is
+    // editing a request that hasn't been reviewed yet. So there is no rule here
+    // to port, and anything we allow is a NEW feature.
+    //
+    // Pending-only is the conservative shape: an employee can withdraw a request
+    // nobody has acted on, which changes no balance (pending days were never
+    // deducted). Undoing APPROVED leave means returning days someone already
+    // granted — and, with no date guard, days the employee may already have
+    // taken. That stays with an admin until the business decides otherwise.
     public async Task<LeaveTransitionResult> CancelAsync(string id, string userId)
     {
         var application = await _apps.GetByIdAsync(id);
@@ -894,9 +903,9 @@ public class LeaveService : ILeaveService
         if (application.Status == LeaveStatus.CANCELLED)
             return new LeaveTransitionResult(true, true, ToDto(application));   // idempotent
 
-        if (application.Status == LeaveStatus.REJECTED)
+        if (application.Status != LeaveStatus.PENDING)
             return new LeaveTransitionResult(true, false, ToDto(application),
-                "Only pending or approved leave can be cancelled");
+                "Only pending leave can be cancelled");
 
         application.Status = LeaveStatus.CANCELLED;
         application.UpdatedAt = DateTime.UtcNow;

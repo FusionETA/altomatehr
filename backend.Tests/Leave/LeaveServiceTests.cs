@@ -229,14 +229,16 @@ public class LeaveServiceTests
     }
 
     [Fact]
-    public async Task CancelAsync_AlsoCancelsAPPROVEDLeave_GivingTheDaysBack()
+    public async Task CancelAsync_RefusesAPPROVEDLeave()
     {
+        // Deliberate: undoing approved leave returns days someone already
+        // granted, and may be leave the employee has taken. Admin territory.
         var service = MakeService(apps: [MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.APPROVED)]);
 
         var result = await service.CancelAsync("a1", "usr-emp");
 
-        Assert.True(result.Transitioned);
-        Assert.Equal(LeaveStatus.CANCELLED, result.Application!.Status);
+        Assert.False(result.Transitioned);
+        Assert.Equal("Only pending leave can be cancelled", result.Error);
     }
 
     [Fact]
@@ -255,7 +257,7 @@ public class LeaveServiceTests
         var result = await service.CancelAsync("a1", "usr-emp");
 
         Assert.False(result.Transitioned);
-        Assert.Equal("Only pending or approved leave can be cancelled", result.Error);
+        Assert.Equal("Only pending leave can be cancelled", result.Error);
     }
 
     [Fact]
