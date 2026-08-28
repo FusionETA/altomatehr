@@ -13,8 +13,21 @@ namespace AltomateHR.Api.Modules.Overtime;
 public class OvertimeController : ControllerBase
 {
     private readonly IOvertimeService _overtime;
+    private readonly IOtRateService _rates;
 
-    public OvertimeController(IOvertimeService overtime) => _overtime = overtime;
+    public OvertimeController(IOvertimeService overtime, IOtRateService rates)
+    {
+        _overtime = overtime;
+        _rates = rates;
+    }
+
+    // GET /overtime/rate?date=&projectId= — which OT multiplier applies to the
+    // caller on that date, and why. Rate resolution only: computing actual pay
+    // needs an hourly rate, which lands with the payroll pass.
+    [RequireScope("overtime:read")]
+    [HttpGet("rate")]
+    public async Task<IActionResult> GetRate([FromQuery] DateTime date, [FromQuery] string? projectId) =>
+        Ok(await _rates.ResolveAsync(GetUserId(), date, projectId));
 
     [RequireScope("overtime:read")]
     [HttpGet]
@@ -45,6 +58,12 @@ public class OvertimeController : ControllerBase
     [HttpPost("{id}/after-photo")]
     public async Task<IActionResult> AttachAfterPhoto(string id, AttachOvertimeAfterPhotoDto dto) =>
         ToTransitionResponse(await _overtime.AttachAfterPhotoAsync(id, GetUserId(), dto));
+
+    // DELETE /overtime/{id}/after-photo — remove the after-work photo from a
+    // pending request (owner only) and delete the file behind it.
+    [HttpDelete("{id}/after-photo")]
+    public async Task<IActionResult> DeleteAfterPhoto(string id) =>
+        ToTransitionResponse(await _overtime.DeleteAfterPhotoAsync(id, GetUserId()));
 
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]

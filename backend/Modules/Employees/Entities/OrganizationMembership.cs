@@ -24,6 +24,20 @@ public class OrganizationMembership : ITenantScoped
     [MaxLength(20)]
     public string Role { get; set; } = "Employee";
 
+    // ---- Per-org employment profile (the .NET home of the monolith's EmployeeProfile) ----
+
+    // Staff / payroll number as used IN THIS org (the monolith's EmployeeProfile.employeeId).
+    // Human-facing id, distinct from the User's system id. Null = not assigned yet.
+    [MaxLength(40)]
+    public string? EmployeeNumber { get; set; }
+
+    // The person's job title IN THIS org (e.g. "Ops Lead"). Per-org by design.
+    [MaxLength(120)]
+    public string? JobTitle { get; set; }
+
+    // Banked overtime time-off, in minutes (the monolith's otTimeBalanceMin).
+    public int OtTimeBalanceMin { get; set; }
+
     // The approving supervisor in THIS org (a UserId). Null = unassigned.
     [MaxLength(40)]
     public string? SupervisorId { get; set; }

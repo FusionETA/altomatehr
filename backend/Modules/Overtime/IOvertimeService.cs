@@ -9,6 +9,7 @@ public interface IOvertimeService
     Task<OvertimeRequestDto?> GetVisibleByIdAsync(string id, string userId, bool isAdmin);
     Task<OvertimeSubmitResult> SubmitAsync(CreateOvertimeRequestDto dto, string employeeId);
     Task<OvertimeTransitionResult> AttachAfterPhotoAsync(string id, string userId, AttachOvertimeAfterPhotoDto dto);
+    Task<OvertimeTransitionResult> DeleteAfterPhotoAsync(string id, string userId);
     Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId);
     Task<OvertimeTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<OvertimeTransitionResult> CancelAsync(string id, string userId);

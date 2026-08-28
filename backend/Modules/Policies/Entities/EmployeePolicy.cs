@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Common;
+using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Modules.Policies.Entities;
 
@@ -39,11 +40,45 @@ public class EmployeePolicy : ITenantScoped
     public bool CaptureLocationOnBreakStart { get; set; } = true;   // capture GPS when starting a break
     public bool CaptureLocationOnBreakEnd { get; set; } = true;     // capture GPS when ending a break
 
+    // Must clock from an IP in the project's AllowedIps allowlist. Silently
+    // skipped when the project has no allowlist configured.
+    public bool RequireIpWhitelist { get; set; }
+
+    // Master switch for capturing GPS on clock-in/out. When false, coordinates
+    // are never stored and geofence enforcement can't apply (nothing to check
+    // against) — mirrors RequireGeofence auto-implying this should stay on.
+    public bool GeolocationEnabled { get; set; } = true;
+    public bool CaptureLocationOnClockIn { get; set; } = true;    // per-event, only consulted when GeolocationEnabled
+    public bool CaptureLocationOnClockOut { get; set; } = true;
+
+    // Auto clock-out: when true, a background sweep closes sessions still open
+    // after AutoClockOutAfterMinutes ("employee forgot to clock out"). Opt-in —
+    // off by default, so nobody is auto-clocked-out until an admin turns it on.
+    // Null minutes disables it even when the flag is true.
+    public bool AutoClockOutEnabled { get; set; }
+    public int? AutoClockOutAfterMinutes { get; set; }
+
     // Classification / OT (rates arrive with the OT pass).
     public SalaryType SalaryType { get; set; } = SalaryType.HOURLY;
     public bool OtEnabled { get; set; } = true;
     public int OtDailyThresholdMinutes { get; set; } = 480;   // minutes/day before OT accrues
     public OtMethod OtMethod { get; set; } = OtMethod.CASH;
+
+    // OT multipliers (x HRP) — applied only when OtMethod == CASH. Ignored for
+    // TIME_BANK (banks 1:1) and when OtEnabled is false. Values are kept in the
+    // row when OT mode is non-CASH so toggling back restores the chosen rates.
+    [Precision(4, 2)] public decimal OtRateNormalDay { get; set; } = 1.50m;
+    [Precision(4, 2)] public decimal OtRatePublicHoliday { get; set; } = 3.00m;
+    [Precision(4, 2)] public decimal OtRateRestDay { get; set; } = 2.00m;
+
+    // In-shift premiums (x ORP) for hours worked WITHIN the regular shift on
+    // rest days / public holidays.
+    [Precision(4, 2)] public decimal OtRatePublicHolidayInShift { get; set; } = 2.00m;
+    [Precision(4, 2)] public decimal OtRateRestDayInShift { get; set; } = 1.00m;
+
+    // Optional monthly-salary cap above which OT needs extra approval.
+    // Null = no cap.
+    [Precision(10, 2)] public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }                       // probation / fixed-term
 
     public DateTime CreatedAt { get; set; }

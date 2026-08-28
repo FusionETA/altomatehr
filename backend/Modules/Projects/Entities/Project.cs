@@ -28,6 +28,12 @@ public class Project : ITenantScoped
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
 
+    // Comma-separated IP addresses allowed to clock in/out against this project.
+    // Consulted only for employees whose policy has RequireIpWhitelist on; null
+    // or empty means the allowlist check is silently skipped for this project.
+    [MaxLength(1000)]
+    public string? AllowedIps { get; set; }
+
     public bool IsArchived { get; set; }
 
     public DateTime CreatedAt { get; set; }

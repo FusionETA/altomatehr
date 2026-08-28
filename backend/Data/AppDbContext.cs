@@ -6,8 +6,10 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Holidays.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
+using AltomateHR.Api.Modules.Partners.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts.Entities;
@@ -41,17 +43,19 @@ public class AppDbContext : DbContext
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveApplication> LeaveApplications => Set<LeaveApplication>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
-    public DbSet<OrgHoliday> OrgHolidays => Set<OrgHoliday>();
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
     public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
+    public DbSet<ApiClient> ApiClients => Set<ApiClient>();
+    public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,11 +109,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<LeaveType>()
             .Property(t => t.AccrualMethod).HasConversion<string>().HasMaxLength(20);
 
-        var holiday = modelBuilder.Entity<OrgHoliday>();
-        // One holiday per date per org — an admin re-uploading a calendar
-        // must update, never duplicate.
-        holiday.HasIndex(h => new { h.OrganizationId, h.Date }).IsUnique();
-        holiday.Property(h => h.Date).HasColumnType("date");
 
         modelBuilder.Entity<LeaveApplication>()
             .Property(a => a.Duration).HasConversion<string>().HasMaxLength(20);
@@ -143,6 +142,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.Name }).IsUnique();
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.IsDefault });
 
+        // One holiday per (org, date, scope) — the DB is the real guarantee against
+        // duplicate holidays; the service-level clash check is just for a nicer error.
+        // Also serves the by-date lookup. NOTE: MySQL treats NULLs as distinct, so a
+        // NULL ProjectId (org-wide holiday) is NOT deduped at the DB — that case still
+        // leans on the service check. Project-scoped holidays are fully enforced.
+        modelBuilder.Entity<Holiday>().HasIndex(h => new { h.OrganizationId, h.Date, h.ProjectId }).IsUnique();
+        modelBuilder.Entity<Holiday>().HasIndex(h => h.ProjectId);
+
         modelBuilder.Entity<Team>().HasIndex(t => new { t.ProjectId, t.Name }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => new { m.TeamId, m.EmployeeId }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => m.EmployeeId);
@@ -154,6 +161,22 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);
         modelBuilder.Entity<ApiKeyAuditLog>().HasIndex(l => new { l.ApiKeyId, l.CreatedAt });
+
+        // ApiClient (partner-app registry) is GLOBAL config — not tenant-scoped, so no
+        // query filter. Name is the launch slug (unique); SecretHash is the per-request
+        // client lookup.
+        modelBuilder.Entity<ApiClient>().HasIndex(c => c.Name).IsUnique();
+        modelBuilder.Entity<ApiClient>().HasIndex(c => c.SecretHash);
+
+        // EmployeeProfile — one rich per-org record per user (the monolith's PayrollProfile).
+        var profile = modelBuilder.Entity<EmployeeProfile>();
+        profile.HasIndex(p => new { p.OrganizationId, p.UserId }).IsUnique();
+        profile.Property(p => p.Gender).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.IdType).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.MaritalStatus).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.SocsoScheme).HasConversion<string>().HasMaxLength(40);
+        profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
@@ -181,8 +204,6 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
-        modelBuilder.Entity<OrgHoliday>().HasQueryFilter(
-            h => _currentUser.OrganizationId == null || h.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveEntitlement>().HasQueryFilter(
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<OvertimeRequest>().HasQueryFilter(
@@ -193,6 +214,8 @@ public class AppDbContext : DbContext
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Shift>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Holiday>().HasQueryFilter(
+            h => _currentUser.OrganizationId == null || h.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Team>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamMembership>().HasQueryFilter(
@@ -206,6 +229,8 @@ public class AppDbContext : DbContext
         // known. ApiKeyAuditLog is NOT tenant-scoped (internal operational log).
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
+            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

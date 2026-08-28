@@ -11,7 +11,6 @@ namespace AltomateHR.Api.Modules.Attendance.Cron;
 // every org (matches DbSeeder's startup behavior, not a new pattern).
 public class AutoClockOutBackgroundService : BackgroundService
 {
-    private const int CutoffMinutes = 12 * 60;      // forgot-to-clock-out threshold
     private const int SweepIntervalMinutes = 15;    // matches the reference app's cadence
     private const int MaxCandidatesPerSweep = 200;
 
@@ -33,7 +32,7 @@ public class AutoClockOutBackgroundService : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var attendance = scope.ServiceProvider.GetRequiredService<IAttendanceService>();
-                var result = await attendance.RunAutoClockOutSweepAsync(CutoffMinutes, MaxCandidatesPerSweep);
+                var result = await attendance.RunAutoClockOutSweepAsync(MaxCandidatesPerSweep);
                 if (result.ClockedOut > 0 || result.Errors > 0)
                 {
                     _logger.LogInformation(

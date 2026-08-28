@@ -8,6 +8,8 @@ using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Holidays;
+using AltomateHR.Api.Modules.Holidays.Dtos;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Xero;
@@ -528,12 +530,15 @@ public class LeaveServiceTests
     // irrelevant here, so it throws if anything else is touched.
     // Only the name is read, and only by the summary report.
     // No holidays configured — day counting then depends only on working days.
-    private sealed class FakeHolidayService : IOrgHolidayService
+    private sealed class FakeHolidayService : IHolidayService
     {
-        public Task<IReadOnlySet<DateTime>> GetDatesAsync(int year) =>
-            Task.FromResult<IReadOnlySet<DateTime>>(new HashSet<DateTime>());
-        public Task<IEnumerable<OrgHolidayDto>> GetAsync(int? year) => throw new NotImplementedException();
-        public Task<HolidaySaveResult> ReplaceYearAsync(int year, SaveHolidaysDto dto) => throw new NotImplementedException();
+        public Task<IEnumerable<HolidayDto>> GetInRangeAsync(DateTime from, DateTime to) =>
+            Task.FromResult<IEnumerable<HolidayDto>>([]);
+        public Task<IEnumerable<HolidayDto>> GetAllAsync() => throw new NotImplementedException();
+        public Task<HolidaySaveResult> CreateAsync(SaveHolidayDto dto) => throw new NotImplementedException();
+        public Task<HolidaySaveResult> UpdateAsync(string id, SaveHolidayDto dto) => throw new NotImplementedException();
+        public Task<bool> DeleteAsync(string id) => throw new NotImplementedException();
+        public Task<bool> IsHolidayAsync(DateTime date, string? projectId) => throw new NotImplementedException();
     }
 
     private sealed class FakeOrganizationService : IOrganizationService
@@ -563,6 +568,7 @@ public class LeaveServiceTests
         public string? OrganizationId => "org-1";
         public bool IsAdmin => role is "Admin" or "Owner";
         public bool IsAuthenticated => userId is not null;
+        public string? IpAddress => null;
     }
 
     private sealed class FakePolicyService : IPolicyService

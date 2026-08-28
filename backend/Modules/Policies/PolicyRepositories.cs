@@ -10,6 +10,9 @@ public class EmployeePolicyRepository : IEmployeePolicyRepository
 
     public EmployeePolicyRepository(AppDbContext db) => _db = db;
 
+    public Task<List<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+        _db.EmployeePolicies.IgnoreQueryFilters().ToListAsync();
+
     public Task<List<EmployeePolicy>> GetAllAsync() =>
         _db.EmployeePolicies.OrderBy(p => p.Name).ToListAsync();
 

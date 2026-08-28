@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams;
 
@@ -23,6 +24,7 @@ public class AttendanceService : IAttendanceService
 {
     private const ApprovalModule Module = ApprovalModule.ATTENDANCE;
     private const string OffSiteCode = "OFF_SITE_ACTION_REQUIRED";
+    private const string IpNotAllowedCode = "IP_NOT_ALLOWED";
     private const int MaxBulkIds = 200;
 
     private static readonly IReadOnlySet<AttendanceApprovalKind> RecordKinds =
@@ -45,6 +47,8 @@ public class AttendanceService : IAttendanceService
     private readonly IPolicyService _policies;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
+    private readonly IEmployeePolicyRepository _policyRepo;
+    private readonly IOrganizationMembershipRepository _memberships;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -57,7 +61,9 @@ public class AttendanceService : IAttendanceService
         IAttendancePhotoStorage photos,
         IPolicyService policies,
         ISupervisionService supervision,
-        IApprovalRouter router)
+        IApprovalRouter router,
+        IEmployeePolicyRepository policyRepo,
+        IOrganizationMembershipRepository memberships)
     {
         _repo = repo;
         _sessions = sessions;
@@ -70,6 +76,8 @@ public class AttendanceService : IAttendanceService
         _policies = policies;
         _supervision = supervision;
         _router = router;
+        _policyRepo = policyRepo;
+        _memberships = memberships;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -122,9 +130,17 @@ public class AttendanceService : IAttendanceService
         }
 
         var effectiveProjectId = dto.ProjectId ?? existing?.ProjectId;
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+
+        if (!await IpAllowedAsync(employeeId, effectiveProjectId, policy))
+            return IpNotAllowed();
+
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
+
+        var (capturedLat, capturedLng) =
+            CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
 
         AttendanceRecord record;
         if (existing is null)
@@ -138,8 +154,8 @@ public class AttendanceService : IAttendanceService
                 ProjectId = effectiveProjectId,
                 Location = dto.Location,
                 Remark = dto.Remark,
-                ClockInLat = dto.Lat,
-                ClockInLng = dto.Lng,
+                ClockInLat = capturedLat,
+                ClockInLng = capturedLng,
                 ClockInDistanceMeters = distance,
                 ClockInPhotoUrl = dto.PhotoUrl,
                 CreatedAt = now,
@@ -156,8 +172,8 @@ public class AttendanceService : IAttendanceService
             existing.ProjectId = effectiveProjectId;
             existing.Location = dto.Location ?? existing.Location;
             existing.Remark = dto.Remark ?? existing.Remark;
-            existing.ClockInLat = dto.Lat;
-            existing.ClockInLng = dto.Lng;
+            existing.ClockInLat = capturedLat;
+            existing.ClockInLng = capturedLng;
             existing.ClockInDistanceMeters = distance;
             existing.ClockInPhotoUrl = dto.PhotoUrl;
             existing.UpdatedAt = now;
@@ -204,15 +220,23 @@ public class AttendanceService : IAttendanceService
             return new AttendanceActionResult(false, ToDto(record, currentApprovals), "You've already clocked out today.");
         }
 
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+
+        if (!await IpAllowedAsync(employeeId, record.ProjectId, policy))
+            return IpNotAllowed();
+
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
 
+        var (capturedLat, capturedLng) =
+            CaptureCoords(policy, policy?.CaptureLocationOnClockOut ?? true, dto.Lat, dto.Lng);
+
         record.TimeOut = now;
         record.DurationMin = (int)Math.Round((now - record.TimeIn.Value).TotalMinutes);
         record.Status = AttendanceStatus.CLOCKED_OUT;
-        record.ClockOutLat = dto.Lat;
-        record.ClockOutLng = dto.Lng;
+        record.ClockOutLat = capturedLat;
+        record.ClockOutLng = capturedLng;
         record.ClockOutDistanceMeters = distance;
         record.ClockOutPhotoUrl = dto.PhotoUrl;
         if (!string.IsNullOrWhiteSpace(dto.Remark)) record.Remark = dto.Remark;
@@ -651,10 +675,33 @@ public class AttendanceService : IAttendanceService
         return (true, null, created);
     }
 
-    public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int cutoffMinutes, int maxCandidates)
+    // Per-policy auto clock-out. Opt-in: an employee is only swept when their
+    // effective policy has AutoClockOutEnabled with a threshold set, so this is
+    // a no-op until an admin configures it. Runs with no request context, so
+    // policy/membership lookups here go through the org-explicit, filter-
+    // bypassing repository methods rather than the "current org" ones.
+    public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates)
     {
-        var cutoffBefore = DateTime.UtcNow.AddMinutes(-cutoffMinutes);
-        var candidates = await _sessions.GetOpenStartedBeforeAsync(cutoffBefore, maxCandidates);
+        var allPolicies = await _policyRepo.GetAllAcrossOrgsAsync();
+        var enabled = allPolicies
+            .Where(p => p.AutoClockOutEnabled && p.AutoClockOutAfterMinutes is > 0)
+            .ToList();
+
+        // Nothing configured anywhere — skip the session query entirely.
+        if (enabled.Count == 0)
+            return new AttendanceAutoClockOutResultDto { Inspected = 0, ClockedOut = 0, Errors = 0 };
+
+        var policyById = allPolicies.ToDictionary(p => p.Id);
+        var defaultByOrg = allPolicies
+            .Where(p => p.IsDefault)
+            .GroupBy(p => p.OrganizationId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // Widest net: anyone open longer than the shortest configured threshold
+        // is a candidate; each is then re-checked against their own policy.
+        var minThreshold = enabled.Min(p => p.AutoClockOutAfterMinutes!.Value);
+        var candidates = await _sessions.GetOpenStartedBeforeAsync(
+            DateTime.UtcNow.AddMinutes(-minThreshold), maxCandidates);
 
         var clockedOut = 0;
         var errors = 0;
@@ -665,7 +712,15 @@ public class AttendanceService : IAttendanceService
                 var record = await _repo.GetByIdAsync(session.AttendanceRecordId);
                 if (record is null || record.TimeOut is not null) continue;   // already handled
 
+                var policy = await ResolvePolicyForSweepAsync(
+                    record.OrganizationId, record.EmployeeId, policyById, defaultByOrg);
+                if (policy is null || !policy.AutoClockOutEnabled || policy.AutoClockOutAfterMinutes is not > 0)
+                    continue;   // not opted in
+
+                var cutoffMinutes = policy.AutoClockOutAfterMinutes.Value;
                 var cutoffAt = session.StartedAt.AddMinutes(cutoffMinutes);
+                if (cutoffAt > DateTime.UtcNow) continue;   // not past THIS employee's threshold yet
+
                 var now = DateTime.UtcNow;
 
                 session.EndedAt = cutoffAt;
@@ -749,6 +804,23 @@ public class AttendanceService : IAttendanceService
         };
     }
 
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+
+        var countByReviewer = new Dictionary<string, int>();
+        foreach (var request in pending)
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            foreach (var reviewerId in approvers)
+                countByReviewer[reviewerId] = countByReviewer.GetValueOrDefault(reviewerId) + 1;
+        }
+
+        return countByReviewer
+            .Select(kv => new OrgApprovalDigestEntryDto { ReviewerId = kv.Key, PendingCount = kv.Value })
+            .ToList();
+    }
+
     public Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload) =>
         _photos.StoreAsync(upload);
 
@@ -766,6 +838,22 @@ public class AttendanceService : IAttendanceService
             return null;
 
         return await _photos.GetAsync(fileName);
+    }
+
+    // Background-safe policy resolution: mirrors PolicyService.GetEffectivePolicy
+    // (assigned policy, else the org default) but takes the org explicitly and
+    // reads from pre-fetched dictionaries, since the sweep has no request
+    // context for the tenant filter to key off and spans every org.
+    private async Task<EmployeePolicy?> ResolvePolicyForSweepAsync(
+        string organizationId,
+        string employeeId,
+        IReadOnlyDictionary<string, EmployeePolicy> policyById,
+        IReadOnlyDictionary<string, EmployeePolicy> defaultByOrg)
+    {
+        var membership = await _memberships.GetAsync(organizationId, employeeId);
+        if (membership?.PolicyId is not null && policyById.TryGetValue(membership.PolicyId, out var assigned))
+            return assigned;
+        return defaultByOrg.GetValueOrDefault(organizationId);
     }
 
     // Evaluate clock coords against a project's geofence.
@@ -789,6 +877,36 @@ public class AttendanceService : IAttendanceService
         var distance = Geo.HaversineMeters(lat.Value, lng.Value, project.Latitude.Value, project.Longitude.Value);
         var radius = await GetRadiusAsync();
         return (true, distance, enforce && distance > radius);
+    }
+
+    // Per-event GPS capture gate. GeolocationEnabled is the master switch; the
+    // per-event flag only matters when it's on. Returns the coords to STORE —
+    // suppressing capture never blocks the clock event, and never suppresses
+    // the geofence decision itself (which still ran on the submitted coords).
+    private static (double? Lat, double? Lng) CaptureCoords(
+        EmployeePolicy? policy, bool perEventEnabled, double? lat, double? lng)
+    {
+        if (policy is not null && !policy.GeolocationEnabled) return (null, null);
+        return perEventEnabled ? (lat, lng) : (null, null);
+    }
+
+    // IP allowlist gate. Only enforced when the employee's policy opts in AND
+    // the project actually has an allowlist configured — a project with no
+    // allowlist is silently skipped so newly-created projects don't lock
+    // everyone out before an admin populates it.
+    private async Task<bool> IpAllowedAsync(string employeeId, string? projectId, EmployeePolicy? policy)
+    {
+        if (policy is null || !policy.RequireIpWhitelist) return true;
+        if (string.IsNullOrEmpty(projectId)) return true;
+
+        var project = await _projects.GetByIdAsync(projectId);
+        var allowed = (project?.AllowedIps ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (allowed.Length == 0) return true;   // not configured → skip
+
+        var ip = _currentUser.IpAddress;
+        if (string.IsNullOrEmpty(ip)) return false;   // enforced but unverifiable → block
+        return allowed.Contains(ip, StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<int> GetRadiusAsync()
@@ -911,6 +1029,14 @@ public class AttendanceService : IAttendanceService
         "You're outside the project geofence. Add a remark and a photo to clock in from here.",
         OffSiteCode,
         distance);
+
+    // Unlike the off-site case, there's no remark/photo override — the IP
+    // allowlist is a hard block, so the client shouldn't offer a retry path.
+    private static AttendanceActionResult IpNotAllowed() => new(
+        false,
+        null,
+        "You're not on an approved network for this project. Connect to the site network and try again.",
+        IpNotAllowedCode);
 
     // Stored instants are UTC; MySQL drops the Kind, so re-stamp it before
     // formatting so the JSON carries the trailing "Z".

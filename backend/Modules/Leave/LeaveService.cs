@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Teams;
@@ -29,7 +30,7 @@ public class LeaveService : ILeaveService
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly IXeroService _xero;
     private readonly IOrganizationService _organizations;
-    private readonly IOrgHolidayService _holidays;
+    private readonly IHolidayService _holidays;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -42,7 +43,7 @@ public class LeaveService : ILeaveService
         ILeaveEntitlementRepository entitlements,
         IXeroService xero,
         IOrganizationService organizations,
-        IOrgHolidayService holidays)
+        IHolidayService holidays)
     {
         _apps = apps;
         _types = types;
@@ -743,8 +744,16 @@ public class LeaveService : ILeaveService
             ? await _organizations.GetByIdAsync(orgId)
             : null;
 
+        // Main's Holidays module owns the calendar. GetInRangeAsync returns both
+        // org-wide rows (ProjectId null) and project-scoped ones; leave is
+        // org-wide, so only the former apply.
+        var rows = await _holidays.GetInRangeAsync(
+            new DateTime(year, 1, 1), new DateTime(year, 12, 31));
+
         return (LeaveAccrualMath.ParseWorkingDays(org?.WorkingDays),
-                await _holidays.GetDatesAsync(year));
+                rows.Where(h => h.ProjectId is null)
+                    .Select(h => DateTime.Parse(h.Date).Date)   // DTO carries yyyy-MM-dd
+                    .ToHashSet());
     }
 
     // Rows are normally created by the year-rollover cron, but an employee may

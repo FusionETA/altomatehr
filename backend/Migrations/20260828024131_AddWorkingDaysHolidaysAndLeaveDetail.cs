@@ -11,13 +11,6 @@ namespace AltomateHR.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "Name",
-                table: "Users",
-                type: "varchar(160)",
-                maxLength: 160,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.AddColumn<string>(
                 name: "WorkingDays",
@@ -68,41 +61,13 @@ namespace AltomateHR.Api.Migrations
                 defaultValue: "FULL_DAY")
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateTable(
-                name: "OrgHolidays",
-                columns: table => new
-                {
-                    Id = table.Column<string>(type: "varchar(255)", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    OrganizationId = table.Column<string>(type: "varchar(40)", maxLength: 40, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    Date = table.Column<DateTime>(type: "date", nullable: false),
-                    Name = table.Column<string>(type: "varchar(160)", maxLength: 160, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_OrgHolidays", x => x.Id);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_OrgHolidays_OrganizationId_Date",
-                table: "OrgHolidays",
-                columns: new[] { "OrganizationId", "Date" },
-                unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "OrgHolidays");
 
-            migrationBuilder.DropColumn(
-                name: "Name",
-                table: "Users");
 
             migrationBuilder.DropColumn(
                 name: "WorkingDays",

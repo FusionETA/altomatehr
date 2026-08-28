@@ -35,7 +35,7 @@ public interface IAttendanceService
     // Closes AttendanceSessions still open past cutoffMinutes, capped at
     // maxCandidates per call. Org-agnostic (runs outside any request context
     // when called from the background service).
-    Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int cutoffMinutes, int maxCandidates);
+    Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates);
 
     // Employees currently clocked in longer than thresholdMinutes. Tenant
     // filtering is automatic: scoped to the caller's org when called from an
@@ -47,6 +47,13 @@ public interface IAttendanceService
     // AttendanceApprovalRequest rows they're currently a current-step
     // approver for.
     Task<PendingApprovalDigestDto> GetPendingApprovalDigestAsync(string userId);
+
+    // Org-wide digest: how many open approvals sit with each current-step
+    // reviewer, across every kind. Runs with no request context (the
+    // ApprovalDigest background sweep), so the tenant filter no-ops and one
+    // pass covers every org — the org-wide counterpart of the per-caller
+    // GetPendingApprovalDigestAsync above.
+    Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case

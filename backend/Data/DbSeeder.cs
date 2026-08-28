@@ -9,6 +9,8 @@ using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Partners;
+using AltomateHR.Api.Modules.Partners.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
@@ -24,6 +26,11 @@ public static class DbSeeder
 {
     private const string DemoOrgId = "org-altomate";
 
+    // DEV-ONLY partner client secret for Appraisify. In production a real secret is
+    // generated once and delivered out-of-band; only its hash is ever stored. This
+    // fixed dev value lets you exercise POST /partner/token locally.
+    public const string DevAppraisifyClientSecret = "altomate_sk_dev_appraisify_secret_change_me";
+
     public static async Task SeedAsync(
         IOrganizationRepository organizations,
         IUserRepository users,
@@ -33,18 +40,37 @@ public static class DbSeeder
         IEmployeePolicyRepository policies,
         IProjectRepository projects,
         IAttendanceRepository attendance,
-        IAttendanceApprovalRequestRepository approvalRequests)
+        IAttendanceApprovalRequestRepository approvalRequests,
+        IApiClientRepository apiClients)
     {
         await SeedOrganizationAsync(organizations);
-        await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner");
-        await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor");
-        await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee");
+        await SeedApiClientsAsync(apiClients);
+        await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner", "Demo Admin", "Founder");
+        await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor", "Sara Supervisor", "Team Lead");
+        await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee", "Evan Employee", "Associate");
         await AssignSupervisorAsync(memberships, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
         var demoProject = await SeedAttendanceProjectAsync(projects);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
+    }
+
+    // Register the Appraisify partner app (idempotent). Read-only, employees:read only.
+    private static async Task SeedApiClientsAsync(IApiClientRepository apiClients)
+    {
+        if (await apiClients.GetByNameAsync("appraisify") is not null) return;
+
+        await apiClients.AddAsync(new ApiClient
+        {
+            Id = "client-appraisify",
+            Name = "appraisify",                                   // also the /sso/launch/{app} slug
+            SecretHash = PartnerTokenGenerator.Hash(DevAppraisifyClientSecret),
+            Scopes = "employees:read",                             // least privilege — read-only, one resource
+            RedirectUrl = "https://appraisify.app/auth/altomate-callback",
+            Audience = "appraisify",
+            Active = true,
+        });
     }
 
     private static async Task<Project> SeedAttendanceProjectAsync(IProjectRepository projects)
@@ -311,17 +337,24 @@ public static class DbSeeder
     // on the membership — not the global User.
     private static async Task EnsureUserAsync(
         IUserRepository users, IOrganizationMembershipRepository memberships,
-        string id, string email, string role)
+        string id, string email, string role, string name, string jobTitle)
     {
-        if (await users.GetByEmailAsync(email) is null)
+        var user = await users.GetByEmailAsync(email);
+        if (user is null)
         {
             await users.AddAsync(new User
             {
                 Id = id,
                 Email = email,
+                Name = name,
                 PasswordHash = BC.HashPassword("password123"),   // hashed at seed time, never stored plain
                 CreatedAt = DateTime.UtcNow,
             });
+        }
+        else if (string.IsNullOrEmpty(user.Name))
+        {
+            user.Name = name;   // backfill name on demo rows seeded before profiles existed
+            await users.UpdateAsync(user);
         }
 
         var membership = await memberships.GetAsync(DemoOrgId, id);
@@ -332,16 +365,19 @@ public static class DbSeeder
                 OrganizationId = DemoOrgId,
                 UserId = id,
                 Role = role,
+                JobTitle = jobTitle,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             });
         }
-        else if (membership.Role != role)
+        else
         {
-            // Keep the demo seed authoritative for roles (e.g. bumping the founder
-            // to Owner) so an existing DB syncs on the next startup.
-            membership.Role = role;
-            await memberships.UpdateAsync(membership);
+            // Keep the demo seed authoritative for roles (e.g. bumping the founder to
+            // Owner), and backfill a job title if the row predates the profile fields.
+            var changed = false;
+            if (membership.Role != role) { membership.Role = role; changed = true; }
+            if (string.IsNullOrEmpty(membership.JobTitle)) { membership.JobTitle = jobTitle; changed = true; }
+            if (changed) await memberships.UpdateAsync(membership);
         }
     }
 

@@ -1,6 +1,8 @@
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
+using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
@@ -79,7 +81,9 @@ public class AttendanceApprovalRegressionTests
             photos: new FakeAttendancePhotoStorage(),
             policies: new FakePolicyService(),
             supervision: new FakeSupervisionService(),
-            router: new FakeApprovalRouter());
+            router: new FakeApprovalRouter(),
+            policyRepo: new FakeEmployeePolicyRepository(),
+            memberships: new FakeOrganizationMembershipRepository());
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -224,5 +228,31 @@ public class AttendanceApprovalRegressionTests
             GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
             Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
                 new Dictionary<string, IReadOnlyDictionary<string, double>>());
+    }
+
+    // Not reached in the clock-out path — used by the per-policy auto-clock-out sweep.
+    private sealed class FakeEmployeePolicyRepository : IEmployeePolicyRepository
+    {
+        public Task<List<EmployeePolicy>> GetAllAsync() => Task.FromResult(new List<EmployeePolicy>());
+        public Task<List<EmployeePolicy>> GetAllAcrossOrgsAsync() => Task.FromResult(new List<EmployeePolicy>());
+        public Task<EmployeePolicy?> GetByIdAsync(string id) => Task.FromResult<EmployeePolicy?>(null);
+        public Task<EmployeePolicy?> GetByNameAsync(string name) => Task.FromResult<EmployeePolicy?>(null);
+        public Task<EmployeePolicy?> GetDefaultAsync() => Task.FromResult<EmployeePolicy?>(null);
+        public Task<EmployeePolicy> AddAsync(EmployeePolicy policy) => Task.FromResult(policy);
+        public Task UpdateAsync(EmployeePolicy policy) => Task.CompletedTask;
+        public Task ClearDefaultExceptAsync(string keepId) => Task.CompletedTask;
+    }
+
+    // Not reached in the clock-out path.
+    private sealed class FakeOrganizationMembershipRepository : IOrganizationMembershipRepository
+    {
+        public Task<List<OrganizationMembership>> GetByUserAsync(string userId) => Task.FromResult(new List<OrganizationMembership>());
+        public Task<OrganizationMembership?> GetAsync(string organizationId, string userId) => Task.FromResult<OrganizationMembership?>(null);
+        public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() => Task.FromResult(new List<OrganizationMembership>());
+        public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) => Task.FromResult<OrganizationMembership?>(null);
+        public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) => Task.FromResult(new List<OrganizationMembership>());
+        public Task<int> CountByShiftIdAsync(string shiftId) => Task.FromResult(0);
+        public Task AddAsync(OrganizationMembership membership) => Task.CompletedTask;
+        public Task UpdateAsync(OrganizationMembership membership) => Task.CompletedTask;
     }
 }

@@ -176,10 +176,22 @@ public class PolicyService : IPolicyService
         policy.RequireClockOutSelfie = dto.RequireClockOutSelfie;
         policy.CaptureLocationOnBreakStart = dto.CaptureLocationOnBreakStart;
         policy.CaptureLocationOnBreakEnd = dto.CaptureLocationOnBreakEnd;
+        policy.RequireIpWhitelist = dto.RequireIpWhitelist;
+        policy.GeolocationEnabled = dto.GeolocationEnabled;
+        policy.CaptureLocationOnClockIn = dto.CaptureLocationOnClockIn;
+        policy.CaptureLocationOnClockOut = dto.CaptureLocationOnClockOut;
+        policy.AutoClockOutEnabled = dto.AutoClockOutEnabled;
+        policy.AutoClockOutAfterMinutes = dto.AutoClockOutAfterMinutes;
         policy.SalaryType = dto.SalaryType;
         policy.OtEnabled = dto.OtEnabled;
         policy.OtDailyThresholdMinutes = dto.OtDailyThresholdMinutes;
         policy.OtMethod = dto.OtMethod;
+        policy.OtRateNormalDay = dto.OtRateNormalDay;
+        policy.OtRatePublicHoliday = dto.OtRatePublicHoliday;
+        policy.OtRateRestDay = dto.OtRateRestDay;
+        policy.OtRatePublicHolidayInShift = dto.OtRatePublicHolidayInShift;
+        policy.OtRateRestDayInShift = dto.OtRateRestDayInShift;
+        policy.OtSalaryThreshold = dto.OtSalaryThreshold;
         policy.Temporary = dto.Temporary;
         return policy;
     }
@@ -199,10 +211,22 @@ public class PolicyService : IPolicyService
         RequireClockOutSelfie = p.RequireClockOutSelfie,
         CaptureLocationOnBreakStart = p.CaptureLocationOnBreakStart,
         CaptureLocationOnBreakEnd = p.CaptureLocationOnBreakEnd,
+        RequireIpWhitelist = p.RequireIpWhitelist,
+        GeolocationEnabled = p.GeolocationEnabled,
+        CaptureLocationOnClockIn = p.CaptureLocationOnClockIn,
+        CaptureLocationOnClockOut = p.CaptureLocationOnClockOut,
+        AutoClockOutEnabled = p.AutoClockOutEnabled,
+        AutoClockOutAfterMinutes = p.AutoClockOutAfterMinutes,
         SalaryType = p.SalaryType,
         OtEnabled = p.OtEnabled,
         OtDailyThresholdMinutes = p.OtDailyThresholdMinutes,
         OtMethod = p.OtMethod,
+        OtRateNormalDay = p.OtRateNormalDay,
+        OtRatePublicHoliday = p.OtRatePublicHoliday,
+        OtRateRestDay = p.OtRateRestDay,
+        OtRatePublicHolidayInShift = p.OtRatePublicHolidayInShift,
+        OtRateRestDayInShift = p.OtRateRestDayInShift,
+        OtSalaryThreshold = p.OtSalaryThreshold,
         Temporary = p.Temporary,
         LeaveEntitlements = entitlements
             .Select(e => new PolicyLeaveEntitlementDto { LeaveTypeId = e.LeaveTypeId, DefaultDays = e.DefaultDays })

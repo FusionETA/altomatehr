@@ -49,11 +49,12 @@ public class AttendanceController : ControllerBase
     // POST /attendance/cron/auto-clockout/run — force-run the auto-clockout
     // sweep now, instead of waiting for the background service's next tick.
     // Same underlying logic AutoClockOutBackgroundService calls on its timer.
+    // The cutoff is no longer a parameter — it comes from each employee's
+    // policy (AutoClockOutEnabled + AutoClockOutAfterMinutes).
     [HttpPost("cron/auto-clockout/run")]
     [Authorize(Roles = "Admin,Owner")]
-    public async Task<IActionResult> RunAutoClockOutSweep(
-        [FromQuery] int? cutoffMinutes, [FromQuery] int? maxCandidates) =>
-        Ok(await _attendance.RunAutoClockOutSweepAsync(cutoffMinutes ?? 720, maxCandidates ?? 200));
+    public async Task<IActionResult> RunAutoClockOutSweep([FromQuery] int? maxCandidates) =>
+        Ok(await _attendance.RunAutoClockOutSweepAsync(maxCandidates ?? 200));
 
     // GET /attendance/warnings/still-clocked-in — employees clocked in longer
     // than thresholdMinutes (default 600 = 10h). Detection only — no

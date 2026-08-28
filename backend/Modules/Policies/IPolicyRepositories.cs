@@ -5,6 +5,10 @@ namespace AltomateHR.Api.Modules.Policies;
 public interface IEmployeePolicyRepository
 {
     Task<List<EmployeePolicy>> GetAllAsync();
+
+    // Every org's policies, bypassing the tenant filter — for background jobs
+    // (auto clock-out sweep) that legitimately span orgs.
+    Task<List<EmployeePolicy>> GetAllAcrossOrgsAsync();
     Task<EmployeePolicy?> GetByIdAsync(string id);
     Task<EmployeePolicy?> GetByNameAsync(string name);
     Task<EmployeePolicy?> GetDefaultAsync();
