@@ -179,6 +179,7 @@ internal sealed class FakeCurrentUser : ICurrentUser
     public string? UserId { get; init; } = "usr-emp";
     public string? OrganizationId { get; init; } = "org-demo";
     public string? Role { get; init; } = "Employee";
+    public string? IpAddress { get; init; }
     public bool IsAdmin => Role is "Admin" or "Owner";
     public bool IsAuthenticated => UserId is not null;
 }
