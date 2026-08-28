@@ -59,6 +59,12 @@ public class OvertimeController : ControllerBase
     public async Task<IActionResult> AttachAfterPhoto(string id, AttachOvertimeAfterPhotoDto dto) =>
         ToTransitionResponse(await _overtime.AttachAfterPhotoAsync(id, GetUserId(), dto));
 
+    // DELETE /overtime/{id}/after-photo — remove the after-work photo from a
+    // pending request (owner only) and delete the file behind it.
+    [HttpDelete("{id}/after-photo")]
+    public async Task<IActionResult> DeleteAfterPhoto(string id) =>
+        ToTransitionResponse(await _overtime.DeleteAfterPhotoAsync(id, GetUserId()));
+
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>

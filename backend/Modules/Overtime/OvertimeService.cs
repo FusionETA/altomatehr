@@ -101,6 +101,37 @@ public class OvertimeService : IOvertimeService
         return new OvertimeSubmitResult(true, ToDto(request), null);
     }
 
+    // Removes the after-work photo from a request and deletes the underlying
+    // file. Same guards as attaching it: owner-only, and only while PENDING —
+    // once a supervisor has decided, the photo was part of what they reviewed,
+    // so it stays. The before-photo is deliberately NOT deletable: it's
+    // required on the entity, so removing it would leave the request invalid.
+    public async Task<OvertimeTransitionResult> DeleteAfterPhotoAsync(string id, string userId)
+    {
+        var request = await _requests.GetByIdAsync(id);
+        if (request is null || request.EmployeeId != userId)
+            return new OvertimeTransitionResult(false, false, null);
+
+        if (request.Status != OvertimeStatus.PENDING)
+            return new OvertimeTransitionResult(true, false, ToDto(request),
+                "Only pending overtime requests can be updated.");
+
+        if (string.IsNullOrEmpty(request.AfterPhotoUrl))
+            return new OvertimeTransitionResult(true, false, ToDto(request),
+                "There's no after-work photo to remove.");
+
+        // Clear the reference first: if the file delete fails we'd rather have
+        // an orphaned file on disk than a request pointing at a missing photo.
+        var fileName = Path.GetFileName(request.AfterPhotoUrl);
+        request.AfterPhotoUrl = null;
+        request.UpdatedAt = DateTime.UtcNow;
+        await _requests.UpdateAsync(request);
+
+        try { await _photos.DeleteAsync(fileName); } catch { /* best-effort */ }
+
+        return new OvertimeTransitionResult(true, true, ToDto(request));
+    }
+
     public async Task<OvertimeTransitionResult> AttachAfterPhotoAsync(
         string id,
         string userId,
