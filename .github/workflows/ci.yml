@@ -22,6 +22,14 @@ jobs:
 
       - name: Backend — build & test
         working-directory: backend.Tests
+        # The AuthEndpointTests boot the app via WebApplicationFactory<Program>, and
+        # Program.cs requires these at startup — BEFORE the factory's in-memory test
+        # config is applied. Locally they come from user-secrets; CI has none, so
+        # supply them here. Dummy values: the factory swaps the DbContext for
+        # in-memory, so the connection string never actually connects.
+        env:
+          ConnectionStrings__Default: "Server=localhost;Database=tests;User=test;Password=test"
+          Jwt__Key: "test-jwt-key-that-is-long-enough-for-hmac-sha256-signing"
         run: dotnet test --nologo
 
       - name: Set up Node
