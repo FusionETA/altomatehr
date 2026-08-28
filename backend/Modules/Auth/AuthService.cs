@@ -33,9 +33,19 @@ public class AuthService : IAuthService
     {
         var user = await _userRepo.GetByEmailAsync(email);
 
-        // BC.Verify re-hashes `password` with the salt in user.PasswordHash and compares.
-        if (user is null || !BC.Verify(password, user.PasswordHash))
+        // Verify against the stored hash — BCrypt (native) OR legacy scrypt (migrated
+        // from the monolith). Exception-safe: a bad hash fails the login, never 500s.
+        if (user is null || !PasswordHasher.Verify(password, user.PasswordHash))
             return null;
+
+        // Transparent upgrade: a legacy scrypt password that just verified is re-hashed
+        // to BCrypt, so this account's NEXT login uses the native format and the old
+        // hash quietly ages out.
+        if (PasswordHasher.IsLegacyScrypt(user.PasswordHash))
+        {
+            user.PasswordHash = PasswordHasher.HashBcrypt(password);
+            await _userRepo.UpdateAsync(user);
+        }
 
         // Log the account into its default (first) org. Role comes from that membership.
         var memberships = await _memberships.GetByUserAsync(user.Id);
