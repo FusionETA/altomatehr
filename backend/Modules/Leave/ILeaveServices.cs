@@ -38,6 +38,11 @@ public interface ILeaveService
     // for someone who joins after it has run.
     Task<int> SeedEntitlementsAsync(string employeeId, int year);
 
+    // Re-derives PRO_RATED accrued days from the employee's join date. Called
+    // when that date changes — nothing else recalculates it, because the
+    // monthly cron only ever adds. Returns how many rows moved.
+    Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year);
+
     Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to);
     Task<LeaveOverviewDto> GetOverviewAsync(int year);
 

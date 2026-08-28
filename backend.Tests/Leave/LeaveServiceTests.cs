@@ -263,6 +263,83 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task Recompute_RederivesAccrual_FromTheJoinDate()
+    {
+        // Type is PRO_RATED with 12 days; the row was seeded as if they joined
+        // in January, but they actually joined 1 July — 6 months' worth.
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 12, AccruedDays = 12,
+        };
+        var service = MakeService(
+            types: [ProRatedType("t-al", 12)],
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
+
+        var touched = await service.RecomputeProRatedAccrualAsync("usr-emp", Year);
+
+        Assert.Equal(1, touched);
+        Assert.True(row.AccruedDays < 12);   // re-derived downward, not left stale
+    }
+
+    [Fact]
+    public async Task Recompute_SkipsRows_WhereLeaveHasAlreadyBeenTaken()
+    {
+        // Guard 1. Moving a balance someone has spent against could push them
+        // negative, so the row is left alone.
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 12, AccruedDays = 12,
+        };
+        var service = MakeService(
+            types: [ProRatedType("t-al", 12)],
+            apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.APPROVED)],
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
+
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+        Assert.Equal(12, row.AccruedDays);
+    }
+
+    [Fact]
+    public async Task Recompute_SkipsRows_WithAPerEmployeeMethodOverride()
+    {
+        // Guard 2. An admin set this by hand; don't undo them.
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 12, AccruedDays = 12,
+            AccrualMethod = LeaveAccrualMethod.PRO_RATED,
+        };
+        var service = MakeService(
+            types: [ProRatedType("t-al", 12)],
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
+
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+    }
+
+    [Fact]
+    public async Task Recompute_SkipsLumpSumTypes()
+    {
+        // Guard 4. Nothing to pro-rate.
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 14, AccruedDays = 14,
+        };
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],   // LUMP_SUM
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
+
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+        Assert.Equal(14, row.AccruedDays);
+    }
+
+    [Fact]
     public async Task GetOrgBalancesAsync_ReturnsOneRowPerMember_WithTheirOwnBalances()
     {
         var service = MakeService(
@@ -442,6 +519,12 @@ public class LeaveServiceTests
             new FakeOrganizationService(),
             new FakeHolidayService());
 
+    private static LeaveType ProRatedType(string id, double days) => new()
+    {
+        Id = id, OrganizationId = "org-1", Code = "AL", Name = "Annual",
+        DefaultDays = days, AccrualMethod = LeaveAccrualMethod.PRO_RATED,
+    };
+
     private static LeaveType MakeType(string id, string code, double days, bool paid = true, bool archived = false) => new()
     {
         Id = id,
@@ -494,12 +577,21 @@ public class LeaveServiceTests
 
     // Only GetForUserInCurrentOrgAsync matters here: the ids passed to the ctor
     // are the "members of the current org"; anything else resolves to null (→ 404).
-    private sealed class FakeMembershipRepository(params string[] memberIds)
-        : IOrganizationMembershipRepository
+    private sealed class FakeMembershipRepository : IOrganizationMembershipRepository
     {
+        private readonly Dictionary<string, DateTime?> _members;
+
+        public FakeMembershipRepository(params string[] memberIds) =>
+            _members = memberIds.ToDictionary(id => id, _ => (DateTime?)null);
+
+        public FakeMembershipRepository(params (string Id, DateTime? JoinDate)[] members) =>
+            _members = members.ToDictionary(m => m.Id, m => m.JoinDate);
+
+        private string[] memberIds => _members.Keys.ToArray();
+
         public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) =>
-            Task.FromResult(memberIds.Contains(userId)
-                ? new OrganizationMembership { UserId = userId, Role = "Employee" }
+            Task.FromResult(_members.TryGetValue(userId, out var join)
+                ? new OrganizationMembership { UserId = userId, Role = "Employee", JoinDate = join }
                 : null);
 
         public Task<List<OrganizationMembership>> GetByUserAsync(string userId) => throw new NotImplementedException();

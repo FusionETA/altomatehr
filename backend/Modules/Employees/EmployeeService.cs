@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees.Dtos;
@@ -19,11 +20,16 @@ public class EmployeeService : IEmployeeService
 
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly IUserRepository _users;
+    private readonly ILeaveService _leave;
 
-    public EmployeeService(IOrganizationMembershipRepository memberships, IUserRepository users)
+    public EmployeeService(
+        IOrganizationMembershipRepository memberships,
+        IUserRepository users,
+        ILeaveService leave)
     {
         _memberships = memberships;
         _users = users;
+        _leave = leave;
     }
 
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
@@ -85,6 +91,7 @@ public class EmployeeService : IEmployeeService
         {
             UserId = user.Id,
             Role = role,
+            JoinDate = dto.JoinDate?.Date,
             SupervisorId = supervisorId,
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
@@ -143,7 +150,20 @@ public class EmployeeService : IEmployeeService
         membership.Modules = modulesCsv;
         membership.EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim();
         membership.JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim();
+
+        // Setting or correcting the join date changes how much pro-rated leave
+        // this person has earned, and nothing else would ever recalculate it —
+        // the monthly cron only ever ADDS, never re-derives. Production hooks
+        // the same trigger onto its employee save: "closes the 'I set joinDate
+        // after hiring and the balance didn't move' gap."
+        var previousJoinDate = membership.JoinDate;
+        membership.JoinDate = dto.JoinDate?.Date;
+        var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
+
+        // Only after the membership is saved — the recompute reads JoinDate back.
+        if (joinDateChanged)
+            await _leave.RecomputeProRatedAccrualAsync(membership.UserId, DateTime.UtcNow.Year);
 
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
@@ -165,6 +185,7 @@ public class EmployeeService : IEmployeeService
             : null,
         PolicyId = m.PolicyId,
         ShiftId = m.ShiftId,
+        JoinDate = m.JoinDate,
         Modules = m.Modules is null ? null : OrgModules.Split(m.Modules),
     };
 

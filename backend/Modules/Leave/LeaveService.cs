@@ -386,6 +386,55 @@ public class LeaveService : ILeaveService
             new SetEntitlementDto { EntitledDays = days, AccrualMethod = null });
     }
 
+    // Re-derive PRO_RATED accrual after the join date changes. Ported from
+    // production's recomputeProRatedAccrualForEmployee, including its four
+    // guards — this deliberately touches only rows it is SAFE to rewrite:
+    //
+    //   1. leave already taken  → skip. Never move a balance someone has spent
+    //                             against; that could push them negative.
+    //   2. per-employee method override → skip. An admin set it by hand.
+    //   3. entitled days differ from the resolved default → skip. Someone has
+    //      customised this row; re-deriving would silently undo them.
+    //   4. not effectively PRO_RATED → skip. Nothing to pro-rate.
+    public async Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        if (membership is null) return 0;
+
+        var typesById = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
+        var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
+        var rows = await _entitlements.GetForEmployeeYearAsync(employeeId, year);
+
+        var taken = (await _apps.GetByEmployeeAsync(employeeId))
+            .Where(a => a.Status == LeaveStatus.APPROVED && a.StartDate.Year == year)
+            .GroupBy(a => a.LeaveTypeId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.TotalDays));
+
+        var touched = 0;
+        foreach (var row in rows)
+        {
+            if (taken.GetValueOrDefault(row.LeaveTypeId) > 0) continue;          // 1
+            if (row.AccrualMethod is not null) continue;                          // 2
+            if (!typesById.TryGetValue(row.LeaveTypeId, out var type)) continue;
+
+            var resolvedDays = overrides.GetValueOrDefault(type.Id, type.DefaultDays);
+            if (Math.Abs(row.EntitledDays - resolvedDays) > Tolerance) continue;  // 3
+            if (type.AccrualMethod != LeaveAccrualMethod.PRO_RATED) continue;     // 4
+
+            var next = LeaveAccrualMath.ProRatedAccrualOnDate(
+                row.EntitledDays, membership.JoinDate, year, DateTime.UtcNow);
+
+            if (Math.Abs(next - row.AccruedDays) < 0.005) continue;   // nothing moved
+
+            row.AccruedDays = next;
+            row.UpdatedAt = DateTime.UtcNow;
+            touched++;
+        }
+
+        if (touched > 0) await _entitlements.SaveAsync();
+        return touched;
+    }
+
     // Opens the year for one employee — the per-person half of the rollover,
     // for someone who joins after the cron has already run.
     public async Task<int> SeedEntitlementsAsync(string employeeId, int year)
