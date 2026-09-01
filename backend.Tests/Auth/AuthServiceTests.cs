@@ -55,6 +55,28 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task LoginAsync_WithLegacyScryptPassword_Succeeds_AndUpgradesToBcrypt()
+    {
+        // A user migrated from the monolith carries a scrypt hash, not BCrypt.
+        var user = new User
+        {
+            Id = "usr-admin",
+            Email = "admin@altomate.com",
+            PasswordHash = PasswordHasherTests.LegacyScryptHash,
+            CreatedAt = DateTime.UtcNow,
+        };
+        var service = CreateService(
+            users: [user],
+            refreshTokens: out _,
+            memberships: [Membership("usr-admin", "Admin", "org-1")]);
+
+        var result = await service.LoginAsync("admin@altomate.com", PasswordHasherTests.LegacyPassword);
+
+        Assert.NotNull(result);                        // the old-format password verifies
+        Assert.StartsWith("$2", user.PasswordHash);    // and is transparently re-hashed to BCrypt
+    }
+
+    [Fact]
     public async Task SwitchOrgAsync_ToAMemberOrg_IssuesTokenForThatOrgAndRole()
     {
         var service = CreateService(
