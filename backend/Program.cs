@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Email;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -9,6 +10,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Cron;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
@@ -41,6 +43,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddDataProtection();
 builder.Services.Configure<XeroOptions>(builder.Configuration.GetSection("Xero"));
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("EngineMailer"));
 
 // CORS — let the Vite frontend (:5173) read our responses from the browser.
 builder.Services.AddCors(options =>
@@ -160,6 +164,31 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // Password reset is the most abusable unauthenticated endpoint here: it
+    // sends mail and can be used to probe for accounts. Tighter than login.
+    options.AddPolicy("auth-forgot-password", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "auth-forgot-password"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
+    // OCR calls cost money per request — this is the only cost control there is.
+    options.AddPolicy("ocr", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "ocr"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     options.AddPolicy("auth-refresh", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: GetClientPartitionKey(httpContext, "auth-refresh"),
@@ -215,11 +244,28 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
+builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
+builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
+
+// Email: fall back to a logging stub when EngineMailer isn't configured, the same
+// way the cache above falls back to in-memory when Redis isn't. Keeps dev working
+// with no credentials instead of throwing on the first send.
+var emailConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["EngineMailer:ApiKey"])
+                      && !string.IsNullOrWhiteSpace(builder.Configuration["EngineMailer:FromEmail"]);
+if (emailConfigured)
+{
+    builder.Services.AddHttpClient<IEmailSender, EngineMailerEmailSender>();
+}
+else
+{
+    builder.Services.AddScoped<IEmailSender, LoggingEmailSender>();
+}
 
 // Modules
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped<IPasswordResetOtpRepository, PasswordResetOtpRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();

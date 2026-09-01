@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Claim> Claims => Set<Claim>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<PasswordResetOtp> PasswordResetOtps => Set<PasswordResetOtp>();
     public DbSet<User> Users => Set<User>();
     public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
     public DbSet<Project> Projects => Set<Project>();
@@ -76,6 +77,10 @@ public class AppDbContext : DbContext
             .Property(o => o.Tier).HasConversion<string>().HasMaxLength(20);
 
         modelBuilder.Entity<RefreshToken>().HasIndex(t => t.Token).IsUnique();
+        // Looked up by email when redeeming a code, and by user when invalidating.
+        // NOT unique — a user accumulates consumed/expired rows over time.
+        modelBuilder.Entity<PasswordResetOtp>().HasIndex(o => o.Email);
+        modelBuilder.Entity<PasswordResetOtp>().HasIndex(o => o.UserId);
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
         modelBuilder.Entity<OrganizationMembership>().HasIndex(m => new { m.OrganizationId, m.UserId }).IsUnique();
         modelBuilder.Entity<OrganizationMembership>().HasIndex(m => m.UserId);
