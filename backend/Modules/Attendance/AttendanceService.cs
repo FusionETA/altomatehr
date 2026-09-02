@@ -299,9 +299,14 @@ public class AttendanceService : IAttendanceService
         if (record is null || record.TimeIn is null || record.TimeOut is not null)
             return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
 
+        // Distinct from the check above: the day IS open, but it has no session
+        // to hang a break off. Reporting "clock in first" to someone who can see
+        // they are clocked in sends them looking for the wrong problem.
         var session = await _sessions.GetOpenForRecordAsync(record.Id);
         if (session is null)
-            return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
+            return new AttendanceBreakActionResult(false, null,
+                "This shift has no open work session, so a break can't be recorded against it. "
+                + "Clock out and clock in again to start one.");
 
         var openBreak = await _breaks.GetOpenForSessionAsync(session.Id);
         if (openBreak is not null)

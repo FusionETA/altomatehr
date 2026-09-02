@@ -98,6 +98,39 @@ export type HoursBuckets = {
 export const getMyHoursSummary = (from: string, to: string) =>
   apiGet<HoursBuckets>(`/attendance/hours-summary/me?from=${from}&to=${to}`);
 
+// A break within today's session. `endedAt` null means it's still running.
+// Breaks go through the same approval chain as clock events, so they carry the
+// same approval rollup.
+export type AttendanceBreak = {
+  id: string;
+  attendanceSessionId: string;
+  attendanceRecordId: string;
+  startedAt: string;
+  endedAt?: string | null;
+  durationMin?: number | null;
+  startLat?: number | null;
+  startLng?: number | null;
+  endLat?: number | null;
+  endLng?: number | null;
+  remark?: string | null;
+  approvalStatus: "PENDING" | "APPROVED" | "REJECTED";
+  currentStep: number;
+  reviewNotes?: string | null;
+  submittedAt?: string | null;
+  decidedAt?: string | null;
+};
+
+export type BreakLocation = { lat?: number; lng?: number; remark?: string };
+
+export const getBreaks = (recordId: string) =>
+  apiGet<AttendanceBreak[]>(`/attendance/${recordId}/breaks`);
+
+export const startBreak = (body: BreakLocation = {}) =>
+  apiPost<AttendanceBreak>("/attendance/break/start", body);
+
+export const endBreak = (body: BreakLocation = {}) =>
+  apiPost<AttendanceBreak>("/attendance/break/end", body);
+
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 
 // Upload an off-site proof photo; returns the URL to attach to the clock request.

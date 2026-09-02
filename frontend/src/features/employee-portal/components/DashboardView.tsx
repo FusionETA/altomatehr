@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -12,6 +12,7 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { BreakControl } from "@/features/attendance/components/BreakControl";
 import {
   clockIn,
   clockOut,
@@ -102,6 +103,13 @@ export function DashboardView({
   const greeting =
     now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
   const firstName = buildName(user.email).split(" ")[0];
+
+  // Ending a break changes today's totals, so the card re-reads the record.
+  const refreshToday = useCallback(() => {
+    getTodayAttendance()
+      .then(setToday)
+      .catch(() => undefined);
+  }, []);
 
   async function handleClock() {
     setBusy(true);
@@ -204,6 +212,12 @@ export function DashboardView({
               </p>
             </div>
           </div>
+
+          <BreakControl
+            recordId={today?.id ?? null}
+            clockedIn={state === "IN"}
+            onChange={refreshToday}
+          />
 
           {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
         </div>
