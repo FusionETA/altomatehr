@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CheckSquare, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
 import {
-  approveAttendance,
+  bulkApproveAttendance,
   getTeamAttendanceApprovals,
   openAttendancePhoto,
-  rejectAttendance,
+  bulkRejectAttendance,
+  pendingApprovalIds,
+  type AttendanceBulkResult,
   type AttendanceRecord,
 } from "../api";
 import {
@@ -83,6 +85,13 @@ type ApprovalGroup = {
   employeeEmail: string | null;
   records: AttendanceRecord[];
 };
+
+// Bulk calls report per-id outcomes; show the first real reason rather than a
+// bare count, since "already decided by someone else" reads very differently
+// from "not yours to approve".
+function firstBulkError(result: AttendanceBulkResult): string | null {
+  return result.items.find((item) => !item.ok && item.error)?.error ?? null;
+}
 
 function groupApprovals(records: AttendanceRecord[]) {
   const groups = new Map<string, ApprovalGroup>();
@@ -182,10 +191,21 @@ export function AttendanceApprovals() {
   async function approveGroup(group: ApprovalGroup) {
     setBusyKey(group.key);
     setError(null);
-    const ids = group.records.map((record) => record.id);
+    const recordIds = group.records.map((record) => record.id);
+    // The decision endpoints take approval-request ids, not record ids.
+    const requestIds = group.records.flatMap(pendingApprovalIds);
+    if (requestIds.length === 0) {
+      setError("Nothing pending on this day.");
+      setBusyKey(null);
+      return;
+    }
     try {
-      await Promise.all(ids.map((id) => approveAttendance(id)));
-      setRecords((current) => current.filter((record) => !ids.includes(record.id)));
+      const result = await bulkApproveAttendance(requestIds);
+      if (result.failed > 0) {
+        // Partial success is normal here: another approver may have moved first.
+        setError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be approved.`);
+      }
+      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
       setSelectedKeys((current) => {
         const next = new Set(current);
         next.delete(group.key);
@@ -215,10 +235,21 @@ export function AttendanceApprovals() {
 
     setBusyKey(rejectingGroup.key);
     setError(null);
-    const ids = rejectingGroup.records.map((record) => record.id);
+    const recordIds = rejectingGroup.records.map((record) => record.id);
+    const requestIds = rejectingGroup.records.flatMap(pendingApprovalIds);
+    if (requestIds.length === 0) {
+      setRejectError("Nothing pending on this day.");
+      setBusyKey(null);
+      return;
+    }
     try {
-      await Promise.all(ids.map((id) => rejectAttendance(id, notes)));
-      setRecords((current) => current.filter((record) => !ids.includes(record.id)));
+      const result = await bulkRejectAttendance(requestIds, notes);
+      if (result.failed > 0) {
+        setRejectError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be rejected.`);
+        setBusyKey(null);
+        return;
+      }
+      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
       setRejectingGroup(null);
       setRejectNotes("");
       if (openKey === rejectingGroup.key) setOpenKey(null);

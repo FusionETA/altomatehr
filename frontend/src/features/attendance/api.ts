@@ -169,6 +169,46 @@ export type SubmitTimeAdjustment = {
 export const submitTimeAdjustment = (body: SubmitTimeAdjustment) =>
   apiPost<AttendanceApprovalRequest[]>("/attendance/adjustments", body);
 
+// Independent per-id outcomes: one bad id doesn't fail the batch, so the caller
+// has to read `items` rather than assume all-or-nothing.
+export type AttendanceBulkResult = {
+  succeeded: number;
+  failed: number;
+  items: { id: string; ok: boolean; error?: string | null }[];
+};
+
+// The server caps a batch at 200 ids and rejects the whole call past that.
+export const MAX_BULK_IDS = 200;
+
+// NOTE: every id below is an AttendanceApprovalRequest id (record.approvals[].id),
+// never a record id. The two are separate GUIDs and the server resolves only the
+// former, so passing a record id silently finds nothing.
+export const bulkApproveAttendance = (ids: string[]) =>
+  apiPost<AttendanceBulkResult>("/attendance/bulk/approve", { ids });
+
+export const bulkRejectAttendance = (ids: string[], reviewNotes?: string) =>
+  apiPost<AttendanceBulkResult>("/attendance/bulk/reject", { ids, reviewNotes });
+
+// Breaks decide through their own endpoints — the record ones only accept
+// CLOCK_IN/CLOCK_OUT kinds.
+export const approveBreak = (id: string) =>
+  apiPost<AttendanceBreak>(`/attendance/break/${id}/approve`);
+
+export const rejectBreak = (id: string, reviewNotes?: string) =>
+  apiPost<AttendanceBreak>(`/attendance/break/${id}/reject`, { reviewNotes });
+
+// Break approvals awaiting the caller as current-step approver.
+export const getTeamBreakApprovals = () =>
+  apiGet<AttendanceApprovalRequest[]>("/attendance/team/breaks");
+
+// The pending approval-request ids on a record — what the decision endpoints
+// actually take.
+export function pendingApprovalIds(record: AttendanceRecord): string[] {
+  return (record.approvals ?? [])
+    .filter((a) => a.approvalStatus === "PENDING")
+    .map((a) => a.id);
+}
+
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 
 // Upload an off-site proof photo; returns the URL to attach to the clock request.
