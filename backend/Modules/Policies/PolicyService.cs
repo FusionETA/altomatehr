@@ -9,18 +9,18 @@ namespace AltomateHR.Api.Modules.Policies;
 // (a deliberate cross-module read — policy resolution is a Policy concern).
 public class PolicyService : IPolicyService
 {
+    private readonly IDirectoryService _directory;
     private readonly IEmployeePolicyRepository _policies;
     private readonly IPolicyLeaveEntitlementRepository _entitlements;
-    private readonly IOrganizationMembershipRepository _memberships;
 
     public PolicyService(
         IEmployeePolicyRepository policies,
         IPolicyLeaveEntitlementRepository entitlements,
-        IOrganizationMembershipRepository memberships)
+        IDirectoryService directory)
     {
         _policies = policies;
         _entitlements = entitlements;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     public async Task<IEnumerable<PolicyDto>> GetAllAsync()
@@ -95,13 +95,47 @@ public class PolicyService : IPolicyService
 
     public async Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         var policy = membership?.PolicyId is not null ? await _policies.GetByIdAsync(membership.PolicyId) : null;
         return policy ?? await _policies.GetDefaultAsync();
     }
 
     public async Task<bool> RequiresGeofenceAsync(string employeeId) =>
         (await GetEffectivePolicyAsync(employeeId))?.RequireGeofence ?? true;
+
+    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+        GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds)
+    {
+        var ids = employeeIds.Distinct().ToList();
+        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
+        var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId);
+        var fallback = await _policies.GetDefaultAsync();
+
+        // Load each DISTINCT policy's entitlements once.
+        var neededPolicyIds = ids
+            .Select(id => policyByUser.GetValueOrDefault(id) ?? fallback?.Id)
+            .Where(pid => pid is not null)
+            .Distinct()
+            .ToList();
+
+        var byPolicy = new Dictionary<string, IReadOnlyDictionary<string, double>>();
+        foreach (var pid in neededPolicyIds)
+        {
+            var rows = await _entitlements.GetByPolicyAsync(pid!);
+            byPolicy[pid!] = rows.ToDictionary(e => e.LeaveTypeId, e => e.DefaultDays);
+        }
+
+        var empty = new Dictionary<string, double>();
+        return ids.ToDictionary(
+            id => id,
+            id =>
+            {
+                var pid = policyByUser.GetValueOrDefault(id) ?? fallback?.Id;
+                return pid is not null && byPolicy.TryGetValue(pid, out var e)
+                    ? e
+                    : (IReadOnlyDictionary<string, double>)empty;
+            });
+    }
 
     public async Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId)
     {
@@ -198,4 +232,10 @@ public class PolicyService : IPolicyService
             .Select(e => new PolicyLeaveEntitlementDto { LeaveTypeId = e.LeaveTypeId, DefaultDays = e.DefaultDays })
             .ToList(),
     };
+
+    public async Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+        await _policies.GetAllAcrossOrgsAsync();
+
+    public async Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+        await _entitlements.GetAllAsync();
 }

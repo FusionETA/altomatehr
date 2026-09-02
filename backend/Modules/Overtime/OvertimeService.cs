@@ -291,4 +291,7 @@ public class OvertimeService : IOvertimeService
         CreatedAt = Iso(request.CreatedAt) ?? string.Empty,
         UpdatedAt = Iso(request.UpdatedAt) ?? string.Empty,
     };
+
+    public async Task<IReadOnlyList<OvertimeRequest>> GetByEmployeeAsync(string employeeId) =>
+        await _requests.GetByEmployeeAsync(employeeId);
 }

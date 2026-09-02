@@ -11,10 +11,10 @@ namespace AltomateHR.Api.Modules.Auth;
 // refresh tokens. The token carries the ACTIVE org + the role for that org.
 public class AuthService : IAuthService
 {
+    private readonly IDirectoryService _directory;
     private readonly ITokenService _tokens;
     private readonly IRefreshTokenRepository _refreshRepo;
     private readonly IUserRepository _userRepo;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly IPasswordResetOtpRepository _otpRepo;
     private readonly IEmailSender _email;
     private readonly ILogger<AuthService> _logger;
@@ -24,7 +24,7 @@ public class AuthService : IAuthService
         ITokenService tokens,
         IRefreshTokenRepository refreshRepo,
         IUserRepository userRepo,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         IPasswordResetOtpRepository otpRepo,
         IEmailSender email,
         ILogger<AuthService> logger,
@@ -33,7 +33,7 @@ public class AuthService : IAuthService
         _tokens = tokens;
         _refreshRepo = refreshRepo;
         _userRepo = userRepo;
-        _memberships = memberships;
+        _directory = directory;
         _otpRepo = otpRepo;
         _email = email;
         _logger = logger;
@@ -44,12 +44,22 @@ public class AuthService : IAuthService
     {
         var user = await _userRepo.GetByEmailAsync(email);
 
-        // BC.Verify re-hashes `password` with the salt in user.PasswordHash and compares.
-        if (user is null || !BC.Verify(password, user.PasswordHash))
+        // Verify against the stored hash — BCrypt (native) OR legacy scrypt (migrated
+        // from the monolith). Exception-safe: a bad hash fails the login, never 500s.
+        if (user is null || !PasswordHasher.Verify(password, user.PasswordHash))
             return null;
 
+        // Transparent upgrade: a legacy scrypt password that just verified is re-hashed
+        // to BCrypt, so this account's NEXT login uses the native format and the old
+        // hash quietly ages out.
+        if (PasswordHasher.IsLegacyScrypt(user.PasswordHash))
+        {
+            user.PasswordHash = PasswordHasher.HashBcrypt(password);
+            await _userRepo.UpdateAsync(user);
+        }
+
         // Log the account into its default (first) org. Role comes from that membership.
-        var memberships = await _memberships.GetByUserAsync(user.Id);
+        var memberships = await _directory.GetMembershipsByUserAsync(user.Id);
         var active = memberships.FirstOrDefault();
         if (active is null)
             return null;   // valid credentials, but not a member of any org yet
@@ -60,7 +70,7 @@ public class AuthService : IAuthService
     public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId)
     {
         // Only if the account is actually a member of the target org.
-        var membership = await _memberships.GetAsync(organizationId, userId);
+        var membership = await _directory.GetMembershipAsync(organizationId, userId);
         if (membership is null) return null;
 
         var user = await _userRepo.GetByIdAsync(userId);
@@ -70,7 +80,7 @@ public class AuthService : IAuthService
     }
 
     public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId) =>
-        (await _memberships.GetByUserAsync(userId))
+        (await _directory.GetMembershipsByUserAsync(userId))
             .Select(m => new UserOrgDto(m.OrganizationId, m.Role))
             .ToList();
 

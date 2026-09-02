@@ -987,6 +987,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<DateTime?>("JoinDate")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Modules")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
@@ -1077,6 +1080,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("AppliedByAdminId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("Approvals")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AttachmentName")
+                        .HasMaxLength(260)
+                        .HasColumnType("varchar(260)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1085,6 +1099,11 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<DateTime?>("DecidedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Duration")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<string>("EmployeeId")
                         .IsRequired()
@@ -1124,6 +1143,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("XeroFileId")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EmployeeId");
@@ -1131,10 +1154,87 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("LeaveApplications");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Leave.Entities.LeaveEntitlement", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AccrualMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<double>("AccruedDays")
+                        .HasColumnType("double");
+
+                    b.Property<double>("CarriedDays")
+                        .HasColumnType("double");
+
+                    b.Property<bool>("CarriedExpired")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("CarriedExpiredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double?>("CarriedExpiredDays")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime?>("CarriedExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<double>("EntitledDays")
+                        .HasColumnType("double");
+
+                    b.Property<string>("LeaveTypeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Year");
+
+                    b.HasIndex("CarriedExpired", "CarriedExpiresAt");
+
+                    b.HasIndex("OrganizationId", "EmployeeId", "LeaveTypeId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("LeaveEntitlements");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Leave.Entities.LeaveType", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AccrualMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int?>("CarryExpiryMonth")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CarryForward")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -1150,6 +1250,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("IsArchived")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<double?>("MaxCarryForwardDays")
+                        .HasColumnType("double");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -1161,6 +1264,9 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("varchar(40)");
 
                     b.Property<bool>("Paid")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ProrateFirstYear")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -1215,6 +1321,10 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("varchar(20)");
 
                     b.Property<string>("Tier")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("WorkingDays")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
@@ -1488,6 +1598,10 @@ namespace AltomateHR.Api.Migrations
                 {
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AccrualMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");

@@ -11,6 +11,9 @@ public class OrganizationDto
     public decimal DefaultMileageRate { get; set; }
     public MileageUnit MileageUnit { get; set; }
     public int GeofenceRadiusMeters { get; set; }
+
+    // CSV of weekday numbers 1-7 (Mon=1 … Sun=7). Null = Mon-Fri.
+    public string? WorkingDays { get; set; }
     public string WorkingHoursStart { get; set; } = string.Empty;
     public string WorkingHoursEnd { get; set; } = string.Empty;
 

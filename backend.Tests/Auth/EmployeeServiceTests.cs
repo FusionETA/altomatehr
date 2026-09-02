@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Leave.Dtos;
+using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees;
@@ -98,7 +100,10 @@ public class EmployeeServiceTests
             Membership("usr-super", "Supervisor"),
             Membership("usr-emp", "Employee"),
         ];
-        return new EmployeeService(new FakeMembershipRepository(memberships), new FakeUserRepository(users));
+        return new EmployeeService(
+            new FakeMembershipRepository(memberships),
+            new FakeUserRepository(users),
+            new FakeLeaveService());
     }
 
     private static User User(string id, string email) => new()
@@ -145,5 +150,39 @@ public class EmployeeServiceTests
         public Task AddAsync(User user) { _users.Add(user); return Task.CompletedTask; }
         public Task UpdateAsync(User user) => Task.CompletedTask;
         public Task<bool> AnyAsync() => Task.FromResult(_users.Count > 0);
+    }
+
+    // EmployeeService only reaches into leave to recompute pro-rated accrual
+    // after a join-date change; nothing else is exercised here.
+    private sealed class FakeLeaveService : ILeaveService
+    {
+        public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year) => Task.FromResult(0);
+
+        public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string u) => throw new NotImplementedException();
+        public Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string u) => throw new NotImplementedException();
+        public Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string e, int y) => throw new NotImplementedException();
+        public Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string e, int y) => throw new NotImplementedException();
+        public Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int y) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportBalancesCsvAsync(string e, int y) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportOrgBalancesCsvAsync(int y) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportBulkSummaryZipAsync(int y, IReadOnlyList<string>? ids) => throw new NotImplementedException();
+        public Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(string s, int y) => throw new NotImplementedException();
+        public Task<IEnumerable<OnLeaveTodayDto>> GetOnLeaveTodayAsync(DateTime d) => throw new NotImplementedException();
+        public Task<int> CountPendingApprovalsAsync(string r) => throw new NotImplementedException();
+        public Task<LeaveEntitlementResult> SetEntitlementAsync(string e, string t, int y, SetEntitlementDto d) => throw new NotImplementedException();
+        public Task<LeaveEntitlementResult> ResetEntitlementAsync(string e, string t, int y) => throw new NotImplementedException();
+        public Task<int> SeedEntitlementsAsync(string e, int y) => throw new NotImplementedException();
+        public Task<double> GetApprovedDaysInRangeAsync(string e, DateTime f, DateTime t) => throw new NotImplementedException();
+        public Task<LeaveOverviewDto> GetOverviewAsync(int y) => throw new NotImplementedException();
+        public Task<LeaveSummaryReportResult> GetSummaryReportAsync(string e, int y) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportSummaryPdfAsync(string e, int y) => throw new NotImplementedException();
+        public Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto d, string e) => throw new NotImplementedException();
+        public Task<LeaveApplyResult> EditAsync(string i, CreateLeaveApplicationDto d, string a) => throw new NotImplementedException();
+        public Task<LeaveApplyResult> ApplyOnBehalfAsync(string e, CreateLeaveApplicationDto d, string a) => throw new NotImplementedException();
+        public Task<LeaveAuditResult> GetAuditTrailAsync(string i) => throw new NotImplementedException();
+        public Task<LeaveAttachmentResult> GetAttachmentAsync(string f) => throw new NotImplementedException();
+        public Task<LeaveTransitionResult> ApproveAsync(string i, string a) => throw new NotImplementedException();
+        public Task<LeaveTransitionResult> RejectAsync(string i, string a, string? n) => throw new NotImplementedException();
+        public Task<LeaveTransitionResult> CancelAsync(string i, string u) => throw new NotImplementedException();
     }
 }

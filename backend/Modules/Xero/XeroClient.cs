@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -14,6 +15,7 @@ public class XeroClient : IXeroClient
     private const string ConnectionsUrl = "https://api.xero.com/connections";
     private const string AccountsUrl = "https://api.xero.com/api.xro/2.0/Accounts";
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
+    private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -77,6 +79,41 @@ public class XeroClient : IXeroClient
                 t.TenantName ?? string.Empty,
                 t.TenantType))
             .ToList() ?? [];
+    }
+
+    public async Task<XeroFileContent?> GetFileContentAsync(
+        string accessToken, string tenantId, string fileId)
+    {
+        // Metadata first — it carries the real name and MIME type, which the
+        // content endpoint doesn't reliably return.
+        using var metaRequest = new HttpRequestMessage(HttpMethod.Get, $"{FilesUrl}/{fileId}");
+        metaRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        metaRequest.Headers.Add("xero-tenant-id", tenantId);
+        metaRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var metaResponse = await _http.SendAsync(metaRequest);
+        if (metaResponse.StatusCode == HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(metaResponse, "Xero file lookup failed.");
+        var meta = await metaResponse.Content.ReadFromJsonAsync<XeroFilePayload>(JsonOptions);
+
+        using var contentRequest = new HttpRequestMessage(HttpMethod.Get, $"{FilesUrl}/{fileId}/Content");
+        contentRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        contentRequest.Headers.Add("xero-tenant-id", tenantId);
+
+        using var contentResponse = await _http.SendAsync(contentRequest);
+        if (contentResponse.StatusCode == HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(contentResponse, "Xero file download failed.");
+
+        return new XeroFileContent(
+            await contentResponse.Content.ReadAsByteArrayAsync(),
+            meta?.MimeType ?? "application/octet-stream",
+            meta?.Name ?? fileId);
+    }
+
+    private sealed class XeroFilePayload
+    {
+        public string? Name { get; set; }
+        public string? MimeType { get; set; }
     }
 
     public async Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId)

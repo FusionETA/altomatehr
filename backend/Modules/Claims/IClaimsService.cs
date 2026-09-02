@@ -16,6 +16,10 @@ public interface IClaimsService
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
+
+    // Every claim in the current org, for cross-module reporting (the admin
+    // dashboard). The tenant filter still scopes it.
+    Task<IReadOnlyList<Claim>> GetAllForOrgAsync();
 }
 
 public sealed record ClaimStatusTransitionResult(

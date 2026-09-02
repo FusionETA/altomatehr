@@ -19,6 +19,17 @@ public interface IPolicyService
     Task<bool> RequiresGeofenceAsync(string employeeId);
     // Per-leave-type entitlement overrides for the employee's policy.
     Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId);
+    // Same, for MANY employees at once. Each distinct policy is loaded once, so
+    // the org-wide balances grid costs a handful of queries instead of 2 per head.
+    Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+        GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds);
+
+    // Every policy in EVERY org — for the tenant-spanning attendance sweep,
+    // which runs with no request context.
+    Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync();
+
+    // The raw policy-level leave entitlement rows, for the leave cron's bulk read.
+    Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync();
 }
 
 public record PolicySaveResult(bool Ok, PolicyDto? Policy, string? Error);

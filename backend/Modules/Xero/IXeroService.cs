@@ -10,4 +10,9 @@ public interface IXeroService
     Task DisconnectAsync();
     Task<XeroSyncAccountsResultDto> SyncAccountsAsync();
     Task<XeroSyncProjectsResultDto> SyncProjectsAsync();
+
+    // Fetch a file from Xero Files for the CURRENT org's connection. Other
+    // modules go through here rather than IXeroClient so connection lookup and
+    // token refresh stay in one place. Null = no connection, or no such file.
+    Task<XeroFileContent?> GetFileContentAsync(string fileId);
 }

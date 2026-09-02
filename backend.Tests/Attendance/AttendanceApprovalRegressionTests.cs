@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
@@ -82,8 +83,7 @@ public class AttendanceApprovalRegressionTests
             policies: new FakePolicyService(),
             supervision: new FakeSupervisionService(),
             router: new FakeApprovalRouter(),
-            policyRepo: new FakeEmployeePolicyRepository(),
-            memberships: new FakeOrganizationMembershipRepository());
+            directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()));
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -164,6 +164,9 @@ public class AttendanceApprovalRegressionTests
             Task.FromResult(_breaks.Where(b => b.AttendanceRecordId == attendanceRecordId).ToList());
         public Task<AttendanceBreak> AddAsync(AttendanceBreak brk) { _breaks.Add(brk); return Task.FromResult(brk); }
         public Task UpdateAsync(AttendanceBreak brk) => Task.CompletedTask;
+
+        public Task<List<AttendanceBreak>> GetByRecordsAsync(IEnumerable<string> attendanceRecordIds) =>
+            Task.FromResult(new List<AttendanceBreak>());
     }
 
     // The star of the test: an in-memory approval-request store whose contents
@@ -224,6 +227,16 @@ public class AttendanceApprovalRegressionTests
         public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(false);
         public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
             Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
+        public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+            GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
+                new Dictionary<string, IReadOnlyDictionary<string, double>>());
+
+        public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);
+
+        public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+            Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>([]);
     }
 
     // Not reached in the clock-out path — used by the per-policy auto-clock-out sweep.

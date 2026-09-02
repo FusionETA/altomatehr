@@ -36,6 +36,7 @@ public class AttendanceService : IAttendanceService
     private static readonly IReadOnlySet<AttendanceApprovalKind> AllKinds =
         new HashSet<AttendanceApprovalKind>(RecordKinds.Concat(BreakKinds));
 
+    private readonly IDirectoryService _directory;
     private readonly IAttendanceRepository _repo;
     private readonly IAttendanceSessionRepository _sessions;
     private readonly IAttendanceBreakRepository _breaks;
@@ -47,8 +48,6 @@ public class AttendanceService : IAttendanceService
     private readonly IPolicyService _policies;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
-    private readonly IEmployeePolicyRepository _policyRepo;
-    private readonly IOrganizationMembershipRepository _memberships;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -62,8 +61,7 @@ public class AttendanceService : IAttendanceService
         IPolicyService policies,
         ISupervisionService supervision,
         IApprovalRouter router,
-        IEmployeePolicyRepository policyRepo,
-        IOrganizationMembershipRepository memberships)
+        IDirectoryService directory)
     {
         _repo = repo;
         _sessions = sessions;
@@ -76,8 +74,7 @@ public class AttendanceService : IAttendanceService
         _policies = policies;
         _supervision = supervision;
         _router = router;
-        _policyRepo = policyRepo;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -302,9 +299,14 @@ public class AttendanceService : IAttendanceService
         if (record is null || record.TimeIn is null || record.TimeOut is not null)
             return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
 
+        // Distinct from the check above: the day IS open, but it has no session
+        // to hang a break off. Reporting "clock in first" to someone who can see
+        // they are clocked in sends them looking for the wrong problem.
         var session = await _sessions.GetOpenForRecordAsync(record.Id);
         if (session is null)
-            return new AttendanceBreakActionResult(false, null, "Clock in before starting a break.");
+            return new AttendanceBreakActionResult(false, null,
+                "This shift has no open work session, so a break can't be recorded against it. "
+                + "Clock out and clock in again to start one.");
 
         var openBreak = await _breaks.GetOpenForSessionAsync(session.Id);
         if (openBreak is not null)
@@ -682,7 +684,7 @@ public class AttendanceService : IAttendanceService
     // bypassing repository methods rather than the "current org" ones.
     public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates)
     {
-        var allPolicies = await _policyRepo.GetAllAcrossOrgsAsync();
+        var allPolicies = await _policies.GetAllAcrossOrgsAsync();
         var enabled = allPolicies
             .Where(p => p.AutoClockOutEnabled && p.AutoClockOutAfterMinutes is > 0)
             .ToList();
@@ -850,7 +852,7 @@ public class AttendanceService : IAttendanceService
         IReadOnlyDictionary<string, EmployeePolicy> policyById,
         IReadOnlyDictionary<string, EmployeePolicy> defaultByOrg)
     {
-        var membership = await _memberships.GetAsync(organizationId, employeeId);
+        var membership = await _directory.GetMembershipAsync(organizationId, employeeId);
         if (membership?.PolicyId is not null && policyById.TryGetValue(membership.PolicyId, out var assigned))
             return assigned;
         return defaultByOrg.GetValueOrDefault(organizationId);

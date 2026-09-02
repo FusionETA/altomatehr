@@ -12,12 +12,12 @@ namespace AltomateHR.Api.Modules.Dashboard;
 // added one at a time; only the ones implemented below return data.
 public class AdminOverviewService : IAdminOverviewService
 {
-    private readonly IClaimsRepository _claims;
-    private readonly IProjectRepository _projects;
+    private readonly IClaimsService _claims;
+    private readonly IProjectService _projects;
     private readonly IModuleAccessService _modules;
 
     public AdminOverviewService(
-        IClaimsRepository claims, IProjectRepository projects, IModuleAccessService modules)
+        IClaimsService claims, IProjectService projects, IModuleAccessService modules)
     {
         _claims = claims;
         _projects = projects;
@@ -45,7 +45,7 @@ public class AdminOverviewService : IAdminOverviewService
     private async Task<List<ProjectClaimSpendDto>> ProjectSpendThisMonthAsync()
     {
         var now = DateTime.UtcNow;
-        var claims = await _claims.GetAllAsync();
+        var claims = await _claims.GetAllForOrgAsync();
         var projectNames = (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
 
         return claims

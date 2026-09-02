@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, X } from "lucide-react";
+import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
 import {
-  approveAttendance,
+  bulkApproveAttendance,
   getTeamAttendanceApprovals,
+  getTeamBreakApprovals,
   openAttendancePhoto,
-  rejectAttendance,
+  bulkRejectAttendance,
+  pendingApprovalIds,
+  type AttendanceApprovalRequest,
+  type AttendanceBulkResult,
   type AttendanceRecord,
 } from "../api";
 import {
@@ -82,9 +86,19 @@ type ApprovalGroup = {
   employeeName: string;
   employeeEmail: string | null;
   records: AttendanceRecord[];
+  // Break requests for the same employee-day, so the card shows one timeline
+  // rather than clock events here and breaks somewhere else.
+  breaks: AttendanceApprovalRequest[];
 };
 
-function groupApprovals(records: AttendanceRecord[]) {
+// Bulk calls report per-id outcomes; show the first real reason rather than a
+// bare count, since "already decided by someone else" reads very differently
+// from "not yours to approve".
+function firstBulkError(result: AttendanceBulkResult): string | null {
+  return result.items.find((item) => !item.ok && item.error)?.error ?? null;
+}
+
+function groupApprovals(records: AttendanceRecord[], breaks: AttendanceApprovalRequest[]) {
   const groups = new Map<string, ApprovalGroup>();
 
   for (const record of records) {
@@ -98,10 +112,22 @@ function groupApprovals(records: AttendanceRecord[]) {
         employeeName: employeeEmail ? buildName(employeeEmail) : "Employee",
         employeeEmail,
         records: [],
+        breaks: [],
       } satisfies ApprovalGroup);
 
     group.records.push(record);
     groups.set(key, group);
+  }
+
+  // Breaks arrive as bare approval requests; they belong to whichever day's
+  // record they hang off.
+  const groupByRecordId = new Map<string, ApprovalGroup>();
+  for (const group of groups.values())
+    for (const record of group.records) groupByRecordId.set(record.id, group);
+
+  for (const brk of breaks) {
+    const group = brk.attendanceRecordId ? groupByRecordId.get(brk.attendanceRecordId) : undefined;
+    if (group) group.breaks.push(brk);
   }
 
   return Array.from(groups.values()).sort((a, b) => {
@@ -144,15 +170,18 @@ export function AttendanceApprovals() {
   const [rejectingGroup, setRejectingGroup] = useState<ApprovalGroup | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
 
   useEffect(() => {
     Promise.all([
       getTeamAttendanceApprovals(),
+      getTeamBreakApprovals().catch(() => []),
       getProjects().catch(() => []),
       getOrganization().catch(() => null),
     ])
-      .then(([nextRecords, nextProjects, organization]) => {
+      .then(([nextRecords, nextBreaks, nextProjects, organization]) => {
         setRecords(nextRecords);
+        setBreaks(nextBreaks);
         setProjects(nextProjects.filter((project) => !project.isArchived));
         if (organization) setRadius(organization.geofenceRadiusMeters);
       })
@@ -162,13 +191,13 @@ export function AttendanceApprovals() {
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const groups = useMemo(() => {
-    const grouped = groupApprovals(filterRecords(records, filter));
+    const grouped = groupApprovals(filterRecords(records, filter), breaks);
     const query = employeeSearch.trim().toLowerCase();
     if (!query) return grouped;
     return grouped.filter((group) =>
       `${group.employeeName} ${group.employeeEmail ?? ""}`.toLowerCase().includes(query),
     );
-  }, [records, filter, employeeSearch]);
+  }, [records, breaks, filter, employeeSearch]);
 
   function toggleSelected(key: string) {
     setSelectedKeys((current) => {
@@ -182,10 +211,22 @@ export function AttendanceApprovals() {
   async function approveGroup(group: ApprovalGroup) {
     setBusyKey(group.key);
     setError(null);
-    const ids = group.records.map((record) => record.id);
+    const recordIds = group.records.map((record) => record.id);
+    // The decision endpoints take approval-request ids, not record ids.
+    const requestIds = [...group.records.flatMap(pendingApprovalIds), ...group.breaks.map((b) => b.id)];
+    if (requestIds.length === 0) {
+      setError("Nothing pending on this day.");
+      setBusyKey(null);
+      return;
+    }
     try {
-      await Promise.all(ids.map((id) => approveAttendance(id)));
-      setRecords((current) => current.filter((record) => !ids.includes(record.id)));
+      const result = await bulkApproveAttendance(requestIds);
+      if (result.failed > 0) {
+        // Partial success is normal here: another approver may have moved first.
+        setError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be approved.`);
+      }
+      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
+      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
       setSelectedKeys((current) => {
         const next = new Set(current);
         next.delete(group.key);
@@ -215,10 +256,25 @@ export function AttendanceApprovals() {
 
     setBusyKey(rejectingGroup.key);
     setError(null);
-    const ids = rejectingGroup.records.map((record) => record.id);
+    const recordIds = rejectingGroup.records.map((record) => record.id);
+    const requestIds = [
+      ...rejectingGroup.records.flatMap(pendingApprovalIds),
+      ...rejectingGroup.breaks.map((b) => b.id),
+    ];
+    if (requestIds.length === 0) {
+      setRejectError("Nothing pending on this day.");
+      setBusyKey(null);
+      return;
+    }
     try {
-      await Promise.all(ids.map((id) => rejectAttendance(id, notes)));
-      setRecords((current) => current.filter((record) => !ids.includes(record.id)));
+      const result = await bulkRejectAttendance(requestIds, notes);
+      if (result.failed > 0) {
+        setRejectError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be rejected.`);
+        setBusyKey(null);
+        return;
+      }
+      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
+      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
       setRejectingGroup(null);
       setRejectNotes("");
       if (openKey === rejectingGroup.key) setOpenKey(null);
@@ -872,6 +928,8 @@ function ExpandedGroup({
       <div className="space-y-2">
         {group.records.map((record) => (
           <div key={record.id} className="space-y-2">
+            <AdjustmentNotice record={record} />
+            {breakRowsFor(group, record, "in")}
             {record.timeIn ? (
               <EventRow
                 title="Clock in"
@@ -886,6 +944,7 @@ function ExpandedGroup({
                 onToggleSelected={onToggleSelected}
               />
             ) : null}
+            {breakRowsFor(group, record, "mid")}
             {record.timeOut ? (
               <EventRow
                 title="Clock out"
@@ -922,6 +981,89 @@ function ExpandedGroup({
         >
           Reject all ({count})
         </button>
+      </div>
+    </div>
+  );
+}
+
+// A time-adjustment request on this record, if the employee asked for one.
+//
+// The clock recorded one time and the employee is asking for another; approving
+// the record applies the corrected time, rejecting keeps what the clock said.
+// That decision is the point of this card, so it leads rather than sits under
+// the event rows.
+function AdjustmentNotice({ record }: { record: AttendanceRecord }) {
+  const asks = (record.approvals ?? []).filter(
+    (a) => a.approvalStatus === "PENDING" && a.originalEventAt,
+  );
+  if (asks.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-primary/40 bg-primary/5 px-3.5 py-3">
+      {asks.map((ask) => (
+        <div key={ask.id} className="space-y-1">
+          <div className="flex items-center gap-2">
+            <PencilLine className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+              {ask.kind === "CLOCK_IN" ? "Clock-in" : "Clock-out"} correction requested
+            </p>
+          </div>
+          <p className="pl-5.5 text-sm font-semibold text-foreground">
+            {fmtTime(ask.eventAt)}
+            <span className="ml-2 text-xs font-medium text-muted-foreground line-through">
+              {fmtTime(ask.originalEventAt!)}
+            </span>
+          </p>
+          {ask.reason ? (
+            <p className="pl-5.5 text-xs text-muted-foreground">&ldquo;{ask.reason}&rdquo;</p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A day reads clock in -> break start -> break end -> clock out, so the break
+// rows are placed by time rather than listed after the clock events.
+//
+// "in" renders anything before the clock-in (shouldn't happen, but a break with
+// no matching clock event would otherwise vanish); "mid" renders the rest.
+function breakRowsFor(
+  group: ApprovalGroup,
+  record: AttendanceRecord,
+  slot: "in" | "mid",
+) {
+  const mine = group.breaks
+    .filter((b) => b.attendanceRecordId === record.id)
+    .sort((a, b) => a.eventAt.localeCompare(b.eventAt));
+
+  const rows = mine.filter((b) =>
+    slot === "in"
+      ? record.timeIn != null && b.eventAt < record.timeIn
+      : record.timeIn == null || b.eventAt >= record.timeIn,
+  );
+
+  return rows.map((brk) => (
+    <BreakEventRow key={brk.id} request={brk} />
+  ));
+}
+
+// Deliberately quieter than a clock event: a break carries no geofence or
+// photo, and the supervisor is mostly checking the time and the reason.
+function BreakEventRow({ request }: { request: AttendanceApprovalRequest }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-2xl border border-border/60 bg-card px-3.5 py-2.5">
+      <Coffee className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-foreground">
+          {request.kind === "BREAK_START" ? "Break start" : "Break end"}
+          <span className="ml-2 text-xs font-semibold tabular-nums text-muted-foreground">
+            {fmtTime(request.eventAt)}
+          </span>
+        </p>
+        {request.reason ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">&ldquo;{request.reason}&rdquo;</p>
+        ) : null}
       </div>
     </div>
   );

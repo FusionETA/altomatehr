@@ -26,13 +26,13 @@ public class SupervisionService : ISupervisionService
 {
     private static readonly string[] OrgApproverRoles = ["Admin", "Owner"];
 
+    private readonly IDirectoryService _directory;
     private readonly IOrganizationMembershipRepository _memberships;
-    private readonly IUserRepository _users;
 
-    public SupervisionService(IOrganizationMembershipRepository memberships, IUserRepository users)
+    public SupervisionService(IOrganizationMembershipRepository memberships, IDirectoryService directory)
     {
         _memberships = memberships;
-        _users = users;
+        _directory = directory;
     }
 
     // The supervisor assigned to this employee IN THE ACTIVE ORG.
@@ -47,7 +47,7 @@ public class SupervisionService : ISupervisionService
     {
         var wanted = userIds.ToHashSet();
         if (wanted.Count == 0) return new Dictionary<string, string>();
-        var users = await _users.GetAllAsync();
+        var users = await _directory.GetUsersAsync();
         return users.Where(u => wanted.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email);
     }
 

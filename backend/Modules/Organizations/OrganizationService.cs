@@ -37,6 +37,7 @@ public class OrganizationService : IOrganizationService
         org.DefaultMileageRate = dto.DefaultMileageRate;
         org.MileageUnit = dto.MileageUnit;
         org.GeofenceRadiusMeters = dto.GeofenceRadiusMeters;
+        org.WorkingDays = string.IsNullOrWhiteSpace(dto.WorkingDays) ? null : dto.WorkingDays.Trim();
         org.WorkingHoursStart = dto.WorkingHoursStart;
         org.WorkingHoursEnd = dto.WorkingHoursEnd;
         await _repo.UpdateAsync(org);
@@ -112,6 +113,7 @@ public class OrganizationService : IOrganizationService
         DefaultMileageRate = o.DefaultMileageRate,
         MileageUnit = o.MileageUnit,
         GeofenceRadiusMeters = o.GeofenceRadiusMeters,
+        WorkingDays = o.WorkingDays,
         WorkingHoursStart = o.WorkingHoursStart,
         WorkingHoursEnd = o.WorkingHoursEnd,
         Plan = o.Plan.ToString(),

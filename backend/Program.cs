@@ -14,6 +14,7 @@ using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Cron;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Overtime;
@@ -32,6 +33,14 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+
+// QuestPDF requires the licence to be declared before the first render.
+// Community is free for organisations under USD 1M annual revenue.
+//
+// Confirmed 2026-09-02: Community is fine for now. Revisit if revenue
+// approaches that threshold, or before selling this as a hosted product —
+// the licence is judged on the organisation's revenue, not the app's.
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -218,12 +227,16 @@ builder.Services.AddScoped<IAttendanceApprovalRequestRepository, AttendanceAppro
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<IHoursSummaryService, HoursSummaryService>();
+builder.Services.AddHostedService<LeaveRolloverBackgroundService>();
+builder.Services.AddHostedService<LeaveAccrualBackgroundService>();
 builder.Services.AddHostedService<AutoClockOutBackgroundService>();
 builder.Services.AddHostedService<OtWarningBackgroundService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();
 builder.Services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
 builder.Services.AddScoped<ILeaveApplicationRepository, LeaveApplicationRepository>();
 builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
+builder.Services.AddScoped<ILeaveEntitlementRepository, LeaveEntitlementRepository>();
+builder.Services.AddScoped<ILeaveCronService, LeaveCronService>();
 builder.Services.AddScoped<ILeaveService, LeaveService>();
 builder.Services.AddScoped<IOvertimeRepository, OvertimeRepository>();
 builder.Services.AddScoped<IOvertimePhotoStorage, OvertimePhotoStorage>();
@@ -268,6 +281,9 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IPasswordResetOtpRepository, PasswordResetOtpRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
+// The shared identity/membership read surface every module depends on — see
+// IDirectoryService. Keeps the Employees/Auth repositories out of other modules.
+builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();

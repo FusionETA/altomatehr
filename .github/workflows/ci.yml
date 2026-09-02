@@ -12,20 +12,47 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
       - name: Backend — build & test
         working-directory: backend.Tests
+        # The AuthEndpointTests boot the app via WebApplicationFactory<Program>, and
+        # Program.cs requires these at startup — BEFORE the factory's in-memory test
+        # config is applied. Locally they come from user-secrets; CI has none, so
+        # supply them here. Dummy values: the factory swaps the DbContext for
+        # in-memory, so the connection string never actually connects.
+        env:
+          ConnectionStrings__Default: "Server=localhost;Database=tests;User=test;Password=test"
+          Jwt__Key: "test-jwt-key-that-is-long-enough-for-hmac-sha256-signing"
         run: dotnet test --nologo
 
+      # The EF model snapshot is what `migrations add` diffs against. A clean
+      # text merge can leave it no longer describing the real model, and the
+      # next migration then tries to re-apply work that is already in the
+      # database. That reached main twice (see RepairModelSnapshot and
+      # RepairSnapshotAfterOscarMainMerge), so assert it here rather than
+      # waiting for a developer to trip over it.
+      - name: Assert the EF model snapshot matches the model
+        working-directory: backend
+        # `dotnet ef` builds the app host, and Program.cs demands these at
+        # startup. Dummy values — nothing connects; this compares the model
+        # against the snapshot on disk.
+        env:
+          ConnectionStrings__Default: "Server=localhost;Database=tests;User=test;Password=test"
+          Jwt__Key: "test-jwt-key-that-is-long-enough-for-hmac-sha256-signing"
+        run: |
+          dotnet tool restore
+          dotnet ef migrations has-pending-model-changes
+
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm

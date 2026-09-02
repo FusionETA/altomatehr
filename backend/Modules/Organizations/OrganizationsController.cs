@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,9 @@ public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizations;
 
-    public OrganizationsController(IOrganizationService organizations) => _organizations = organizations;
+    public OrganizationsController(IOrganizationService organizations) =>
+        _organizations = organizations;
+
 
     // GET /organizations/current — the caller's own org (any authenticated user can read it).
     [RequireScope("organizations:read")]

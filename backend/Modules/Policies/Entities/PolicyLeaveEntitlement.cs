@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Modules.Leave.Entities;
 
 namespace AltomateHR.Api.Modules.Policies.Entities;
 
@@ -20,6 +21,11 @@ public class PolicyLeaveEntitlement : ITenantScoped
     public string LeaveTypeId { get; set; } = string.Empty;
 
     public double DefaultDays { get; set; }
+
+    // Per-policy override of the leave type's accrual method. Null = inherit
+    // from the type. Sits between the type and the employee row in the
+    // narrowest-wins chain: LeaveEntitlement → this → LeaveType.
+    public LeaveAccrualMethod? AccrualMethod { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

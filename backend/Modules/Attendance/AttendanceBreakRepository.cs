@@ -26,6 +26,17 @@ public class AttendanceBreakRepository : IAttendanceBreakRepository
             .OrderBy(b => b.StartedAt)
             .ToListAsync();
 
+    public Task<List<AttendanceBreak>> GetByRecordsAsync(IEnumerable<string> attendanceRecordIds)
+    {
+        var ids = attendanceRecordIds.Distinct().ToList();
+        if (ids.Count == 0) return Task.FromResult(new List<AttendanceBreak>());
+
+        return _db.AttendanceBreaks
+            .Where(b => ids.Contains(b.AttendanceRecordId))
+            .OrderBy(b => b.StartedAt)
+            .ToListAsync();
+    }
+
     public async Task<AttendanceBreak> AddAsync(AttendanceBreak brk)
     {
         _db.AttendanceBreaks.Add(brk);

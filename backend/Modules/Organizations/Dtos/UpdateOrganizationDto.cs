@@ -20,6 +20,11 @@ public class UpdateOrganizationDto
     [Range(10, 100_000)]
     public int GeofenceRadiusMeters { get; set; } = 200;
 
+    // CSV of weekday numbers 1-7 (Mon=1 … Sun=7). Null/blank = Mon-Fri.
+    // Leave counts only these days, so a Fri-Mon request costs 2, not 4.
+    [MaxLength(20)]
+    public string? WorkingDays { get; set; }
+
     [Required, RegularExpression(@"^([01]\d|2[0-3]):[0-5]\d$", ErrorMessage = "Use HH:MM (24-hour) format")]
     public string WorkingHoursStart { get; set; } = "09:00";
 

@@ -27,6 +27,19 @@ public class LeaveTypesController : ControllerBase
         return result.Ok ? Ok(result.Type) : BadRequest(new { message = result.Error });
     }
 
+    // POST /leave-types/defaults — create any missing default types for this
+    // org. Idempotent, so it is safe to call on an org that already has them.
+    // GET /leave-types/count — active (non-archived) types in this org.
+    [RequireScope("leave:read")]
+    [HttpGet("count")]
+    public async Task<IActionResult> Count() =>
+        Ok(new { active = await _types.CountActiveTypesAsync() });
+
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpPost("defaults")]
+    public async Task<IActionResult> EnsureDefaults() =>
+        Ok(new { added = await _types.EnsureDefaultsAsync() });
+
     [Authorize(Roles = "Admin,Owner")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveLeaveTypeDto dto)
@@ -38,17 +51,19 @@ public class LeaveTypesController : ControllerBase
 
     [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/archive")]
-    public async Task<IActionResult> Archive(string id)
-    {
-        var type = await _types.SetArchivedAsync(id, true);
-        return type is null ? NotFound() : Ok(type);
-    }
+    public async Task<IActionResult> Archive(string id) =>
+        ToResponse(await _types.SetArchivedAsync(id, true));
 
     [Authorize(Roles = "Admin,Owner")]
     [HttpPost("{id}/restore")]
-    public async Task<IActionResult> Restore(string id)
+    public async Task<IActionResult> Restore(string id) =>
+        ToResponse(await _types.SetArchivedAsync(id, false));
+
+    // Ok=false with no Error means "no such type" (404); with an Error it's a
+    // rule refusal (400) — e.g. UNPAID may not be archived.
+    private IActionResult ToResponse(LeaveTypeSaveResult result)
     {
-        var type = await _types.SetArchivedAsync(id, false);
-        return type is null ? NotFound() : Ok(type);
+        if (result.Ok) return Ok(result.Type);
+        return result.Error is null ? NotFound() : BadRequest(new { message = result.Error });
     }
 }

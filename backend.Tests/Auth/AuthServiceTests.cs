@@ -1,8 +1,11 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Email;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Tests.Auth;
@@ -52,6 +55,28 @@ public class AuthServiceTests
         Assert.Equal("access-token-1", result.AccessToken);
         Assert.Equal("refresh-token-1", result.RefreshToken);
         Assert.Single(refreshTokens.Tokens);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithLegacyScryptPassword_Succeeds_AndUpgradesToBcrypt()
+    {
+        // A user migrated from the monolith carries a scrypt hash, not BCrypt.
+        var user = new User
+        {
+            Id = "usr-admin",
+            Email = "admin@altomate.com",
+            PasswordHash = PasswordHasherTests.LegacyScryptHash,
+            CreatedAt = DateTime.UtcNow,
+        };
+        var service = CreateService(
+            users: [user],
+            refreshTokens: out _,
+            memberships: [Membership("usr-admin", "Admin", "org-1")]);
+
+        var result = await service.LoginAsync("admin@altomate.com", PasswordHasherTests.LegacyPassword);
+
+        Assert.NotNull(result);                        // the old-format password verifies
+        Assert.StartsWith("$2", user.PasswordHash);    // and is transparently re-hashed to BCrypt
     }
 
     [Fact]
@@ -151,7 +176,11 @@ public class AuthServiceTests
             tokens: new FakeTokenService(),
             refreshRepo: refreshTokens,
             userRepo: new FakeUserRepository(users),
-            memberships: new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")]),
+            directory: TestDirectory.Over(
+                new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")])),
+            otpRepo: new FakePasswordResetOtpRepository(),
+            email: new FakeEmailSender(),
+            logger: NullLogger<AuthService>.Instance,
             config: new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -233,6 +262,44 @@ public class AuthServiceTests
         public Task UpdateAsync(OrganizationMembership m) => Task.CompletedTask;
     }
 
+    // Password-reset codes aren't exercised by the tests here yet; these exist so
+    // AuthService can be constructed. Both keep their state, so a reset test can
+    // assert against them when one is written.
+    private sealed class FakePasswordResetOtpRepository : IPasswordResetOtpRepository
+    {
+        public List<PasswordResetOtp> Otps { get; } = [];
+
+        public Task AddAsync(PasswordResetOtp otp)
+        {
+            Otps.Add(otp);
+            return Task.CompletedTask;
+        }
+
+        public Task<PasswordResetOtp?> GetActiveByEmailAsync(string email) =>
+            Task.FromResult(Otps.FirstOrDefault(o => o.Email == email && o.ConsumedAt == null));
+
+        public Task UpdateAsync(PasswordResetOtp otp) => Task.CompletedTask;
+
+        public Task InvalidateAllForUserAsync(string userId)
+        {
+            foreach (var otp in Otps.Where(o => o.UserId == userId && o.ConsumedAt == null))
+                otp.ConsumedAt = DateTime.UtcNow;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeEmailSender : IEmailSender
+    {
+        public List<(string To, string Subject, string Body)> Sent { get; } = [];
+
+        public Task<bool> SendAsync(
+            string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+        {
+            Sent.Add((toEmail, subject, htmlBody));
+            return Task.FromResult(true);
+        }
+    }
+
     private sealed class FakeRefreshTokenRepository : IRefreshTokenRepository
     {
         public List<RefreshToken> Tokens { get; }
@@ -250,5 +317,16 @@ public class AuthServiceTests
             Task.FromResult(Tokens.FirstOrDefault(t => t.Token == token));
 
         public Task UpdateAsync(RefreshToken token) => Task.CompletedTask;
+
+        // Mirrors RefreshTokenRepository: stamps every live token for the user,
+        // leaving already-revoked ones alone. Behaves rather than stubs, so a
+        // test can assert a password reset actually killed the sessions.
+        public Task RevokeAllForUserAsync(string userId)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var token in Tokens.Where(t => t.UserId == userId && t.RevokedAt == null))
+                token.RevokedAt = now;
+            return Task.CompletedTask;
+        }
     }
 }

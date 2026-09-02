@@ -44,5 +44,11 @@ public class Organization
     [MaxLength(200)]
     public string Addons { get; set; } = string.Empty;
 
+    // Org-wide default working days as a CSV of weekday numbers 1-7
+    // (Mon = 1 … Sun = 7). Null means Mon-Fri. Leave counts only these days,
+    // so a Fri-Mon request costs 2 days rather than 4.
+    [MaxLength(20)]
+    public string? WorkingDays { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
