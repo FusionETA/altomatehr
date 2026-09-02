@@ -11,6 +11,29 @@ export type AttendanceStatus =
 
 export type AttendanceApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 
+// One approvable event on a record. A time adjustment arrives as one of these
+// with `originalEventAt` set: `eventAt` is the corrected time the employee is
+// asking for, `originalEventAt` is what the clock actually recorded. Approving
+// applies the corrected time; rejecting leaves the record as it was.
+export type AttendanceApprovalRequest = {
+  id: string;
+  employeeId: string;
+  employeeEmail?: string | null;
+  kind: "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END";
+  eventAt: string;
+  originalEventAt?: string | null;
+  reason?: string | null;
+  approvalStatus: AttendanceApprovalStatus;
+  currentStep: number;
+  reviewNotes?: string | null;
+  reviewerId?: string | null;
+  submittedAt: string;
+  decidedAt?: string | null;
+  attendanceRecordId?: string | null;
+  attendanceSessionId?: string | null;
+  attendanceBreakId?: string | null;
+};
+
 // Mirrors the backend AttendanceRecordDto. `date` is a local-day key (yyyy-MM-dd);
 // timeIn/timeOut/createdAt/updatedAt are ISO-8601 UTC strings.
 export type AttendanceRecord = {
@@ -40,6 +63,7 @@ export type AttendanceRecord = {
   reviewNotes: string | null;
   submittedAt: string | null;
   decidedAt: string | null;
+  approvals?: AttendanceApprovalRequest[];
   createdAt: string;
   updatedAt: string;
 };
@@ -130,6 +154,20 @@ export const startBreak = (body: BreakLocation = {}) =>
 
 export const endBreak = (body: BreakLocation = {}) =>
   apiPost<AttendanceBreak>("/attendance/break/end", body);
+
+// A correction the employee asks for on their own record. At least one of the
+// two times must be set. The clock-out itself already happened at the real
+// time — this files a pending request on top of it, so a rejection costs
+// nothing.
+export type SubmitTimeAdjustment = {
+  recordId: string;
+  requestedTimeIn?: string;    // ISO-8601
+  requestedTimeOut?: string;   // ISO-8601
+  reason: string;
+};
+
+export const submitTimeAdjustment = (body: SubmitTimeAdjustment) =>
+  apiPost<AttendanceApprovalRequest[]>("/attendance/adjustments", body);
 
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 

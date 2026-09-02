@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, X } from "lucide-react";
+import { CalendarClock, CheckSquare, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
 import {
   approveAttendance,
   getTeamAttendanceApprovals,
@@ -872,6 +872,7 @@ function ExpandedGroup({
       <div className="space-y-2">
         {group.records.map((record) => (
           <div key={record.id} className="space-y-2">
+            <AdjustmentNotice record={record} />
             {record.timeIn ? (
               <EventRow
                 title="Clock in"
@@ -923,6 +924,43 @@ function ExpandedGroup({
           Reject all ({count})
         </button>
       </div>
+    </div>
+  );
+}
+
+// A time-adjustment request on this record, if the employee asked for one.
+//
+// The clock recorded one time and the employee is asking for another; approving
+// the record applies the corrected time, rejecting keeps what the clock said.
+// That decision is the point of this card, so it leads rather than sits under
+// the event rows.
+function AdjustmentNotice({ record }: { record: AttendanceRecord }) {
+  const asks = (record.approvals ?? []).filter(
+    (a) => a.approvalStatus === "PENDING" && a.originalEventAt,
+  );
+  if (asks.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-primary/40 bg-primary/5 px-3.5 py-3">
+      {asks.map((ask) => (
+        <div key={ask.id} className="space-y-1">
+          <div className="flex items-center gap-2">
+            <PencilLine className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+              {ask.kind === "CLOCK_IN" ? "Clock-in" : "Clock-out"} correction requested
+            </p>
+          </div>
+          <p className="pl-5.5 text-sm font-semibold text-foreground">
+            {fmtTime(ask.eventAt)}
+            <span className="ml-2 text-xs font-medium text-muted-foreground line-through">
+              {fmtTime(ask.originalEventAt!)}
+            </span>
+          </p>
+          {ask.reason ? (
+            <p className="pl-5.5 text-xs text-muted-foreground">&ldquo;{ask.reason}&rdquo;</p>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
