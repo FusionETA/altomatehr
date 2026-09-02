@@ -920,11 +920,14 @@ public class LeaveService : ILeaveService
 
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId);
+        var (found, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
+        // AuthorizeAsync only ever returns a null application together with an
+        // error, so past the guard this is non-null.
+        var app = found!;
         var now = DateTime.UtcNow;
-        AppendTrail(app!, app.CurrentStep, approverId, "APPROVED", null);
+        AppendTrail(app, app.CurrentStep, approverId, "APPROVED", null);
         var stepCount = await _router.StepCountAsync(Module, app.EmployeeId);
         var isFinal = app.CurrentStep + 1 >= stepCount;
         if (isFinal)
@@ -943,11 +946,14 @@ public class LeaveService : ILeaveService
 
     public async Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId);
+        var (found, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
+        // AuthorizeAsync only ever returns a null application together with an
+        // error, so past the guard this is non-null.
+        var app = found!;
         var now = DateTime.UtcNow;
-        AppendTrail(app!, app.CurrentStep, approverId, "REJECTED", reviewNotes);
+        AppendTrail(app, app.CurrentStep, approverId, "REJECTED", reviewNotes);
         app.Status = LeaveStatus.REJECTED;
         app.ReviewNotes = reviewNotes;
         app.DecidedAt = now;
