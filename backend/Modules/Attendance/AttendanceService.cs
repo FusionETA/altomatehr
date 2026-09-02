@@ -52,7 +52,7 @@ public class AttendanceService : IAttendanceService
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
     private readonly IRealtimeService _realtime;
-    private readonly IEmployeeDirectory _employees;
+    private readonly IEmployeeRowResolver _employees;
     private readonly IHoursSummaryService _hours;
 
     public AttendanceService(
@@ -69,7 +69,7 @@ public class AttendanceService : IAttendanceService
         IApprovalRouter router,
         IDirectoryService directory,
         IRealtimeService realtime,
-        IEmployeeDirectory employees,
+        IEmployeeRowResolver employees,
         IHoursSummaryService hours)
     {
         _repo = repo;
@@ -1215,7 +1215,7 @@ public class AttendanceService : IAttendanceService
 
     // One nudge for the whole import rather than one per row — see the same
     // reasoning in ClaimsService.
-    private async Task NotifyImportAsync(EmployeeDirectorySnapshot employees)
+    private async Task NotifyImportAsync(EmployeeRowIndex employees)
     {
         var organizationId = _currentUser.OrganizationId;
         if (string.IsNullOrEmpty(organizationId)) return;

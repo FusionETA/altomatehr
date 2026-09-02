@@ -30,7 +30,7 @@ public static class ClaimsSummarySheet
     // to the finance team who actually opens this.
     public static TabularSheet BuildExport(
         IEnumerable<Claim> claims,
-        EmployeeDirectorySnapshot employees,
+        EmployeeRowIndex employees,
         IReadOnlyDictionary<string, string> projectNames,
         IReadOnlyDictionary<string, (string Code, string Name)> accounts)
     {
@@ -86,7 +86,7 @@ public static class ClaimsSummarySheet
 
     public static TabularSheet BuildPrintable(
         IReadOnlyCollection<Claim> claims,
-        EmployeeDirectorySnapshot employees,
+        EmployeeRowIndex employees,
         IReadOnlyDictionary<string, string> projectNames,
         IReadOnlyDictionary<string, (string Code, string Name)> accounts,
         string caption)

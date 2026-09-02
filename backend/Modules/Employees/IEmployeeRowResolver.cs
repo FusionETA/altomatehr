@@ -12,21 +12,21 @@ namespace AltomateHR.Api.Modules.Employees;
 // Deliberately NOT part of IEmployeeService either: that service depends on
 // ILeaveService (join-date changes recompute accrual), so a claims/leave/
 // attendance service injecting it would close a DI cycle.
-public interface IEmployeeDirectory
+public interface IEmployeeRowResolver
 {
     // One tenant-filtered snapshot of the current org's members, built once per
     // import rather than one lookup per row.
-    Task<EmployeeDirectorySnapshot> GetSnapshotAsync();
+    Task<EmployeeRowIndex> GetSnapshotAsync();
 }
 
 // Email/name to user id, plus the reverse for export labelling.
-public sealed class EmployeeDirectorySnapshot
+public sealed class EmployeeRowIndex
 {
     private readonly Dictionary<string, string> _idByEmail;
     private readonly Dictionary<string, List<string>> _idsByName;
     private readonly Dictionary<string, EmployeeIdentity> _byId;
 
-    internal EmployeeDirectorySnapshot(IEnumerable<EmployeeIdentity> members)
+    internal EmployeeRowIndex(IEnumerable<EmployeeIdentity> members)
     {
         var list = members.ToList();
 

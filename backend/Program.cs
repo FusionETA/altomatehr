@@ -249,7 +249,7 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
-builder.Services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
+builder.Services.AddScoped<IEmployeeRowResolver, EmployeeRowResolver>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();

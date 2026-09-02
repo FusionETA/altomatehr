@@ -1,15 +1,15 @@
 namespace AltomateHR.Api.Modules.Employees;
 
-public class EmployeeDirectory : IEmployeeDirectory
+public class EmployeeRowResolver : IEmployeeRowResolver
 {
     private readonly IDirectoryService _directory;
 
     // Goes through IDirectoryService rather than the two repositories directly.
     // IUserRepository is Auth's, and reaching for it from here is exactly the
     // foreign injection ADR-02's shared-kernel change removed 21 times over.
-    public EmployeeDirectory(IDirectoryService directory) => _directory = directory;
+    public EmployeeRowResolver(IDirectoryService directory) => _directory = directory;
 
-    public async Task<EmployeeDirectorySnapshot> GetSnapshotAsync()
+    public async Task<EmployeeRowIndex> GetSnapshotAsync()
     {
         // Memberships are tenant-filtered, so this can only ever see the caller's
         // own org — which is what stops an import from resolving an email to
@@ -24,6 +24,6 @@ public class EmployeeDirectory : IEmployeeDirectory
             .Where(i => i is not null)
             .Select(i => i!);
 
-        return new EmployeeDirectorySnapshot(identities);
+        return new EmployeeRowIndex(identities);
     }
 }

@@ -37,7 +37,7 @@ public static class AttendanceSummarySheet
     // ---- Export ----
 
     public static TabularSheet BuildSummary(
-        HoursSummaryDto summary, EmployeeDirectorySnapshot employees, string? caption = null)
+        HoursSummaryDto summary, EmployeeRowIndex employees, string? caption = null)
     {
         var sheet = new TabularSheet(SummarySheetName, SummaryHeaders, caption);
 
@@ -78,7 +78,7 @@ public static class AttendanceSummarySheet
     public static TabularSheet BuildRecords(
         IEnumerable<AttendanceRecord> records,
         IReadOnlyDictionary<string, AttendanceApprovalStatus> approvalByRecordId,
-        EmployeeDirectorySnapshot employees,
+        EmployeeRowIndex employees,
         IReadOnlyDictionary<string, string> projectNames,
         string? caption = null)
     {
@@ -128,7 +128,7 @@ public static class AttendanceSummarySheet
     public static TabularSheet BuildPrintableRecords(
         IReadOnlyCollection<AttendanceRecord> records,
         IReadOnlyDictionary<string, AttendanceApprovalStatus> approvalByRecordId,
-        EmployeeDirectorySnapshot employees,
+        EmployeeRowIndex employees,
         IReadOnlyDictionary<string, string> projectNames,
         string caption)
     {

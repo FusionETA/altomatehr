@@ -26,7 +26,7 @@ public class ClaimsService : IClaimsService
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
     private readonly IRealtimeService _realtime;
-    private readonly IEmployeeDirectory _employees;
+    private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
 
     public ClaimsService(
@@ -38,7 +38,7 @@ public class ClaimsService : IClaimsService
         IOrganizationService organizations,
         ICurrentUser currentUser,
         IRealtimeService realtime,
-        IEmployeeDirectory employees,
+        IEmployeeRowResolver employees,
         IProjectService projects)
     {
         _repo = repo;
@@ -540,7 +540,7 @@ public class ClaimsService : IClaimsService
     // shouldn't push 500 events at everyone's browser. Every member is a target
     // because an import can touch anybody's list — the client re-reads through
     // /claims, so nobody learns anything they couldn't already see.
-    private async Task NotifyImportAsync(EmployeeDirectorySnapshot employees)
+    private async Task NotifyImportAsync(EmployeeRowIndex employees)
     {
         var organizationId = _currentUser.OrganizationId;
         if (string.IsNullOrEmpty(organizationId)) return;
