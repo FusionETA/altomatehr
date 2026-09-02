@@ -358,17 +358,6 @@ public class LeaveCronServiceTests
                 new Dictionary<string, IReadOnlyDictionary<string, double>>());
     }
 
-    private sealed class FakePolicyEntitlementRepo(IEnumerable<PolicyLeaveEntitlement> rows)
-        : IPolicyLeaveEntitlementRepository
-    {
-        public Task<List<PolicyLeaveEntitlement>> GetByPolicyAsync(string policyId) =>
-            Task.FromResult(rows.Where(r => r.PolicyId == policyId).ToList());
-        public Task<List<PolicyLeaveEntitlement>> GetAllAsync() =>
-            Task.FromResult(rows.ToList());
-        public Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyLeaveEntitlement> e) =>
-            Task.CompletedTask;
-    }
-
     private sealed class FakeMembershipRepo(IEnumerable<OrganizationMembership> rows)
         : IOrganizationMembershipRepository
     {
