@@ -15,8 +15,16 @@ namespace AltomateHR.Api.Modules.Leave;
 public class LeaveController : ControllerBase
 {
     private readonly ILeaveService _leave;
+    private readonly ILeaveCronService _cron;
+    private readonly ILogger<LeaveController> _logger;
 
-    public LeaveController(ILeaveService leave) => _leave = leave;
+    public LeaveController(
+        ILeaveService leave, ILeaveCronService cron, ILogger<LeaveController> logger)
+    {
+        _leave = leave;
+        _cron = cron;
+        _logger = logger;
+    }
 
     // GET /leave — the caller's own applications.
     [RequireScope("leave:read")]
@@ -375,6 +383,60 @@ public class LeaveController : ControllerBase
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _leave.CancelAsync(id, GetUserId()));
+
+    // ---- Scheduled-job triggers -------------------------------------------
+    // Force a run now instead of waiting for the background service's next
+    // tick. The jobs normally run in-process via LeaveRolloverBackgroundService
+    // and LeaveAccrualBackgroundService, so no external scheduler or shared
+    // secret is involved; these exist for operators and for testing. Same shape
+    // as POST /attendance/cron/auto-clockout/run, which likewise lives on its
+    // own module's controller rather than a separate cron controller.
+    //
+    // Both run SYSTEM-WIDE. The services execute with no request context, so
+    // the tenant filter is a no-op there; here the caller has a JWT, but the
+    // underlying service still sweeps every org — deliberate, and the reason
+    // these are Admin/Owner only.
+
+    // POST /leave/cron/year-rollover?year=YYYY — force-open the target year.
+    // `year` defaults to the current UTC year; pass it explicitly to re-open a
+    // past year or to pre-open the next one. Safe to re-run: existing rows are
+    // skipped, never duplicated (the DB unique index backs that up).
+    [HttpPost("cron/year-rollover")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> YearRollover([FromQuery, Range(2000, 2100)] int? year)
+    {
+        try
+        {
+            var target = year ?? DateTime.UtcNow.Year;
+            return Ok(await _cron.RunYearRolloverAsync(target, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            // Log the detail; don't hand the caller the exception message.
+            _logger.LogError(ex, "Leave year rollover failed.");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { ok = false, error = "rollover failed" });
+        }
+    }
+
+    // POST /leave/cron/monthly-accrual — force a monthly accrual + expiry sweep.
+    [HttpPost("cron/monthly-accrual")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> MonthlyAccrual()
+    {
+        try
+        {
+            return Ok(await _cron.RunMonthlyAccrualAsync(DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            // A cron has no user to show an error to — log it, and give the
+            // caller a non-2xx so a failed run is visible.
+            _logger.LogError(ex, "Monthly leave accrual failed.");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { ok = false, error = "accrual failed" });
+        }
+    }
 
     private IActionResult ToTransitionResponse(LeaveTransitionResult result)
     {

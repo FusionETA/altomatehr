@@ -10,18 +10,18 @@ namespace AltomateHR.Api.Modules.Employees;
 // both repos are tenant-filtered).
 public class EmployeeProfileService : IEmployeeProfileService
 {
+    private readonly IDirectoryService _directory;
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IOrganizationMembershipRepository _memberships;
-    private readonly IUserRepository _users;
 
     public EmployeeProfileService(
         IEmployeeProfileRepository profiles,
         IOrganizationMembershipRepository memberships,
-        IUserRepository users)
+        IDirectoryService directory)
     {
         _profiles = profiles;
         _memberships = memberships;
-        _users = users;
+        _directory = directory;
     }
 
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
@@ -29,7 +29,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null)
             return null;   // not a member of this org → 404
 
-        var user = await _users.GetByIdAsync(userId);
+        var user = await _directory.GetUserAsync(userId);
         var profile = await _profiles.GetByUserAsync(userId);
 
         // No profile saved yet → return a context-only shell so the form still loads.
@@ -56,7 +56,7 @@ public class EmployeeProfileService : IEmployeeProfileService
             await _profiles.UpdateAsync(profile);
         }
 
-        var user = await _users.GetByIdAsync(userId);
+        var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
     }
 

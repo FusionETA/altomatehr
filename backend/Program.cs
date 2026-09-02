@@ -34,8 +34,11 @@ using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
 // QuestPDF requires the licence to be declared before the first render.
-// Community is free for organisations under USD 1M annual revenue —
-// confirm this still applies before shipping to production.
+// Community is free for organisations under USD 1M annual revenue.
+//
+// Confirmed 2026-09-02: Community is fine for now. Revisit if revenue
+// approaches that threshold, or before selling this as a hosted product —
+// the licence is judged on the organisation's revenue, not the app's.
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -239,6 +242,9 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
+// The shared identity/membership read surface every module depends on — see
+// IDirectoryService. Keeps the Employees/Auth repositories out of other modules.
+builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();

@@ -85,9 +85,16 @@ jobs:
       - run: npm run build                       # tsc + vite build
 ```
 
-**Gates a PR should have to pass:** backend builds, 41 tests green, frontend
-builds. Optional additions later: linting, **dotnet format --verify-no-changes**,
-and a migrations check (**dotnet ef migrations has-pending-model-changes**).
+**Gates a PR has to pass (as of 2026-09-02):** backend builds, **154 tests**
+green, the EF model snapshot matches the model
+(**dotnet ef migrations has-pending-model-changes**), frontend builds.
+
+The snapshot check was added after a clean text merge left
+AppDbContextModelSnapshot.cs no longer describing the real model — twice. It
+needs no database and costs a few seconds. See ADR-02's amendment and the two
+Repair*Snapshot migrations.
+
+Still optional later: linting, **dotnet format --verify-no-changes**.
 
 ---
 
@@ -105,5 +112,23 @@ Not built yet — captured here so the target is written down.
 - **Sequence:** run migrations → deploy backend → deploy frontend. Keep migrations
   backward-compatible so backend can roll out without breaking the old frontend.
 
+**Target host:** a **DigitalOcean droplet** (a plain VM), not App Platform —
+so the pipeline has to do the work App Platform would otherwise handle: build,
+ship the artifact to the box, restart the service behind a reverse proxy.
+
 **Open items:** environment separation (staging vs prod), automated migration
 step in the pipeline, and a health-check endpoint for deploy verification.
+
+**Parked together — the next CI/CD chunk (2026-09-02):**
+
+1. **Deploy workflow** — build → publish → deploy to the droplet on merge to
+   main. Needs: SSH key or DO token in repo secrets, a systemd unit (or
+   container) on the box, a reverse proxy, and the migration step run *before*
+   the backend swaps over.
+2. **Dependabot security alerts** — advisory-driven only, not version churn.
+   Repo Settings → Code security. Grouped here because both are repo-settings
+   and pipeline work, and both want the same "who approves a deploy" thinking.
+
+Deliberately deferred, not forgotten. Nothing about either is urgent: CI is
+green, and `dotnet list package --vulnerable --include-transitive` covers the
+advisory question by hand until Dependabot does it automatically.

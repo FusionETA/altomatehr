@@ -9,15 +9,15 @@ namespace AltomateHR.Api.Modules.Shifts;
 // Modules/Policies/PolicyService's IsDefault/ClearDefaultExcept pattern.
 public class ShiftService : IShiftService
 {
+    private readonly IDirectoryService _directory;
     private readonly IShiftRepository _shifts;
     private readonly IProjectService _projects;
-    private readonly IOrganizationMembershipRepository _memberships;
 
-    public ShiftService(IShiftRepository shifts, IProjectService projects, IOrganizationMembershipRepository memberships)
+    public ShiftService(IShiftRepository shifts, IProjectService projects, IDirectoryService directory)
     {
         _shifts = shifts;
         _projects = projects;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     public async Task<IEnumerable<ShiftDto>> GetAllAsync() =>
@@ -82,7 +82,7 @@ public class ShiftService : IShiftService
         var shift = await _shifts.GetByIdAsync(id);
         if (shift is null) return new ShiftDeleteResult(false, null, "NOT_FOUND");
 
-        var assignedCount = await _memberships.CountByShiftIdAsync(id);
+        var assignedCount = await _directory.CountMembershipsByShiftAsync(id);
         if (assignedCount > 0)
             return new ShiftDeleteResult(false,
                 $"Can't delete — {assignedCount} employee(s) still assigned to this shift. Reassign them first.",
@@ -107,7 +107,7 @@ public class ShiftService : IShiftService
 
     public async Task<Shift?> GetEffectiveShiftAsync(string employeeId)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership?.ShiftId is not null)
         {
             var assigned = await _shifts.GetByIdAsync(membership.ShiftId);
@@ -133,4 +133,6 @@ public class ShiftService : IShiftService
         LunchBreakMinutes = s.LunchBreakMinutes,
         IsDefault = s.IsDefault,
     };
+
+    public Task<Shift?> GetByIdAsync(string id) => _shifts.GetByIdAsync(id);
 }

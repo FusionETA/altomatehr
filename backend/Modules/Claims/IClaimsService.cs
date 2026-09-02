@@ -18,13 +18,18 @@ public interface IClaimsService
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
 
+    // Every claim in the current org, for cross-module reporting (the admin
+    // dashboard). The tenant filter still scopes it.
+    Task<IReadOnlyList<Claim>> GetAllForOrgAsync();
+
     // ---- Import / export ----
 
-    // The claims summary as CSV or XLSX. Org-wide (admin-gated at the
+    // The claims summary as CSV, XLSX or PDF. Org-wide (admin-gated at the
     // controller); the tenant filter is what keeps it to one org.
     Task<TabularExportResult> ExportSummaryAsync(ClaimsExportQueryDto query, TabularFormat format);
 
-    // The blank import template, in either format, with a worked example row.
+    // The blank import template. CSV or XLSX only — a PDF can't be filled in
+    // and uploaded, and the controller refuses it.
     TabularExportResult BuildImportTemplate(TabularFormat format);
 
     // Bulk-import historical claims. Append-only and idempotent: a row that

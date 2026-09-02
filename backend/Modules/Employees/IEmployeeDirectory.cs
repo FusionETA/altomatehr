@@ -1,12 +1,17 @@
 namespace AltomateHR.Api.Modules.Employees;
 
-// Resolves "who is this row about?" for the CSV/XLSX importers, and labels rows
-// for the exporters.
+// Resolves "who is this row about?" for the importers, and labels rows for the
+// exporters.
 //
-// Deliberately NOT part of IEmployeeService: that service depends on
+// A thin projection OVER IDirectoryService, not a rival to it. The shared kernel
+// answers "who is this user" and "what is their membership"; this turns one
+// tenant-filtered snapshot of that into the two lookups a spreadsheet needs —
+// email/name to id, and back again for labelling — including the ambiguous-name
+// rule, which is import policy and has no business in the shared kernel.
+//
+// Deliberately NOT part of IEmployeeService either: that service depends on
 // ILeaveService (join-date changes recompute accrual), so a claims/leave/
-// attendance service injecting it would close a DI cycle. This depends only on
-// the two repositories, so anything may inject it.
+// attendance service injecting it would close a DI cycle.
 public interface IEmployeeDirectory
 {
     // One tenant-filtered snapshot of the current org's members, built once per

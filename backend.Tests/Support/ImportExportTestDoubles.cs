@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Dtos;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Realtime.Dtos;
+using AltomateHR.Api.Tests.Common;
 
 namespace AltomateHR.Api.Tests.Support;
 
@@ -45,15 +46,14 @@ internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
 
 // EmployeeDirectorySnapshot's constructor is internal to the API assembly, so
 // tests build one the only way they can: through the real EmployeeDirectory,
-// fed by in-memory repositories.
+// over main's TestDirectory helper.
 internal static class EmployeeDirectoryTestFactory
 {
     public static EmployeeDirectorySnapshot Snapshot(IEnumerable<EmployeeIdentity> members)
     {
         var list = members.ToList();
         var directory = new EmployeeDirectory(
-            new StubMembershipRepository(list),
-            new StubUserRepository(list));
+            TestDirectory.Over(new StubMembershipRepository(list), new StubUserRepository(list)));
         return directory.GetSnapshotAsync().GetAwaiter().GetResult();
     }
 }

@@ -23,12 +23,12 @@ public class LeaveService : ILeaveService
 {
     private const ApprovalModule Module = ApprovalModule.LEAVE;
 
+    private readonly IDirectoryService _directory;
     private readonly ILeaveApplicationRepository _apps;
     private readonly ILeaveTypeRepository _types;
     private readonly ISupervisionService _supervision;
     private readonly IPolicyService _policies;
     private readonly IApprovalRouter _router;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly ICurrentUser _currentUser;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly IXeroService _xero;
@@ -43,7 +43,7 @@ public class LeaveService : ILeaveService
         ISupervisionService supervision,
         IPolicyService policies,
         IApprovalRouter router,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         ICurrentUser currentUser,
         ILeaveEntitlementRepository entitlements,
         IXeroService xero,
@@ -57,7 +57,7 @@ public class LeaveService : ILeaveService
         _supervision = supervision;
         _policies = policies;
         _router = router;
-        _memberships = memberships;
+        _directory = directory;
         _currentUser = currentUser;
         _entitlements = entitlements;
         _xero = xero;
@@ -98,7 +98,7 @@ public class LeaveService : ILeaveService
     // same way, with a bulk reader behind the grid.
     public async Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year)
     {
-        var members = await _memberships.GetForCurrentOrgAsync();
+        var members = await _directory.GetMembershipsForCurrentOrgAsync();
         if (members.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
 
         var userIds = members.Select(m => m.UserId).Distinct().ToList();
@@ -131,7 +131,7 @@ public class LeaveService : ILeaveService
     // anyone → themselves; supervisor → their direct reports; else refused.
     public async Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string employeeId, int year)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null)
             return new LeaveBalancesResult(false, false, Array.Empty<LeaveBalanceDto>(), year);
 
@@ -403,7 +403,7 @@ public class LeaveService : ILeaveService
     // Entitled + Carried - Total, deliberately NOT accrued-based.
     public async Task<LeaveSummaryReportResult> GetSummaryReportAsync(string employeeId, int year)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveSummaryReportResult(false, false, null);
         if (!await CanReadBalancesAsync(employeeId))
             return new LeaveSummaryReportResult(true, false, null);
@@ -483,7 +483,7 @@ public class LeaveService : ILeaveService
     public async Task<LeaveExportResult> ExportBulkSummaryZipAsync(
         int year, IReadOnlyList<string>? employeeIds)
     {
-        var members = await _memberships.GetForCurrentOrgAsync();
+        var members = await _directory.GetMembershipsForCurrentOrgAsync();
         var wanted = employeeIds is { Count: > 0 } ? employeeIds.ToHashSet() : null;
         var targets = members
             .Select(m => m.UserId)
@@ -554,7 +554,7 @@ public class LeaveService : ILeaveService
         var type = await _types.GetByIdAsync(leaveTypeId);
         if (type is null) return new LeaveEntitlementResult(false, null, "Leave type not found");
 
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveEntitlementResult(false, null, null);   // → 404
 
         var row = await EnsureEntitlementAsync(employeeId, type, year);
@@ -599,7 +599,7 @@ public class LeaveService : ILeaveService
     //   4. not effectively PRO_RATED → skip. Nothing to pro-rate.
     public async Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return 0;
 
         var typesById = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
@@ -887,7 +887,7 @@ public class LeaveService : ILeaveService
     public async Task<LeaveApplyResult> ApplyOnBehalfAsync(
         string employeeId, CreateLeaveApplicationDto dto, string adminUserId)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveApplyResult(false, null, null);   // → 404
 
         var result = await ApplyAsync(dto, employeeId);
@@ -1114,7 +1114,7 @@ public class LeaveService : ILeaveService
         var accrued = row.AccruedDays;
         if (method == LeaveAccrualMethod.PRO_RATED && startDate is { } start)
         {
-            var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+            var membership = await _directory.GetMembershipForUserAsync(employeeId);
             var forecast = LeaveAccrualMath.ProRatedAccrualOnDate(
                 row.EntitledDays, membership?.JoinDate, year, start);
             accrued = Math.Max(accrued, forecast);
@@ -1128,11 +1128,14 @@ public class LeaveService : ILeaveService
 
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId);
+        var (found, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
+        // AuthorizeAsync only ever returns a null application together with an
+        // error, so past the guard this is non-null.
+        var app = found!;
         var now = DateTime.UtcNow;
-        AppendTrail(app!, app.CurrentStep, approverId, "APPROVED", null);
+        AppendTrail(app, app.CurrentStep, approverId, "APPROVED", null);
         var stepCount = await _router.StepCountAsync(Module, app.EmployeeId);
         var isFinal = app.CurrentStep + 1 >= stepCount;
         if (isFinal)
@@ -1155,11 +1158,14 @@ public class LeaveService : ILeaveService
 
     public async Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
-        var (app, error) = await AuthorizeAsync(id, approverId);
+        var (found, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
+        // AuthorizeAsync only ever returns a null application together with an
+        // error, so past the guard this is non-null.
+        var app = found!;
         var now = DateTime.UtcNow;
-        AppendTrail(app!, app.CurrentStep, approverId, "REJECTED", reviewNotes);
+        AppendTrail(app, app.CurrentStep, approverId, "REJECTED", reviewNotes);
         app.Status = LeaveStatus.REJECTED;
         app.ReviewNotes = reviewNotes;
         app.DecidedAt = now;

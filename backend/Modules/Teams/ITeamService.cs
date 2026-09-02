@@ -11,6 +11,10 @@ public interface ITeamService
     Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto);
     Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId);
     Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(string employeeId, ApprovalModule module);
+
+    // The employee ids on a team — enough for callers that only filter by
+    // membership, without handing out the membership rows themselves.
+    Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId);
 }
 
 // Ok=false with Error → 400; Ok=false and Error null → not found (404).

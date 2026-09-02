@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
@@ -173,7 +174,8 @@ public class AuthServiceTests
             tokens: new FakeTokenService(),
             refreshRepo: refreshTokens,
             userRepo: new FakeUserRepository(users),
-            memberships: new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")]),
+            directory: TestDirectory.Over(
+                new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")])),
             config: new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Employees;
@@ -681,7 +682,7 @@ public class LeaveServiceTests
             supervision ?? new FakeSupervisionService(),
             policy ?? new FakePolicyService(),
             router ?? new FakeApprovalRouter(),
-            memberships ?? new FakeMembershipRepository("usr-emp"),
+            TestDirectory.Over(memberships ?? new FakeMembershipRepository("usr-emp")),
             currentUser ?? new FakeCurrentUser("usr-admin", "Admin"),
             new FakeEntitlementRepo(entitlementRows ?? []),
             xero ?? new FakeXeroService(),
@@ -854,5 +855,11 @@ public class LeaveServiceTests
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
         public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
         public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);
+
+        public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+            Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>([]);
     }
 }

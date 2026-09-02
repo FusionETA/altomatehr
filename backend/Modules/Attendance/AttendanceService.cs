@@ -39,6 +39,7 @@ public class AttendanceService : IAttendanceService
     private static readonly IReadOnlySet<AttendanceApprovalKind> AllKinds =
         new HashSet<AttendanceApprovalKind>(RecordKinds.Concat(BreakKinds));
 
+    private readonly IDirectoryService _directory;
     private readonly IAttendanceRepository _repo;
     private readonly IAttendanceSessionRepository _sessions;
     private readonly IAttendanceBreakRepository _breaks;
@@ -50,8 +51,6 @@ public class AttendanceService : IAttendanceService
     private readonly IPolicyService _policies;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
-    private readonly IEmployeePolicyRepository _policyRepo;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly IRealtimeService _realtime;
     private readonly IEmployeeDirectory _employees;
     private readonly IHoursSummaryService _hours;
@@ -68,8 +67,7 @@ public class AttendanceService : IAttendanceService
         IPolicyService policies,
         ISupervisionService supervision,
         IApprovalRouter router,
-        IEmployeePolicyRepository policyRepo,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         IRealtimeService realtime,
         IEmployeeDirectory employees,
         IHoursSummaryService hours)
@@ -85,8 +83,7 @@ public class AttendanceService : IAttendanceService
         _policies = policies;
         _supervision = supervision;
         _router = router;
-        _policyRepo = policyRepo;
-        _memberships = memberships;
+        _directory = directory;
         _realtime = realtime;
         _employees = employees;
         _hours = hours;
@@ -699,7 +696,7 @@ public class AttendanceService : IAttendanceService
     // bypassing repository methods rather than the "current org" ones.
     public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates)
     {
-        var allPolicies = await _policyRepo.GetAllAcrossOrgsAsync();
+        var allPolicies = await _policies.GetAllAcrossOrgsAsync();
         var enabled = allPolicies
             .Where(p => p.AutoClockOutEnabled && p.AutoClockOutAfterMinutes is > 0)
             .ToList();
@@ -871,7 +868,7 @@ public class AttendanceService : IAttendanceService
         IReadOnlyDictionary<string, EmployeePolicy> policyById,
         IReadOnlyDictionary<string, EmployeePolicy> defaultByOrg)
     {
-        var membership = await _memberships.GetAsync(organizationId, employeeId);
+        var membership = await _directory.GetMembershipAsync(organizationId, employeeId);
         if (membership?.PolicyId is not null && policyById.TryGetValue(membership.PolicyId, out var assigned))
             return assigned;
         return defaultByOrg.GetValueOrDefault(organizationId);

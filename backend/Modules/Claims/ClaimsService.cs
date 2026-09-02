@@ -738,6 +738,8 @@ public class ClaimsService : IClaimsService
 
         return (claim, null);
     }
+
+    public async Task<IReadOnlyList<Claim>> GetAllForOrgAsync() => await _repo.GetAllAsync();
 }
 
 // Final values after claim rules are validated and calculated, ready to copy

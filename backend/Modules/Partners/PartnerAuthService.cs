@@ -15,23 +15,20 @@ public class PartnerAuthService : IPartnerAuthService
     private static readonly TimeSpan AccessTtl  = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan RefreshTtl = TimeSpan.FromHours(8);
 
+    private readonly IDirectoryService _directory;
     private readonly IApiClientRepository _clients;
     private readonly IPartnerAuthStore _store;
-    private readonly IUserRepository _users;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly IOrganizationService _organizations;
 
     public PartnerAuthService(
         IApiClientRepository clients,
         IPartnerAuthStore store,
-        IUserRepository users,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         IOrganizationService organizations)
     {
         _clients = clients;
         _store = store;
-        _users = users;
-        _memberships = memberships;
+        _directory = directory;
         _organizations = organizations;
     }
 
@@ -89,8 +86,8 @@ public class PartnerAuthService : IPartnerAuthService
         var refresh = PartnerTokenGenerator.NewRefreshToken();
         await _store.StoreRefreshTokenAsync(refresh, tokenData, RefreshTtl);
 
-        var user = await _users.GetByIdAsync(userId);
-        var membership = await _memberships.GetAsync(orgId, userId);   // explicit org → filter-safe off-request
+        var user = await _directory.GetUserAsync(userId);
+        var membership = await _directory.GetMembershipAsync(orgId, userId);   // explicit org → filter-safe off-request
         var org = await _organizations.GetByIdAsync(orgId);
 
         return new PartnerTokenResponseDto

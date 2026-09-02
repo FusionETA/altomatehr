@@ -9,17 +9,17 @@ namespace AltomateHR.Api.Modules.Organizations;
 // effect immediately.
 public class ModuleAccessService : IModuleAccessService
 {
+    private readonly IDirectoryService _directory;
     private readonly IOrganizationRepository _orgs;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly ICurrentUser _currentUser;
 
     public ModuleAccessService(
         IOrganizationRepository orgs,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         ICurrentUser currentUser)
     {
         _orgs = orgs;
-        _memberships = memberships;
+        _directory = directory;
         _currentUser = currentUser;
     }
 
@@ -41,7 +41,7 @@ public class ModuleAccessService : IModuleAccessService
         var userId = _currentUser.UserId;
         if (userId is not null)
         {
-            var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+            var membership = await _directory.GetMembershipForUserAsync(userId);
             if (membership?.Modules is not null)
                 grant = OrgModules.Split(membership.Modules);
         }
