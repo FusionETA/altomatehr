@@ -76,6 +76,28 @@ export const rejectAttendance = (id: string, reviewNotes: string) =>
   apiPost<AttendanceRecord>(`/attendance/${id}/reject`, { reviewNotes });
 
 // Server code returned when a clock is refused for being off-site.
+// Worked-minutes totals for a date range, computed server-side. The rule lives
+// in AttendanceHoursMath: a working day counts at most the shift length, real
+// breaks come off the clock time, and rest days / holidays sit in their own
+// buckets. Deliberately not recomputed on the client — the numbers here are the
+// same ones payroll would read.
+export type HoursBuckets = {
+  normalMin: number;         // capped at the shift length
+  restDayMin: number;        // uncapped — outside the schedule entirely
+  publicHolidayMin: number;
+  beyondShiftMin: number;    // past the shift; needs an approved OT submission
+  breakMin: number;          // deducted from the raw clock time
+  totalMin: number;
+  otApprovedMin: number;
+  otPendingMin: number;
+  otRejectedMin: number;
+  expectedMin: number;       // scheduled days x the employee's standard day
+};
+
+// from/to are inclusive plain YYYY-MM-DD days.
+export const getMyHoursSummary = (from: string, to: string) =>
+  apiGet<HoursBuckets>(`/attendance/hours-summary/me?from=${from}&to=${to}`);
+
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 
 // Upload an off-site proof photo; returns the URL to attach to the clock request.
