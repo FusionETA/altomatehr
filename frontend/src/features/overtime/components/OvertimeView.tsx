@@ -8,6 +8,7 @@ import {
   uploadOvertimePhoto,
   type OvertimeRequest,
 } from "../api";
+import { OtRatePreview } from "./OtRatePreview";
 import {
   overtimeMatchesStatus,
   overtimeStatusLabels,
@@ -415,6 +416,11 @@ function NewOvertimeModal({
               />
             </label>
           </div>
+
+          <OtRatePreview
+            workDate={workDate}
+            projectId={projectId === NO_PROJECT ? undefined : projectId}
+          />
 
           <label className="grid gap-1.5">
             <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Reason</span>
