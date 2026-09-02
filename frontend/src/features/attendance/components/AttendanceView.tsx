@@ -19,7 +19,6 @@ import {
   type AttendanceRecord,
 } from "../api";
 import { AttendanceApprovals } from "./AttendanceApprovals";
-import { BreakApprovals } from "./BreakApprovals";
 import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
 import { formatDistance } from "@/shared/lib/geolocation";
@@ -335,19 +334,7 @@ export function AttendanceView({
   }
 
   if (sub === "att-approvals") {
-    // Breaks decide through their own endpoints, so they queue separately
-    // rather than folding into the record cards.
-    return (
-      <div className="space-y-4 sm:space-y-6">
-        <AttendanceApprovals />
-        <section className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Break approvals
-          </p>
-          <BreakApprovals />
-        </section>
-      </div>
-    );
+    return <AttendanceApprovals />;
   }
 
   if (sub === "att-team") {

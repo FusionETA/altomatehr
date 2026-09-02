@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
+import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
 import {
   bulkApproveAttendance,
   getTeamAttendanceApprovals,
+  getTeamBreakApprovals,
   openAttendancePhoto,
   bulkRejectAttendance,
   pendingApprovalIds,
+  type AttendanceApprovalRequest,
   type AttendanceBulkResult,
   type AttendanceRecord,
 } from "../api";
@@ -84,6 +86,9 @@ type ApprovalGroup = {
   employeeName: string;
   employeeEmail: string | null;
   records: AttendanceRecord[];
+  // Break requests for the same employee-day, so the card shows one timeline
+  // rather than clock events here and breaks somewhere else.
+  breaks: AttendanceApprovalRequest[];
 };
 
 // Bulk calls report per-id outcomes; show the first real reason rather than a
@@ -93,7 +98,7 @@ function firstBulkError(result: AttendanceBulkResult): string | null {
   return result.items.find((item) => !item.ok && item.error)?.error ?? null;
 }
 
-function groupApprovals(records: AttendanceRecord[]) {
+function groupApprovals(records: AttendanceRecord[], breaks: AttendanceApprovalRequest[]) {
   const groups = new Map<string, ApprovalGroup>();
 
   for (const record of records) {
@@ -107,10 +112,22 @@ function groupApprovals(records: AttendanceRecord[]) {
         employeeName: employeeEmail ? buildName(employeeEmail) : "Employee",
         employeeEmail,
         records: [],
+        breaks: [],
       } satisfies ApprovalGroup);
 
     group.records.push(record);
     groups.set(key, group);
+  }
+
+  // Breaks arrive as bare approval requests; they belong to whichever day's
+  // record they hang off.
+  const groupByRecordId = new Map<string, ApprovalGroup>();
+  for (const group of groups.values())
+    for (const record of group.records) groupByRecordId.set(record.id, group);
+
+  for (const brk of breaks) {
+    const group = brk.attendanceRecordId ? groupByRecordId.get(brk.attendanceRecordId) : undefined;
+    if (group) group.breaks.push(brk);
   }
 
   return Array.from(groups.values()).sort((a, b) => {
@@ -153,15 +170,18 @@ export function AttendanceApprovals() {
   const [rejectingGroup, setRejectingGroup] = useState<ApprovalGroup | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
 
   useEffect(() => {
     Promise.all([
       getTeamAttendanceApprovals(),
+      getTeamBreakApprovals().catch(() => []),
       getProjects().catch(() => []),
       getOrganization().catch(() => null),
     ])
-      .then(([nextRecords, nextProjects, organization]) => {
+      .then(([nextRecords, nextBreaks, nextProjects, organization]) => {
         setRecords(nextRecords);
+        setBreaks(nextBreaks);
         setProjects(nextProjects.filter((project) => !project.isArchived));
         if (organization) setRadius(organization.geofenceRadiusMeters);
       })
@@ -171,13 +191,13 @@ export function AttendanceApprovals() {
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const groups = useMemo(() => {
-    const grouped = groupApprovals(filterRecords(records, filter));
+    const grouped = groupApprovals(filterRecords(records, filter), breaks);
     const query = employeeSearch.trim().toLowerCase();
     if (!query) return grouped;
     return grouped.filter((group) =>
       `${group.employeeName} ${group.employeeEmail ?? ""}`.toLowerCase().includes(query),
     );
-  }, [records, filter, employeeSearch]);
+  }, [records, breaks, filter, employeeSearch]);
 
   function toggleSelected(key: string) {
     setSelectedKeys((current) => {
@@ -193,7 +213,7 @@ export function AttendanceApprovals() {
     setError(null);
     const recordIds = group.records.map((record) => record.id);
     // The decision endpoints take approval-request ids, not record ids.
-    const requestIds = group.records.flatMap(pendingApprovalIds);
+    const requestIds = [...group.records.flatMap(pendingApprovalIds), ...group.breaks.map((b) => b.id)];
     if (requestIds.length === 0) {
       setError("Nothing pending on this day.");
       setBusyKey(null);
@@ -206,6 +226,7 @@ export function AttendanceApprovals() {
         setError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be approved.`);
       }
       setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
+      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
       setSelectedKeys((current) => {
         const next = new Set(current);
         next.delete(group.key);
@@ -236,7 +257,10 @@ export function AttendanceApprovals() {
     setBusyKey(rejectingGroup.key);
     setError(null);
     const recordIds = rejectingGroup.records.map((record) => record.id);
-    const requestIds = rejectingGroup.records.flatMap(pendingApprovalIds);
+    const requestIds = [
+      ...rejectingGroup.records.flatMap(pendingApprovalIds),
+      ...rejectingGroup.breaks.map((b) => b.id),
+    ];
     if (requestIds.length === 0) {
       setRejectError("Nothing pending on this day.");
       setBusyKey(null);
@@ -250,6 +274,7 @@ export function AttendanceApprovals() {
         return;
       }
       setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
+      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
       setRejectingGroup(null);
       setRejectNotes("");
       if (openKey === rejectingGroup.key) setOpenKey(null);
@@ -904,6 +929,7 @@ function ExpandedGroup({
         {group.records.map((record) => (
           <div key={record.id} className="space-y-2">
             <AdjustmentNotice record={record} />
+            {breakRowsFor(group, record, "in")}
             {record.timeIn ? (
               <EventRow
                 title="Clock in"
@@ -918,6 +944,7 @@ function ExpandedGroup({
                 onToggleSelected={onToggleSelected}
               />
             ) : null}
+            {breakRowsFor(group, record, "mid")}
             {record.timeOut ? (
               <EventRow
                 title="Clock out"
@@ -992,6 +1019,52 @@ function AdjustmentNotice({ record }: { record: AttendanceRecord }) {
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+// A day reads clock in -> break start -> break end -> clock out, so the break
+// rows are placed by time rather than listed after the clock events.
+//
+// "in" renders anything before the clock-in (shouldn't happen, but a break with
+// no matching clock event would otherwise vanish); "mid" renders the rest.
+function breakRowsFor(
+  group: ApprovalGroup,
+  record: AttendanceRecord,
+  slot: "in" | "mid",
+) {
+  const mine = group.breaks
+    .filter((b) => b.attendanceRecordId === record.id)
+    .sort((a, b) => a.eventAt.localeCompare(b.eventAt));
+
+  const rows = mine.filter((b) =>
+    slot === "in"
+      ? record.timeIn != null && b.eventAt < record.timeIn
+      : record.timeIn == null || b.eventAt >= record.timeIn,
+  );
+
+  return rows.map((brk) => (
+    <BreakEventRow key={brk.id} request={brk} />
+  ));
+}
+
+// Deliberately quieter than a clock event: a break carries no geofence or
+// photo, and the supervisor is mostly checking the time and the reason.
+function BreakEventRow({ request }: { request: AttendanceApprovalRequest }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-2xl border border-border/60 bg-card px-3.5 py-2.5">
+      <Coffee className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-foreground">
+          {request.kind === "BREAK_START" ? "Break start" : "Break end"}
+          <span className="ml-2 text-xs font-semibold tabular-nums text-muted-foreground">
+            {fmtTime(request.eventAt)}
+          </span>
+        </p>
+        {request.reason ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">&ldquo;{request.reason}&rdquo;</p>
+        ) : null}
+      </div>
     </div>
   );
 }

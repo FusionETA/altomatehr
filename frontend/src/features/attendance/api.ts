@@ -189,8 +189,11 @@ export const bulkApproveAttendance = (ids: string[]) =>
 export const bulkRejectAttendance = (ids: string[], reviewNotes?: string) =>
   apiPost<AttendanceBulkResult>("/attendance/bulk/reject", { ids, reviewNotes });
 
-// Breaks decide through their own endpoints — the record ones only accept
-// CLOCK_IN/CLOCK_OUT kinds.
+// Single-break decisions. Currently UNUSED: the approvals screen decides a whole
+// day at once and bulk/approve accepts break requests alongside clock events, so
+// nothing needs to decide one break on its own. Kept because these are the only
+// way to do that if a per-break control is ever wanted — /attendance/{id}/approve
+// won't, it only accepts CLOCK_IN/CLOCK_OUT kinds.
 export const approveBreak = (id: string) =>
   apiPost<AttendanceBreak>(`/attendance/break/${id}/approve`);
 
