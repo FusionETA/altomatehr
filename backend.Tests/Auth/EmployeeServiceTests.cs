@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Auth;
@@ -163,8 +164,10 @@ public class EmployeeServiceTests
         public Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string e, int y) => throw new NotImplementedException();
         public Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string e, int y) => throw new NotImplementedException();
         public Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int y) => throw new NotImplementedException();
-        public Task<LeaveExportResult> ExportBalancesCsvAsync(string e, int y) => throw new NotImplementedException();
-        public Task<LeaveExportResult> ExportOrgBalancesCsvAsync(int y) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportBalancesAsync(string e, int y, TabularFormat f) => throw new NotImplementedException();
+        public Task<LeaveExportResult> ExportOrgBalancesAsync(int y, TabularFormat f) => throw new NotImplementedException();
+        public TabularExportResult BuildImportTemplate(TabularFormat f) => throw new NotImplementedException();
+        public Task<TabularImportResult> ImportHistoryAsync(byte[] c, TabularFormat f, string a) => throw new NotImplementedException();
         public Task<LeaveExportResult> ExportBulkSummaryZipAsync(int y, IReadOnlyList<string>? ids) => throw new NotImplementedException();
         public Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(string s, int y) => throw new NotImplementedException();
         public Task<IEnumerable<OnLeaveTodayDto>> GetOnLeaveTodayAsync(DateTime d) => throw new NotImplementedException();

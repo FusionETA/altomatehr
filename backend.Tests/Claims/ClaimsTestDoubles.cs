@@ -6,7 +6,10 @@ using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Dtos;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Tests.Support;
 
 namespace AltomateHR.Api.Tests.Claims;
 
@@ -22,7 +25,10 @@ internal static class ClaimsTestFactory
         IChartOfAccountService? accounts = null,
         IClaimReceiptStorage? receiptStorage = null,
         IOrganizationService? organizations = null,
-        ICurrentUser? currentUser = null) =>
+        ICurrentUser? currentUser = null,
+        IRealtimeService? realtime = null,
+        IEmployeeDirectory? employees = null,
+        IProjectService? projects = null) =>
         new(
             new FakeClaimsRepository(claims),
             receiptStorage ?? new FakeClaimReceiptStorage(),
@@ -30,7 +36,10 @@ internal static class ClaimsTestFactory
             supervision ?? new FakeSupervisionService(),
             router ?? new FakeApprovalRouter(),
             organizations ?? new FakeOrganizationService(),
-            currentUser ?? new FakeCurrentUser());
+            currentUser ?? new FakeCurrentUser(),
+            realtime ?? new FakeRealtimeService(),
+            employees ?? new FakeEmployeeDirectory(),
+            projects ?? new FakeProjectServiceForExport());
 
     public static Claim NewClaim(
         string id,

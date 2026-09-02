@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Claims.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -95,6 +96,71 @@ public class ClaimsController : ControllerBase
 
         Response.Headers.CacheControl = "no-store";
         return PhysicalFile(receipt.Path, receipt.ContentType, receipt.DownloadName);
+    }
+
+    // GET /claims/export/summary?format=csv|xlsx|pdf&from=&to=&dateField=&status=&employeeId=&projectId=
+    // The claims summary as a spreadsheet. Admin/Owner only: it spans the whole
+    // org, which is more than a supervisor's own team.
+    //
+    // Declared BEFORE the {id} route so the literal "export" segment isn't read
+    // as a claim id. (ASP.NET prefers literals anyway; keeping them adjacent
+    // makes the precedence visible.)
+    [RequireScope("claims:read")]
+    [HttpGet("export/summary")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportSummary(
+        [FromQuery] ClaimsExportQueryDto query,
+        [FromQuery] string? format)
+    {
+        var result = await _claims.ExportSummaryAsync(query, TabularFormats.Parse(format));
+
+        // Claims change constantly; never let a proxy serve a stale export.
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // GET /claims/import/template?format=csv|xlsx — the blank import template.
+    // PDF is refused here on purpose: a template exists to be filled in.
+    [HttpGet("import/template")]
+    [Authorize(Roles = "Admin,Owner")]
+    public IActionResult ImportTemplate([FromQuery] string? format)
+    {
+        var resolved = TabularFormats.Parse(format);
+        if (!resolved.IsImportable())
+        {
+            return BadRequest(new
+            {
+                message = "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded.",
+            });
+        }
+
+        var result = _claims.BuildImportTemplate(resolved);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // POST /claims/import — multipart upload of historical claims (CSV or XLSX).
+    //
+    // Always 200, even when rows failed: the body is a per-row report, and a 4xx
+    // would tell the client "nothing happened" when in fact 98 of 100 rows
+    // landed. A genuinely unusable FILE (wrong type, no header) still 400s.
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin,Owner")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> Import(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Pick a .csv or .xlsx file to import." });
+
+        var format = TabularFormats.Detect(file.FileName, file.ContentType);
+        if (format is null)
+            return BadRequest(new { message = "Unsupported file type. Upload a .csv or .xlsx file." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _claims.ImportAsync(buffer.ToArray(), format.Value);
+        return Ok(result);
     }
 
     // PUT /claims/{id}

@@ -1,10 +1,14 @@
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Realtime;
+using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Modules.Claims;
@@ -21,6 +25,9 @@ public class ClaimsService : IClaimsService
     private readonly IApprovalRouter _router;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
+    private readonly IRealtimeService _realtime;
+    private readonly IEmployeeDirectory _employees;
+    private readonly IProjectService _projects;
 
     public ClaimsService(
         IClaimsRepository repo,
@@ -29,7 +36,10 @@ public class ClaimsService : IClaimsService
         ISupervisionService supervision,
         IApprovalRouter router,
         IOrganizationService organizations,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IRealtimeService realtime,
+        IEmployeeDirectory employees,
+        IProjectService projects)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
@@ -38,6 +48,9 @@ public class ClaimsService : IClaimsService
         _router = router;
         _organizations = organizations;
         _currentUser = currentUser;
+        _realtime = realtime;
+        _employees = employees;
+        _projects = projects;
     }
 
     // The caller's own claims.
@@ -109,7 +122,9 @@ public class ClaimsService : IClaimsService
             CreatedAt = now,
             UpdatedAt = now,
         };
-        return await _repo.AddAsync(claim);
+        var saved = await _repo.AddAsync(claim);
+        await NotifyAsync(saved, RealtimeAction.SUBMITTED, notifyClaimant: false);
+        return saved;
     }
 
     public async Task<Claim?> UpdateAsync(string id, CreateClaimDto dto, string userId, bool isAdmin)
@@ -151,10 +166,25 @@ public class ClaimsService : IClaimsService
         claim.SupportingDocumentUrls = supportingDocuments;
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
+
+        // An approver may already be looking at this claim in their queue; an
+        // edit changes what they'd be signing off on.
+        await NotifyAsync(claim, RealtimeAction.UPDATED, notifyClaimant: claim.EmployeeId != userId);
         return claim;
     }
 
-    public Task<bool> DeleteAsync(string id) => _repo.DeleteAsync(id);
+    public async Task<bool> DeleteAsync(string id)
+    {
+        // Read before deleting: once the row is gone there is no org to publish
+        // to and no claimant to tell that their claim vanished.
+        var claim = await _repo.GetByIdAsync(id);
+        var deleted = await _repo.DeleteAsync(id);
+
+        if (deleted && claim is not null)
+            await NotifyAsync(claim, RealtimeAction.DELETED, notifyClaimant: true, notifyApprovers: true);
+
+        return deleted;
+    }
 
     public async Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId)
     {
@@ -170,6 +200,11 @@ public class ClaimsService : IClaimsService
 
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
+
+        // Notifies the claimant AND, when the chain advanced rather than ended,
+        // whoever is now the current-step approver — so the claim appears in the
+        // next reviewer's queue without them reloading.
+        await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -192,6 +227,10 @@ public class ClaimsService : IClaimsService
         claim.ReviewNotes = cleanedReviewNotes;
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
+
+        // Rejection is terminal, so there is no next approver — only the
+        // claimant needs to know.
+        await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -212,6 +251,330 @@ public class ClaimsService : IClaimsService
             return null;
 
         return await _receiptStorage.GetAsync(fileName);
+    }
+
+    // ---- Import / export ----
+
+    public async Task<TabularExportResult> ExportSummaryAsync(ClaimsExportQueryDto query, TabularFormat format)
+    {
+        var bySubmitted = string.Equals(query.DateField, "submitted", StringComparison.OrdinalIgnoreCase);
+
+        var claims = (await _repo.GetAllAsync())
+            .Where(c => Matches(c, query, bySubmitted))
+            .OrderByDescending(c => bySubmitted ? c.SubmittedAt : c.SpentAt)
+            .ThenBy(c => c.ClaimNumber, StringComparer.Ordinal)
+            .ToList();
+
+        // Three lookups for the whole file rather than per row: an export of a
+        // few thousand claims would otherwise be a few thousand queries.
+        var employees = await _employees.GetSnapshotAsync();
+        var projects = (await _projects.GetAllAsync())
+            .ToDictionary(p => p.Id, p => p.Name, StringComparer.Ordinal);
+        var accounts = (await _accounts.GetAllAsync())
+            .ToDictionary(a => a.Id, a => (a.Code, a.Name), StringComparer.Ordinal);
+
+        var caption = DescribeSelection(query, bySubmitted, claims.Count);
+
+        // PDF gets a narrower, printable sheet — see ClaimsSummarySheet's note on
+        // why A4 landscape can't carry the full spreadsheet column set.
+        if (format == TabularFormat.Pdf)
+        {
+            var organizationName = await OrganizationNameAsync();
+            var printable = ClaimsSummarySheet.BuildPrintable(
+                claims, employees, projects, accounts, caption);
+
+            return TabularExportResult.From(
+                printable, format, ExportFileName(query),
+                new TabularPdfHeader(organizationName, "Claims Report"));
+        }
+
+        var sheet = ClaimsSummarySheet.BuildExport(claims, employees, projects, accounts);
+        return TabularExportResult.From(sheet, format, ExportFileName(query));
+    }
+
+    // The sentence printed under the report title. A PDF outlives the filename
+    // it was downloaded under, so what it covers has to be on the page.
+    private static string DescribeSelection(ClaimsExportQueryDto query, bool bySubmitted, int count)
+    {
+        var dateLabel = bySubmitted ? "submitted" : "spent";
+        var range = (query.From, query.To) switch
+        {
+            ({ } from, { } to) => $"{from:dd MMM yyyy} – {to:dd MMM yyyy} ({dateLabel})",
+            ({ } from, null) => $"from {from:dd MMM yyyy} ({dateLabel})",
+            (null, { } to) => $"up to {to:dd MMM yyyy} ({dateLabel})",
+            _ => "All dates",
+        };
+
+        var parts = new List<string> { range, $"{count} claim(s)" };
+        if (query.Status is { } status) parts.Add($"status {status}");
+        if (!string.IsNullOrWhiteSpace(query.EmployeeId)) parts.Add("one employee");
+        if (!string.IsNullOrWhiteSpace(query.ProjectId)) parts.Add("one project");
+
+        return string.Join("  ·  ", parts);
+    }
+
+    private async Task<string> OrganizationNameAsync()
+    {
+        var organizationId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(organizationId)) return "Organization";
+        return (await _organizations.GetByIdAsync(organizationId))?.Name ?? "Organization";
+    }
+
+    public TabularExportResult BuildImportTemplate(TabularFormat format) =>
+        TabularExportResult.From(
+            ClaimsSummarySheet.BuildImportTemplate(), format, "claims-import-template");
+
+    // Bulk-import historical claims — a migration path off another system, not a
+    // second way to file a claim. So, deliberately unlike CreateAsync:
+    //
+    //   - the row's Amount is TRUSTED as given, never recomputed from a mileage
+    //     rate (the money already moved; re-deriving it would rewrite history),
+    //   - the account spend-limit and mileage-account rules are NOT enforced
+    //     (they gate what an employee may submit today, not what happened),
+    //   - the row's Status is honoured, so settled claims import as APPROVED
+    //     instead of landing in somebody's approval queue,
+    //   - nothing is ever updated or deleted, so a re-upload is safe.
+    public async Task<TabularImportResult> ImportAsync(byte[] content, TabularFormat format)
+    {
+        IReadOnlyList<IReadOnlyList<string>> rows;
+        try
+        {
+            rows = TabularReader.Read(content, format);
+        }
+        catch (InvalidDataException ex)
+        {
+            return TabularImportResult.FileError(ex.Message);
+        }
+
+        if (rows.Count == 0) return TabularImportResult.FileError("The file is empty.");
+
+        var columns = ClaimsSummarySheet.ImportColumns;
+        var (map, missing) = TabularHeaderMap.Build(
+            rows[0], columns, EmployeeImportColumns.IdentityGroup);
+        if (map is null)
+            return TabularImportResult.FileError($"Missing required column(s): {string.Join(", ", missing)}.");
+        if (rows.Count == 1)
+            return TabularImportResult.FileError("The file has a header row but no data rows.");
+
+        var result = new TabularImportResult();
+        var employees = await _employees.GetSnapshotAsync();
+        var accountIdsByCode = (await _accounts.GetAllAsync())
+            .GroupBy(a => a.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+        var existing = await _repo.GetAllAsync();
+        var seenNumbers = existing
+            .Select(c => c.ClaimNumber)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var seenKeys = existing
+            .Select(DedupeKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTime.UtcNow;
+        var imported = 0;
+
+        for (var i = 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var rowNumber = i + 1;   // 1-based, header included — what the admin sees
+
+            if (TabularTemplate.IsExampleRow(map, row, columns))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            var email = map.Cell(row, "employeeEmail");
+            var name = map.Cell(row, "employeeName");
+            var (employeeId, ambiguous) = employees.Resolve(email, name);
+            if (ambiguous)
+            {
+                result.Fail(rowNumber, $"More than one employee is named '{name}'. Use the Employee Email column.");
+                continue;
+            }
+            if (employeeId is null)
+            {
+                result.Fail(rowNumber, $"No employee in this organization matches '{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+
+            var title = TabularCell.Text(map.Cell(row, "title"), 200);
+            if (title is null)
+            {
+                result.Fail(rowNumber, "Title is required.");
+                continue;
+            }
+
+            var category = TabularCell.Enum<ClaimCategory>(map.Cell(row, "category"));
+            if (category is null)
+            {
+                result.Fail(rowNumber,
+                    $"Category must be one of: {string.Join(", ", Enum.GetNames<ClaimCategory>())}.");
+                continue;
+            }
+
+            var amount = TabularCell.Money(map.Cell(row, "amount"));
+            if (amount is null || amount <= 0)
+            {
+                result.Fail(rowNumber, "Amount must be a number greater than zero.");
+                continue;
+            }
+
+            var spentOn = TabularCell.Date(map.Cell(row, "spentOn"));
+            if (spentOn is null)
+            {
+                result.Fail(rowNumber, "Spent On must be a date, e.g. 2026-01-15.");
+                continue;
+            }
+
+            var statusCell = map.Cell(row, "status");
+            // Blank means "this already happened and was settled" — the whole
+            // point of a history import. A typo, though, must not silently
+            // become APPROVED.
+            var status = TabularCell.IsBlank(statusCell)
+                ? ClaimStatus.APPROVED
+                : TabularCell.Enum<ClaimStatus>(statusCell);
+            if (status is null)
+            {
+                result.Fail(rowNumber,
+                    $"Status must be one of: {string.Join(", ", Enum.GetNames<ClaimStatus>())}.");
+                continue;
+            }
+
+            var claimType = TabularCell.Enum<ClaimType>(map.Cell(row, "claimType")) ?? ClaimType.EXPENSE;
+            var paymentType = TabularCell.Enum<PaymentType>(map.Cell(row, "paymentType")) ?? PaymentType.PERSONAL;
+
+            string? chartOfAccountId = null;
+            var accountCode = map.Cell(row, "accountCode");
+            if (!TabularCell.IsBlank(accountCode))
+            {
+                if (!accountIdsByCode.TryGetValue(accountCode.Trim(), out var accountId))
+                {
+                    result.Fail(rowNumber, $"No chart of account has the code '{accountCode.Trim()}'.");
+                    continue;
+                }
+                chartOfAccountId = accountId;
+            }
+
+            var suppliedNumber = TabularCell.Text(map.Cell(row, "claimNumber"), 40);
+
+            // Two dedupe routes. An explicit Claim # is exact, so honour it; with
+            // none, fall back to "same person, same day, same amount, same
+            // title" — which is what a duplicated spreadsheet row looks like.
+            if (suppliedNumber is not null && seenNumbers.Contains(suppliedNumber))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            var key = DedupeKey(employeeId, spentOn.Value, amount.Value, title);
+            if (suppliedNumber is null && seenKeys.Contains(key))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            var claim = new Claim
+            {
+                ClaimNumber = suppliedNumber ?? GenerateClaimNumber(),
+                Title = title,
+                Description = TabularCell.Text(map.Cell(row, "description")) ?? string.Empty,
+                Category = category.Value,
+                Amount = decimal.Round(amount.Value, 2, MidpointRounding.AwayFromZero),
+                Currency = (TabularCell.Text(map.Cell(row, "currency"), 3) ?? "MYR").ToUpperInvariant(),
+                SpentAt = spentOn.Value,
+                SubmittedAt = spentOn.Value,
+                Status = status.Value,
+                // Imported rows are historical: parking them at step 0 while
+                // APPROVED is harmless (the chain is only read while PENDING),
+                // and an imported PENDING row correctly starts at the first step.
+                CurrentStep = 0,
+                ClaimType = claimType,
+                PaymentType = paymentType,
+                EmployeeId = employeeId,
+                ChartOfAccountId = chartOfAccountId,
+                ReviewNotes = TabularCell.Text(map.Cell(row, "reviewNotes")),
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            await _repo.AddAsync(claim);
+
+            seenNumbers.Add(claim.ClaimNumber);
+            seenKeys.Add(key);
+            result.CountImported();
+            imported++;
+        }
+
+        if (imported > 0) await NotifyImportAsync(employees);
+        return result;
+    }
+
+    private static bool Matches(Claim claim, ClaimsExportQueryDto query, bool bySubmitted)
+    {
+        var when = (bySubmitted ? claim.SubmittedAt : claim.SpentAt).Date;
+        if (query.From is { } from && when < from.Date) return false;
+        if (query.To is { } to && when > to.Date) return false;
+        if (query.Status is { } status && claim.Status != status) return false;
+        if (!string.IsNullOrWhiteSpace(query.EmployeeId) && claim.EmployeeId != query.EmployeeId) return false;
+        if (!string.IsNullOrWhiteSpace(query.ProjectId) && claim.ProjectId != query.ProjectId) return false;
+        return true;
+    }
+
+    // The range goes in the filename so a downloads folder full of these stays
+    // readable instead of being claims-summary(3).xlsx.
+    private static string ExportFileName(ClaimsExportQueryDto query)
+    {
+        if (query.From is { } from && query.To is { } to)
+            return $"claims-summary-{from:yyyy-MM-dd}-to-{to:yyyy-MM-dd}";
+        return $"claims-summary-{DateTime.UtcNow:yyyy-MM-dd}";
+    }
+
+    private static string DedupeKey(Claim claim) =>
+        DedupeKey(claim.EmployeeId, claim.SpentAt, claim.Amount, claim.Title);
+
+    private static string DedupeKey(string employeeId, DateTime spentAt, decimal amount, string title) =>
+        string.Join('|', employeeId, spentAt.ToString("yyyy-MM-dd"), amount.ToString("0.00"), title.Trim());
+
+    // One nudge for the whole import, not one per row: a 500-row migration
+    // shouldn't push 500 events at everyone's browser. Every member is a target
+    // because an import can touch anybody's list — the client re-reads through
+    // /claims, so nobody learns anything they couldn't already see.
+    private async Task NotifyImportAsync(EmployeeDirectorySnapshot employees)
+    {
+        var organizationId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(organizationId)) return;
+
+        await _realtime.PublishAsync(
+            organizationId,
+            employees.Members.Select(m => (string?)m.Id),
+            RealtimeEventDto.For(RealtimeScope.CLAIMS, RealtimeAction.SUBMITTED));
+    }
+
+    // Live nudge for one claim. Targets are derived from the claim's CURRENT
+    // state: whoever must act on it now (empty once it's approved or rejected)
+    // plus, optionally, the person who filed it.
+    //
+    // Note this pushes only an id and a scope, never the claim — the client
+    // re-reads through /claims, which already enforces who may see what.
+    //
+    // `notifyApprovers` forces the approver fan-out for the terminal states
+    // (rejected, deleted), where the PENDING check would otherwise conclude
+    // there is nobody left to tell — but a peer approver at the same step still
+    // needs the row to leave their queue.
+    private async Task NotifyAsync(
+        Claim claim, RealtimeAction action, bool notifyClaimant, bool notifyApprovers = false)
+    {
+        var targets = new List<string?>();
+        if (notifyClaimant) targets.Add(claim.EmployeeId);
+
+        if (notifyApprovers || claim.Status == ClaimStatus.PENDING)
+            targets.AddRange(await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep));
+
+        await _realtime.PublishAsync(
+            claim.OrganizationId,
+            targets,
+            RealtimeEventDto.For(RealtimeScope.CLAIMS, action, claim.Id));
     }
 
     private static string GenerateClaimNumber() =>

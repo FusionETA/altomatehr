@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -99,6 +100,83 @@ public class AttendanceController : ControllerBase
         var result = await _hoursSummary.GetEmployeeHoursSummaryAsync(
             employeeId, from, to, GetUserId(), User.FindFirstValue(ClaimTypes.Role));
         return result is null ? Forbid() : Ok(result);
+    }
+
+    // GET /attendance/export/summary?from=&to=&teamId=&format=csv|xlsx|pdf
+    // Worked-hours summary plus the daily records behind it. Admin/Owner only —
+    // it spans the org. Omitting from/to exports the current month.
+    [RequireScope("attendance:read")]
+    [HttpGet("export/summary")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportSummary(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? teamId,
+        [FromQuery] string? format)
+    {
+        var (start, end) = ResolveRange(from, to);
+        if (start > end)
+            return BadRequest(new { message = "'from' must not be after 'to'." });
+
+        var result = await _attendance.ExportSummaryAsync(
+            start, end, teamId, TabularFormats.Parse(format));
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // GET /attendance/import/template?format=csv|xlsx — PDF is refused here on
+    // purpose: a template exists to be filled in.
+    [HttpGet("import/template")]
+    [Authorize(Roles = "Admin,Owner")]
+    public IActionResult ImportTemplate([FromQuery] string? format)
+    {
+        var resolved = TabularFormats.Parse(format);
+        if (!resolved.IsImportable())
+        {
+            return BadRequest(new
+            {
+                message = "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded.",
+            });
+        }
+
+        var result = _attendance.BuildImportTemplate(resolved);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // POST /attendance/import — multipart upload of historical daily records.
+    // 200 with a per-row report even when some rows failed; only an unusable
+    // FILE is a 400.
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin,Owner")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> Import(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Pick a .csv or .xlsx file to import." });
+
+        var format = TabularFormats.Detect(file.FileName, file.ContentType);
+        if (format is null)
+            return BadRequest(new { message = "Unsupported file type. Upload a .csv or .xlsx file." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        return Ok(await _attendance.ImportAsync(buffer.ToArray(), format.Value));
+    }
+
+    // Unlike the hours-summary endpoints (where the caller always supplies a
+    // range), an export is often a one-click action — so a missing range means
+    // "this month" rather than an error.
+    private static (DateTime From, DateTime To) ResolveRange(DateTime? from, DateTime? to)
+    {
+        if (from is not null || to is not null)
+            return (from?.Date ?? DateTime.UtcNow.Date, to?.Date ?? DateTime.UtcNow.Date);
+
+        var today = DateTime.UtcNow.Date;
+        var first = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        return (first, first.AddMonths(1).AddDays(-1));
     }
 
     // POST /attendance/clock-in

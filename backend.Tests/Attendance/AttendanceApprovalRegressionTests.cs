@@ -10,6 +10,8 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Dtos;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeOrganizationService / FakeCurrentUser / FakeSupervisionService / FakeApprovalRouter
 
+using AltomateHR.Api.Tests.Support;
+
 namespace AltomateHR.Api.Tests.Attendance;
 
 // Regression guard for the approval-overwrite bug.
@@ -83,7 +85,10 @@ public class AttendanceApprovalRegressionTests
             supervision: new FakeSupervisionService(),
             router: new FakeApprovalRouter(),
             policyRepo: new FakeEmployeePolicyRepository(),
-            memberships: new FakeOrganizationMembershipRepository());
+            memberships: new FakeOrganizationMembershipRepository(),
+            realtime: new FakeRealtimeService(),
+            employees: new FakeEmployeeDirectory(),
+            hours: new FakeHoursSummaryService());
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());

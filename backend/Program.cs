@@ -19,6 +19,7 @@ using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Partners;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
@@ -181,6 +182,12 @@ builder.Services.AddRateLimiter(options =>
 // Multi-tenancy + request context (ICurrentUser reads the JWT via IHttpContextAccessor)
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+
+// Realtime (SSE). The HUB is a singleton because it holds open connections,
+// which outlive the request that opened them; the service around it is scoped
+// like every other service so it can read ICurrentUser.
+builder.Services.AddSingleton<IRealtimeHub, RealtimeHub>();
+builder.Services.AddScoped<IRealtimeService, RealtimeService>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
@@ -236,6 +243,7 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
+builder.Services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();

@@ -7,6 +7,9 @@ using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Common.Tabular;
+using AltomateHR.Api.Modules.Realtime;
+using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Modules.Attendance;
@@ -49,6 +52,9 @@ public class AttendanceService : IAttendanceService
     private readonly IApprovalRouter _router;
     private readonly IEmployeePolicyRepository _policyRepo;
     private readonly IOrganizationMembershipRepository _memberships;
+    private readonly IRealtimeService _realtime;
+    private readonly IEmployeeDirectory _employees;
+    private readonly IHoursSummaryService _hours;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -63,7 +69,10 @@ public class AttendanceService : IAttendanceService
         ISupervisionService supervision,
         IApprovalRouter router,
         IEmployeePolicyRepository policyRepo,
-        IOrganizationMembershipRepository memberships)
+        IOrganizationMembershipRepository memberships,
+        IRealtimeService realtime,
+        IEmployeeDirectory employees,
+        IHoursSummaryService hours)
     {
         _repo = repo;
         _sessions = sessions;
@@ -78,6 +87,9 @@ public class AttendanceService : IAttendanceService
         _router = router;
         _policyRepo = policyRepo;
         _memberships = memberships;
+        _realtime = realtime;
+        _employees = employees;
+        _hours = hours;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -202,6 +214,7 @@ public class AttendanceService : IAttendanceService
             UpdatedAt = now,
         });
 
+        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED);
         return new AttendanceActionResult(true, ToDto(record, [request]));
     }
 
@@ -251,7 +264,7 @@ public class AttendanceService : IAttendanceService
             await _sessions.UpdateAsync(session);
         }
 
-        await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        var clockOutRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.CLOCK_OUT,
@@ -262,6 +275,7 @@ public class AttendanceService : IAttendanceService
             CreatedAt = now,
             UpdatedAt = now,
         });
+        await NotifyPendingAsync(clockOutRequest, RealtimeAction.SUBMITTED);
 
         var allApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
         return new AttendanceActionResult(true, ToDto(record, allApprovals));
@@ -340,6 +354,7 @@ public class AttendanceService : IAttendanceService
             UpdatedAt = now,
         });
 
+        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED);
         return new AttendanceBreakActionResult(true, ToBreakDto(saved, [request]));
     }
 
@@ -369,7 +384,7 @@ public class AttendanceService : IAttendanceService
         brk.UpdatedAt = now;
         await _breaks.UpdateAsync(brk);
 
-        await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        var breakEndRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.BREAK_END,
@@ -381,6 +396,7 @@ public class AttendanceService : IAttendanceService
             CreatedAt = now,
             UpdatedAt = now,
         });
+        await NotifyPendingAsync(breakEndRequest, RealtimeAction.SUBMITTED);
 
         var allApprovals = await _approvalRequests.GetByBreakIdsAsync([brk.Id]);
         return new AttendanceBreakActionResult(true, ToBreakDto(brk, allApprovals));
@@ -672,6 +688,7 @@ public class AttendanceService : IAttendanceService
             CreatedAt = now,
             UpdatedAt = now,
         });
+        await NotifyPendingAsync(created, RealtimeAction.SUBMITTED);
         return (true, null, created);
     }
 
@@ -738,7 +755,7 @@ public class AttendanceService : IAttendanceService
 
                 // No request-context user to auto-stamp OrganizationId here
                 // (StampTenant no-ops without a current org) — set explicitly.
-                await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+                var autoRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
                 {
                     OrganizationId = record.OrganizationId,
                     EmployeeId = record.EmployeeId,
@@ -750,6 +767,10 @@ public class AttendanceService : IAttendanceService
                     CreatedAt = now,
                     UpdatedAt = now,
                 });
+
+                // The employee is long gone, but their approver may well have a
+                // tab open — and this is a request they now have to review.
+                await NotifyPendingAsync(autoRequest, RealtimeAction.SUBMITTED);
 
                 clockedOut++;
             }
@@ -949,6 +970,274 @@ public class AttendanceService : IAttendanceService
     {
         await DecideInMemoryAsync(request, approverId, approve, reviewNotes);
         await _approvalRequests.UpdateAsync(request);
+
+        // The single choke point for EVERY attendance decision — single, break
+        // and bulk all route through here — so one publish covers them all.
+        var targets = new List<string?> { request.EmployeeId };
+        if (request.ApprovalStatus == AttendanceApprovalStatus.PENDING)
+        {
+            // Still pending means the chain ADVANCED rather than ended: the next
+            // step's approver needs it in their queue now.
+            targets.AddRange(await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep));
+        }
+
+        await _realtime.PublishAsync(
+            request.OrganizationId,
+            targets,
+            RealtimeEventDto.For(
+                RealtimeScope.ATTENDANCE,
+                approve ? RealtimeAction.APPROVED : RealtimeAction.REJECTED,
+                request.Id));
+    }
+
+    // ---- Import / export ----
+
+    public async Task<TabularExportResult> ExportSummaryAsync(
+        DateTime from, DateTime to, string? teamId, TabularFormat format)
+    {
+        var start = from.Date;
+        var end = to.Date;
+
+        var employees = await _employees.GetSnapshotAsync();
+        var summary = await _hours.GetOrgHoursSummaryAsync(start, end, teamId);
+
+        // The daily rows behind the summary, same window. Filtered on the local-
+        // day key (Date), not TimeIn, so a night shift lands on the day it was
+        // booked to rather than the day it happened to end.
+        var records = (await _repo.GetAllAsync())
+            .Where(r => r.Date.Date >= start && r.Date.Date <= end)
+            .OrderBy(r => r.Date)
+            .ThenBy(r => employees.NameOf(r.EmployeeId), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var approvals = await _approvalRequests.GetByRecordIdsAsync(records.Select(r => r.Id));
+        // "Latest decision wins" — the same rollup GetHistoryAsync shows, so the
+        // export and the screen can't disagree.
+        var approvalByRecord = approvals
+            .GroupBy(a => a.AttendanceRecordId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(a => a.SubmittedAt).First().ApprovalStatus,
+                StringComparer.Ordinal);
+
+        var projects = (await _projects.GetAllAsync())
+            .ToDictionary(p => p.Id, p => p.Name, StringComparer.Ordinal);
+
+        var caption =
+            $"{start:dd MMM yyyy} – {end:dd MMM yyyy}  ·  {summary.Employees.Count} employee(s)  ·  {records.Count} day(s)";
+
+        // PDF gets narrower, printable versions of both tables — A4 landscape
+        // can't carry the spreadsheet's full column set legibly.
+        var sheets = format == TabularFormat.Pdf
+            ? new List<TabularSheet>
+            {
+                AttendanceSummarySheet.BuildSummary(summary, employees, caption),
+                AttendanceSummarySheet.BuildPrintableRecords(
+                    records, approvalByRecord, employees, projects, caption),
+            }
+            : new List<TabularSheet>
+            {
+                AttendanceSummarySheet.BuildSummary(summary, employees),
+                AttendanceSummarySheet.BuildRecords(records, approvalByRecord, employees, projects),
+            };
+
+        var fileName = $"attendance-summary-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
+        if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);
+
+        var organizationId = _currentUser.OrganizationId;
+        var organizationName = string.IsNullOrEmpty(organizationId)
+            ? "Organization"
+            : (await _organizations.GetByIdAsync(organizationId))?.Name ?? "Organization";
+
+        return TabularExportResult.From(
+            sheets, format, fileName,
+            new TabularPdfHeader(organizationName, "Attendance Report"));
+    }
+
+    public TabularExportResult BuildImportTemplate(TabularFormat format) =>
+        TabularExportResult.From(
+            AttendanceSummarySheet.BuildImportTemplate(), format, "attendance-import-template");
+
+    // Bulk-import historical daily records — a migration off another time-clock,
+    // not a second way to clock in. So, deliberately unlike ClockInAsync:
+    //
+    //   - no geofence, IP-allowlist or off-site-proof checks (they gate what an
+    //     employee may do NOW; these days are already in the past),
+    //   - no AttendanceApprovalRequest is created, so importing a year of
+    //     history doesn't drop a year of approvals into a supervisor's queue,
+    //   - a day the employee already has a record for is SKIPPED, never
+    //     overwritten — live data always beats imported data.
+    public async Task<TabularImportResult> ImportAsync(byte[] content, TabularFormat format)
+    {
+        IReadOnlyList<IReadOnlyList<string>> rows;
+        try
+        {
+            rows = TabularReader.Read(content, format);
+        }
+        catch (InvalidDataException ex)
+        {
+            return TabularImportResult.FileError(ex.Message);
+        }
+
+        if (rows.Count == 0) return TabularImportResult.FileError("The file is empty.");
+
+        var columns = AttendanceSummarySheet.ImportColumns;
+        var (map, missing) = TabularHeaderMap.Build(
+            rows[0], columns, EmployeeImportColumns.IdentityGroup);
+        if (map is null)
+            return TabularImportResult.FileError($"Missing required column(s): {string.Join(", ", missing)}.");
+        if (rows.Count == 1)
+            return TabularImportResult.FileError("The file has a header row but no data rows.");
+
+        var result = new TabularImportResult();
+        var employees = await _employees.GetSnapshotAsync();
+        var projectIdsByName = (await _projects.GetAllAsync())
+            .GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+        // One read of the existing rows, then dedupe in memory: a per-row
+        // GetForEmployeeOnDateAsync would be one query per line of the file.
+        var taken = (await _repo.GetAllAsync())
+            .Select(r => DayKey(r.EmployeeId, r.Date))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var now = DateTime.UtcNow;
+        var imported = 0;
+
+        for (var i = 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var rowNumber = i + 1;
+
+            if (TabularTemplate.IsExampleRow(map, row, columns))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            var email = map.Cell(row, "employeeEmail");
+            var name = map.Cell(row, "employeeName");
+            var (employeeId, ambiguous) = employees.Resolve(email, name);
+            if (ambiguous)
+            {
+                result.Fail(rowNumber, $"More than one employee is named '{name}'. Use the Employee Email column.");
+                continue;
+            }
+            if (employeeId is null)
+            {
+                result.Fail(rowNumber, $"No employee in this organization matches '{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+
+            var date = TabularCell.Date(map.Cell(row, "date"));
+            if (date is null)
+            {
+                result.Fail(rowNumber, "Date must be a date, e.g. 2026-01-15.");
+                continue;
+            }
+
+            var key = DayKey(employeeId, date.Value);
+            if (taken.Contains(key))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            // Both accept a bare time ("09:03") resolved against Date, or a full
+            // timestamp — whichever the source system exported.
+            var timeIn = TabularCell.Instant(map.Cell(row, "clockIn"), date);
+            var timeOut = TabularCell.Instant(map.Cell(row, "clockOut"), date);
+
+            if (!TabularCell.IsBlank(map.Cell(row, "clockIn")) && timeIn is null)
+            {
+                result.Fail(rowNumber, "Clock In must be a time (09:03) or a timestamp (2026-01-15 09:03).");
+                continue;
+            }
+            if (!TabularCell.IsBlank(map.Cell(row, "clockOut")) && timeOut is null)
+            {
+                result.Fail(rowNumber, "Clock Out must be a time (18:12) or a timestamp (2026-01-15 18:12).");
+                continue;
+            }
+
+            // A shift that runs past midnight exports as out < in. Rolling the
+            // end forward a day is the only reading that yields a sane duration.
+            if (timeIn is not null && timeOut is not null && timeOut < timeIn)
+                timeOut = timeOut.Value.AddDays(1);
+
+            var statusCell = map.Cell(row, "status");
+            var status = TabularCell.IsBlank(statusCell)
+                ? DeriveStatus(timeIn, timeOut)
+                : TabularCell.Enum<AttendanceStatus>(statusCell);
+            if (status is null)
+            {
+                result.Fail(rowNumber,
+                    $"Status must be one of: {string.Join(", ", Enum.GetNames<AttendanceStatus>())}.");
+                continue;
+            }
+
+            string? projectId = null;
+            var projectName = map.Cell(row, "project");
+            if (!TabularCell.IsBlank(projectName) &&
+                projectIdsByName.TryGetValue(projectName.Trim(), out var foundProject))
+                projectId = foundProject;
+
+            await _repo.AddAsync(new AttendanceRecord
+            {
+                EmployeeId = employeeId,
+                Date = AttendanceTime.StartOfLocalDay(date.Value),
+                TimeIn = timeIn,
+                TimeOut = timeOut,
+                DurationMin = timeIn is not null && timeOut is not null
+                    ? (int)Math.Round((timeOut.Value - timeIn.Value).TotalMinutes)
+                    : null,
+                Status = status.Value,
+                ProjectId = projectId,
+                Location = TabularCell.Text(map.Cell(row, "location"), 200),
+                Remark = TabularCell.Text(map.Cell(row, "remark")),
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+
+            taken.Add(key);
+            result.CountImported();
+            imported++;
+        }
+
+        if (imported > 0) await NotifyImportAsync(employees);
+        return result;
+    }
+
+    private static AttendanceStatus DeriveStatus(DateTime? timeIn, DateTime? timeOut)
+    {
+        if (timeIn is null) return AttendanceStatus.MISSING;
+        return timeOut is null ? AttendanceStatus.CLOCKED_IN : AttendanceStatus.CLOCKED_OUT;
+    }
+
+    private static string DayKey(string employeeId, DateTime date) =>
+        $"{employeeId}|{date:yyyy-MM-dd}";
+
+    // One nudge for the whole import rather than one per row — see the same
+    // reasoning in ClaimsService.
+    private async Task NotifyImportAsync(EmployeeDirectorySnapshot employees)
+    {
+        var organizationId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(organizationId)) return;
+
+        await _realtime.PublishAsync(
+            organizationId,
+            employees.Members.Select(m => (string?)m.Id),
+            RealtimeEventDto.For(RealtimeScope.ATTENDANCE, RealtimeAction.UPDATED));
+    }
+
+    // A newly-submitted request: nudge whoever has to review it. Nobody else —
+    // the employee just performed the action, so their own UI already knows.
+    private async Task NotifyPendingAsync(AttendanceApprovalRequest request, RealtimeAction action)
+    {
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        await _realtime.PublishAsync(
+            request.OrganizationId,
+            approvers,
+            RealtimeEventDto.For(RealtimeScope.ATTENDANCE, action, request.Id));
     }
 
     private async Task DecideInMemoryAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)

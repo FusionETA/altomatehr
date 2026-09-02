@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Leave.Dtos;
 
 namespace AltomateHR.Api.Modules.Leave;
@@ -22,8 +23,21 @@ public interface ILeaveService
     Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year);
     Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string employeeId, int year);
     Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year);
-    Task<LeaveExportResult> ExportBalancesCsvAsync(string employeeId, int year);
-    Task<LeaveExportResult> ExportOrgBalancesCsvAsync(int year);
+
+    // Balances as CSV or XLSX — one employee, or the whole org.
+    Task<LeaveExportResult> ExportBalancesAsync(string employeeId, int year, TabularFormat format);
+    Task<LeaveExportResult> ExportOrgBalancesAsync(int year, TabularFormat format);
+
+    // The blank leave-history import template, in either format.
+    TabularExportResult BuildImportTemplate(TabularFormat format);
+
+    // Bulk-import historical leave APPLICATIONS (a migration off another
+    // system). Append-only and idempotent: a request already on file for the
+    // same employee, type and exact dates is skipped, so a re-run can never
+    // double-count someone's leave.
+    Task<TabularImportResult> ImportHistoryAsync(
+        byte[] content, TabularFormat format, string adminUserId);
+
     Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(string supervisorId, int year);
     Task<IEnumerable<OnLeaveTodayDto>> GetOnLeaveTodayAsync(DateTime today);
     Task<int> CountPendingApprovalsAsync(string reviewerId);

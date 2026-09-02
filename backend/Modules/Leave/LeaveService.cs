@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.IO.Compression;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
@@ -8,6 +9,8 @@ using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Realtime;
+using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 
@@ -31,6 +34,8 @@ public class LeaveService : ILeaveService
     private readonly IXeroService _xero;
     private readonly IOrganizationService _organizations;
     private readonly IHolidayService _holidays;
+    private readonly IRealtimeService _realtime;
+    private readonly IEmployeeDirectory _employees;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -43,7 +48,9 @@ public class LeaveService : ILeaveService
         ILeaveEntitlementRepository entitlements,
         IXeroService xero,
         IOrganizationService organizations,
-        IHolidayService holidays)
+        IHolidayService holidays,
+        IRealtimeService realtime,
+        IEmployeeDirectory employees)
     {
         _apps = apps;
         _types = types;
@@ -56,6 +63,8 @@ public class LeaveService : ILeaveService
         _xero = xero;
         _organizations = organizations;
         _holidays = holidays;
+        _realtime = realtime;
+        _employees = employees;
     }
 
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
@@ -133,32 +142,224 @@ public class LeaveService : ILeaveService
         return new LeaveBalancesResult(true, true, balances, year);
     }
 
-    // Balances for ONE employee as a CSV download. Reuses the same access rule
+    // Balances for ONE employee as a spreadsheet. Reuses the same access rule
     // as the JSON reader — an export must never be a way around it.
-    public async Task<LeaveExportResult> ExportBalancesCsvAsync(string employeeId, int year)
+    public async Task<LeaveExportResult> ExportBalancesAsync(
+        string employeeId, int year, TabularFormat format)
     {
         var balances = await GetBalancesForEmployeeAsync(employeeId, year);
         if (!balances.Found || !balances.Allowed)
             return new LeaveExportResult(balances.Found, balances.Allowed, [], "");
 
-        var emails = await _supervision.GetEmailsAsync([employeeId]);
-        var label = emails.GetValueOrDefault(employeeId) ?? employeeId;
+        var directory = await _employees.GetSnapshotAsync();
+        var identity = directory.ById(employeeId);
+        var label = identity?.Email
+            ?? (await _supervision.GetEmailsAsync([employeeId])).GetValueOrDefault(employeeId)
+            ?? employeeId;
 
+        var sheet = LeaveBalancesSheet.BuildBalances(balances.Balances, label, identity?.Role ?? "");
         return new LeaveExportResult(
             true, true,
-            LeaveCsvExporter.BalancesToCsv(balances.Balances, label),
-            $"leave-summary-{year}.csv");
+            TabularWriter.Write(sheet, format),
+            $"leave-summary-{year}.{format.Extension()}");
     }
 
     // Every employee's balances in one file. Gated at the controller (Admin/Owner)
     // because it spans the whole org rather than one person.
-    public async Task<LeaveExportResult> ExportOrgBalancesCsvAsync(int year)
+    public async Task<LeaveExportResult> ExportOrgBalancesAsync(int year, TabularFormat format)
     {
         var rows = await GetOrgBalancesAsync(year);
+        var sheet = LeaveBalancesSheet.BuildOrgBalances(rows);
         return new LeaveExportResult(
             true, true,
-            LeaveCsvExporter.OrgBalancesToCsv(rows),
-            $"leave-summary-all-{year}.csv");
+            TabularWriter.Write(sheet, format),
+            $"leave-summary-all-{year}.{format.Extension()}");
+    }
+
+    public TabularExportResult BuildImportTemplate(TabularFormat format) =>
+        TabularExportResult.From(
+            LeaveBalancesSheet.BuildImportTemplate(), format, "leave-history-import-template");
+
+    // Bulk-import historical leave applications — a migration off another system
+    // (Jibble, Payroll Panda, a spreadsheet). Deliberately unlike ApplyAsync:
+    //
+    //   - the row's Status is honoured, so settled leave imports as APPROVED
+    //     rather than landing in a supervisor's queue,
+    //   - the source Days figure is TRUSTED instead of recomputed from the
+    //     working-week calendar — the org's calendar today may not be the one
+    //     that was in force then, and re-deriving would rewrite history,
+    //   - the balance-sufficiency gate is SKIPPED: the leave already happened,
+    //     and refusing to record it wouldn't un-take it,
+    //   - archived leave types still resolve, so historical types work,
+    //   - a request already on file for the same employee/type/exact dates is
+    //     skipped, so a re-run never double-counts.
+    //
+    // Entitlement rows are opened as a side effect (EnsureEntitlementAsync), so
+    // an imported APPROVED request shows up in the year's balances immediately —
+    // `taken` is derived from approved applications, not stored separately.
+    public async Task<TabularImportResult> ImportHistoryAsync(
+        byte[] content, TabularFormat format, string adminUserId)
+    {
+        IReadOnlyList<IReadOnlyList<string>> rows;
+        try
+        {
+            rows = TabularReader.Read(content, format);
+        }
+        catch (InvalidDataException ex)
+        {
+            return TabularImportResult.FileError(ex.Message);
+        }
+
+        if (rows.Count == 0) return TabularImportResult.FileError("The file is empty.");
+
+        var columns = LeaveBalancesSheet.ImportColumns;
+        var (map, missing) = TabularHeaderMap.Build(
+            rows[0], columns, EmployeeImportColumns.IdentityGroup);
+        if (map is null)
+            return TabularImportResult.FileError($"Missing required column(s): {string.Join(", ", missing)}.");
+        if (rows.Count == 1)
+            return TabularImportResult.FileError("The file has a header row but no data rows.");
+
+        var result = new TabularImportResult();
+        var directory = await _employees.GetSnapshotAsync();
+
+        // Archived types included on purpose — a type the org retired last year
+        // is exactly what a year of history refers to.
+        var allTypes = await _types.GetAllAsync();
+        var typesByKey = new Dictionary<string, LeaveType>(StringComparer.OrdinalIgnoreCase);
+        foreach (var type in allTypes)
+        {
+            typesByKey.TryAdd(type.Name.Trim(), type);
+            typesByKey.TryAdd(type.Code.Trim(), type);
+        }
+
+        var seen = (await _apps.GetAllAsync())
+            .Select(a => HistoryKey(a.EmployeeId, a.LeaveTypeId, a.StartDate, a.EndDate))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var now = DateTime.UtcNow;
+        var imported = 0;
+
+        for (var i = 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var rowNumber = i + 1;
+
+            if (TabularTemplate.IsExampleRow(map, row, columns))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            var email = map.Cell(row, "employeeEmail");
+            var name = map.Cell(row, "employeeName");
+            var (employeeId, ambiguous) = directory.Resolve(email, name);
+            if (ambiguous)
+            {
+                result.Fail(rowNumber, $"More than one employee is named '{name}'. Use the Employee Email column.");
+                continue;
+            }
+            if (employeeId is null)
+            {
+                result.Fail(rowNumber, $"No employee in this organization matches '{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+
+            var typeCell = map.Cell(row, "leaveType").Trim();
+            if (!typesByKey.TryGetValue(typeCell, out var leaveType))
+            {
+                result.Fail(rowNumber, $"No leave type matches '{typeCell}' (try its name or code).");
+                continue;
+            }
+
+            var start = TabularCell.Date(map.Cell(row, "startDate"));
+            var end = TabularCell.Date(map.Cell(row, "endDate"));
+            if (start is null || end is null)
+            {
+                result.Fail(rowNumber, "Start Date and End Date must both be dates, e.g. 2026-01-15.");
+                continue;
+            }
+            if (end < start)
+            {
+                result.Fail(rowNumber, "End Date is before Start Date.");
+                continue;
+            }
+
+            var days = TabularCell.Number(map.Cell(row, "days"));
+            if (days is null || days <= 0)
+            {
+                result.Fail(rowNumber, "Days must be a number greater than zero.");
+                continue;
+            }
+
+            var status = TabularCell.Enum<LeaveStatus>(map.Cell(row, "status"));
+            if (status is null)
+            {
+                result.Fail(rowNumber,
+                    $"Status must be one of: {string.Join(", ", Enum.GetNames<LeaveStatus>())}.");
+                continue;
+            }
+
+            var key = HistoryKey(employeeId, leaveType.Id, start.Value, end.Value);
+            if (seen.Contains(key))
+            {
+                result.CountSkipped();
+                continue;
+            }
+
+            // Open the year for this employee/type if the rollover never did,
+            // otherwise the imported days would have no entitlement row to sit
+            // against and the balance would read as "not opened".
+            await EnsureEntitlementAsync(employeeId, leaveType, start.Value.Year);
+
+            var reason = TabularCell.Text(map.Cell(row, "reason"));
+            var application = new LeaveApplication
+            {
+                EmployeeId = employeeId,
+                LeaveTypeId = leaveType.Id,
+                StartDate = start.Value,
+                EndDate = end.Value,
+                // Half-days can't be expressed by a date range, so the source
+                // Days figure carries the fraction and Duration stays FULL_DAY.
+                Duration = LeaveDuration.FULL_DAY,
+                TotalDays = days.Value,
+                Reason = reason,
+                Status = status.Value,
+                CurrentStep = 0,
+                AppliedByAdminId = adminUserId,
+                DecidedAt = status.Value == LeaveStatus.PENDING ? null : now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            // Records who really created it, so the audit trail doesn't claim
+            // the employee filed it themselves.
+            AppendTrail(application, 0, adminUserId, "IMPORTED", reason);
+
+            await _apps.AddAsync(application);
+            seen.Add(key);
+            result.CountImported();
+            imported++;
+        }
+
+        if (imported > 0) await NotifyImportAsync(directory);
+        return result;
+    }
+
+    private static string HistoryKey(string employeeId, string leaveTypeId, DateTime start, DateTime end) =>
+        string.Join('|', employeeId, leaveTypeId, start.ToString("yyyy-MM-dd"), end.ToString("yyyy-MM-dd"));
+
+    // One nudge for the whole import rather than one per row — same reasoning as
+    // ClaimsService.NotifyImportAsync.
+    private async Task NotifyImportAsync(EmployeeDirectorySnapshot directory)
+    {
+        var organizationId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(organizationId)) return;
+
+        await _realtime.PublishAsync(
+            organizationId,
+            directory.Members.Select(m => (string?)m.Id),
+            RealtimeEventDto.For(RealtimeScope.LEAVE, RealtimeAction.UPDATED));
     }
 
     // Streams a leave attachment out of Xero Files. The id alone proves nothing,
@@ -672,6 +873,7 @@ public class LeaveService : ILeaveService
             UpdatedAt = now,
         };
         await _apps.AddAsync(application);
+        await NotifyAsync(application, RealtimeAction.SUBMITTED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(application), null);
     }
 
@@ -699,6 +901,9 @@ public class LeaveService : ILeaveService
         app.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(app);
 
+        // The employee never asked for this, so their calendar/balance changing
+        // out from under them is exactly the case live updates exist for.
+        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
         return new LeaveApplyResult(true, ToDto(app), null);
     }
 
@@ -780,6 +985,9 @@ public class LeaveService : ILeaveService
         app.Reason = dto.Reason;
         app.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(app);
+
+        // The dates or type just changed under whoever is about to review it.
+        await NotifyAsync(app, RealtimeAction.UPDATED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(app), null);
     }
 
@@ -938,6 +1146,10 @@ public class LeaveService : ILeaveService
         }
         app.UpdatedAt = now;
         await _apps.UpdateAsync(app);
+
+        // Still PENDING here means the chain advanced, so NotifyAsync also
+        // reaches the next step's approver.
+        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
@@ -953,6 +1165,10 @@ public class LeaveService : ILeaveService
         app.DecidedAt = now;
         app.UpdatedAt = now;
         await _apps.UpdateAsync(app);
+
+        // notifyApprovers: the request just left every reviewer's queue, and a
+        // rejected row is no longer PENDING for NotifyAsync to infer that from.
+        await NotifyAsync(app, RealtimeAction.REJECTED, notifyApplicant: true, notifyApprovers: true);
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
@@ -987,7 +1203,37 @@ public class LeaveService : ILeaveService
         application.Status = LeaveStatus.CANCELLED;
         application.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(application);
+
+        // The approvers are the ones who need this: a withdrawn request should
+        // disappear from their queue rather than sit there until they reload.
+        await NotifyAsync(application, RealtimeAction.CANCELLED,
+            notifyApplicant: false, notifyApprovers: true);
         return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
+    // Live nudge for one leave request. Approvers are resolved from the row's
+    // CURRENT step, so a multi-step chain notifies exactly the people who now
+    // have to act — and nobody who doesn't.
+    //
+    // `notifyApprovers` forces the approver fan-out for the terminal states
+    // (rejected, cancelled), where the PENDING check would otherwise conclude
+    // there is nobody left to tell.
+    private async Task NotifyAsync(
+        LeaveApplication app,
+        RealtimeAction action,
+        bool notifyApplicant,
+        bool notifyApprovers = false)
+    {
+        var targets = new List<string?>();
+        if (notifyApplicant) targets.Add(app.EmployeeId);
+
+        if (notifyApprovers || app.Status == LeaveStatus.PENDING)
+            targets.AddRange(await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep));
+
+        await _realtime.PublishAsync(
+            app.OrganizationId,
+            targets,
+            RealtimeEventDto.For(RealtimeScope.LEAVE, action, app.Id));
     }
 
     // Loads the app and checks the caller may act at its current step. Returns

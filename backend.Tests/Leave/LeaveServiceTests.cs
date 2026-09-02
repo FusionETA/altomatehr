@@ -1,4 +1,5 @@
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave;
@@ -15,6 +16,8 @@ using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
+
+using AltomateHR.Api.Tests.Support;
 
 namespace AltomateHR.Api.Tests.Leave;
 
@@ -496,6 +499,171 @@ public class LeaveServiceTests
         EndDate = new DateTime(Year, 9, 2),
     };
 
+    // ---- Import / export ----
+
+    private static readonly EmployeeIdentity Ahmad =
+        new("usr-emp", "ahmad@x.com", "Ahmad Ali", "Employee");
+
+    private static byte[] LeaveCsv(params string[] lines) =>
+        System.Text.Encoding.UTF8.GetBytes(string.Join('\n', lines) + "\n");
+
+    private const string ImportHeader =
+        "*Employee Email,*Leave Type,*Start Date,*End Date,*Days,*Status,Reason";
+
+    private static LeaveService ImportService(
+        IEnumerable<LeaveApplication>? apps = null) =>
+        MakeService(
+            types: [MakeType("lt-al", "AL", 12)],
+            apps: apps,
+            memberships: new FakeMembershipRepository("usr-emp"),
+            employees: new FakeEmployeeDirectory(Ahmad));
+
+    [Fact]
+    public async Task Import_CreatesAnApprovedHistoricalApplication()
+    {
+        var service = ImportService();
+
+        var result = await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-03-03,2,APPROVED,Family"),
+            TabularFormat.Csv,
+            "usr-admin");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Empty(result.Errors);
+
+        var app = Assert.Single(await service.GetMineAsync("usr-emp"));
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);
+        Assert.Equal(2, app.TotalDays);
+        Assert.Equal("2026-03-02", app.StartDate);
+    }
+
+    // The source Days figure is trusted rather than recomputed: the org's
+    // working-week today may not be the one in force back then.
+    [Fact]
+    public async Task Import_TrustsTheSourceDayCount_EvenAcrossAWeekend()
+    {
+        var service = ImportService();
+
+        await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-06,2026-03-09,1.5,APPROVED,"),
+            TabularFormat.Csv,
+            "usr-admin");
+
+        Assert.Equal(1.5, Assert.Single(await service.GetMineAsync("usr-emp")).TotalDays);
+    }
+
+    // Importing more days than the entitlement allows must still record them —
+    // the leave already happened, and refusing wouldn't un-take it.
+    [Fact]
+    public async Task Import_SkipsTheBalanceCheck()
+    {
+        var service = ImportService();
+
+        var result = await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-12-31,99,APPROVED,"),
+            TabularFormat.Csv,
+            "usr-admin");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(0, result.Failed);
+    }
+
+    [Fact]
+    public async Task Import_IsIdempotentOnEmployeeTypeAndExactDates()
+    {
+        var service = ImportService();
+        var file = LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-03-03,2,APPROVED,");
+
+        var first = await service.ImportHistoryAsync(file, TabularFormat.Csv, "usr-admin");
+        var second = await service.ImportHistoryAsync(file, TabularFormat.Csv, "usr-admin");
+
+        Assert.Equal(1, first.Imported);
+        Assert.Equal(0, second.Imported);
+        Assert.Equal(1, second.Skipped);
+        Assert.Single(await service.GetMineAsync("usr-emp"));
+    }
+
+    [Fact]
+    public async Task Import_ResolvesALeaveTypeByNameOrCode()
+    {
+        var byName = await ImportService().ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-03-02,1,APPROVED,"),
+            TabularFormat.Csv, "usr-admin");
+        Assert.Equal(1, byName.Imported);
+
+        var unknown = await ImportService().ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,Sabbatical,2026-03-02,2026-03-02,1,APPROVED,"),
+            TabularFormat.Csv, "usr-admin");
+        Assert.Equal(0, unknown.Imported);
+        Assert.Contains("Sabbatical", Assert.Single(unknown.Errors).Message);
+    }
+
+    [Fact]
+    public async Task Import_ReportsBadRowsByTheirSpreadsheetRowNumber()
+    {
+        var result = await ImportService().ImportHistoryAsync(
+            LeaveCsv(ImportHeader,
+                "ahmad@x.com,AL,2026-03-05,2026-03-02,2,APPROVED,",     // row 2: end before start
+                "ahmad@x.com,AL,2026-03-02,2026-03-03,0,APPROVED,",     // row 3: zero days
+                "ahmad@x.com,AL,2026-03-02,2026-03-03,2,MAYBE,",        // row 4: bad status
+                "ahmad@x.com,AL,2026-04-02,2026-04-03,2,APPROVED,ok"),  // row 5: fine
+            TabularFormat.Csv, "usr-admin");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal([2, 3, 4], result.Errors.Select(e => e.Row));
+    }
+
+    [Fact]
+    public async Task Import_RecordsWhoReallyCreatedTheRow()
+    {
+        var service = ImportService();
+
+        await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-03-03,2,APPROVED,"),
+            TabularFormat.Csv, "usr-admin");
+
+        var app = Assert.Single(await service.GetMineAsync("usr-emp"));
+        var trail = await service.GetAuditTrailAsync(app.Id);
+        var entry = Assert.Single(trail.Entries!);
+        Assert.Equal("IMPORTED", entry.Decision);
+        Assert.Equal("usr-admin", entry.ApproverId);
+    }
+
+    [Fact]
+    public async Task Import_SkipsTheTemplatesExampleRow()
+    {
+        var service = ImportService();
+        var template = service.BuildImportTemplate(TabularFormat.Xlsx);
+
+        var result = await service.ImportHistoryAsync(
+            template.Content, TabularFormat.Xlsx, "usr-admin");
+
+        Assert.Equal(0, result.Imported);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.Failed);
+    }
+
+    [Fact]
+    public async Task Export_WritesIdentityColumnsOnEveryRow_InBothFormats()
+    {
+        var service = MakeService(
+            types: [MakeType("lt-al", "AL", 12)],
+            memberships: new FakeMembershipRepository("usr-emp"),
+            currentUser: new FakeCurrentUser("usr-admin", "Admin"),
+            employees: new FakeEmployeeDirectory(Ahmad));
+
+        foreach (var format in new[] { TabularFormat.Csv, TabularFormat.Xlsx })
+        {
+            var export = await service.ExportBalancesAsync("usr-emp", Year, format);
+            var rows = TabularReader.Read(export.Content, format);
+
+            Assert.Equal("Employee", rows[0][0]);
+            Assert.Equal("Code", rows[0][2]);
+            Assert.All(rows.Skip(1), r => Assert.Equal("ahmad@x.com", r[0]));
+            Assert.EndsWith($".{format.Extension()}", export.FileName);
+        }
+    }
+
     private static LeaveService MakeService(
         IEnumerable<LeaveType>? types = null,
         IEnumerable<LeaveApplication>? apps = null,
@@ -505,7 +673,8 @@ public class LeaveServiceTests
         IOrganizationMembershipRepository? memberships = null,
         ICurrentUser? currentUser = null,
         IEnumerable<LeaveEntitlement>? entitlementRows = null,
-        IXeroService? xero = null) =>
+        IXeroService? xero = null,
+        IEmployeeDirectory? employees = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
@@ -517,7 +686,9 @@ public class LeaveServiceTests
             new FakeEntitlementRepo(entitlementRows ?? []),
             xero ?? new FakeXeroService(),
             new FakeOrganizationService(),
-            new FakeHolidayService());
+            new FakeHolidayService(),
+            new FakeRealtimeService(),
+            employees ?? new FakeEmployeeDirectory());
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {

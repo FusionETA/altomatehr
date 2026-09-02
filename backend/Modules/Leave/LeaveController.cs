@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -200,37 +201,105 @@ public class LeaveController : ControllerBase
         return File(result.Content, "application/zip", result.FileName);
     }
 
-    // GET /leave/export/summary?employeeId=&year=YYYY — balances as a CSV file.
-    // Same three-tier access as the JSON reader. Production returns a PDF here;
-    // CSV is the V2 stand-in until a renderer is chosen.
+    // GET /leave/export/summary?employeeId=&year=YYYY&format=csv|xlsx
+    // Balances as a spreadsheet. Same three-tier access as the JSON reader.
+    // (The two-page PDF summary lives at export/summary.pdf above.)
     [RequireScope("leave:read")]
     [HttpGet("export/summary")]
     public async Task<IActionResult> ExportSummary(
         [FromQuery, Required] string employeeId,
-        [FromQuery, Range(2000, 2100)] int? year)
+        [FromQuery, Range(2000, 2100)] int? year,
+        [FromQuery] string? format)
     {
-        var result = await _leave.ExportBalancesCsvAsync(
-            employeeId, year ?? DateTime.UtcNow.Year);
+        var resolved = TabularFormats.Parse(format);
+        // PDF is refused on this route, not silently rendered: /leave/export/
+        // summary.pdf above already produces a leave PDF, and it's a DIFFERENT
+        // document (production's two-page yearly summary, not this balances
+        // grid). Two near-identical routes returning two different PDFs is worse
+        // than one honest error naming the right one.
+        if (resolved == TabularFormat.Pdf)
+        {
+            return BadRequest(new
+            {
+                message = "For a PDF use /leave/export/summary.pdf — it renders the full yearly summary.",
+            });
+        }
+
+        var result = await _leave.ExportBalancesAsync(
+            employeeId, year ?? DateTime.UtcNow.Year, resolved);
 
         if (!result.Found) return NotFound(new { message = "Employee not found." });
         if (!result.Allowed) return Forbid();
 
         // Balances change; never let a proxy or browser serve a stale export.
         Response.Headers.CacheControl = "no-store";
-        return File(result.Content, "text/csv", result.FileName);
+        return File(result.Content, resolved.ContentType(), result.FileName);
     }
 
-    // GET /leave/export/summary/all?year=YYYY — every employee, one CSV.
+    // GET /leave/export/summary/all?year=YYYY&format=csv|xlsx — every employee.
     // Declared before the {employeeId}-less sibling for the same literal-vs-
     // parameter reason as the balances routes.
     [RequireScope("leave:read")]
     [HttpGet("export/summary/all")]
     [Authorize(Roles = "Admin,Owner")]
-    public async Task<IActionResult> ExportOrgSummary([FromQuery, Range(2000, 2100)] int? year)
+    public async Task<IActionResult> ExportOrgSummary(
+        [FromQuery, Range(2000, 2100)] int? year,
+        [FromQuery] string? format)
     {
-        var result = await _leave.ExportOrgBalancesCsvAsync(year ?? DateTime.UtcNow.Year);
+        var resolved = TabularFormats.Parse(format);
+        if (resolved == TabularFormat.Pdf)
+        {
+            // Same reasoning as the single-employee route above; the org-wide
+            // PDF equivalent is the bulk ZIP.
+            return BadRequest(new
+            {
+                message = "For PDFs use /leave/export/summary-bulk.zip — one yearly summary per employee.",
+            });
+        }
+
+        var result = await _leave.ExportOrgBalancesAsync(year ?? DateTime.UtcNow.Year, resolved);
         Response.Headers.CacheControl = "no-store";
-        return File(result.Content, "text/csv", result.FileName);
+        return File(result.Content, resolved.ContentType(), result.FileName);
+    }
+
+    // GET /leave/import/template?format=csv|xlsx — the leave-history template.
+    [HttpGet("import/template")]
+    [Authorize(Roles = "Admin,Owner")]
+    public IActionResult ImportTemplate([FromQuery] string? format)
+    {
+        var resolved = TabularFormats.Parse(format);
+        if (!resolved.IsImportable())
+        {
+            return BadRequest(new
+            {
+                message = "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded.",
+            });
+        }
+
+        var result = _leave.BuildImportTemplate(resolved);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // POST /leave/import — multipart upload of historical leave applications.
+    // 200 with a per-row report even when some rows failed; only an unusable
+    // FILE is a 400.
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin,Owner")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> Import(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Pick a .csv or .xlsx file to import." });
+
+        var format = TabularFormats.Detect(file.FileName, file.ContentType);
+        if (format is null)
+            return BadRequest(new { message = "Unsupported file type. Upload a .csv or .xlsx file." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        return Ok(await _leave.ImportHistoryAsync(buffer.ToArray(), format.Value, GetUserId()));
     }
 
     // GET /leave/files/{xeroFileId}/content — proxy a leave attachment.

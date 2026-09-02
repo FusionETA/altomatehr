@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 
 namespace AltomateHR.Api.Modules.Attendance;
@@ -29,6 +30,18 @@ public interface IAttendanceService
     Task<AttendanceDeleteSelfiesResultDto> DeleteSelfiesInRangeAsync(DateTime from, DateTime to);
 
     Task<AttendanceAdjustmentResult> SubmitTimeAdjustmentAsync(string employeeId, SubmitTimeAdjustmentDto dto);
+
+    // ---- Import / export ----
+
+    // Worked-hours summary + the daily records behind it, as CSV or XLSX.
+    Task<TabularExportResult> ExportSummaryAsync(
+        DateTime from, DateTime to, string? teamId, TabularFormat format);
+
+    TabularExportResult BuildImportTemplate(TabularFormat format);
+
+    // Bulk-import historical daily records. Append-only and idempotent — a day
+    // the employee already has a record for is skipped, never overwritten.
+    Task<TabularImportResult> ImportAsync(byte[] content, TabularFormat format);
 
     // ---- Automation (cron-style) — see Modules/Attendance/Cron/ ----
 
