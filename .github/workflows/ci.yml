@@ -12,6 +12,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # The Integration/ suite gates every test on MySQL being reachable at
+    # 127.0.0.1:3307 (MySqlApiFactory.IsAvailableAsync) and SKIPS when it isn't.
+    # Without this service those tests pass silently by never running — which is
+    # how a broken model snapshot reached main twice. Port/credentials must match
+    # MySqlApiFactory.Host exactly. Each test creates and drops its own it_<guid>
+    # database, so the service needs no seeding.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: devroot
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pdevroot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +39,20 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      # Guards the silent-skip failure mode: if the port mapping ever breaks, the
+      # Integration suite skips itself and the job still goes green. Fail loudly
+      # here instead of reporting a pass for tests that never ran.
+      - name: Assert MySQL is reachable (Integration suite skips without it)
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/3307) 2>/dev/null; then
+              echo "MySQL reachable on 3307"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::MySQL never came up on 3307 — the Integration suite would silently skip."
+          exit 1
 
       - name: Backend — build & test
         working-directory: backend.Tests
