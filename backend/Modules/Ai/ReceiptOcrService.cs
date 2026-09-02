@@ -254,10 +254,17 @@ public partial class ReceiptOcrService : IReceiptOcrService
     private static string? NormalizeCurrency(string? value)
     {
         if (value is null) return null;
-        var match = CurrencyCode().Match(value.ToUpperInvariant());
+        var match = CurrencyCode().Match(value.Trim().ToUpperInvariant());
         return match.Success ? match.Value : null;
     }
 
-    [GeneratedRegex("[A-Z]{3}")]
+    // Anchored deliberately. Unanchored, this matched the first three letters
+    // ANYWHERE in the value, so any word became a currency: "ringgit" -> "RIN",
+    // "cash" -> "CAS". Worse, the same pattern re-checks the normalised value in
+    // AnalyzeAsync, so those passed too and the org-default fallback never ran —
+    // a claim silently took a garbage currency instead of MYR. The prompt asks
+    // for "ISO 4217 uppercase ... or null if unreadable", so an exact code or
+    // nothing is the contract.
+    [GeneratedRegex("^[A-Z]{3}$")]
     private static partial Regex CurrencyCode();
 }
