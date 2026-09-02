@@ -83,7 +83,6 @@ public class AttendanceApprovalRegressionTests
             policies: new FakePolicyService(),
             supervision: new FakeSupervisionService(),
             router: new FakeApprovalRouter(),
-            policyRepo: new FakeEmployeePolicyRepository(),
             directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()));
 
         // --- Act: employee clocks out. ---
@@ -229,6 +228,12 @@ public class AttendanceApprovalRegressionTests
             GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
             Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
                 new Dictionary<string, IReadOnlyDictionary<string, double>>());
+
+        public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);
+
+        public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+            Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>([]);
     }
 
     // Not reached in the clock-out path — used by the per-policy auto-clock-out sweep.

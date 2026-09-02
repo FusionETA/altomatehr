@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -264,7 +265,7 @@ public class LeaveCronServiceTests
             _repo,
             new FakeTypeRepo(types),
             new FakeAppRepo(apps ?? []),
-            new FakePolicyEntitlementRepo(policyOverrides ?? []),
+            new FakePolicyService(policyOverrides ?? []),
             TestDirectory.Over(new FakeMembershipRepo(memberships ?? [])));
     }
 
@@ -328,6 +329,33 @@ public class LeaveCronServiceTests
         public Task<LeaveType?> GetByCodeAsync(string code) => Task.FromResult(_types.FirstOrDefault(t => t.Code == code));
         public Task<LeaveType> AddAsync(LeaveType t) { _types.Add(t); return Task.FromResult(t); }
         public Task UpdateAsync(LeaveType t) => Task.CompletedTask;
+    }
+
+    // LeaveCronService asks the Policies SERVICE now, not its repository, so the
+    // fake moved up a layer. Only the bulk entitlement read is exercised here.
+    private sealed class FakePolicyService(IEnumerable<PolicyLeaveEntitlement> rows)
+        : IPolicyService
+    {
+        public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+            Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>(rows.ToList());
+
+        public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);
+        Task<IEnumerable<PolicyDto>> IPolicyService.GetAllAsync() =>
+            Task.FromResult<IEnumerable<PolicyDto>>([]);
+        public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotSupportedException();
+        public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotSupportedException();
+        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
+        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotSupportedException();
+        public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) =>
+            Task.FromResult<EmployeePolicy?>(null);
+        public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(false);
+        public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
+            Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
+        public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
+            GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
+                new Dictionary<string, IReadOnlyDictionary<string, double>>());
     }
 
     private sealed class FakePolicyEntitlementRepo(IEnumerable<PolicyLeaveEntitlement> rows)

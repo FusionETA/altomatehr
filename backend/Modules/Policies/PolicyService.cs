@@ -232,4 +232,10 @@ public class PolicyService : IPolicyService
             .Select(e => new PolicyLeaveEntitlementDto { LeaveTypeId = e.LeaveTypeId, DefaultDays = e.DefaultDays })
             .ToList(),
     };
+
+    public async Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+        await _policies.GetAllAcrossOrgsAsync();
+
+    public async Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+        await _entitlements.GetAllAsync();
 }

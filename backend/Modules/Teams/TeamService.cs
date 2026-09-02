@@ -195,4 +195,7 @@ public class TeamService : ITeamService
         try { return JsonSerializer.Deserialize<Dictionary<string, List<int>>>(json) ?? new(); }
         catch { return new(); }
     }
+
+    public async Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
+        (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();
 }

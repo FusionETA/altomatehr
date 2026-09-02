@@ -48,7 +48,6 @@ public class AttendanceService : IAttendanceService
     private readonly IPolicyService _policies;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
-    private readonly IEmployeePolicyRepository _policyRepo;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -62,7 +61,6 @@ public class AttendanceService : IAttendanceService
         IPolicyService policies,
         ISupervisionService supervision,
         IApprovalRouter router,
-        IEmployeePolicyRepository policyRepo,
         IDirectoryService directory)
     {
         _repo = repo;
@@ -76,7 +74,6 @@ public class AttendanceService : IAttendanceService
         _policies = policies;
         _supervision = supervision;
         _router = router;
-        _policyRepo = policyRepo;
         _directory = directory;
     }
 
@@ -682,7 +679,7 @@ public class AttendanceService : IAttendanceService
     // bypassing repository methods rather than the "current org" ones.
     public async Task<AttendanceAutoClockOutResultDto> RunAutoClockOutSweepAsync(int maxCandidates)
     {
-        var allPolicies = await _policyRepo.GetAllAcrossOrgsAsync();
+        var allPolicies = await _policies.GetAllAcrossOrgsAsync();
         var enabled = allPolicies
             .Where(p => p.AutoClockOutEnabled && p.AutoClockOutAfterMinutes is > 0)
             .ToList();

@@ -54,16 +54,40 @@ abstraction.
 So identity and membership **reads** are now a named shared kernel:
 **IDirectoryService** (`Modules/Employees/`). Any module may depend on it.
 Employees and Auth keep their repositories private and stay free to change how
-they store things. That took the count from 21 to 10.
+they store things.
 
 **Reads only, deliberately.** A module that needs to *create or change* another
 module's data has a real domain reason, and that belongs on the owning module's
 service where the rules live — not behind a generic lookup.
 
-**The remaining exceptions, each with a reason:**
+The remaining seven — reporting and cron reads spread across Dashboard,
+Attendance and Leave — were then routed through their owning module's service,
+each of which grew the one read method its caller needed
+(`IClaimsService.GetAllForOrgAsync`, `IPolicyService.GetAllAcrossOrgsAsync` and
+`GetAllPolicyEntitlementsAsync`, `IOvertimeService.GetByEmployeeAsync`,
+`IShiftService.GetByIdAsync`, `ITeamService.GetMemberEmployeeIdsAsync`).
+`AttendanceService` already injected `IPolicyService` and simply dropped its
+duplicate repository.
 
-| Service | Reaches into | Why it stays |
+**21 → 3.** ADR-02 now holds everywhere except three places, each with a reason:
+
+| Service | Reaches into | Why |
 |---|---|---|
+| `DirectoryService` | `IUserRepository` | It *is* the seam — this is the intended coupling. |
+| `EmployeeService` | `IUserRepository` | Creating an employee creates their login; Employees owns that lifecycle. |
+| `OrganizationService` | `IOrganizationMembershipRepository` | Creating an org creates the owner's membership, in one transaction. |
+
+The latter two are **writes**, which is why they can't go through the read-only
+directory. Neither is settled forever: if Auth grows a service method for
+creating a user on an employee's behalf, `EmployeeService` should use it. Listed
+here so they stay visible rather than accepted by default.
+
+**The lesson worth keeping:** when a rule is broken 21 times over months and
+nobody objects, the code is telling you the rule is wrong — or that something it
+needs has no name yet. Amend the ADR or name the thing. An ADR everyone silently
+violates is worse than none, because it stops being a signal.
+
+---|---|---|
 | `DirectoryService` | `IUserRepository` | It *is* the seam — this is the intended coupling. |
 | `EmployeeService` | `IUserRepository` | Creating an employee creates their login; Employees owns that lifecycle. |
 | `OrganizationService` | `IOrganizationMembershipRepository` | Creating an org creates the owner's membership, in one transaction. |

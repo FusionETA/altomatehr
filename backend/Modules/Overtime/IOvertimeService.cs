@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Overtime.Dtos;
+using AltomateHR.Api.Modules.Overtime.Entities;
 
 namespace AltomateHR.Api.Modules.Overtime;
 
@@ -15,6 +16,9 @@ public interface IOvertimeService
     Task<OvertimeTransitionResult> CancelAsync(string id, string userId);
     Task<OvertimePhotoUploadResult> StorePhotoAsync(OvertimePhotoUpload upload);
     Task<OvertimePhotoFileResult?> GetPhotoForUserAsync(string fileName, string userId, bool isAdmin);
+
+    // One employee's overtime requests as entities, for the hours summary.
+    Task<IReadOnlyList<OvertimeRequest>> GetByEmployeeAsync(string employeeId);
 }
 
 public record OvertimeSubmitResult(bool Ok, OvertimeRequestDto? Request, string? Error);

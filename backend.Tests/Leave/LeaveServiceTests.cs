@@ -684,5 +684,11 @@ public class LeaveServiceTests
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
         public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
         public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);
+
+        public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
+            Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>([]);
     }
 }

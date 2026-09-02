@@ -24,20 +24,20 @@ public class HoursSummaryService : IHoursSummaryService
 
     private readonly IDirectoryService _directory;
     private readonly IAttendanceRepository _attendance;
-    private readonly IOvertimeRepository _overtime;
-    private readonly IShiftRepository _shifts;
+    private readonly IOvertimeService _overtime;
+    private readonly IShiftService _shifts;
     private readonly IOrganizationService _organizations;
-    private readonly ITeamMembershipRepository _teamMemberships;
+    private readonly ITeamService _teams;
     private readonly ISupervisionService _supervision;
     private readonly ICurrentUser _currentUser;
 
     public HoursSummaryService(
         IAttendanceRepository attendance,
-        IOvertimeRepository overtime,
-        IShiftRepository shifts,
+        IOvertimeService overtime,
+        IShiftService shifts,
         IDirectoryService directory,
         IOrganizationService organizations,
-        ITeamMembershipRepository teamMemberships,
+        ITeamService teams,
         ISupervisionService supervision,
         ICurrentUser currentUser)
     {
@@ -46,7 +46,7 @@ public class HoursSummaryService : IHoursSummaryService
         _shifts = shifts;
         _directory = directory;
         _organizations = organizations;
-        _teamMemberships = teamMemberships;
+        _teams = teams;
         _supervision = supervision;
         _currentUser = currentUser;
     }
@@ -64,8 +64,7 @@ public class HoursSummaryService : IHoursSummaryService
 
         if (!string.IsNullOrEmpty(teamId))
         {
-            var teamEmployeeIds = (await _teamMemberships.GetByTeamAsync(teamId))
-                .Select(tm => tm.EmployeeId).ToHashSet();
+            var teamEmployeeIds = (await _teams.GetMemberEmployeeIdsAsync(teamId)).ToHashSet();
             staff = staff.Where(m => teamEmployeeIds.Contains(m.UserId)).ToList();
         }
 

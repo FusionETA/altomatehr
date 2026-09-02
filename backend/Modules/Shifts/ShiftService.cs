@@ -133,4 +133,6 @@ public class ShiftService : IShiftService
         LunchBreakMinutes = s.LunchBreakMinutes,
         IsDefault = s.IsDefault,
     };
+
+    public Task<Shift?> GetByIdAsync(string id) => _shifts.GetByIdAsync(id);
 }

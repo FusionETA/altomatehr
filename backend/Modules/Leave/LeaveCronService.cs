@@ -16,19 +16,19 @@ public class LeaveCronService : ILeaveCronService
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly ILeaveTypeRepository _types;
     private readonly ILeaveApplicationRepository _apps;
-    private readonly IPolicyLeaveEntitlementRepository _policyEntitlements;
+    private readonly IPolicyService _policies;
 
     public LeaveCronService(
         ILeaveEntitlementRepository entitlements,
         ILeaveTypeRepository types,
         ILeaveApplicationRepository apps,
-        IPolicyLeaveEntitlementRepository policyEntitlements,
+        IPolicyService policies,
         IDirectoryService directory)
     {
         _entitlements = entitlements;
         _types = types;
         _apps = apps;
-        _policyEntitlements = policyEntitlements;
+        _policies = policies;
         _directory = directory;
     }
 
@@ -174,7 +174,7 @@ public class LeaveCronService : ILeaveCronService
             .GroupBy(m => m.UserId)
             .ToDictionary(g => g.Key, g => g.First().PolicyId);
         // ONE read covers both layers: the day count and the method override.
-        var policyRows = await _policyEntitlements.GetAllAsync();
+        var policyRows = await _policies.GetAllPolicyEntitlementsAsync();
         var policyMethods = policyRows.ToDictionary(e => (e.PolicyId, e.LeaveTypeId), e => e.AccrualMethod);
         var policyDays = policyRows.ToDictionary(e => (e.PolicyId, e.LeaveTypeId), e => e.DefaultDays);
 

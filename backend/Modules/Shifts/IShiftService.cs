@@ -16,6 +16,10 @@ public interface IShiftService
     // their project's default. Null when neither exists (callers fall back to
     // the org's working hours).
     Task<Shift?> GetEffectiveShiftAsync(string employeeId);
+
+    // A shift by id, as an entity. GetEffectiveShiftAsync resolves the whole
+    // assigned/project/org chain; this is the plain lookup for a known id.
+    Task<Shift?> GetByIdAsync(string id);
 }
 
 // Ok=false, Error=null → 404 (not found). Ok=false, Error!=null → 400 (validation).
