@@ -95,10 +95,6 @@ export const clockIn = (body: ClockInRequest = {}) =>
   apiPost<AttendanceRecord>("/attendance/clock-in", body);
 export const clockOut = (body: ClockOutRequest = {}) =>
   apiPost<AttendanceRecord>("/attendance/clock-out", body);
-export const approveAttendance = (id: string) => apiPost<AttendanceRecord>(`/attendance/${id}/approve`);
-export const rejectAttendance = (id: string, reviewNotes: string) =>
-  apiPost<AttendanceRecord>(`/attendance/${id}/reject`, { reviewNotes });
-
 // Server code returned when a clock is refused for being off-site.
 // Worked-minutes totals for a date range, computed server-side. The rule lives
 // in AttendanceHoursMath: a working day counts at most the shift length, real
@@ -177,9 +173,6 @@ export type AttendanceBulkResult = {
   items: { id: string; ok: boolean; error?: string | null }[];
 };
 
-// The server caps a batch at 200 ids and rejects the whole call past that.
-export const MAX_BULK_IDS = 200;
-
 // NOTE: every id below is an AttendanceApprovalRequest id (record.approvals[].id),
 // never a record id. The two are separate GUIDs and the server resolves only the
 // former, so passing a record id silently finds nothing.
@@ -188,17 +181,6 @@ export const bulkApproveAttendance = (ids: string[]) =>
 
 export const bulkRejectAttendance = (ids: string[], reviewNotes?: string) =>
   apiPost<AttendanceBulkResult>("/attendance/bulk/reject", { ids, reviewNotes });
-
-// Single-break decisions. Currently UNUSED: the approvals screen decides a whole
-// day at once and bulk/approve accepts break requests alongside clock events, so
-// nothing needs to decide one break on its own. Kept because these are the only
-// way to do that if a per-break control is ever wanted — /attendance/{id}/approve
-// won't, it only accepts CLOCK_IN/CLOCK_OUT kinds.
-export const approveBreak = (id: string) =>
-  apiPost<AttendanceBreak>(`/attendance/break/${id}/approve`);
-
-export const rejectBreak = (id: string, reviewNotes?: string) =>
-  apiPost<AttendanceBreak>(`/attendance/break/${id}/reject`, { reviewNotes });
 
 // Break approvals awaiting the caller as current-step approver.
 export const getTeamBreakApprovals = () =>
@@ -215,6 +197,9 @@ export function pendingApprovalIds(record: AttendanceRecord): string[] {
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 
 // Upload an off-site proof photo; returns the URL to attach to the clock request.
+// Unused so far: the off-site clock flow that needs a photo isn't built yet, so
+// nothing posts to /attendance/photo. Kept because it's that flow's uploader,
+// not leftovers.
 export function uploadAttendancePhoto(file: File) {
   const form = new FormData();
   form.append("photo", file);
