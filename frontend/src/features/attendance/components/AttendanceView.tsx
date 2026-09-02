@@ -511,36 +511,82 @@ function EventLocationDetails({
   );
 }
 
-// The buckets behind the headline. Only rows with time in them are shown, so a
-// plain week stays quiet and an unusual one explains itself.
+// How the clocked time became the counted time, as a visible subtraction.
+//
+// Shown as a ledger rather than a list of totals: the headline is smaller than
+// the sum of the days below it, and three unrelated numbers don't explain why.
+// With signs and a clocked starting point it reads itself.
 function HoursBucketList({ hours }: { hours: HoursBuckets | null }) {
   if (!hours) return null;
 
-  const rows: { label: string; min: number; hint?: string }[] = [
-    { label: "Counted", min: hours.normalMin },
+  // totalMin is worked time — after breaks, before the shift cap.
+  const clockedMin = hours.totalMin + hours.breakMin;
+
+  const deductions = [
     { label: "Break deducted", min: hours.breakMin },
     { label: "Beyond shift", min: hours.beyondShiftMin, hint: "needs approved OT" },
+  ].filter((row) => row.min > 0);
+
+  // Time outside the schedule never fed the counted figure, so it sits apart
+  // from the subtraction rather than inside it.
+  const aside = [
     { label: "Rest day", min: hours.restDayMin },
     { label: "Public holiday", min: hours.publicHolidayMin },
     { label: "OT approved", min: hours.otApprovedMin },
     { label: "OT pending", min: hours.otPendingMin, hint: "awaiting approval" },
   ].filter((row) => row.min > 0);
 
-  if (rows.length === 0) return null;
+  if (clockedMin === 0 && aside.length === 0) return null;
 
   return (
     <div className="space-y-1.5 pb-1">
-      {rows.map((row) => (
-        <div key={row.label} className="flex items-baseline justify-between gap-3">
-          <span className="text-xs text-muted-foreground">
-            {row.label}
-            {row.hint ? <span className="text-[10px] opacity-70"> &middot; {row.hint}</span> : null}
-          </span>
-          <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-foreground">
-            {formatHoursValue(row.min)}h
-          </span>
+      {clockedMin > 0 ? (
+        <>
+          <BucketRow label="Clocked" min={clockedMin} />
+          {deductions.map((row) => (
+            <BucketRow key={row.label} label={row.label} min={row.min} hint={row.hint} sign="minus" />
+          ))}
+          <div className="flex items-baseline justify-between gap-3 border-t border-border/50 pt-1.5">
+            <span className="text-xs font-semibold text-foreground">Counted</span>
+            <span className="whitespace-nowrap text-xs font-bold tabular-nums text-foreground">
+              {formatHoursValue(hours.normalMin)}h
+            </span>
+          </div>
+        </>
+      ) : null}
+
+      {aside.length > 0 ? (
+        <div className="space-y-1.5 pt-1.5">
+          {aside.map((row) => (
+            <BucketRow key={row.label} label={row.label} min={row.min} hint={row.hint} />
+          ))}
         </div>
-      ))}
+      ) : null}
+    </div>
+  );
+}
+
+function BucketRow({
+  label,
+  min,
+  hint,
+  sign,
+}: {
+  label: string;
+  min: number;
+  hint?: string;
+  sign?: "minus";
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-xs text-muted-foreground">
+        {label}
+        {hint ? <span className="text-[10px] opacity-70"> &middot; {hint}</span> : null}
+      </span>
+      <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
+        {sign === "minus" ? "\u2212 " : ""}
+        {formatHoursValue(min)}h
+      </span>
     </div>
   );
 }
