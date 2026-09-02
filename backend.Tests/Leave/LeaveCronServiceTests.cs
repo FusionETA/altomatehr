@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave;
@@ -264,7 +265,7 @@ public class LeaveCronServiceTests
             new FakeTypeRepo(types),
             new FakeAppRepo(apps ?? []),
             new FakePolicyEntitlementRepo(policyOverrides ?? []),
-            new FakeMembershipRepo(memberships ?? []));
+            TestDirectory.Over(new FakeMembershipRepo(memberships ?? [])));
     }
 
     private static LeaveApplication Approved(string emp, string type, double days, int year) => new()

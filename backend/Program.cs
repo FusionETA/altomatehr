@@ -232,6 +232,9 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMembershipRepository>();
+// The shared identity/membership read surface every module depends on — see
+// IDirectoryService. Keeps the Employees/Auth repositories out of other modules.
+builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();

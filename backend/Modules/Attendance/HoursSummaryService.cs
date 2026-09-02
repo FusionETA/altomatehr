@@ -22,10 +22,10 @@ public class HoursSummaryService : IHoursSummaryService
     private const int DefaultStandardDailyMin = 8 * 60;
     private const int DefaultLunchBreakMin = 60;
 
+    private readonly IDirectoryService _directory;
     private readonly IAttendanceRepository _attendance;
     private readonly IOvertimeRepository _overtime;
     private readonly IShiftRepository _shifts;
-    private readonly IOrganizationMembershipRepository _memberships;
     private readonly IOrganizationService _organizations;
     private readonly ITeamMembershipRepository _teamMemberships;
     private readonly ISupervisionService _supervision;
@@ -35,7 +35,7 @@ public class HoursSummaryService : IHoursSummaryService
         IAttendanceRepository attendance,
         IOvertimeRepository overtime,
         IShiftRepository shifts,
-        IOrganizationMembershipRepository memberships,
+        IDirectoryService directory,
         IOrganizationService organizations,
         ITeamMembershipRepository teamMemberships,
         ISupervisionService supervision,
@@ -44,7 +44,7 @@ public class HoursSummaryService : IHoursSummaryService
         _attendance = attendance;
         _overtime = overtime;
         _shifts = shifts;
-        _memberships = memberships;
+        _directory = directory;
         _organizations = organizations;
         _teamMemberships = teamMemberships;
         _supervision = supervision;
@@ -59,7 +59,7 @@ public class HoursSummaryService : IHoursSummaryService
 
     public async Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId)
     {
-        var members = await _memberships.GetForCurrentOrgAsync();
+        var members = await _directory.GetMembershipsForCurrentOrgAsync();
         var staff = members.Where(m => m.Role is "Employee" or "Supervisor").ToList();
 
         if (!string.IsNullOrEmpty(teamId))
@@ -147,7 +147,7 @@ public class HoursSummaryService : IHoursSummaryService
     private async Task<(HashSet<int> WorkingDays, int StandardDailyMin)> ResolveScheduleAsync(
         string employeeId, (string? Start, string? End) orgHours)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         Shift? shift = membership?.ShiftId is not null ? await _shifts.GetByIdAsync(membership.ShiftId) : null;
 
         if (shift is not null)

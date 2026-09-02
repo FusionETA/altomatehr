@@ -43,9 +43,43 @@ the other module's **service**.
 **Trade-off:** more files/boilerplate per feature (interface + impl at each
 layer). Accepted; the structure pays for itself in tests and clarity.
 
-**One documented exception:** **PolicyService** reads **IUserRepository** directly
-for **User.PolicyId**, rather than routing through an auth service — noted in code
-so it stays an exception, not a pattern.
+**Amended (2026-09-02) — the shared kernel.** The "one documented exception"
+this ADR used to record had quietly become the rule: an audit found **21**
+services reaching into another module's repository. Fourteen of them were the
+same two lookups — *"what is this user's membership in this org"* (17 calls) and
+*"who is this user"* — because every module needs to know who the caller is.
+That is not modules meddling in each other's business logic; it is a missing
+abstraction.
+
+So identity and membership **reads** are now a named shared kernel:
+**IDirectoryService** (`Modules/Employees/`). Any module may depend on it.
+Employees and Auth keep their repositories private and stay free to change how
+they store things. That took the count from 21 to 10.
+
+**Reads only, deliberately.** A module that needs to *create or change* another
+module's data has a real domain reason, and that belongs on the owning module's
+service where the rules live — not behind a generic lookup.
+
+**The remaining exceptions, each with a reason:**
+
+| Service | Reaches into | Why it stays |
+|---|---|---|
+| `DirectoryService` | `IUserRepository` | It *is* the seam — this is the intended coupling. |
+| `EmployeeService` | `IUserRepository` | Creating an employee creates their login; Employees owns that lifecycle. |
+| `OrganizationService` | `IOrganizationMembershipRepository` | Creating an org creates the owner's membership, in one transaction. |
+| `AttendanceService` | `IEmployeePolicyRepository` | |
+| `HoursSummaryService` | `IOvertime` / `IShift` / `ITeamMembershipRepository` | Reporting reads that span modules by nature. |
+| `AdminOverviewService` | `IClaims` / `IProjectRepository` | Same — a cross-module dashboard. |
+| `LeaveCronService` | `IPolicyLeaveEntitlementRepository` | |
+
+The reporting/dashboard rows are the honest leftovers: a read that aggregates
+five modules has no single owner to route through. Revisit if one grows rules of
+its own.
+
+**The lesson worth keeping:** when a rule is broken 21 times over months and
+nobody objects, the code is telling you the rule is wrong — or that something
+it needs has no name yet. Amend the ADR or name the thing. An ADR everyone
+silently violates is worse than none, because it stops being a signal.
 
 ---
 

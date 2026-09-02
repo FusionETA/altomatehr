@@ -12,24 +12,24 @@ public class LeaveCronService : ILeaveCronService
     private static readonly TimeZoneInfo Myt =
         TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 
+    private readonly IDirectoryService _directory;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly ILeaveTypeRepository _types;
     private readonly ILeaveApplicationRepository _apps;
     private readonly IPolicyLeaveEntitlementRepository _policyEntitlements;
-    private readonly IOrganizationMembershipRepository _memberships;
 
     public LeaveCronService(
         ILeaveEntitlementRepository entitlements,
         ILeaveTypeRepository types,
         ILeaveApplicationRepository apps,
         IPolicyLeaveEntitlementRepository policyEntitlements,
-        IOrganizationMembershipRepository memberships)
+        IDirectoryService directory)
     {
         _entitlements = entitlements;
         _types = types;
         _apps = apps;
         _policyEntitlements = policyEntitlements;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     // ── monthly accrual + carry expiry sweep ────────────────────────────────
@@ -86,7 +86,7 @@ public class LeaveCronService : ILeaveCronService
         var prevYear = targetYear - 1;
         var ctx = await LoadContextAsync(prevYear);
 
-        var members = await _memberships.GetForCurrentOrgAsync();
+        var members = await _directory.GetMembershipsForCurrentOrgAsync();
         var prevRows = (await _entitlements.GetByYearAsync(prevYear))
             .ToDictionary(r => (r.EmployeeId, r.LeaveTypeId));
         var existing = (await _entitlements.GetByYearAsync(targetYear))
@@ -170,7 +170,7 @@ public class LeaveCronService : ILeaveCronService
     private async Task<CronContext> LoadContextAsync(int usageYear)
     {
         var types = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
-        var policyByEmployee = (await _memberships.GetForCurrentOrgAsync())
+        var policyByEmployee = (await _directory.GetMembershipsForCurrentOrgAsync())
             .GroupBy(m => m.UserId)
             .ToDictionary(g => g.Key, g => g.First().PolicyId);
         // ONE read covers both layers: the day count and the method override.

@@ -36,6 +36,7 @@ public class AttendanceService : IAttendanceService
     private static readonly IReadOnlySet<AttendanceApprovalKind> AllKinds =
         new HashSet<AttendanceApprovalKind>(RecordKinds.Concat(BreakKinds));
 
+    private readonly IDirectoryService _directory;
     private readonly IAttendanceRepository _repo;
     private readonly IAttendanceSessionRepository _sessions;
     private readonly IAttendanceBreakRepository _breaks;
@@ -48,7 +49,6 @@ public class AttendanceService : IAttendanceService
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
     private readonly IEmployeePolicyRepository _policyRepo;
-    private readonly IOrganizationMembershipRepository _memberships;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -63,7 +63,7 @@ public class AttendanceService : IAttendanceService
         ISupervisionService supervision,
         IApprovalRouter router,
         IEmployeePolicyRepository policyRepo,
-        IOrganizationMembershipRepository memberships)
+        IDirectoryService directory)
     {
         _repo = repo;
         _sessions = sessions;
@@ -77,7 +77,7 @@ public class AttendanceService : IAttendanceService
         _supervision = supervision;
         _router = router;
         _policyRepo = policyRepo;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
@@ -850,7 +850,7 @@ public class AttendanceService : IAttendanceService
         IReadOnlyDictionary<string, EmployeePolicy> policyById,
         IReadOnlyDictionary<string, EmployeePolicy> defaultByOrg)
     {
-        var membership = await _memberships.GetAsync(organizationId, employeeId);
+        var membership = await _directory.GetMembershipAsync(organizationId, employeeId);
         if (membership?.PolicyId is not null && policyById.TryGetValue(membership.PolicyId, out var assigned))
             return assigned;
         return defaultByOrg.GetValueOrDefault(organizationId);

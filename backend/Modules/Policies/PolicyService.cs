@@ -9,18 +9,18 @@ namespace AltomateHR.Api.Modules.Policies;
 // (a deliberate cross-module read — policy resolution is a Policy concern).
 public class PolicyService : IPolicyService
 {
+    private readonly IDirectoryService _directory;
     private readonly IEmployeePolicyRepository _policies;
     private readonly IPolicyLeaveEntitlementRepository _entitlements;
-    private readonly IOrganizationMembershipRepository _memberships;
 
     public PolicyService(
         IEmployeePolicyRepository policies,
         IPolicyLeaveEntitlementRepository entitlements,
-        IOrganizationMembershipRepository memberships)
+        IDirectoryService directory)
     {
         _policies = policies;
         _entitlements = entitlements;
-        _memberships = memberships;
+        _directory = directory;
     }
 
     public async Task<IEnumerable<PolicyDto>> GetAllAsync()
@@ -95,7 +95,7 @@ public class PolicyService : IPolicyService
 
     public async Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId)
     {
-        var membership = await _memberships.GetForUserInCurrentOrgAsync(employeeId);
+        var membership = await _directory.GetMembershipForUserAsync(employeeId);
         var policy = membership?.PolicyId is not null ? await _policies.GetByIdAsync(membership.PolicyId) : null;
         return policy ?? await _policies.GetDefaultAsync();
     }
@@ -107,7 +107,7 @@ public class PolicyService : IPolicyService
         GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds)
     {
         var ids = employeeIds.Distinct().ToList();
-        var memberships = await _memberships.GetForCurrentOrgAsync();
+        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
         var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId);
         var fallback = await _policies.GetDefaultAsync();
 

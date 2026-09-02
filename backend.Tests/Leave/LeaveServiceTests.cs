@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -512,7 +513,7 @@ public class LeaveServiceTests
             supervision ?? new FakeSupervisionService(),
             policy ?? new FakePolicyService(),
             router ?? new FakeApprovalRouter(),
-            memberships ?? new FakeMembershipRepository("usr-emp"),
+            TestDirectory.Over(memberships ?? new FakeMembershipRepository("usr-emp")),
             currentUser ?? new FakeCurrentUser("usr-admin", "Admin"),
             new FakeEntitlementRepo(entitlementRows ?? []),
             xero ?? new FakeXeroService(),

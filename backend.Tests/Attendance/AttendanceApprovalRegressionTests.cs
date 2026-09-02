@@ -1,3 +1,4 @@
+using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
@@ -83,7 +84,7 @@ public class AttendanceApprovalRegressionTests
             supervision: new FakeSupervisionService(),
             router: new FakeApprovalRouter(),
             policyRepo: new FakeEmployeePolicyRepository(),
-            memberships: new FakeOrganizationMembershipRepository());
+            directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()));
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
