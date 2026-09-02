@@ -50,7 +50,9 @@ public partial class ReceiptOcrService : IReceiptOcrService
             .Where(a => a is { IsSelectable: true, IsArchived: false })
             .ToList();
 
-        var prompt = BuildPrompt(candidates.Select(a => (a.Id, a.Name, a.Type)));
+        // Type is non-nullable but lands in a string? Hint slot, and C# won't
+        // vary tuple nullability implicitly — hence the cast.
+        var prompt = BuildPrompt(candidates.Select(a => (a.Id, a.Name, (string?)a.Type)));
         var raw = await _gemini.GenerateFromImageAsync(prompt, fileBytes, mimeType, cancellationToken);
 
         var parsed = ParseResponse(raw);
