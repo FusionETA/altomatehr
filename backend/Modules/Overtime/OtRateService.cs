@@ -59,7 +59,36 @@ public class OtRateService : IOtRateService
         };
     }
 
-    private async Task<OtDayType> ResolveDayTypeAsync(string employeeId, DateTime date, string? projectId)
+    public async Task<IReadOnlyDictionary<DateTime, OtDayType>> ResolveDayTypesAsync(
+        string employeeId, DateTime from, DateTime to, string? projectId)
+    {
+        var map = new Dictionary<DateTime, OtDayType>();
+        if (to.Date < from.Date) return map;
+
+        // Two queries total, not two per day.
+        var shift = await _shifts.GetEffectiveShiftAsync(employeeId);
+        var workingDays = ParseWorkingDays(shift?.WorkingDays);
+        var holidays = (await _holidays.GetInRangeAsync(from.Date, to.Date))
+            .Where(h => h.ProjectId is null || h.ProjectId == projectId)
+            // HolidayDto.Date is a yyyy-MM-dd string.
+            .Select(h => DateTime.TryParse(h.Date, out var d) ? d.Date : (DateTime?)null)
+            .Where(d => d is not null)
+            .Select(d => d!.Value)
+            .ToHashSet();
+
+        for (var d = from.Date; d <= to.Date; d = d.AddDays(1))
+        {
+            // Public holiday beats rest day — the higher premium wins, matching
+            // the single-date resolver.
+            map[d] = holidays.Contains(d)
+                ? OtDayType.PUBLIC_HOLIDAY
+                : workingDays.Contains(IsoDayOfWeek(d)) ? OtDayType.NORMAL_DAY : OtDayType.REST_DAY;
+        }
+
+        return map;
+    }
+
+    public async Task<OtDayType> ResolveDayTypeAsync(string employeeId, DateTime date, string? projectId)
     {
         if (await _holidays.IsHolidayAsync(date, projectId)) return OtDayType.PUBLIC_HOLIDAY;
 
