@@ -1,13 +1,19 @@
 name: CI
 
-# The quality gate. Runs on every Pull Request to main (so a broken build/test
-# is caught BEFORE merge — e.g. a test fake missing a new interface method), and
-# again on main itself after a merge. No secrets needed; this never deploys.
+# The quality gate. Runs on every Pull Request to main, on main itself after a
+# merge, and on every push to EVERY branch. No secrets needed; this never deploys.
+#
+# Feature branches are included because leaving them out cost us: rachel's branch
+# sat with a test project that wouldn't compile for 33 hours — a fake missing a
+# new interface member, exactly what this gate exists to catch — and nothing ran
+# to say so, because the trigger only listened to main. A branch nobody thought
+# to list is precisely the one that breaks, so this matches '**' rather than
+# naming branches.
 on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: ['**']
 
 jobs:
   test:

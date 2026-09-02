@@ -7,6 +7,11 @@ export type Organization = {
   defaultMileageRate: number;
   mileageUnit: "KM" | "MILE";
   geofenceRadiusMeters: number;
+  // The org's default schedule. An employee's assigned Shift overrides these;
+  // the backend falls back to them when nobody has assigned one.
+  workingHoursStart: string | null;   // "HH:mm", 24h
+  workingHoursEnd: string | null;     // "HH:mm", 24h
+  workingDays: string | null;         // CSV ISO weekdays, "1,2,3,4,5"; null = Mon-Fri
   plan: string;
   tier: string | null;
   addons: string[];

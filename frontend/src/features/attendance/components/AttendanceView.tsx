@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import {
   getAttendanceHistory,
+  getMyHoursSummary,
   getTodayAttendance,
+  type HoursBuckets,
   type AttendanceRecord,
 } from "../api";
 import { AttendanceApprovals } from "./AttendanceApprovals";
@@ -23,7 +25,6 @@ import { formatDistance } from "@/shared/lib/geolocation";
 
 const TZ = "Asia/Kuala_Lumpur";
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
-const WORKDAY_MINUTES = 8 * 60;
 
 function fmtTime(iso: string | null) {
   if (!iso) return "-";
@@ -95,19 +96,6 @@ function getMonthSummary(records: AttendanceRecord[]) {
   };
 }
 
-function expectedMonthMinutes(now: Date) {
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-  let workdays = 0;
-  for (let day = 1; day <= today; day += 1) {
-    const d = new Date(year, month, day);
-    const weekday = d.getDay();
-    if (weekday !== 0 && weekday !== 6) workdays += 1;
-  }
-  return workdays * WORKDAY_MINUTES;
-}
-
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -133,7 +121,6 @@ function buildWeekBreakdown(records: AttendanceRecord[], now: Date) {
       label: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(day),
       shortLabel: new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(day),
       actualMin: record?.durationMin ?? 0,
-      expectedMin: WORKDAY_MINUTES,
       status: record?.status ?? null,
     };
   });
@@ -163,26 +150,18 @@ function buildMonthBreakdown(records: AttendanceRecord[], now: Date) {
     weekEnd.setDate(cursor.getDate() + 6);
     const rangeEnd = new Date(Math.min(weekEnd.getTime(), today.getTime()));
 
-    let expectedDays = 0;
-    for (let day = new Date(rangeStart); day <= rangeEnd; day.setDate(day.getDate() + 1)) {
-      const weekday = day.getDay();
-      if (weekday !== 0 && weekday !== 6) expectedDays += 1;
-    }
-
     const startKey = dateKey(rangeStart);
     const endKey = dateKey(rangeEnd);
     const actualMin = records
       .filter((record) => record.date >= startKey && record.date <= endKey)
       .reduce((sum, record) => sum + (record.durationMin ?? 0), 0);
-    const expectedMin = expectedDays * WORKDAY_MINUTES;
 
-    if (expectedMin > 0 || actualMin > 0) {
+    if (actualMin > 0) {
       weeks.push({
         key: `${startKey}-${endKey}`,
         label: `Week ${weeks.length + 1}`,
         range: formatDateRange(rangeStart, rangeEnd),
         actualMin,
-        expectedMin,
       });
     }
 
@@ -254,9 +233,31 @@ export function AttendanceView({
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [radius, setRadius] = useState(200);
+  // Org working hours. An employee with an assigned Shift is really measured
+  // against that shift's times — the backend resolves shift first and only
+  // falls back to these — so this header is right for anyone unshifted and
+  // approximate for anyone shifted. Wiring the shift needs /shifts, which has
+  // no frontend yet.
+  const [orgHours, setOrgHours] = useState<{ start?: string | null; end?: string | null }>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [now] = useState(() => new Date());
+  const [weekHours, setWeekHours] = useState<HoursBuckets | null>(null);
+  const [monthHours, setMonthHours] = useState<HoursBuckets | null>(null);
+
+  // The displayed week runs Mon-Fri and reaches back into the previous month,
+  // so it needs its own range rather than a slice of the month's.
+  const weekRange = useMemo(() => {
+    const start = weekStart(now);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 4);
+    return { from: dateKey(start), to: dateKey(end), start, end };
+  }, [now]);
+
+  const monthRange = useMemo(() => {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: dateKey(start), to: dateKey(now), start, end: now };
+  }, [now]);
 
   useEffect(() => {
     Promise.all([getTodayAttendance(), getAttendanceHistory(), getProjects(), getOrganization()])
@@ -265,10 +266,28 @@ export function AttendanceView({
         setHistory(h);
         setProjects(p.filter((x) => !x.isArchived));
         setRadius(org.geofenceRadiusMeters);
+        setOrgHours({ start: org.workingHoursStart, end: org.workingHoursEnd });
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Totals are computed server-side so they match what payroll reads. A failure
+  // here leaves the cards showing a dash rather than a wrong number.
+  useEffect(() => {
+    Promise.all([
+      getMyHoursSummary(weekRange.from, weekRange.to),
+      getMyHoursSummary(monthRange.from, monthRange.to),
+    ])
+      .then(([week, month]) => {
+        setWeekHours(week);
+        setMonthHours(month);
+      })
+      .catch(() => {
+        setWeekHours(null);
+        setMonthHours(null);
+      });
+  }, [weekRange, monthRange]);
 
   const clockedIn = today?.timeIn != null && today?.timeOut == null;
   const clockedOut = today?.timeOut != null;
@@ -282,15 +301,6 @@ export function AttendanceView({
   const monthRecords = useMemo(
     () => history.filter((r) => r.date.startsWith(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`)),
     [history, now],
-  );
-
-  const weeklyActual = useMemo(
-    () => buildWeekBreakdown(history, now).reduce((sum, day) => sum + day.actualMin, 0),
-    [history, now],
-  );
-  const monthlyActual = useMemo(
-    () => monthRecords.reduce((sum, r) => sum + (r.durationMin ?? 0), 0),
-    [monthRecords],
   );
 
   const weekBreakdown = useMemo(() => buildWeekBreakdown(history, now), [history, now]);
@@ -339,7 +349,9 @@ export function AttendanceView({
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Working hours
             </p>
-            <p className="mt-0.5 text-lg font-extrabold text-foreground">09:00 AM - 06:00 PM</p>
+            <p className="mt-0.5 text-lg font-extrabold text-foreground">
+              {formatClockRange(orgHours.start, orgHours.end)}
+            </p>
           </div>
           {today?.lateByMin != null ? (
             <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
@@ -356,12 +368,8 @@ export function AttendanceView({
       </section>
 
       <HoursProgress
-        weekly={{ actualMin: weeklyActual, expectedMin: 5 * WORKDAY_MINUTES, days: weekBreakdown }}
-        monthly={{
-          actualMin: monthlyActual,
-          expectedMin: expectedMonthMinutes(now),
-          weeks: monthBreakdown,
-        }}
+        weekly={{ hours: weekHours, range: formatDateRange(weekRange.start, weekRange.end), days: weekBreakdown }}
+        monthly={{ hours: monthHours, range: monthLabel(now), weeks: monthBreakdown }}
       />
 
       <section>
@@ -503,12 +511,113 @@ function EventLocationDetails({
   );
 }
 
+// How the clocked time became the counted time, as a visible subtraction.
+//
+// Shown as a ledger rather than a list of totals: the headline is smaller than
+// the sum of the days below it, and three unrelated numbers don't explain why.
+// With signs and a clocked starting point it reads itself.
+function HoursBucketList({ hours }: { hours: HoursBuckets | null }) {
+  if (!hours) return null;
+
+  // totalMin is worked time — after breaks, before the shift cap.
+  const clockedMin = hours.totalMin + hours.breakMin;
+
+  const deductions = [
+    { label: "Break deducted", min: hours.breakMin },
+    { label: "Beyond shift", min: hours.beyondShiftMin, hint: "needs approved OT" },
+  ].filter((row) => row.min > 0);
+
+  // Time outside the schedule never fed the counted figure, so it sits apart
+  // from the subtraction rather than inside it.
+  const aside = [
+    { label: "Rest day", min: hours.restDayMin },
+    { label: "Public holiday", min: hours.publicHolidayMin },
+    { label: "OT approved", min: hours.otApprovedMin },
+    { label: "OT pending", min: hours.otPendingMin, hint: "awaiting approval" },
+  ].filter((row) => row.min > 0);
+
+  if (clockedMin === 0 && aside.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5 pb-1">
+      {clockedMin > 0 ? (
+        <>
+          <BucketRow label="Clocked" min={clockedMin} />
+          {deductions.map((row) => (
+            <BucketRow key={row.label} label={row.label} min={row.min} hint={row.hint} sign="minus" />
+          ))}
+          <div className="flex items-baseline justify-between gap-3 border-t border-border/50 pt-1.5">
+            <span className="text-xs font-semibold text-foreground">Counted</span>
+            <span className="whitespace-nowrap text-xs font-bold tabular-nums text-foreground">
+              {formatHoursValue(hours.normalMin)}h
+            </span>
+          </div>
+        </>
+      ) : null}
+
+      {aside.length > 0 ? (
+        <div className="space-y-1.5 pt-1.5">
+          {aside.map((row) => (
+            <BucketRow key={row.label} label={row.label} min={row.min} hint={row.hint} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BucketRow({
+  label,
+  min,
+  hint,
+  sign,
+}: {
+  label: string;
+  min: number;
+  hint?: string;
+  sign?: "minus";
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-xs text-muted-foreground">
+        {label}
+        {hint ? <span className="text-[10px] opacity-70"> &middot; {hint}</span> : null}
+      </span>
+      <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
+        {sign === "minus" ? "\u2212 " : ""}
+        {formatHoursValue(min)}h
+      </span>
+    </div>
+  );
+}
+
+// "09:00"/"18:00" as stored -> "09:00 AM - 06:00 PM". Falls back to a dash
+// rather than inventing hours the org hasn't set.
+function formatClockRange(start?: string | null, end?: string | null) {
+  const one = (hm?: string | null) => {
+    if (!hm) return null;
+    const [h, m] = hm.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    const suffix = h < 12 ? "AM" : "PM";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(hour12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${suffix}`;
+  };
+
+  const from = one(start);
+  const to = one(end);
+  return from && to ? `${from} - ${to}` : "—";
+}
+
+function monthLabel(now: Date) {
+  return `${new Intl.DateTimeFormat("en-US", { month: "long" }).format(now)} so far`;
+}
+
 function HoursProgress({
   weekly,
   monthly,
 }: {
-  weekly: { actualMin: number; expectedMin: number; days: WeekBreakdownDay[] };
-  monthly: { actualMin: number; expectedMin: number; weeks: MonthBreakdownWeek[] };
+  weekly: { hours: HoursBuckets | null; range: string; days: WeekBreakdownDay[] };
+  monthly: { hours: HoursBuckets | null; range: string; weeks: MonthBreakdownWeek[] };
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -523,7 +632,6 @@ type WeekBreakdownDay = {
   label: string;
   shortLabel: string;
   actualMin: number;
-  expectedMin: number;
   status: AttendanceRecord["status"] | null;
 };
 
@@ -532,16 +640,19 @@ type MonthBreakdownWeek = {
   label: string;
   range: string;
   actualMin: number;
-  expectedMin: number;
 };
 
 function WeeklyProgressCard({
   entry,
 }: {
-  entry: { actualMin: number; expectedMin: number; days: WeekBreakdownDay[] };
+  entry: { hours: HoursBuckets | null; range: string; days: WeekBreakdownDay[] };
 }) {
   const [open, setOpen] = useState(false);
-  const pct = entry.expectedMin <= 0 ? 0 : Math.min(100, Math.round((entry.actualMin / entry.expectedMin) * 100));
+  const hours = entry.hours;
+  const pct =
+    !hours || hours.expectedMin <= 0
+      ? 0
+      : Math.min(100, Math.round((hours.normalMin / hours.expectedMin) * 100));
 
   return (
     <section className={`${CARD} p-4 sm:p-5`}>
@@ -552,13 +663,15 @@ function WeeklyProgressCard({
         className="flex w-full items-start justify-between gap-3 text-left"
       >
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">This week</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            This week &middot; {entry.range}
+          </p>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             <span className="text-3xl font-bold tabular-nums text-foreground">
-              {formatHoursValue(entry.actualMin)}h
+              {hours ? `${formatHoursValue(hours.normalMin)}h` : "—"}
             </span>
             <span className="text-sm font-semibold text-muted-foreground">
-              of {formatHoursValue(entry.expectedMin)}h expected
+              {hours ? `of ${formatHoursValue(hours.expectedMin)}h expected` : "hours unavailable"}
             </span>
           </div>
         </div>
@@ -573,24 +686,20 @@ function WeeklyProgressCard({
 
       {open ? (
         <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
-          {entry.days.map((day) => {
-            const dayPct =
-              day.expectedMin <= 0 ? 0 : Math.min(100, Math.round((day.actualMin / day.expectedMin) * 100));
-            return (
-              <div key={day.key} className="grid grid-cols-[4.25rem_1fr_auto] items-center gap-3">
-                <div>
-                  <p className="text-xs font-bold text-foreground">{day.shortLabel}</p>
-                  <p className="text-[10px] text-muted-foreground">{day.label}</p>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-secondary/40">
-                  <div className="h-full bg-primary/80" style={{ width: `${dayPct}%` }} />
-                </div>
-                <p className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
-                  {formatHoursValue(day.actualMin)} / {formatHoursValue(day.expectedMin)}h
-                </p>
-              </div>
-            );
-          })}
+          <HoursBucketList hours={hours} />
+          <p className="pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Clocked each day
+          </p>
+          {entry.days.map((day) => (
+            <div key={day.key} className="flex items-baseline justify-between gap-3">
+              <span className="text-xs text-muted-foreground">
+                <span className="font-bold text-foreground">{day.shortLabel}</span> {day.label}
+              </span>
+              <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
+                {day.actualMin > 0 ? `${formatHoursValue(day.actualMin)}h` : "—"}
+              </span>
+            </div>
+          ))}
         </div>
       ) : null}
     </section>
@@ -600,10 +709,14 @@ function WeeklyProgressCard({
 function MonthlyProgressCard({
   entry,
 }: {
-  entry: { actualMin: number; expectedMin: number; weeks: MonthBreakdownWeek[] };
+  entry: { hours: HoursBuckets | null; range: string; weeks: MonthBreakdownWeek[] };
 }) {
   const [open, setOpen] = useState(false);
-  const pct = entry.expectedMin <= 0 ? 0 : Math.min(100, Math.round((entry.actualMin / entry.expectedMin) * 100));
+  const hours = entry.hours;
+  const pct =
+    !hours || hours.expectedMin <= 0
+      ? 0
+      : Math.min(100, Math.round((hours.normalMin / hours.expectedMin) * 100));
   const tone = pct >= 100 ? "bg-success" : pct >= 75 ? "bg-primary" : pct >= 40 ? "bg-amber-500" : "bg-destructive";
 
   return (
@@ -615,13 +728,15 @@ function MonthlyProgressCard({
         className="flex w-full items-start justify-between gap-3 text-left"
       >
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">This month</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {entry.range}
+          </p>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             <span className="text-3xl font-bold tabular-nums text-foreground">
-              {formatHoursValue(entry.actualMin)}h
+              {hours ? `${formatHoursValue(hours.normalMin)}h` : "—"}
             </span>
             <span className="text-sm font-semibold text-muted-foreground">
-              of {formatHoursValue(entry.expectedMin)}h expected
+              {hours ? `of ${formatHoursValue(hours.expectedMin)}h expected` : "hours unavailable"}
             </span>
           </div>
         </div>
@@ -636,24 +751,20 @@ function MonthlyProgressCard({
 
       {open ? (
         <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
-          {entry.weeks.map((week) => {
-            const weekPct =
-              week.expectedMin <= 0 ? 0 : Math.min(100, Math.round((week.actualMin / week.expectedMin) * 100));
-            return (
-              <div key={week.key} className="grid grid-cols-[4.75rem_1fr_auto] items-center gap-3">
-                <div>
-                  <p className="text-xs font-bold text-foreground">{week.label}</p>
-                  <p className="text-[10px] text-muted-foreground">{week.range}</p>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-secondary/40">
-                  <div className={`h-full ${tone}`} style={{ width: `${weekPct}%` }} />
-                </div>
-                <p className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
-                  {formatHoursValue(week.actualMin)} / {formatHoursValue(week.expectedMin)}h
-                </p>
-              </div>
-            );
-          })}
+          <HoursBucketList hours={hours} />
+          <p className="pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Clocked each week
+          </p>
+          {entry.weeks.map((week) => (
+            <div key={week.key} className="flex items-baseline justify-between gap-3">
+              <span className="text-xs text-muted-foreground">
+                <span className="font-bold text-foreground">{week.label}</span> {week.range}
+              </span>
+              <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
+                {formatHoursValue(week.actualMin)}h
+              </span>
+            </div>
+          ))}
         </div>
       ) : null}
     </section>

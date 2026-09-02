@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -12,9 +12,15 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { BreakControl } from "@/features/attendance/components/BreakControl";
+import {
+  ClockOutDialog,
+  type ClockOutChoice,
+} from "@/features/attendance/components/ClockOutDialog";
 import {
   clockIn,
   clockOut,
+  submitTimeAdjustment,
   getTodayAttendance,
   OFF_SITE_CODE,
   type AttendanceRecord,
@@ -57,6 +63,7 @@ export function DashboardView({
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
+  const [clockOutOpen, setClockOutOpen] = useState(false);
 
   // Live clock — the "RIGHT NOW" readout ticks every second.
   useEffect(() => {
@@ -103,7 +110,25 @@ export function DashboardView({
     now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
   const firstName = buildName(user.email).split(" ")[0];
 
-  async function handleClock() {
+  // Ending a break changes today's totals, so the card re-reads the record.
+  const refreshToday = useCallback(() => {
+    getTodayAttendance()
+      .then(setToday)
+      .catch(() => undefined);
+  }, []);
+
+  function handleClock() {
+    // Clocking in is unambiguous; clocking out is the one that may need
+    // correcting, so it goes through the dialog.
+    if (state === "IN") {
+      setError(null);
+      setClockOutOpen(true);
+      return;
+    }
+    void runClock();
+  }
+
+  async function runClock(choice?: ClockOutChoice) {
     setBusy(true);
     setError(null);
     let coords: Coords | undefined;
@@ -118,11 +143,35 @@ export function DashboardView({
       } else {
         await clockOut({ lat: coords?.lat, lng: coords?.lng });
       }
-      setToday(await getTodayAttendance());
+      const refreshed = await getTodayAttendance();
+      setToday(refreshed);
+
+      // The clock-out landed first, deliberately: if this fails the day still
+      // has a real clock-out, and the employee can ask again from the
+      // Attendance screen.
+      if (choice?.adjustment && refreshed?.id) {
+        await submitTimeAdjustment({
+          recordId: refreshed.id,
+          requestedTimeOut: choice.adjustment.requestedTimeOut,
+          reason: choice.adjustment.reason,
+        });
+      }
+      setClockOutOpen(false);
     } catch (e) {
       // Off-site clocks need a remark + photo — that flow lives on the full
       // Attendance screen, so hand the user off there to finish.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
+        // Except when a correction was typed: the clock-out never happened, so
+        // there is no record to attach it to, and navigating away would drop
+        // what they wrote without saying so. Keep them here with the reason
+        // still on screen.
+        if (choice?.adjustment) {
+          setError(
+            "This clock-out needs a remark and photo because you're off-site. "
+            + "Finish it on the Attendance screen, then request the time correction from there.",
+          );
+          return;
+        }
         onNavigate("attendance");
         return;
       }
@@ -204,6 +253,22 @@ export function DashboardView({
               </p>
             </div>
           </div>
+
+          <BreakControl
+            recordId={today?.id ?? null}
+            clockedIn={state === "IN"}
+            onChange={refreshToday}
+          />
+
+          {clockOutOpen && today ? (
+            <ClockOutDialog
+              today={today}
+              busy={busy}
+              error={error}
+              onConfirm={(choice) => void runClock(choice)}
+              onClose={() => setClockOutOpen(false)}
+            />
+          ) : null}
 
           {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
         </div>

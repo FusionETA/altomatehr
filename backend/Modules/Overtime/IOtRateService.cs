@@ -4,6 +4,19 @@ public interface IOtRateService
 {
     // Which OT multiplier applies to this employee on this date, and why.
     Task<OtRateResolution> ResolveAsync(string employeeId, DateTime date, string? projectId);
+
+    // Just the day-type classification, without resolving policy or rates.
+    // Exposed so the attendance hours summary classifies days through the SAME
+    // code as the pay rate — two implementations of "is this a working day"
+    // would eventually disagree about a Saturday.
+    Task<OtDayType> ResolveDayTypeAsync(string employeeId, DateTime date, string? projectId);
+
+    // Batched variant for a date range: resolves the shift once and the holiday
+    // calendar once, then classifies every day in [from, to]. The single-date
+    // version costs two queries per call, so a month-long summary through it
+    // would fire hundreds. Keyed by date.
+    Task<IReadOnlyDictionary<DateTime, OtDayType>> ResolveDayTypesAsync(
+        string employeeId, DateTime from, DateTime to, string? projectId);
 }
 
 // What kind of day this is, for OT-rate purposes. Public holiday beats rest

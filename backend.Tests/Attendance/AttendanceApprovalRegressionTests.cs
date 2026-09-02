@@ -169,6 +169,9 @@ public class AttendanceApprovalRegressionTests
             Task.FromResult(_breaks.Where(b => b.AttendanceRecordId == attendanceRecordId).ToList());
         public Task<AttendanceBreak> AddAsync(AttendanceBreak brk) { _breaks.Add(brk); return Task.FromResult(brk); }
         public Task UpdateAsync(AttendanceBreak brk) => Task.CompletedTask;
+
+        public Task<List<AttendanceBreak>> GetByRecordsAsync(IEnumerable<string> attendanceRecordIds) =>
+            Task.FromResult(new List<AttendanceBreak>());
     }
 
     // The star of the test: an in-memory approval-request store whose contents
