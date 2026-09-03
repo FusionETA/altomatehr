@@ -18,6 +18,7 @@ import {
   type HoursBuckets,
   type AttendanceRecord,
 } from "../api";
+import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
 import { AttendanceApprovals } from "./AttendanceApprovals";
 import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
@@ -171,55 +172,116 @@ function buildMonthBreakdown(records: AttendanceRecord[], now: Date) {
   return weeks;
 }
 
-function GeoChip({ distance, radius }: { distance: number | null; radius: number }) {
-  if (distance == null) return null;
-  const onSite = distance <= radius;
+// One chip for the whole day, and only when something was off.
+//
+// This used to render per clock event, so an ordinary day carried "On-site 3m"
+// AND "On-site 5m" — a good day described twice, wrapping onto a second line to
+// say nothing happened. Silence is the better signal: a row with no chip is a
+// row that behaved.
+// History periods. Defaults to the current month rather than everything: "what
+// did I work this month" is the question people actually arrive with, and a
+// month of rows fits on a screen where a year does not.
+type HistoryPeriod = "THIS_MONTH" | "LAST_MONTH" | "LAST_3_MONTHS" | "ALL";
+
+const historyPeriods = ["LAST_MONTH", "LAST_3_MONTHS", "ALL"] as const;
+
+const historyPeriodLabels: Partial<Record<HistoryPeriod, string>> = {
+  LAST_MONTH: "Last month",
+  LAST_3_MONTHS: "Last 3 months",
+  ALL: "All",
+};
+
+function inPeriod(date: string, period: HistoryPeriod, now: Date) {
+  if (period === "ALL") return true;
+  const d = new Date(`${date}T00:00:00`);
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  if (period === "THIS_MONTH") return d >= startOfThisMonth;
+  if (period === "LAST_MONTH") {
+    const startOfLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d >= startOfLast && d < startOfThisMonth;
+  }
+  return d >= new Date(now.getFullYear(), now.getMonth() - 2, 1);
+}
+
+// A day worth looking at: late, absent, still open, or clocked from outside the
+// geofence. With thirty shifts on screen this is the difference between reading
+// a list and scanning one.
+function isProblemDay(record: AttendanceRecord, radius: number) {
+  if (record.status === "MISSING") return true;
+  if (record.lateByMin != null || record.status === "LATE") return true;
+  if (record.timeIn != null && record.timeOut == null) return true;
+  return offSiteDistance(record, radius) != null;
+}
+
+function GeoChip({
+  clockIn,
+  clockOut,
+  radius,
+}: {
+  clockIn: number | null;
+  clockOut: number | null;
+  radius: number;
+}) {
+  const distances = [clockIn, clockOut].filter((d): d is number => d != null);
+  if (distances.length === 0) return null;
+
+  // The worst end is the one worth reporting.
+  const worst = Math.max(...distances);
+  if (worst <= radius) return null;
+
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-        onSite ? "bg-secondary text-secondary-foreground" : "bg-amber-100 text-amber-800"
-      }`}
-    >
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
       <MapPin className="h-3 w-3" />
-      {onSite ? "On-site" : "Off-site"} {formatDistance(distance)}
+      Off-site {formatDistance(worst)}
     </span>
   );
 }
 
-function StatusChip({ status }: { status: AttendanceRecord["status"] }) {
-  if (status === "ON_TIME" || status === "CLOCKED_OUT") {
-    return (
-      <span className="inline-flex rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground">
-        On time
-      </span>
-    );
-  }
-  if (status === "LATE") {
-    return (
-      <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-        Late
-      </span>
-    );
-  }
-  if (status === "ON_LEAVE") {
-    return (
-      <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-        On leave
-      </span>
-    );
-  }
-  if (status === "MISSING") {
+// Only the exceptions. "On time" is dropped entirely — the tick on the left of
+// the row already says it, so the chip repeated itself and made a clean day look
+// as busy as a problem one.
+//
+// Lateness carries its minutes: "Late 2h 8m" tells a supervisor whether it was
+// traffic or a no-show, which a bare "Late" never did.
+function StatusChip({ record }: { record: AttendanceRecord }) {
+  if (record.status === "MISSING") {
     return (
       <span className="inline-flex rounded-full bg-destructive/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-destructive">
         Missing
       </span>
     );
   }
-  return (
-    <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-      In progress
-    </span>
-  );
+  if (record.status === "ON_LEAVE") {
+    return (
+      <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+        On leave
+      </span>
+    );
+  }
+  if (record.timeIn && !record.timeOut) {
+    return (
+      <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        In progress
+      </span>
+    );
+  }
+  if (record.lateByMin != null) {
+    return (
+      <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+        Late {formatLateness(record.lateByMin)}
+      </span>
+    );
+  }
+  if (record.status === "LATE") {
+    // Late but with no measurement — a row written before clock-in computed it.
+    return (
+      <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+        Late
+      </span>
+    );
+  }
+  return null;
 }
 
 export function AttendanceView({
@@ -306,23 +368,13 @@ export function AttendanceView({
   const weekBreakdown = useMemo(() => buildWeekBreakdown(history, now), [history, now]);
   const monthBreakdown = useMemo(() => buildMonthBreakdown(monthRecords, now), [monthRecords, now]);
 
-  const historyByMonth = useMemo(() => {
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 30);
-    const grouped = new Map<string, AttendanceRecord[]>();
-    for (const record of history.filter((r) => new Date(`${r.date}T00:00:00`) >= cutoff)) {
-      const key = monthKey(record.date);
-      grouped.set(key, [...(grouped.get(key) ?? []), record]);
-    }
-    return Array.from(grouped.entries());
-  }, [history, now]);
-
   if (sub === "att-history") {
     return (
       <HistoryView
         loading={loading}
         error={error}
-        historyByMonth={historyByMonth}
+        history={history}
+        now={now}
         projects={projects}
         radius={radius}
       />
@@ -789,6 +841,42 @@ function MonthlyProgressCard({
   );
 }
 
+// Renders nothing at all on an ordinary day, so the row collapses to one line
+// and the days that need attention are the only ones carrying a second.
+function ShiftRowChips({ record, radius }: { record: AttendanceRecord; radius: number }) {
+  const offSite = offSiteDistance(record, radius);
+  const hasStatus =
+    record.status === "MISSING"
+    || record.status === "ON_LEAVE"
+    || record.status === "LATE"
+    || record.lateByMin != null
+    || (record.timeIn != null && record.timeOut == null);
+
+  // No wrapper at all when there's nothing to say, so the row keeps its single
+  // line rather than carrying an empty spacer.
+  if (!hasStatus && offSite == null) return null;
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      <StatusChip record={record} />
+      <GeoChip
+        clockIn={record.clockInDistanceMeters}
+        clockOut={record.clockOutDistanceMeters}
+        radius={radius}
+      />
+    </div>
+  );
+}
+
+// The worse of the two clock ends, or null when both were within the geofence.
+function offSiteDistance(record: AttendanceRecord, radius: number) {
+  const distances = [record.clockInDistanceMeters, record.clockOutDistanceMeters]
+    .filter((d): d is number => d != null);
+  if (distances.length === 0) return null;
+  const worst = Math.max(...distances);
+  return worst > radius ? worst : null;
+}
+
 function ShiftRow({
   record,
   projects,
@@ -819,11 +907,7 @@ function ShiftRow({
           {placeLabel ? ` - ${placeLabel}` : ""}
         </p>
         {showBadges ? (
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            <StatusChip status={record.status} />
-            <GeoChip distance={record.clockInDistanceMeters} radius={radius} />
-            <GeoChip distance={record.clockOutDistanceMeters} radius={radius} />
-          </div>
+          <ShiftRowChips record={record} radius={radius} />
         ) : null}
       </div>
       <span className="shrink-0 text-xs font-bold tabular-nums text-muted-foreground">
@@ -836,16 +920,36 @@ function ShiftRow({
 function HistoryView({
   loading,
   error,
-  historyByMonth,
+  history,
+  now,
   projects,
   radius,
 }: {
   loading: boolean;
   error: string | null;
-  historyByMonth: Array<[string, AttendanceRecord[]]>;
+  history: AttendanceRecord[];
+  now: Date;
   projects: Project[];
   radius: number;
 }) {
+  const [period, setPeriod] = useState<HistoryPeriod>("THIS_MONTH");
+  const [problemsOnly, setProblemsOnly] = useState(false);
+
+  const historyByMonth = useMemo(() => {
+    const grouped = new Map<string, AttendanceRecord[]>();
+    for (const record of history) {
+      if (!inPeriod(record.date, period, now)) continue;
+      if (problemsOnly && !isProblemDay(record, radius)) continue;
+      const key = monthKey(record.date);
+      grouped.set(key, [...(grouped.get(key) ?? []), record]);
+    }
+    return Array.from(grouped.entries());
+  }, [history, period, problemsOnly, now, radius]);
+
+  const problemCount = useMemo(
+    () => history.filter((r) => inPeriod(r.date, period, now) && isProblemDay(r, radius)).length,
+    [history, period, now, radius],
+  );
   if (loading) {
     return <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading attendance history...</section>;
   }
@@ -862,16 +966,46 @@ function HistoryView({
     return (
       <section className={`${CARD} p-8 text-center`}>
         <CalendarClock className="mx-auto h-6 w-6 text-muted-foreground" />
-        <p className="mt-2 text-sm font-medium text-foreground">No attendance records in the last 30 days.</p>
+        <p className="mt-2 text-sm font-medium text-foreground">
+          {problemsOnly ? "Nothing needs attention in this period." : "No attendance records in this period."}
+        </p>
       </section>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Last 30 days</p>
-        <h2 className="mt-0.5 text-xl font-bold text-foreground">Attendance history</h2>
+      <div className="space-y-3">
+        <h2 className="text-xl font-bold text-foreground">Attendance history</h2>
+
+        <StatusFilterTabs<HistoryPeriod>
+          value={period}
+          onChange={setPeriod}
+          statuses={historyPeriods}
+          labels={historyPeriodLabels}
+          allValue="THIS_MONTH"
+          allLabel="This month"
+          ariaLabel="History period"
+        />
+
+        {/* Only offered when there's something to filter down to — a toggle that
+            always yields an empty list is worse than no toggle. */}
+        {problemCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setProblemsOnly((current) => !current)}
+            aria-pressed={problemsOnly}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+              problemsOnly
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                : "border border-border bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Needs attention
+            <span className="tabular-nums opacity-70">{problemCount}</span>
+          </button>
+        ) : null}
       </div>
 
       {historyByMonth.map(([month, items]) => {
