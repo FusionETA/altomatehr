@@ -1101,37 +1101,40 @@ function HistoryView({
               <span className="text-xs text-muted-foreground">{all.length} days</span>
             </div>
 
-            <div className={`${CARD} bg-secondary/40 p-4`}>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <SummaryMetric
-                  label="Counted"
-                  value={hours ? formatHours(hours.normalMin) : "—"}
-                />
-                <SummaryMetric label="On time" value={String(sum.onTime)} tone="text-success" />
-                <SummaryMetric label="Late" value={String(sum.late)} tone="text-tertiary" />
-                <SummaryMetric label="Missing" value={String(sum.missing)} tone="text-destructive" />
+            {/* Summary and rows share one card. Two stacked cards read as two
+                unrelated things, when the totals are a header for the list
+                directly under them. */}
+            <div className={`${CARD} overflow-hidden`}>
+              <div className="bg-secondary/40 p-4">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <SummaryMetric
+                    label="Counted"
+                    value={hours ? formatHours(hours.normalMin) : "—"}
+                  />
+                  <SummaryMetric label="On time" value={String(sum.onTime)} tone="text-success" />
+                  <SummaryMetric label="Late" value={String(sum.late)} tone="text-tertiary" />
+                  <SummaryMetric label="Missing" value={String(sum.missing)} tone="text-destructive" />
+                </div>
+
+                {/* The derivation, so "Counted" being lower than the day figures
+                    below is explained rather than surprising. The rows show time on
+                    the clock; this is what it became after the break came off and
+                    the shift cap applied. */}
+                {hours ? (
+                  <p className="mt-3 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
+                    Clocked {formatHours(hours.totalMin + hours.breakMin)}
+                    {hours.breakMin > 0 ? ` · break −${formatHours(hours.breakMin)}` : ""}
+                    {hours.beyondShiftMin > 0
+                      ? ` · beyond shift −${formatHours(hours.beyondShiftMin)}`
+                      : ""}
+                    {hours.otApprovedMin > 0 ? ` · OT approved ${formatHours(hours.otApprovedMin)}` : ""}
+                    {hours.otPendingMin > 0 ? ` · OT pending ${formatHours(hours.otPendingMin)}` : ""}
+                    {hours.restDayMin > 0 ? ` · rest day ${formatHours(hours.restDayMin)}` : ""}
+                  </p>
+                ) : null}
               </div>
 
-              {/* The derivation, so "Counted" being lower than the day figures
-                  below is explained rather than surprising. The rows show time on
-                  the clock; this is what it became after the break came off and
-                  the shift cap applied. */}
-              {hours ? (
-                <p className="mt-3 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
-                  Clocked {formatHours(hours.totalMin + hours.breakMin)}
-                  {hours.breakMin > 0 ? ` · break −${formatHours(hours.breakMin)}` : ""}
-                  {hours.beyondShiftMin > 0
-                    ? ` · beyond shift −${formatHours(hours.beyondShiftMin)}`
-                    : ""}
-                  {hours.otApprovedMin > 0 ? ` · OT approved ${formatHours(hours.otApprovedMin)}` : ""}
-                  {hours.otPendingMin > 0 ? ` · OT pending ${formatHours(hours.otPendingMin)}` : ""}
-                  {hours.restDayMin > 0 ? ` · rest day ${formatHours(hours.restDayMin)}` : ""}
-                </p>
-              ) : null}
-            </div>
-
-            <div className={`${CARD} p-2`}>
-              <div className="space-y-1">
+              <div className="space-y-1 border-t border-border/60 p-2">
                 {items.map((record) => (
                   <ShiftRow key={record.id} record={record} projects={projects} radius={radius} />
                 ))}
