@@ -88,7 +88,7 @@ export function OffSiteClockDialog({
   // middle of the page instead of the screen. A portal puts it out of reach of
   // whatever it happens to be mounted inside.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 backdrop-blur-md sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-md sm:p-4">
       <section className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-[26px] border border-border/70 bg-card shadow-[0_24px_70px_rgba(32,10,55,0.24)]">
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-5 py-3.5">
           <h2 className="text-base font-black text-foreground">{verb} from here</h2>
