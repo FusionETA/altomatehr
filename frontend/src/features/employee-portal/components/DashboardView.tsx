@@ -43,6 +43,11 @@ import type { SignedInUser } from "@/shared/types/session";
 import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 
+function fmtClock(iso?: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
 export function DashboardView({
   user,
   onNavigate,
@@ -100,7 +105,14 @@ export function DashboardView({
     });
   }, [isSupervisor]);
 
-  const state: "IN" | "OUT" = today?.timeIn && !today?.timeOut ? "IN" : "OUT";
+  // Three situations, not two. A finished day used to fall through to "OUT" and
+  // offer "Tap to Clock In" — an action the server always refuses with "you've
+  // already completed your attendance for today".
+  const state: "IN" | "OUT" | "DONE" = today?.timeIn
+    ? today.timeOut
+      ? "DONE"
+      : "IN"
+    : "OUT";
   const timeLabel = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -118,6 +130,8 @@ export function DashboardView({
   }, []);
 
   function handleClock() {
+    if (state === "DONE") return;
+
     // Clocking in is unambiguous; clocking out is the one that may need
     // correcting, so it goes through the dialog.
     if (state === "IN") {
@@ -160,19 +174,20 @@ export function DashboardView({
     } catch (e) {
       // Off-site clocks need a remark + photo — that flow lives on the full
       // Attendance screen, so hand the user off there to finish.
+      // Off-site clocks need a remark and a photo, and that form lives on the
+      // Attendance screen. This used to navigate there automatically, which read
+      // as the button silently failing — you tapped clock-in and landed on a
+      // different page with nothing explaining why. Say what happened and let
+      // the person decide to go; the error would not have survived the
+      // navigation anyway, since it lives in this component's state.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
-        // Except when a correction was typed: the clock-out never happened, so
-        // there is no record to attach it to, and navigating away would drop
-        // what they wrote without saying so. Keep them here with the reason
-        // still on screen.
-        if (choice?.adjustment) {
-          setError(
-            "This clock-out needs a remark and photo because you're off-site. "
-            + "Finish it on the Attendance screen, then request the time correction from there.",
-          );
-          return;
-        }
-        onNavigate("attendance");
+        setError(
+          choice?.adjustment
+            ? "You're outside the project geofence, so this clock-out needs a remark and a photo. "
+              + "Finish it on the Attendance screen, then request the time correction from there."
+            : "You're outside the project geofence, so this needs a remark and a photo. "
+              + "Open Attendance to finish clocking in from here.",
+        );
         return;
       }
       setError(e instanceof Error ? e.message : "Could not update your clock. Try again.");
@@ -208,7 +223,7 @@ export function DashboardView({
               </p>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
-              {state === "IN" ? "On shift" : "Off shift"}
+              {state === "IN" ? "On shift" : state === "DONE" ? "Day complete" : "Off shift"}
             </span>
           </div>
 
@@ -216,7 +231,7 @@ export function DashboardView({
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Project
             </p>
-            <Select value={projectId} onValueChange={setProjectId} disabled={state === "IN"}>
+            <Select value={projectId} onValueChange={setProjectId} disabled={state !== "OUT"}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a project..." />
               </SelectTrigger>
@@ -235,9 +250,11 @@ export function DashboardView({
               <button
                 type="button"
                 onClick={handleClock}
-                disabled={busy}
+                disabled={busy || state === "DONE"}
                 className="grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-panel transition hover:opacity-90 disabled:opacity-60 sm:h-24 sm:w-24"
-                aria-label={state === "OUT" ? "Clock in" : "Clock out"}
+                aria-label={
+                  state === "DONE" ? "Attendance complete" : state === "OUT" ? "Clock in" : "Clock out"
+                }
               >
                 {busy ? (
                   <LoaderCircle className="h-8 w-8 animate-spin sm:h-9 sm:w-9" />
@@ -246,10 +263,16 @@ export function DashboardView({
                 )}
               </button>
               <p className="text-base font-bold text-primary">
-                {state === "OUT" ? "Tap to Clock In" : "Tap to Clock Out"}
+                {state === "DONE"
+                  ? "Attendance complete"
+                  : state === "OUT"
+                    ? "Tap to Clock In"
+                    : "Tap to Clock Out"}
               </p>
               <p className="text-center text-xs text-muted-foreground">
-                Pending supervisor approval after tap
+                {state === "DONE"
+                  ? `Clocked ${fmtClock(today?.timeIn)} - ${fmtClock(today?.timeOut)} today`
+                  : "Pending supervisor approval after tap"}
               </p>
             </div>
           </div>
