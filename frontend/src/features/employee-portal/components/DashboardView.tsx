@@ -18,6 +18,10 @@ import {
   type ClockOutChoice,
 } from "@/features/attendance/components/ClockOutDialog";
 import {
+  OffSiteClockDialog,
+  type OffSiteProof,
+} from "@/features/attendance/components/OffSiteClockDialog";
+import {
   clockIn,
   clockOut,
   submitTimeAdjustment,
@@ -69,6 +73,9 @@ export function DashboardView({
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
   const [clockOutOpen, setClockOutOpen] = useState(false);
+  // Set when the server refuses a clock for being off-site; holds the distance
+  // it reported so the dialog can show how far out we are.
+  const [offSite, setOffSite] = useState<{ action: "in" | "out"; distance?: number } | null>(null);
 
   // Live clock — the "RIGHT NOW" readout ticks every second.
   useEffect(() => {
@@ -142,7 +149,7 @@ export function DashboardView({
     void runClock();
   }
 
-  async function runClock(choice?: ClockOutChoice) {
+  async function runClock(choice?: ClockOutChoice, proof?: OffSiteProof) {
     setBusy(true);
     setError(null);
     let coords: Coords | undefined;
@@ -153,10 +160,22 @@ export function DashboardView({
     }
     try {
       if (state === "OUT") {
-        await clockIn({ projectId: projectId || undefined, lat: coords?.lat, lng: coords?.lng });
+        await clockIn({
+          projectId: projectId || undefined,
+          lat: coords?.lat,
+          lng: coords?.lng,
+          remark: proof?.remark,
+          photoUrl: proof?.photoUrl,
+        });
       } else {
-        await clockOut({ lat: coords?.lat, lng: coords?.lng });
+        await clockOut({
+          lat: coords?.lat,
+          lng: coords?.lng,
+          remark: proof?.remark,
+          photoUrl: proof?.photoUrl,
+        });
       }
+      setOffSite(null);
       const refreshed = await getTodayAttendance();
       setToday(refreshed);
 
@@ -174,20 +193,13 @@ export function DashboardView({
     } catch (e) {
       // Off-site clocks need a remark + photo — that flow lives on the full
       // Attendance screen, so hand the user off there to finish.
-      // Off-site clocks need a remark and a photo, and that form lives on the
-      // Attendance screen. This used to navigate there automatically, which read
-      // as the button silently failing — you tapped clock-in and landed on a
-      // different page with nothing explaining why. Say what happened and let
-      // the person decide to go; the error would not have survived the
-      // navigation anyway, since it lives in this component's state.
+      // Off-site clocks need a remark and a photo. This used to navigate to the
+      // Attendance screen "to finish there" — but that screen has no clock form,
+      // so the hand-off was a dead end and the tap looked like it did nothing.
+      // Collect the proof here and retry instead.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
-        setError(
-          choice?.adjustment
-            ? "You're outside the project geofence, so this clock-out needs a remark and a photo. "
-              + "Finish it on the Attendance screen, then request the time correction from there."
-            : "You're outside the project geofence, so this needs a remark and a photo. "
-              + "Open Attendance to finish clocking in from here.",
-        );
+        setClockOutOpen(false);
+        setOffSite({ action: state === "OUT" ? "in" : "out", distance: e.distanceMeters });
         return;
       }
       setError(e instanceof Error ? e.message : "Could not update your clock. Try again.");
@@ -282,6 +294,17 @@ export function DashboardView({
             clockedIn={state === "IN"}
             onChange={refreshToday}
           />
+
+          {offSite ? (
+            <OffSiteClockDialog
+              action={offSite.action}
+              distanceMeters={offSite.distance}
+              busy={busy}
+              error={error}
+              onSubmit={(proof) => void runClock(undefined, proof)}
+              onClose={() => setOffSite(null)}
+            />
+          ) : null}
 
           {clockOutOpen && today ? (
             <ClockOutDialog
