@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { LoaderCircle, X } from "lucide-react";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import type { AttendanceRecord } from "../api";
@@ -42,7 +43,13 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
   // No onClick on the backdrop, deliberately: a stray tap while typing a
   // remark or picking a photo would discard the whole thing. Closing is the
   // X or Cancel, both explicit.
-  return (
+  // Rendered into document.body, not in place. The dashboard's clock card sets
+  // backdrop-filter, and any ancestor with a filter/backdrop-filter/transform
+  // becomes the containing block for position:fixed children — so `inset-0`
+  // resolved against that card and the overlay covered a 325x389 box in the
+  // middle of the page instead of the screen. A portal puts it out of reach of
+  // whatever it happens to be mounted inside.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 py-5 backdrop-blur-md sm:items-center">
       <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
@@ -158,7 +165,8 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
 
         {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
