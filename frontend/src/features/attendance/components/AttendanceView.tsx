@@ -353,15 +353,22 @@ export function AttendanceView({
               {formatClockRange(orgHours.start, orgHours.end)}
             </p>
           </div>
-          {today?.lateByMin != null ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-              Late {today.lateByMin}m
-            </span>
-          ) : (
-            <span className="rounded-full bg-secondary px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground">
+          {/* Both, not one or the other: being late and being on the clock are
+              different facts, and the old either/or hid whichever came second. */}
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {today?.lateByMin != null ? (
+              <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                Late {formatLateness(today.lateByMin)}
+              </span>
+            ) : null}
+            <span
+              className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
+                clockedIn ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+              }`}
+            >
               {clockedIn ? "On the clock" : clockedOut ? "Completed" : "Not started"}
             </span>
-          )}
+          </div>
         </div>
 
         <TodayEvents today={today} radius={radius} />
@@ -606,6 +613,14 @@ function formatClockRange(start?: string | null, end?: string | null) {
   const from = one(start);
   const to = one(end);
   return from && to ? `${from} - ${to}` : "—";
+}
+
+// "Late 93m" makes the reader do the division; "Late 1h 33m" doesn't.
+function formatLateness(minutes: number) {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function monthLabel(now: Date) {

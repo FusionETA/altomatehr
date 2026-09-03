@@ -1,3 +1,6 @@
+using AltomateHR.Api.Modules.Shifts.Entities;
+using AltomateHR.Api.Modules.Shifts.Dtos;
+using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
@@ -80,6 +83,7 @@ public class AttendanceApprovalRegressionTests
             approvalRequests: approvals,
             projects: new FakeProjectService(),
             organizations: new FakeOrganizationService(),
+            shifts: new FakeShiftService(),
             currentUser: new FakeCurrentUser(),
             photos: new FakeAttendancePhotoStorage(),
             policies: new FakePolicyService(),
@@ -115,6 +119,22 @@ public class AttendanceApprovalRegressionTests
     // services the clock-out path never reaches (photos, and — because the
     // record has no project — projects/policies) return safe defaults.
     // ----------------------------------------------------------------------
+
+    // No shift assigned, so lateness falls back to the org's working hours —
+    // which is what an org that hasn't configured shifts actually looks like.
+    private sealed class FakeShiftService : IShiftService
+    {
+        public Task<Shift?> GetEffectiveShiftAsync(string employeeId) => Task.FromResult<Shift?>(null);
+        public Task<Shift?> GetByIdAsync(string id) => Task.FromResult<Shift?>(null);
+        public Task<IEnumerable<ShiftDto>> GetAllAsync() =>
+            Task.FromResult<IEnumerable<ShiftDto>>([]);
+        public Task<IEnumerable<ShiftDto>> GetForProjectAsync(string projectId) =>
+            Task.FromResult<IEnumerable<ShiftDto>>([]);
+        public Task<ShiftSaveResult> CreateAsync(CreateShiftDto dto) => throw new NotSupportedException();
+        public Task<ShiftSaveResult> UpdateAsync(string id, UpdateShiftDto dto) => throw new NotSupportedException();
+        public Task<ShiftDeleteResult> DeleteAsync(string id) => throw new NotSupportedException();
+        public Task<ShiftSaveResult> SetDefaultAsync(string id) => throw new NotSupportedException();
+    }
 
     private sealed class FakeAttendanceRepository : IAttendanceRepository
     {

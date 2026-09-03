@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Attendance.Dtos;
@@ -46,6 +47,7 @@ public class AttendanceService : IAttendanceService
     private readonly IAttendanceApprovalRequestRepository _approvalRequests;
     private readonly IProjectService _projects;
     private readonly IOrganizationService _organizations;
+    private readonly IShiftService _shifts;
     private readonly ICurrentUser _currentUser;
     private readonly IAttendancePhotoStorage _photos;
     private readonly IPolicyService _policies;
@@ -62,6 +64,7 @@ public class AttendanceService : IAttendanceService
         IAttendanceApprovalRequestRepository approvalRequests,
         IProjectService projects,
         IOrganizationService organizations,
+        IShiftService shifts,
         ICurrentUser currentUser,
         IAttendancePhotoStorage photos,
         IPolicyService policies,
@@ -78,6 +81,7 @@ public class AttendanceService : IAttendanceService
         _approvalRequests = approvalRequests;
         _projects = projects;
         _organizations = organizations;
+        _shifts = shifts;
         _currentUser = currentUser;
         _photos = photos;
         _policies = policies;
@@ -151,6 +155,8 @@ public class AttendanceService : IAttendanceService
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
 
+        var lateByMin = AttendanceLateness.Minutes(now, await ScheduledStartAsync(employeeId));
+
         AttendanceRecord record;
         if (existing is null)
         {
@@ -160,6 +166,7 @@ public class AttendanceService : IAttendanceService
                 Date = today,
                 TimeIn = now,
                 Status = AttendanceStatus.CLOCKED_IN,
+                LateByMin = lateByMin,
                 ProjectId = effectiveProjectId,
                 Location = dto.Location,
                 Remark = dto.Remark,
@@ -178,6 +185,7 @@ public class AttendanceService : IAttendanceService
             // but no clock-in yet — fill it in rather than violating the unique key.
             existing.TimeIn = now;
             existing.Status = AttendanceStatus.CLOCKED_IN;
+            existing.LateByMin = lateByMin;
             existing.ProjectId = effectiveProjectId;
             existing.Location = dto.Location ?? existing.Location;
             existing.Remark = dto.Remark ?? existing.Remark;
@@ -1312,6 +1320,20 @@ public class AttendanceService : IAttendanceService
     {
         var succeeded = items.Count(i => i.Ok);
         return new AttendanceBulkResult(succeeded, items.Count - succeeded, items);
+    }
+
+    // The local "HH:mm" this employee was due to start: their effective shift
+    // (assigned, else the project's, else the org default) and finally the org's
+    // working hours. Null when nothing is configured, which AttendanceLateness
+    // reads as "no opinion" rather than "on time".
+    private async Task<string?> ScheduledStartAsync(string employeeId)
+    {
+        var shift = await _shifts.GetEffectiveShiftAsync(employeeId);
+        if (!string.IsNullOrWhiteSpace(shift?.StartTime)) return shift!.StartTime;
+
+        var orgId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(orgId)) return null;
+        return (await _organizations.GetByIdAsync(orgId))?.WorkingHoursStart;
     }
 
     private static AttendanceActionResult OffSiteRequired(double? distance) => new(
