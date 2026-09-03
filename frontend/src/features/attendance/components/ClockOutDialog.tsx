@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
+import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import type { AttendanceRecord } from "../api";
 
 export type ClockOutChoice = {
@@ -25,6 +26,8 @@ type Props = {
 //
 // Closing cancels the clock-out entirely.
 export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props) {
+  useBodyScrollLock();
+
   const [tab, setTab] = useState<"summary" | "adjust">("summary");
   const [time, setTime] = useState(() => toHhMm(new Date()));
   const [reason, setReason] = useState("");
@@ -36,8 +39,11 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
   const requestedIso = hhMmToIso(time);
   const canAdjust = requestedIso !== null && reason.trim().length > 0 && !busy;
 
+  // No onClick on the backdrop, deliberately: a stray tap while typing a
+  // remark or picking a photo would discard the whole thing. Closing is the
+  // X or Cancel, both explicit.
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 py-5 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 py-5 backdrop-blur-md sm:items-center">
       <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
