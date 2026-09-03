@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Building2, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
-import { LeaveView } from "@/features/leave/components/LeaveView";
+import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
@@ -301,7 +301,7 @@ export function EmployeeShell({
                 onViewHistory={() => selectChild("attendance", "att-history")}
               />
             ) : null}
-            {activeView === "leave" ? <LeaveView sub={sub ?? "leave-mine"} role={user.role} /> : null}
+            {activeView === "leave" ? <LeavePage sub={sub ?? "leave-mine"} /> : null}
             {activeView === "payslips" ? (
               <EmptyModule
                 title="Payslips"

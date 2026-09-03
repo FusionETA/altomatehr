@@ -49,6 +49,17 @@ export type LeaveBalance = {
   remainingDays: number;
 };
 
+export type OnLeaveToday = {
+  employeeId: string;
+  email: string | null;
+  leaveTypeId: string;
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+};
+
 // --- Leave types (admin-managed) ---
 export const getLeaveTypes = () => apiGet<LeaveType[]>("/leave-types");
 export const createLeaveType = (body: SaveLeaveType) => apiPost<LeaveType>("/leave-types", body);
@@ -67,3 +78,7 @@ export const approveLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${
 export const rejectLeave = (id: string, reviewNotes?: string) =>
   apiPost<LeaveApplication>(`/leave/${id}/reject`, { reviewNotes });
 export const cancelLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/cancel`);
+
+// `date` is a yyyy-MM-dd string; omit for today.
+export const getOnLeaveToday = (date?: string) =>
+  apiGet<OnLeaveToday[]>(`/leave/on-leave-today${date ? `?date=${date}` : ""}`);
