@@ -87,14 +87,26 @@ function projectName(projects: Project[], id: string | null) {
   return projects.find((p) => p.id === id)?.name ?? "Project";
 }
 
+// Day counts only. The MINUTES deliberately aren't here: summing durationMin
+// gives raw clock time, which ignores the shift cap, the break deduction and
+// the overtime split — the exact apples-to-oranges figure the dashboard cards
+// were fixed for. Counted hours come from /hours-summary/me instead.
 function getMonthSummary(records: AttendanceRecord[]) {
-  const totalMin = records.reduce((sum, r) => sum + (r.durationMin ?? 0), 0);
   return {
-    totalMin,
-    onTime: records.filter((r) => r.status === "ON_TIME" || r.status === "CLOCKED_OUT").length,
-    late: records.filter((r) => r.status === "LATE").length,
+    onTime: records.filter(
+      (r) => (r.status === "ON_TIME" || r.status === "CLOCKED_OUT") && r.lateByMin == null,
+    ).length,
+    late: records.filter((r) => r.lateByMin != null || r.status === "LATE").length,
     missing: records.filter((r) => r.status === "MISSING").length,
   };
+}
+
+// First and last day of the month a record falls in, as the API's yyyy-MM-dd.
+function monthRange(ymd: string) {
+  const [y, m] = ymd.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}` };
 }
 
 function dateKey(date: Date) {
@@ -669,6 +681,12 @@ function formatClockRange(start?: string | null, end?: string | null) {
 }
 
 // "Late 93m" makes the reader do the division; "Late 1h 33m" doesn't.
+function formatHours(totalMin: number) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 function formatLateness(minutes: number) {
   if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
@@ -908,8 +926,17 @@ function ShiftRow({
           <ShiftRowChips record={record} radius={radius} />
         ) : null}
       </div>
-      <span className="shrink-0 text-xs font-bold tabular-nums text-muted-foreground">
+      {/* Time on the clock, not counted hours — the endpoint returns totals for a
+          range, not per day, so a per-day counted figure would mean
+          re-implementing the cap and break rules here and letting the two drift.
+          The month card above carries the counted number and its derivation. */}
+      <span className="shrink-0 text-right text-xs font-bold tabular-nums text-muted-foreground">
         {fmtDuration(record.durationMin)}
+        {record.durationMin != null ? (
+          <span className="block text-[9px] font-semibold uppercase tracking-wider opacity-60">
+            clocked
+          </span>
+        ) : null}
       </span>
     </article>
   );
@@ -963,6 +990,10 @@ function HistoryView({
     return Array.from(grouped.entries());
   }, [pageRecords]);
 
+  // Counted hours per visible month, straight from the server so the shift cap,
+  // break deduction and overtime split are the same ones payroll would read.
+  const [monthHours, setMonthHours] = useState<Record<string, HoursBuckets>>({});
+
   const monthTotals = useMemo(() => {
     const grouped = new Map<string, AttendanceRecord[]>();
     for (const record of filtered) {
@@ -971,6 +1002,33 @@ function HistoryView({
     }
     return grouped;
   }, [filtered]);
+
+  const visibleMonths = historyByMonth.map(([month]) => month).join("|");
+  useEffect(() => {
+    const wanted = historyByMonth
+      .map(([month, items]) => ({ month, sample: items[0]?.date }))
+      .filter((m): m is { month: string; sample: string } => Boolean(m.sample));
+    if (wanted.length === 0) return;
+
+    let active = true;
+    Promise.all(
+      wanted.map(({ month, sample }) => {
+        const { from, to } = monthRange(sample);
+        return getMyHoursSummary(from, to)
+          .then((hours) => [month, hours] as const)
+          .catch(() => null);
+      }),
+    ).then((results) => {
+      if (!active) return;
+      setMonthHours(Object.fromEntries(results.filter(Boolean) as Array<readonly [string, HoursBuckets]>));
+    });
+
+    return () => {
+      active = false;
+    };
+    // Keyed on the month labels rather than the array, which is a new
+    // reference on every render.
+  }, [visibleMonths]);
 
   const problemCount = useMemo(
     () => history.filter((r) => inPeriod(r.date, period, now) && isProblemDay(r, radius)).length,
@@ -1035,6 +1093,7 @@ function HistoryView({
       {historyByMonth.map(([month, items]) => {
         const all = monthTotals.get(month) ?? items;
         const sum = getMonthSummary(all);
+        const hours = monthHours[month];
         return (
           <section key={month} className="space-y-3">
             <div className="flex items-baseline justify-between">
@@ -1044,11 +1103,31 @@ function HistoryView({
 
             <div className={`${CARD} bg-secondary/40 p-4`}>
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <SummaryMetric label="Total worked" value={`${Math.floor(sum.totalMin / 60)}h ${sum.totalMin % 60}m`} />
+                <SummaryMetric
+                  label="Counted"
+                  value={hours ? formatHours(hours.normalMin) : "—"}
+                />
                 <SummaryMetric label="On time" value={String(sum.onTime)} tone="text-success" />
                 <SummaryMetric label="Late" value={String(sum.late)} tone="text-tertiary" />
                 <SummaryMetric label="Missing" value={String(sum.missing)} tone="text-destructive" />
               </div>
+
+              {/* The derivation, so "Counted" being lower than the day figures
+                  below is explained rather than surprising. The rows show time on
+                  the clock; this is what it became after the break came off and
+                  the shift cap applied. */}
+              {hours ? (
+                <p className="mt-3 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
+                  Clocked {formatHours(hours.totalMin + hours.breakMin)}
+                  {hours.breakMin > 0 ? ` · break −${formatHours(hours.breakMin)}` : ""}
+                  {hours.beyondShiftMin > 0
+                    ? ` · beyond shift −${formatHours(hours.beyondShiftMin)}`
+                    : ""}
+                  {hours.otApprovedMin > 0 ? ` · OT approved ${formatHours(hours.otApprovedMin)}` : ""}
+                  {hours.otPendingMin > 0 ? ` · OT pending ${formatHours(hours.otPendingMin)}` : ""}
+                  {hours.restDayMin > 0 ? ` · rest day ${formatHours(hours.restDayMin)}` : ""}
+                </p>
+              ) : null}
             </div>
 
             <div className={`${CARD} p-2`}>
