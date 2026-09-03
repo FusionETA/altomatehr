@@ -3,11 +3,13 @@ import {
   ArrowRight,
   CalendarDays,
   CircleDollarSign,
+  CircleCheck,
   ClipboardCheck,
   Clock3,
   FileCheck2,
   Fingerprint,
   LoaderCircle,
+  LogOut,
   Plus,
   Wallet,
   type LucideIcon,
@@ -234,7 +236,16 @@ export function DashboardView({
                 {timeLabel}
               </p>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
+            <span
+              className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                // muted, not secondary: --secondary is hue 166, the same green
+                // family as --success, so an "Off shift" pill in it read as
+                // on-shift at a glance. --muted is the actual neutral.
+                state === "IN"
+                  ? "bg-success/15 text-success"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
               {state === "IN" ? "On shift" : state === "DONE" ? "Day complete" : "Off shift"}
             </span>
           </div>
@@ -270,6 +281,10 @@ export function DashboardView({
               >
                 {busy ? (
                   <LoaderCircle className="h-8 w-8 animate-spin sm:h-9 sm:w-9" />
+                ) : state === "DONE" ? (
+                  <CircleCheck className="h-8 w-8 sm:h-9 sm:w-9" />
+                ) : state === "IN" ? (
+                  <LogOut className="h-8 w-8 sm:h-9 sm:w-9" />
                 ) : (
                   <Fingerprint className="h-8 w-8 sm:h-9 sm:w-9" />
                 )}
