@@ -160,9 +160,19 @@ public static class DbSeeder
             Row("usr-super", 4, 8, 55, 18, 5, AttendanceStatus.ON_TIME, null, 5),
         };
 
+        var todayKey = AttendanceTime.StartOfLocalDay(now);
+
         foreach (var row in employeeRows.Concat(supervisorRows))
         {
             var date = AttendanceTime.StartOfLocalDay(now.AddDays(-row.DaysAgo));
+
+            // Never touch today. This seeder OVERWRITES an existing row for a
+            // date (see the update branch below), and it runs on every startup —
+            // so a DaysAgo:0 row silently replaced whatever someone had actually
+            // clocked that morning with demo times. Restarting the API to pick
+            // up a code change destroyed a real off-site clock-in exactly this
+            // way. History is demo data; today belongs to whoever is using it.
+            if (date == todayKey) continue;
             DateTime? timeIn = row.InHour is null ? null : LocalToUtc(date, row.InHour.Value, row.InMinute!.Value);
             DateTime? timeOut = row.OutHour is null ? null : LocalToUtc(date, row.OutHour.Value, row.OutMinute!.Value);
             var duration = timeIn is not null && timeOut is not null
