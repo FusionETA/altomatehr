@@ -181,13 +181,16 @@ function buildMonthBreakdown(records: AttendanceRecord[], now: Date) {
 // History periods. Defaults to the current month rather than everything: "what
 // did I work this month" is the question people actually arrive with, and a
 // month of rows fits on a screen where a year does not.
-type HistoryPeriod = "THIS_MONTH" | "LAST_MONTH" | "LAST_3_MONTHS" | "ALL";
+const HISTORY_PAGE_SIZE = 10;
 
-const historyPeriods = ["LAST_MONTH", "LAST_3_MONTHS", "ALL"] as const;
+type HistoryPeriod = "THIS_MONTH" | "ALL";
+
+// Two options, not four. Four made the tab bar wrap its labels onto two lines
+// on a phone, and "last month" / "last 3 months" are answerable from All with a
+// scroll — they weren't worth the width.
+const historyPeriods = ["ALL"] as const;
 
 const historyPeriodLabels: Partial<Record<HistoryPeriod, string>> = {
-  LAST_MONTH: "Last month",
-  LAST_3_MONTHS: "Last 3 months",
   ALL: "All",
 };
 
@@ -196,12 +199,7 @@ function inPeriod(date: string, period: HistoryPeriod, now: Date) {
   const d = new Date(`${date}T00:00:00`);
   const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  if (period === "THIS_MONTH") return d >= startOfThisMonth;
-  if (period === "LAST_MONTH") {
-    const startOfLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return d >= startOfLast && d < startOfThisMonth;
-  }
-  return d >= new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  return d >= startOfThisMonth;
 }
 
 // A day worth looking at: late, absent, still open, or clocked from outside the
@@ -934,17 +932,45 @@ function HistoryView({
 }) {
   const [period, setPeriod] = useState<HistoryPeriod>("THIS_MONTH");
   const [problemsOnly, setProblemsOnly] = useState(false);
+  const [page, setPage] = useState(0);
 
+  // Changing a filter with a stale page number would land on an empty page.
+  useEffect(() => setPage(0), [period, problemsOnly]);
+
+  const filtered = useMemo(
+    () =>
+      history.filter(
+        (r) =>
+          inPeriod(r.date, period, now)
+          && (!problemsOnly || isProblemDay(r, radius)),
+      ),
+    [history, period, problemsOnly, now, radius],
+  );
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
+  const pageStart = page * HISTORY_PAGE_SIZE;
+  const pageRecords = filtered.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
+
+  // Grouped from the PAGE, but each month's summary is computed from the whole
+  // filtered set below — a page holding three days of September must not report
+  // September as three days.
   const historyByMonth = useMemo(() => {
     const grouped = new Map<string, AttendanceRecord[]>();
-    for (const record of history) {
-      if (!inPeriod(record.date, period, now)) continue;
-      if (problemsOnly && !isProblemDay(record, radius)) continue;
+    for (const record of pageRecords) {
       const key = monthKey(record.date);
       grouped.set(key, [...(grouped.get(key) ?? []), record]);
     }
     return Array.from(grouped.entries());
-  }, [history, period, problemsOnly, now, radius]);
+  }, [pageRecords]);
+
+  const monthTotals = useMemo(() => {
+    const grouped = new Map<string, AttendanceRecord[]>();
+    for (const record of filtered) {
+      const key = monthKey(record.date);
+      grouped.set(key, [...(grouped.get(key) ?? []), record]);
+    }
+    return grouped;
+  }, [filtered]);
 
   const problemCount = useMemo(
     () => history.filter((r) => inPeriod(r.date, period, now) && isProblemDay(r, radius)).length,
@@ -976,8 +1002,6 @@ function HistoryView({
   return (
     <div className="space-y-6">
       <div className="space-y-3">
-        <h2 className="text-xl font-bold text-foreground">Attendance history</h2>
-
         <StatusFilterTabs<HistoryPeriod>
           value={period}
           onChange={setPeriod}
@@ -1009,12 +1033,13 @@ function HistoryView({
       </div>
 
       {historyByMonth.map(([month, items]) => {
-        const sum = getMonthSummary(items);
+        const all = monthTotals.get(month) ?? items;
+        const sum = getMonthSummary(all);
         return (
           <section key={month} className="space-y-3">
             <div className="flex items-baseline justify-between">
               <h3 className="text-lg font-bold text-foreground">{month}</h3>
-              <span className="text-xs text-muted-foreground">{items.length} days</span>
+              <span className="text-xs text-muted-foreground">{all.length} days</span>
             </div>
 
             <div className={`${CARD} bg-secondary/40 p-4`}>
@@ -1036,6 +1061,36 @@ function HistoryView({
           </section>
         );
       })}
+
+      {pageCount > 1 ? (
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {pageStart + 1}&ndash;{Math.min(pageStart + HISTORY_PAGE_SIZE, filtered.length)} of{" "}
+            {filtered.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0}
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground transition hover:bg-secondary/50 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {page + 1} / {pageCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              disabled={page >= pageCount - 1}
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground transition hover:bg-secondary/50 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
