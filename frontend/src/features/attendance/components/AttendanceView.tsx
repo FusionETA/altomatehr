@@ -463,7 +463,7 @@ export function AttendanceView({
             No attendance records yet this week.
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
             {weekRecords.slice(0, 2).map((record) => (
               <ShiftRow
                 key={record.id}
@@ -914,7 +914,10 @@ function ShiftRow({
   const placeLabel = proj ?? record.location;
 
   return (
-    <article className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-ambient">
+    // No border, radius or shadow: these sit INSIDE the month card, so giving
+    // each row its own box nested a card in a card and turned ten days into a
+    // stack of ten outlines. The container rules them apart instead.
+    <article className="flex items-center gap-3 border-t border-border/50 px-4 py-3 first:border-t-0">
       {statusIcon(record)}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-foreground">{shortDate(record.date)}</p>
@@ -1134,7 +1137,7 @@ function HistoryView({
                 ) : null}
               </div>
 
-              <div className="space-y-1 border-t border-border/60 p-2">
+              <div className="border-t border-border/60">
                 {items.map((record) => (
                   <ShiftRow key={record.id} record={record} projects={projects} radius={radius} />
                 ))}
