@@ -103,6 +103,14 @@ public class Claim : ITenantScoped
     [NotMapped]
     public string? EmployeeEmail { get; set; }
 
+    // Transient — whether the CALLER can decide this claim right now. The team
+    // view returns a supervisor's whole team, including claims already settled
+    // and ones sitting with a different step's approver, so the client needs to
+    // know which rows earn Approve/Reject buttons rather than guessing from
+    // status alone.
+    [NotMapped]
+    public bool CanAct { get; set; }
+
     // ---- Xero ----
     // An approved claim becomes an accounts-payable bill in Xero. The id and
     // reference come back from Xero and are what let an admin find the bill

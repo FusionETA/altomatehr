@@ -101,7 +101,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   // safe to wave through in a batch. An over-limit claim blew past the
   // account's spend limit — that is precisely the one somebody should open and
   // read, so it is never selectable here.
-  const isBulkable = (claim: Claim) => claim.status === "PENDING" && !claim.exceedsLimit;
+  const isBulkable = (claim: Claim) => !!claim.canAct && !claim.exceedsLimit;
 
   const bulkable = useMemo(() => filteredClaims.filter(isBulkable), [filteredClaims]);
   const selectedClaims = useMemo(
@@ -110,7 +110,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   );
   const selectedTotal = selectedClaims.reduce((sum, claim) => sum + claim.amount, 0);
   const excludedOverLimit = filteredClaims.filter(
-    (claim) => claim.status === "PENDING" && claim.exceedsLimit,
+    (claim) => claim.canAct && claim.exceedsLimit,
   ).length;
 
   // Dropping a claim out of the filtered view should drop it out of the
@@ -210,7 +210,10 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   }
 
   function actions(claim: Claim, variant: "compact" | "detail" = "compact") {
-    if (claim.status !== "PENDING") return null;
+    // CanAct, not status. The team view now includes settled claims and ones
+    // waiting on a different step's approver — offering buttons on those would
+    // just produce a 404.
+    if (!claim.canAct) return null;
     const isDetail = variant === "detail";
 
     return (

@@ -59,7 +59,10 @@ export function EmployeeShell({
     if (!isSupervisor) return;
     Promise.all([getTeamClaims().catch(() => []), getTeamLeave().catch(() => [])]).then(
       ([claims, leave]) => {
-        setClaimBadge(claims.filter((c) => c.status === "PENDING").length);
+        // canAct, not status. The team view now includes the whole team's
+        // claims, so counting every pending one would advertise work that
+        // belongs to a different step's approver.
+        setClaimBadge(claims.filter((c) => c.canAct).length);
         setLeaveBadge(leave.filter((l) => l.status === "PENDING").length);
       },
     );

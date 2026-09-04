@@ -121,4 +121,28 @@ public class ClaimsServiceOwnershipTests
         PaymentType = PaymentType.PERSONAL,
         ChartOfAccountId = "acct-expense",
     };
+    // ---- The team view ----
+
+    [Fact]
+    public async Task GetTeamAsync_ShowsSettledTeamClaimsButOnlyMarksTheActionableOnes()
+    {
+        var pending = NewClaim("pending", "usr-emp", ClaimStatus.PENDING);
+        var approved = NewClaim("approved", "usr-emp", ClaimStatus.APPROVED);
+        var otherTeam = NewClaim("other", "usr-stranger", ClaimStatus.PENDING);
+
+        var service = CreateService(
+            [pending, approved, otherTeam],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-approver"]] }),
+            supervision: new FakeSupervisionService(supervisorOf: new() { ["usr-emp"] = "usr-approver" }));
+
+        var team = (await service.GetTeamAsync("usr-approver")).ToList();
+
+        // A decision no longer vanishes from the approver's own screen...
+        Assert.Equal(["approved", "pending"], team.Select(c => c.Id).OrderBy(id => id));
+        // ...but only the pending one earns Approve/Reject.
+        Assert.True(team.Single(c => c.Id == "pending").CanAct);
+        Assert.False(team.Single(c => c.Id == "approved").CanAct);
+        // Someone else's report is still someone else's business.
+        Assert.DoesNotContain("other", team.Select(c => c.Id));
+    }
 }

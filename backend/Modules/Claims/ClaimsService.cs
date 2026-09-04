@@ -69,20 +69,44 @@ public class ClaimsService : IClaimsService
     // Claims the caller can act on: an org approver sees the whole org; a
     // supervisor sees only their direct reports. Each row is labelled with the
     // applicant's email so the approver knows who filed it.
+    // A supervisor's team view: everything they can act on, plus their reports'
+    // settled claims so a decision does not vanish the moment it is made.
+    //
+    // It used to return PENDING only, which made the screen's Approved/Rejected
+    // filters unmatchable and left an approver unable to see what they had just
+    // signed off. CanAct marks the rows that are genuinely theirs to decide, so
+    // history is visible without offering buttons that would 404.
     public async Task<IEnumerable<Claim>> GetTeamAsync(string userId)
     {
         var all = await _repo.GetAllAsync();
+        var reportIds = (await _supervision.GetReportIdsAsync(userId)).ToHashSet(StringComparer.Ordinal);
+
         var claims = new List<Claim>();
-        foreach (var c in all.Where(c => c.Status == ClaimStatus.PENDING))
+        foreach (var claim in all)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, c.EmployeeId, c.CurrentStep);
-            if (approvers.Contains(userId)) claims.Add(c);
+            var actionable = false;
+            if (claim.Status == ClaimStatus.PENDING)
+            {
+                var approvers = await _router.CurrentApproversAsync(
+                    Module, claim.EmployeeId, claim.CurrentStep);
+                actionable = approvers.Contains(userId);
+            }
+
+            // Theirs to decide, or one of their people's — anything else is
+            // another supervisor's business.
+            if (!actionable && !reportIds.Contains(claim.EmployeeId)) continue;
+
+            claim.CanAct = actionable;
+            claims.Add(claim);
         }
 
         var emails = await _supervision.GetEmailsAsync(claims.Select(c => c.EmployeeId).Distinct());
-        foreach (var c in claims)
-            c.EmployeeEmail = emails.GetValueOrDefault(c.EmployeeId);
-        return claims;
+        foreach (var claim in claims)
+            claim.EmployeeEmail = emails.GetValueOrDefault(claim.EmployeeId);
+
+        // Newest first: a queue is read top-down, and the settled rows are
+        // history rather than work.
+        return claims.OrderByDescending(c => c.SubmittedAt).ToList();
     }
 
     public Task<Claim?> GetByIdAsync(string id) => _repo.GetByIdAsync(id);
