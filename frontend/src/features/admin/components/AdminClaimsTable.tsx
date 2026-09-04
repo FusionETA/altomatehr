@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Filter, X } from "lucide-react";
 import type { Claim } from "@/features/claims/api";
 import { ClaimDetailsModal } from "@/features/claims/components/ClaimDetailsModal";
@@ -11,7 +11,6 @@ import {
   PaginationControls,
 } from "@/features/claims/components/PaginationControls";
 import { formatCurrency, formatShortDate } from "@/features/claims/lib/claim-formatters";
-import { claimMatchesStatus, type ClaimStatusFilter } from "@/features/claims/lib/claim-status";
 import {
   claimAgeDays,
   isPendingClaim,
@@ -29,12 +28,34 @@ import {
 } from "@/shared/components/ui/select";
 import { CARD_BARE } from "../lib/dashboard-styles";
 import type { ClaimDrilldown } from "../lib/claims-drilldown";
+import {
+  ALL,
+  EMPTY_FILTERS,
+  hasAnyFilter,
+  matchesFilters,
+  type ClaimsFilters,
+} from "../lib/claims-filters";
 
 // Every claim in the org, and the place every number on the attention tab lands.
 // Arriving here from a card carries that card's subset with it, named on a
 // banner — so the admin always knows which question the rows are answering.
 
-export const ALL_PROJECTS = "ALL";
+// Kept as an alias so callers that already import ALL_PROJECTS keep working.
+export const ALL_PROJECTS = ALL;
+
+const CONTROL =
+  "h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+const FIELD_LABEL =
+  "block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="space-y-1.5">
+      <span className={FIELD_LABEL}>{label}</span>
+      {children}
+    </label>
+  );
+}
 
 const COLUMNS = ["Employee", "Claim", "Project", "Submitted", "Waiting", "Amount", "Status"];
 
@@ -44,12 +65,8 @@ export function AdminClaimsTable({
   error,
   drilldown,
   onClearDrilldown,
-  status,
-  onStatusChange,
-  search,
-  onSearchChange,
-  projectId,
-  onProjectChange,
+  filters,
+  onFiltersChange,
   projectNames,
   employeeEmails,
   accountLabels,
@@ -59,18 +76,17 @@ export function AdminClaimsTable({
   error: string | null;
   drilldown: ClaimDrilldown | null;
   onClearDrilldown: () => void;
-  status: ClaimStatusFilter;
-  onStatusChange: (status: ClaimStatusFilter) => void;
-  search: string;
-  onSearchChange: (search: string) => void;
-  projectId: string;
-  onProjectChange: (projectId: string) => void;
+  filters: ClaimsFilters;
+  onFiltersChange: (filters: ClaimsFilters) => void;
   projectNames: Map<string, string>;
   employeeEmails: Map<string, string>;
   accountLabels: Map<string, string>;
 }) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Claim | null>(null);
+
+  const set = <K extends keyof ClaimsFilters>(key: K, value: ClaimsFilters[K]) =>
+    onFiltersChange({ ...filters, [key]: value });
 
   const employeeName = (claim: Claim) => {
     const email = claim.employeeEmail ?? employeeEmails.get(claim.employeeId);
@@ -86,35 +102,20 @@ export function AdminClaimsTable({
       : "Not assigned";
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const labels = { projectName: projectLabel, employeeEmail };
 
     return claims
       .filter((claim) => {
         if (drilldown && !drilldown.matches(claim)) return false;
-        if (!claimMatchesStatus(claim, status)) return false;
-        if (projectId !== ALL_PROJECTS && (claim.projectId ?? "") !== projectId) return false;
-        if (query.length === 0) return true;
-
-        return [
-          claim.claimNumber,
-          claim.title,
-          employeeName(claim),
-          employeeEmail(claim),
-          claim.category,
-          projectLabel(claim),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
+        return matchesFilters(claim, filters, labels);
       })
       .sort((a, b) => (b.submittedAt || b.spentAt).localeCompare(a.submittedAt || a.spentAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims, drilldown, status, projectId, search, projectNames, employeeEmails]);
+  }, [claims, drilldown, filters, projectNames, employeeEmails]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, projectId, drilldown]);
+  }, [filters, drilldown]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / CLAIMS_PAGE_SIZE));
   useEffect(() => {
@@ -126,13 +127,10 @@ export function AdminClaimsTable({
     [filtered, page],
   );
 
-  const hasFilters =
-    status !== "ALL" || search.trim().length > 0 || projectId !== ALL_PROJECTS || drilldown !== null;
+  const hasFilters = hasAnyFilter(filters) || drilldown !== null;
 
   function clearAll() {
-    onStatusChange("ALL");
-    onSearchChange("");
-    onProjectChange(ALL_PROJECTS);
+    onFiltersChange(EMPTY_FILTERS);
     onClearDrilldown();
   }
 
@@ -194,30 +192,102 @@ export function AdminClaimsTable({
         ) : null}
 
         <section className={`${CARD_BARE} p-5 sm:p-6`}>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <SearchInput
-              value={search}
-              onChange={onSearchChange}
-              placeholder="Search by claim, employee, or project"
-              className="sm:max-w-sm"
-              inputClassName="h-12"
-            />
-            <Select value={projectId} onValueChange={onProjectChange}>
-              <SelectTrigger className="h-12 rounded-2xl bg-card sm:max-w-[240px]">
-                <SelectValue placeholder="All projects" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_PROJECTS}>All projects</SelectItem>
-                {Array.from(projectNames.entries()).map(([id, name]) => (
-                  <SelectItem key={id} value={id}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <SearchInput
+            value={filters.search}
+            onChange={(value) => set("search", value)}
+            placeholder="Search by claim, employee, or project"
+            className="sm:max-w-sm"
+            inputClassName="h-12"
+          />
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Project">
+              <Select value={filters.projectId} onValueChange={(v) => set("projectId", v)}>
+                <SelectTrigger className={CONTROL}>
+                  <SelectValue placeholder="All projects" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All projects</SelectItem>
+                  {Array.from(projectNames.entries()).map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Employee">
+              <Select value={filters.employeeId} onValueChange={(v) => set("employeeId", v)}>
+                <SelectTrigger className={CONTROL}>
+                  <SelectValue placeholder="Everyone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Everyone</SelectItem>
+                  {Array.from(employeeEmails.entries()).map(([id, email]) => (
+                    <SelectItem key={id} value={id}>
+                      {buildName(email)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Paid with">
+              <Select value={filters.paymentType} onValueChange={(v) => set("paymentType", v)}>
+                <SelectTrigger className={CONTROL}>
+                  <SelectValue placeholder="Any source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Any source</SelectItem>
+                  {/* PERSONAL is money the org owes back; COMPANY already left a
+                      company account. */}
+                  <SelectItem value="PERSONAL">Own money</SelectItem>
+                  <SelectItem value="COMPANY">Company money</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            {/* Which date the range applies to. Finance reconciles on spend
+                date, payroll on submission date. */}
+            <Field label="Date counted as">
+              <Select value={filters.dateBasis} onValueChange={(v) => set("dateBasis", v as "spent" | "submitted")}>
+                <SelectTrigger className={CONTROL}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spent">Date spent</SelectItem>
+                  <SelectItem value="submitted">Date submitted</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="From">
+              <input
+                type="date"
+                value={filters.from}
+                max={filters.to || undefined}
+                onChange={(event) => set("from", event.target.value)}
+                className={CONTROL}
+              />
+            </Field>
+
+            <Field label="To">
+              <input
+                type="date"
+                value={filters.to}
+                min={filters.from || undefined}
+                onChange={(event) => set("to", event.target.value)}
+                className={CONTROL}
+              />
+            </Field>
           </div>
 
-          <ClaimStatusTabs value={status} onChange={onStatusChange} className="mt-4" />
+          <ClaimStatusTabs
+            value={filters.status}
+            onChange={(value) => set("status", value)}
+            className="mt-4"
+          />
 
           <div className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <p>

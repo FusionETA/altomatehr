@@ -6,16 +6,21 @@ import {
   type ClaimsImportResult,
 } from "@/features/claims/api";
 import { isReadyToPay, isStaleClaim, sumAmount } from "@/features/claims/lib/claim-insights";
-import type { ClaimStatusFilter } from "@/features/claims/lib/claim-status";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import { getEmployees } from "@/features/employees/api";
 import { getAccounts, getProjects } from "@/features/settings/api";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { getAdminOverview, type AdminOverview } from "../api";
 import type { ClaimDrilldown } from "../lib/claims-drilldown";
+import {
+  describeFilters,
+  toExportFilters,
+  EMPTY_FILTERS,
+  type ClaimsFilters,
+} from "../lib/claims-filters";
 import { AdminClaimsAttention } from "./AdminClaimsAttention";
 import { AdminClaimsReadyToPay } from "./AdminClaimsReadyToPay";
-import { ALL_PROJECTS, AdminClaimsTable } from "./AdminClaimsTable";
+import { AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
@@ -39,9 +44,7 @@ export function AdminClaims() {
   const [tab, setTab] = useState<ClaimsTab>("overview");
   const [importReport, setImportReport] = useState<ClaimsImportResult | null>(null);
   const [drilldown, setDrilldown] = useState<ClaimDrilldown | null>(null);
-  const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
-  const [search, setSearch] = useState("");
-  const [projectId, setProjectId] = useState(ALL_PROJECTS);
+  const [filters, setFilters] = useState<ClaimsFilters>(EMPTY_FILTERS);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -80,9 +83,9 @@ export function AdminClaims() {
   // that would silently hide some of them.
   function openDrilldown(next: ClaimDrilldown) {
     setDrilldown(next);
-    setStatus("ALL");
-    setSearch("");
-    setProjectId(ALL_PROJECTS);
+    // Clear the filters too: a status or date left over from a previous look
+    // would silently hide part of the set the admin just clicked on.
+    setFilters(EMPTY_FILTERS);
     setTab("all");
   }
 
@@ -91,13 +94,8 @@ export function AdminClaims() {
     // paid for themselves. Anything else would hand payroll rows it must not pay.
     if (tab === "pay") return { status: "APPROVED", paymentType: "PERSONAL" };
 
-    return {
-      // A "Pending" filter also covers SUBMITTED in the UI; the export takes a
-      // single status, so it exports the PENDING ones.
-      status: status === "ALL" ? undefined : status,
-      projectId: projectId === ALL_PROJECTS ? undefined : projectId,
-    };
-  }, [tab, status, projectId]);
+    return toExportFilters(filters);
+  }, [tab, filters]);
 
   const filterSummary = useMemo(() => {
     if (tab === "pay") {
@@ -106,16 +104,12 @@ export function AdminClaims() {
       }, ${formatCurrency(sumAmount(readyToPay))}`;
     }
 
-    const parts: string[] = [];
-    if (status !== "ALL") parts.push(`${status.toLowerCase()} claims`);
-    if (projectId !== ALL_PROJECTS) parts.push(projectNames.get(projectId) ?? "one project");
-
-    const base = parts.length > 0 ? `Filtered to ${parts.join(" · ")}` : "Every claim in the org";
+    const base = describeFilters(filters, projectNames, employeeEmails);
 
     // Be straight about it: the export speaks the API's filters, not the
     // client-side subset a card click produced.
     return drilldown ? `${base} — a drill-through view isn't part of the export` : base;
-  }, [tab, readyToPay, status, projectId, projectNames, drilldown]);
+  }, [tab, readyToPay, filters, projectNames, employeeEmails, drilldown]);
 
   return (
     <div className="space-y-6">
@@ -182,12 +176,8 @@ export function AdminClaims() {
           error={error}
           drilldown={drilldown}
           onClearDrilldown={() => setDrilldown(null)}
-          status={status}
-          onStatusChange={setStatus}
-          search={search}
-          onSearchChange={setSearch}
-          projectId={projectId}
-          onProjectChange={setProjectId}
+          filters={filters}
+          onFiltersChange={setFilters}
           projectNames={projectNames}
           employeeEmails={employeeEmails}
           accountLabels={accountLabels}

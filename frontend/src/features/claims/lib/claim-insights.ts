@@ -37,6 +37,20 @@ function submittedTime(claim: Claim) {
   return serverTime(claim.submittedAt || claim.spentAt);
 }
 
+// Which date a claim is filed under. Finance reconciles on when the money was
+// spent, payroll on when it was submitted — the backend export draws the same
+// distinction, so the table has to as well.
+export type ClaimDateBasis = "spent" | "submitted";
+
+// The claim's date as a UTC yyyy-MM-dd key. Comparing these as strings is both
+// timezone-safe and exactly what the backend does (it compares .Date), so a
+// range filtered here and the same range exported agree on the boundaries.
+export function claimDateKey(claim: Claim, basis: ClaimDateBasis) {
+  const raw = basis === "submitted" ? claim.submittedAt || claim.spentAt : claim.spentAt;
+  const time = serverTime(raw);
+  return Number.isNaN(time) ? "" : new Date(time).toISOString().slice(0, 10);
+}
+
 export function isPendingClaim(claim: Claim) {
   return claim.status === "PENDING" || claim.status === "SUBMITTED";
 }
