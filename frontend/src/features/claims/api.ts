@@ -103,8 +103,12 @@ export const bulkApproveClaims = (ids: string[]) =>
 // double press cannot create a second bill.
 export type ClaimXeroSyncResponse = { alreadySynced: boolean; claim: Claim };
 
-export const syncClaimToXero = (id: string) =>
-  apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`);
+// AwaitingPayment is Xero's "Awaiting payment" — a live payable. Draft is the
+// reviewable version that sits in the accountant's queue.
+export type XeroBillStage = "AwaitingPayment" | "Draft";
+
+export const syncClaimToXero = (id: string, status: XeroBillStage) =>
+  apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`, { status });
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 

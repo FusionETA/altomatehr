@@ -1,6 +1,7 @@
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -22,7 +23,7 @@ public interface IClaimsService
 
     // Push an approved claim to Xero as a bill. Idempotent: a claim already
     // carrying a XeroBillId is returned untouched rather than billed twice.
-    Task<ClaimXeroSyncResult> SyncToXeroAsync(string id);
+    Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);

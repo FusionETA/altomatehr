@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.Ai.Dtos;
 using Microsoft.AspNetCore.RateLimiting;
@@ -285,9 +286,9 @@ public class ClaimsController : ControllerBase
     // an error, so a double-click cannot produce a second bill.
     [HttpPost("{id}/xero-sync")]
     [Authorize(Roles = "Admin,Owner")]
-    public async Task<IActionResult> SyncToXero(string id)
+    public async Task<IActionResult> SyncToXero(string id, SyncClaimToXeroDto? dto)
     {
-        var result = await _claims.SyncToXeroAsync(id);
+        var result = await _claims.SyncToXeroAsync(id, dto?.Status ?? XeroBillStatus.AwaitingPayment);
 
         if (!result.Found) return NotFound();
         if (!result.Ok) return BadRequest(new { message = result.Error, claim = result.Claim });

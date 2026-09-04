@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Support;
 using static AltomateHR.Api.Tests.Claims.ClaimsTestFactory;
 
@@ -21,7 +22,7 @@ public class ClaimsXeroSyncTests
         var xero = new FakeXeroBillService();
 
         var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
-        var result = await service.SyncToXeroAsync("claim-1");
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
 
         Assert.True(result.Ok);
         Assert.False(result.AlreadySynced);
@@ -44,7 +45,7 @@ public class ClaimsXeroSyncTests
         var xero = new FakeXeroBillService();
 
         var service = CreateService([claim], xero: xero);
-        var result = await service.SyncToXeroAsync("claim-1");
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
 
         Assert.False(result.Ok);
         // Nothing reached Xero: a bill is a liability the approvers never agreed to.
@@ -59,8 +60,8 @@ public class ClaimsXeroSyncTests
         var xero = new FakeXeroBillService();
         var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
 
-        await service.SyncToXeroAsync("claim-1");
-        var second = await service.SyncToXeroAsync("claim-1");
+        await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+        var second = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
 
         Assert.True(second.Ok);
         Assert.True(second.AlreadySynced);
@@ -75,7 +76,7 @@ public class ClaimsXeroSyncTests
         var xero = new FakeXeroBillService(failWith: "Xero returned 401: token expired");
 
         var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
-        var result = await service.SyncToXeroAsync("claim-1");
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
 
         Assert.False(result.Ok);
         // The reason survives on the claim, so tomorrow's admin can see which
@@ -94,7 +95,7 @@ public class ClaimsXeroSyncTests
 
         var xero = new FakeXeroBillService();
         var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
-        var result = await service.SyncToXeroAsync("claim-1");
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
 
         Assert.True(result.Ok);
         Assert.Equal(XeroSyncStatus.SYNCED, claim.XeroSyncStatus);
@@ -102,12 +103,27 @@ public class ClaimsXeroSyncTests
         Assert.Null(claim.XeroSyncError);
     }
 
+    [Theory]
+    [InlineData(XeroBillStatus.AwaitingPayment)]
+    [InlineData(XeroBillStatus.Draft)]
+    public async Task SyncToXeroAsync_PushesTheStageTheAdminChose(XeroBillStatus chosen)
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        await service.SyncToXeroAsync("claim-1", chosen);
+
+        // The choice reaches Xero rather than being decided for the admin.
+        Assert.Equal(chosen, Assert.Single(xero.Created).Status);
+    }
+
     [Fact]
     public async Task SyncToXeroAsync_ReturnsNotFoundForAnUnknownClaim()
     {
         var service = CreateService([], xero: new FakeXeroBillService());
 
-        var result = await service.SyncToXeroAsync("ghost");
+        var result = await service.SyncToXeroAsync("ghost", XeroBillStatus.AwaitingPayment);
 
         Assert.False(result.Found);
     }

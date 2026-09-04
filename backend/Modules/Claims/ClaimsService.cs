@@ -312,7 +312,7 @@ public class ClaimsService : IClaimsService
     // Idempotent on XeroBillId rather than on status. Status could be reset by
     // an edit; the bill id is proof a bill exists, and it is what stops a retry
     // after a partial failure from billing the same claim twice.
-    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id)
+    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status)
     {
         var claim = await _repo.GetByIdAsync(id);
         if (claim is null) return new ClaimXeroSyncResult(false, false, null);
@@ -345,6 +345,7 @@ public class ClaimsService : IClaimsService
             // approved — the employee has been out of pocket since they spent it.
             DueDate: claim.SpentAt,
             CurrencyCode: claim.Currency,
+            Status: status,
             Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
 
         try

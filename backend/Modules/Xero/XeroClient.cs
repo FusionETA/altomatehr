@@ -122,9 +122,9 @@ public class XeroClient : IXeroClient
     // A bill is an Invoice of Type ACCPAY — Xero has one endpoint for both
     // directions and the type is what separates money owed from money due.
     //
-    // Posted as DRAFT rather than AUTHORISED: this pushes a claim into someone
-    // else's ledger, and a wrong push should be a draft an accountant deletes,
-    // not an authorised liability they have to void.
+    // The caller chooses DRAFT or AUTHORISED. Xero shows AUTHORISED as
+    // "Awaiting payment": a live liability in aged payables. DRAFT is the
+    // reviewable version, which is what a cautious finance team wants.
     public async Task<XeroBillResponse> CreateBillAsync(
         string accessToken, string tenantId, XeroBillRequest bill)
     {
@@ -142,7 +142,7 @@ public class XeroClient : IXeroClient
                     DueDate = bill.DueDate.ToString("yyyy-MM-dd"),
                     Reference = bill.Reference,
                     CurrencyCode = bill.CurrencyCode,
-                    Status = "DRAFT",
+                    Status = bill.Status == XeroBillStatus.Draft ? "DRAFT" : "AUTHORISED",
                     LineItems = bill.Lines.Select(line => new
                     {
                         line.Description,

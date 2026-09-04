@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BanknoteArrowUp, CircleAlert, CircleCheck, LoaderCircle, Lock, Wallet } from "lucide-react";
-import { syncClaimToXero, type Claim } from "@/features/claims/api";
+import {
+  ArrowRight,
+  BanknoteArrowUp,
+  ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  Info,
+  LoaderCircle,
+  Lock,
+  Wallet,
+} from "lucide-react";
+import { syncClaimToXero, type Claim, type XeroBillStage } from "@/features/claims/api";
 import { getXeroStatus } from "@/features/settings/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
@@ -64,6 +74,13 @@ export function AdminClaimsReadyToPay({
   const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  // Which state a pushed bill lands in. Defaults to a live payable: the claim
+  // has cleared its chain, so the org genuinely owes the money.
+  const [stage, setStage] = useState<XeroBillStage>("AwaitingPayment");
+  // The "not live yet" explanations are collapsed — they are the same every
+  // visit, and an admin who has read them once should not have to scroll past
+  // them to reach the people they owe.
+  const [notesOpen, setNotesOpen] = useState(false);
 
   useEffect(() => {
     // Unknown until asked; a failed lookup is treated as not connected so the
@@ -81,7 +98,7 @@ export function AdminClaimsReadyToPay({
       // are writes into an external ledger, and a burst is how you trip Xero's
       // rate limit and half-bill someone.
       for (const id of claimIds) {
-        await syncClaimToXero(id);
+        await syncClaimToXero(id, stage);
       }
       onSynced();
     } catch (e) {
@@ -102,6 +119,25 @@ export function AdminClaimsReadyToPay({
 
   // Named so an admin isn't left wondering where the company-card claims went.
   const companySpend = useMemo(() => claims.filter(isSettledCompanySpend), [claims]);
+
+  // Gathered rather than rendered inline so the toggle can count them and the
+  // buttons can still point at one by id.
+  const notices = [
+    !PAYROLL_READY
+      ? {
+          id: "payroll-pending",
+          title: "Adding to payroll is not live yet.",
+          body: "The Payroll module has no draft runs to attach these to, and a claim carries no record of being paid — so nothing would survive a refresh. Until then, export the run and pay it outside the system.",
+        }
+      : null,
+    xeroConnected === false
+      ? {
+          id: "xero-pending",
+          title: "Xero isn't connected.",
+          body: "Connect it in System Settings to push these as bills.",
+        }
+      : null,
+  ].filter((note) => note !== null);
 
   const name = (employeeId: string) => {
     const email = employeeEmails.get(employeeId);
@@ -159,23 +195,36 @@ export function AdminClaimsReadyToPay({
           </div>
         </div>
 
-        {!PAYROLL_READY ? (
-          <p
-            id="payroll-pending"
-            className="mt-4 rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground"
-          >
-            <span className="font-semibold text-foreground">Adding to payroll is not live yet.</span>{" "}
-            The Payroll module has no draft runs to attach these to, and a claim carries no record
-            of being paid — so nothing would survive a refresh. Until then, export the run and pay
-            it outside the system.
-          </p>
-        ) : null}
+        {notices.length > 0 ? (
+          <div className="mt-4">
+            <button
+              type="button"
+              aria-expanded={notesOpen}
+              aria-controls="payment-run-notices"
+              onClick={() => setNotesOpen((open) => !open)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+            >
+              <Info className="h-3.5 w-3.5" />
+              {notices.length === 1
+                ? "1 thing isn't set up yet"
+                : `${notices.length} things aren't set up yet`}
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${notesOpen ? "rotate-180" : ""}`}
+              />
+            </button>
 
-        {xeroConnected === false ? (
-          <p className="mt-3 rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">Xero isn't connected.</span> Connect it
-            in System Settings to push these as bills.
-          </p>
+            <div id="payment-run-notices" hidden={!notesOpen} className="mt-3 space-y-2">
+              {notices.map((note) => (
+                <p
+                  key={note.title}
+                  id={note.id}
+                  className="rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground"
+                >
+                  <span className="font-semibold text-foreground">{note.title}</span> {note.body}
+                </p>
+              ))}
+            </div>
+          </div>
         ) : null}
 
         {syncError ? (
@@ -194,7 +243,24 @@ export function AdminClaimsReadyToPay({
       </section>
 
       <section className={CARD}>
-        <CardHead title="Who to pay" meta="Longest waiting first" />
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+          <h3 className="text-base font-black text-foreground">Who to pay</h3>
+
+          <div className="flex items-center gap-2">
+            <span className={EYEBROW}>Push to Xero as</span>
+            {/* One choice for the whole run: an admin pushing five people's
+                claims means the same thing by all of them. */}
+            <select
+              value={stage}
+              onChange={(event) => setStage(event.target.value as XeroBillStage)}
+              disabled={xeroConnected !== true}
+              className="h-9 rounded-full border border-border/60 bg-card px-3 text-xs font-bold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+            >
+              <option value="AwaitingPayment">Awaiting payment</option>
+              <option value="Draft">Draft</option>
+            </select>
+          </div>
+        </div>
         <div className="space-y-3">
           {payees.map((payee) => {
             const late = payee.waitingDays >= OVERDUE_DAYS;

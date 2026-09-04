@@ -35,6 +35,15 @@ public class XeroSyncProjectsResultDto
 // One bill to push to Xero. Deliberately flat and provider-neutral: the caller
 // (claims) describes what is owed and to whom, and knows nothing about Xero's
 // invoice shape.
+// What state the bill lands in. Xero's own wording: a DRAFT sits in the
+// accountant's queue untouched, AUTHORISED ("Awaiting payment" in Xero's UI)
+// is a live liability that shows up in aged payables and can be paid.
+//
+// The distinction is the admin's to make, not ours — some finance teams want
+// every bill reviewed before it counts, others treat an approved claim as
+// already owed.
+public enum XeroBillStatus { AwaitingPayment, Draft }
+
 public sealed record XeroBillRequest(
     // Who the org owes. Xero matches or creates a contact by name.
     string ContactName,
@@ -43,6 +52,7 @@ public sealed record XeroBillRequest(
     DateTime Date,
     DateTime DueDate,
     string CurrencyCode,
+    XeroBillStatus Status,
     IReadOnlyList<XeroBillLine> Lines);
 
 public sealed record XeroBillLine(
