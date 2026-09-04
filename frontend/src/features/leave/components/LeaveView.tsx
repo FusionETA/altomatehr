@@ -18,10 +18,18 @@ import { LeaveDetailsModal } from "./LeaveDetailsModal";
 import { ApplyLeaveModal } from "./ApplyLeaveModal";
 import { LEAVE_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { SearchInput } from "@/shared/components/SearchInput";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
+type MyLeaveTab = "balances" | "history";
+const MY_LEAVE_TABS = [
+  { id: "balances" as const, label: "My Balances" },
+  { id: "history" as const, label: "History" },
+];
+
 export function LeaveView() {
+  const [tab, setTab] = useState<MyLeaveTab>("balances");
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [mine, setMine] = useState<LeaveApplication[]>([]);
@@ -126,61 +134,80 @@ export function LeaveView() {
     <>
       {error ? <p className="mb-4 text-sm font-medium text-destructive">{error}</p> : null}
 
-      {quotaBalances.length > 0 ? (
-        <div className="mb-4 grid gap-3 sm:mb-6 sm:grid-cols-2 lg:grid-cols-3">
-          {quotaBalances.map((b) => (
-            <div key={b.leaveTypeId} className={`${CARD} p-5`}>
-              <p className="text-sm font-semibold text-foreground">{b.name}</p>
-              <p className="mt-2 text-3xl font-black tabular-nums text-foreground">
-                {b.remainingDays}
-                <span className="text-base font-semibold text-muted-foreground"> / {b.entitlementDays}</span>
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {b.takenDays} taken{b.pendingDays > 0 ? ` · ${b.pendingDays} pending` : ""}
-              </p>
+      <OverflowTabList
+        items={MY_LEAVE_TABS}
+        value={tab}
+        onChange={setTab}
+        variant="segmented"
+        className="mb-4 sm:mb-6"
+        ariaLabel="My leave sections"
+      />
+
+      {tab === "balances" ? (
+        <>
+          {quotaBalances.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {quotaBalances.map((b) => (
+                <div key={b.leaveTypeId} className={`${CARD} p-5`}>
+                  <p className="text-sm font-semibold text-foreground">{b.name}</p>
+                  <p className="mt-2 text-3xl font-black tabular-nums text-foreground">
+                    {b.remainingDays}
+                    <span className="text-base font-semibold text-muted-foreground"> / {b.entitlementDays}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {b.takenDays} taken{b.pendingDays > 0 ? ` · ${b.pendingDays} pending` : ""}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          ) : (
+            <section className={`${CARD} p-8 text-center`}>
+              <p className="text-lg font-bold text-foreground">No leave balances yet.</p>
+            </section>
+          )}
+
+          {lastRequest ? (
+            <button
+              type="button"
+              onClick={() => setSelected(lastRequest)}
+              className={`mt-4 w-full ${CARD} p-5 text-left transition hover:border-primary/40 sm:mt-6`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Your last request
+                  </p>
+                  <p className="mt-1 truncate text-base font-black text-foreground">
+                    {typeName(lastRequest.leaveTypeId)} · {formatDateRange(lastRequest.startDate, lastRequest.endDate)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {lastRequest.status === "PENDING"
+                      ? `Submitted ${relativeDaysAgo(lastRequest.createdAt)} — awaiting approval`
+                      : lastRequest.decidedAt
+                        ? `Decided ${relativeDaysAgo(lastRequest.decidedAt)}`
+                        : `Submitted ${relativeDaysAgo(lastRequest.createdAt)}`}
+                  </p>
+                </div>
+                <LeaveStatusBadge status={lastRequest.status} />
+              </div>
+            </button>
+          ) : null}
+        </>
       ) : null}
 
-      {lastRequest ? (
-        <button
-          type="button"
-          onClick={() => setSelected(lastRequest)}
-          className={`mb-4 w-full ${CARD} p-5 text-left transition hover:border-primary/40 sm:mb-6`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Your last request
-              </p>
-              <p className="mt-1 truncate text-base font-black text-foreground">
-                {typeName(lastRequest.leaveTypeId)} · {formatDateRange(lastRequest.startDate, lastRequest.endDate)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {lastRequest.status === "PENDING"
-                  ? `Submitted ${relativeDaysAgo(lastRequest.createdAt)} — awaiting approval`
-                  : lastRequest.decidedAt
-                    ? `Decided ${relativeDaysAgo(lastRequest.decidedAt)}`
-                    : `Submitted ${relativeDaysAgo(lastRequest.createdAt)}`}
-              </p>
-            </div>
-            <LeaveStatusBadge status={lastRequest.status} />
+      {tab === "history" ? (
+        <>
+          <div className="mb-4 space-y-3 md:hidden">
+            <LeaveStatusTabs value={status} onChange={setStatus} />
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search your leave history"
+              inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+            />
           </div>
-        </button>
-      ) : null}
 
-      <div className="mb-4 space-y-3 md:hidden">
-        <LeaveStatusTabs value={status} onChange={setStatus} />
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search your leave history"
-          inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
-        />
-      </div>
-
-      <div className="space-y-4 sm:space-y-6">
+          <div className="space-y-4 sm:space-y-6">
         <section className={`hidden md:block ${CARD}`}>
           <div className="space-y-4 px-5 pb-5 pt-3 sm:space-y-5 sm:p-6">
             <div className="flex items-center justify-between gap-4">
@@ -319,7 +346,9 @@ export function LeaveView() {
             />
           </div>
         ) : null}
-      </div>
+          </div>
+        </>
+      ) : null}
 
       <button
         type="button"
