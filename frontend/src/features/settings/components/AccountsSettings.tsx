@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, Plus } from "lucide-react";
+import { LoaderCircle, Plus, RefreshCw } from "lucide-react";
 import {
   archiveAccount,
   createAccount,
   getAccounts,
+  getXeroStatus,
   restoreAccount,
+  syncXeroAccounts,
   type ChartOfAccount,
   type SaveAccount,
 } from "../api";
@@ -44,6 +46,11 @@ export function AccountsSettings() {
   const [form, setForm] = useState<SaveAccount>(emptyForm);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Null until known. While Xero is connected it owns the chart of accounts and
+  // this screen mirrors it rather than authoring it.
+  const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   useEffect(() => {
     getAccounts()
@@ -51,6 +58,29 @@ export function AccountsSettings() {
       .catch((e: unknown) => setError(message(e, "Could not load accounts.")))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    getXeroStatus()
+      .then((status) => setXeroConnected(status.connected))
+      .catch(() => setXeroConnected(false));
+  }, []);
+
+  async function handleSyncFromXero() {
+    setSyncing(true);
+    setError(null);
+    setSyncNote(null);
+    try {
+      const result = await syncXeroAccounts();
+      setAccounts(await getAccounts());
+      setSyncNote(
+        `${result.imported} added · ${result.updated} updated · ${result.skipped} skipped`,
+      );
+    } catch (e) {
+      setError(message(e, "Could not sync from Xero."));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -91,6 +121,45 @@ export function AccountsSettings() {
 
   return (
     <div className="space-y-5">
+      {/* Connected to Xero, Xero owns this list. The backend refuses hand-made
+          accounts outright — this swaps the form for the only action that still
+          makes sense, rather than leaving a form that can only 409. */}
+      {xeroConnected ? (
+        <section className={`${CARD} space-y-4`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
+              <p className="text-sm text-muted-foreground">
+                Xero owns these while it's connected. Add or rename an account in Xero, then sync.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={handleSyncFromXero}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
+            >
+              {syncing ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Sync from Xero
+            </button>
+          </div>
+
+          {syncNote ? (
+            <p className="rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground">
+              {syncNote}
+            </p>
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            Spend limits and mileage settings stay editable below — those are this app's, not
+            Xero's.
+          </p>
+        </section>
+      ) : (
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
           <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
@@ -191,6 +260,7 @@ export function AccountsSettings() {
           Add account
         </button>
       </form>
+      )}
 
       <div className={CARD}>
         {loading ? (
