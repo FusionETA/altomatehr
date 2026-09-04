@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Users, X } from "lucide-react";
-import { getOnLeaveToday, type LeaveApplication, type OnLeaveToday } from "../api";
+import { History, Users, X } from "lucide-react";
+import {
+  getLeaveAudit,
+  getOnLeaveToday,
+  type LeaveApplication,
+  type LeaveApprovalEntry,
+  type OnLeaveToday,
+} from "../api";
 import { eachDateInRange, formatDate, formatDateRange, relativeDaysAgo, urgencyLabel } from "../lib/leave-formatters";
 import { LeaveStatusBadge } from "./LeaveStatusBadge";
 
@@ -40,11 +46,45 @@ function useOverlappingLeave(application: LeaveApplication, enabled: boolean) {
   return { loading, people };
 }
 
+// Approval trail for one application — used by the admin "recent applications"
+// view, which has no approve/reject action of its own to justify it otherwise.
+function useAuditTrail(applicationId: string, enabled: boolean) {
+  const [loading, setLoading] = useState(enabled);
+  const [entries, setEntries] = useState<LeaveApprovalEntry[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    setLoading(true);
+    getLeaveAudit(applicationId)
+      .then((result) => {
+        if (!cancelled) setEntries(result);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, applicationId]);
+
+  return { loading, entries };
+}
+
+const DECISION_LABELS: Record<string, string> = {
+  APPROVED: "Approved",
+  AUTO_APPROVED: "Auto-approved",
+  REJECTED: "Rejected",
+  ADMIN_APPLIED: "Applied by admin",
+  IMPORTED: "Imported",
+};
+
 export function LeaveDetailsModal({
   application,
   typeName,
   employeeLabel,
   showWhoElseIsOff = false,
+  showAudit = false,
   onClose,
   footer,
 }: {
@@ -52,6 +92,7 @@ export function LeaveDetailsModal({
   typeName: string;
   employeeLabel?: string;
   showWhoElseIsOff?: boolean;
+  showAudit?: boolean;
   onClose: () => void;
   footer?: ReactNode;
 }) {
@@ -59,6 +100,7 @@ export function LeaveDetailsModal({
     application,
     showWhoElseIsOff,
   );
+  const { loading: loadingAudit, entries: auditEntries } = useAuditTrail(application.id, showAudit);
   const urgency = application.status === "PENDING" ? urgencyLabel(application.startDate) : null;
 
   return (
@@ -152,6 +194,41 @@ export function LeaveDetailsModal({
                     <span className="text-xs text-muted-foreground">
                       {person.leaveTypeName} · {formatDateRange(person.startDate.slice(0, 10), person.endDate.slice(0, 10))}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
+        {showAudit ? (
+          <section className="mt-4 rounded-[22px] border border-border/70 bg-card/70 p-5">
+            <div className="flex items-center gap-2 text-primary">
+              <History className="h-4 w-4" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em]">Approval trail</p>
+            </div>
+            {loadingAudit ? (
+              <p className="mt-3 text-sm text-muted-foreground">Loading history…</p>
+            ) : auditEntries.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No decisions recorded yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {auditEntries.map((entry, index) => (
+                  <li
+                    key={`${entry.step}-${index}`}
+                    className="rounded-2xl bg-surface-low/70 px-4 py-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        Step {entry.step + 1} · {DECISION_LABELS[entry.decision] ?? entry.decision}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(entry.decidedAt.slice(0, 10))}
+                      </span>
+                    </div>
+                    {entry.notes ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{entry.notes}</p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
