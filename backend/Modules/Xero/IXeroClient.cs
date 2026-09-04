@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Xero.Dtos;
+
 namespace AltomateHR.Api.Modules.Xero;
 
 public interface IXeroClient
@@ -13,6 +15,10 @@ public interface IXeroClient
     // browser so the OAuth token never leaves the server. Null when Xero
     // reports the file is missing.
     Task<XeroFileContent?> GetFileContentAsync(string accessToken, string tenantId, string fileId);
+
+    // Creates an accounts-payable bill (Xero calls it an ACCPAY Invoice).
+    // Returns the bill's id and human reference so the caller can link to it.
+    Task<XeroBillResponse> CreateBillAsync(string accessToken, string tenantId, XeroBillRequest bill);
 }
 
 public sealed record XeroFileContent(byte[] Content, string ContentType, string FileName);

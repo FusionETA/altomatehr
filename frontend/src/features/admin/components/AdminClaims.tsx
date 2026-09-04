@@ -179,6 +179,7 @@ export function AdminClaims() {
           claims={claims}
           employeeEmails={employeeEmails}
           onDrill={openDrilldown}
+          onSynced={() => void load()}
         />
       )}
     </div>

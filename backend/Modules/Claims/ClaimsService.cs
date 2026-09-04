@@ -10,6 +10,8 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Xero;
+using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -32,6 +34,7 @@ public class ClaimsService : IClaimsService
     private readonly IRealtimeService _realtime;
     private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
+    private readonly IXeroService _xero;
 
     public ClaimsService(
         IClaimsRepository repo,
@@ -43,7 +46,8 @@ public class ClaimsService : IClaimsService
         ICurrentUser currentUser,
         IRealtimeService realtime,
         IEmployeeRowResolver employees,
-        IProjectService projects)
+        IProjectService projects,
+        IXeroService xero)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
@@ -55,6 +59,7 @@ public class ClaimsService : IClaimsService
         _realtime = realtime;
         _employees = employees;
         _projects = projects;
+        _xero = xero;
     }
 
     // The caller's own claims.
@@ -296,6 +301,78 @@ public class ClaimsService : IClaimsService
         // claimant needs to know.
         await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true);
         return new ClaimStatusTransitionResult(true, true, claim);
+    }
+
+    // Push an approved claim to Xero as a bill.
+    //
+    // Only APPROVED claims: a bill is a liability the org accepts, so pushing
+    // one before the chain has finished would commit money the approvers have
+    // not agreed to.
+    //
+    // Idempotent on XeroBillId rather than on status. Status could be reset by
+    // an edit; the bill id is proof a bill exists, and it is what stops a retry
+    // after a partial failure from billing the same claim twice.
+    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id)
+    {
+        var claim = await _repo.GetByIdAsync(id);
+        if (claim is null) return new ClaimXeroSyncResult(false, false, null);
+
+        if (!string.IsNullOrWhiteSpace(claim.XeroBillId))
+            return new ClaimXeroSyncResult(true, true, claim, AlreadySynced: true);
+
+        if (claim.Status != ClaimStatus.APPROVED)
+        {
+            return new ClaimXeroSyncResult(true, false, claim,
+                Error: "Only approved claims can be billed to Xero.");
+        }
+
+        var directory = await _employees.GetSnapshotAsync();
+        var identity = directory.ById(claim.EmployeeId);
+        var contactName = identity?.Name is { Length: > 0 } name
+            ? name
+            : identity?.Email ?? claim.EmployeeId;
+
+        // Xero wants its own account CODE, not our internal id.
+        var accountCode = claim.ChartOfAccountId is null
+            ? null
+            : (await _accounts.GetByIdAsync(claim.ChartOfAccountId))?.Code;
+
+        var request = new XeroBillRequest(
+            ContactName: contactName,
+            Reference: claim.ClaimNumber,
+            Date: claim.SpentAt,
+            // Same day: a reimbursement is already overdue by the time it is
+            // approved — the employee has been out of pocket since they spent it.
+            DueDate: claim.SpentAt,
+            CurrencyCode: claim.Currency,
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+
+        try
+        {
+            var bill = await _xero.CreateBillAsync(request);
+
+            claim.XeroBillId = bill.BillId;
+            claim.XeroBillRef = bill.Reference;
+            claim.XeroSyncStatus = XeroSyncStatus.SYNCED;
+            claim.XeroSyncError = null;
+            claim.XeroSyncedAt = DateTime.UtcNow;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, true, claim);
+        }
+        catch (XeroConnectionException ex)
+        {
+            // The failure is recorded ON the claim, not just returned: an admin
+            // coming back tomorrow needs to see which claims failed and why
+            // without repeating every push to find out.
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = ex.Message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
+        }
     }
 
     public Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload) =>

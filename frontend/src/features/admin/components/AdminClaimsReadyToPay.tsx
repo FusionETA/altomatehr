@@ -1,11 +1,13 @@
-import { useMemo } from "react";
-import { ArrowRight, BanknoteArrowUp, Lock, Wallet } from "lucide-react";
-import type { Claim } from "@/features/claims/api";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, BanknoteArrowUp, CircleAlert, CircleCheck, LoaderCircle, Lock, Wallet } from "lucide-react";
+import { syncClaimToXero, type Claim } from "@/features/claims/api";
+import { getXeroStatus } from "@/features/settings/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
   isSettledCompanySpend,
   readyToPayByEmployee,
   sumAmount,
+  type PayeeGroup,
 } from "@/features/claims/lib/claim-insights";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
@@ -48,12 +50,48 @@ export function AdminClaimsReadyToPay({
   claims,
   employeeEmails,
   onDrill,
+  onSynced,
 }: {
   claims: Claim[];
   employeeEmails: Map<string, string>;
   onDrill: (drilldown: ClaimDrilldown) => void;
+  // A synced claim changes state on the server, so the page re-reads rather
+  // than this component patching rows it does not own.
+  onSynced: () => void;
 }) {
   const payees = useMemo(() => readyToPayByEmployee(claims), [claims]);
+
+  const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Unknown until asked; a failed lookup is treated as not connected so the
+    // UI never offers a button that can only fail.
+    getXeroStatus()
+      .then((status) => setXeroConnected(status.connected))
+      .catch(() => setXeroConnected(false));
+  }, []);
+
+  async function syncPayee(employeeId: string, claimIds: string[]) {
+    setSyncingId(employeeId);
+    setSyncError(null);
+    try {
+      // One bill per claim, in order. Sequential rather than parallel: these
+      // are writes into an external ledger, and a burst is how you trip Xero's
+      // rate limit and half-bill someone.
+      for (const id of claimIds) {
+        await syncClaimToXero(id);
+      }
+      onSynced();
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : "Could not push to Xero.");
+      // Some may have landed before the failure, so re-read either way.
+      onSynced();
+    } finally {
+      setSyncingId(null);
+    }
+  }
 
   const owed = useMemo(() => payees.reduce((total, payee) => total + payee.amount, 0), [payees]);
   const claimCount = useMemo(
@@ -133,6 +171,19 @@ export function AdminClaimsReadyToPay({
           </p>
         ) : null}
 
+        {xeroConnected === false ? (
+          <p className="mt-3 rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Xero isn't connected.</span> Connect it
+            in System Settings to push these as bills.
+          </p>
+        ) : null}
+
+        {syncError ? (
+          <p className="mt-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs font-medium text-destructive">
+            {syncError}
+          </p>
+        ) : null}
+
         {overdue.length > 0 ? (
           <p className="mt-4 rounded-2xl border border-tertiary/25 bg-tertiary/5 px-4 py-3 text-xs font-semibold text-tertiary">
             {overdue.length} {overdue.length === 1 ? "person has" : "people have"} been waiting more
@@ -192,10 +243,32 @@ export function AdminClaimsReadyToPay({
                   </div>
                 </button>
 
-                <AddToPayrollButton
-                  label="Add to payroll"
-                  claimIds={payee.claimIds}
-                />
+                <div className="flex shrink-0 items-center gap-2">
+                  <XeroState payee={payee} />
+                  <button
+                    type="button"
+                    disabled={
+                      xeroConnected !== true ||
+                      syncingId !== null ||
+                      payee.unsyncedClaimIds.length === 0
+                    }
+                    title={
+                      xeroConnected === false
+                        ? "Connect Xero in System Settings first"
+                        : payee.unsyncedClaimIds.length === 0
+                          ? "Every claim for this person is already billed"
+                          : undefined
+                    }
+                    onClick={() => syncPayee(payee.employeeId, payee.unsyncedClaimIds)}
+                    className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border/60 bg-card px-4 text-sm font-bold text-muted-foreground shadow-sm transition hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {syncingId === payee.employeeId ? (
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    {payee.failedCount > 0 ? "Retry Xero" : "Sync to Xero"}
+                  </button>
+                  <AddToPayrollButton label="Add to payroll" claimIds={payee.claimIds} />
+                </div>
               </div>
             );
           })}
@@ -245,6 +318,34 @@ function AddToPayrollButton({
       {PAYROLL_READY ? null : <Lock className="h-3.5 w-3.5" />}
       {label}
     </button>
+  );
+}
+
+// What Xero knows about this person's claims. Silent when nothing has been
+// pushed — an untouched row needs no chip, and a page of "not synced" badges
+// says nothing an admin can act on.
+function XeroState({ payee }: { payee: PayeeGroup }) {
+  if (payee.failedCount > 0) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-destructive">
+        <CircleAlert className="h-3 w-3" />
+        {payee.failedCount} failed
+      </span>
+    );
+  }
+
+  if (payee.syncedCount === 0) return null;
+
+  const all = payee.unsyncedClaimIds.length === 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${
+        all ? "bg-secondary text-secondary-foreground" : "bg-surface-low text-muted-foreground"
+      }`}
+    >
+      <CircleCheck className="h-3 w-3" />
+      {all ? "In Xero" : `${payee.syncedCount}/${payee.claimIds.length} in Xero`}
+    </span>
   );
 }
 

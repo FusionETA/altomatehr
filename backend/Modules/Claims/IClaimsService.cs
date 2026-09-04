@@ -19,6 +19,10 @@ public interface IClaimsService
     // approve never blocks the rest. Over-limit claims are refused here on
     // purpose — see ClaimsService.BulkApproveAsync.
     Task<ClaimsBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId);
+
+    // Push an approved claim to Xero as a bill. Idempotent: a claim already
+    // carrying a XeroBillId is returned untouched rather than billed twice.
+    Task<ClaimXeroSyncResult> SyncToXeroAsync(string id);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
@@ -44,6 +48,16 @@ public interface IClaimsService
 
 // Mirrors the attendance bulk contract: per-id success/failure, so the response
 // is a report rather than a single pass/fail for the whole batch.
+// Found=false is a 404; Ok=false with a message is a claim that could not be
+// billed and says why. AlreadySynced is called out so a repeat press reads as
+// "nothing to do" rather than as an error.
+public sealed record ClaimXeroSyncResult(
+    bool Found,
+    bool Ok,
+    Claim? Claim,
+    bool AlreadySynced = false,
+    string? Error = null);
+
 public sealed record ClaimsBulkResultItem(string Id, bool Ok, string? Error = null);
 
 public sealed record ClaimsBulkResult(int Succeeded, int Failed, IReadOnlyList<ClaimsBulkResultItem> Items);

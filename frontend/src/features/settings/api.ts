@@ -80,3 +80,15 @@ export const updateAccount = (id: string, body: SaveAccount) =>
   apiPut<ChartOfAccount>(`/accounts/${id}`, body);
 export const archiveAccount = (id: string) => apiPost<ChartOfAccount>(`/accounts/${id}/archive`);
 export const restoreAccount = (id: string) => apiPost<ChartOfAccount>(`/accounts/${id}/restore`);
+
+
+// ---- Xero ----
+
+// Whether the org can push bills at all. The claims dashboard asks so it can
+// say "connect Xero" instead of offering a sync button that can only fail.
+export type XeroStatus = {
+  connected: boolean;
+  tenantName: string | null;
+};
+
+export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");

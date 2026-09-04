@@ -278,6 +278,23 @@ public class ClaimsController : ControllerBase
         return ToStatusTransitionResponse(result);
     }
 
+    // POST /claims/{id}/xero-sync — push an approved claim to Xero as a bill.
+    // Admin/Owner only: it writes into the org's accounting system.
+    //
+    // Idempotent — a claim already billed returns 200 with alreadySynced, not
+    // an error, so a double-click cannot produce a second bill.
+    [HttpPost("{id}/xero-sync")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> SyncToXero(string id)
+    {
+        var result = await _claims.SyncToXeroAsync(id);
+
+        if (!result.Found) return NotFound();
+        if (!result.Ok) return BadRequest(new { message = result.Error, claim = result.Claim });
+
+        return Ok(new { alreadySynced = result.AlreadySynced, claim = result.Claim });
+    }
+
     // POST /claims/bulk/approve — sign off many claims at once, as the
     // current-step approver of each. Independent per-id success/failure, so the
     // body is a report: always 200, even when some ids failed.

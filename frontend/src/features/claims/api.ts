@@ -18,6 +18,13 @@ export type Claim = {
   amount: number;
   currency: string;
   status: string;
+  // Xero bill state. NOT_SYNCED and ERROR are distinct on purpose: "never
+  // pushed" and "pushed and failed" need different actions.
+  xeroSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  xeroBillId?: string | null;
+  xeroBillRef?: string | null;
+  xeroSyncError?: string | null;
+  xeroSyncedAt?: string | null;
   // Position in the approval chain. A REJECTED claim with currentStep > 0 got
   // past its first-line approver before a later layer turned it down — that is
   // how the dashboard spots an overturned approval.
@@ -91,6 +98,13 @@ export type ClaimsBulkResult = {
 
 export const bulkApproveClaims = (ids: string[]) =>
   apiPost<ClaimsBulkResult>("/claims/bulk/approve", { ids });
+
+// Push one approved claim to Xero as a bill. Idempotent server-side, so a
+// double press cannot create a second bill.
+export type ClaimXeroSyncResponse = { alreadySynced: boolean; claim: Claim };
+
+export const syncClaimToXero = (id: string) =>
+  apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`);
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 

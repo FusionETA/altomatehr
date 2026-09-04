@@ -108,6 +108,11 @@ export function isSettledCompanySpend(claim: Claim) {
 export type PayeeGroup = {
   employeeId: string;
   claimIds: string[];
+  // The claims still to push to Xero — a payee may be part-synced if an
+  // earlier run failed partway.
+  unsyncedClaimIds: string[];
+  syncedCount: number;
+  failedCount: number;
   amount: number;
   // Days since the OLDEST of their claims was approved — how long this person
   // has been out of pocket with the decision already made.
@@ -125,11 +130,24 @@ export function readyToPayByEmployee(claims: Claim[], now: Date = new Date()): P
 
     let group = groups.get(claim.employeeId);
     if (!group) {
-      group = { employeeId: claim.employeeId, claimIds: [], amount: 0, waitingDays: 0 };
+      group = {
+        employeeId: claim.employeeId,
+        claimIds: [],
+        unsyncedClaimIds: [],
+        syncedCount: 0,
+        failedCount: 0,
+        amount: 0,
+        waitingDays: 0,
+      };
       groups.set(claim.employeeId, group);
     }
 
     group.claimIds.push(claim.id);
+    if (claim.xeroSyncStatus === "SYNCED") group.syncedCount += 1;
+    else {
+      group.unsyncedClaimIds.push(claim.id);
+      if (claim.xeroSyncStatus === "ERROR") group.failedCount += 1;
+    }
     group.amount += claim.amount;
     group.waitingDays = Math.max(group.waitingDays, approvedAgeDays(claim, now));
   }

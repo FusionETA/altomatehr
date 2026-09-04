@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 
+using AltomateHR.Api.Modules.Xero.Dtos;
+
 namespace AltomateHR.Api.Modules.Xero;
 
 public class XeroClient : IXeroClient
@@ -16,6 +18,7 @@ public class XeroClient : IXeroClient
     private const string AccountsUrl = "https://api.xero.com/api.xro/2.0/Accounts";
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
+    private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -114,6 +117,64 @@ public class XeroClient : IXeroClient
     {
         public string? Name { get; set; }
         public string? MimeType { get; set; }
+    }
+
+    // A bill is an Invoice of Type ACCPAY — Xero has one endpoint for both
+    // directions and the type is what separates money owed from money due.
+    //
+    // Posted as DRAFT rather than AUTHORISED: this pushes a claim into someone
+    // else's ledger, and a wrong push should be a draft an accountant deletes,
+    // not an authorised liability they have to void.
+    public async Task<XeroBillResponse> CreateBillAsync(
+        string accessToken, string tenantId, XeroBillRequest bill)
+    {
+        var payload = new
+        {
+            Invoices = new[]
+            {
+                new
+                {
+                    Type = "ACCPAY",
+                    Contact = new { Name = bill.ContactName },
+                    // Xero wants dates as yyyy-MM-dd; sending an ISO instant
+                    // makes it guess, and it guesses in its own timezone.
+                    Date = bill.Date.ToString("yyyy-MM-dd"),
+                    DueDate = bill.DueDate.ToString("yyyy-MM-dd"),
+                    Reference = bill.Reference,
+                    CurrencyCode = bill.CurrencyCode,
+                    Status = "DRAFT",
+                    LineItems = bill.Lines.Select(line => new
+                    {
+                        line.Description,
+                        Quantity = 1,
+                        UnitAmount = line.Amount,
+                        AccountCode = line.AccountCode,
+                    }).ToArray(),
+                },
+            },
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, InvoicesUrl)
+        {
+            Content = JsonContent.Create(payload),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero bill creation failed.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroInvoicesPayload>(JsonOptions);
+        var created = result?.Invoices?.FirstOrDefault();
+
+        // A 200 with no invoice back means Xero accepted the call but created
+        // nothing — treated as a failure so the claim is never marked SYNCED
+        // against a bill that does not exist.
+        if (created is null || string.IsNullOrWhiteSpace(created.InvoiceID))
+            throw new XeroConnectionException("Xero accepted the bill but returned no invoice.");
+
+        return new XeroBillResponse(created.InvoiceID, created.InvoiceNumber ?? bill.Reference);
     }
 
     public async Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId)
@@ -249,6 +310,18 @@ public class XeroClient : IXeroClient
         public string? TenantId { get; set; }
         public string? TenantName { get; set; }
         public string? TenantType { get; set; }
+    }
+
+    private sealed class XeroInvoicesPayload
+    {
+        [JsonPropertyName("Invoices")]
+        public List<XeroInvoicePayload>? Invoices { get; set; }
+    }
+
+    private sealed class XeroInvoicePayload
+    {
+        public string? InvoiceID { get; set; }
+        public string? InvoiceNumber { get; set; }
     }
 
     private sealed class XeroAccountsPayload

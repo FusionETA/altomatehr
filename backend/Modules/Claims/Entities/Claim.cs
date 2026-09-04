@@ -103,6 +103,23 @@ public class Claim : ITenantScoped
     [NotMapped]
     public string? EmployeeEmail { get; set; }
 
+    // ---- Xero ----
+    // An approved claim becomes an accounts-payable bill in Xero. The id and
+    // reference come back from Xero and are what let an admin find the bill
+    // there; the error is kept so a failed sync explains itself instead of
+    // just refusing to advance.
+    public XeroSyncStatus XeroSyncStatus { get; set; } = XeroSyncStatus.NOT_SYNCED;
+
+    [MaxLength(60)]
+    public string? XeroBillId { get; set; }
+
+    [MaxLength(60)]
+    public string? XeroBillRef { get; set; }
+
+    public string? XeroSyncError { get; set; }
+
+    public DateTime? XeroSyncedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
