@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { SearchInput } from "@/shared/components/SearchInput";
+import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { AddEmployeeModal } from "./AddEmployeeModal";
 
 const CARD =
@@ -67,7 +68,10 @@ export function EmployeesSettings() {
     const policyNames = new Map(policies.map((policy) => [policy.id, policy.name]));
     return employees.filter((emp) =>
       [
+        emp.name,
         emp.email,
+        emp.employeeNumber,
+        emp.jobTitle,
         emp.role,
         emp.supervisorId ? employeeEmails.get(emp.supervisorId) : "",
         emp.policyId ? policyNames.get(emp.policyId) : "",
@@ -117,7 +121,8 @@ export function EmployeesSettings() {
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border/60">
-                <th className={TH}>Email</th>
+                <th className={TH}>Employee</th>
+                <th className={TH}>Job title</th>
                 <th className={TH}>Role</th>
                 <th className={TH}>Supervisor</th>
                 <th className={TH}>Policy</th>
@@ -126,13 +131,27 @@ export function EmployeesSettings() {
             <tbody>
               {filteredEmployees.map((emp) => (
                 <tr key={emp.id} className="border-b border-border/60">
+                  {/* The person leads, the login is secondary. Name comes from
+                      the API and was simply never read — which is why the rest
+                      of the app derives names from email addresses. */}
                   <td className="px-3 py-3">
-                    <span className="inline-flex items-center gap-2 font-semibold text-foreground">
-                      {emp.email}
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">
+                          {emp.name?.trim() || buildName(emp.email)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {emp.email}
+                          {emp.employeeNumber ? ` · ${emp.employeeNumber}` : ""}
+                        </p>
+                      </div>
                       {savingId === emp.id ? (
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                       ) : null}
-                    </span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-sm text-muted-foreground">
+                    {emp.jobTitle || "—"}
                   </td>
                   <td className="px-3 py-2">
                     <Select value={emp.role} onValueChange={(role) => save(emp, { role })}>
