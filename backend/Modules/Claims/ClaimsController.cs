@@ -296,6 +296,14 @@ public class ClaimsController : ControllerBase
         return Ok(new { alreadySynced = result.AlreadySynced, claim = result.Claim });
     }
 
+    // POST /claims/bulk/xero-sync — push a set of approved claims in one call.
+    // Always 200: the body reports per claim, because a run where eighteen of
+    // twenty landed is not a failed request.
+    [HttpPost("bulk/xero-sync")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> BulkSyncToXero(BulkSyncClaimsToXeroDto dto) =>
+        Ok(await _claims.BulkSyncToXeroAsync(dto.Ids, dto.Status));
+
     // POST /claims/bulk/approve — sign off many claims at once, as the
     // current-step approver of each. Independent per-id success/failure, so the
     // body is a report: always 200, even when some ids failed.

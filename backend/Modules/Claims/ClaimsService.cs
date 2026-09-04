@@ -376,6 +376,40 @@ public class ClaimsService : IClaimsService
         }
     }
 
+    // Bulk push. Sequenced HERE rather than in the browser: Xero rate-limits per
+    // tenant, and a client firing twenty parallel requests is how half a run
+    // lands and the rest 429s.
+    //
+    // Each claim is judged on its own — already-billed ones report as fine
+    // rather than as errors, since the desired end state is already true.
+    public async Task<ClaimsBulkResult> BulkSyncToXeroAsync(
+        IReadOnlyList<string> ids, XeroBillStatus status)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new ClaimsBulkResult(0, ids.Count, [
+                new ClaimsBulkResultItem(string.Empty, false, $"Too many claims — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<ClaimsBulkResultItem>(ids.Count);
+
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var result = await SyncToXeroAsync(id, status);
+
+            if (!result.Found)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false, "Claim not found."));
+                continue;
+            }
+
+            items.Add(new ClaimsBulkResultItem(id, result.Ok, result.Ok ? null : result.Error));
+        }
+
+        return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
+    }
+
     public Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload) =>
         _receiptStorage.StoreAsync(upload);
 

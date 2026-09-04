@@ -119,6 +119,57 @@ public class ClaimsXeroSyncTests
     }
 
     [Fact]
+    public async Task BulkSyncToXeroAsync_PushesEachClaimAndReportsPerId()
+    {
+        var ok = NewClaim("ok", "usr-emp", ClaimStatus.APPROVED);
+        var pending = NewClaim("pending", "usr-emp", ClaimStatus.PENDING);
+        var xero = new FakeXeroBillService();
+        var service = CreateService([ok, pending], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        var result = await service.BulkSyncToXeroAsync(["ok", "pending", "ghost"],
+            XeroBillStatus.AwaitingPayment);
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(2, result.Failed);
+        // Only the approved one reached Xero; the rest failed on their own lines.
+        Assert.Single(xero.Created);
+        Assert.Equal(XeroSyncStatus.SYNCED, ok.XeroSyncStatus);
+        Assert.Equal(XeroSyncStatus.NOT_SYNCED, pending.XeroSyncStatus);
+    }
+
+    [Fact]
+    public async Task BulkSyncToXeroAsync_TreatsAnAlreadyBilledClaimAsFine()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        await service.BulkSyncToXeroAsync(["claim-1"], XeroBillStatus.AwaitingPayment);
+        var second = await service.BulkSyncToXeroAsync(["claim-1"], XeroBillStatus.AwaitingPayment);
+
+        // The end state is already true, so it is not an error — but no second bill.
+        Assert.Equal(1, second.Succeeded);
+        Assert.Equal(0, second.Failed);
+        Assert.Single(xero.Created);
+    }
+
+    [Fact]
+    public async Task BulkSyncToXeroAsync_KeepsGoingAfterOneClaimFails()
+    {
+        var first = NewClaim("first", "usr-emp", ClaimStatus.PENDING);   // will be refused
+        var second = NewClaim("second", "usr-emp", ClaimStatus.APPROVED);
+        var xero = new FakeXeroBillService();
+        var service = CreateService([first, second], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        var result = await service.BulkSyncToXeroAsync(["first", "second"],
+            XeroBillStatus.AwaitingPayment);
+
+        // A refusal early in the list must not strand the ones behind it.
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(XeroSyncStatus.SYNCED, second.XeroSyncStatus);
+    }
+
+    [Fact]
     public async Task SyncToXeroAsync_ReturnsNotFoundForAnUnknownClaim()
     {
         var service = CreateService([], xero: new FakeXeroBillService());

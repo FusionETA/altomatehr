@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Modules.Claims.Dtos;
@@ -10,5 +11,14 @@ namespace AltomateHR.Api.Modules.Claims.Dtos;
 // Xero before it counts.
 public class SyncClaimToXeroDto
 {
+    public XeroBillStatus Status { get; set; } = XeroBillStatus.AwaitingPayment;
+}
+
+// The bulk form: the same stage choice, applied to a set of claims.
+public class BulkSyncClaimsToXeroDto
+{
+    [Required, MinLength(1)]
+    public List<string> Ids { get; set; } = [];
+
     public XeroBillStatus Status { get; set; } = XeroBillStatus.AwaitingPayment;
 }

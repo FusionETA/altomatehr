@@ -24,6 +24,10 @@ public interface IClaimsService
     // Push an approved claim to Xero as a bill. Idempotent: a claim already
     // carrying a XeroBillId is returned untouched rather than billed twice.
     Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status);
+
+    // Push many claims in one call. Sequential and independent: Xero rate-limits,
+    // and one claim it refuses must not stop the rest.
+    Task<ClaimsBulkResult> BulkSyncToXeroAsync(IReadOnlyList<string> ids, XeroBillStatus status);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);

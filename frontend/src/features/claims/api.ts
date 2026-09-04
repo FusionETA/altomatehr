@@ -109,6 +109,11 @@ export type XeroBillStage = "AwaitingPayment" | "Draft";
 
 export const syncClaimToXero = (id: string, status: XeroBillStage) =>
   apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`, { status });
+
+// The server sequences these — Xero rate-limits per tenant, so firing them
+// from the browser in parallel is how half a run lands and the rest 429s.
+export const bulkSyncClaimsToXero = (ids: string[], status: XeroBillStage) =>
+  apiPost<ClaimsBulkResult>("/claims/bulk/xero-sync", { ids, status });
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 

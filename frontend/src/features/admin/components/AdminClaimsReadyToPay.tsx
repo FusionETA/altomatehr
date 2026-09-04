@@ -5,12 +5,19 @@ import {
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CloudUpload,
   Info,
   LoaderCircle,
   Lock,
   Wallet,
 } from "lucide-react";
-import { syncClaimToXero, type Claim, type XeroBillStage } from "@/features/claims/api";
+import {
+  bulkSyncClaimsToXero,
+  syncClaimToXero,
+  type Claim,
+  type ClaimsBulkResult,
+  type XeroBillStage,
+} from "@/features/claims/api";
 import { getXeroStatus } from "@/features/settings/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
@@ -81,6 +88,11 @@ export function AdminClaimsReadyToPay({
   // visit, and an admin who has read them once should not have to scroll past
   // them to reach the people they owe.
   const [notesOpen, setNotesOpen] = useState(false);
+  // Selection is by payee, matching how the list is grouped — an admin picks
+  // people to pay, then expands to their claims underneath.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
 
   useEffect(() => {
     // Unknown until asked; a failed lookup is treated as not connected so the
@@ -89,6 +101,59 @@ export function AdminClaimsReadyToPay({
       .then((status) => setXeroConnected(status.connected))
       .catch(() => setXeroConnected(false));
   }, []);
+
+  // Only payees with something left to push can be selected; the rest are
+  // already in Xero and would just be noise in the count.
+  const syncable = useMemo(
+    () => payees.filter((payee) => payee.unsyncedClaimIds.length > 0),
+    [payees],
+  );
+  const selectedPayees = useMemo(
+    () => syncable.filter((payee) => selected.has(payee.employeeId)),
+    [syncable, selected],
+  );
+  const selectedClaimIds = selectedPayees.flatMap((payee) => payee.unsyncedClaimIds);
+  const selectedTotal = selectedPayees.reduce((sum, payee) => sum + payee.amount, 0);
+
+  // A payee who becomes fully synced drops out of the selection rather than
+  // lingering in the count.
+  useEffect(() => {
+    setSelected((current) => {
+      const available = new Set(syncable.map((payee) => payee.employeeId));
+      const next = new Set([...current].filter((id) => available.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [syncable]);
+
+  const allSelected = syncable.length > 0 && selectedPayees.length === syncable.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(syncable.map((p) => p.employeeId)));
+
+  function togglePayee(employeeId: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }
+
+  async function syncSelected() {
+    if (selectedClaimIds.length === 0) return;
+
+    setBulkBusy(true);
+    setSyncError(null);
+    setBulkResult(null);
+    try {
+      setBulkResult(await bulkSyncClaimsToXero(selectedClaimIds, stage));
+      setSelected(new Set());
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : "Could not push to Xero.");
+    } finally {
+      setBulkBusy(false);
+      onSynced();
+    }
+  }
 
   async function syncPayee(employeeId: string, claimIds: string[]) {
     setSyncingId(employeeId);
@@ -244,7 +309,18 @@ export function AdminClaimsReadyToPay({
 
       <section className={CARD}>
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
-          <h3 className="text-base font-black text-foreground">Who to pay</h3>
+          <div className="flex items-center gap-3">
+            {syncable.length > 0 ? (
+              <input
+                type="checkbox"
+                aria-label="Select everyone with claims still to push"
+                checked={allSelected}
+                onChange={toggleAll}
+                className="h-4 w-4 cursor-pointer accent-primary"
+              />
+            ) : null}
+            <h3 className="text-base font-black text-foreground">Who to pay</h3>
+          </div>
 
           <div className="flex items-center gap-2">
             <span className={EYEBROW}>Push to Xero as</span>
@@ -261,6 +337,79 @@ export function AdminClaimsReadyToPay({
             </select>
           </div>
         </div>
+        {selectedPayees.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground">
+                {selectedPayees.length} {selectedPayees.length === 1 ? "person" : "people"} ·{" "}
+                {selectedClaimIds.length} claim{selectedClaimIds.length === 1 ? "" : "s"}
+              </p>
+              {/* The money, not just a count — this is a push into the ledger. */}
+              <p className="text-xs text-muted-foreground">
+                {formatCurrency(selectedTotal)} as{" "}
+                {stage === "Draft" ? "drafts" : "awaiting payment"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => setSelected(new Set())}
+                className="rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy || xeroConnected !== true}
+                title={xeroConnected === false ? "Connect Xero in System Settings first" : undefined}
+                onClick={syncSelected}
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkBusy ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudUpload className="h-4 w-4" />
+                )}
+                Sync {selectedClaimIds.length} to Xero
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {bulkResult ? (
+          <div className="mb-3 rounded-2xl border border-border/60 bg-surface-low px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-bold text-foreground">
+                {bulkResult.succeeded} pushed to Xero
+                {bulkResult.failed > 0 ? ` · ${bulkResult.failed} not pushed` : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => setBulkResult(null)}
+                aria-label="Dismiss Xero result"
+                className="text-muted-foreground transition hover:text-foreground"
+              >
+                ×
+              </button>
+            </div>
+            {bulkResult.items.filter((i) => !i.ok).length > 0 ? (
+              <ul className="nice-scrollbar mt-2 max-h-32 space-y-1.5 overflow-y-auto">
+                {bulkResult.items
+                  .filter((item) => !item.ok)
+                  .map((item, index) => (
+                    <li
+                      key={`${item.id}-${index}`}
+                      className="rounded-xl bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                    >
+                      {item.error ?? "Could not be pushed."}
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="space-y-3">
           {payees.map((payee) => {
             const late = payee.waitingDays >= OVERDUE_DAYS;
@@ -269,6 +418,16 @@ export function AdminClaimsReadyToPay({
                 key={payee.employeeId}
                 className={`group flex flex-wrap items-center justify-between gap-3 transition ${TILE} hover:border-primary/40`}
               >
+                {payee.unsyncedClaimIds.length > 0 ? (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${name(payee.employeeId)}`}
+                    checked={selected.has(payee.employeeId)}
+                    onChange={() => togglePayee(payee.employeeId)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                ) : null}
+
                 {/* The drill is its own control so the row can also carry an
                     action — a button inside a button is invalid markup. */}
                 <button
