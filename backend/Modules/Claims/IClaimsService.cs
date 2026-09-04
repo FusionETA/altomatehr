@@ -14,6 +14,11 @@ public interface IClaimsService
     Task<Claim?> UpdateAsync(string id, CreateClaimDto dto, string userId, bool isAdmin);
     Task<bool> DeleteAsync(string id);
     Task<ClaimStatusTransitionResult> ApproveAsync(string id, string approverId);
+
+    // Approve many at once, each judged on its own: one claim the caller may not
+    // approve never blocks the rest. Over-limit claims are refused here on
+    // purpose — see ClaimsService.BulkApproveAsync.
+    Task<ClaimsBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
@@ -36,6 +41,12 @@ public interface IClaimsService
     // already exists is skipped, never updated, so a re-upload is safe.
     Task<TabularImportResult> ImportAsync(byte[] content, TabularFormat format);
 }
+
+// Mirrors the attendance bulk contract: per-id success/failure, so the response
+// is a report rather than a single pass/fail for the whole batch.
+public sealed record ClaimsBulkResultItem(string Id, bool Ok, string? Error = null);
+
+public sealed record ClaimsBulkResult(int Succeeded, int Failed, IReadOnlyList<ClaimsBulkResultItem> Items);
 
 public sealed record ClaimStatusTransitionResult(
     bool Found,

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { LoaderCircle, X } from "lucide-react";
-import { approveClaim, getTeamClaims, rejectClaim, type Claim } from "../api";
+import { CheckCheck, LoaderCircle, TriangleAlert, X } from "lucide-react";
+import {
+  approveClaim,
+  bulkApproveClaims,
+  getTeamClaims,
+  rejectClaim,
+  type Claim,
+  type ClaimsBulkResult,
+} from "../api";
 import {
   claimMatchesStatus,
   type ClaimStatusFilter,
@@ -32,6 +39,9 @@ export function ClaimsApprovals() {
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
 
   useEffect(() => {
     getTeamClaims()
@@ -84,6 +94,65 @@ export function ClaimsApprovals() {
   }, [filteredClaims, page]);
 
   const hasActiveFilters = status !== "ALL" || searchTerm.trim().length > 0;
+
+  // Bulk approval is only offered on claims that are actually decidable AND
+  // safe to wave through in a batch. An over-limit claim blew past the
+  // account's spend limit — that is precisely the one somebody should open and
+  // read, so it is never selectable here.
+  const isBulkable = (claim: Claim) => claim.status === "PENDING" && !claim.exceedsLimit;
+
+  const bulkable = useMemo(() => filteredClaims.filter(isBulkable), [filteredClaims]);
+  const selectedClaims = useMemo(
+    () => bulkable.filter((claim) => selected.has(claim.id)),
+    [bulkable, selected],
+  );
+  const selectedTotal = selectedClaims.reduce((sum, claim) => sum + claim.amount, 0);
+  const excludedOverLimit = filteredClaims.filter(
+    (claim) => claim.status === "PENDING" && claim.exceedsLimit,
+  ).length;
+
+  // Dropping a claim out of the filtered view should drop it out of the
+  // selection too, or an approver could submit rows they can no longer see.
+  useEffect(() => {
+    setSelected((current) => {
+      const visible = new Set(bulkable.map((claim) => claim.id));
+      const next = new Set([...current].filter((id) => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [bulkable]);
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = bulkable.length > 0 && selectedClaims.length === bulkable.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(bulkable.map((claim) => claim.id)));
+
+  async function confirmBulkApprove() {
+    if (selectedClaims.length === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const result = await bulkApproveClaims(selectedClaims.map((claim) => claim.id));
+      setBulkResult(result);
+      setSelected(new Set());
+      // Re-read rather than patching each row: a claim on a multi-step chain
+      // stays PENDING and moves to the next approver, so it may leave this
+      // queue entirely.
+      setClaims(await getTeamClaims());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not approve those claims.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function decide(id: string, fn: (id: string) => Promise<Claim>) {
     setBusyId(id);
@@ -233,6 +302,56 @@ export function ClaimsApprovals() {
           </p>
         </div>
 
+        {bulkResult ? (
+          <BulkResultPanel result={bulkResult} onDismiss={() => setBulkResult(null)} />
+        ) : null}
+
+        {selectedClaims.length > 0 ? (
+          <div className="sticky top-20 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-primary/30 bg-primary/5 px-5 py-4 backdrop-blur-sm">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground">
+                {selectedClaims.length} claim{selectedClaims.length === 1 ? "" : "s"} selected
+              </p>
+              {/* The amount, not just the count: a number hides what is being
+                  signed off, a total does not. */}
+              <p className="text-xs text-muted-foreground">
+                Approving {formatCurrency(selectedTotal)} in one go
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => setSelected(new Set())}
+                className="rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={confirmBulkApprove}
+                className="inline-flex items-center gap-2 rounded-full bg-secondary px-5 py-2 text-sm font-bold text-secondary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
+              >
+                {bulkBusy ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCheck className="h-4 w-4" />
+                )}
+                Approve {selectedClaims.length}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {excludedOverLimit > 0 ? (
+          <p className="flex items-start gap-2 px-1 text-xs text-muted-foreground">
+            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            {excludedOverLimit} over-limit claim{excludedOverLimit === 1 ? " is" : "s are"} not
+            selectable — open {excludedOverLimit === 1 ? "it" : "them"} and approve individually.
+          </p>
+        ) : null}
+
         {loading ? (
           <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading claims…</section>
         ) : null}
@@ -265,12 +384,24 @@ export function ClaimsApprovals() {
                 className={`${CARD} cursor-pointer space-y-4 p-4 transition hover:border-primary/40 focus-visible:border-primary/50 focus-visible:outline-none sm:p-5`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-start gap-3">
+                    {isBulkable(claim) ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${claim.claimNumber}`}
+                        checked={selected.has(claim.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggle(claim.id)}
+                        className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                      />
+                    ) : null}
+                    <div className="min-w-0">
                     <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       {claim.claimNumber}
                     </p>
                     <p className="mt-1 text-base font-black">{claim.title}</p>
                     <p className="text-sm text-muted-foreground">{employeeName(claim)}</p>
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <ClaimStatusBadge status={claim.status} />
@@ -305,13 +436,23 @@ export function ClaimsApprovals() {
         {!loading && !error && filteredClaims.length > 0 ? (
           <section className={`hidden md:block ${CARD}`}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] caption-bottom text-sm">
+              <table className="w-full min-w-[1020px] caption-bottom text-sm">
                 <thead>
                   <tr className="border-b border-border/60">
+                    <th className="h-12 w-12 pl-6 text-left">
+                      <input
+                        type="checkbox"
+                        aria-label="Select every claim that can be bulk-approved"
+                        checked={allSelected}
+                        disabled={bulkable.length === 0}
+                        onChange={toggleAll}
+                        className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+                      />
+                    </th>
                     {["Employee", "Claim", "Account", "Submitted", "Amount", "Status", "Action"].map((h) => (
                       <th
                         key={h}
-                        className="h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground first:pl-6 last:pr-6"
+                        className="h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground last:pr-6"
                       >
                         {h}
                       </th>
@@ -327,7 +468,22 @@ export function ClaimsApprovals() {
                       onKeyDown={(event) => handleClaimKeyDown(event, claim)}
                       className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                     >
-                      <td className="p-4 pl-6 align-middle">
+                      <td className="w-12 p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${claim.claimNumber}`}
+                          checked={selected.has(claim.id)}
+                          disabled={!isBulkable(claim)}
+                          onChange={() => toggle(claim.id)}
+                          title={
+                            claim.exceedsLimit
+                              ? "Over the spend limit — approve this one on its own"
+                              : undefined
+                          }
+                          className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </td>
+                      <td className="p-4 align-middle">
                         <p className="font-bold text-foreground">{employeeName(claim)}</p>
                         <p className="text-xs text-muted-foreground">{claim.employeeEmail ?? ""}</p>
                       </td>
@@ -399,6 +555,51 @@ export function ClaimsApprovals() {
         />
       ) : null}
     </>
+  );
+}
+
+// What happened to each claim in the batch. Failures are the point: an
+// over-limit claim, or one someone else already decided, comes back with a
+// reason rather than vanishing from the count.
+function BulkResultPanel({
+  result,
+  onDismiss,
+}: {
+  result: ClaimsBulkResult;
+  onDismiss: () => void;
+}) {
+  const failures = result.items.filter((item) => !item.ok);
+
+  return (
+    <section className={`${CARD} p-5`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-bold text-foreground">
+          {result.succeeded} approved
+          {result.failed > 0 ? ` · ${result.failed} not approved` : ""}
+        </p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss approval result"
+          className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {failures.length > 0 ? (
+        <ul className="nice-scrollbar mt-3 max-h-40 space-y-1.5 overflow-y-auto">
+          {failures.map((item, index) => (
+            <li
+              key={`${item.id}-${index}`}
+              className="rounded-xl bg-warning/15 px-3 py-2 text-xs text-foreground"
+            >
+              {item.error ?? "Could not be approved."}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

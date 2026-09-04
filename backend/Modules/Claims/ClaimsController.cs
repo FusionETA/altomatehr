@@ -278,6 +278,16 @@ public class ClaimsController : ControllerBase
         return ToStatusTransitionResponse(result);
     }
 
+    // POST /claims/bulk/approve — sign off many claims at once, as the
+    // current-step approver of each. Independent per-id success/failure, so the
+    // body is a report: always 200, even when some ids failed.
+    //
+    // No bulk reject counterpart on purpose — see BulkApproveClaimsDto.
+    [HttpPost("bulk/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkApprove(BulkApproveClaimsDto dto) =>
+        Ok(await _claims.BulkApproveAsync(dto.Ids, GetUserId()));
+
     // POST /claims/{id}/reject — the current-step approver in the claimant's chain.
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]

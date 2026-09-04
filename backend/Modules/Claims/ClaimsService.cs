@@ -18,6 +18,10 @@ public class ClaimsService : IClaimsService
 {
     private const ApprovalModule Module = ApprovalModule.CLAIMS;
 
+    // Same cap as the attendance bulk endpoints. A request larger than this is
+    // refused whole rather than half-applied.
+    private const int MaxBulkIds = 200;
+
     private readonly IClaimsRepository _repo;
     private readonly IClaimReceiptStorage _receiptStorage;
     private readonly IChartOfAccountService _accounts;
@@ -206,6 +210,66 @@ public class ClaimsService : IClaimsService
         // next reviewer's queue without them reloading.
         await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
         return new ClaimStatusTransitionResult(true, true, claim);
+    }
+
+    // Approve many claims in one call. Each is judged independently — a claim the
+    // caller may not approve, or that someone else already decided, fails on its
+    // own line and never blocks the rest.
+    //
+    // Over-limit claims are deliberately EXCLUDED. ExceedsLimit marks a claim
+    // that blew past the account's spend limit, which is exactly the kind that
+    // wants a human looking at it; letting one ride along in a batch of twenty
+    // is how an over-limit claim gets approved without anyone reading it. They
+    // are refused with a reason so the approver knows to open them individually,
+    // rather than silently dropped.
+    public async Task<ClaimsBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new ClaimsBulkResult(0, ids.Count, [
+                new ClaimsBulkResultItem(string.Empty, false, $"Too many claims — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<ClaimsBulkResultItem>(ids.Count);
+        var approved = new List<Claim>();
+
+        // Distinct: the same id twice would otherwise be counted as two successes
+        // while only one claim moved.
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var (claim, error) = await AuthorizeAsync(id, approverId);
+            if (error is not null)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false, error.ErrorMessage ?? "You can't approve this claim."));
+                continue;
+            }
+
+            if (claim!.ExceedsLimit)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false,
+                    "Over the spend limit — approve this one on its own after reading it."));
+                continue;
+            }
+
+            var stepCount = await _router.StepCountAsync(Module, claim.EmployeeId);
+            if (claim.CurrentStep + 1 >= stepCount)
+                claim.Status = ClaimStatus.APPROVED;
+            else
+                claim.CurrentStep += 1;
+
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+            approved.Add(claim);
+            items.Add(new ClaimsBulkResultItem(id, true));
+        }
+
+        // Notify after every write lands, so a claimant refreshing on the first
+        // notification sees the whole batch settled rather than a partial state.
+        foreach (var claim in approved)
+            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
+
+        return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
 
     public async Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)

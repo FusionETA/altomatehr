@@ -78,6 +78,19 @@ export const getAllClaims = () => apiGet<Claim[]>("/claims/all");
 export const createClaim = (body: CreateClaimRequest) => apiPost<Claim>("/claims", body);
 export const updateClaim = (id: string, body: CreateClaimRequest) => apiPut<Claim>(`/claims/${id}`, body);
 export const approveClaim = (id: string) => apiPost<Claim>(`/claims/${id}/approve`);
+
+// Per-id success/failure, so the response is a report rather than one
+// pass/fail for the batch. Over-limit claims come back as failures on purpose:
+// they have to be opened and read individually.
+export type ClaimsBulkResultItem = { id: string; ok: boolean; error?: string | null };
+export type ClaimsBulkResult = {
+  succeeded: number;
+  failed: number;
+  items: ClaimsBulkResultItem[];
+};
+
+export const bulkApproveClaims = (ids: string[]) =>
+  apiPost<ClaimsBulkResult>("/claims/bulk/approve", { ids });
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 
