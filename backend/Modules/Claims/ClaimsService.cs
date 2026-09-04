@@ -337,6 +337,12 @@ public class ClaimsService : IClaimsService
             ? null
             : (await _accounts.GetByIdAsync(claim.ChartOfAccountId))?.Code;
 
+        // A company-paid claim never created a debt — the money already left a
+        // company account — so it is a SPEND transaction, not a bill. Same
+        // button to the admin, genuinely different record in Xero.
+        if (claim.PaymentType == PaymentType.COMPANY)
+            return await RecordCompanySpendAsync(claim, accountCode, contactName);
+
         var request = new XeroBillRequest(
             ContactName: contactName,
             Reference: claim.ClaimNumber,
@@ -372,6 +378,64 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
 
+            return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
+        }
+    }
+
+    // Company-paid: record where the money actually went.
+    //
+    // The contact is the MERCHANT, not the employee — nobody was out of pocket,
+    // so naming the employee would invent a payee who was never paid. Falls
+    // back to the claim title when no merchant was captured.
+    private async Task<ClaimXeroSyncResult> RecordCompanySpendAsync(
+        Claim claim, string? accountCode, string employeeName)
+    {
+        // A spend has to come from somewhere. Guessing the bank account would
+        // misstate a balance, so this refuses rather than picking one.
+        var bankCode = claim.PayViaAccountId is null
+            ? null
+            : (await _accounts.GetByIdAsync(claim.PayViaAccountId))?.Code;
+
+        if (string.IsNullOrWhiteSpace(bankCode))
+        {
+            var message = "This claim has no company account on it, so Xero has nothing to spend from.";
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+            return new ClaimXeroSyncResult(true, false, claim, Error: message);
+        }
+
+        var spend = new XeroSpendRequest(
+            ContactName: Clean(claim.SpendingAt) ?? Clean(claim.SpendingWith) ?? claim.Title,
+            Reference: claim.ClaimNumber,
+            Date: claim.SpentAt,
+            CurrencyCode: claim.Currency,
+            BankAccountCode: bankCode,
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+
+        try
+        {
+            var result = await _xero.CreateSpendAsync(spend);
+
+            // Same columns as a bill: the id is whatever Xero object proves the
+            // claim landed, and the UI only needs to know that it did.
+            claim.XeroBillId = result.TransactionId;
+            claim.XeroBillRef = claim.ClaimNumber;
+            claim.XeroSyncStatus = XeroSyncStatus.SYNCED;
+            claim.XeroSyncError = null;
+            claim.XeroSyncedAt = DateTime.UtcNow;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, true, claim);
+        }
+        catch (XeroConnectionException ex)
+        {
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = ex.Message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
             return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
         }
     }

@@ -281,6 +281,16 @@ internal sealed class FakeXeroBillService : IXeroService
         return Task.FromResult(new XeroBillResponse(NextBillId, "BILL-001"));
     }
 
+    public List<XeroSpendRequest> Spends { get; } = [];
+
+    public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend)
+    {
+        if (_failWith is not null) throw new XeroConnectionException(_failWith);
+
+        Spends.Add(spend);
+        return Task.FromResult(new XeroSpendResponse("xero-spend-1"));
+    }
+
     public Task<bool> IsConnectedAsync() => Task.FromResult(_connected);
 
     public Task<XeroFileContent?> GetFileContentAsync(string fileId) =>

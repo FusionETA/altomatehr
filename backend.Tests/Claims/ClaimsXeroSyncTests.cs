@@ -169,6 +169,49 @@ public class ClaimsXeroSyncTests
         Assert.Equal(XeroSyncStatus.SYNCED, second.XeroSyncStatus);
     }
 
+    // ---- Company-paid: a spend, not a bill ----
+
+    [Fact]
+    public async Task SyncToXeroAsync_RecordsACompanyPaidClaimAsSpendMoney()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        claim.PaymentType = PaymentType.COMPANY;
+        claim.PayViaAccountId = "acct-bank";   // code 1000 in the fake chart
+        claim.SpendingAt = "Klinik Dr. Liau";
+
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.True(result.Ok);
+        // A spend, never a bill — nobody was out of pocket, so there is no debt.
+        Assert.Empty(xero.Created);
+        var spend = Assert.Single(xero.Spends);
+        // The contact is the merchant, not the employee.
+        Assert.Equal("Klinik Dr. Liau", spend.ContactName);
+        Assert.Equal(XeroSyncStatus.SYNCED, claim.XeroSyncStatus);
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_RefusesACompanyClaimWithNoAccountToSpendFrom()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        claim.PaymentType = PaymentType.COMPANY;
+        claim.PayViaAccountId = null;
+
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.False(result.Ok);
+        // Guessing the bank account would misstate a balance.
+        Assert.Empty(xero.Spends);
+        Assert.Equal(XeroSyncStatus.ERROR, claim.XeroSyncStatus);
+        Assert.Contains("nothing to spend from", claim.XeroSyncError);
+    }
+
     [Fact]
     public async Task SyncToXeroAsync_ReturnsNotFoundForAnUnknownClaim()
     {

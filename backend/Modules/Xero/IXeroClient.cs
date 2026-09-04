@@ -19,6 +19,10 @@ public interface IXeroClient
     // Creates an accounts-payable bill (Xero calls it an ACCPAY Invoice).
     // Returns the bill's id and human reference so the caller can link to it.
     Task<XeroBillResponse> CreateBillAsync(string accessToken, string tenantId, XeroBillRequest bill);
+
+    // Records money that already left a company bank account (Xero: a SPEND
+    // bank transaction). The company-paid counterpart to CreateBillAsync.
+    Task<XeroSpendResponse> CreateSpendAsync(string accessToken, string tenantId, XeroSpendRequest spend);
 }
 
 public sealed record XeroFileContent(byte[] Content, string ContentType, string FileName);

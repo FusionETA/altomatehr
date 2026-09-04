@@ -258,6 +258,16 @@ public class XeroService : IXeroService
         return await _client.CreateBillAsync(accessToken, connection.TenantId, bill);
     }
 
+    public async Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend)
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected)
+            throw new XeroConnectionException("This organization isn't connected to Xero.");
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        return await _client.CreateSpendAsync(accessToken, connection.TenantId, spend);
+    }
+
     public async Task<bool> IsConnectedAsync()
     {
         var connection = await GetCurrentConnectionAsync();

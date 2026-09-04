@@ -89,20 +89,29 @@ function isSpend(claim: Claim) {
 // APPROVED and REVIEWED both count: REVIEWED is the settled state in the
 // production schema, and this app leaves APPROVED terminal, so a claim in
 // either state has finished its approval chain.
+function isSettled(claim: Claim) {
+  return claim.status === "APPROVED" || claim.status === "REVIEWED";
+}
+
 export function isReadyToPay(claim: Claim) {
-  return (
-    claim.paymentType === "PERSONAL" &&
-    (claim.status === "APPROVED" || claim.status === "REVIEWED")
-  );
+  return claim.paymentType === "PERSONAL" && isSettled(claim);
 }
 
 // A company-paid claim that has cleared approval. Not owed to anyone, but worth
 // naming so an admin isn't left wondering where those claims went.
 export function isSettledCompanySpend(claim: Claim) {
-  return (
-    claim.paymentType === "COMPANY" &&
-    (claim.status === "APPROVED" || claim.status === "REVIEWED")
-  );
+  return claim.paymentType === "COMPANY" && isSettled(claim);
+}
+
+// Group either side by person. Company-paid claims are grouped too — not
+// because anyone is owed, but because the same employee's spend belongs
+// together when an admin reviews what left the company account.
+export function settledByEmployee(
+  claims: Claim[],
+  matches: (claim: Claim) => boolean,
+  now: Date = new Date(),
+): PayeeGroup[] {
+  return readyToPayByEmployee(claims.filter(matches), now, () => true);
 }
 
 export type PayeeGroup = {
@@ -122,11 +131,15 @@ export type PayeeGroup = {
 // Grouped by person, because a reimbursement is one payment to one employee,
 // not one payment per claim. Longest-waiting first: they have been carrying the
 // cost since before anyone else.
-export function readyToPayByEmployee(claims: Claim[], now: Date = new Date()): PayeeGroup[] {
+export function readyToPayByEmployee(
+  claims: Claim[],
+  now: Date = new Date(),
+  matches: (claim: Claim) => boolean = isReadyToPay,
+): PayeeGroup[] {
   const groups = new Map<string, PayeeGroup>();
 
   for (const claim of claims) {
-    if (!isReadyToPay(claim)) continue;
+    if (!matches(claim)) continue;
 
     let group = groups.get(claim.employeeId);
     if (!group) {

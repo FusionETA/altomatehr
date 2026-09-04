@@ -19,6 +19,7 @@ public class XeroClient : IXeroClient
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
     private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
+    private const string BankTransactionsUrl = "https://api.xero.com/api.xro/2.0/BankTransactions";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -177,6 +178,56 @@ public class XeroClient : IXeroClient
         return new XeroBillResponse(created.InvoiceID, created.InvoiceNumber ?? bill.Reference);
     }
 
+    // Company-paid spend. Always AUTHORISED: unlike a bill, this records money
+    // that has ALREADY moved, so there is no meaningful draft state — the
+    // bank statement will show it either way.
+    public async Task<XeroSpendResponse> CreateSpendAsync(
+        string accessToken, string tenantId, XeroSpendRequest spend)
+    {
+        var payload = new
+        {
+            BankTransactions = new[]
+            {
+                new
+                {
+                    Type = "SPEND",
+                    Contact = new { Name = spend.ContactName },
+                    BankAccount = new { Code = spend.BankAccountCode },
+                    Date = spend.Date.ToString("yyyy-MM-dd"),
+                    Reference = spend.Reference,
+                    CurrencyCode = spend.CurrencyCode,
+                    Status = "AUTHORISED",
+                    LineItems = spend.Lines.Select(line => new
+                    {
+                        line.Description,
+                        Quantity = 1,
+                        UnitAmount = line.Amount,
+                        AccountCode = line.AccountCode,
+                    }).ToArray(),
+                },
+            },
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, BankTransactionsUrl)
+        {
+            Content = JsonContent.Create(payload),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero spend-money failed.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroBankTransactionsPayload>(JsonOptions);
+        var created = result?.BankTransactions?.FirstOrDefault();
+
+        if (created is null || string.IsNullOrWhiteSpace(created.BankTransactionID))
+            throw new XeroConnectionException("Xero accepted the spend but returned no transaction.");
+
+        return new XeroSpendResponse(created.BankTransactionID);
+    }
+
     public async Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, AccountsUrl);
@@ -310,6 +361,17 @@ public class XeroClient : IXeroClient
         public string? TenantId { get; set; }
         public string? TenantName { get; set; }
         public string? TenantType { get; set; }
+    }
+
+    private sealed class XeroBankTransactionsPayload
+    {
+        [JsonPropertyName("BankTransactions")]
+        public List<XeroBankTransactionPayload>? BankTransactions { get; set; }
+    }
+
+    private sealed class XeroBankTransactionPayload
+    {
+        public string? BankTransactionID { get; set; }
     }
 
     private sealed class XeroInvoicesPayload

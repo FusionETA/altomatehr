@@ -63,3 +63,23 @@ public sealed record XeroBillLine(
     string? AccountCode);
 
 public sealed record XeroBillResponse(string BillId, string? Reference);
+
+
+// ---- Spend money (bank transactions) ----
+
+// A company-paid claim did not create a debt — the money already left a
+// company account. In Xero that is a SPEND bank transaction against that
+// account, not a bill, so it is a separate call with a separate shape.
+public sealed record XeroSpendRequest(
+    // Whoever was paid — the merchant, not the employee. The employee was
+    // never out of pocket.
+    string ContactName,
+    string Reference,
+    DateTime Date,
+    string CurrencyCode,
+    // Xero code of the BANK account the money left. Required: a spend has to
+    // come from somewhere, and guessing the account would misstate a balance.
+    string BankAccountCode,
+    IReadOnlyList<XeroBillLine> Lines);
+
+public sealed record XeroSpendResponse(string TransactionId);

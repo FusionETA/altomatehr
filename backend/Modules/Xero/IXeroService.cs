@@ -21,6 +21,8 @@ public interface IXeroService
     // rather than as a claim-level failure, because it is neither.
     Task<XeroBillResponse> CreateBillAsync(XeroBillRequest bill);
 
+    Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend);
+
     // Whether the current org could sync at all, so a UI can say "connect Xero"
     // instead of offering a button that can only fail.
     Task<bool> IsConnectedAsync();

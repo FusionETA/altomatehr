@@ -21,12 +21,13 @@ import {
 import { getXeroStatus } from "@/features/settings/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
+  isReadyToPay,
   isSettledCompanySpend,
-  readyToPayByEmployee,
-  sumAmount,
+  settledByEmployee,
   type PayeeGroup,
 } from "@/features/claims/lib/claim-insights";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
 import { claimIdsDrilldown, readyToPayDrilldown, type ClaimDrilldown } from "../lib/claims-drilldown";
 import { CardHead, EmptyState } from "./DashboardCard";
@@ -41,6 +42,16 @@ import { CardHead, EmptyState } from "./DashboardCard";
 
 // An approved claim nobody has paid after this long is its own problem.
 const OVERDUE_DAYS = 7;
+
+// The two halves of a settled claim, which Xero records differently:
+// PERSONAL becomes a bill the org owes, COMPANY a spend that already left an
+// account. Same page, different obligations.
+type PaymentSide = "PERSONAL" | "COMPANY";
+
+const SIDE_LABELS: Record<PaymentSide, string> = {
+  PERSONAL: "Owed to employees",
+  COMPANY: "Company spend",
+};
 
 // ─── Add to payroll: the slot, not the wiring ────────────────────────────────
 //
@@ -76,7 +87,14 @@ export function AdminClaimsReadyToPay({
   // than this component patching rows it does not own.
   onSynced: () => void;
 }) {
-  const payees = useMemo(() => readyToPayByEmployee(claims), [claims]);
+  // Personal and company claims become genuinely different records in Xero — a
+  // bill you owe versus money that already left the account — so they are two
+  // lists, not one list with a column.
+  const [side, setSide] = useState<PaymentSide>("PERSONAL");
+
+  const personal = useMemo(() => settledByEmployee(claims, isReadyToPay), [claims]);
+  const company = useMemo(() => settledByEmployee(claims, isSettledCompanySpend), [claims]);
+  const payees = side === "PERSONAL" ? personal : company;
 
   const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -124,6 +142,11 @@ export function AdminClaimsReadyToPay({
       return next.size === current.size ? current : next;
     });
   }, [syncable]);
+
+  useEffect(() => {
+    setSelected(new Set());
+    setBulkResult(null);
+  }, [side]);
 
   const allSelected = syncable.length > 0 && selectedPayees.length === syncable.length;
   const toggleAll = () =>
@@ -182,8 +205,6 @@ export function AdminClaimsReadyToPay({
   );
   const overdue = useMemo(() => payees.filter((p) => p.waitingDays >= OVERDUE_DAYS), [payees]);
 
-  // Named so an admin isn't left wondering where the company-card claims went.
-  const companySpend = useMemo(() => claims.filter(isSettledCompanySpend), [claims]);
 
   // Gathered rather than rendered inline so the toggle can count them and the
   // buttons can still point at one by id.
@@ -209,22 +230,44 @@ export function AdminClaimsReadyToPay({
     return email ? buildName(email) : employeeId;
   };
 
-  if (payees.length === 0) {
-    return (
-      <div className="space-y-6">
-        <section className={CARD}>
-          <CardHead title="Nothing waiting on payment" />
-          <EmptyState text="Every approved out-of-pocket claim has been settled. Nothing is owed." />
-        </section>
-        <CompanySpendNote claims={companySpend} />
-      </div>
-    );
-  }
+
+  const isPersonal = side === "PERSONAL";
 
   return (
     <div className="space-y-6">
-      {/* The amount owed, and — the part that actually needs a decision — how
-          long the longest-waiting person has been carrying it. */}
+      {/* OverflowTabList directly, not StatusFilterTabs: that one prepends an
+          "All" tab, and there is no "all" here — a claim is either owed back
+          or already spent, and the two become different records in Xero. */}
+      <OverflowTabList<PaymentSide>
+        // No badges: the segmented variant stacks them under the label, and the
+        // count is already spelled out in the panel directly below.
+        items={[
+          { id: "PERSONAL", label: SIDE_LABELS.PERSONAL },
+          { id: "COMPANY", label: SIDE_LABELS.COMPANY },
+        ]}
+        value={side}
+        onChange={setSide}
+        variant="segmented"
+        ariaLabel="Which claims to settle"
+      />
+
+      {payees.length === 0 ? (
+        <section className={CARD}>
+          <CardHead
+            title={isPersonal ? "Nothing waiting on payment" : "No company spend to record"}
+          />
+          <EmptyState
+            text={
+              isPersonal
+                ? "Every approved out-of-pocket claim has been settled. Nothing is owed."
+                : "No approved claims were paid from a company account."
+            }
+          />
+        </section>
+      ) : (
+      <>
+      {/* The amount, and — the part that actually needs a decision — how long
+          the longest-waiting person has been carrying it. */}
       <section className={CARD}>
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -232,13 +275,16 @@ export function AdminClaimsReadyToPay({
               <Wallet className="h-5 w-5" />
             </span>
             <div>
-              <p className={EYEBROW}>Owed to employees</p>
+              <p className={EYEBROW}>
+                {isPersonal ? "Owed to employees" : "Paid from company accounts"}
+              </p>
               <p className="mt-1 text-3xl font-black leading-none tabular-nums text-foreground">
                 {formatCurrency(owed)}
               </p>
               <p className="mt-1.5 text-xs text-muted-foreground">
                 {claimCount} claim{claimCount === 1 ? "" : "s"} · {payees.length}{" "}
-                {payees.length === 1 ? "person" : "people"} · approved and unpaid
+                {payees.length === 1 ? "person" : "people"} ·{" "}
+                {isPersonal ? "approved and unpaid" : "already spent — record it in Xero"}
               </p>
             </div>
           </div>
@@ -252,11 +298,15 @@ export function AdminClaimsReadyToPay({
               <BanknoteArrowUp className="h-4 w-4" />
               Review the run
             </button>
-            <AddToPayrollButton
-              label={`Add all to payroll`}
-              claimIds={payees.flatMap((payee) => payee.claimIds)}
-              variant="primary"
-            />
+            {/* Payroll only means anything for money still owed — company
+                spend has already left the account. */}
+            {isPersonal ? (
+              <AddToPayrollButton
+                label="Add all to payroll"
+                claimIds={payees.flatMap((payee) => payee.claimIds)}
+                variant="primary"
+              />
+            ) : null}
           </div>
         </div>
 
@@ -298,7 +348,7 @@ export function AdminClaimsReadyToPay({
           </p>
         ) : null}
 
-        {overdue.length > 0 ? (
+        {isPersonal && overdue.length > 0 ? (
           <p className="mt-4 rounded-2xl border border-tertiary/25 bg-tertiary/5 px-4 py-3 text-xs font-semibold text-tertiary">
             {overdue.length} {overdue.length === 1 ? "person has" : "people have"} been waiting more
             than {OVERDUE_DAYS} days since their claim was approved — the decision is made, so this
@@ -492,7 +542,9 @@ export function AdminClaimsReadyToPay({
                     ) : null}
                     {payee.failedCount > 0 ? "Retry Xero" : "Sync to Xero"}
                   </button>
-                  <AddToPayrollButton label="Add to payroll" claimIds={payee.claimIds} />
+                  {isPersonal ? (
+                    <AddToPayrollButton label="Add to payroll" claimIds={payee.claimIds} />
+                  ) : null}
                 </div>
               </div>
             );
@@ -500,7 +552,8 @@ export function AdminClaimsReadyToPay({
         </div>
       </section>
 
-      <CompanySpendNote claims={companySpend} />
+      </>
+      )}
     </div>
   );
 }
@@ -574,17 +627,3 @@ function XeroState({ payee }: { payee: PayeeGroup }) {
   );
 }
 
-// Company-paid claims are approved spend, but nobody is owed anything — the
-// money already left a company account. Stated rather than silently dropped,
-// so the figure above reads as complete.
-function CompanySpendNote({ claims }: { claims: Claim[] }) {
-  if (claims.length === 0) return null;
-
-  return (
-    <p className="px-1 text-xs text-muted-foreground">
-      Not counted above: {claims.length} approved claim{claims.length === 1 ? "" : "s"} worth{" "}
-      <span className="font-semibold text-foreground">{formatCurrency(sumAmount(claims))}</span>{" "}
-      {claims.length === 1 ? "was" : "were"} paid on a company account, so {claims.length === 1 ? "it needs" : "they need"} no reimbursement.
-    </p>
-  );
-}
