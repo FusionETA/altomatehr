@@ -77,9 +77,10 @@ public sealed record XeroSpendRequest(
     string Reference,
     DateTime Date,
     string CurrencyCode,
-    // Xero code of the BANK account the money left. Required: a spend has to
-    // come from somewhere, and guessing the account would misstate a balance.
-    string BankAccountCode,
+    // Xero AccountID of the BANK account the money left. An id rather than a
+    // code because Xero bank accounts often have no code. Required: a spend has
+    // to come from somewhere, and guessing would misstate a balance.
+    string BankAccountId,
     IReadOnlyList<XeroBillLine> Lines);
 
 public sealed record XeroSpendResponse(string TransactionId);

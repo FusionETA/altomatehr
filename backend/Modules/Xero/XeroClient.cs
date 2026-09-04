@@ -192,7 +192,9 @@ public class XeroClient : IXeroClient
                 {
                     Type = "SPEND",
                     Contact = new { Name = spend.ContactName },
-                    BankAccount = new { Code = spend.BankAccountCode },
+                    // By AccountID, not Code: a Xero bank account often has no
+                    // code at all, so the code is not a usable identifier.
+                    BankAccount = new { AccountID = spend.BankAccountId },
                     Date = spend.Date.ToString("yyyy-MM-dd"),
                     Reference = spend.Reference,
                     CurrencyCode = spend.CurrencyCode,
@@ -239,10 +241,13 @@ public class XeroClient : IXeroClient
         await EnsureSuccessAsync(response, "Xero account sync failed.");
 
         var payload = await response.Content.ReadFromJsonAsync<XeroAccountsPayload>(JsonOptions);
+        // Code is NOT required. Xero bank accounts routinely have none, and
+        // demanding one silently dropped every bank account before the sync
+        // could see it — which is why company-paid claims had nothing to spend
+        // from. Identity comes from AccountId; Code is a display nicety.
         return payload?.Accounts?
             .Where(a =>
                 !string.IsNullOrWhiteSpace(a.AccountId) &&
-                !string.IsNullOrWhiteSpace(a.Code) &&
                 !string.IsNullOrWhiteSpace(a.Name))
             .Select(a => new XeroAccountResponse(
                 a.AccountId ?? string.Empty,

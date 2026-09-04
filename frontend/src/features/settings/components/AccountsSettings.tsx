@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
   archiveAccount,
   createAccount,
@@ -24,6 +25,11 @@ const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50";
 const LABEL = "block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 const TH = "h-11 px-3 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground";
+
+// Matches the claims table's page size, so both admin lists page the same way.
+const ACCOUNTS_PER_PAGE = 10;
+
+type AccountTab = "EXPENSE" | "BANK";
 
 const emptyForm: SaveAccount = {
   code: "",
@@ -57,6 +63,11 @@ export function AccountsSettings() {
   // showing what a claim CAN be coded to. Still reachable, because archiving
   // has to be undoable.
   const [showArchived, setShowArchived] = useState(false);
+  // Expense and bank accounts answer different questions — what a claim is
+  // coded TO versus what company money is spent FROM — and a Xero org has far
+  // more of the former, so they get their own lists.
+  const [tab, setTab] = useState<AccountTab>("EXPENSE");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     getAccounts()
@@ -125,8 +136,16 @@ export function AccountsSettings() {
     }
   }
 
-  const archivedCount = accounts.filter((account) => account.isArchived).length;
-  const visible = showArchived ? accounts : accounts.filter((account) => !account.isArchived);
+  const ofTab = accounts.filter((account) => account.type === tab);
+  const archivedCount = ofTab.filter((account) => account.isArchived).length;
+  const visible = showArchived ? ofTab : ofTab.filter((account) => !account.isArchived);
+
+  // A Xero chart of accounts runs to dozens of expense codes; banks are a
+  // handful, so only the long list is paged.
+  const paged = tab === "EXPENSE"
+    ? visible.slice((page - 1) * ACCOUNTS_PER_PAGE, page * ACCOUNTS_PER_PAGE)
+    : visible;
+  const totalPages = Math.max(1, Math.ceil(visible.length / ACCOUNTS_PER_PAGE));
 
   return (
     <div className="space-y-5">
@@ -271,12 +290,30 @@ export function AccountsSettings() {
       </form>
       )}
 
+      <OverflowTabList<AccountTab>
+        items={[
+          { id: "EXPENSE", label: "Expenses" },
+          { id: "BANK", label: "Bank accounts" },
+        ]}
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
+          setPage(1);
+          setShowArchived(false);
+        }}
+        variant="segmented"
+        ariaLabel="Account type"
+      />
+
       <div className={CARD}>
         {archivedCount > 0 ? (
           <div className="mb-3 flex justify-end">
             <button
               type="button"
-              onClick={() => setShowArchived((open) => !open)}
+              onClick={() => {
+                setShowArchived((open) => !open);
+                setPage(1);
+              }}
               className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
             >
               {showArchived ? "Hide" : "Show"} {archivedCount} archived
@@ -303,7 +340,7 @@ export function AccountsSettings() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((account) => (
+                {paged.map((account) => (
                   <tr key={account.id} className="border-b border-border/60">
                     <td className="px-3 py-3 font-mono text-xs">{account.code}</td>
                     <td
@@ -338,6 +375,40 @@ export function AccountsSettings() {
             </table>
           </div>
         )}
+
+        {tab === "EXPENSE" && visible.length > ACCOUNTS_PER_PAGE ? (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              <span className="font-semibold text-foreground">
+                {(page - 1) * ACCOUNTS_PER_PAGE + 1}-
+                {Math.min(page * ACCOUNTS_PER_PAGE, visible.length)}
+              </span>{" "}
+              of <span className="font-semibold text-foreground">{visible.length}</span> accounts
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page === 1}
+                onClick={() => setPage((current) => current - 1)}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+              >
+                Previous
+              </button>
+              <span className="text-sm font-medium text-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => current + 1)}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

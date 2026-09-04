@@ -392,13 +392,17 @@ public class ClaimsService : IClaimsService
     {
         // A spend has to come from somewhere. Guessing the bank account would
         // misstate a balance, so this refuses rather than picking one.
-        var bankCode = claim.PayViaAccountId is null
+        //
+        // The Xero id, not the local one: the account has to exist in Xero for
+        // the spend to land against it, and an account that was never synced
+        // has no id.
+        var bankId = claim.PayViaAccountId is null
             ? null
-            : (await _accounts.GetByIdAsync(claim.PayViaAccountId))?.Code;
+            : (await _accounts.GetByIdAsync(claim.PayViaAccountId))?.XeroAccountId;
 
-        if (string.IsNullOrWhiteSpace(bankCode))
+        if (string.IsNullOrWhiteSpace(bankId))
         {
-            var message = "This claim has no company account on it, so Xero has nothing to spend from.";
+            var message = "This claim's company account isn't linked to Xero, so there's nothing to spend from.";
             claim.XeroSyncStatus = XeroSyncStatus.ERROR;
             claim.XeroSyncError = message;
             claim.UpdatedAt = DateTime.UtcNow;
@@ -411,7 +415,7 @@ public class ClaimsService : IClaimsService
             Reference: claim.ClaimNumber,
             Date: claim.SpentAt,
             CurrencyCode: claim.Currency,
-            BankAccountCode: bankCode,
+            BankAccountId: bankId,
             Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
 
         try

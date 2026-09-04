@@ -176,7 +176,7 @@ public class ClaimsXeroSyncTests
     {
         var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
         claim.PaymentType = PaymentType.COMPANY;
-        claim.PayViaAccountId = "acct-bank";   // code 1000 in the fake chart
+        claim.PayViaAccountId = "acct-bank";
         claim.SpendingAt = "Klinik Dr. Liau";
 
         var xero = new FakeXeroBillService();
@@ -210,6 +210,23 @@ public class ClaimsXeroSyncTests
         Assert.Empty(xero.Spends);
         Assert.Equal(XeroSyncStatus.ERROR, claim.XeroSyncStatus);
         Assert.Contains("nothing to spend from", claim.XeroSyncError);
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_AddressesTheBankByItsXeroId()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        claim.PaymentType = PaymentType.COMPANY;
+        claim.PayViaAccountId = "acct-bank";
+
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        // A Xero bank account often has no code, so the id is the only reliable
+        // way to name it.
+        Assert.Equal("xero-bank-1", Assert.Single(xero.Spends).BankAccountId);
     }
 
     [Fact]

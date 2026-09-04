@@ -144,7 +144,10 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
                     Code = "1000",
                     Name = "Company Bank",
                     Type = "BANK",
-                    IsSelectable = true,
+                    // Spends address the bank by its Xero id, so an account
+                    // that was never synced cannot be spent from.
+                    XeroAccountId = "xero-bank-1",
+                    IsSelectable = false,
                 },
             }.ToDictionary(a => a.Id);
 
