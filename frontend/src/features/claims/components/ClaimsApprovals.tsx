@@ -26,7 +26,9 @@ import { SearchInput } from "@/shared/components/SearchInput";
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
-export function ClaimsApprovals() {
+// onDecided lets the shell refresh its sidebar badge — the count lives up
+// there and has no other way to learn a claim just left the queue.
+export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export function ClaimsApprovals() {
       // stays PENDING and moves to the next approver, so it may leave this
       // queue entirely.
       setClaims(await getTeamClaims());
+      onDecided?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not approve those claims.");
     } finally {
@@ -159,11 +162,18 @@ export function ClaimsApprovals() {
     setError(null);
     try {
       const updated = await fn(id);
-      const nextClaim = { ...updated, employeeEmail: claims.find((c) => c.id === updated.id)?.employeeEmail };
-      setClaims((cur) =>
-        cur.map((c) => (c.id === updated.id ? { ...updated, employeeEmail: c.employeeEmail } : c)),
+
+      // Re-read rather than patching the row in place. /claims/team returns
+      // only what is still awaiting THIS approver, so a decided claim has left
+      // the queue — either finished, or moved to the next step's approver.
+      // Patching it kept a settled claim on screen with a stale status.
+      setClaims(await getTeamClaims());
+      setSelectedClaim((cur) =>
+        cur?.id === updated.id
+          ? { ...updated, employeeEmail: cur.employeeEmail }
+          : cur,
       );
-      setSelectedClaim((cur) => (cur?.id === updated.id ? nextClaim : cur));
+      onDecided?.();
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update the claim.");
