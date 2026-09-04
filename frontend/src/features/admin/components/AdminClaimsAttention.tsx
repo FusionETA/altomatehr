@@ -150,32 +150,38 @@ function AttentionTile({
         clear ? "" : colors.border
       }`}
     >
+      {/* The count and the label lead; the icon is pushed right and shrunk so
+          it reads as a marker for the tile rather than its subject. It also
+          doubles as the hover affordance — the arrow takes its place, so the
+          two never compete for the same corner. */}
       <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p
+            className={`text-3xl font-black leading-none tabular-nums ${
+              clear ? "text-muted-foreground" : colors.text
+            }`}
+          >
+            {clear ? "0" : count}
+          </p>
+          <p className="mt-2 text-sm font-bold text-foreground">{label}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {clear ? clearText : `${formatCurrency(value)} held up`}
+          </p>
+        </div>
+
         <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+          className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
             clear ? "bg-secondary/40 text-muted-foreground" : `${colors.bg} ${colors.text}`
           }`}
         >
-          <Icon className="h-5 w-5" />
-        </span>
-        {clear ? null : (
-          <ArrowRight
-            className={`h-4 w-4 shrink-0 ${colors.text} opacity-0 transition group-hover:opacity-100`}
+          <Icon
+            className={`h-4 w-4 transition-opacity ${clear ? "" : "group-hover:opacity-0"}`}
           />
-        )}
+          {clear ? null : (
+            <ArrowRight className="absolute h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+          )}
+        </span>
       </div>
-
-      <p
-        className={`mt-4 text-3xl font-black leading-none tabular-nums ${
-          clear ? "text-muted-foreground" : colors.text
-        }`}
-      >
-        {clear ? "0" : count}
-      </p>
-      <p className="mt-2 text-sm font-bold text-foreground">{label}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {clear ? clearText : `${formatCurrency(value)} held up`}
-      </p>
     </button>
   );
 }
