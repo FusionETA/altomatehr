@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { Filter, X } from "lucide-react";
+import { ChevronDown, Filter, SlidersHorizontal, X } from "lucide-react";
 import type { Claim } from "@/features/claims/api";
 import { ClaimDetailsModal } from "@/features/claims/components/ClaimDetailsModal";
 import { ClaimStatusBadge } from "@/features/claims/components/ClaimStatusBadge";
@@ -31,6 +31,7 @@ import type { ClaimDrilldown } from "../lib/claims-drilldown";
 import {
   ALL,
   EMPTY_FILTERS,
+  activeAdvancedCount,
   hasAnyFilter,
   matchesFilters,
   type ClaimsFilters,
@@ -84,6 +85,9 @@ export function AdminClaimsTable({
 }) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Claim | null>(null);
+  // Collapsed by default: search and status answer most questions, and six
+  // controls permanently open pushed the claims themselves off the screen.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const set = <K extends keyof ClaimsFilters>(key: K, value: ClaimsFilters[K]) =>
     onFiltersChange({ ...filters, [key]: value });
@@ -127,11 +131,13 @@ export function AdminClaimsTable({
     [filtered, page],
   );
 
+  const advancedCount = activeAdvancedCount(filters);
   const hasFilters = hasAnyFilter(filters) || drilldown !== null;
 
   function clearAll() {
     onFiltersChange(EMPTY_FILTERS);
     onClearDrilldown();
+    setFiltersOpen(false);
   }
 
   function openOnKey(event: KeyboardEvent, claim: Claim) {
@@ -192,15 +198,46 @@ export function AdminClaimsTable({
         ) : null}
 
         <section className={`${CARD_BARE} p-5 sm:p-6`}>
-          <SearchInput
-            value={filters.search}
-            onChange={(value) => set("search", value)}
-            placeholder="Search by claim, employee, or project"
-            className="sm:max-w-sm"
-            inputClassName="h-12"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SearchInput
+              value={filters.search}
+              onChange={(value) => set("search", value)}
+              placeholder="Search by claim, employee, or project"
+              className="sm:max-w-sm sm:flex-1"
+              inputClassName="h-12"
+            />
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <button
+              type="button"
+              aria-expanded={filtersOpen}
+              aria-controls="claims-filter-panel"
+              onClick={() => setFiltersOpen((open) => !open)}
+              className={`inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl border px-4 text-sm font-bold shadow-sm transition ${
+                filtersOpen || advancedCount > 0
+                  ? "border-primary/40 bg-primary/5 text-primary"
+                  : "border-border/70 bg-card text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {/* The count is what makes collapsing safe: a filter you cannot
+                  see is still narrowing the list, and this says so. */}
+              {advancedCount > 0 ? (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+                  {advancedCount}
+                </span>
+              ) : null}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+
+          <div
+            id="claims-filter-panel"
+            hidden={!filtersOpen}
+            className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          >
             <Field label="Project">
               <Select value={filters.projectId} onValueChange={(v) => set("projectId", v)}>
                 <SelectTrigger className={CONTROL}>

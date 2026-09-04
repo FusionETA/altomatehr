@@ -49,6 +49,20 @@ export function hasAnyFilter(filters: ClaimsFilters) {
   );
 }
 
+// How many of the collapsible controls are narrowing the list. Search and
+// status stay on screen, so they are not counted — this number exists to say
+// what is hidden behind a closed panel, and a filter you can still see needs
+// no badge.
+export function activeAdvancedCount(filters: ClaimsFilters) {
+  return [
+    filters.projectId !== ALL,
+    filters.employeeId !== ALL,
+    filters.paymentType !== ALL,
+    filters.from.length > 0,
+    filters.to.length > 0,
+  ].filter(Boolean).length;
+}
+
 export function matchesFilters(
   claim: Claim,
   filters: ClaimsFilters,
