@@ -35,7 +35,7 @@ public class LeaveService : ILeaveService
     private readonly IOrganizationService _organizations;
     private readonly IHolidayService _holidays;
     private readonly IRealtimeService _realtime;
-    private readonly IEmployeeDirectory _employees;
+    private readonly IEmployeeRowResolver _employees;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -50,7 +50,7 @@ public class LeaveService : ILeaveService
         IOrganizationService organizations,
         IHolidayService holidays,
         IRealtimeService realtime,
-        IEmployeeDirectory employees)
+        IEmployeeRowResolver employees)
     {
         _apps = apps;
         _types = types;
@@ -351,7 +351,7 @@ public class LeaveService : ILeaveService
 
     // One nudge for the whole import rather than one per row — same reasoning as
     // ClaimsService.NotifyImportAsync.
-    private async Task NotifyImportAsync(EmployeeDirectorySnapshot directory)
+    private async Task NotifyImportAsync(EmployeeRowIndex directory)
     {
         var organizationId = _currentUser.OrganizationId;
         if (string.IsNullOrEmpty(organizationId)) return;

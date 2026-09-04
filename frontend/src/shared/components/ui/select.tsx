@@ -225,7 +225,11 @@ const SelectContent = React.forwardRef<
           className={cn(
             "p-1",
             position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] max-h-[min(20rem,var(--radix-select-content-available-height))]",
+              // min-h, NOT h. Pinning the viewport to the trigger's height left
+              // every popper dropdown exactly one row tall with overflow:hidden,
+              // so the options rendered but were clipped to a sliver — the list
+              // looked empty and unusable.
+              "min-h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] max-h-[min(20rem,var(--radix-select-content-available-height))]",
           )}
         >
           {hasMatches ? (

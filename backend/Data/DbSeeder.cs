@@ -54,9 +54,42 @@ public static class DbSeeder
         await SeedPolicyAsync(policies);
         var demoProject = await SeedAttendanceProjectAsync(projects);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
+        await BackfillLatenessAsync(attendance, organizations);
     }
 
     // Register the Appraisify partner app (idempotent). Read-only, employees:read only.
+    // Fills LateByMin on rows written before clock-in started computing it.
+    //
+    // Only ever fills nulls, so it's safe on every boot and never overwrites a
+    // decided value — including the demo rows above, which set their own.
+    //
+    // Measures against the ORG's working hours rather than each employee's
+    // effective shift: this runs with no request context, so the tenant filter
+    // and the shift-resolution chain have no current org to work from. That
+    // matches the live fallback for anyone without an assigned shift, which is
+    // everyone in this data — but it would understate lateness for a shifted
+    // employee, so it is a backfill for existing rows, not a general repair.
+    private static async Task BackfillLatenessAsync(
+        IAttendanceRepository attendance,
+        IOrganizationRepository organizations)
+    {
+        var org = await organizations.GetByIdAsync(DemoOrgId);
+        if (org is null) return;
+
+        var pending = (await attendance.GetAllAsync())
+            .Where(r => r.OrganizationId == DemoOrgId && r.TimeIn is not null && r.LateByMin is null)
+            .ToList();
+
+        foreach (var record in pending)
+        {
+            var late = AttendanceLateness.Minutes(record.TimeIn!.Value, org.WorkingHoursStart);
+            if (late is null) continue;   // on time, or no schedule — leave it null
+
+            record.LateByMin = late;
+            await attendance.UpdateAsync(record);
+        }
+    }
+
     private static async Task SeedApiClientsAsync(IApiClientRepository apiClients)
     {
         if (await apiClients.GetByNameAsync("appraisify") is not null) return;
@@ -127,9 +160,19 @@ public static class DbSeeder
             Row("usr-super", 4, 8, 55, 18, 5, AttendanceStatus.ON_TIME, null, 5),
         };
 
+        var todayKey = AttendanceTime.StartOfLocalDay(now);
+
         foreach (var row in employeeRows.Concat(supervisorRows))
         {
             var date = AttendanceTime.StartOfLocalDay(now.AddDays(-row.DaysAgo));
+
+            // Never touch today. This seeder OVERWRITES an existing row for a
+            // date (see the update branch below), and it runs on every startup —
+            // so a DaysAgo:0 row silently replaced whatever someone had actually
+            // clocked that morning with demo times. Restarting the API to pick
+            // up a code change destroyed a real off-site clock-in exactly this
+            // way. History is demo data; today belongs to whoever is using it.
+            if (date == todayKey) continue;
             DateTime? timeIn = row.InHour is null ? null : LocalToUtc(date, row.InHour.Value, row.InMinute!.Value);
             DateTime? timeOut = row.OutHour is null ? null : LocalToUtc(date, row.OutHour.Value, row.OutMinute!.Value);
             var duration = timeIn is not null && timeOut is not null

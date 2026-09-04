@@ -24,4 +24,17 @@ public class RefreshTokenRepository : IRefreshTokenRepository
         _db.RefreshTokens.Update(token);
         await _db.SaveChangesAsync();
     }
+
+    public async Task RevokeAllForUserAsync(string userId)
+    {
+        var now = DateTime.UtcNow;
+        var live = await _db.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ToListAsync();
+
+        if (live.Count == 0) return;
+
+        foreach (var token in live) token.RevokedAt = now;
+        await _db.SaveChangesAsync();
+    }
 }

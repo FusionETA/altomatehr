@@ -1,20 +1,32 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
   CircleDollarSign,
+  CircleCheck,
   ClipboardCheck,
   Clock3,
   FileCheck2,
   Fingerprint,
   LoaderCircle,
+  LogOut,
   Plus,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { BreakControl } from "@/features/attendance/components/BreakControl";
+import {
+  ClockOutDialog,
+  type ClockOutChoice,
+} from "@/features/attendance/components/ClockOutDialog";
+import {
+  OffSiteClockDialog,
+  type OffSiteProof,
+} from "@/features/attendance/components/OffSiteClockDialog";
 import {
   clockIn,
   clockOut,
+  submitTimeAdjustment,
   getTodayAttendance,
   OFF_SITE_CODE,
   type AttendanceRecord,
@@ -37,6 +49,11 @@ import type { SignedInUser } from "@/shared/types/session";
 import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 
+function fmtClock(iso?: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
 export function DashboardView({
   user,
   onNavigate,
@@ -57,6 +74,10 @@ export function DashboardView({
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
+  const [clockOutOpen, setClockOutOpen] = useState(false);
+  // Set when the server refuses a clock for being off-site; holds the distance
+  // it reported so the dialog can show how far out we are.
+  const [offSite, setOffSite] = useState<{ action: "in" | "out"; distance?: number } | null>(null);
 
   // Live clock — the "RIGHT NOW" readout ticks every second.
   useEffect(() => {
@@ -93,7 +114,14 @@ export function DashboardView({
     });
   }, [isSupervisor]);
 
-  const state: "IN" | "OUT" = today?.timeIn && !today?.timeOut ? "IN" : "OUT";
+  // Three situations, not two. A finished day used to fall through to "OUT" and
+  // offer "Tap to Clock In" — an action the server always refuses with "you've
+  // already completed your attendance for today".
+  const state: "IN" | "OUT" | "DONE" = today?.timeIn
+    ? today.timeOut
+      ? "DONE"
+      : "IN"
+    : "OUT";
   const timeLabel = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -103,7 +131,27 @@ export function DashboardView({
     now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
   const firstName = buildName(user.email).split(" ")[0];
 
-  async function handleClock() {
+  // Ending a break changes today's totals, so the card re-reads the record.
+  const refreshToday = useCallback(() => {
+    getTodayAttendance()
+      .then(setToday)
+      .catch(() => undefined);
+  }, []);
+
+  function handleClock() {
+    if (state === "DONE") return;
+
+    // Clocking in is unambiguous; clocking out is the one that may need
+    // correcting, so it goes through the dialog.
+    if (state === "IN") {
+      setError(null);
+      setClockOutOpen(true);
+      return;
+    }
+    void runClock();
+  }
+
+  async function runClock(choice?: ClockOutChoice, proof?: OffSiteProof) {
     setBusy(true);
     setError(null);
     let coords: Coords | undefined;
@@ -114,16 +162,46 @@ export function DashboardView({
     }
     try {
       if (state === "OUT") {
-        await clockIn({ projectId: projectId || undefined, lat: coords?.lat, lng: coords?.lng });
+        await clockIn({
+          projectId: projectId || undefined,
+          lat: coords?.lat,
+          lng: coords?.lng,
+          remark: proof?.remark,
+          photoUrl: proof?.photoUrl,
+        });
       } else {
-        await clockOut({ lat: coords?.lat, lng: coords?.lng });
+        await clockOut({
+          lat: coords?.lat,
+          lng: coords?.lng,
+          remark: proof?.remark,
+          photoUrl: proof?.photoUrl,
+        });
       }
-      setToday(await getTodayAttendance());
+      setOffSite(null);
+      const refreshed = await getTodayAttendance();
+      setToday(refreshed);
+
+      // The clock-out landed first, deliberately: if this fails the day still
+      // has a real clock-out, and the employee can ask again from the
+      // Attendance screen.
+      if (choice?.adjustment && refreshed?.id) {
+        await submitTimeAdjustment({
+          recordId: refreshed.id,
+          requestedTimeOut: choice.adjustment.requestedTimeOut,
+          reason: choice.adjustment.reason,
+        });
+      }
+      setClockOutOpen(false);
     } catch (e) {
       // Off-site clocks need a remark + photo — that flow lives on the full
       // Attendance screen, so hand the user off there to finish.
+      // Off-site clocks need a remark and a photo. This used to navigate to the
+      // Attendance screen "to finish there" — but that screen has no clock form,
+      // so the hand-off was a dead end and the tap looked like it did nothing.
+      // Collect the proof here and retry instead.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
-        onNavigate("attendance");
+        setClockOutOpen(false);
+        setOffSite({ action: state === "OUT" ? "in" : "out", distance: e.distanceMeters });
         return;
       }
       setError(e instanceof Error ? e.message : "Could not update your clock. Try again.");
@@ -158,8 +236,17 @@ export function DashboardView({
                 {timeLabel}
               </p>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
-              {state === "IN" ? "On shift" : "Off shift"}
+            <span
+              className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                // muted, not secondary: --secondary is hue 166, the same green
+                // family as --success, so an "Off shift" pill in it read as
+                // on-shift at a glance. --muted is the actual neutral.
+                state === "IN"
+                  ? "bg-success/15 text-success"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {state === "IN" ? "On shift" : state === "DONE" ? "Day complete" : "Off shift"}
             </span>
           </div>
 
@@ -167,7 +254,7 @@ export function DashboardView({
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Project
             </p>
-            <Select value={projectId} onValueChange={setProjectId} disabled={state === "IN"}>
+            <Select value={projectId} onValueChange={setProjectId} disabled={state !== "OUT"}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a project..." />
               </SelectTrigger>
@@ -186,24 +273,63 @@ export function DashboardView({
               <button
                 type="button"
                 onClick={handleClock}
-                disabled={busy}
+                disabled={busy || state === "DONE"}
                 className="grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-panel transition hover:opacity-90 disabled:opacity-60 sm:h-24 sm:w-24"
-                aria-label={state === "OUT" ? "Clock in" : "Clock out"}
+                aria-label={
+                  state === "DONE" ? "Attendance complete" : state === "OUT" ? "Clock in" : "Clock out"
+                }
               >
                 {busy ? (
                   <LoaderCircle className="h-8 w-8 animate-spin sm:h-9 sm:w-9" />
+                ) : state === "DONE" ? (
+                  <CircleCheck className="h-8 w-8 sm:h-9 sm:w-9" />
+                ) : state === "IN" ? (
+                  <LogOut className="h-8 w-8 sm:h-9 sm:w-9" />
                 ) : (
                   <Fingerprint className="h-8 w-8 sm:h-9 sm:w-9" />
                 )}
               </button>
               <p className="text-base font-bold text-primary">
-                {state === "OUT" ? "Tap to Clock In" : "Tap to Clock Out"}
+                {state === "DONE"
+                  ? "Attendance complete"
+                  : state === "OUT"
+                    ? "Tap to Clock In"
+                    : "Tap to Clock Out"}
               </p>
               <p className="text-center text-xs text-muted-foreground">
-                Pending supervisor approval after tap
+                {state === "DONE"
+                  ? `Clocked ${fmtClock(today?.timeIn)} - ${fmtClock(today?.timeOut)} today`
+                  : "Pending supervisor approval after tap"}
               </p>
             </div>
           </div>
+
+          <BreakControl
+            recordId={today?.id ?? null}
+            clockedIn={state === "IN"}
+            onChange={refreshToday}
+          />
+
+          {offSite ? (
+            <OffSiteClockDialog
+              action={offSite.action}
+              distanceMeters={offSite.distance}
+              busy={busy}
+              error={error}
+              onSubmit={(proof) => void runClock(undefined, proof)}
+              onClose={() => setOffSite(null)}
+            />
+          ) : null}
+
+          {clockOutOpen && today ? (
+            <ClockOutDialog
+              today={today}
+              busy={busy}
+              error={error}
+              onConfirm={(choice) => void runClock(choice)}
+              onClose={() => setClockOutOpen(false)}
+            />
+          ) : null}
 
           {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
         </div>

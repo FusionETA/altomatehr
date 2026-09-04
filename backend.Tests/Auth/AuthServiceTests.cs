@@ -3,7 +3,10 @@ using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Email;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.RegularExpressions;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Tests.Auth;
@@ -160,6 +163,212 @@ public class AuthServiceTests
         Assert.Null(result);
     }
 
+    // --- password reset ---
+
+    // The reset flow needs to look inside its collaborators — the code is only
+    // ever emailed, and the point of most of these tests is what the repository
+    // holds afterwards. So this returns the fakes alongside the service instead
+    // of threading more out-params through CreateService.
+    private sealed record ResetHarness(
+        AuthService Service,
+        FakeUserRepository Users,
+        FakePasswordResetOtpRepository Otps,
+        FakeEmailSender Email,
+        FakeRefreshTokenRepository RefreshTokens);
+
+    private static ResetHarness CreateResetHarness(
+        IEnumerable<User> users,
+        IEnumerable<RefreshToken>? existingRefreshTokens = null,
+        bool emailSucceeds = true)
+    {
+        var userRepo = new FakeUserRepository(users);
+        var otps = new FakePasswordResetOtpRepository();
+        var email = new FakeEmailSender { Succeeds = emailSucceeds };
+        var refreshTokens = new FakeRefreshTokenRepository(existingRefreshTokens ?? []);
+
+        var service = new AuthService(
+            tokens: new FakeTokenService(),
+            refreshRepo: refreshTokens,
+            userRepo: userRepo,
+            directory: TestDirectory.Over(
+                new FakeMembershipRepository([Membership("usr-admin", "Admin", "org-1")])),
+            otpRepo: otps,
+            email: email,
+            logger: NullLogger<AuthService>.Instance,
+            config: new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Jwt:RefreshTokenDays"] = "7",
+                })
+                .Build());
+
+        return new ResetHarness(service, userRepo, otps, email, refreshTokens);
+    }
+
+    // The code never leaves the email, which is the point — a test that wants to
+    // redeem one has to read it the way a user would.
+    private static string CodeFromEmail(FakeEmailSender email) =>
+        Regex.Match(email.Sent.Single().Body, @"\b(\d{6})\b").Groups[1].Value;
+
+    [Fact]
+    public async Task ForgotPassword_ForUnknownEmail_RecordsNothingAndSendsNothing()
+    {
+        // Any observable difference here turns the endpoint into an
+        // account-existence oracle.
+        var h = CreateResetHarness(users: []);
+
+        await h.Service.ForgotPasswordAsync("nobody@altomate.com");
+
+        Assert.Empty(h.Otps.Otps);
+        Assert.Empty(h.Email.Sent);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_StoresAHashOfTheCode_NeverThePlaintext()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+
+        var code = CodeFromEmail(h.Email);
+        var stored = h.Otps.Otps.Single();
+        Assert.NotEqual(code, stored.CodeHash);
+        Assert.DoesNotContain(code, stored.CodeHash);
+        Assert.True(BC.Verify(code, stored.CodeHash));
+    }
+
+    [Fact]
+    public async Task ForgotPassword_Twice_LeavesOnlyTheNewestCodeUsable()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        var firstCode = CodeFromEmail(h.Email);
+        h.Email.Sent.Clear();
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+
+        // The first code must be dead even though its row still exists.
+        Assert.Equal(2, h.Otps.Otps.Count);
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", firstCode, "new-password");
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_WhenTheEmailFails_DoesNotThrow()
+    {
+        // Surfacing a send failure would also leak that the account exists.
+        var h = CreateResetHarness([CreateUser("old-password")], emailSucceeds: false);
+
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+
+        Assert.Single(h.Otps.Otps);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithTheEmailedCode_ChangesThePasswordAndConsumesIt()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        var code = CodeFromEmail(h.Email);
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", code, "new-password");
+
+        Assert.Null(error);
+        Assert.True(BC.Verify("new-password", h.Users.Users.Single().PasswordHash));
+        Assert.NotNull(h.Otps.Otps.Single().ConsumedAt);
+    }
+
+    [Fact]
+    public async Task ResetPassword_KillsEverySession()
+    {
+        // Otherwise a stolen refresh token survives the reset meant to lock the
+        // attacker out — the whole reason the reset exists.
+        var live = new RefreshToken
+        {
+            Token = "stolen-token",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+        };
+        var h = CreateResetHarness([CreateUser("old-password")], existingRefreshTokens: [live]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+
+        await h.Service.ResetPasswordAsync("admin@altomate.com", CodeFromEmail(h.Email), "new-password");
+
+        Assert.NotNull(h.RefreshTokens.Tokens.Single().RevokedAt);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithAWrongCode_BurnsAnAttemptAndLeavesThePassword()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", "000000", "new-password");
+
+        Assert.NotNull(error);
+        Assert.Equal(1, h.Otps.Otps.Single().AttemptCount);
+        Assert.True(BC.Verify("old-password", h.Users.Users.Single().PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPassword_AfterTooManyWrongGuesses_RefusesTheCorrectCode()
+    {
+        // A six-digit code is only a million guesses; the cap is what makes it
+        // safe to email one.
+        var h = CreateResetHarness([CreateUser("old-password")]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        var code = CodeFromEmail(h.Email);
+
+        for (var i = 0; i < PasswordResetOtp.MaxAttempts; i++)
+            await h.Service.ResetPasswordAsync("admin@altomate.com", "000000", "new-password");
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", code, "new-password");
+
+        Assert.NotNull(error);
+        Assert.True(BC.Verify("old-password", h.Users.Users.Single().PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithAnExpiredCode_Refuses()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        var code = CodeFromEmail(h.Email);
+        h.Otps.Otps.Single().ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", code, "new-password");
+
+        Assert.NotNull(error);
+        Assert.True(BC.Verify("old-password", h.Users.Users.Single().PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPassword_ReusingAConsumedCode_Refuses()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        var code = CodeFromEmail(h.Email);
+        await h.Service.ResetPasswordAsync("admin@altomate.com", code, "first-new-password");
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", code, "second-new-password");
+
+        Assert.NotNull(error);
+        Assert.True(BC.Verify("first-new-password", h.Users.Users.Single().PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithNoCodeRequested_Refuses()
+    {
+        var h = CreateResetHarness([CreateUser("old-password")]);
+
+        var error = await h.Service.ResetPasswordAsync("admin@altomate.com", "123456", "new-password");
+
+        Assert.NotNull(error);
+    }
+
     // --- helpers ---
 
     private static AuthService CreateService(
@@ -176,6 +385,9 @@ public class AuthServiceTests
             userRepo: new FakeUserRepository(users),
             directory: TestDirectory.Over(
                 new FakeMembershipRepository(memberships ?? [Membership("usr-admin", "Admin", "org-1")])),
+            otpRepo: new FakePasswordResetOtpRepository(),
+            email: new FakeEmailSender(),
+            logger: NullLogger<AuthService>.Instance,
             config: new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -214,6 +426,9 @@ public class AuthServiceTests
     private sealed class FakeUserRepository : IUserRepository
     {
         private readonly List<User> _users;
+
+        // Exposed so a reset test can assert the stored hash actually changed.
+        public IReadOnlyList<User> Users => _users;
 
         public FakeUserRepository(IEnumerable<User> users) => _users = users.ToList();
 
@@ -257,6 +472,54 @@ public class AuthServiceTests
         public Task UpdateAsync(OrganizationMembership m) => Task.CompletedTask;
     }
 
+    // Password-reset codes aren't exercised by the tests here yet; these exist so
+    // AuthService can be constructed. Both keep their state, so a reset test can
+    // assert against them when one is written.
+    private sealed class FakePasswordResetOtpRepository : IPasswordResetOtpRepository
+    {
+        public List<PasswordResetOtp> Otps { get; } = [];
+
+        public Task AddAsync(PasswordResetOtp otp)
+        {
+            Otps.Add(otp);
+            return Task.CompletedTask;
+        }
+
+        // Mirrors PasswordResetOtpRepository exactly — consumed, attempt-capped and
+        // expired rows are all invisible, newest first. A looser fake here would
+        // make the expiry and attempt-cap tests pass without proving anything.
+        public Task<PasswordResetOtp?> GetActiveByEmailAsync(string email) =>
+            Task.FromResult(
+                Otps.Where(o => o.Email == email
+                                && o.ConsumedAt == null
+                                && o.AttemptCount < PasswordResetOtp.MaxAttempts
+                                && o.ExpiresAt > DateTime.UtcNow)
+                    .OrderByDescending(o => o.CreatedAt)
+                    .FirstOrDefault());
+
+        public Task UpdateAsync(PasswordResetOtp otp) => Task.CompletedTask;
+
+        public Task InvalidateAllForUserAsync(string userId)
+        {
+            foreach (var otp in Otps.Where(o => o.UserId == userId && o.ConsumedAt == null))
+                otp.ConsumedAt = DateTime.UtcNow;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeEmailSender : IEmailSender
+    {
+        public List<(string To, string Subject, string Body)> Sent { get; } = [];
+        public bool Succeeds { get; init; } = true;
+
+        public Task<bool> SendAsync(
+            string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+        {
+            Sent.Add((toEmail, subject, htmlBody));
+            return Task.FromResult(Succeeds);
+        }
+    }
+
     private sealed class FakeRefreshTokenRepository : IRefreshTokenRepository
     {
         public List<RefreshToken> Tokens { get; }
@@ -274,5 +537,16 @@ public class AuthServiceTests
             Task.FromResult(Tokens.FirstOrDefault(t => t.Token == token));
 
         public Task UpdateAsync(RefreshToken token) => Task.CompletedTask;
+
+        // Mirrors RefreshTokenRepository: stamps every live token for the user,
+        // leaving already-revoked ones alone. Behaves rather than stubs, so a
+        // test can assert a password reset actually killed the sessions.
+        public Task RevokeAllForUserAsync(string userId)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var token in Tokens.Where(t => t.UserId == userId && t.RevokedAt == null))
+                token.RevokedAt = now;
+            return Task.CompletedTask;
+        }
     }
 }

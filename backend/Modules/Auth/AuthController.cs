@@ -67,6 +67,30 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    // POST /auth/forgot-password — emails a one-time reset code.
+    //
+    // ALWAYS returns 204, whether or not the address belongs to an account. A
+    // 404-vs-204 split here would let anyone test which emails are registered.
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth-forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordDto dto, CancellationToken cancellationToken)
+    {
+        await _auth.ForgotPasswordAsync(dto.Email.Trim(), cancellationToken);
+        return NoContent();
+    }
+
+    // POST /auth/reset-password — redeem the code and set a new password.
+    // Every failure returns the same message, for the same reason as above.
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth-forgot-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordDto dto)
+    {
+        var error = await _auth.ResetPasswordAsync(dto.Email.Trim(), dto.Otp, dto.NewPassword);
+        return error is null ? NoContent() : BadRequest(new { message = error });
+    }
+
     // POST /auth/switch-org/{organizationId} — re-mint the token for another org you belong to.
     [Authorize]
     [HttpPost("switch-org/{organizationId}")]

@@ -34,25 +34,25 @@ internal sealed class FakeRealtimeService : IRealtimeService
     }
 }
 
-internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
+internal sealed class FakeEmployeeDirectory : IEmployeeRowResolver
 {
     private readonly List<EmployeeIdentity> _members;
 
     public FakeEmployeeDirectory(params EmployeeIdentity[] members) => _members = members.ToList();
 
-    public Task<EmployeeDirectorySnapshot> GetSnapshotAsync() =>
+    public Task<EmployeeRowIndex> GetSnapshotAsync() =>
         Task.FromResult(EmployeeDirectoryTestFactory.Snapshot(_members));
 }
 
-// EmployeeDirectorySnapshot's constructor is internal to the API assembly, so
-// tests build one the only way they can: through the real EmployeeDirectory,
+// EmployeeRowIndex's constructor is internal to the API assembly, so
+// tests build one the only way they can: through the real EmployeeRowResolver,
 // over main's TestDirectory helper.
 internal static class EmployeeDirectoryTestFactory
 {
-    public static EmployeeDirectorySnapshot Snapshot(IEnumerable<EmployeeIdentity> members)
+    public static EmployeeRowIndex Snapshot(IEnumerable<EmployeeIdentity> members)
     {
         var list = members.ToList();
-        var directory = new EmployeeDirectory(
+        var directory = new EmployeeRowResolver(
             TestDirectory.Over(new StubMembershipRepository(list), new StubUserRepository(list)));
         return directory.GetSnapshotAsync().GetAwaiter().GetResult();
     }

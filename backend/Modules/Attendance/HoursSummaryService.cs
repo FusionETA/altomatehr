@@ -28,6 +28,8 @@ public class HoursSummaryService : IHoursSummaryService
     private readonly IShiftService _shifts;
     private readonly IOrganizationService _organizations;
     private readonly ITeamService _teams;
+    private readonly IOtRateService _otRates;
+    private readonly IAttendanceBreakRepository _breaks;
     private readonly ISupervisionService _supervision;
     private readonly ICurrentUser _currentUser;
 
@@ -38,6 +40,8 @@ public class HoursSummaryService : IHoursSummaryService
         IDirectoryService directory,
         IOrganizationService organizations,
         ITeamService teams,
+        IOtRateService otRates,
+        IAttendanceBreakRepository breaks,
         ISupervisionService supervision,
         ICurrentUser currentUser)
     {
@@ -47,6 +51,8 @@ public class HoursSummaryService : IHoursSummaryService
         _directory = directory;
         _organizations = organizations;
         _teams = teams;
+        _otRates = otRates;
+        _breaks = breaks;
         _supervision = supervision;
         _currentUser = currentUser;
     }
@@ -107,19 +113,54 @@ public class HoursSummaryService : IHoursSummaryService
     private async Task<HoursBucketsDto> ComputeAsync(
         string employeeId, DateTime from, DateTime to, (string? Start, string? End) orgHours)
     {
-        var (workingDays, standardDailyMin) = await ResolveScheduleAsync(employeeId, orgHours);
+        var (scheduledDays, standardDailyMin, unpaidBreakMin) =
+            await ResolveScheduleAsync(employeeId, orgHours);
 
         var records = (await _attendance.GetByEmployeeAsync(employeeId))
             .Where(r => r.Date >= from.Date && r.Date <= to.Date && r.DurationMin is not null)
             .ToList();
 
+        // One query for the whole range rather than one per record.
+        var breaksByRecord = (await _breaks.GetByRecordsAsync(records.Select(r => r.Id)))
+            .Where(b => b.EndedAt is not null)
+            .GroupBy(b => b.AttendanceRecordId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(b => (int)Math.Round((b.EndedAt!.Value - b.StartedAt).TotalMinutes)));
+
+        // Classified once per distinct project rather than once per record.
+        // Project matters because the holiday calendar can be project-specific
+        // (a Penang site observing a different set from a Selangor HQ), so the
+        // range can't be classified with a single project's calendar.
+        var dayTypesByProject = new Dictionary<string, IReadOnlyDictionary<DateTime, OtDayType>>();
+        foreach (var projectId in records.Select(r => r.ProjectId).Distinct())
+        {
+            dayTypesByProject[projectId ?? ""] =
+                await _otRates.ResolveDayTypesAsync(employeeId, from, to, projectId);
+        }
+
         var buckets = new HoursBucketsDto();
         foreach (var record in records)
         {
-            var minutes = record.DurationMin!.Value;
-            buckets.TotalMin += minutes;
-            if (workingDays.Contains(IsoWeekday(record.Date))) buckets.NormalMin += minutes;
-            else buckets.RestDayMin += minutes;
+            // Same classifier the OT rate uses, so hours and pay can't disagree.
+            var dayType = dayTypesByProject
+                .GetValueOrDefault(record.ProjectId ?? "")
+                ?.GetValueOrDefault(record.Date.Date, OtDayType.NORMAL_DAY)
+                ?? OtDayType.NORMAL_DAY;
+
+            var day = AttendanceHoursMath.ForDay(
+                record.DurationMin!.Value,
+                breaksByRecord.GetValueOrDefault(record.Id, 0),
+                standardDailyMin,
+                unpaidBreakMin,
+                dayType);
+
+            buckets.NormalMin += day.NormalMin;
+            buckets.RestDayMin += day.RestDayMin;
+            buckets.PublicHolidayMin += day.PublicHolidayMin;
+            buckets.BeyondShiftMin += day.BeyondShiftMin;
+            buckets.BreakMin += day.BreakMin;
+            buckets.TotalMin += day.WorkedMin;
         }
 
         var otRequests = (await _overtime.GetByEmployeeAsync(employeeId))
@@ -135,7 +176,7 @@ public class HoursSummaryService : IHoursSummaryService
             }
         }
 
-        buckets.ExpectedMin = ExpectedMinutesForRange(from, to, workingDays, standardDailyMin);
+        buckets.ExpectedMin = ExpectedMinutesForRange(from, to, scheduledDays, standardDailyMin);
         return buckets;
     }
 
@@ -143,20 +184,23 @@ public class HoursSummaryService : IHoursSummaryService
     // org's WorkingHoursStart/End. Reduced scope vs. the reference app: no
     // "project's default shift" middle tier — an employee with no Shift
     // assigned falls straight through to org hours.
-    private async Task<(HashSet<int> WorkingDays, int StandardDailyMin)> ResolveScheduleAsync(
-        string employeeId, (string? Start, string? End) orgHours)
+    private async Task<(HashSet<int> WorkingDays, int StandardDailyMin, int UnpaidBreakMin)>
+        ResolveScheduleAsync(string employeeId, (string? Start, string? End) orgHours)
     {
         var membership = await _directory.GetMembershipForUserAsync(employeeId);
         Shift? shift = membership?.ShiftId is not null ? await _shifts.GetByIdAsync(membership.ShiftId) : null;
 
         if (shift is not null)
         {
-            return (ParseWorkingDays(shift.WorkingDays), StandardDailyMinutesFrom(
-                shift.StartTime, shift.EndTime, shift.LunchBreakMinutes));
+            return (ParseWorkingDays(shift.WorkingDays),
+                StandardDailyMinutesFrom(shift.StartTime, shift.EndTime, shift.LunchBreakMinutes),
+                Math.Max(0, shift.LunchBreakMinutes));
         }
 
+        // No shift assigned — org hours, and the default unpaid break.
         return (new HashSet<int>(DefaultWorkingDays),
-            StandardDailyMinutesFrom(orgHours.Start, orgHours.End, DefaultLunchBreakMin));
+            StandardDailyMinutesFrom(orgHours.Start, orgHours.End, DefaultLunchBreakMin),
+            DefaultLunchBreakMin);
     }
 
     private static HashSet<int> ParseWorkingDays(string? csv)

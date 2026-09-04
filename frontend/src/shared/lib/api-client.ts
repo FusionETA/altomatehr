@@ -12,6 +12,9 @@ export function setAuthToken(token: string | null) {
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  // Only the off-site attendance refusal sets this — how far outside the
+  // geofence the clock was, so the UI can say "about 240m away".
+  readonly distanceMeters?: number;
   readonly body?: unknown;
 
   constructor(message: string, status: number, body?: unknown) {
@@ -22,6 +25,10 @@ export class ApiError extends Error {
     if (body && typeof body === "object" && "code" in body) {
       const c = (body as { code?: unknown }).code;
       if (typeof c === "string") this.code = c;
+    }
+    if (body && typeof body === "object" && "distanceMeters" in body) {
+      const d = (body as { distanceMeters?: unknown }).distanceMeters;
+      if (typeof d === "number") this.distanceMeters = d;
     }
   }
 }

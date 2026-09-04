@@ -27,7 +27,7 @@ internal static class ClaimsTestFactory
         IOrganizationService? organizations = null,
         ICurrentUser? currentUser = null,
         IRealtimeService? realtime = null,
-        IEmployeeDirectory? employees = null,
+        IEmployeeRowResolver? employees = null,
         IProjectService? projects = null) =>
         new(
             new FakeClaimsRepository(claims),

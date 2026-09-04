@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Ai;
+using AltomateHR.Api.Modules.Ai.Dtos;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -16,8 +19,13 @@ namespace AltomateHR.Api.Modules.Claims;
 public class ClaimsController : ControllerBase
 {
     private readonly IClaimsService _claims;
+    private readonly IReceiptOcrService _ocr;
 
-    public ClaimsController(IClaimsService claims) => _claims = claims;
+    public ClaimsController(IClaimsService claims, IReceiptOcrService ocr)
+    {
+        _claims = claims;
+        _ocr = ocr;
+    }
 
     // GET /claims — the caller's own claims.
     [RequireScope("claims:read")]
@@ -90,6 +98,68 @@ public class ClaimsController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    // POST /claims/receipts/analyze — upload a receipt AND read it with OCR.
+    //
+    // Stores the file exactly as POST /claims/receipts does, then runs the
+    // extraction over the stored copy and returns both. Writes nothing to the
+    // database: the values are form pre-fill, and the claim is still created by
+    // the normal POST /claims with the returned ReceiptUrl.
+    //
+    // A failed extraction is NOT a failed upload — the file is already stored, so
+    // the response still carries the ReceiptUrl and the client can fall back to
+    // manual entry rather than making the user upload again.
+    [HttpPost("receipts/analyze")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [EnableRateLimiting("ocr")]
+    public async Task<ActionResult<AnalyzeReceiptResponseDto>> AnalyzeReceipt(
+        IFormFile? receiptFile,
+        CancellationToken cancellationToken)
+    {
+        if (receiptFile is null || receiptFile.Length == 0)
+            return BadRequest(new { message = "Pick a receipt file to upload." });
+
+        // Buffer once (capped at 8 MB by RequestSizeLimit): the bytes are needed
+        // twice — to store, and to analyze.
+        byte[] bytes;
+        await using (var stream = receiptFile.OpenReadStream())
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, cancellationToken);
+            bytes = buffer.ToArray();
+        }
+
+        string receiptUrl;
+        try
+        {
+            using var storeStream = new MemoryStream(bytes, writable: false);
+            var stored = await _claims.StoreReceiptAsync(new ClaimReceiptUpload(
+                receiptFile.FileName,
+                receiptFile.ContentType,
+                receiptFile.Length,
+                storeStream));
+            receiptUrl = stored.ReceiptUrl;
+        }
+        catch (ArgumentException ex)
+        {
+            // Size/MIME rejection from storage.
+            return BadRequest(new { message = ex.Message });
+        }
+
+        try
+        {
+            var extraction = await _ocr.AnalyzeAsync(bytes, receiptFile.ContentType, cancellationToken);
+            return Ok(new AnalyzeReceiptResponseDto { ReceiptUrl = receiptUrl, Extraction = extraction });
+        }
+        catch (AiConfigurationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message, receiptUrl });
+        }
+        catch (AiProviderException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = ex.Message, receiptUrl });
         }
     }
 

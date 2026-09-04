@@ -675,7 +675,7 @@ public class LeaveServiceTests
         ICurrentUser? currentUser = null,
         IEnumerable<LeaveEntitlement>? entitlementRows = null,
         IXeroService? xero = null,
-        IEmployeeDirectory? employees = null) =>
+        IEmployeeRowResolver? employees = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),

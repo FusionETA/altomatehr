@@ -450,6 +450,47 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("AttendanceSessions");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Auth.Entities.PasswordResetOtp", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PasswordResetOtps");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Auth.Entities.RefreshToken", b =>
                 {
                     b.Property<string>("Id")
