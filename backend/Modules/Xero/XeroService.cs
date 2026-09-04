@@ -133,6 +133,19 @@ public class XeroService : IXeroService
         {
             if (!ShouldImportAccount(xeroAccount))
             {
+                // Not claimable — but an earlier, unfiltered sync may already
+                // have imported it. Skipping alone would leave "Sales" and
+                // "Retained Earnings" sitting selectable in the claim form
+                // forever, so a row that exists is corrected rather than left.
+                var stale = await _repo.GetAccountByXeroIdAsync(orgId, xeroAccount.AccountId);
+                if (stale is not null)
+                {
+                    stale.IsSelectable = false;
+                    stale.IsArchived = true;
+                    stale.XeroSyncedAt = now;
+                    await _repo.UpdateAccountAsync(stale);
+                }
+
                 result.Skipped++;
                 continue;
             }
@@ -149,7 +162,7 @@ public class XeroService : IXeroService
                     XeroAccountId = xeroAccount.AccountId,
                     XeroStatus = xeroAccount.Status,
                     XeroSyncedAt = now,
-                    IsSelectable = IsActive(xeroAccount.Status),
+                    IsSelectable = IsActive(xeroAccount.Status) && IsClaimable(xeroAccount.Type),
                     CreatedAt = now,
                 });
                 result.Imported++;
@@ -162,6 +175,8 @@ public class XeroService : IXeroService
             existing.XeroStatus = xeroAccount.Status;
             existing.XeroSyncedAt = now;
             existing.IsArchived = !IsActive(xeroAccount.Status);
+            // A bank account that was somehow selectable stops being so.
+            if (!IsClaimable(xeroAccount.Type)) existing.IsSelectable = false;
             await _repo.UpdateAccountAsync(existing);
             result.Updated++;
         }
@@ -288,14 +303,36 @@ public class XeroService : IXeroService
             .TrimEnd('=');
     }
 
-    private static bool ShouldImportAccount(XeroAccountResponse account) =>
-        IsActive(account.Status) || string.Equals(account.Status, "ARCHIVED", StringComparison.OrdinalIgnoreCase);
+    // Xero types a claim can be coded to. A chart of accounts also holds
+    // revenue, receivables, equity and liabilities — none of which an employee
+    // can spend against, and all of which would otherwise land in the claim
+    // form's account picker.
+    private static readonly string[] ClaimableTypes = ["EXPENSE", "DIRECTCOSTS", "OVERHEADS"];
+
+    // BANK is imported but NOT claimable: it is the account company-paid claims
+    // are spent FROM (Claim.PayViaAccountId), never the account they are coded
+    // to. Dropping it would break the company-spend path.
+    private static bool IsBank(string type) =>
+        string.Equals(type, "BANK", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsClaimable(string type) =>
+        ClaimableTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
+
+    private static bool ShouldImportAccount(XeroAccountResponse account)
+    {
+        var known = IsActive(account.Status)
+            || string.Equals(account.Status, "ARCHIVED", StringComparison.OrdinalIgnoreCase);
+
+        return known && (IsClaimable(account.Type) || IsBank(account.Type));
+    }
 
     private static bool IsActive(string status) =>
         string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
 
+    // Only BANK and EXPENSE exist locally. Everything importable that is not a
+    // bank is an expense family type, so it collapses to EXPENSE.
     private static string ToLocalAccountType(string xeroType) =>
-        string.Equals(xeroType, "BANK", StringComparison.OrdinalIgnoreCase) ? "BANK" : "EXPENSE";
+        IsBank(xeroType) ? "BANK" : "EXPENSE";
 
     private static bool ShouldImportProject(XeroProjectResponse project) =>
         !string.Equals(project.Status, "DELETED", StringComparison.OrdinalIgnoreCase);
