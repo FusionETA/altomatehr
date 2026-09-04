@@ -18,12 +18,14 @@ import { AdminClaimsReadyToPay } from "./AdminClaimsReadyToPay";
 import { ALL_PROJECTS, AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 
-// The claims admin dashboard. Two surfaces, in the order an admin needs them:
-// what requires a decision, then every claim behind it. Month-end export and
-// import sit above both, because that is the other reason an admin opens this
-// page at all.
+// The claims admin dashboard, in the order an admin needs it: what requires a
+// decision, then what is owed, then every claim behind both.
+//
+// The first tab is labelled "Overview" but is deliberately NOT a summary of
+// totals — it leads with what is late and with whom. Its badge carries the
+// stale count so the tab itself says whether anything needs looking at.
 
-type ClaimsTab = "attention" | "pay" | "all";
+type ClaimsTab = "overview" | "pay" | "all";
 
 export function AdminClaims() {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -34,7 +36,7 @@ export function AdminClaims() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<ClaimsTab>("attention");
+  const [tab, setTab] = useState<ClaimsTab>("overview");
   const [importReport, setImportReport] = useState<ClaimsImportResult | null>(null);
   const [drilldown, setDrilldown] = useState<ClaimDrilldown | null>(null);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
@@ -120,7 +122,7 @@ export function AdminClaims() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <OverflowTabList<ClaimsTab>
           items={[
-            { id: "attention", label: "Needs attention", badge: staleCount },
+            { id: "overview", label: "Overview", badge: staleCount },
             { id: "pay", label: "Ready to pay", badge: readyToPay.length },
             { id: "all", label: "All claims" },
           ]}
@@ -156,7 +158,7 @@ export function AdminClaims() {
             onDrill={openDrilldown}
           />
         )
-      ) : tab === "attention" ? (
+      ) : tab === "overview" ? (
         error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">
             Error: {error}
