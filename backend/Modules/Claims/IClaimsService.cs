@@ -34,7 +34,12 @@ public interface IClaimsService
 
     // Every claim in the current org, for cross-module reporting (the admin
     // dashboard). The tenant filter still scopes it.
-    Task<IReadOnlyList<Claim>> GetAllForOrgAsync();
+    // Pass an approverId to have each claim flagged with whether THAT user can
+    // decide it right now. The admin dashboard needs it — an Admin is a layer in
+    // the approval chain like anyone else, and without the flag its claims table
+    // can only ever be read-only. Omit it for pure reporting: resolving the
+    // chain per claim is work the analytics cards do not need.
+    Task<IReadOnlyList<Claim>> GetAllForOrgAsync(string? approverId = null);
 
     // ---- Import / export ----
 

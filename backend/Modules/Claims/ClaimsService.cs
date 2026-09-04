@@ -1031,7 +1031,29 @@ public class ClaimsService : IClaimsService
         return (claim, null);
     }
 
-    public async Task<IReadOnlyList<Claim>> GetAllForOrgAsync() => await _repo.GetAllAsync();
+    public async Task<IReadOnlyList<Claim>> GetAllForOrgAsync(string? approverId = null)
+    {
+        var claims = await _repo.GetAllAsync();
+        if (approverId is null) return claims;
+
+        var directory = await _employees.GetSnapshotAsync();
+
+        foreach (var claim in claims)
+        {
+            claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
+            if (claim.Status != ClaimStatus.PENDING) continue;
+
+            var approvers = await _router.CurrentApproversAsync(
+                Module, claim.EmployeeId, claim.CurrentStep);
+
+            claim.CanAct = approvers.Contains(approverId);
+            claim.AwaitingApprovers = claim.CanAct
+                ? []
+                : approvers.Select(id => PersonLabel(directory, id)).ToList();
+        }
+
+        return claims;
+    }
 }
 
 // Final values after claim rules are validated and calculated, ready to copy

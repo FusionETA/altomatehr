@@ -169,6 +169,7 @@ export function AdminClaims() {
           projectNames={projectNames}
           employeeEmails={employeeEmails}
           accountLabels={accountLabels}
+          onDecided={() => void load()}
         />
       ) : loading ? (
         <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">

@@ -627,11 +627,22 @@ function WhyNoAction({ claim }: { claim: Claim }) {
   }
 
   const waiting = claim.awaitingApprovers ?? [];
+
+  // Empty means the step this claim reached has NO approver — the chain was
+  // changed underneath it, or never covered this employee. It cannot move
+  // without someone fixing the hierarchy, so it is flagged rather than
+  // described as a wait: nobody is coming.
+  if (waiting.length === 0) {
+    return (
+      <span className="text-xs font-semibold text-destructive">
+        Nobody can approve this
+      </span>
+    );
+  }
+
   return (
     <span className="text-xs text-muted-foreground">
-      {waiting.length > 0
-        ? `You approved · now with ${waiting.map(displayPerson).join(", ")}`
-        : "Waiting on another approver"}
+      You approved · now with {waiting.map(displayPerson).join(", ")}
     </span>
   );
 }

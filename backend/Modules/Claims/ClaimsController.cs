@@ -51,7 +51,9 @@ public class ClaimsController : ControllerBase
     [HttpGet("all")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetAll() =>
-        Ok(await _claims.GetAllForOrgAsync());
+        // The caller's id so each row knows whether THEY can decide it: an
+        // admin is a chain layer too, and often the final one.
+        Ok(await _claims.GetAllForOrgAsync(GetUserId()));
 
     // GET /claims/{id}
     [RequireScope("claims:read")]

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { ChevronDown, Filter, SlidersHorizontal, X } from "lucide-react";
-import type { Claim } from "@/features/claims/api";
+import { ChevronDown, Filter, LoaderCircle, SlidersHorizontal, X } from "lucide-react";
+import { approveClaim, rejectClaim, type Claim } from "@/features/claims/api";
 import { ClaimDetailsModal } from "@/features/claims/components/ClaimDetailsModal";
 import { ClaimStatusBadge } from "@/features/claims/components/ClaimStatusBadge";
 import { ClaimStatusTabs } from "@/features/claims/components/ClaimStatusTabs";
@@ -17,7 +17,7 @@ import {
   STALE_AFTER_DAYS,
   sumAmount,
 } from "@/features/claims/lib/claim-insights";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { buildName, displayPerson } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
@@ -58,7 +58,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const COLUMNS = ["Employee", "Claim", "Project", "Submitted", "Waiting", "Amount", "Status"];
+const COLUMNS = ["Employee", "Claim", "Project", "Submitted", "Waiting", "Amount", "Status", "Action"];
 
 export function AdminClaimsTable({
   claims,
@@ -71,6 +71,7 @@ export function AdminClaimsTable({
   projectNames,
   employeeEmails,
   accountLabels,
+  onDecided,
 }: {
   claims: Claim[];
   loading: boolean;
@@ -82,12 +83,83 @@ export function AdminClaimsTable({
   projectNames: Map<string, string>;
   employeeEmails: Map<string, string>;
   accountLabels: Map<string, string>;
+  // A decision changes the claim server-side, so the page re-reads rather than
+  // this table patching a row it does not own.
+  onDecided: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Claim | null>(null);
   // Collapsed by default: search and status answer most questions, and six
   // controls permanently open pushed the claims themselves off the screen.
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<Claim | null>(null);
+  const [rejectNotes, setRejectNotes] = useState("");
+  const [decideError, setDecideError] = useState<string | null>(null);
+
+  async function decide(claim: Claim, run: (id: string) => Promise<Claim>) {
+    setBusyId(claim.id);
+    setDecideError(null);
+    try {
+      await run(claim.id);
+      onDecided();
+      return true;
+    } catch (e) {
+      setDecideError(e instanceof Error ? e.message : "Could not update the claim.");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // An admin sits in the approval chain like anyone else, so the rows they can
+  // decide get buttons and the rest say why they do not.
+  function rowActions(claim: Claim) {
+    if (!claim.canAct) {
+      if (claim.status !== "PENDING") return <span className="text-muted-foreground">—</span>;
+
+      const waiting = claim.awaitingApprovers ?? [];
+
+      // No approver at the step it reached: a routing fault, not a queue. An
+      // admin is the person who can fix it, so it is called out here loudest.
+      if (waiting.length === 0) {
+        return (
+          <span className="text-xs font-semibold text-destructive">Nobody can approve</span>
+        );
+      }
+
+      return (
+        <span className="text-xs text-muted-foreground">
+          With {waiting.map(displayPerson).join(", ")}
+        </span>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          disabled={busyId === claim.id}
+          onClick={() => decide(claim, approveClaim)}
+          className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground transition hover:opacity-90 disabled:opacity-50"
+        >
+          {busyId === claim.id ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
+          Approve
+        </button>
+        <button
+          type="button"
+          disabled={busyId === claim.id}
+          onClick={() => {
+            setRejecting(claim);
+            setRejectNotes("");
+          }}
+          className="rounded-full bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+        >
+          Reject
+        </button>
+      </div>
+    );
+  }
 
   const set = <K extends keyof ClaimsFilters>(key: K, value: ClaimsFilters[K]) =>
     onFiltersChange({ ...filters, [key]: value });
@@ -346,6 +418,12 @@ export function AdminClaimsTable({
           </div>
         </section>
 
+        {decideError ? (
+          <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-4 text-sm font-medium text-destructive">
+            {decideError}
+          </section>
+        ) : null}
+
         {loading ? (
           <section className={`${CARD_BARE} p-6 text-sm text-muted-foreground`}>
             Loading claims…
@@ -467,12 +545,13 @@ export function AdminClaimsTable({
                       <td className="p-4 align-middle font-semibold text-foreground">
                         {formatCurrency(claim.amount, claim.currency)}
                       </td>
-                      <td className="p-4 pr-6 align-middle">
+                      <td className="p-4 align-middle">
                         <div className="flex flex-col items-start gap-1.5">
                           <ClaimStatusBadge status={claim.status} />
                           {claim.exceedsLimit ? <OverLimitBadge /> : null}
                         </div>
                       </td>
+                      <td className="p-4 pr-6 align-middle">{rowActions(claim)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -499,6 +578,52 @@ export function AdminClaimsTable({
           </div>
         ) : null}
       </div>
+
+      {rejecting ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+          <section className="w-full max-w-[520px] rounded-[26px] border border-white/40 bg-card p-6 shadow-[0_18px_48px_rgba(76,26,134,0.16)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Reject claim
+            </p>
+            <h3 className="mt-1 truncate text-xl font-black text-foreground">{rejecting.title}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{rejecting.claimNumber}</p>
+
+            <label className="mt-5 block space-y-3">
+              <span className="text-sm font-bold text-foreground">Remark</span>
+              <textarea
+                value={rejectNotes}
+                onChange={(event) => setRejectNotes(event.target.value)}
+                placeholder="Explain why this claim is rejected."
+                className="min-h-32 w-full resize-none rounded-[18px] border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </label>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setRejecting(null)}
+                className="h-12 rounded-[18px] border border-border/70 bg-card text-sm font-bold text-muted-foreground transition hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                // The API refuses a rejection with no remark, so the button
+                // does too rather than round-tripping to be told.
+                disabled={rejectNotes.trim().length === 0 || busyId === rejecting.id}
+                onClick={async () => {
+                  const ok = await decide(rejecting, (id) => rejectClaim(id, rejectNotes.trim()));
+                  if (ok) setRejecting(null);
+                }}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-destructive/10 text-sm font-bold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+              >
+                {busyId === rejecting.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Reject
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {selected ? (
         <ClaimDetailsModal
