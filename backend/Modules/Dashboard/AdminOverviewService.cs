@@ -32,14 +32,14 @@ public class AdminOverviewService : IAdminOverviewService
     private readonly IProjectService _projects;
     private readonly IModuleAccessService _modules;
     private readonly IApprovalRouter _router;
-    private readonly IEmployeeDirectory _employees;
+    private readonly IEmployeeRowResolver _employees;
 
     public AdminOverviewService(
         IClaimsService claims,
         IProjectService projects,
         IModuleAccessService modules,
         IApprovalRouter router,
-        IEmployeeDirectory employees)
+        IEmployeeRowResolver employees)
     {
         _claims = claims;
         _projects = projects;
@@ -197,7 +197,7 @@ public class AdminOverviewService : IAdminOverviewService
 
     // Best available human label: the directory name, else the email (the UI
     // prettifies those), else the raw id so a row is never blank.
-    private static string Label(EmployeeDirectorySnapshot directory, string? userId)
+    private static string Label(EmployeeRowIndex directory, string? userId)
     {
         if (string.IsNullOrWhiteSpace(userId)) return "Unassigned";
 
