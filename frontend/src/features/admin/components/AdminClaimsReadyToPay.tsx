@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ArrowRight, BanknoteArrowUp, CircleCheck, Clock, Lock, Wallet } from "lucide-react";
+import { ArrowRight, BanknoteArrowUp, Lock, Wallet } from "lucide-react";
 import type { Claim } from "@/features/claims/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
@@ -74,12 +74,7 @@ export function AdminClaimsReadyToPay({
     return (
       <div className="space-y-6">
         <section className={CARD}>
-          <CardHead
-            icon={CircleCheck}
-            title="Nothing waiting on payment"
-            tone="text-secondary-foreground"
-            toneBg="bg-secondary"
-          />
+          <CardHead title="Nothing waiting on payment" />
           <EmptyState text="Every approved out-of-pocket claim has been settled. Nothing is owed." />
         </section>
         <CompanySpendNote claims={companySpend} />
@@ -148,13 +143,7 @@ export function AdminClaimsReadyToPay({
       </section>
 
       <section className={CARD}>
-        <CardHead
-          icon={Clock}
-          title="Who to pay"
-          meta="Longest waiting first"
-          tone="text-primary"
-          toneBg="bg-primary/10"
-        />
+        <CardHead title="Who to pay" meta="Longest waiting first" />
         <div className="space-y-3">
           {payees.map((payee) => {
             const late = payee.waitingDays >= OVERDUE_DAYS;

@@ -4,6 +4,9 @@ import { EYEBROW, TILE } from "../lib/dashboard-styles";
 // The parts every admin analytics card is assembled from. Shared so the claims
 // dashboard and the executive overview cannot drift apart.
 
+// `icon` is optional: the claims dashboard leads its cards with the words
+// alone, while the executive overview keeps its icon badges. Passing no icon
+// drops the badge and lets the title start the row.
 export function CardHead({
   icon: Icon,
   title,
@@ -11,7 +14,7 @@ export function CardHead({
   tone = "text-primary",
   toneBg = "bg-primary/10",
 }: {
-  icon: LucideIcon;
+  icon?: LucideIcon;
   title: string;
   meta?: string;
   tone?: string;
@@ -20,9 +23,11 @@ export function CardHead({
   return (
     <div className="flex flex-row items-center justify-between gap-3 pb-3">
       <div className="flex items-center gap-3">
-        <div className={`rounded-2xl ${toneBg} p-2.5 ${tone}`}>
-          <Icon className="h-[18px] w-[18px]" />
-        </div>
+        {Icon ? (
+          <div className={`rounded-2xl ${toneBg} p-2.5 ${tone}`}>
+            <Icon className="h-[18px] w-[18px]" />
+          </div>
+        ) : null}
         <h3 className="text-base font-black text-foreground">{title}</h3>
       </div>
       {meta ? <span className={EYEBROW}>{meta}</span> : null}

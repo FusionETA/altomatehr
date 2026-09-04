@@ -1,13 +1,5 @@
 import { useMemo } from "react";
-import {
-  ArrowRight,
-  Clock,
-  Inbox,
-  ShieldAlert,
-  TrendingUp,
-  TriangleAlert,
-  UserX,
-} from "lucide-react";
+import { ArrowRight, Clock, Inbox, TriangleAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Claim } from "@/features/claims/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
@@ -200,11 +192,8 @@ function StuckWithCard({
   return (
     <section className={CARD}>
       <CardHead
-        icon={UserX}
         title="Stuck with"
         meta={`> ${STALE_AFTER_DAYS} days`}
-        tone="text-tertiary"
-        toneBg="bg-tertiary/10"
       />
       <div className="space-y-3">
         {stuck.length === 0 ? (
@@ -279,7 +268,7 @@ function ProjectSpendCard({
 
   return (
     <section className={CARD}>
-      <CardHead icon={TrendingUp} title="Where the money is going" meta="This month" />
+      <CardHead title="Where the money is going" meta="This month" />
       <div className="space-y-3">
         {spend.length === 0 ? (
           <EmptyState text="No claims submitted this month yet." />
@@ -389,11 +378,8 @@ function ApprovalTrustCard({
   return (
     <section className={CARD}>
       <CardHead
-        icon={ShieldAlert}
         title="Approvals worth a second look"
         meta="Last 90 days"
-        tone="text-tertiary"
-        toneBg="bg-tertiary/10"
       />
       <div className="space-y-3">
         {samples.length === 0 ? (
