@@ -51,6 +51,12 @@ export function AccountsSettings() {
   const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  // Archived accounts are hidden by default. Syncing retires every Xero
+  // account a claim cannot be coded to — revenue, receivables, equity — and a
+  // list of struck-through "Sales" rows is noise on a screen whose job is
+  // showing what a claim CAN be coded to. Still reachable, because archiving
+  // has to be undoable.
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     getAccounts()
@@ -118,6 +124,9 @@ export function AccountsSettings() {
       setBusyId(null);
     }
   }
+
+  const archivedCount = accounts.filter((account) => account.isArchived).length;
+  const visible = showArchived ? accounts : accounts.filter((account) => !account.isArchived);
 
   return (
     <div className="space-y-5">
@@ -263,10 +272,24 @@ export function AccountsSettings() {
       )}
 
       <div className={CARD}>
+        {archivedCount > 0 ? (
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowArchived((open) => !open)}
+              className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+            >
+              {showArchived ? "Hide" : "Show"} {archivedCount} archived
+            </button>
+          </div>
+        ) : null}
+
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading accounts…</p>
-        ) : accounts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No accounts yet.</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {accounts.length === 0 ? "No accounts yet." : "No active accounts."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
@@ -280,7 +303,7 @@ export function AccountsSettings() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((account) => (
+                {visible.map((account) => (
                   <tr key={account.id} className="border-b border-border/60">
                     <td className="px-3 py-3 font-mono text-xs">{account.code}</td>
                     <td
