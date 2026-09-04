@@ -20,7 +20,7 @@ import { ClaimStatusTabs } from "./ClaimStatusTabs";
 import { OverLimitBadge } from "./OverLimitBadge";
 import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { getAccounts } from "@/features/settings/api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { buildName, displayPerson } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 
 const CARD =
@@ -515,7 +515,9 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
                           {claim.exceedsLimit ? <OverLimitBadge /> : null}
                         </div>
                       </td>
-                      <td className="p-4 pr-6 align-middle">{actions(claim) ?? <span className="text-xs text-muted-foreground">—</span>}</td>
+                      <td className="p-4 pr-6 align-middle">
+                        {actions(claim) ?? <WhyNoAction claim={claim} />}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -613,6 +615,24 @@ function BulkResultPanel({
         </ul>
       ) : null}
     </section>
+  );
+}
+
+// A dash reads the same for "you already approved this", "it is with the next
+// layer" and "it is settled" — three different answers to "why can't I click
+// anything?". This says which.
+function WhyNoAction({ claim }: { claim: Claim }) {
+  if (claim.status !== "PENDING") {
+    return <span className="text-xs text-muted-foreground">No action needed</span>;
+  }
+
+  const waiting = claim.awaitingApprovers ?? [];
+  return (
+    <span className="text-xs text-muted-foreground">
+      {waiting.length > 0
+        ? `You approved · now with ${waiting.map(displayPerson).join(", ")}`
+        : "Waiting on another approver"}
+    </span>
   );
 }
 

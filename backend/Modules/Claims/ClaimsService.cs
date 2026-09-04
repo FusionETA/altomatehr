@@ -81,13 +81,17 @@ public class ClaimsService : IClaimsService
         var all = await _repo.GetAllAsync();
         var reportIds = (await _supervision.GetReportIdsAsync(userId)).ToHashSet(StringComparer.Ordinal);
 
+        var directory = await _employees.GetSnapshotAsync();
         var claims = new List<Claim>();
+
         foreach (var claim in all)
         {
             var actionable = false;
+            IReadOnlyList<string> approvers = [];
+
             if (claim.Status == ClaimStatus.PENDING)
             {
-                var approvers = await _router.CurrentApproversAsync(
+                approvers = await _router.CurrentApproversAsync(
                     Module, claim.EmployeeId, claim.CurrentStep);
                 actionable = approvers.Contains(userId);
             }
@@ -97,6 +101,13 @@ public class ClaimsService : IClaimsService
             if (!actionable && !reportIds.Contains(claim.EmployeeId)) continue;
 
             claim.CanAct = actionable;
+
+            // Named only when it is NOT this approver's turn: telling someone a
+            // claim is waiting on themselves is noise, and the button says so.
+            claim.AwaitingApprovers = actionable
+                ? []
+                : approvers.Select(id => PersonLabel(directory, id)).ToList();
+
             claims.Add(claim);
         }
 
@@ -845,6 +856,17 @@ public class ClaimsService : IClaimsService
             claim.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.CLAIMS, action, claim.Id));
+    }
+
+    // Best available human label for a user id: directory name, else email,
+    // else the raw id so a row is never blank.
+    private static string PersonLabel(EmployeeRowIndex directory, string userId)
+    {
+        var name = directory.NameOf(userId);
+        if (!string.IsNullOrWhiteSpace(name)) return name;
+
+        var email = directory.EmailOf(userId);
+        return string.IsNullOrWhiteSpace(email) ? userId : email;
     }
 
     private static string GenerateClaimNumber() =>

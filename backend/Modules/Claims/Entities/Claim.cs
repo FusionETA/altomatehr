@@ -111,6 +111,12 @@ public class Claim : ITenantScoped
     [NotMapped]
     public bool CanAct { get; set; }
 
+    // Transient — who the claim is waiting on, for the team view. A PENDING
+    // claim that has cleared one layer looks identical to a brand new one
+    // unless the row can say whose desk it is on now.
+    [NotMapped]
+    public List<string> AwaitingApprovers { get; set; } = new();
+
     // ---- Xero ----
     // An approved claim becomes an accounts-payable bill in Xero. The id and
     // reference come back from Xero and are what let an admin find the bill

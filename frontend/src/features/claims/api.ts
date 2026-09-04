@@ -41,6 +41,9 @@ export type Claim = {
   // settled claim, or one sitting with another step's approver, is visible but
   // not actionable.
   canAct?: boolean;
+  // Team view: who the claim is waiting on, when it is not the caller. Empty
+  // when it is their turn, or when the claim is already settled.
+  awaitingApprovers?: string[];
   spentAt: string;
   submittedAt: string;
   projectId?: string | null;
