@@ -32,6 +32,18 @@ public class ClaimsController : ControllerBase
     public async Task<IActionResult> GetTeam() =>
         Ok(await _claims.GetTeamAsync(GetUserId()));
 
+    // GET /claims/all — every claim in the org, for the admin dashboard to
+    // aggregate and drill into. Admin/Owner only: this is oversight over the
+    // whole org, not a personal or team queue.
+    //
+    // Declared BEFORE the {id} route so the literal "all" segment isn't read as
+    // a claim id.
+    [RequireScope("claims:read")]
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetAll() =>
+        Ok(await _claims.GetAllForOrgAsync());
+
     // GET /claims/{id}
     [RequireScope("claims:read")]
     [HttpGet("{id}")]

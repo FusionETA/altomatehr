@@ -15,14 +15,11 @@ import type {
   StalePendingClaim,
   UpcomingClaimRun,
 } from "../api";
+import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
+import { CardHead, EmptyState, Stat } from "./DashboardCard";
 
 // Ported from the monolith's ExecutiveOverview — six analytics cards. Cards are wired to
 // real data one by one; the rest render their empty states until their backend lands.
-
-const CARD =
-  "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
-const TILE = "rounded-2xl border border-border/60 bg-surface-low p-4";
-const EYEBROW = "text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(n);
@@ -45,32 +42,6 @@ export function ExecutiveOverview({ data }: { data: AdminOverview }) {
         total={data.overturnedSupervisors.total}
         samples={data.overturnedSupervisors.samples}
       />
-    </div>
-  );
-}
-
-function CardHead({
-  icon: Icon,
-  title,
-  meta,
-  tone = "text-primary",
-  toneBg = "bg-primary/10",
-}: {
-  icon: typeof TrendingUp;
-  title: string;
-  meta?: string;
-  tone?: string;
-  toneBg?: string;
-}) {
-  return (
-    <div className="flex flex-row items-center justify-between gap-3 pb-3">
-      <div className="flex items-center gap-3">
-        <div className={`rounded-2xl ${toneBg} p-2.5 ${tone}`}>
-          <Icon className="h-[18px] w-[18px]" />
-        </div>
-        <h3 className="text-base font-black text-foreground">{title}</h3>
-      </div>
-      {meta ? <span className={EYEBROW}>{meta}</span> : null}
     </div>
   );
 }
@@ -322,34 +293,5 @@ function OverturnedSupervisorsCard({
         )}
       </div>
     </section>
-  );
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <p className="rounded-2xl bg-surface-low px-4 py-6 text-center text-sm text-muted-foreground">
-      {text}
-    </p>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = "text-foreground",
-}: {
-  label: string;
-  value: string;
-  tone?: string;
-}) {
-  return (
-    <div className={`min-w-0 ${TILE}`}>
-      <p className={`text-xl font-black leading-tight tabular-nums break-words ${tone}`}>{value}</p>
-      <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-    </div>
   );
 }

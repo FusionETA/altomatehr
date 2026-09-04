@@ -318,7 +318,11 @@ using (var scope = app.Services.CreateScope())
 
     // Demo org + users (admin@altomate.com / password123, …) are DEVELOPMENT-ONLY — never
     // create these accounts against a real database; they'd be a public backdoor.
-    if (app.Environment.IsDevelopment())
+    //
+    // Seed:DemoData exists because user-secrets only load in Development, so pointing a
+    // dev run at a REAL database is the one case where "Development" and "safe to seed"
+    // come apart. Set it to false and the demo rows are never written.
+    if (app.Environment.IsDevelopment() && app.Configuration.GetValue("Seed:DemoData", true))
     {
         var organizations = services.GetRequiredService<IOrganizationRepository>();
         var users = services.GetRequiredService<IUserRepository>();

@@ -307,6 +307,7 @@ public class ClaimsService : IClaimsService
 
         var parts = new List<string> { range, $"{count} claim(s)" };
         if (query.Status is { } status) parts.Add($"status {status}");
+        if (query.PaymentType is { } paymentType) parts.Add($"paid with {paymentType.ToString().ToLowerInvariant()} money");
         if (!string.IsNullOrWhiteSpace(query.EmployeeId)) parts.Add("one employee");
         if (!string.IsNullOrWhiteSpace(query.ProjectId)) parts.Add("one project");
 
@@ -516,6 +517,7 @@ public class ClaimsService : IClaimsService
         if (query.From is { } from && when < from.Date) return false;
         if (query.To is { } to && when > to.Date) return false;
         if (query.Status is { } status && claim.Status != status) return false;
+        if (query.PaymentType is { } paymentType && claim.PaymentType != paymentType) return false;
         if (!string.IsNullOrWhiteSpace(query.EmployeeId) && claim.EmployeeId != query.EmployeeId) return false;
         if (!string.IsNullOrWhiteSpace(query.ProjectId) && claim.ProjectId != query.ProjectId) return false;
         return true;

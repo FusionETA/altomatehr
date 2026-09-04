@@ -25,6 +25,9 @@ export type StalePendingClaim = {
   employeeName: string;
   amount: number;
   daysPending: number;
+  // Who the claim is waiting on. Empty means no approver is assigned to the
+  // step it stalled at — a routing problem, not a slow reviewer.
+  currentApprovers: string[];
 };
 export type UpcomingClaimRun = {
   cutoffDate: string;
@@ -39,6 +42,8 @@ export type OverturnedSupervisor = {
   supervisorName: string;
   overturnedCount: number;
   affectedEmployees: number;
+  // The claims behind the count, so the card can drill into them.
+  claimIds: string[];
 };
 
 export type AdminOverview = {

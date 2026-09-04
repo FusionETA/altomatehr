@@ -20,3 +20,10 @@ export function buildName(email: string) {
       .join(" ") || "Employee"
   );
 }
+
+// A label the server already resolved to a person — a real name where the
+// directory has one, an email where it doesn't. Prettifies the email case so an
+// admin never reads "aisha.rahman@acme.com" in a list of people.
+export function displayPerson(label: string) {
+  return label.includes("@") ? buildName(label) : label;
+}

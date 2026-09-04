@@ -24,6 +24,11 @@ public class ClaimsExportQueryDto
 
     public ClaimStatus? Status { get; set; }
 
+    // PERSONAL = the employee is out of pocket and the org owes them; COMPANY =
+    // the money already left a company account. A reimbursement run is only ever
+    // the PERSONAL half, so the export has to be able to say which.
+    public PaymentType? PaymentType { get; set; }
+
     [MaxLength(40)]
     public string? EmployeeId { get; set; }
 

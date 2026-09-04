@@ -28,7 +28,7 @@ export type AdminNavItem = {
 export const adminNav: AdminNavItem[] = [
   { id: "overview", label: "Executive Overview", icon: LayoutDashboard, built: true },
   { id: "attendance", label: "Attendance", icon: CalendarClock },
-  { id: "claims", label: "Claims", icon: Receipt },
+  { id: "claims", label: "Claims", icon: Receipt, built: true },
   { id: "payroll", label: "Payroll", icon: Banknote },
   { id: "leave", label: "Leave", icon: CalendarDays },
   {
