@@ -30,7 +30,7 @@ import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActio
 // totals — it leads with what is late and with whom. Its badge carries the
 // stale count so the tab itself says whether anything needs looking at.
 
-type ClaimsTab = "overview" | "pay" | "all";
+type ClaimsTab = "overview" | "all" | "pay";
 
 export function AdminClaims() {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -117,8 +117,8 @@ export function AdminClaims() {
         <OverflowTabList<ClaimsTab>
           items={[
             { id: "overview", label: "Overview", badge: staleCount },
-            { id: "pay", label: "Ready to pay", badge: readyToPay.length },
             { id: "all", label: "All claims" },
+            { id: "pay", label: "Ready to pay", badge: readyToPay.length },
           ]}
           value={tab}
           onChange={setTab}
@@ -140,19 +140,7 @@ export function AdminClaims() {
         <ClaimsImportReport report={importReport} onDismiss={() => setImportReport(null)} />
       ) : null}
 
-      {tab === "pay" ? (
-        loading ? (
-          <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
-            Loading claims…
-          </section>
-        ) : (
-          <AdminClaimsReadyToPay
-            claims={claims}
-            employeeEmails={employeeEmails}
-            onDrill={openDrilldown}
-          />
-        )
-      ) : tab === "overview" ? (
+      {tab === "overview" ? (
         error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">
             Error: {error}
@@ -169,7 +157,7 @@ export function AdminClaims() {
             onDrill={openDrilldown}
           />
         )
-      ) : (
+      ) : tab === "all" ? (
         <AdminClaimsTable
           claims={claims}
           loading={loading}
@@ -181,6 +169,16 @@ export function AdminClaims() {
           projectNames={projectNames}
           employeeEmails={employeeEmails}
           accountLabels={accountLabels}
+        />
+      ) : loading ? (
+        <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
+          Loading claims…
+        </section>
+      ) : (
+        <AdminClaimsReadyToPay
+          claims={claims}
+          employeeEmails={employeeEmails}
+          onDrill={openDrilldown}
         />
       )}
     </div>
