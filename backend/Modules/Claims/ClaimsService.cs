@@ -367,10 +367,32 @@ public class ClaimsService : IClaimsService
             ? name
             : identity?.Email ?? claim.EmployeeId;
 
-        // Xero wants its own account CODE, not our internal id.
-        var accountCode = claim.ChartOfAccountId is null
-            ? null
-            : (await _accounts.GetByIdAsync(claim.ChartOfAccountId))?.Code;
+        // Xero wants its own account CODE, not our internal id — and only a
+        // code Xero actually has. A locally-created account (no XeroAccountId)
+        // has a code Xero will reject, and it rejects the WHOLE document with a
+        // validation dump. Refusing here says which account is at fault.
+        string? accountCode = null;
+        if (claim.ChartOfAccountId is not null)
+        {
+            var account = await _accounts.GetByIdAsync(claim.ChartOfAccountId);
+            if (account is not null)
+            {
+                if (string.IsNullOrWhiteSpace(account.XeroAccountId))
+                {
+                    var unsynced =
+                        $"Account {account.Code} · {account.Name} doesn't exist in Xero. " +
+                        "Recode the claim to a synced account, or sync your chart of accounts.";
+
+                    claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+                    claim.XeroSyncError = unsynced;
+                    claim.UpdatedAt = DateTime.UtcNow;
+                    await _repo.UpdateAsync(claim);
+                    return new ClaimXeroSyncResult(true, false, claim, Error: unsynced);
+                }
+
+                accountCode = account.Code;
+            }
+        }
 
         // A company-paid claim never created a debt — the money already left a
         // company account — so it is a SPEND transaction, not a bill. Same
