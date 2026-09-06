@@ -93,10 +93,24 @@ export const restoreAccount = (id: string) => apiPost<ChartOfAccount>(`/accounts
 // say "connect Xero" instead of offering a sync button that can only fail.
 export type XeroStatus = {
   connected: boolean;
+  /** The Xero organisation, e.g. "AltomateHR-V2". Null until a connection exists. */
   tenantName: string | null;
+  tenantId: string | null;
+  connectedAt: string | null;
 };
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");
+
+// Starts the OAuth handshake. The backend records the state and hands back the
+// Xero URL to send the admin to; Xero returns them to /xero/callback, which
+// redirects back into the app.
+export const getXeroConnectUrl = (returnUrl?: string) =>
+  apiPost<{ url: string }>(
+    `/xero/connect-url${returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ""}`,
+    {},
+  );
+
+export const disconnectXero = () => apiPost<void>("/xero/disconnect", {});
 
 // Pulls Xero's chart of accounts in. While Xero is connected this is the only
 // way accounts get created — the backend refuses hand-made ones, because an

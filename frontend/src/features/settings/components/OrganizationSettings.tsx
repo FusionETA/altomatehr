@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { getOrganization, updateOrganization, type Organization } from "../api";
+import { XeroConnectionCard } from "./XeroConnectionCard";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -62,6 +63,10 @@ export function OrganizationSettings() {
 
   return (
     <div className="space-y-5">
+      {/* Integrations sit with the company, not with the accounts they happen to
+          own — and the claims screen sends admins to System Settings to connect. */}
+      <XeroConnectionCard />
+
       <section className={`${CARD} space-y-4`}>
         <div className="flex items-start justify-between gap-4">
           <div>
