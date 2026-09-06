@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Teams;
+using System.Security.Claims;
 using AltomateHR.Api.Modules.Projects.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,12 +14,32 @@ public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projects;
 
-    public ProjectsController(IProjectService projects) => _projects = projects;
+    private readonly ITeamService _teams;
+
+    public ProjectsController(IProjectService projects, ITeamService teams)
+    {
+        _projects = projects;
+        _teams = teams;
+    }
 
     // GET /projects — any authenticated user (employees pick a project when filing claims).
     [RequireScope("projects:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _projects.GetAllAsync());
+
+    // GET /projects/mine — the caller's own projects, via their team
+    // memberships. What the clock-in picker should offer: clocking into a
+    // project you're not on is refused, so listing them all only invites the
+    // rejection.
+    [RequireScope("projects:read")]
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMine()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        var mine = (await _teams.GetProjectIdsForMemberAsync(userId)).ToHashSet();
+        var all = await _projects.GetAllAsync();
+        return Ok(all.Where(p => mine.Contains(p.Id)));
+    }
 
     // POST /projects — Admins only.
     [Authorize(Roles = "Admin,Owner")]

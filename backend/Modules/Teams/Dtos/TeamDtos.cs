@@ -69,3 +69,17 @@ public class SaveMembershipDto
     [Range(0, 5)]
     public int Layer { get; set; }
 }
+
+// A team the caller oversees, and the members sitting BELOW them in it.
+//
+// "Below", not "everyone": a Lead looking at their team means the Staff under
+// them, not the Manager above. Teams belong to a project, which is what makes
+// this the unit a supervisor switches between — one person can lead a crew on
+// two sites and needs to look at them separately.
+public class SupervisedTeamDto
+{
+    public string TeamId { get; set; } = string.Empty;
+    public string TeamName { get; set; } = string.Empty;
+    public string ProjectId { get; set; } = string.Empty;
+    public List<string> MemberIds { get; set; } = [];
+}
