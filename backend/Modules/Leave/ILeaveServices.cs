@@ -83,6 +83,10 @@ public interface ILeaveService
     Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
+
+    // Resolves PENDING items that no longer have any approver to route to.
+    // `apply: false` only counts them. See the implementation for why.
+    Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 }
 
 // Ok=false carries a human-readable Error (e.g. duplicate code, bad dates).

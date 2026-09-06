@@ -19,6 +19,10 @@ public interface IOvertimeService
 
     // One employee's overtime requests as entities, for the hours summary.
     Task<IReadOnlyList<OvertimeRequest>> GetByEmployeeAsync(string employeeId);
+
+    // Resolves PENDING items that no longer have any approver to route to.
+    // `apply: false` only counts them. See the implementation for why.
+    Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 }
 
 public record OvertimeSubmitResult(bool Ok, OvertimeRequestDto? Request, string? Error);
