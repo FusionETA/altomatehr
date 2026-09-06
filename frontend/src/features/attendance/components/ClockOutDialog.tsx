@@ -37,7 +37,10 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
     ? Math.max(0, Math.round((Date.now() - new Date(today.timeIn).getTime()) / 60000))
     : 0;
 
-  const requestedIso = hhMmToIso(time);
+  // Anchored to the record's own day, not today's. A shift left open overnight
+  // is closed from the next day, and a correction of "18:00" filed against
+  // today's date would move the clock-out to the wrong day entirely.
+  const requestedIso = hhMmToIso(time, today.date);
   const canAdjust = requestedIso !== null && reason.trim().length > 0 && !busy;
 
   // No onClick on the backdrop, deliberately: a stray tap while typing a
@@ -97,7 +100,7 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
           <div className="mt-5 grid gap-4">
             <dl className="grid gap-2 rounded-2xl border border-border/60 bg-surface-low/50 px-4 py-3">
               <Row label="Clocked in" value={clockTime(today.timeIn)} />
-              <Row label="Clocking out" value={toDisplay(time)} />
+              <Row label="Clocking out" value={toDisplay(time, today.date)} />
               <Row label="On the clock" value={formatDuration(projectedMin)} />
             </dl>
             <p className="text-xs text-muted-foreground">
@@ -218,21 +221,21 @@ function toHhMm(date: Date) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-// Today's local date at hh:mm, as UTC ISO. Null when the field is incomplete,
-// which is how the submit button stays disabled.
-function hhMmToIso(hhMm: string): string | null {
+// `anchorDate`'s local day at hh:mm, as UTC ISO. Null when the field is
+// incomplete, which is how the submit button stays disabled.
+function hhMmToIso(hhMm: string, anchorDate?: string): string | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(hhMm.trim());
   if (!match) return null;
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
-  const at = new Date();
+  const at = anchorDate ? new Date(anchorDate) : new Date();
   at.setHours(hours, minutes, 0, 0);
   return at.toISOString();
 }
 
-function toDisplay(hhMm: string) {
-  const iso = hhMmToIso(hhMm);
+function toDisplay(hhMm: string, anchorDate?: string) {
+  const iso = hhMmToIso(hhMm, anchorDate);
   return iso ? clockTime(iso) : "—";
 }
 

@@ -67,6 +67,11 @@ export const updateOrganization = (body: UpdateOrganization) =>
 
 // --- Projects ---
 export const getProjects = () => apiGet<Project[]>("/projects");
+
+// Only the projects the caller is on, via their team memberships. Use this for
+// the clock-in picker — clocking into a project you're not on is refused, so
+// offering the whole org list only invites the rejection.
+export const getMyProjects = () => apiGet<Project[]>("/projects/mine");
 export const createProject = (body: SaveProject) => apiPost<Project>("/projects", body);
 export const updateProject = (id: string, body: SaveProject) =>
   apiPut<Project>(`/projects/${id}`, body);

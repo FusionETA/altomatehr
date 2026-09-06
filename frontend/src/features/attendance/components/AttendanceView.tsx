@@ -5,11 +5,8 @@ import {
   CalendarClock,
   ChevronDown,
   CheckCircle2,
-  ClipboardCheck,
   Clock3,
   MapPin,
-  Plus,
-  Users,
 } from "lucide-react";
 import {
   getAttendanceHistory,
@@ -17,9 +14,11 @@ import {
   getTodayAttendance,
   type HoursBuckets,
   type AttendanceRecord,
+  type AttendanceSession,
 } from "../api";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
 import { AttendanceApprovals } from "./AttendanceApprovals";
+import { TeamPresence } from "./TeamPresence";
 import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
 import { formatDistance } from "@/shared/lib/geolocation";
@@ -400,7 +399,7 @@ export function AttendanceView({
   }
 
   if (sub === "att-team") {
-    return <EmptyAttendanceSection kind="team" />;
+    return <TeamPresence />;
   }
 
   return (
@@ -480,32 +479,117 @@ export function AttendanceView({
   );
 }
 
+type TodayEvent = {
+  id: string;
+  kind: "in" | "out";
+  label: string;
+  at: string;
+  tone: string;
+  distance: number | null;
+};
+
 function TodayEvents({ today, radius }: { today: AttendanceRecord | null; radius: number }) {
-  const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
-  const events = [
-    today?.timeIn
-      ? {
-          id: "in",
-          label: "Clock in",
-          at: today.timeIn,
-          tone: "bg-secondary text-secondary-foreground",
-          distance: today.clockInDistanceMeters,
-        }
-      : null,
-    today?.timeOut
-      ? {
-          id: "out",
-          label: "Clock out",
-          at: today.timeOut,
-          tone: "bg-muted text-muted-foreground",
-          distance: today.clockOutDistanceMeters,
-        }
-      : null,
-  ].filter(Boolean) as Array<{ id: string; label: string; at: string; tone: string; distance: number | null }>;
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Built from the day's SHIFTS, not from the record's roll-up. The roll-up
+  // only knows the first clock-in and the last clock-out, so a day worked in
+  // two stints quietly dropped the lunchtime clock-out and the afternoon
+  // clock-in — the two events that explain the totals.
+  const sessions = today?.sessions ?? [];
+
+  // One row per SHIFT once there's more than one, rather than one row per clock
+  // event: two shifts is four events, and four near-identical rows is a wall.
+  // Collapsed, a shift is a single line; the clock times and their locations are
+  // a tap away.
+  if (sessions.length > 1) {
+    return (
+      <div className="mt-5">
+        <p className="mb-3 text-sm font-bold text-foreground">Today&rsquo;s events</p>
+        <div className="space-y-2">
+          {sessions.map((session, index) => {
+            const open = expanded === session.id;
+            const events = shiftEvents(session, index, sessions.length);
+            return (
+              <div key={session.id} className="border-b border-border/50 py-2 last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex w-[6.25rem] shrink-0 justify-center rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-normal text-secondary-foreground">
+                    Shift {index + 1}
+                  </span>
+                  <span className="min-w-0 whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
+                    {fmtTime(session.startedAt)} &ndash;{" "}
+                    {session.endedAt ? fmtTime(session.endedAt) : "now"}
+                  </span>
+                  <span className="ml-auto shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
+                    {session.durationMin != null ? fmtDuration(session.durationMin) : "running"}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`${open ? "Hide" : "Show"} shift ${index + 1} details`}
+                    aria-expanded={open}
+                    onClick={() => setExpanded((current) => (current === session.id ? null : session.id))}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:text-foreground"
+                  >
+                    <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+                {open ? (
+                  <div className="mt-2 space-y-2 pl-1">
+                    {events.map((event) => (
+                      <div key={event.id}>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`inline-flex w-[6.25rem] shrink-0 justify-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-normal ${event.tone}`}
+                          >
+                            {event.label}
+                          </span>
+                          <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
+                            {fmtTime(event.at)}
+                          </span>
+                        </div>
+                        <EventLocationDetails event={event} radius={radius} today={today} />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // One shift (or a day predating shifts owning the clock): the events ARE the
+  // list, so grouping them behind a toggle would only add a tap.
+  const single = sessions[0];
+  const events: TodayEvent[] = single
+    ? shiftEvents(single, 0, 1)
+    : ([
+        today?.timeIn
+          ? {
+              id: "in",
+              kind: "in" as const,
+              label: "Clock in",
+              at: today.timeIn,
+              tone: "bg-secondary text-secondary-foreground",
+              distance: today.clockInDistanceMeters,
+            }
+          : null,
+        today?.timeOut
+          ? {
+              id: "out",
+              kind: "out" as const,
+              label: "Clock out",
+              at: today.timeOut,
+              tone: "bg-muted text-muted-foreground",
+              distance: today.clockOutDistanceMeters,
+            }
+          : null,
+      ].filter(Boolean) as TodayEvent[]);
 
   return (
     <div className="mt-5">
-      <p className="mb-3 text-sm font-bold text-foreground">Today's events</p>
+      <p className="mb-3 text-sm font-bold text-foreground">Today&rsquo;s events</p>
       {events.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/70 bg-surface-low/50 p-5 text-center">
           <Clock3 className="mx-auto h-5 w-5 text-muted-foreground" />
@@ -515,10 +599,7 @@ function TodayEvents({ today, radius }: { today: AttendanceRecord | null; radius
       ) : (
         <div className="space-y-2">
           {events.map((event) => (
-            <div
-              key={event.id}
-              className="border-b border-border/50 py-2 last:border-0"
-            >
+            <div key={event.id} className="border-b border-border/50 py-2 last:border-0">
               <div className="flex items-center gap-3">
                 <span
                   className={`inline-flex w-[6.25rem] shrink-0 justify-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-normal ${event.tone}`}
@@ -530,17 +611,19 @@ function TodayEvents({ today, radius }: { today: AttendanceRecord | null; radius
                 </span>
                 <button
                   type="button"
-                  aria-label={`${expandedEvent === event.id ? "Hide" : "Show"} ${event.label} location`}
-                  aria-expanded={expandedEvent === event.id}
-                  onClick={() => setExpandedEvent((current) => (current === event.id ? null : event.id))}
+                  aria-label={`${expanded === event.id ? "Hide" : "Show"} ${event.label} location`}
+                  aria-expanded={expanded === event.id}
+                  onClick={() => setExpanded((current) => (current === event.id ? null : event.id))}
                   className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:text-foreground"
                 >
                   <ChevronDown
-                    className={`h-4 w-4 transition-transform ${expandedEvent === event.id ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 transition-transform ${expanded === event.id ? "rotate-180" : ""}`}
                   />
                 </button>
               </div>
-              {expandedEvent === event.id ? <EventLocationDetails event={event} radius={radius} today={today} /> : null}
+              {expanded === event.id ? (
+                <EventLocationDetails event={event} radius={radius} today={today} />
+              ) : null}
             </div>
           ))}
         </div>
@@ -549,12 +632,39 @@ function TodayEvents({ today, radius }: { today: AttendanceRecord | null; radius
   );
 }
 
+// The clock-in (and clock-out, once closed) of one shift.
+function shiftEvents(session: AttendanceSession, index: number, total: number): TodayEvent[] {
+  const suffix = total > 1 ? ` ${index + 1}` : "";
+  const events: TodayEvent[] = [
+    {
+      id: `in-${session.id}`,
+      kind: "in",
+      label: `Clock in${suffix}`,
+      at: session.startedAt,
+      tone: "bg-secondary text-secondary-foreground",
+      distance: session.clockInDistanceMeters,
+    },
+  ];
+  if (session.endedAt) {
+    events.push({
+      id: `out-${session.id}`,
+      kind: "out",
+      label: `Clock out${suffix}`,
+      at: session.endedAt,
+      tone: "bg-muted text-muted-foreground",
+      distance: session.clockOutDistanceMeters,
+    });
+  }
+  return events;
+}
+
+
 function EventLocationDetails({
   event,
   radius,
   today,
 }: {
-  event: { id: string; label: string; at: string; tone: string; distance: number | null };
+  event: TodayEvent;
   radius: number;
   today: AttendanceRecord | null;
 }) {
@@ -562,7 +672,7 @@ function EventLocationDetails({
   const captured = distance != null;
   const offSite = captured && distance > radius;
   const location =
-    event.id === "in"
+    event.kind === "in"
       ? today?.location
       : today?.clockOutLat != null && today?.clockOutLng != null
         ? today?.location
@@ -905,8 +1015,14 @@ function ShiftRow({
   showBadges?: boolean;
 }) {
   const proj = projectName(projects, record.projectId);
-  const timeLabel =
-    record.timeIn && record.timeOut
+  // A split day is summarised by its shift count, not by a span. "09:00 AM -
+  // 06:00 PM" next to "8h clocked" reads as an error when an hour of it was
+  // spent off the clock; the shifts below say where the hour went.
+  const shifts = record.sessions ?? [];
+  const split = shifts.length > 1;
+  const timeLabel = split
+    ? `${shifts.length} shifts`
+    : record.timeIn && record.timeOut
       ? `${fmtTime(record.timeIn)} - ${fmtTime(record.timeOut)}`
       : record.timeIn
         ? fmtTime(record.timeIn)
@@ -925,6 +1041,18 @@ function ShiftRow({
           {timeLabel}
           {placeLabel ? ` - ${placeLabel}` : ""}
         </p>
+        {split ? (
+          <ul className="mt-1 space-y-0.5">
+            {shifts.map((shift, index) => (
+              <li key={shift.id} className="text-[11px] text-muted-foreground">
+                <span className="font-semibold text-foreground">{index + 1}.</span>{" "}
+                {fmtTime(shift.startedAt)} &ndash;{" "}
+                {shift.endedAt ? fmtTime(shift.endedAt) : "now"}
+                {shift.durationMin != null ? ` · ${fmtDuration(shift.durationMin)}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {showBadges ? (
           <ShiftRowChips record={record} radius={radius} />
         ) : null}
@@ -1108,7 +1236,10 @@ function HistoryView({
                 unrelated things, when the totals are a header for the list
                 directly under them. */}
             <div className={`${CARD} overflow-hidden`}>
-              <div className="bg-secondary/40 p-4">
+              {/* No tint of its own: the summary sits on the card background,
+                  same as the rows under it. The rule between them is enough of a
+                  separation, and a tinted panel read as a different surface. */}
+              <div className="p-4">
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <SummaryMetric
                     label="Counted"
@@ -1193,60 +1324,6 @@ function SummaryMetric({
     <div>
       <p className={`text-2xl font-extrabold tabular-nums ${tone}`}>{value}</p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function EmptyAttendanceSection({ kind }: { kind: "overtime" | "approvals" | "team" }) {
-  const config = {
-    overtime: {
-      title: "Overtime",
-      kicker: "Submissions",
-      body: "No overtime submissions yet.",
-      icon: Plus,
-      count: "0 submissions",
-      button: "Submit overtime",
-    },
-    approvals: {
-      title: "Approvals queue",
-      kicker: "Approvals",
-      body: "No attendance approvals waiting for review.",
-      icon: ClipboardCheck,
-      count: "0 pending",
-      button: "Review all",
-    },
-    team: {
-      title: "Your team",
-      kicker: "Real-time",
-      body: "No team attendance activity to show yet.",
-      icon: Users,
-      count: "0 present",
-      button: "Refresh team",
-    },
-  }[kind];
-  const Icon = config.icon;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{config.kicker}</p>
-          <h2 className="mt-0.5 text-xl font-bold text-foreground">{config.title}</h2>
-        </div>
-        <span className="text-xs text-muted-foreground">{config.count}</span>
-      </div>
-
-      <section className={`${CARD} border-dashed bg-surface-low p-8 text-center`}>
-        <Icon className="mx-auto h-6 w-6 text-primary" />
-        <p className="mt-3 text-sm font-medium text-foreground">{config.body}</p>
-        <button
-          type="button"
-          disabled
-          className="mt-4 inline-flex h-10 items-center justify-center rounded-2xl bg-primary px-4 text-xs font-bold text-primary-foreground opacity-50"
-        >
-          {config.button}
-        </button>
-      </section>
     </div>
   );
 }
