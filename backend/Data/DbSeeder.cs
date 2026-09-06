@@ -166,40 +166,33 @@ public static class DbSeeder
         {
             var date = AttendanceTime.StartOfLocalDay(now.AddDays(-row.DaysAgo));
 
-            // Never touch today. This seeder OVERWRITES an existing row for a
-            // date (see the update branch below), and it runs on every startup —
-            // so a DaysAgo:0 row silently replaced whatever someone had actually
-            // clocked that morning with demo times. Restarting the API to pick
-            // up a code change destroyed a real off-site clock-in exactly this
-            // way. History is demo data; today belongs to whoever is using it.
             if (date == todayKey) continue;
             DateTime? timeIn = row.InHour is null ? null : LocalToUtc(date, row.InHour.Value, row.InMinute!.Value);
             DateTime? timeOut = row.OutHour is null ? null : LocalToUtc(date, row.OutHour.Value, row.OutMinute!.Value);
             var duration = timeIn is not null && timeOut is not null
                 ? (int)Math.Round((timeOut.Value - timeIn.Value).TotalMinutes)
                 : (int?)null;
+            // Seed a day only if it's empty. This used to overwrite, and the
+            // seeder runs on EVERY startup — so restarting the API to pick up a
+            // code change quietly replaced real clocks with demo times. First it
+            // ate a real off-site clock-in (fixed by skipping today); then it ate
+            // a shift that had been left open overnight, which is precisely the
+            // case the "close your old shift first" rule exists to handle.
+            //
+            // Demo history is a starting point, not something to keep enforcing.
+            // The cost is that editing the rows above no longer changes an
+            // already-seeded database — worth it against silently destroying
+            // whatever someone was actually testing.
             var existing = await attendance.GetForEmployeeOnDateAsync(row.EmployeeId, date);
-            AttendanceRecord record;
-            AttendanceApprovalStatus approvalStatus;
-            if (existing is not null)
-            {
-                approvalStatus = ApplyDemoAttendance(existing, row, projectId, date, timeIn, timeOut, duration);
-                await attendance.UpdateAsync(existing);
-                record = existing;
-            }
-            else
-            {
-                record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
-                approvalStatus = ApplyDemoAttendance(record, row, projectId, date, timeIn, timeOut, duration);
-                record = await attendance.AddAsync(record);
-            }
+            if (existing is not null) continue;
 
-            // Idempotent across restarts: only seed the approval event once per
-            // record — don't stomp a request that manual testing may have since
-            // approved/rejected.
+            var record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
+            var approvalStatus = ApplyDemoAttendance(record, row, projectId, date, timeIn, timeOut, duration);
+            record = await attendance.AddAsync(record);
+
+            // The record was just created, so it has no approval history to
+            // stomp — a day that already existed was skipped above.
             if (timeIn is null) continue;
-            var alreadySeeded = (await approvalRequests.GetByRecordIdsAsync([record.Id])).Count > 0;
-            if (alreadySeeded) continue;
 
             var eventAt = timeOut ?? timeIn.Value;
             await approvalRequests.AddAsync(new AttendanceApprovalRequest

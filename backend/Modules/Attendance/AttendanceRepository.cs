@@ -17,6 +17,15 @@ public class AttendanceRepository : IAttendanceRepository
     public Task<AttendanceRecord?> GetByIdAsync(string id) =>
         _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == id);
 
+    public Task<List<AttendanceRecord>> GetByIdsAsync(IEnumerable<string> ids) =>
+        _db.AttendanceRecords.Where(r => ids.Contains(r.Id)).ToListAsync();
+
+    public Task<List<AttendanceRecord>> GetForEmployeesOnDateAsync(
+        IEnumerable<string> employeeIds, DateTime date) =>
+        _db.AttendanceRecords
+            .Where(r => employeeIds.Contains(r.EmployeeId) && r.Date == date)
+            .ToListAsync();
+
     public Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl) =>
         _db.AttendanceRecords.FirstOrDefaultAsync(
             r => r.ClockInPhotoUrl == photoUrl || r.ClockOutPhotoUrl == photoUrl);
@@ -43,6 +52,12 @@ public class AttendanceRepository : IAttendanceRepository
 
     public Task<List<AttendanceRecord>> GetOpenRecordsAsync() =>
         _db.AttendanceRecords.Where(r => r.TimeIn != null && r.TimeOut == null).ToListAsync();
+
+    public Task<AttendanceRecord?> GetOpenForEmployeeAsync(string employeeId) =>
+        _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employeeId && r.TimeIn != null && r.TimeOut == null)
+            .OrderByDescending(r => r.Date)
+            .FirstOrDefaultAsync();
 
     public async Task<AttendanceRecord> AddAsync(AttendanceRecord record)
     {
