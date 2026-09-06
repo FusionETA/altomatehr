@@ -20,6 +20,9 @@ public interface ILeaveService
 {
     Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId);
     Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId);
+
+    // Every application in the org, newest first. Admin history.
+    Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync();
     Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year);
     Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string employeeId, int year);
     Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year);

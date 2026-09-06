@@ -73,6 +73,26 @@ public class LeaveService : ILeaveService
     // Applications the caller can act on right now: PENDING applications where
     // the caller is an approver at the application's current chain step. Purely
     // by team seat — a role alone (Admin/Owner) grants nothing here.
+    // Every application in the org, newest first — the admin history screen.
+    //
+    // Distinct from the overview's RecentApplications, which is capped at ten
+    // for the dashboard. A history you can filter and page through has to be
+    // able to reach the eleventh.
+    public async Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync()
+    {
+        var all = (await _apps.GetAllAsync())
+            .OrderByDescending(a => a.CreatedAt)
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(all.Select(a => a.EmployeeId).Distinct());
+        return all.Select(a =>
+        {
+            var dto = ToDto(a);
+            dto.EmployeeEmail = emails.GetValueOrDefault(a.EmployeeId);
+            return dto;
+        });
+    }
+
     public async Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId)
     {
         var all = await _apps.GetAllAsync();

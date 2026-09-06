@@ -159,6 +159,9 @@ public class EmployeeServiceTests
     {
         public Task<int> ReconcileUnreachableApprovalsAsync(bool apply) => Task.FromResult(0);
 
+        public Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync() =>
+            Task.FromResult<IEnumerable<LeaveApplicationDto>>([]);
+
         public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year) => Task.FromResult(0);
 
         public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string u) => throw new NotImplementedException();
