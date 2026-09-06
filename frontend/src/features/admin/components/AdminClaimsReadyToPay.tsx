@@ -21,6 +21,10 @@ import {
 import { getXeroStatus } from "@/features/settings/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import {
+  CLAIMS_PAGE_SIZE,
+  PaginationControls,
+} from "@/features/claims/components/PaginationControls";
+import {
   isReadyToPay,
   isSettledCompanySpend,
   settledByEmployee,
@@ -96,6 +100,19 @@ export function AdminClaimsReadyToPay({
   const company = useMemo(() => settledByEmployee(claims, isSettledCompanySpend), [claims]);
   const payees = side === "PERSONAL" ? personal : company;
 
+  // Paged like the claims table. This is a long scroll at month end and it's
+  // where money gets pushed, so losing your place matters more here than on a
+  // read-only list.
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(payees.length / CLAIMS_PAGE_SIZE));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const visiblePayees = useMemo(
+    () => payees.slice((page - 1) * CLAIMS_PAGE_SIZE, page * CLAIMS_PAGE_SIZE),
+    [payees, page],
+  );
+
   const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -148,9 +165,24 @@ export function AdminClaimsReadyToPay({
     setBulkResult(null);
   }, [side]);
 
-  const allSelected = syncable.length > 0 && selectedPayees.length === syncable.length;
+  // Select-all covers the PAGE, not the whole list. Selecting people you can't
+  // see and then pushing bills for them is not a mistake worth enabling; the
+  // count below says how many are picked overall, so nothing is hidden either.
+  const pageSyncable = useMemo(
+    () => visiblePayees.filter((payee) => syncable.some((s) => s.employeeId === payee.employeeId)),
+    [visiblePayees, syncable],
+  );
+  const allSelected =
+    pageSyncable.length > 0 && pageSyncable.every((payee) => selected.has(payee.employeeId));
   const toggleAll = () =>
-    setSelected(allSelected ? new Set() : new Set(syncable.map((p) => p.employeeId)));
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const payee of pageSyncable) {
+        if (allSelected) next.delete(payee.employeeId);
+        else next.add(payee.employeeId);
+      }
+      return next;
+    });
 
   function togglePayee(employeeId: string) {
     setSelected((current) => {
@@ -363,7 +395,7 @@ export function AdminClaimsReadyToPay({
             {syncable.length > 0 ? (
               <input
                 type="checkbox"
-                aria-label="Select everyone with claims still to push"
+                aria-label="Select everyone on this page with claims still to push"
                 checked={allSelected}
                 onChange={toggleAll}
                 className="h-4 w-4 cursor-pointer accent-primary"
@@ -461,7 +493,7 @@ export function AdminClaimsReadyToPay({
         ) : null}
 
         <div className="space-y-3">
-          {payees.map((payee) => {
+          {visiblePayees.map((payee) => {
             const late = payee.waitingDays >= OVERDUE_DAYS;
             return (
               <div
@@ -550,6 +582,14 @@ export function AdminClaimsReadyToPay({
             );
           })}
         </div>
+
+        <PaginationControls
+          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          currentPage={page}
+          totalItems={payees.length}
+          onPageChange={setPage}
+          itemNoun="people"
+        />
       </section>
 
       </>
