@@ -17,6 +17,18 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
             .OrderByDescending(s => s.StartedAt)
             .FirstOrDefaultAsync();
 
+    public Task<List<AttendanceSession>> GetByRecordAsync(string attendanceRecordId) =>
+        _db.AttendanceSessions
+            .Where(s => s.AttendanceRecordId == attendanceRecordId)
+            .OrderBy(s => s.StartedAt)
+            .ToListAsync();
+
+    public Task<List<AttendanceSession>> GetByRecordIdsAsync(IEnumerable<string> attendanceRecordIds) =>
+        _db.AttendanceSessions
+            .Where(s => attendanceRecordIds.Contains(s.AttendanceRecordId))
+            .OrderBy(s => s.StartedAt)
+            .ToListAsync();
+
     public Task<AttendanceSession?> GetByIdAsync(string id) =>
         _db.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id);
 
