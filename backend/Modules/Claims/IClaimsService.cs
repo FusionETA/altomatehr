@@ -35,6 +35,10 @@ public interface IClaimsService
     // Bulk-import historical claims. Append-only and idempotent: a row that
     // already exists is skipped, never updated, so a re-upload is safe.
     Task<TabularImportResult> ImportAsync(byte[] content, TabularFormat format);
+
+    // Resolves PENDING items that no longer have any approver to route to.
+    // `apply: false` only counts them. See the implementation for why.
+    Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 }
 
 public sealed record ClaimStatusTransitionResult(

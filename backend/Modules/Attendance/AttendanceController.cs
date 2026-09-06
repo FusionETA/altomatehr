@@ -38,12 +38,31 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetTeamApprovals() =>
         Ok(await _attendance.GetTeamApprovalsAsync(GetUserId()));
 
+    // GET /attendance/team/today — today's attendance for the caller's direct
+    // reports. Presence, not approvals: everyone on the team is listed, with a
+    // null record for anyone who hasn't clocked in.
+    [RequireScope("attendance:read")]
+    [HttpGet("team/today")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> GetTeamToday() =>
+        Ok(await _attendance.GetTeamTodayAsync(GetUserId()));
+
     // GET /attendance/today — the caller's record for the current local day (204 if none yet).
     [RequireScope("attendance:read")]
     [HttpGet("today")]
     public async Task<IActionResult> GetToday()
     {
         var record = await _attendance.GetTodayAsync(GetUserId());
+        return record is null ? NoContent() : Ok(record);
+    }
+
+    // GET /attendance/open-session — the caller's still-running session, which is
+    // today's record unless a clock-out was forgotten (204 if nothing is open).
+    [RequireScope("attendance:read")]
+    [HttpGet("open-session")]
+    public async Task<IActionResult> GetOpenSession()
+    {
+        var record = await _attendance.GetOpenSessionAsync(GetUserId());
         return record is null ? NoContent() : Ok(record);
     }
 
@@ -328,7 +347,16 @@ public class AttendanceController : ControllerBase
     private IActionResult ToResponse(AttendanceActionResult result) =>
         result.Ok
             ? Ok(result.Record)
-            : BadRequest(new { message = result.Error, code = result.Code, distanceMeters = result.DistanceMeters });
+            // The record rides along on failure too: refusing a clock-in because
+            // an earlier shift is still open is only actionable if the client can
+            // say WHICH day is open. Null for the refusals that have no record.
+            : BadRequest(new
+            {
+                message = result.Error,
+                code = result.Code,
+                distanceMeters = result.DistanceMeters,
+                record = result.Record,
+            });
 
     private IActionResult ToTransitionResponse(AttendanceTransitionResult result)
     {

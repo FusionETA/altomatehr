@@ -5,6 +5,9 @@ namespace AltomateHR.Api.Modules.Attendance;
 public interface IAttendanceSessionRepository
 {
     Task<AttendanceSession?> GetOpenForRecordAsync(string attendanceRecordId);
+    // Every session for the day, oldest first — the input to the record roll-up.
+    Task<List<AttendanceSession>> GetByRecordAsync(string attendanceRecordId);
+    Task<List<AttendanceSession>> GetByRecordIdsAsync(IEnumerable<string> attendanceRecordIds);
     Task<AttendanceSession?> GetByIdAsync(string id);
 
     // Org-agnostic — used by the auto-clock-out sweep, which runs outside any

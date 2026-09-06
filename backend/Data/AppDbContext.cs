@@ -96,6 +96,7 @@ public class AppDbContext : DbContext
         var attendanceSession = modelBuilder.Entity<AttendanceSession>();
         attendanceSession.HasIndex(s => s.AttendanceRecordId);
         attendanceSession.HasIndex(s => new { s.AttendanceRecordId, s.EndedAt });
+        attendanceSession.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
 
         var attendanceBreak = modelBuilder.Entity<AttendanceBreak>();
         attendanceBreak.HasIndex(b => b.AttendanceSessionId);

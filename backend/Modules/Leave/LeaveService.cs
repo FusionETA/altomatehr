@@ -872,6 +872,17 @@ public class LeaveService : ILeaveService
             CreatedAt = now,
             UpdatedAt = now,
         };
+        // Nobody above them to ask → submitting is the decision. A PENDING
+        // application with no approver never appears in a queue and can never be
+        // decided, so it would sit unresolved forever. See OrgRoles: admins are
+        // oversight and are not a fallback approver.
+        if (await _router.StepCountAsync(Module, employeeId) == 0)
+        {
+            application.Status = LeaveStatus.APPROVED;
+            application.DecidedAt = now;
+            AppendTrail(application, 0, employeeId, "AUTO_APPROVED", "No approver above the applicant.");
+        }
+
         await _apps.AddAsync(application);
         await NotifyAsync(application, RealtimeAction.SUBMITTED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(application), null);
@@ -1056,6 +1067,40 @@ public class LeaveService : ILeaveService
         if (string.IsNullOrWhiteSpace(json)) return [];
         try { return JsonSerializer.Deserialize<List<LeaveApprovalEntryDto>>(json, ApprovalJson) ?? []; }
         catch (JsonException) { return []; }   // never let a bad trail block a decision
+    }
+
+    // Resolves requests that no longer have anyone to approve them.
+    //
+    // The submit-time rule only applies going forward. Rows written earlier can
+    // become unreachable when the hierarchy changes underneath them — most
+    // sharply when admins were removed from it (see OrgRoles), which deleted the
+    // step that requests parked on. An unreachable request appears in no queue
+    // and is refused for every caller: it is stuck, not pending.
+    //
+    // `apply: false` counts them without changing anything, so the damage can be
+    // inspected before it is acted on. Idempotent: a resolved row is no longer
+    // PENDING, so a second run finds nothing.
+    public async Task<int> ReconcileUnreachableApprovalsAsync(bool apply)
+    {
+        var now = DateTime.UtcNow;
+        var stuck = 0;
+
+        foreach (var app in (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING))
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+            if (approvers.Count > 0) continue;
+
+            stuck++;
+            if (!apply) continue;
+
+            app.Status = LeaveStatus.APPROVED;
+            app.DecidedAt = now;
+            app.UpdatedAt = now;
+            AppendTrail(app, app.CurrentStep, app.EmployeeId, "AUTO_APPROVED", "No approver above the applicant.");
+            await _apps.UpdateAsync(app);
+        }
+
+        return stuck;
     }
 
     private static void AppendTrail(
