@@ -195,6 +195,53 @@ public class TeamService : ITeamService
         try { return JsonSerializer.Deserialize<Dictionary<string, List<int>>>(json) ?? new(); }
         catch { return new(); }
     }
+    public async Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId)
+    {
+        var mine = await _memberships.GetByEmployeeAsync(userId);
+        if (mine.Count == 0) return [];
+
+        var supervised = new List<SupervisedTeamDto>();
+        foreach (var membership in mine)
+        {
+            var team = await _teams.GetByIdAsync(membership.TeamId);
+            if (team is null) continue;
+
+            var below = (await _memberships.GetByTeamAsync(team.Id))
+                .Where(m => m.Layer < membership.Layer)
+                .Select(m => m.EmployeeId)
+                .Distinct()
+                .ToList();
+
+            // A team where nobody sits below the caller isn't one they oversee.
+            // Skipping it keeps empty project tabs from appearing.
+            if (below.Count == 0) continue;
+
+            supervised.Add(new SupervisedTeamDto
+            {
+                TeamId = team.Id,
+                TeamName = team.Name,
+                ProjectId = team.ProjectId,
+                MemberIds = below,
+            });
+        }
+
+        return supervised;
+    }
+    public async Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId)
+    {
+        var mine = await _memberships.GetByEmployeeAsync(employeeId);
+        if (mine.Count == 0) return [];
+
+        var projectIds = new List<string>();
+        foreach (var membership in mine)
+        {
+            var team = await _teams.GetByIdAsync(membership.TeamId);
+            if (team is not null && !projectIds.Contains(team.ProjectId)) projectIds.Add(team.ProjectId);
+        }
+        return projectIds;
+    }
+
+
 
     public async Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
         (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();

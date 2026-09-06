@@ -5,11 +5,15 @@ export function PaginationControls({
   totalItems,
   onPageChange,
   className = "",
+  // What is being counted. The payment run pages people, not claims, and
+  // "Showing 1-10 of 34 claims" over a list of payees is simply wrong.
+  itemNoun = "claims",
 }: {
   currentPage: number;
   totalItems: number;
   onPageChange: (page: number) => void;
   className?: string;
+  itemNoun?: string;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / CLAIMS_PAGE_SIZE));
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * CLAIMS_PAGE_SIZE + 1;
@@ -22,7 +26,7 @@ export function PaginationControls({
       <div className="text-sm text-muted-foreground">
         Showing <span className="font-semibold text-foreground">{startItem}</span>-
         <span className="font-semibold text-foreground">{endItem}</span> of{" "}
-        <span className="font-semibold text-foreground">{totalItems}</span> claims
+        <span className="font-semibold text-foreground">{totalItems}</span> {itemNoun}
       </div>
 
       <div className="flex items-center gap-2">

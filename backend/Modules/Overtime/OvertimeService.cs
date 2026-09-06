@@ -150,8 +150,21 @@ public class OvertimeService : IOvertimeService
             return new OvertimeTransitionResult(true, false, ToDto(request),
                 "Attach the after-work photo.");
 
+        var now = DateTime.UtcNow;
         request.AfterPhotoUrl = afterPhotoUrl;
-        request.UpdatedAt = DateTime.UtcNow;
+
+        // Nobody above them to ask → this completes the request. Unlike the
+        // other modules the decision can't happen at submit: ApproveAsync
+        // refuses without an after-work photo, and there isn't one until now.
+        // So the request waits here, not on an approver who doesn't exist.
+        // See OrgRoles — admins are oversight, not a fallback approver.
+        if (await _router.StepCountAsync(Module, request.EmployeeId) == 0)
+        {
+            request.Status = OvertimeStatus.APPROVED;
+            request.DecidedAt = now;
+        }
+
+        request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
@@ -257,6 +270,44 @@ public class OvertimeService : IOvertimeService
                 "Only pending overtime requests can be approved or rejected."));
 
         return (request, null);
+    }
+
+    // Resolves requests that no longer have anyone to approve them.
+    //
+    // The submit-time rule only applies going forward. Rows written earlier can
+    // become unreachable when the hierarchy changes underneath them — most
+    // sharply when admins were removed from it (see OrgRoles), which deleted the
+    // step that requests parked on. An unreachable request appears in no queue
+    // and is refused for every caller: it is stuck, not pending.
+    //
+    // `apply: false` counts them without changing anything, so the damage can be
+    // inspected before it is acted on. Idempotent: a resolved row is no longer
+    // PENDING, so a second run finds nothing.
+    public async Task<int> ReconcileUnreachableApprovalsAsync(bool apply)
+    {
+        var now = DateTime.UtcNow;
+        var stuck = 0;
+
+        foreach (var request in (await _requests.GetAllAsync()).Where(r => r.Status == OvertimeStatus.PENDING))
+        {
+            // Waiting on the employee's after-work photo, not on an approver.
+            // Approval refuses without it, and reconciliation must not be a way
+            // around that.
+            if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
+
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            if (approvers.Count > 0) continue;
+
+            stuck++;
+            if (!apply) continue;
+
+            request.Status = OvertimeStatus.APPROVED;
+            request.DecidedAt = now;
+            request.UpdatedAt = now;
+            await _requests.UpdateAsync(request);
+        }
+
+        return stuck;
     }
 
     private static bool IsOvertimePhotoUrl(string? url) =>

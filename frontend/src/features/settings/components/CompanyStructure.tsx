@@ -11,6 +11,7 @@ import {
 import { getProjects, type Project } from "@/features/settings/api";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { TeamEditorModal } from "./TeamEditorModal";
+import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,11 @@ export function CompanyStructure() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Both lists get a search box once they're long enough to scan badly. The
+  // threshold is low on purpose: it should appear as the org grows, not once
+  // the list is already unmanageable.
+  const [projectSearch, setProjectSearch] = useState("");
+  const [teamSearch, setTeamSearch] = useState("");
   const [editing, setEditing] = useState<Team | null>(null);
 
   useEffect(() => {
@@ -45,7 +51,11 @@ export function CompanyStructure() {
         setTeams(t);
         const active = p.filter((x) => !x.isArchived);
         setProjects(active);
-        setSelectedProjectId((cur) => cur ?? active[0]?.id ?? null);
+        // Land on a project with teams rather than whichever happens to sort
+        // first. Opening onto an empty middle pane looks like the page failed
+        // to load, when it just picked a project nobody has staffed.
+        const withTeams = active.find((x) => t.some((team) => team.projectId === x.id));
+        setSelectedProjectId((cur) => cur ?? withTeams?.id ?? active[0]?.id ?? null);
         setEmployees(e);
       })
       .catch((err: unknown) => setError(message(err, "Could not load company structure.")))
@@ -58,22 +68,30 @@ export function CompanyStructure() {
     return m;
   }, [teams]);
 
-  // Projects with teams sort to the top of the list.
-  const sortedProjects = useMemo(
-    () =>
-      [...projects].sort((a, b) => {
-        const ha = (teamCountByProject.get(a.id) ?? 0) > 0;
-        const hb = (teamCountByProject.get(b.id) ?? 0) > 0;
-        if (ha !== hb) return ha ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      }),
-    [projects, teamCountByProject],
-  );
+  // Search first, then float projects that have teams to the top. Ties keep the
+  // incoming order so the list doesn't reshuffle as teams are added elsewhere.
+  const sortedProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    const base = q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : projects;
+    return base
+      .map((project, index) => ({
+        project,
+        index,
+        hasTeams: (teamCountByProject.get(project.id) ?? 0) > 0,
+      }))
+      .sort((a, b) => (a.hasTeams === b.hasTeams ? a.index - b.index : a.hasTeams ? -1 : 1))
+      .map((x) => x.project);
+  }, [projects, projectSearch, teamCountByProject]);
 
   const teamsInProject = useMemo(
     () => teams.filter((t) => t.projectId === selectedProjectId),
     [teams, selectedProjectId],
   );
+  const filteredTeams = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase();
+    return q ? teamsInProject.filter((t) => t.name.toLowerCase().includes(q)) : teamsInProject;
+  }, [teamsInProject, teamSearch]);
+
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === selectedTeamId) ?? null,
     [teams, selectedTeamId],
@@ -125,9 +143,25 @@ export function CompanyStructure() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {projects.length} total
             </p>
-            <div className="space-y-1.5">
-              {sortedProjects.length === 0 ? (
+            {projects.length > 5 ? (
+              <SearchInput
+                value={projectSearch}
+                onChange={setProjectSearch}
+                placeholder="Search projects…"
+                className="mb-3"
+                inputClassName="h-9 rounded-xl"
+                clearLabel="Clear project search"
+              />
+            ) : null}
+            {/* Capped height so a long list scrolls inside the pane instead of
+                stretching the page past the other two panes. */}
+            <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
+              {projects.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No projects yet.</p>
+              ) : sortedProjects.length === 0 ? (
+                <p className="px-1 py-2 text-sm text-muted-foreground">
+                  No project matches that search.
+                </p>
               ) : (
                 sortedProjects.map((p) => {
                   const count = teamCountByProject.get(p.id) ?? 0;
@@ -182,11 +216,23 @@ export function CompanyStructure() {
                 <Plus className="h-3.5 w-3.5" /> New
               </button>
             </div>
+            {teamsInProject.length > 5 ? (
+              <SearchInput
+                value={teamSearch}
+                onChange={setTeamSearch}
+                placeholder="Search teams…"
+                className="mb-3"
+                inputClassName="h-9 rounded-xl"
+                clearLabel="Clear team search"
+              />
+            ) : null}
             {teamsInProject.length === 0 ? (
               <p className="text-sm text-muted-foreground">No teams yet. Click “New” to create one.</p>
+            ) : filteredTeams.length === 0 ? (
+              <p className="px-1 py-2 text-sm text-muted-foreground">No team matches that search.</p>
             ) : (
-              <div className="space-y-1.5">
-                {teamsInProject.map((t) => {
+              <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
+                {filteredTeams.map((t) => {
                   const active = t.id === selectedTeamId;
                   return (
                     <button

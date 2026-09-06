@@ -20,6 +20,9 @@ public interface ILeaveService
 {
     Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId);
     Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId);
+
+    // Every application in the org, newest first. Admin history.
+    Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync();
     Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year);
     Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string employeeId, int year);
     Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year);
@@ -83,6 +86,10 @@ public interface ILeaveService
     Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
+
+    // Resolves PENDING items that no longer have any approver to route to.
+    // `apply: false` only counts them. See the implementation for why.
+    Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 }
 
 // Ok=false carries a human-readable Error (e.g. duplicate code, bad dates).

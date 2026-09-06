@@ -28,6 +28,8 @@ public class AttendanceService : IAttendanceService
 {
     private const ApprovalModule Module = ApprovalModule.ATTENDANCE;
     private const string OffSiteCode = "OFF_SITE_ACTION_REQUIRED";
+    private const string OpenSessionCode = "OPEN_SESSION_REQUIRES_CLOCK_OUT";
+    private const string NotOnProjectCode = "NOT_ON_PROJECT";
     private const string IpNotAllowedCode = "IP_NOT_ALLOWED";
     private const int MaxBulkIds = 200;
 
@@ -56,6 +58,7 @@ public class AttendanceService : IAttendanceService
     private readonly IRealtimeService _realtime;
     private readonly IEmployeeRowResolver _employees;
     private readonly IHoursSummaryService _hours;
+    private readonly ITeamService _teams;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -73,9 +76,11 @@ public class AttendanceService : IAttendanceService
         IDirectoryService directory,
         IRealtimeService realtime,
         IEmployeeRowResolver employees,
-        IHoursSummaryService hours)
+        IHoursSummaryService hours,
+        ITeamService teams)
     {
         _repo = repo;
+        _teams = teams;
         _sessions = sessions;
         _breaks = breaks;
         _approvalRequests = approvalRequests;
@@ -93,13 +98,28 @@ public class AttendanceService : IAttendanceService
         _hours = hours;
     }
 
+    // The day, with its stints. Used wherever the caller is looking at a DAY
+    // rather than a queue — the roll-up alone can't say a second shift began.
+    private async Task<AttendanceRecordDto> ToDayDtoAsync(
+        AttendanceRecord record, IReadOnlyList<AttendanceApprovalRequest> approvals) =>
+        ToDto(record, approvals, await _sessions.GetByRecordAsync(record.Id));
+
     public async Task<AttendanceRecordDto?> GetTodayAsync(string employeeId)
     {
         var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
         var record = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
         if (record is null) return null;
         var approvals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
-        return ToDto(record, approvals);
+        return await ToDayDtoAsync(record, approvals);
+    }
+
+    public async Task<AttendanceRecordDto?> GetOpenSessionAsync(string employeeId)
+    {
+        var open = await _repo.GetOpenForEmployeeAsync(employeeId);
+        if (open is null) return null;
+
+        var approvals = await _approvalRequests.GetByRecordIdsAsync([open.Id]);
+        return await ToDayDtoAsync(open, approvals);
     }
 
     public async Task<IEnumerable<AttendanceRecordDto>> GetHistoryAsync(string userId, bool isAdmin)
@@ -107,24 +127,159 @@ public class AttendanceService : IAttendanceService
         var records = isAdmin
             ? await _repo.GetAllAsync()
             : await _repo.GetByEmployeeAsync(userId);
-        var approvals = await _approvalRequests.GetByRecordIdsAsync(records.Select(r => r.Id));
+        var ids = records.Select(r => r.Id).ToList();
+
+        var approvals = await _approvalRequests.GetByRecordIdsAsync(ids);
         var byRecord = approvals.GroupBy(a => a.AttendanceRecordId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
-        return records.Select(r => ToDto(r, byRecord.GetValueOrDefault(r.Id, [])));
+
+        // Bulk, not per record: a year of history would otherwise be a query a day.
+        var sessions = (await _sessions.GetByRecordIdsAsync(ids))
+            .GroupBy(x => x.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
+
+        return records.Select(r =>
+            ToDto(r, byRecord.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])));
     }
 
-    public async Task<IEnumerable<AttendanceApprovalRequestDto>> GetTeamApprovalsAsync(string userId)
+    // The RECORDS awaiting the caller as current-step approver — the day, its
+    // clock times, GPS and photos, with the full approval history attached.
+    //
+    // It returned bare approval requests for a while, which is the wrong shape
+    // for its only caller: a supervisor decides a SHIFT, and the request rows
+    // carry none of what that decision needs to be informed — no clock times, no
+    // coordinates, no proof photos. The approvals screen reads all of those off
+    // the record, so it was reading undefined.
+    public async Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId)
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(RecordKinds);
-        var visible = new List<AttendanceApprovalRequest>();
+        var mine = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
             var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
-            if (approvers.Contains(userId)) visible.Add(request);
+            if (approvers.Contains(userId)) mine.Add(request);
         }
+        if (mine.Count == 0) return [];
 
-        var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
-        return visible.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
+        var recordIds = mine.Select(r => r.AttendanceRecordId).Distinct().ToList();
+        var records = await _repo.GetByIdsAsync(recordIds);
+
+        // Every request on those records, not just the ones awaiting this
+        // approver: the card shows the day's whole timeline, including what an
+        // earlier step already decided.
+        var approvals = (await _approvalRequests.GetByRecordIdsAsync(recordIds))
+            .GroupBy(a => a.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
+
+        var emails = await _supervision.GetEmailsAsync(records.Select(r => r.EmployeeId).Distinct());
+        var dtos = records
+            .OrderByDescending(r => r.Date)
+            .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, [])))
+            .ToList();
+        foreach (var dto in dtos) dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
+        return dtos;
+    }
+
+    // Today's attendance for the teams the caller oversees, grouped by project.
+    //
+    // Driven by TEAM MEMBERSHIP, not the supervisor field: a supervisor running
+    // crews on two sites belongs to a team in each, and switching site is how
+    // they actually look at their people. The supervisor field only ever gives a
+    // single flat list, which can't be split by project at all.
+    //
+    // Distinct from GetTeamApprovalsAsync, which answers "what needs my
+    // decision". This answers "where is my team right now".
+    //
+    // Returns every project at once rather than taking a projectId. It's one
+    // day's rows for a handful of people, so switching tabs is instant instead
+    // of a round trip each time.
+    public async Task<IEnumerable<TeamAttendanceMemberDto>> GetTeamTodayAsync(string userId)
+    {
+        var supervised = await _teams.GetSupervisedTeamsAsync(userId);
+        if (supervised.Count == 0) return [];
+
+        var employeeIds = supervised.SelectMany(t => t.MemberIds).Distinct().ToList();
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+        var records = await _repo.GetForEmployeesOnDateAsync(employeeIds, today);
+        var byEmployee = records.ToDictionary(r => r.EmployeeId);
+
+        var approvals = (await _approvalRequests.GetByRecordIdsAsync(records.Select(r => r.Id)))
+            .GroupBy(a => a.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
+
+        var emails = await _supervision.GetEmailsAsync(employeeIds);
+        var projectNames = (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
+
+        return supervised
+            .SelectMany(team => team.MemberIds.Select(id =>
+            {
+                var record = byEmployee.GetValueOrDefault(id);
+                return new TeamAttendanceMemberDto
+                {
+                    EmployeeId = id,
+                    EmployeeEmail = emails.GetValueOrDefault(id),
+                    ProjectId = team.ProjectId,
+                    ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
+                    TeamId = team.TeamId,
+                    TeamName = team.TeamName,
+                    Record = record is null ? null : ToDto(record, approvals.GetValueOrDefault(record.Id, [])),
+                };
+            }))
+            .OrderBy(m => m.ProjectName)
+            .ThenBy(m => m.EmployeeEmail)
+            .ToList();
+    }
+
+    // Membership in any team belonging to that project.
+    private async Task<bool> OnProjectAsync(string employeeId, string projectId) =>
+        (await _teams.GetProjectIdsForMemberAsync(employeeId)).Contains(projectId);
+
+    // Recompute the DAY from its sessions.
+    //
+    // The record is a roll-up, not a second source of truth: first start, last
+    // end, and the SUM of each stint. Summing is the point — clock out at 12:00
+    // and back in at 13:00 and the hour away is not worked time, which
+    // last-minus-first would silently count.
+    //
+    // The day's clock-in evidence is the FIRST session's and its clock-out
+    // evidence the LAST closed one's, so a second shift never overwrites the
+    // morning's GPS or proof photo.
+    private async Task RecomputeRollupAsync(AttendanceRecord record)
+    {
+        var sessions = await _sessions.GetByRecordAsync(record.Id);
+        if (sessions.Count == 0) return;
+
+        var first = sessions[0];
+        var closed = sessions.Where(x => x.EndedAt is not null).ToList();
+        var anyOpen = sessions.Any(x => x.EndedAt is null);
+
+        record.TimeIn = first.StartedAt;
+        record.TimeOut = anyOpen ? null : closed.Max(x => x.EndedAt);
+        record.DurationMin = anyOpen ? null : closed.Sum(x => x.DurationMin ?? 0);
+
+        // Lateness is the day's FIRST arrival. An afternoon session starting at
+        // 14:00 is not "five hours late" against a 09:00 shift.
+        record.LateByMin = first.LateByMin;
+
+        // Status: still on the clock → the open session's own punctuality;
+        // everything closed → the day is done.
+        record.Status = anyOpen
+            ? sessions.Last(x => x.EndedAt is null).Status
+            : AttendanceStatus.CLOCKED_OUT;
+
+        record.ClockInLat = first.ClockInLat;
+        record.ClockInLng = first.ClockInLng;
+        record.ClockInDistanceMeters = first.ClockInDistanceMeters;
+        record.ClockInPhotoUrl = first.ClockInPhotoUrl;
+
+        var last = closed.OrderBy(x => x.EndedAt).LastOrDefault();
+        record.ClockOutLat = last?.ClockOutLat;
+        record.ClockOutLng = last?.ClockOutLng;
+        record.ClockOutDistanceMeters = last?.ClockOutDistanceMeters;
+        record.ClockOutPhotoUrl = last?.ClockOutPhotoUrl;
+
+        record.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(record);
     }
 
     public async Task<AttendanceActionResult> ClockInAsync(string employeeId, ClockInDto dto)
@@ -133,16 +288,51 @@ public class AttendanceService : IAttendanceService
         var today = AttendanceTime.StartOfLocalDay(now);
         var existing = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
 
-        if (existing is not null && existing.TimeIn is not null)
+        // Only an OPEN stint blocks a new one. A finished shift doesn't end the
+        // day: clocking out at noon and back in at one is two sessions on the
+        // same record, which is what a split shift actually is.
+        if (existing is not null && await _sessions.GetOpenForRecordAsync(existing.Id) is not null)
         {
             var currentApprovals = await _approvalRequests.GetByRecordIdsAsync([existing.Id]);
-            return new AttendanceActionResult(false, ToDto(existing, currentApprovals),
-                existing.TimeOut is null
-                    ? "You're already clocked in today."
-                    : "You've already completed your attendance for today.");
+            return new AttendanceActionResult(false, await ToDayDtoAsync(existing, currentApprovals),
+                "You're already clocked in.");
+        }
+
+        // A shift left open on an EARLIER day blocks clocking in today. Two open
+        // sessions can't both be right, and letting a second one start is how a
+        // forgotten clock-out becomes permanent — nothing ever forces the first
+        // one to be resolved. Auto-clock-out only closes these when the
+        // employee's policy opts in, so without this guard the rest just
+        // accumulate.
+        var openSession = await _repo.GetOpenForEmployeeAsync(employeeId);
+        if (openSession is not null && openSession.Date != today)
+        {
+            var openApprovals = await _approvalRequests.GetByRecordIdsAsync([openSession.Id]);
+            return new AttendanceActionResult(
+                false,
+                ToDto(openSession, openApprovals),
+                "You're still clocked in from an earlier shift. Clock out of that one first — "
+                + "you can request a time correction on it afterwards.",
+                OpenSessionCode);
         }
 
         var effectiveProjectId = dto.ProjectId ?? existing?.ProjectId;
+
+        // You can only clock into a project you're actually on.
+        //
+        // The picker used to list every project in the org and the server took
+        // whatever it was handed, so anyone could tag their day to a site they
+        // have no part in — which then shows them on that site's team view and
+        // puts their hours against its costs. Membership is the same thing that
+        // decides whose team you appear in, so the two can't disagree.
+        //
+        // Only checked when a project is named: attendance without a project is
+        // still valid, and it's what someone with no team assignment gets.
+        if (effectiveProjectId is not null && !await OnProjectAsync(employeeId, effectiveProjectId))
+            return new AttendanceActionResult(false, null,
+                "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.",
+                NotOnProjectCode);
+
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
 
         if (!await IpAllowedAsync(employeeId, effectiveProjectId, policy))
@@ -157,57 +347,55 @@ public class AttendanceService : IAttendanceService
 
         var lateByMin = AttendanceLateness.Minutes(now, await ScheduledStartAsync(employeeId));
 
+        // The DAY. Only day-level facts are set here — the clock itself belongs
+        // to the session, and RecomputeRollupAsync copies the summary back up.
         AttendanceRecord record;
         if (existing is null)
         {
-            record = new AttendanceRecord
+            record = await _repo.AddAsync(new AttendanceRecord
             {
                 EmployeeId = employeeId,
                 Date = today,
-                TimeIn = now,
-                Status = AttendanceStatus.CLOCKED_IN,
-                LateByMin = lateByMin,
                 ProjectId = effectiveProjectId,
                 Location = dto.Location,
                 Remark = dto.Remark,
-                ClockInLat = capturedLat,
-                ClockInLng = capturedLng,
-                ClockInDistanceMeters = distance,
-                ClockInPhotoUrl = dto.PhotoUrl,
+                Status = AttendanceStatus.CLOCKED_IN,
                 CreatedAt = now,
                 UpdatedAt = now,
-            };
-            record = await _repo.AddAsync(record);
+            });
         }
         else
         {
-            // A row already exists for today (e.g. a pre-seeded MISSING/ON_LEAVE day)
-            // but no clock-in yet — fill it in rather than violating the unique key.
-            existing.TimeIn = now;
-            existing.Status = AttendanceStatus.CLOCKED_IN;
-            existing.LateByMin = lateByMin;
-            existing.ProjectId = effectiveProjectId;
+            // Either a pre-seeded MISSING/ON_LEAVE day with no clock yet, or a
+            // day whose earlier shift is already closed. Both just gain a
+            // session; the unique key means there's only ever one row per day.
+            existing.ProjectId = effectiveProjectId ?? existing.ProjectId;
             existing.Location = dto.Location ?? existing.Location;
             existing.Remark = dto.Remark ?? existing.Remark;
-            existing.ClockInLat = capturedLat;
-            existing.ClockInLng = capturedLng;
-            existing.ClockInDistanceMeters = distance;
-            existing.ClockInPhotoUrl = dto.PhotoUrl;
             existing.UpdatedAt = now;
             await _repo.UpdateAsync(existing);
             record = existing;
         }
 
+        // This stint, with its own evidence and its own punctuality.
         var session = await _sessions.AddAsync(new AttendanceSession
         {
             AttendanceRecordId = record.Id,
             EmployeeId = employeeId,
             StartedAt = now,
+            Status = AttendanceStatus.CLOCKED_IN,
+            LateByMin = lateByMin,
+            ClockInLat = capturedLat,
+            ClockInLng = capturedLng,
+            ClockInDistanceMeters = distance,
+            ClockInPhotoUrl = dto.PhotoUrl,
             CreatedAt = now,
             UpdatedAt = now,
         });
 
-        var request = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        await RecomputeRollupAsync(record);
+
+        var request = await FileRequestAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.CLOCK_IN,
@@ -220,22 +408,28 @@ public class AttendanceService : IAttendanceService
         });
 
         await NotifyPendingAsync(request, RealtimeAction.SUBMITTED);
-        return new AttendanceActionResult(true, ToDto(record, [request]));
+        return new AttendanceActionResult(true, await ToDayDtoAsync(record, [request]));
     }
 
     public async Task<AttendanceActionResult> ClockOutAsync(string employeeId, ClockOutDto dto)
     {
         var now = DateTime.UtcNow;
         var today = AttendanceTime.StartOfLocalDay(now);
-        var record = await _repo.GetForEmployeeOnDateAsync(employeeId, today);
+
+        // Whichever day the open session belongs to. Scoping this to today would
+        // strand anyone who forgot to clock out: clock-in refuses because a
+        // session is open, and clock-out refuses because it isn't today's.
+        var record = await _repo.GetOpenForEmployeeAsync(employeeId)
+                     ?? await _repo.GetForEmployeeOnDateAsync(employeeId, today);
 
         if (record is null || record.TimeIn is null)
             return new AttendanceActionResult(false, null, "You haven't clocked in today.");
 
-        if (record.TimeOut is not null)
+        if (await _sessions.GetOpenForRecordAsync(record.Id) is null)
         {
             var currentApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
-            return new AttendanceActionResult(false, ToDto(record, currentApprovals), "You've already clocked out today.");
+            return new AttendanceActionResult(false, ToDto(record, currentApprovals),
+                "You're not clocked in right now.");
         }
 
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
@@ -250,26 +444,25 @@ public class AttendanceService : IAttendanceService
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockOut ?? true, dto.Lat, dto.Lng);
 
-        record.TimeOut = now;
-        record.DurationMin = (int)Math.Round((now - record.TimeIn.Value).TotalMinutes);
-        record.Status = AttendanceStatus.CLOCKED_OUT;
-        record.ClockOutLat = capturedLat;
-        record.ClockOutLng = capturedLng;
-        record.ClockOutDistanceMeters = distance;
-        record.ClockOutPhotoUrl = dto.PhotoUrl;
-        if (!string.IsNullOrWhiteSpace(dto.Remark)) record.Remark = dto.Remark;
-        record.UpdatedAt = now;
-        await _repo.UpdateAsync(record);
-
+        // Close THIS stint. The day's totals follow from its sessions.
         var session = await _sessions.GetOpenForRecordAsync(record.Id);
         if (session is not null)
         {
             session.EndedAt = now;
+            session.DurationMin = (int)Math.Round((now - session.StartedAt).TotalMinutes);
+            session.Status = AttendanceStatus.CLOCKED_OUT;
+            session.ClockOutLat = capturedLat;
+            session.ClockOutLng = capturedLng;
+            session.ClockOutDistanceMeters = distance;
+            session.ClockOutPhotoUrl = dto.PhotoUrl;
             session.UpdatedAt = now;
             await _sessions.UpdateAsync(session);
         }
 
-        var clockOutRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        if (!string.IsNullOrWhiteSpace(dto.Remark)) record.Remark = dto.Remark;
+        await RecomputeRollupAsync(record);
+
+        var clockOutRequest = await FileRequestAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.CLOCK_OUT,
@@ -283,7 +476,7 @@ public class AttendanceService : IAttendanceService
         await NotifyPendingAsync(clockOutRequest, RealtimeAction.SUBMITTED);
 
         var allApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
-        return new AttendanceActionResult(true, ToDto(record, allApprovals));
+        return new AttendanceActionResult(true, await ToDayDtoAsync(record, allApprovals));
     }
 
     public async Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId)
@@ -351,7 +544,7 @@ public class AttendanceService : IAttendanceService
         };
         var saved = await _breaks.AddAsync(brk);
 
-        var request = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        var request = await FileRequestAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.BREAK_START,
@@ -394,7 +587,7 @@ public class AttendanceService : IAttendanceService
         brk.UpdatedAt = now;
         await _breaks.UpdateAsync(brk);
 
-        var breakEndRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        var breakEndRequest = await FileRequestAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = AttendanceApprovalKind.BREAK_END,
@@ -685,7 +878,7 @@ public class AttendanceService : IAttendanceService
         }
 
         var session = await _sessions.GetOpenForRecordAsync(record.Id);   // may be null once fully clocked out — fine, nullable
-        var created = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+        var created = await FileRequestAsync(new AttendanceApprovalRequest
         {
             EmployeeId = employeeId,
             Kind = kind,
@@ -765,7 +958,7 @@ public class AttendanceService : IAttendanceService
 
                 // No request-context user to auto-stamp OrganizationId here
                 // (StampTenant no-ops without a current org) — set explicitly.
-                var autoRequest = await _approvalRequests.AddAsync(new AttendanceApprovalRequest
+                var autoRequest = await FileRequestAsync(new AttendanceApprovalRequest
                 {
                     OrganizationId = record.OrganizationId,
                     EmployeeId = record.EmployeeId,
@@ -1283,6 +1476,73 @@ public class AttendanceService : IAttendanceService
         request.UpdatedAt = now;
     }
 
+    // Every attendance request is filed through here.
+    //
+    // A request is created PENDING and waits for an approver — unless the
+    // employee HAS no approver. Someone at the top of the hierarchy (admins are
+    // not in it, see OrgRoles) has zero approval steps, and a PENDING request
+    // with no one to route to is invisible in every queue and rejected for
+    // every caller: it sits unresolved forever. There is nobody left to ask, so
+    // submitting IS the decision.
+    // Resolves requests that no longer have anyone to approve them.
+    //
+    // The submit-time rule only applies going forward. Rows written earlier can
+    // become unreachable when the hierarchy changes underneath them — most
+    // sharply when admins were removed from it (see OrgRoles), which deleted the
+    // step that requests parked on. An unreachable request appears in no queue
+    // and is refused for every caller: it is stuck, not pending.
+    //
+    // `apply: false` counts them without changing anything, so the damage can be
+    // inspected before it is acted on. Idempotent: a resolved row is no longer
+    // PENDING, so a second run finds nothing.
+    public async Task<int> ReconcileUnreachableApprovalsAsync(bool apply)
+    {
+        var now = DateTime.UtcNow;
+        var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+        var stuck = 0;
+
+        foreach (var request in pending)
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            if (approvers.Count > 0) continue;
+
+            stuck++;
+            if (!apply) continue;
+
+            request.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
+            request.DecidedAt = now;
+            request.UpdatedAt = now;
+            // ReviewerId stays null — nobody reviewed it. See FileRequestAsync.
+            await _approvalRequests.UpdateAsync(request);
+
+            if (request.OriginalEventAt is not null)
+                await ApplyAdjustmentAsync(request);
+        }
+
+        return stuck;
+    }
+
+    private async Task<AttendanceApprovalRequest> FileRequestAsync(AttendanceApprovalRequest request)
+    {
+        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+        if (stepCount == 0)
+        {
+            request.ApprovalStatus = AttendanceApprovalStatus.APPROVED;
+            request.DecidedAt = request.SubmittedAt;
+            // No ReviewerId: nobody reviewed it. Leaving it null keeps the audit
+            // honest — "approved by default", not "approved by <the applicant>".
+        }
+
+        var created = await _approvalRequests.AddAsync(request);
+
+        // A time adjustment only changes the record once fully approved, and
+        // this one just was.
+        if (created.ApprovalStatus == AttendanceApprovalStatus.APPROVED && created.OriginalEventAt is not null)
+            await ApplyAdjustmentAsync(created);
+
+        return created;
+    }
+
     private async Task ApplyAdjustmentAsync(AttendanceApprovalRequest request)
     {
         var record = await _repo.GetByIdAsync(request.AttendanceRecordId);
@@ -1362,7 +1622,24 @@ public class AttendanceService : IAttendanceService
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    private static AttendanceRecordDto ToDto(AttendanceRecord r, IReadOnlyList<AttendanceApprovalRequest> approvals)
+    private static AttendanceSessionDto ToSessionDto(AttendanceSession s) => new()
+    {
+        Id = s.Id,
+        StartedAt = Iso(s.StartedAt) ?? string.Empty,
+        EndedAt = Iso(s.EndedAt),
+        DurationMin = s.DurationMin,
+        LateByMin = s.LateByMin,
+        Status = s.Status,
+        ClockInDistanceMeters = s.ClockInDistanceMeters,
+        ClockOutDistanceMeters = s.ClockOutDistanceMeters,
+        ClockInPhotoUrl = s.ClockInPhotoUrl,
+        ClockOutPhotoUrl = s.ClockOutPhotoUrl,
+    };
+
+    private static AttendanceRecordDto ToDto(
+        AttendanceRecord r,
+        IReadOnlyList<AttendanceApprovalRequest> approvals,
+        IReadOnlyList<AttendanceSession>? sessions = null)
     {
         var latest = approvals.OrderByDescending(a => a.SubmittedAt).FirstOrDefault();
         return new AttendanceRecordDto
@@ -1391,6 +1668,10 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = Iso(latest?.SubmittedAt),
             DecidedAt = Iso(latest?.DecidedAt),
             Approvals = approvals.Select(a => ToApprovalRequestDto(a, null)).ToList(),
+            Sessions = (sessions ?? [])
+                .OrderBy(x => x.StartedAt)
+                .Select(ToSessionDto)
+                .ToList(),
             Notes = r.Notes,
             Remark = r.Remark,
             CreatedAt = Iso(r.CreatedAt) ?? string.Empty,

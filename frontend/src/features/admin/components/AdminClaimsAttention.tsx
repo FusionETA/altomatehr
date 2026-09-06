@@ -1,8 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock, Inbox, TriangleAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Claim } from "@/features/claims/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
+import {
+  CLAIMS_PAGE_SIZE,
+  PaginationControls,
+} from "@/features/claims/components/PaginationControls";
 import {
   isOverLimitPending,
   isPendingClaim,
@@ -31,6 +35,24 @@ import { CardHead, EmptyState } from "./DashboardCard";
 // what is stuck, and with whom — not on how much was spent. Every figure here
 // is a button: clicking it opens the claims behind it, so no number has to be
 // taken on trust.
+
+// Each list on this screen pages independently.
+//
+// PaginationControls renders nothing under a full page, so a healthy month
+// shows no controls at all — the protection only appears when a list is long
+// enough to actually need it.
+function usePaged<T>(items: T[]) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(items.length / CLAIMS_PAGE_SIZE));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const visible = useMemo(
+    () => items.slice((page - 1) * CLAIMS_PAGE_SIZE, page * CLAIMS_PAGE_SIZE),
+    [items, page],
+  );
+  return { page, setPage, visible };
+}
 
 export function AdminClaimsAttention({
   claims,
@@ -195,6 +217,7 @@ function StuckWithCard({
   stuck: ReturnType<typeof stuckWithApprovers>;
   onDrill: (drilldown: ClaimDrilldown) => void;
 }) {
+  const stuckPage = usePaged(stuck);
   return (
     <section className={CARD}>
       <CardHead
@@ -209,7 +232,7 @@ function StuckWithCard({
             <p className="px-1 text-xs text-muted-foreground">
               Late claims, grouped by the approver they are waiting on.
             </p>
-            {stuck.map((group) => (
+            {stuckPage.visible.map((group) => (
               <button
                 key={group.approver}
                 type="button"
@@ -254,6 +277,13 @@ function StuckWithCard({
                 </div>
               </button>
             ))}
+            <PaginationControls
+              className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              currentPage={stuckPage.page}
+              totalItems={stuck.length}
+              onPageChange={stuckPage.setPage}
+              itemNoun="approvers"
+            />
           </>
         )}
       </div>
@@ -270,6 +300,7 @@ function ProjectSpendCard({
   spend: ReturnType<typeof projectSpendThisMonth>;
   onDrill: (drilldown: ClaimDrilldown) => void;
 }) {
+  const spendPage = usePaged(spend);
   const total = spend.reduce((sum, row) => sum + row.total, 0);
 
   return (
@@ -280,7 +311,7 @@ function ProjectSpendCard({
           <EmptyState text="No claims submitted this month yet." />
         ) : (
           <>
-            {spend.map((row) => {
+            {spendPage.visible.map((row) => {
               const share = total > 0 ? Math.round((row.total / total) * 100) : 0;
               return (
                 <button
@@ -325,6 +356,13 @@ function ProjectSpendCard({
               </span>{" "}
               · compared against each project's average of the last 3 months.
             </button>
+            <PaginationControls
+              className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              currentPage={spendPage.page}
+              totalItems={spend.length}
+              onPageChange={spendPage.setPage}
+              itemNoun="projects"
+            />
           </>
         )}
       </div>
@@ -381,6 +419,7 @@ function ApprovalTrustCard({
   samples: NonNullable<AdminOverview["overturnedSupervisors"]>["samples"];
   onDrill: (drilldown: ClaimDrilldown) => void;
 }) {
+  const samplesPage = usePaged(samples);
   return (
     <section className={CARD}>
       <CardHead
@@ -397,7 +436,7 @@ function ApprovalTrustCard({
               means the rule they were applying is unclear — read the claims before drawing a
               conclusion.
             </p>
-            {samples.map((approver) => (
+            {samplesPage.visible.map((approver) => (
               <button
                 key={approver.supervisorId}
                 type="button"
@@ -439,6 +478,13 @@ function ApprovalTrustCard({
               </span>{" "}
               first-line approval{total === 1 ? "" : "s"} overturned in the last 90 days.
             </button>
+            <PaginationControls
+              className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              currentPage={samplesPage.page}
+              totalItems={samples.length}
+              onPageChange={samplesPage.setPage}
+              itemNoun="approvers"
+            />
           </>
         )}
       </div>

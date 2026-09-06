@@ -224,6 +224,12 @@ internal sealed class FakeSupervisionService : ISupervisionService
 
     public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
 
+    // Tests that need an admin excluded from routing pass them here.
+    public HashSet<string> AdministrativeUserIds { get; init; } = [];
+
+    public Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
+        Task.FromResult<IReadOnlySet<string>>(AdministrativeUserIds);
+
     public async Task<bool> CanApproveAsync(string applicantId, string approverId, string? role)
     {
         if (IsOrgApprover(role)) return true;

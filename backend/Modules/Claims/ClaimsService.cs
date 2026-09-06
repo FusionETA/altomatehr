@@ -166,6 +166,13 @@ public class ClaimsService : IClaimsService
             CreatedAt = now,
             UpdatedAt = now,
         };
+        // Nobody above them to ask → submitting is the decision. A PENDING claim
+        // with no approver is invisible in every queue and undecidable by every
+        // caller, so it would sit unresolved forever. See OrgRoles: admins are
+        // oversight and are not a fallback approver.
+        if (await _router.StepCountAsync(Module, employeeId) == 0)
+            claim.Status = ClaimStatus.APPROVED;
+
         var saved = await _repo.AddAsync(claim);
         await NotifyAsync(saved, RealtimeAction.SUBMITTED, notifyClaimant: false);
         return saved;
@@ -878,6 +885,37 @@ public class ClaimsService : IClaimsService
             claim.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.CLAIMS, action, claim.Id));
+    }
+
+    // Resolves requests that no longer have anyone to approve them.
+    //
+    // The submit-time rule only applies going forward. Rows written earlier can
+    // become unreachable when the hierarchy changes underneath them — most
+    // sharply when admins were removed from it (see OrgRoles), which deleted the
+    // step that requests parked on. An unreachable request appears in no queue
+    // and is refused for every caller: it is stuck, not pending.
+    //
+    // `apply: false` counts them without changing anything, so the damage can be
+    // inspected before it is acted on. Idempotent: a resolved row is no longer
+    // PENDING, so a second run finds nothing.
+    public async Task<int> ReconcileUnreachableApprovalsAsync(bool apply)
+    {
+        var stuck = 0;
+
+        foreach (var claim in (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING))
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+            if (approvers.Count > 0) continue;
+
+            stuck++;
+            if (!apply) continue;
+
+            claim.Status = ClaimStatus.APPROVED;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+        }
+
+        return stuck;
     }
 
     // Best available human label for a user id: directory name, else email,

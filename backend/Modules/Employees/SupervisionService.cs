@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth;
 
 namespace AltomateHR.Api.Modules.Employees;
@@ -14,8 +15,19 @@ public interface ISupervisionService
     // Email lookup so approver views can label a request by who filed it.
     Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds);
 
-    // True when `role` may approve any request in the org (admin/owner override).
+    // True when `role` is an administrative (Admin/Owner) seat.
+    //
+    // Named for approval for historical reasons, but every caller uses it as a
+    // VISIBILITY check — "may this person see another employee's data" — which
+    // is what an oversight seat is for. It grants no power to decide a request:
+    // approval routing goes through IApprovalRouter, which excludes these roles
+    // outright. See OrgRoles.
     bool IsOrgApprover(string? role);
+
+    // Everyone in the current org holding an administrative seat. Approval
+    // routing subtracts these, so an admin sitting in a team never becomes
+    // somebody's approver.
+    Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync();
 
     // True when `approverId`/`role` may act on `applicantId`'s request:
     // an org approver, or the applicant's directly-assigned supervisor.
@@ -24,8 +36,6 @@ public interface ISupervisionService
 
 public class SupervisionService : ISupervisionService
 {
-    private static readonly string[] OrgApproverRoles = ["Admin", "Owner"];
-
     private readonly IDirectoryService _directory;
     private readonly IOrganizationMembershipRepository _memberships;
 
@@ -51,8 +61,13 @@ public class SupervisionService : ISupervisionService
         return users.Where(u => wanted.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email);
     }
 
-    public bool IsOrgApprover(string? role) =>
-        role is not null && OrgApproverRoles.Contains(role, StringComparer.OrdinalIgnoreCase);
+    public bool IsOrgApprover(string? role) => OrgRoles.IsAdministrative(role);
+
+    public async Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
+        (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => OrgRoles.IsAdministrative(m.Role))
+            .Select(m => m.UserId)
+            .ToHashSet();
 
     public async Task<bool> CanApproveAsync(string applicantId, string approverId, string? role)
     {

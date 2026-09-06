@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--launch-profile", "http"],
+      "cwd": "backend",
+      "port": 5001
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "port": 5173
+    }
+  ]
+}

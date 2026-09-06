@@ -15,6 +15,21 @@ export type AttendanceApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 // with `originalEventAt` set: `eventAt` is the corrected time the employee is
 // asking for, `originalEventAt` is what the clock actually recorded. Approving
 // applies the corrected time; rejecting leaves the record as it was.
+// One clock-in/clock-out stint. The record is the DAY and reports first-start,
+// last-end and summed minutes; these are what explain that total.
+export type AttendanceSession = {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMin: number | null;
+  lateByMin: number | null;
+  status: AttendanceStatus;
+  clockInDistanceMeters: number | null;
+  clockOutDistanceMeters: number | null;
+  clockInPhotoUrl: string | null;
+  clockOutPhotoUrl: string | null;
+};
+
 export type AttendanceApprovalRequest = {
   id: string;
   employeeId: string;
@@ -64,6 +79,8 @@ export type AttendanceRecord = {
   submittedAt: string | null;
   decidedAt: string | null;
   approvals?: AttendanceApprovalRequest[];
+  /** The day's clock-in/out stints, oldest first. A day can have several. */
+  sessions?: AttendanceSession[];
   createdAt: string;
   updatedAt: string;
 };
@@ -86,6 +103,32 @@ export type ClockOutRequest = {
 // /attendance/today returns 204 (→ undefined) when there's no record yet today.
 export const getTodayAttendance = async () =>
   (await apiGet<AttendanceRecord | undefined>("/attendance/today")) ?? null;
+
+// The still-running session, whatever day it started on — normally the same
+// record as getTodayAttendance(), and a different (earlier) one only when a
+// clock-out was forgotten. Clocking in is refused while one of those is open,
+// so the UI reads this on load to offer "clock out" instead of a button the
+// server would reject.
+export const getOpenSession = async () =>
+  (await apiGet<AttendanceRecord | undefined>("/attendance/open-session")) ?? null;
+
+// One of the caller's direct reports, with today's record — null when they
+// haven't clocked in, which is a state worth showing rather than hiding.
+export type TeamAttendanceMember = {
+  employeeId: string;
+  employeeEmail?: string | null;
+  /** The project of the team they're in — what the supervisor switches between. */
+  projectId: string;
+  projectName?: string | null;
+  teamId: string;
+  teamName: string;
+  record: AttendanceRecord | null;
+};
+
+// Presence for the caller's team today. Not the approval queue — that's
+// getTeamAttendanceApprovals.
+export const getTeamToday = () =>
+  apiGet<TeamAttendanceMember[]>("/attendance/team/today");
 
 // Admins get the whole org (roll call); employees get their own records.
 export const getAttendanceHistory = () => apiGet<AttendanceRecord[]>("/attendance");
@@ -195,6 +238,12 @@ export function pendingApprovalIds(record: AttendanceRecord): string[] {
 }
 
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
+
+// Returned when a clock-in is refused because an earlier shift was never closed.
+// The rule: one open session at a time. Close the old one first, then correct
+// its time with an adjustment request — a second session would leave the first
+// stranded with no hours ever counted against it.
+export const OPEN_SESSION_CODE = "OPEN_SESSION_REQUIRES_CLOCK_OUT";
 
 // Upload an off-site proof photo; returns the URL to attach to the clock request.
 // Unused so far: the off-site clock flow that needs a photo isn't built yet, so

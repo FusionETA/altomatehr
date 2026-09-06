@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Claims.Entities;
 using static AltomateHR.Api.Tests.Claims.ClaimsTestFactory;
 
@@ -8,6 +9,42 @@ public class ClaimsServiceApprovalTests
     // Single-step chain: usr-emp's claim is approved by usr-approver.
     private static FakeApprovalRouter SingleApprover() =>
         new(new() { ["usr-emp"] = [["usr-approver"]] });
+
+    [Fact]
+    public async Task CreateAsync_DecidesOnSubmission_WhenNobodyIsAboveTheClaimant()
+    {
+        // Top of the hierarchy: admins don't approve (see OrgRoles), so there is
+        // no step to route to. A PENDING claim here would be invisible in every
+        // queue and undecidable by every caller — stuck, not pending.
+        var service = CreateService([]);   // no chain
+
+        var claim = await service.CreateAsync(SimpleDto(), "usr-boss");
+
+        Assert.Equal(ClaimStatus.APPROVED, claim.Status);
+    }
+
+    [Fact]
+    public async Task CreateAsync_StaysPending_WhenAnApproverExists()
+    {
+        var service = CreateService([], router: SingleApprover());
+
+        var claim = await service.CreateAsync(SimpleDto(), "usr-emp");
+
+        Assert.Equal(ClaimStatus.PENDING, claim.Status);
+    }
+
+    private static CreateClaimDto SimpleDto() => new()
+    {
+        Title = "Taxi to site",
+        Description = "Client meeting",
+        Category = ClaimCategory.TRANSPORT,
+        Amount = 25.00m,
+        Currency = "MYR",
+        SpentAt = DateTime.UtcNow,
+        ClaimType = ClaimType.EXPENSE,
+        PaymentType = PaymentType.PERSONAL,
+        ChartOfAccountId = "acct-expense",
+    };
 
     [Fact]
     public async Task ApproveAsync_TransitionsPendingClaimToApproved()

@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Teams.Dtos;
+using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Shifts.Entities;
 using AltomateHR.Api.Modules.Shifts.Dtos;
 using AltomateHR.Api.Modules.Shifts;
@@ -88,11 +90,14 @@ public class AttendanceApprovalRegressionTests
             photos: new FakeAttendancePhotoStorage(),
             policies: new FakePolicyService(),
             supervision: new FakeSupervisionService(),
-            router: new FakeApprovalRouter(),
+            // emp-1 needs an approver above them, or the CLOCK_OUT this test
+            // files would be auto-approved on submission and never sit PENDING.
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }),
             directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
             realtime: new FakeRealtimeService(),
             employees: new FakeEmployeeDirectory(),
-            hours: new FakeHoursSummaryService());
+            hours: new FakeHoursSummaryService(),
+            teams: new FakeTeamService());
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -122,6 +127,388 @@ public class AttendanceApprovalRegressionTests
 
     // No shift assigned, so lateness falls back to the org's working hours —
     // which is what an org that hasn't configured shifts actually looks like.
+    // --- an unfinished shift blocks the next one ---
+    //
+    // Auto-clock-out only runs when the employee's policy opts in, so without
+    // this guard a forgotten clock-out is never resolved: a second session
+    // starts, the first stays open forever, and its hours are never counted.
+
+    [Fact]
+    public async Task ClockIn_IsRefused_WhileAnEarlierShiftIsStillOpen()
+    {
+        var now = DateTime.UtcNow;
+        var yesterday = AttendanceTime.StartOfLocalDay(now.AddDays(-1));
+        var service = BuildService([OpenRecord("rec-open", "emp-1", yesterday, now.AddDays(-1))]);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.False(result.Ok);
+        Assert.Equal("OPEN_SESSION_REQUIRES_CLOCK_OUT", result.Code);
+        // The open record comes back so the client can name the day.
+        Assert.Equal("rec-open", result.Record?.Id);
+    }
+
+    [Fact]
+    public async Task ClockOut_ClosesAnEarlierOpenShift_RatherThanRefusing()
+    {
+        // The other half of the rule. Scoped to today, clock-out would answer
+        // "you haven't clocked in today" and the employee would be stuck: unable
+        // to clock in because a session is open, unable to close it because it
+        // isn't today's.
+        var now = DateTime.UtcNow;
+        var yesterday = AttendanceTime.StartOfLocalDay(now.AddDays(-1));
+        var open = OpenRecord("rec-open", "emp-1", yesterday, now.AddDays(-1));
+        var service = BuildService([open]);
+
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        Assert.True(result.Ok);
+        Assert.NotNull(open.TimeOut);
+    }
+
+    [Fact]
+    public async Task ClockIn_IsAllowed_OnceNothingIsOpen()
+    {
+        var now = DateTime.UtcNow;
+        var yesterday = AttendanceTime.StartOfLocalDay(now.AddDays(-1));
+        var closed = OpenRecord("rec-closed", "emp-1", yesterday, now.AddDays(-1));
+        closed.TimeOut = now.AddDays(-1).AddHours(8);
+        var service = BuildService([closed]);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task ClockIn_IsNotBlockedByTodaysOwnRecord()
+    {
+        // Today's row is handled by the existing "already clocked in" path, which
+        // returns a different message. The open-session guard must not swallow it.
+        var now = DateTime.UtcNow;
+        var today = AttendanceTime.StartOfLocalDay(now);
+        var service = BuildService([OpenRecord("rec-today", "emp-1", today, now.AddHours(-2))]);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Code);
+        Assert.Contains("already clocked in", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // --- nobody above you ---
+    //
+    // BuildService's router has no chain, which is exactly the top-of-hierarchy
+    // case: admins don't approve (see OrgRoles), so the person at the top has
+    // zero steps. A PENDING request there could never be seen or decided.
+
+    [Fact]
+    public async Task ClockIn_IsDecidedOnSubmission_WhenNobodyIsAboveTheEmployee()
+    {
+        var service = BuildService([]);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.True(result.Ok);
+        var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
+        Assert.Equal(AttendanceApprovalStatus.APPROVED, clockIn.ApprovalStatus);
+    }
+
+    [Fact]
+    public async Task AnAutoApprovedRequest_RecordsNoReviewer()
+    {
+        // Nobody reviewed it. Stamping the applicant as their own approver would
+        // make the audit trail claim a review that never happened.
+        var approvals = new FakeAttendanceApprovalRequestRepository([]);
+        var service = BuildService([], approvals);
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.Null(Assert.Single(approvals.Requests).ReviewerId);
+    }
+
+    [Fact]
+    public async Task ClockIn_StillWaitsForAnApprover_WhenOneExists()
+    {
+        // Keeps the rule narrow: the ordinary employee path is untouched.
+        var service = BuildService([], router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.True(result.Ok);
+        var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
+        Assert.Equal(AttendanceApprovalStatus.PENDING, clockIn.ApprovalStatus);
+    }
+
+    // --- reconciling what the rule change stranded ---
+
+    [Fact]
+    public async Task Reconcile_ResolvesRequestsParkedOnAStepThatNoLongerExists()
+    {
+        // The concrete case: requests sat at step 1 because an admin occupied
+        // that layer. Excluding admins shortened the chain to one step, so
+        // step 1 resolves to nobody and the request became unreachable.
+        var approvals = new FakeAttendanceApprovalRequestRepository([
+            PendingAt(step: 1),
+        ]);
+        var service = BuildService([], approvals,
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));   // one step only
+
+        var resolved = await service.ReconcileUnreachableApprovalsAsync(apply: true);
+
+        Assert.Equal(1, resolved);
+        Assert.Equal(AttendanceApprovalStatus.APPROVED, Assert.Single(approvals.Requests).ApprovalStatus);
+    }
+
+    [Fact]
+    public async Task Reconcile_LeavesRequestsThatStillHaveAnApprover()
+    {
+        var approvals = new FakeAttendanceApprovalRequestRepository([
+            PendingAt(step: 0),
+        ]);
+        var service = BuildService([], approvals,
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
+
+        var resolved = await service.ReconcileUnreachableApprovalsAsync(apply: true);
+
+        Assert.Equal(0, resolved);
+        Assert.Equal(AttendanceApprovalStatus.PENDING, Assert.Single(approvals.Requests).ApprovalStatus);
+    }
+
+    [Fact]
+    public async Task Reconcile_WithoutApply_CountsButChangesNothing()
+    {
+        var approvals = new FakeAttendanceApprovalRequestRepository([PendingAt(step: 1)]);
+        var service = BuildService([], approvals,
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
+
+        var found = await service.ReconcileUnreachableApprovalsAsync(apply: false);
+
+        Assert.Equal(1, found);
+        Assert.Equal(AttendanceApprovalStatus.PENDING, Assert.Single(approvals.Requests).ApprovalStatus);
+    }
+
+    [Fact]
+    public async Task Reconcile_IsIdempotent()
+    {
+        // A resolved row is no longer PENDING, so a second run finds nothing.
+        var approvals = new FakeAttendanceApprovalRequestRepository([PendingAt(step: 1)]);
+        var service = BuildService([], approvals,
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
+
+        Assert.Equal(1, await service.ReconcileUnreachableApprovalsAsync(apply: true));
+        Assert.Equal(0, await service.ReconcileUnreachableApprovalsAsync(apply: true));
+    }
+
+    private static AttendanceApprovalRequest PendingAt(int step) => new()
+    {
+        Id = $"req-{step}",
+        EmployeeId = "emp-1",
+        Kind = AttendanceApprovalKind.CLOCK_IN,
+        AttendanceRecordId = "rec-1",
+        CurrentStep = step,
+        ApprovalStatus = AttendanceApprovalStatus.PENDING,
+        SubmittedAt = DateTime.UtcNow.AddDays(-30),
+    };
+
+    // --- you can only clock into a project you're on ---
+    //
+    // The picker listed every project in the org and the server stored whatever
+    // it was sent, so anyone could tag their day to a site they have no part in.
+    // Membership decides whose team view you appear in, so the two must agree.
+
+    [Fact]
+    public async Task ClockIn_IsRefused_ForAProjectTheEmployeeIsNotOn()
+    {
+        var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
+        var service = BuildService([], teams: teams);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-theirs" });
+
+        Assert.False(result.Ok);
+        Assert.Equal("NOT_ON_PROJECT", result.Code);
+    }
+
+    [Fact]
+    public async Task ClockIn_IsAllowed_ForAProjectTheEmployeeIsOn()
+    {
+        var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
+        var service = BuildService([], teams: teams);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-mine" });
+
+        Assert.True(result.Ok);
+        Assert.Equal("proj-mine", result.Record!.ProjectId);
+    }
+
+    [Fact]
+    public async Task ClockIn_WithNoProject_IsStillAllowed()
+    {
+        // Someone on no team has no project to pick. Attendance without a
+        // project is valid, so the guard must not lock them out of clocking in
+        // entirely.
+        var service = BuildService([], teams: new FakeTeamService());
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.True(result.Ok);
+        Assert.Null(result.Record!.ProjectId);
+    }
+
+    // --- several shifts in one day ---
+    //
+    // A day is a record; each stint is a session under it. The record's totals
+    // are a roll-up, and the gap between stints is not worked time.
+
+    [Fact]
+    public async Task ClockIn_IsAllowedAgain_AfterClockingOutEarlierTheSameDay()
+    {
+        var service = BuildService([]);
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.True(second.Ok);
+        Assert.Null(second.Record!.TimeOut);   // back on the clock
+    }
+
+    [Fact]
+    public async Task ASecondShift_IsStillRefusedWhileTheFirstIsOpen()
+    {
+        // The guard that matters: only an OPEN stint blocks a new one.
+        var service = BuildService([]);
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+        var again = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.False(again.Ok);
+        Assert.Contains("already clocked in", again.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TheDay_SumsItsShiftsRatherThanSpanningThem()
+    {
+        // The whole reason sessions own the clock. Two 1-hour stints three hours
+        // apart is 2h worked, not the 5h that last-minus-first would report —
+        // and that number feeds counted hours and pay.
+        var sessions = new FakeAttendanceSessionRepository([]);
+        var repo = new FakeAttendanceRepository([]);
+        var service = BuildService([], repo: repo, sessions: sessions);
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        // Backdate the closed stint so the two are genuinely apart.
+        var first = sessions.All.Single();
+        first.StartedAt = DateTime.UtcNow.AddHours(-5);
+        first.EndedAt = DateTime.UtcNow.AddHours(-4);
+        first.DurationMin = 60;
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+        var second = sessions.All.Last();
+        second.StartedAt = DateTime.UtcNow.AddHours(-1);
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        Assert.True(result.Ok);
+        // ~120 minutes of work across a 5-hour span.
+        Assert.InRange(result.Record!.DurationMin!.Value, 118, 122);
+    }
+
+    [Fact]
+    public async Task ASecondShift_DoesNotOverwriteTheFirstShiftsProof()
+    {
+        // The reason the evidence moved onto the session: an off-site morning
+        // must survive an afternoon clock-in.
+        var sessions = new FakeAttendanceSessionRepository([]);
+        var service = BuildService([], sessions: sessions);
+
+        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/morning.jpg" });
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/afternoon.jpg" });
+
+        Assert.Equal("/attendance/photos/morning.jpg", sessions.All.First().ClockInPhotoUrl);
+        Assert.Equal("/attendance/photos/afternoon.jpg", sessions.All.Last().ClockInPhotoUrl);
+    }
+
+    [Fact]
+    public async Task StartingASecondShift_DoesNotHideTheFirstOne()
+    {
+        // The record only reports first-start / last-end, so once a second shift
+        // opens, timeOut goes back to null and the day looks like one long
+        // unfinished stint — the morning appears to have vanished. The stints
+        // ride along so the client can still show it.
+        var service = BuildService([]);
+
+        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        var sessions = second.Record!.Sessions;
+        Assert.Equal(2, sessions.Count);
+        Assert.NotNull(sessions[0].EndedAt);   // the morning, still there
+        Assert.Null(sessions[1].EndedAt);      // the one running now
+    }
+
+    private static IEnumerable<AttendanceSession> SessionsFor(IEnumerable<AttendanceRecord> records) =>
+        records
+            .Where(r => r.TimeIn is not null)
+            .Select(r => new AttendanceSession
+            {
+                Id = $"sess-{r.Id}",
+                AttendanceRecordId = r.Id,
+                EmployeeId = r.EmployeeId,
+                StartedAt = r.TimeIn!.Value,
+                EndedAt = r.TimeOut,
+                DurationMin = r.TimeOut is null
+                    ? null
+                    : (int)Math.Round((r.TimeOut.Value - r.TimeIn.Value).TotalMinutes),
+                Status = r.Status,
+            });
+
+    private static AttendanceRecord OpenRecord(string id, string employeeId, DateTime date, DateTime timeIn) =>
+        new()
+        {
+            Id = id,
+            EmployeeId = employeeId,
+            Date = date,
+            TimeIn = timeIn,
+            TimeOut = null,
+            ProjectId = null,   // no project → no geofence, so no GPS proof needed
+            Status = AttendanceStatus.CLOCKED_IN,
+            CreatedAt = timeIn,
+            UpdatedAt = timeIn,
+        };
+
+    private static AttendanceService BuildService(
+        IEnumerable<AttendanceRecord> records,
+        FakeAttendanceApprovalRequestRepository? approvals = null,
+        FakeApprovalRouter? router = null,
+        FakeTeamService? teams = null,
+        FakeAttendanceRepository? repo = null,
+        FakeAttendanceSessionRepository? sessions = null) =>
+        new(
+            repo: repo ?? new FakeAttendanceRepository(records),
+            // Sessions derived from the records, exactly as the multi-shift
+            // migration backfills real data: one session per pre-existing
+            // record, open or closed to match. An open shift is now defined by
+            // an open SESSION, so a record without one isn't clocked in.
+            sessions: sessions ?? new FakeAttendanceSessionRepository(SessionsFor(records)),
+            breaks: new FakeAttendanceBreakRepository(),
+            approvalRequests: approvals ?? new FakeAttendanceApprovalRequestRepository([]),
+            projects: new FakeProjectService(),
+            organizations: new FakeOrganizationService(),
+            shifts: new FakeShiftService(),
+            currentUser: new FakeCurrentUser(),
+            photos: new FakeAttendancePhotoStorage(),
+            policies: new FakePolicyService(),
+            supervision: new FakeSupervisionService(),
+            router: router ?? new FakeApprovalRouter(),
+            directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
+            realtime: new FakeRealtimeService(),
+            employees: new FakeEmployeeDirectory(),
+            hours: new FakeHoursSummaryService(),
+            teams: teams ?? new FakeTeamService());
+
     private sealed class FakeShiftService : IShiftService
     {
         public Task<Shift?> GetEffectiveShiftAsync(string employeeId) => Task.FromResult<Shift?>(null);
@@ -141,10 +528,25 @@ public class AttendanceApprovalRegressionTests
         private readonly List<AttendanceRecord> _records;
         public FakeAttendanceRepository(IEnumerable<AttendanceRecord> records) => _records = records.ToList();
 
-        // The service looks up "today's row" by employee; a single record per
-        // employee in these tests makes the date match irrelevant.
+        // Matches on the date properly: since clock-in started refusing while an
+        // earlier session is open, "today's row" and "the open row" can be
+        // different records and a date-blind fake would hide that.
         public Task<AttendanceRecord?> GetForEmployeeOnDateAsync(string employeeId, DateTime date) =>
-            Task.FromResult(_records.FirstOrDefault(r => r.EmployeeId == employeeId));
+            Task.FromResult(_records.FirstOrDefault(r => r.EmployeeId == employeeId && r.Date == date));
+
+        public Task<List<AttendanceRecord>> GetForEmployeesOnDateAsync(
+            IEnumerable<string> employeeIds, DateTime date) =>
+            Task.FromResult(_records.Where(r => employeeIds.Contains(r.EmployeeId) && r.Date == date).ToList());
+
+        public Task<List<AttendanceRecord>> GetByIdsAsync(IEnumerable<string> ids) =>
+            Task.FromResult(_records.Where(r => ids.Contains(r.Id)).ToList());
+
+        public Task<AttendanceRecord?> GetOpenForEmployeeAsync(string employeeId) =>
+            Task.FromResult(
+                _records
+                    .Where(r => r.EmployeeId == employeeId && r.TimeIn != null && r.TimeOut == null)
+                    .OrderByDescending(r => r.Date)
+                    .FirstOrDefault());
 
         public Task<AttendanceRecord?> GetByIdAsync(string id) =>
             Task.FromResult(_records.FirstOrDefault(r => r.Id == id));
@@ -168,10 +570,25 @@ public class AttendanceApprovalRegressionTests
         private readonly List<AttendanceSession> _sessions;
         public FakeAttendanceSessionRepository(IEnumerable<AttendanceSession> sessions) => _sessions = sessions.ToList();
 
+        // Ordered as the real repository returns them, for tests that assert on
+        // which stint holds what.
+        public IReadOnlyList<AttendanceSession> All => _sessions.OrderBy(s => s.StartedAt).ToList();
+
         public Task<AttendanceSession?> GetOpenForRecordAsync(string attendanceRecordId) =>
             Task.FromResult(_sessions.FirstOrDefault(s => s.AttendanceRecordId == attendanceRecordId && s.EndedAt == null));
         public Task<AttendanceSession?> GetByIdAsync(string id) =>
             Task.FromResult(_sessions.FirstOrDefault(s => s.Id == id));
+        public Task<List<AttendanceSession>> GetByRecordIdsAsync(IEnumerable<string> attendanceRecordIds) =>
+            Task.FromResult(_sessions
+                .Where(s => attendanceRecordIds.Contains(s.AttendanceRecordId))
+                .OrderBy(s => s.StartedAt)
+                .ToList());
+
+        public Task<List<AttendanceSession>> GetByRecordAsync(string attendanceRecordId) =>
+            Task.FromResult(_sessions
+                .Where(s => s.AttendanceRecordId == attendanceRecordId)
+                .OrderBy(s => s.StartedAt)
+                .ToList());
         public Task<List<AttendanceSession>> GetOpenStartedBeforeAsync(DateTime cutoff, int limit) =>
             Task.FromResult(_sessions.Where(s => s.EndedAt == null && s.StartedAt < cutoff).Take(limit).ToList());
         public Task<AttendanceSession> AddAsync(AttendanceSession session) { _sessions.Add(session); return Task.FromResult(session); }
@@ -289,4 +706,31 @@ public class AttendanceApprovalRegressionTests
         public Task AddAsync(OrganizationMembership membership) => Task.CompletedTask;
         public Task UpdateAsync(OrganizationMembership membership) => Task.CompletedTask;
     }
+    // Team presence isn't what these tests exercise; an empty org keeps the
+    // dependency honest without inventing a hierarchy.
+    private sealed class FakeTeamService : ITeamService
+    {
+        public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
+        public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotSupportedException();
+        public Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto) => throw new NotSupportedException();
+        public Task<bool> DeleteAsync(string id) => Task.FromResult(false);
+        public Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto) =>
+            throw new NotSupportedException();
+        public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>
+            throw new NotSupportedException();
+        public Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(string employeeId, ApprovalModule module) =>
+            Task.FromResult<IEnumerable<ApprovalStepDto>>([]);
+        public Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+        public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
+            Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+
+        // These tests clock in without a project, so the membership check never
+        // fires; ProjectsOf lets a test opt into one when it needs to.
+        public Dictionary<string, List<string>> ProjectsOf { get; init; } = [];
+
+        public Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId) =>
+            Task.FromResult<IReadOnlyList<string>>(ProjectsOf.GetValueOrDefault(employeeId, []));
+    }
+
 }

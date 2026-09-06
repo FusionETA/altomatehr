@@ -6,8 +6,19 @@ namespace AltomateHR.Api.Modules.Attendance;
 public interface IAttendanceService
 {
     Task<AttendanceRecordDto?> GetTodayAsync(string employeeId);
+
+    // The employee's still-running session, whatever day it started on. Usually
+    // that IS today's record; it differs only when a clock-out was forgotten,
+    // which is exactly the case the UI has to surface — clocking in is refused
+    // until the stale one is closed, so the client needs to know before the tap
+    // rather than after a rejected one.
+    Task<AttendanceRecordDto?> GetOpenSessionAsync(string employeeId);
     Task<IEnumerable<AttendanceRecordDto>> GetHistoryAsync(string userId, bool isAdmin);
-    Task<IEnumerable<AttendanceApprovalRequestDto>> GetTeamApprovalsAsync(string userId);
+    Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId);
+
+    // Today's attendance for the caller's direct reports — presence, not
+    // approvals. Members with no record yet are included.
+    Task<IEnumerable<TeamAttendanceMemberDto>> GetTeamTodayAsync(string userId);
     Task<AttendanceActionResult> ClockInAsync(string employeeId, ClockInDto dto);
     Task<AttendanceActionResult> ClockOutAsync(string employeeId, ClockOutDto dto);
     Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId);
@@ -67,6 +78,10 @@ public interface IAttendanceService
     // pass covers every org — the org-wide counterpart of the per-caller
     // GetPendingApprovalDigestAsync above.
     Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
+
+    // Resolves PENDING items that no longer have any approver to route to.
+    // `apply: false` only counts them. See the implementation for why.
+    Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 }
 
 // Ok=false carries a human-readable Error. Code distinguishes the off-site case

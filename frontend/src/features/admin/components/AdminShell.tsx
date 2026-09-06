@@ -14,6 +14,7 @@ import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
 import { AdminAttendance } from "./AdminAttendance";
 import { AdminClaims } from "./AdminClaims";
+import { AdminLeave } from "./AdminLeave";
 import { AdminOverview } from "./AdminOverview";
 
 export function AdminShell({
@@ -247,12 +248,7 @@ function AdminContent({
         />
       );
     case "leave":
-      return (
-        <EmptyModule
-          title="Leave"
-          body="Admin leave overview, balances and leave settings will live here."
-        />
-      );
+      return <AdminLeave />;
     case "audit":
       return (
         <EmptyModule

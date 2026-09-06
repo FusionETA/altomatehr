@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { Link2, LoaderCircle, Plus, RefreshCw } from "lucide-react";
 import { AccountEditorModal } from "./AccountEditorModal";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
@@ -7,6 +7,7 @@ import {
   createAccount,
   getAccounts,
   getXeroStatus,
+  type XeroStatus,
   restoreAccount,
   syncXeroAccounts,
   type ChartOfAccount,
@@ -55,7 +56,11 @@ export function AccountsSettings() {
   const [busyId, setBusyId] = useState<string | null>(null);
   // Null until known. While Xero is connected it owns the chart of accounts and
   // this screen mirrors it rather than authoring it.
-  const [xeroConnected, setXeroConnected] = useState<boolean | null>(null);
+  // The whole status, not just the boolean: an admin looking at a list Xero
+  // owns needs to know WHICH Xero owns it — an org with two Xero tenants can
+  // otherwise sync the wrong chart of accounts without a hint on screen.
+  const [xero, setXero] = useState<XeroStatus | null>(null);
+  const xeroConnected = xero === null ? null : xero.connected;
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   // Archived accounts are hidden by default. Syncing retires every Xero
@@ -80,8 +85,8 @@ export function AccountsSettings() {
 
   useEffect(() => {
     getXeroStatus()
-      .then((status) => setXeroConnected(status.connected))
-      .catch(() => setXeroConnected(false));
+      .then(setXero)
+      .catch(() => setXero({ connected: false, tenantName: null, tenantId: null, connectedAt: null }));
   }, []);
 
   async function handleSyncFromXero() {
@@ -169,6 +174,21 @@ export function AccountsSettings() {
               <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
               <p className="text-sm text-muted-foreground">
                 Xero owns these while it's connected. Add or rename an account in Xero, then sync.
+              </p>
+              {/* Which Xero. The status carried this all along and the screen
+                  dropped it, so "connected" was as much as anyone could tell. */}
+              <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full bg-success/10 px-3 py-1.5 text-xs font-bold text-success">
+                <Link2 className="h-3.5 w-3.5 shrink-0" />
+                Connected to {xero?.tenantName ?? "Xero"}
+                {xero?.connectedAt ? (
+                  <span className="font-semibold opacity-80">
+                    since {new Date(xero.connectedAt).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                ) : null}
               </p>
             </div>
             <button

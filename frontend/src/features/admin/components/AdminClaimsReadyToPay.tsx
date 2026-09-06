@@ -18,6 +18,10 @@ import {
   type XeroBillStage,
 } from "@/features/claims/api";
 import { getXeroStatus } from "@/features/settings/api";
+import {
+  CLAIMS_PAGE_SIZE,
+  PaginationControls,
+} from "@/features/claims/components/PaginationControls";
 import { formatCurrency, formatShortDate } from "@/features/claims/lib/claim-formatters";
 import {
   approvedAgeDays,
@@ -86,6 +90,7 @@ export function AdminClaimsReadyToPay({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
+  const [page, setPage] = useState(1);
 
   const matches = side === "PERSONAL" ? isReadyToPay : isSettledCompanySpend;
 
@@ -99,6 +104,16 @@ export function AdminClaimsReadyToPay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [claims, side],
   );
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / CLAIMS_PAGE_SIZE));
+  const paged = useMemo(
+    () => rows.slice((page - 1) * CLAIMS_PAGE_SIZE, page * CLAIMS_PAGE_SIZE),
+    [rows, page],
+  );
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const people = new Set(rows.map((claim) => claim.employeeId)).size;
   const owed = sumAmount(rows);
@@ -114,11 +129,12 @@ export function AdminClaimsReadyToPay({
   useEffect(() => {
     setSelected(new Set());
     setBulkResult(null);
+    setPage(1);
   }, [side]);
 
   const unsynced = useMemo(
-    () => rows.filter((claim) => claim.xeroSyncStatus !== "SYNCED"),
-    [rows],
+    () => paged.filter((claim) => claim.xeroSyncStatus !== "SYNCED"),
+    [paged],
   );
   const selectedRows = unsynced.filter((claim) => selected.has(claim.id));
 
@@ -321,7 +337,7 @@ export function AdminClaimsReadyToPay({
                 {unsynced.length > 0 ? (
                   <input
                     type="checkbox"
-                    aria-label="Select every claim still to push"
+                    aria-label="Select every claim on this page still to push"
                     checked={allSelected}
                     onChange={toggleAll}
                     className="h-4 w-4 cursor-pointer accent-primary"
@@ -425,7 +441,7 @@ export function AdminClaimsReadyToPay({
             ) : null}
 
             <div className="space-y-3">
-              {rows.map((claim) => {
+              {paged.map((claim) => {
                 const synced = claim.xeroSyncStatus === "SYNCED";
                 const failed = claim.xeroSyncStatus === "ERROR";
                 const waiting = approvedAgeDays(claim);
@@ -509,6 +525,13 @@ export function AdminClaimsReadyToPay({
                 );
               })}
             </div>
+
+            <PaginationControls
+              className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              currentPage={page}
+              totalItems={rows.length}
+              onPageChange={setPage}
+            />
           </section>
         </>
       )}
