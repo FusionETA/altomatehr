@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Teams.Entities;
 
 namespace AltomateHR.Api.Modules.Teams;
@@ -30,11 +31,16 @@ public class ApprovalChainService : IApprovalChainService
 {
     private readonly ITeamRepository _teams;
     private readonly ITeamMembershipRepository _memberships;
+    private readonly ISupervisionService _supervision;
 
-    public ApprovalChainService(ITeamRepository teams, ITeamMembershipRepository memberships)
+    public ApprovalChainService(
+        ITeamRepository teams,
+        ITeamMembershipRepository memberships,
+        ISupervisionService supervision)
     {
         _teams = teams;
         _memberships = memberships;
+        _supervision = supervision;
     }
 
     public async Task<IReadOnlyList<ApprovalStep>> GetChainAsync(string employeeId, ApprovalModule module)
@@ -50,6 +56,11 @@ public class ApprovalChainService : IApprovalChainService
         if (team is null) return [];
 
         var roster = await _memberships.GetByTeamAsync(team.Id);
+        // Admins/owners are oversight, not links in the chain — an admin sitting
+        // in a team must not become anyone's approver. Subtracted here rather
+        // than at the decision point so they never even APPEAR as an approver,
+        // including in the chain the UI shows. See OrgRoles.
+        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
         var labels = DeserializeList(team.LayerLabels);
         // Null → all layers approve (module unconfigured); a set (possibly empty)
         // → only those layers approve.
@@ -61,7 +72,9 @@ public class ApprovalChainService : IApprovalChainService
             if (allowedLayers is not null && !allowedLayers.Contains(layer)) continue;   // not a required approver layer
 
             var approvers = roster
-                .Where(m => m.Layer == layer && m.EmployeeId != employeeId)
+                .Where(m => m.Layer == layer
+                            && m.EmployeeId != employeeId
+                            && !administrative.Contains(m.EmployeeId))
                 .Select(m => m.EmployeeId)
                 .Distinct()
                 .ToList();
