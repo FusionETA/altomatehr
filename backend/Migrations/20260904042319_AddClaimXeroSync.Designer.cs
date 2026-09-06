@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260904042319_AddClaimXeroSync")]
+    partial class AddClaimXeroSync
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -419,37 +422,8 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
-                    b.Property<double?>("ClockInDistanceMeters")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("ClockInLat")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("ClockInLng")
-                        .HasColumnType("double");
-
-                    b.Property<string>("ClockInPhotoUrl")
-                        .HasMaxLength(400)
-                        .HasColumnType("varchar(400)");
-
-                    b.Property<double?>("ClockOutDistanceMeters")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("ClockOutLat")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("ClockOutLng")
-                        .HasColumnType("double");
-
-                    b.Property<string>("ClockOutPhotoUrl")
-                        .HasMaxLength(400)
-                        .HasColumnType("varchar(400)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("DurationMin")
-                        .HasColumnType("int");
 
                     b.Property<string>("EmployeeId")
                         .IsRequired()
@@ -459,9 +433,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int?>("LateByMin")
-                        .HasColumnType("int");
-
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -469,11 +440,6 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

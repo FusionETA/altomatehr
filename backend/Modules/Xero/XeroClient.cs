@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 
+using AltomateHR.Api.Modules.Xero.Dtos;
+
 namespace AltomateHR.Api.Modules.Xero;
 
 public class XeroClient : IXeroClient
@@ -16,6 +18,8 @@ public class XeroClient : IXeroClient
     private const string AccountsUrl = "https://api.xero.com/api.xro/2.0/Accounts";
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
+    private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
+    private const string BankTransactionsUrl = "https://api.xero.com/api.xro/2.0/BankTransactions";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -116,6 +120,116 @@ public class XeroClient : IXeroClient
         public string? MimeType { get; set; }
     }
 
+    // A bill is an Invoice of Type ACCPAY — Xero has one endpoint for both
+    // directions and the type is what separates money owed from money due.
+    //
+    // The caller chooses DRAFT or AUTHORISED. Xero shows AUTHORISED as
+    // "Awaiting payment": a live liability in aged payables. DRAFT is the
+    // reviewable version, which is what a cautious finance team wants.
+    public async Task<XeroBillResponse> CreateBillAsync(
+        string accessToken, string tenantId, XeroBillRequest bill)
+    {
+        var payload = new
+        {
+            Invoices = new[]
+            {
+                new
+                {
+                    Type = "ACCPAY",
+                    Contact = new { Name = bill.ContactName },
+                    // Xero wants dates as yyyy-MM-dd; sending an ISO instant
+                    // makes it guess, and it guesses in its own timezone.
+                    Date = bill.Date.ToString("yyyy-MM-dd"),
+                    DueDate = bill.DueDate.ToString("yyyy-MM-dd"),
+                    Reference = bill.Reference,
+                    CurrencyCode = bill.CurrencyCode,
+                    Status = bill.Status == XeroBillStatus.Draft ? "DRAFT" : "AUTHORISED",
+                    LineItems = bill.Lines.Select(line => new
+                    {
+                        line.Description,
+                        Quantity = 1,
+                        UnitAmount = line.Amount,
+                        AccountCode = line.AccountCode,
+                    }).ToArray(),
+                },
+            },
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, InvoicesUrl)
+        {
+            Content = JsonContent.Create(payload),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero bill creation failed.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroInvoicesPayload>(JsonOptions);
+        var created = result?.Invoices?.FirstOrDefault();
+
+        // A 200 with no invoice back means Xero accepted the call but created
+        // nothing — treated as a failure so the claim is never marked SYNCED
+        // against a bill that does not exist.
+        if (created is null || string.IsNullOrWhiteSpace(created.InvoiceID))
+            throw new XeroConnectionException("Xero accepted the bill but returned no invoice.");
+
+        return new XeroBillResponse(created.InvoiceID, created.InvoiceNumber ?? bill.Reference);
+    }
+
+    // Company-paid spend. Always AUTHORISED: unlike a bill, this records money
+    // that has ALREADY moved, so there is no meaningful draft state — the
+    // bank statement will show it either way.
+    public async Task<XeroSpendResponse> CreateSpendAsync(
+        string accessToken, string tenantId, XeroSpendRequest spend)
+    {
+        var payload = new
+        {
+            BankTransactions = new[]
+            {
+                new
+                {
+                    Type = "SPEND",
+                    Contact = new { Name = spend.ContactName },
+                    // By AccountID, not Code: a Xero bank account often has no
+                    // code at all, so the code is not a usable identifier.
+                    BankAccount = new { AccountID = spend.BankAccountId },
+                    Date = spend.Date.ToString("yyyy-MM-dd"),
+                    Reference = spend.Reference,
+                    CurrencyCode = spend.CurrencyCode,
+                    Status = "AUTHORISED",
+                    LineItems = spend.Lines.Select(line => new
+                    {
+                        line.Description,
+                        Quantity = 1,
+                        UnitAmount = line.Amount,
+                        AccountCode = line.AccountCode,
+                    }).ToArray(),
+                },
+            },
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, BankTransactionsUrl)
+        {
+            Content = JsonContent.Create(payload),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero spend-money failed.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroBankTransactionsPayload>(JsonOptions);
+        var created = result?.BankTransactions?.FirstOrDefault();
+
+        if (created is null || string.IsNullOrWhiteSpace(created.BankTransactionID))
+            throw new XeroConnectionException("Xero accepted the spend but returned no transaction.");
+
+        return new XeroSpendResponse(created.BankTransactionID);
+    }
+
     public async Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, AccountsUrl);
@@ -127,10 +241,13 @@ public class XeroClient : IXeroClient
         await EnsureSuccessAsync(response, "Xero account sync failed.");
 
         var payload = await response.Content.ReadFromJsonAsync<XeroAccountsPayload>(JsonOptions);
+        // Code is NOT required. Xero bank accounts routinely have none, and
+        // demanding one silently dropped every bank account before the sync
+        // could see it — which is why company-paid claims had nothing to spend
+        // from. Identity comes from AccountId; Code is a display nicety.
         return payload?.Accounts?
             .Where(a =>
                 !string.IsNullOrWhiteSpace(a.AccountId) &&
-                !string.IsNullOrWhiteSpace(a.Code) &&
                 !string.IsNullOrWhiteSpace(a.Name))
             .Select(a => new XeroAccountResponse(
                 a.AccountId ?? string.Empty,
@@ -249,6 +366,29 @@ public class XeroClient : IXeroClient
         public string? TenantId { get; set; }
         public string? TenantName { get; set; }
         public string? TenantType { get; set; }
+    }
+
+    private sealed class XeroBankTransactionsPayload
+    {
+        [JsonPropertyName("BankTransactions")]
+        public List<XeroBankTransactionPayload>? BankTransactions { get; set; }
+    }
+
+    private sealed class XeroBankTransactionPayload
+    {
+        public string? BankTransactionID { get; set; }
+    }
+
+    private sealed class XeroInvoicesPayload
+    {
+        [JsonPropertyName("Invoices")]
+        public List<XeroInvoicePayload>? Invoices { get; set; }
+    }
+
+    private sealed class XeroInvoicePayload
+    {
+        public string? InvoiceID { get; set; }
+        public string? InvoiceNumber { get; set; }
     }
 
     private sealed class XeroAccountsPayload

@@ -67,6 +67,13 @@ public class AppDbContext : DbContext
         claim.Property(c => c.PaymentType).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.Category).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.MileageUnitUsed).HasConversion<string>().HasMaxLength(20);
+        claim.Property(c => c.XeroSyncStatus).HasConversion<string>().HasMaxLength(20);
+
+        // A Xero bill belongs to exactly one claim, so a duplicate id means a
+        // double-push and the database should refuse it rather than leave two
+        // claims pointing at one bill. Filtered to non-null by MySQL's own
+        // treatment of nulls in unique indexes.
+        claim.HasIndex(c => c.XeroBillId).IsUnique();
 
         modelBuilder.Entity<Organization>()
             .Property(o => o.MileageUnit)

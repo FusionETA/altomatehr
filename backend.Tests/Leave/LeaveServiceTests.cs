@@ -850,6 +850,9 @@ public class LeaveServiceTests
         public Task DisconnectAsync() => throw new NotImplementedException();
         public Task<XeroSyncAccountsResultDto> SyncAccountsAsync() => throw new NotImplementedException();
         public Task<XeroSyncProjectsResultDto> SyncProjectsAsync() => throw new NotImplementedException();
+        public Task<XeroBillResponse> CreateBillAsync(XeroBillRequest b) => throw new NotImplementedException();
+        public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest s) => throw new NotImplementedException();
+        public Task<bool> IsConnectedAsync() => Task.FromResult(false);
     }
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser

@@ -10,6 +10,8 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Xero;
+using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -17,6 +19,10 @@ namespace AltomateHR.Api.Modules.Claims;
 public class ClaimsService : IClaimsService
 {
     private const ApprovalModule Module = ApprovalModule.CLAIMS;
+
+    // Same cap as the attendance bulk endpoints. A request larger than this is
+    // refused whole rather than half-applied.
+    private const int MaxBulkIds = 200;
 
     private readonly IClaimsRepository _repo;
     private readonly IClaimReceiptStorage _receiptStorage;
@@ -28,6 +34,7 @@ public class ClaimsService : IClaimsService
     private readonly IRealtimeService _realtime;
     private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
+    private readonly IXeroService _xero;
 
     public ClaimsService(
         IClaimsRepository repo,
@@ -39,7 +46,8 @@ public class ClaimsService : IClaimsService
         ICurrentUser currentUser,
         IRealtimeService realtime,
         IEmployeeRowResolver employees,
-        IProjectService projects)
+        IProjectService projects,
+        IXeroService xero)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
@@ -51,6 +59,7 @@ public class ClaimsService : IClaimsService
         _realtime = realtime;
         _employees = employees;
         _projects = projects;
+        _xero = xero;
     }
 
     // The caller's own claims.
@@ -60,20 +69,55 @@ public class ClaimsService : IClaimsService
     // Claims the caller can act on: an org approver sees the whole org; a
     // supervisor sees only their direct reports. Each row is labelled with the
     // applicant's email so the approver knows who filed it.
+    // A supervisor's team view: everything they can act on, plus their reports'
+    // settled claims so a decision does not vanish the moment it is made.
+    //
+    // It used to return PENDING only, which made the screen's Approved/Rejected
+    // filters unmatchable and left an approver unable to see what they had just
+    // signed off. CanAct marks the rows that are genuinely theirs to decide, so
+    // history is visible without offering buttons that would 404.
     public async Task<IEnumerable<Claim>> GetTeamAsync(string userId)
     {
         var all = await _repo.GetAllAsync();
+        var reportIds = (await _supervision.GetReportIdsAsync(userId)).ToHashSet(StringComparer.Ordinal);
+
+        var directory = await _employees.GetSnapshotAsync();
         var claims = new List<Claim>();
-        foreach (var c in all.Where(c => c.Status == ClaimStatus.PENDING))
+
+        foreach (var claim in all)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, c.EmployeeId, c.CurrentStep);
-            if (approvers.Contains(userId)) claims.Add(c);
+            var actionable = false;
+            IReadOnlyList<string> approvers = [];
+
+            if (claim.Status == ClaimStatus.PENDING)
+            {
+                approvers = await _router.CurrentApproversAsync(
+                    Module, claim.EmployeeId, claim.CurrentStep);
+                actionable = approvers.Contains(userId);
+            }
+
+            // Theirs to decide, or one of their people's — anything else is
+            // another supervisor's business.
+            if (!actionable && !reportIds.Contains(claim.EmployeeId)) continue;
+
+            claim.CanAct = actionable;
+
+            // Named only when it is NOT this approver's turn: telling someone a
+            // claim is waiting on themselves is noise, and the button says so.
+            claim.AwaitingApprovers = actionable
+                ? []
+                : approvers.Select(id => PersonLabel(directory, id)).ToList();
+
+            claims.Add(claim);
         }
 
         var emails = await _supervision.GetEmailsAsync(claims.Select(c => c.EmployeeId).Distinct());
-        foreach (var c in claims)
-            c.EmployeeEmail = emails.GetValueOrDefault(c.EmployeeId);
-        return claims;
+        foreach (var claim in claims)
+            claim.EmployeeEmail = emails.GetValueOrDefault(claim.EmployeeId);
+
+        // Newest first: a queue is read top-down, and the settled rows are
+        // history rather than work.
+        return claims.OrderByDescending(c => c.SubmittedAt).ToList();
     }
 
     public Task<Claim?> GetByIdAsync(string id) => _repo.GetByIdAsync(id);
@@ -215,6 +259,66 @@ public class ClaimsService : IClaimsService
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
+    // Approve many claims in one call. Each is judged independently — a claim the
+    // caller may not approve, or that someone else already decided, fails on its
+    // own line and never blocks the rest.
+    //
+    // Over-limit claims are deliberately EXCLUDED. ExceedsLimit marks a claim
+    // that blew past the account's spend limit, which is exactly the kind that
+    // wants a human looking at it; letting one ride along in a batch of twenty
+    // is how an over-limit claim gets approved without anyone reading it. They
+    // are refused with a reason so the approver knows to open them individually,
+    // rather than silently dropped.
+    public async Task<ClaimsBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new ClaimsBulkResult(0, ids.Count, [
+                new ClaimsBulkResultItem(string.Empty, false, $"Too many claims — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<ClaimsBulkResultItem>(ids.Count);
+        var approved = new List<Claim>();
+
+        // Distinct: the same id twice would otherwise be counted as two successes
+        // while only one claim moved.
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var (claim, error) = await AuthorizeAsync(id, approverId);
+            if (error is not null)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false, error.ErrorMessage ?? "You can't approve this claim."));
+                continue;
+            }
+
+            if (claim!.ExceedsLimit)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false,
+                    "Over the spend limit — approve this one on its own after reading it."));
+                continue;
+            }
+
+            var stepCount = await _router.StepCountAsync(Module, claim.EmployeeId);
+            if (claim.CurrentStep + 1 >= stepCount)
+                claim.Status = ClaimStatus.APPROVED;
+            else
+                claim.CurrentStep += 1;
+
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+            approved.Add(claim);
+            items.Add(new ClaimsBulkResultItem(id, true));
+        }
+
+        // Notify after every write lands, so a claimant refreshing on the first
+        // notification sees the whole batch settled rather than a partial state.
+        foreach (var claim in approved)
+            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
+
+        return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
+    }
+
     public async Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
         var (claim, error) = await AuthorizeAsync(id, approverId);
@@ -239,6 +343,181 @@ public class ClaimsService : IClaimsService
         // claimant needs to know.
         await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true);
         return new ClaimStatusTransitionResult(true, true, claim);
+    }
+
+    // Push an approved claim to Xero as a bill.
+    //
+    // Only APPROVED claims: a bill is a liability the org accepts, so pushing
+    // one before the chain has finished would commit money the approvers have
+    // not agreed to.
+    //
+    // Idempotent on XeroBillId rather than on status. Status could be reset by
+    // an edit; the bill id is proof a bill exists, and it is what stops a retry
+    // after a partial failure from billing the same claim twice.
+    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status)
+    {
+        var claim = await _repo.GetByIdAsync(id);
+        if (claim is null) return new ClaimXeroSyncResult(false, false, null);
+
+        if (!string.IsNullOrWhiteSpace(claim.XeroBillId))
+            return new ClaimXeroSyncResult(true, true, claim, AlreadySynced: true);
+
+        if (claim.Status != ClaimStatus.APPROVED)
+        {
+            return new ClaimXeroSyncResult(true, false, claim,
+                Error: "Only approved claims can be billed to Xero.");
+        }
+
+        var directory = await _employees.GetSnapshotAsync();
+        var identity = directory.ById(claim.EmployeeId);
+        var contactName = identity?.Name is { Length: > 0 } name
+            ? name
+            : identity?.Email ?? claim.EmployeeId;
+
+        // Xero wants its own account CODE, not our internal id.
+        var accountCode = claim.ChartOfAccountId is null
+            ? null
+            : (await _accounts.GetByIdAsync(claim.ChartOfAccountId))?.Code;
+
+        // A company-paid claim never created a debt — the money already left a
+        // company account — so it is a SPEND transaction, not a bill. Same
+        // button to the admin, genuinely different record in Xero.
+        if (claim.PaymentType == PaymentType.COMPANY)
+            return await RecordCompanySpendAsync(claim, accountCode, contactName);
+
+        var request = new XeroBillRequest(
+            ContactName: contactName,
+            Reference: claim.ClaimNumber,
+            Date: claim.SpentAt,
+            // Same day: a reimbursement is already overdue by the time it is
+            // approved — the employee has been out of pocket since they spent it.
+            DueDate: claim.SpentAt,
+            CurrencyCode: claim.Currency,
+            Status: status,
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+
+        try
+        {
+            var bill = await _xero.CreateBillAsync(request);
+
+            claim.XeroBillId = bill.BillId;
+            claim.XeroBillRef = bill.Reference;
+            claim.XeroSyncStatus = XeroSyncStatus.SYNCED;
+            claim.XeroSyncError = null;
+            claim.XeroSyncedAt = DateTime.UtcNow;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, true, claim);
+        }
+        catch (XeroConnectionException ex)
+        {
+            // The failure is recorded ON the claim, not just returned: an admin
+            // coming back tomorrow needs to see which claims failed and why
+            // without repeating every push to find out.
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = ex.Message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
+        }
+    }
+
+    // Company-paid: record where the money actually went.
+    //
+    // The contact is the MERCHANT, not the employee — nobody was out of pocket,
+    // so naming the employee would invent a payee who was never paid. Falls
+    // back to the claim title when no merchant was captured.
+    private async Task<ClaimXeroSyncResult> RecordCompanySpendAsync(
+        Claim claim, string? accountCode, string employeeName)
+    {
+        // A spend has to come from somewhere. Guessing the bank account would
+        // misstate a balance, so this refuses rather than picking one.
+        //
+        // The Xero id, not the local one: the account has to exist in Xero for
+        // the spend to land against it, and an account that was never synced
+        // has no id.
+        var bankId = claim.PayViaAccountId is null
+            ? null
+            : (await _accounts.GetByIdAsync(claim.PayViaAccountId))?.XeroAccountId;
+
+        if (string.IsNullOrWhiteSpace(bankId))
+        {
+            var message = "This claim's company account isn't linked to Xero, so there's nothing to spend from.";
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+            return new ClaimXeroSyncResult(true, false, claim, Error: message);
+        }
+
+        var spend = new XeroSpendRequest(
+            ContactName: Clean(claim.SpendingAt) ?? Clean(claim.SpendingWith) ?? claim.Title,
+            Reference: claim.ClaimNumber,
+            Date: claim.SpentAt,
+            CurrencyCode: claim.Currency,
+            BankAccountId: bankId,
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+
+        try
+        {
+            var result = await _xero.CreateSpendAsync(spend);
+
+            // Same columns as a bill: the id is whatever Xero object proves the
+            // claim landed, and the UI only needs to know that it did.
+            claim.XeroBillId = result.TransactionId;
+            claim.XeroBillRef = claim.ClaimNumber;
+            claim.XeroSyncStatus = XeroSyncStatus.SYNCED;
+            claim.XeroSyncError = null;
+            claim.XeroSyncedAt = DateTime.UtcNow;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+
+            return new ClaimXeroSyncResult(true, true, claim);
+        }
+        catch (XeroConnectionException ex)
+        {
+            claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+            claim.XeroSyncError = ex.Message;
+            claim.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(claim);
+            return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
+        }
+    }
+
+    // Bulk push. Sequenced HERE rather than in the browser: Xero rate-limits per
+    // tenant, and a client firing twenty parallel requests is how half a run
+    // lands and the rest 429s.
+    //
+    // Each claim is judged on its own — already-billed ones report as fine
+    // rather than as errors, since the desired end state is already true.
+    public async Task<ClaimsBulkResult> BulkSyncToXeroAsync(
+        IReadOnlyList<string> ids, XeroBillStatus status)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new ClaimsBulkResult(0, ids.Count, [
+                new ClaimsBulkResultItem(string.Empty, false, $"Too many claims — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<ClaimsBulkResultItem>(ids.Count);
+
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var result = await SyncToXeroAsync(id, status);
+
+            if (!result.Found)
+            {
+                items.Add(new ClaimsBulkResultItem(id, false, "Claim not found."));
+                continue;
+            }
+
+            items.Add(new ClaimsBulkResultItem(id, result.Ok, result.Ok ? null : result.Error));
+        }
+
+        return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
 
     public Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload) =>
@@ -314,6 +593,7 @@ public class ClaimsService : IClaimsService
 
         var parts = new List<string> { range, $"{count} claim(s)" };
         if (query.Status is { } status) parts.Add($"status {status}");
+        if (query.PaymentType is { } paymentType) parts.Add($"paid with {paymentType.ToString().ToLowerInvariant()} money");
         if (!string.IsNullOrWhiteSpace(query.EmployeeId)) parts.Add("one employee");
         if (!string.IsNullOrWhiteSpace(query.ProjectId)) parts.Add("one project");
 
@@ -523,6 +803,7 @@ public class ClaimsService : IClaimsService
         if (query.From is { } from && when < from.Date) return false;
         if (query.To is { } to && when > to.Date) return false;
         if (query.Status is { } status && claim.Status != status) return false;
+        if (query.PaymentType is { } paymentType && claim.PaymentType != paymentType) return false;
         if (!string.IsNullOrWhiteSpace(query.EmployeeId) && claim.EmployeeId != query.EmployeeId) return false;
         if (!string.IsNullOrWhiteSpace(query.ProjectId) && claim.ProjectId != query.ProjectId) return false;
         return true;
@@ -613,6 +894,17 @@ public class ClaimsService : IClaimsService
         }
 
         return stuck;
+    }
+
+    // Best available human label for a user id: directory name, else email,
+    // else the raw id so a row is never blank.
+    private static string PersonLabel(EmployeeRowIndex directory, string userId)
+    {
+        var name = directory.NameOf(userId);
+        if (!string.IsNullOrWhiteSpace(name)) return name;
+
+        var email = directory.EmailOf(userId);
+        return string.IsNullOrWhiteSpace(email) ? userId : email;
     }
 
     private static string GenerateClaimNumber() =>
@@ -777,7 +1069,29 @@ public class ClaimsService : IClaimsService
         return (claim, null);
     }
 
-    public async Task<IReadOnlyList<Claim>> GetAllForOrgAsync() => await _repo.GetAllAsync();
+    public async Task<IReadOnlyList<Claim>> GetAllForOrgAsync(string? approverId = null)
+    {
+        var claims = await _repo.GetAllAsync();
+        if (approverId is null) return claims;
+
+        var directory = await _employees.GetSnapshotAsync();
+
+        foreach (var claim in claims)
+        {
+            claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
+            if (claim.Status != ClaimStatus.PENDING) continue;
+
+            var approvers = await _router.CurrentApproversAsync(
+                Module, claim.EmployeeId, claim.CurrentStep);
+
+            claim.CanAct = approvers.Contains(approverId);
+            claim.AwaitingApprovers = claim.CanAct
+                ? []
+                : approvers.Select(id => PersonLabel(directory, id)).ToList();
+        }
+
+        return claims;
+    }
 }
 
 // Final values after claim rules are validated and calculated, ready to copy

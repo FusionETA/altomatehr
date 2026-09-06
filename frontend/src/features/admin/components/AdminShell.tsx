@@ -13,6 +13,7 @@ import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
 import { AdminAttendance } from "./AdminAttendance";
+import { AdminClaims } from "./AdminClaims";
 import { AdminLeave } from "./AdminLeave";
 import { AdminOverview } from "./AdminOverview";
 
@@ -233,14 +234,12 @@ function AdminContent({
     case "attendance":
       return <AdminAttendance />;
 
-    // Not yet rebuilt — faithful placeholders that mirror the real modules.
+    // Org-wide claims oversight: what needs attention, every claim behind it,
+    // and the month-end export/import.
     case "claims":
-      return (
-        <EmptyModule
-          title="Claims"
-          body="The company claims queue, payroll-ready view, and claim reports will live here."
-        />
-      );
+      return <AdminClaims />;
+
+    // Not yet rebuilt — faithful placeholders that mirror the real modules.
     case "payroll":
       return (
         <EmptyModule
