@@ -98,6 +98,7 @@ public class PartnerAuthService : IPartnerAuthService
             User = new PartnerUserDto
             {
                 Id = userId,
+                Name = user?.Name ?? string.Empty,
                 Email = user?.Email ?? string.Empty,
                 Role = membership?.Role ?? string.Empty,
             },

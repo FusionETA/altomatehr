@@ -23,7 +23,9 @@ public class SsoController : ControllerBase
 
     // GET /sso/launch/{app} — a signed-in user clicks e.g. "Appraisify". Rides
     // on the JWT session, mints a single-use ticket for the caller's active org,
-    // and 302-redirects to the app's callback with ?t=<ticket>. Only the ticket id
+    // and returns the app's callback URL with ?t=<ticket> for the frontend to
+    // navigate to. JSON, not a real 302: this endpoint needs the Bearer header,
+    // which a plain top-level browser navigation can't send. Only the ticket id
     // is on the wire — meaningless without the Redis entry.
     [HttpGet("launch/{app}")]
     public async Task<IActionResult> Launch(string app)
@@ -35,6 +37,6 @@ public class SsoController : ControllerBase
         var redirectUrl = await _partners.MintLaunchTicketAsync(app, userId, orgId);
         return redirectUrl is null
             ? NotFound(new { error = new { status = 404, message = $"Unknown or inactive app: {app}." } })
-            : Redirect(redirectUrl);
+            : Ok(new { redirectUrl });
     }
 }
