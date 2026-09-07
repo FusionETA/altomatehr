@@ -9,6 +9,8 @@ using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Xero;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Support;
 
 namespace AltomateHR.Api.Tests.Claims;
@@ -28,7 +30,8 @@ internal static class ClaimsTestFactory
         ICurrentUser? currentUser = null,
         IRealtimeService? realtime = null,
         IEmployeeRowResolver? employees = null,
-        IProjectService? projects = null) =>
+        IProjectService? projects = null,
+        IXeroService? xero = null) =>
         new(
             new FakeClaimsRepository(claims),
             receiptStorage ?? new FakeClaimReceiptStorage(),
@@ -39,7 +42,8 @@ internal static class ClaimsTestFactory
             currentUser ?? new FakeCurrentUser(),
             realtime ?? new FakeRealtimeService(),
             employees ?? new FakeEmployeeDirectory(),
-            projects ?? new FakeProjectServiceForExport());
+            projects ?? new FakeProjectServiceForExport(),
+            xero ?? new FakeXeroBillService());
 
     public static Claim NewClaim(
         string id,
@@ -140,7 +144,10 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
                     Code = "1000",
                     Name = "Company Bank",
                     Type = "BANK",
-                    IsSelectable = true,
+                    // Spends address the bank by its Xero id, so an account
+                    // that was never synced cannot be spent from.
+                    XeroAccountId = "xero-bank-1",
+                    IsSelectable = false,
                 },
             }.ToDictionary(a => a.Id);
 
@@ -217,6 +224,12 @@ internal sealed class FakeSupervisionService : ISupervisionService
 
     public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
 
+    // Tests that need an admin excluded from routing pass them here.
+    public HashSet<string> AdministrativeUserIds { get; init; } = [];
+
+    public Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
+        Task.FromResult<IReadOnlySet<string>>(AdministrativeUserIds);
+
     public async Task<bool> CanApproveAsync(string applicantId, string approverId, string? role)
     {
         if (IsOrgApprover(role)) return true;
@@ -249,4 +262,53 @@ internal sealed class FakeApprovalRouter : IApprovalRouter
 
     public Task<int> StepCountAsync(ApprovalModule module, string applicantId) =>
         Task.FromResult((_chains.GetValueOrDefault(applicantId) ?? []).Count);
+}
+
+
+// Records the bills it was asked to create, so a test can assert on WHAT was
+// pushed rather than only that something was. `Fail` makes it behave like a
+// Xero outage.
+internal sealed class FakeXeroBillService : IXeroService
+{
+    private readonly bool _connected;
+    private readonly string? _failWith;
+
+    public FakeXeroBillService(bool connected = true, string? failWith = null)
+    {
+        _connected = connected;
+        _failWith = failWith;
+    }
+
+    public List<XeroBillRequest> Created { get; } = [];
+    public string NextBillId { get; set; } = "xero-bill-1";
+
+    public Task<XeroBillResponse> CreateBillAsync(XeroBillRequest bill)
+    {
+        if (_failWith is not null) throw new XeroConnectionException(_failWith);
+
+        Created.Add(bill);
+        return Task.FromResult(new XeroBillResponse(NextBillId, "BILL-001"));
+    }
+
+    public List<XeroSpendRequest> Spends { get; } = [];
+
+    public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend)
+    {
+        if (_failWith is not null) throw new XeroConnectionException(_failWith);
+
+        Spends.Add(spend);
+        return Task.FromResult(new XeroSpendResponse("xero-spend-1"));
+    }
+
+    public Task<bool> IsConnectedAsync() => Task.FromResult(_connected);
+
+    public Task<XeroFileContent?> GetFileContentAsync(string fileId) =>
+        Task.FromResult<XeroFileContent?>(null);
+
+    public Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? r) => throw new NotImplementedException();
+    public Task<string> CompleteCallbackAsync(string c, string s) => throw new NotImplementedException();
+    public Task<XeroStatusDto> GetStatusAsync() => throw new NotImplementedException();
+    public Task DisconnectAsync() => throw new NotImplementedException();
+    public Task<XeroSyncAccountsResultDto> SyncAccountsAsync() => throw new NotImplementedException();
+    public Task<XeroSyncProjectsResultDto> SyncProjectsAsync() => throw new NotImplementedException();
 }

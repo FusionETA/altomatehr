@@ -29,7 +29,12 @@ public class LeaveServiceTests
     [Fact]
     public async Task ApplyAsync_ComputesInclusiveDaySpanAndStartsPending()
     {
-        var service = MakeService(types: [MakeType("t-al", "AL", 14)]);
+        // The chain matters to the assertion: an applicant with NO approver has
+        // their leave decided on submission, so "starts pending" is only true
+        // when somebody is actually above them.
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
 
         var result = await service.ApplyAsync(
             new CreateLeaveApplicationDto
@@ -43,6 +48,28 @@ public class LeaveServiceTests
         Assert.True(result.Ok);
         Assert.Equal(3, result.Application!.TotalDays);   // 1st..3rd inclusive
         Assert.Equal(LeaveStatus.PENDING, result.Application.Status);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_DecidesOnSubmission_WhenNobodyIsAboveTheApplicant()
+    {
+        // Top of the hierarchy: admins don't approve (see OrgRoles), so there is
+        // no step to route to. Left PENDING this application would never surface
+        // in a queue and could never be decided by anyone.
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)]);   // no chain
+
+        var result = await service.ApplyAsync(
+            new CreateLeaveApplicationDto
+            {
+                LeaveTypeId = "t-al",
+                StartDate = new DateTime(Year, 9, 1),
+                EndDate = new DateTime(Year, 9, 1),
+            },
+            "usr-boss");
+
+        Assert.True(result.Ok);
+        Assert.Equal(LeaveStatus.APPROVED, result.Application!.Status);
+        Assert.NotNull(result.Application.DecidedAt);
     }
 
     [Fact]
@@ -823,6 +850,9 @@ public class LeaveServiceTests
         public Task DisconnectAsync() => throw new NotImplementedException();
         public Task<XeroSyncAccountsResultDto> SyncAccountsAsync() => throw new NotImplementedException();
         public Task<XeroSyncProjectsResultDto> SyncProjectsAsync() => throw new NotImplementedException();
+        public Task<XeroBillResponse> CreateBillAsync(XeroBillRequest b) => throw new NotImplementedException();
+        public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest s) => throw new NotImplementedException();
+        public Task<bool> IsConnectedAsync() => Task.FromResult(false);
     }
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser

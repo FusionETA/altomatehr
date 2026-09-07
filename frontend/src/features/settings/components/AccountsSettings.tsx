@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, Plus } from "lucide-react";
+import { Link2, LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
   archiveAccount,
   createAccount,
   getAccounts,
+  getXeroStatus,
+  type XeroStatus,
   restoreAccount,
+  syncXeroAccounts,
   type ChartOfAccount,
   type SaveAccount,
 } from "../api";
@@ -22,6 +26,11 @@ const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50";
 const LABEL = "block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 const TH = "h-11 px-3 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground";
+
+// Matches the claims table's page size, so both admin lists page the same way.
+const ACCOUNTS_PER_PAGE = 10;
+
+type AccountTab = "EXPENSE" | "BANK";
 
 const emptyForm: SaveAccount = {
   code: "",
@@ -44,6 +53,26 @@ export function AccountsSettings() {
   const [form, setForm] = useState<SaveAccount>(emptyForm);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Null until known. While Xero is connected it owns the chart of accounts and
+  // this screen mirrors it rather than authoring it.
+  // The whole status, not just the boolean: an admin looking at a list Xero
+  // owns needs to know WHICH Xero owns it — an org with two Xero tenants can
+  // otherwise sync the wrong chart of accounts without a hint on screen.
+  const [xero, setXero] = useState<XeroStatus | null>(null);
+  const xeroConnected = xero === null ? null : xero.connected;
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  // Archived accounts are hidden by default. Syncing retires every Xero
+  // account a claim cannot be coded to — revenue, receivables, equity — and a
+  // list of struck-through "Sales" rows is noise on a screen whose job is
+  // showing what a claim CAN be coded to. Still reachable, because archiving
+  // has to be undoable.
+  const [showArchived, setShowArchived] = useState(false);
+  // Expense and bank accounts answer different questions — what a claim is
+  // coded TO versus what company money is spent FROM — and a Xero org has far
+  // more of the former, so they get their own lists.
+  const [tab, setTab] = useState<AccountTab>("EXPENSE");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     getAccounts()
@@ -51,6 +80,29 @@ export function AccountsSettings() {
       .catch((e: unknown) => setError(message(e, "Could not load accounts.")))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    getXeroStatus()
+      .then(setXero)
+      .catch(() => setXero({ connected: false, tenantName: null, tenantId: null, connectedAt: null }));
+  }, []);
+
+  async function handleSyncFromXero() {
+    setSyncing(true);
+    setError(null);
+    setSyncNote(null);
+    try {
+      const result = await syncXeroAccounts();
+      setAccounts(await getAccounts());
+      setSyncNote(
+        `${result.imported} added · ${result.updated} updated · ${result.skipped} skipped`,
+      );
+    } catch (e) {
+      setError(message(e, "Could not sync from Xero."));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -89,8 +141,73 @@ export function AccountsSettings() {
     }
   }
 
+  const ofTab = accounts.filter((account) => account.type === tab);
+  const archivedCount = ofTab.filter((account) => account.isArchived).length;
+  const visible = showArchived ? ofTab : ofTab.filter((account) => !account.isArchived);
+
+  // A Xero chart of accounts runs to dozens of expense codes; banks are a
+  // handful, so only the long list is paged.
+  const paged = tab === "EXPENSE"
+    ? visible.slice((page - 1) * ACCOUNTS_PER_PAGE, page * ACCOUNTS_PER_PAGE)
+    : visible;
+  const totalPages = Math.max(1, Math.ceil(visible.length / ACCOUNTS_PER_PAGE));
+
   return (
     <div className="space-y-5">
+      {/* Connected to Xero, Xero owns this list. The backend refuses hand-made
+          accounts outright — this swaps the form for the only action that still
+          makes sense, rather than leaving a form that can only 409. */}
+      {xeroConnected ? (
+        <section className={`${CARD} space-y-4`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
+              <p className="text-sm text-muted-foreground">
+                Xero owns these while it's connected. Add or rename an account in Xero, then sync.
+              </p>
+              {/* Which Xero. The status carried this all along and the screen
+                  dropped it, so "connected" was as much as anyone could tell. */}
+              <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full bg-success/10 px-3 py-1.5 text-xs font-bold text-success">
+                <Link2 className="h-3.5 w-3.5 shrink-0" />
+                Connected to {xero?.tenantName ?? "Xero"}
+                {xero?.connectedAt ? (
+                  <span className="font-semibold opacity-80">
+                    since {new Date(xero.connectedAt).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={handleSyncFromXero}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
+            >
+              {syncing ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Sync from Xero
+            </button>
+          </div>
+
+          {syncNote ? (
+            <p className="rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-xs text-muted-foreground">
+              {syncNote}
+            </p>
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            Spend limits and mileage settings stay editable below — those are this app's, not
+            Xero's.
+          </p>
+        </section>
+      ) : (
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
           <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
@@ -191,12 +308,45 @@ export function AccountsSettings() {
           Add account
         </button>
       </form>
+      )}
+
+      <OverflowTabList<AccountTab>
+        items={[
+          { id: "EXPENSE", label: "Expenses" },
+          { id: "BANK", label: "Bank accounts" },
+        ]}
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
+          setPage(1);
+          setShowArchived(false);
+        }}
+        variant="segmented"
+        ariaLabel="Account type"
+      />
 
       <div className={CARD}>
+        {archivedCount > 0 ? (
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchived((open) => !open);
+                setPage(1);
+              }}
+              className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+            >
+              {showArchived ? "Hide" : "Show"} {archivedCount} archived
+            </button>
+          </div>
+        ) : null}
+
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading accounts…</p>
-        ) : accounts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No accounts yet.</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {accounts.length === 0 ? "No accounts yet." : "No active accounts."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
@@ -210,7 +360,7 @@ export function AccountsSettings() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((account) => (
+                {paged.map((account) => (
                   <tr key={account.id} className="border-b border-border/60">
                     <td className="px-3 py-3 font-mono text-xs">{account.code}</td>
                     <td
@@ -245,6 +395,40 @@ export function AccountsSettings() {
             </table>
           </div>
         )}
+
+        {tab === "EXPENSE" && visible.length > ACCOUNTS_PER_PAGE ? (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              <span className="font-semibold text-foreground">
+                {(page - 1) * ACCOUNTS_PER_PAGE + 1}-
+                {Math.min(page * ACCOUNTS_PER_PAGE, visible.length)}
+              </span>{" "}
+              of <span className="font-semibold text-foreground">{visible.length}</span> accounts
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page === 1}
+                onClick={() => setPage((current) => current - 1)}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+              >
+                Previous
+              </button>
+              <span className="text-sm font-medium text-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => current + 1)}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

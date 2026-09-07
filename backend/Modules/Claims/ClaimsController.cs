@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.Ai.Dtos;
 using Microsoft.AspNetCore.RateLimiting;
@@ -39,6 +40,20 @@ public class ClaimsController : ControllerBase
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> GetTeam() =>
         Ok(await _claims.GetTeamAsync(GetUserId()));
+
+    // GET /claims/all — every claim in the org, for the admin dashboard to
+    // aggregate and drill into. Admin/Owner only: this is oversight over the
+    // whole org, not a personal or team queue.
+    //
+    // Declared BEFORE the {id} route so the literal "all" segment isn't read as
+    // a claim id.
+    [RequireScope("claims:read")]
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetAll() =>
+        // The caller's id so each row knows whether THEY can decide it: an
+        // admin is a chain layer too, and often the final one.
+        Ok(await _claims.GetAllForOrgAsync(GetUserId()));
 
     // GET /claims/{id}
     [RequireScope("claims:read")]
@@ -265,6 +280,41 @@ public class ClaimsController : ControllerBase
         var result = await _claims.ApproveAsync(id, GetUserId());
         return ToStatusTransitionResponse(result);
     }
+
+    // POST /claims/{id}/xero-sync — push an approved claim to Xero as a bill.
+    // Admin/Owner only: it writes into the org's accounting system.
+    //
+    // Idempotent — a claim already billed returns 200 with alreadySynced, not
+    // an error, so a double-click cannot produce a second bill.
+    [HttpPost("{id}/xero-sync")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> SyncToXero(string id, SyncClaimToXeroDto? dto)
+    {
+        var result = await _claims.SyncToXeroAsync(id, dto?.Status ?? XeroBillStatus.AwaitingPayment);
+
+        if (!result.Found) return NotFound();
+        if (!result.Ok) return BadRequest(new { message = result.Error, claim = result.Claim });
+
+        return Ok(new { alreadySynced = result.AlreadySynced, claim = result.Claim });
+    }
+
+    // POST /claims/bulk/xero-sync — push a set of approved claims in one call.
+    // Always 200: the body reports per claim, because a run where eighteen of
+    // twenty landed is not a failed request.
+    [HttpPost("bulk/xero-sync")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> BulkSyncToXero(BulkSyncClaimsToXeroDto dto) =>
+        Ok(await _claims.BulkSyncToXeroAsync(dto.Ids, dto.Status));
+
+    // POST /claims/bulk/approve — sign off many claims at once, as the
+    // current-step approver of each. Independent per-id success/failure, so the
+    // body is a report: always 200, even when some ids failed.
+    //
+    // No bulk reject counterpart on purpose — see BulkApproveClaimsDto.
+    [HttpPost("bulk/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkApprove(BulkApproveClaimsDto dto) =>
+        Ok(await _claims.BulkApproveAsync(dto.Ids, GetUserId()));
 
     // POST /claims/{id}/reject — the current-step approver in the claimant's chain.
     [HttpPost("{id}/reject")]

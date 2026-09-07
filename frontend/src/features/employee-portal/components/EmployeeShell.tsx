@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Building2, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
@@ -53,15 +53,24 @@ export function EmployeeShell({
       .catch(() => setOrganizationName(null));
   }, []);
 
-  useEffect(() => {
+  // Named so an approval can call it again. Fetched once on mount, the badge
+  // kept claiming work was waiting after the approver had already cleared it.
+  const refreshBadges = useCallback(() => {
     if (!isSupervisor) return;
     Promise.all([getTeamClaims().catch(() => []), getTeamLeave().catch(() => [])]).then(
       ([claims, leave]) => {
-        setClaimBadge(claims.filter((c) => c.status === "PENDING").length);
+        // canAct, not status. The team view now includes the whole team's
+        // claims, so counting every pending one would advertise work that
+        // belongs to a different step's approver.
+        setClaimBadge(claims.filter((c) => c.canAct).length);
         setLeaveBadge(leave.filter((l) => l.status === "PENDING").length);
       },
     );
   }, [isSupervisor]);
+
+  useEffect(() => {
+    refreshBadges();
+  }, [refreshBadges]);
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -294,7 +303,9 @@ export function EmployeeShell({
         <main className="flex-1 pb-28 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl px-6 py-6 sm:px-7 lg:px-8 lg:py-8">
             {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
-            {activeView === "claims" ? <ClaimsPage sub={sub ?? "claims-mine"} /> : null}
+            {activeView === "claims" ? (
+              <ClaimsPage sub={sub ?? "claims-mine"} onDecided={refreshBadges} />
+            ) : null}
             {activeView === "attendance" ? (
               <AttendanceView
                 sub={sub ?? "att-dashboard"}

@@ -49,6 +49,11 @@ public class StalePendingClaimDto
     public string EmployeeName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public int DaysPending { get; set; }
+
+    // Who the claim is currently sitting with — the approvers of the step it is
+    // stuck on. Empty means nobody is assigned to approve it, which is a worse
+    // problem than a slow approver and the UI calls it out separately.
+    public List<string> CurrentApprovers { get; set; } = new();
 }
 
 public class UpcomingClaimRunDto
@@ -73,4 +78,8 @@ public class OverturnedSupervisorDto
     public string SupervisorName { get; set; } = string.Empty;
     public int OverturnedCount { get; set; }
     public int AffectedEmployees { get; set; }
+
+    // The claims behind the count, so the admin can read them rather than take
+    // the number on trust.
+    public List<string> ClaimIds { get; set; } = new();
 }

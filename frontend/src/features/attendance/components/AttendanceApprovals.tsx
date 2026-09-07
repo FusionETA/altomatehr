@@ -417,9 +417,13 @@ function ApprovalTypeTabs({ value, onChange }: { value: ApprovalType; onChange: 
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`h-9 rounded-lg text-xs font-bold transition ${
+            // Same segmented treatment as StatusFilterTabs, so the two toggle
+            // bars on this screen don't read as different kinds of control.
+            // Solid primary looked like a button you press rather than the tab
+            // you're currently on.
+            className={`h-9 rounded-lg text-xs font-bold transition-colors ${
               active
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "bg-card text-primary shadow-sm"
                 : "text-muted-foreground hover:bg-card/70 hover:text-foreground"
             }`}
           >

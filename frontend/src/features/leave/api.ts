@@ -154,6 +154,11 @@ export const getOnLeaveToday = (date?: string) =>
   apiGet<OnLeaveToday[]>(`/leave/on-leave-today${date ? `?date=${date}` : ""}`);
 
 // --- Admin: overview & org-wide balances ---
+// Every application in the org, newest first — the admin history screen. The
+// overview's recentApplications stops at ten, which a filterable history can't
+// be built on.
+export const getAllLeaveApplications = () => apiGet<LeaveApplication[]>("/leave/all");
+
 export const getLeaveOverview = (year?: number) =>
   apiGet<LeaveOverview>(`/leave/overview${year ? `?year=${year}` : ""}`);
 export const getAllLeaveBalances = (year?: number) =>

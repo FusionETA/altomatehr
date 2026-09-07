@@ -7,6 +7,7 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Approvals;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Cron;
 using AltomateHR.Api.Modules.Auth;
@@ -260,6 +261,7 @@ builder.Services.AddScoped<ITeamRepository, TeamRepository>();
 builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>();
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
 builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
+builder.Services.AddScoped<IApprovalReconciliationService, ApprovalReconciliationService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
@@ -364,7 +366,11 @@ using (var scope = app.Services.CreateScope())
 
     // Demo org + users (admin@altomate.com / password123, …) are DEVELOPMENT-ONLY — never
     // create these accounts against a real database; they'd be a public backdoor.
-    if (app.Environment.IsDevelopment())
+    //
+    // Seed:DemoData exists because user-secrets only load in Development, so pointing a
+    // dev run at a REAL database is the one case where "Development" and "safe to seed"
+    // come apart. Set it to false and the demo rows are never written.
+    if (app.Environment.IsDevelopment() && app.Configuration.GetValue("Seed:DemoData", true))
     {
         var organizations = services.GetRequiredService<IOrganizationRepository>();
         var users = services.GetRequiredService<IUserRepository>();

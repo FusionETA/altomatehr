@@ -178,6 +178,27 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /* Tailwind v4's Preflight sets `button { cursor: default }` — a deliberate
+     change from v3 to match the raw browser default. The effect here was that
+     NOTHING in the app showed a pointer on hover: not the admin tiles, not the
+     table rows, not even the login button. Restoring it once is the fix; the
+     alternative is `cursor-pointer` on several hundred call sites, where the
+     next new button silently misses it again.
+
+     Disabled controls keep the default cursor, because they aren't clickable. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  /* Checkboxes, radios and selects are the same story — v4 leaves them on the
+     default cursor, and the checkbox in the payment run had already grown a
+     one-off `cursor-pointer` to work around it. */
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled) {
+    cursor: pointer;
+    }
   html,
   body,
   #root {

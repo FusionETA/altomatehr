@@ -101,6 +101,12 @@ public class AuthEndpointTests
                     ["Jwt:Audience"] = "altomatehr-client",
                     ["Jwt:AccessTokenMinutes"] = "15",
                     ["Jwt:RefreshTokenDays"] = "7",
+                    // This test logs in as the demo admin, so it needs the dev
+                    // seeder. Pinned here for the same reason the values above
+                    // are: the run must not depend on the developer's
+                    // user-secrets, which may disable seeding to point a local
+                    // run at a real database.
+                    ["Seed:DemoData"] = "true",
                 });
             });
 

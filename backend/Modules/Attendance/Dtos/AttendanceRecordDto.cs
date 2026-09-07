@@ -36,6 +36,9 @@ public class AttendanceRecordDto
     public string? DecidedAt { get; set; }
     public List<AttendanceApprovalRequestDto> Approvals { get; set; } = [];
 
+    // The day's stints, oldest first. Empty on endpoints that don't load them.
+    public List<AttendanceSessionDto> Sessions { get; set; } = [];
+
     public string? EmployeeEmail { get; set; }
     public string? Notes { get; set; }
     public string? Remark { get; set; }
@@ -46,4 +49,23 @@ public class AttendanceRecordDto
 public class RejectAttendanceDto
 {
     public string? ReviewNotes { get; set; }
+}
+
+// One clock-in/clock-out stint within a day.
+//
+// A day can hold several. Without these the record only reports its roll-up —
+// first start, last end, summed minutes — which reads as one long shift and
+// makes the total look wrong next to the span. The stints are what explain it.
+public class AttendanceSessionDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string StartedAt { get; set; } = string.Empty;   // ISO-8601 UTC
+    public string? EndedAt { get; set; }
+    public int? DurationMin { get; set; }
+    public int? LateByMin { get; set; }
+    public AttendanceStatus Status { get; set; }
+    public double? ClockInDistanceMeters { get; set; }
+    public double? ClockOutDistanceMeters { get; set; }
+    public string? ClockInPhotoUrl { get; set; }
+    public string? ClockOutPhotoUrl { get; set; }
 }

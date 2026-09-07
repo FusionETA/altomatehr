@@ -32,6 +32,14 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> GetMine() =>
         Ok(await _leave.GetMineAsync(GetUserId()));
 
+    // GET /leave/all — every application in the org. Admin history; the
+    // overview's recentApplications is capped at ten and can't be paged.
+    [RequireScope("leave:read")]
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetAllForOrg() =>
+        Ok(await _leave.GetAllForOrgAsync());
+
     // GET /leave/team — applications awaiting the caller as the current-step approver.
     [RequireScope("leave:read")]
     [HttpGet("team")]

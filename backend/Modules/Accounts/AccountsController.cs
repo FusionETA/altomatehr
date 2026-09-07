@@ -19,10 +19,21 @@ public class AccountsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _accounts.GetAllAsync());
 
+    // 409, not 400: the input is fine, the org's state forbids it — Xero owns
+    // the chart of accounts while it is connected.
     [Authorize(Roles = "Admin,Owner")]
     [HttpPost]
-    public async Task<IActionResult> Create(SaveChartOfAccountDto dto) =>
-        Ok(await _accounts.CreateAsync(dto));
+    public async Task<IActionResult> Create(SaveChartOfAccountDto dto)
+    {
+        try
+        {
+            return Ok(await _accounts.CreateAsync(dto));
+        }
+        catch (ChartOfAccountConflictException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
 
     [Authorize(Roles = "Admin,Owner")]
     [HttpPut("{id}")]

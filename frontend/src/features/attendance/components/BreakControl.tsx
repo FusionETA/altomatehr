@@ -59,19 +59,19 @@ export function BreakControl({ recordId, clockedIn, onChange }: Props) {
   return (
     <div className="mt-3 rounded-[24px] border border-border/60 bg-surface-low/50 p-4">
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Break
           </p>
-          <p className="mt-0.5 text-sm font-bold text-foreground">
-            {open ? `On break since ${clockTime(open.startedAt)}` : totalLabel(totalMin)}
+          <p className="mt-0.5 truncate text-sm font-bold text-foreground">
+            {open ? `Since ${clockTime(open.startedAt)}` : totalLabel(totalMin)}
           </p>
         </div>
         <button
           type="button"
           onClick={toggle}
           disabled={busy}
-          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition disabled:opacity-60 ${
+          className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition disabled:opacity-60 ${
             open
               ? "bg-primary text-primary-foreground hover:opacity-90"
               : "border border-border bg-card text-foreground hover:bg-secondary/50"
@@ -112,8 +112,8 @@ export function BreakControl({ recordId, clockedIn, onChange }: Props) {
 }
 
 function totalLabel(totalMin: number) {
-  if (totalMin === 0) return "None recorded today";
-  return `${totalMin}m taken today`;
+  if (totalMin === 0) return "None today";
+  return `${totalMin}m today`;
 }
 
 function clockTime(iso?: string | null) {
