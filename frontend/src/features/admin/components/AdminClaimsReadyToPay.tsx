@@ -31,6 +31,13 @@ import {
 } from "@/features/claims/lib/claim-insights";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
 import { claimIdsDrilldown, readyToPayDrilldown, type ClaimDrilldown } from "../lib/claims-drilldown";
 import { CardHead, EmptyState } from "./DashboardCard";
@@ -350,20 +357,29 @@ export function AdminClaimsReadyToPay({
 
               <div className="flex items-center gap-2">
                 <span className={EYEBROW}>Push to Xero as</span>
-                <select
+                {/* The shared Select, not a native one: a bare <select> drops
+                    to the OS menu — system font, blue highlight — beside
+                    controls that are all themed. */}
+                <Select
                   value={stage}
-                  onChange={(event) => setStage(event.target.value as XeroBillStage)}
+                  onValueChange={(value) => setStage(value as XeroBillStage)}
                   disabled={xeroConnected !== true || !isPersonal}
-                  title={
-                    isPersonal
-                      ? undefined
-                      : "Company spend has already left the account, so Xero records it as authorised either way."
-                  }
-                  className="h-9 rounded-full border border-border/60 bg-card px-3 text-xs font-bold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                 >
-                  <option value="AwaitingPayment">Awaiting payment</option>
-                  <option value="Draft">Draft</option>
-                </select>
+                  <SelectTrigger
+                    className="h-9 w-[168px] rounded-full bg-card text-xs font-bold"
+                    title={
+                      isPersonal
+                        ? undefined
+                        : "Company spend has already left the account, so Xero records it as authorised either way."
+                    }
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AwaitingPayment">Awaiting payment</SelectItem>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
