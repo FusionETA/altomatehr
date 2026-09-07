@@ -9,12 +9,23 @@ export type LeaveType = {
   paid: boolean;
   defaultDays: number;
   isArchived: boolean;
+  accrualMethod: "LUMP_SUM" | "PRO_RATED";
+  carryForward: boolean;
+  carryExpiryMonth: number | null;
+  maxCarryForwardDays: number | null;
+  prorateFirstYear: boolean;
 };
 export type SaveLeaveType = {
   code: string;
   name: string;
   paid: boolean;
   defaultDays: number;
+  // Backend restricts PRO_RATED and carryForward=true to the ANNUAL code —
+  // omit these and it defaults to LUMP_SUM / no carry-forward.
+  accrualMethod?: "LUMP_SUM" | "PRO_RATED";
+  carryForward?: boolean;
+  carryExpiryMonth?: number | null;
+  maxCarryForwardDays?: number | null;
 };
 
 export type LeaveApplication = {
