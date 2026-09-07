@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
@@ -36,6 +37,8 @@ public class LeaveService : ILeaveService
     private readonly IHolidayService _holidays;
     private readonly IRealtimeService _realtime;
     private readonly IEmployeeRowResolver _employees;
+    private readonly ITeamService _teams;
+    private readonly IProjectService _projects;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -50,7 +53,9 @@ public class LeaveService : ILeaveService
         IOrganizationService organizations,
         IHolidayService holidays,
         IRealtimeService realtime,
-        IEmployeeRowResolver employees)
+        IEmployeeRowResolver employees,
+        ITeamService teams,
+        IProjectService projects)
     {
         _apps = apps;
         _types = types;
@@ -65,6 +70,8 @@ public class LeaveService : ILeaveService
         _holidays = holidays;
         _realtime = realtime;
         _employees = employees;
+        _teams = teams;
+        _projects = projects;
     }
 
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
@@ -727,17 +734,61 @@ public class LeaveService : ILeaveService
         };
     }
 
-    // Balances for the caller's direct reports only — the supervisor view of
-    // the admin grid. Reuses the same bulk readers, so it stays one flat set
-    // of queries rather than one per report.
+    // Balances for the caller's team(s) — the supervisor view of the admin grid.
+    // Reuses the same bulk readers as GetOrgBalancesAsync, so it stays one flat
+    // set of queries rather than one per report.
+    //
+    // Two membership models feed this, same split as Attendance's team-presence
+    // (AttendanceService.GetTeamTodayAsync): real Teams (project-scoped, a
+    // supervisor can oversee several and switch between them) plus the flat
+    // OrganizationMembership.SupervisorId reports, for supervisors who don't use
+    // the Teams module. A report covered by both isn't double-counted as a plain
+    // report, but IS repeated once per supervised team they're on — same as
+    // Attendance, since "which of my sites is this person on" is a real question
+    // when they're on more than one.
     public async Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(
         string supervisorId, int year)
     {
+        var supervised = await _teams.GetSupervisedTeamsAsync(supervisorId);
         var reportIds = (await _supervision.GetReportIdsAsync(supervisorId)).ToHashSet();
-        if (reportIds.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
+        if (supervised.Count == 0 && reportIds.Count == 0)
+            return Array.Empty<EmployeeLeaveBalancesDto>();
 
-        return (await GetOrgBalancesAsync(year))
-            .Where(r => reportIds.Contains(r.UserId));
+        var orgBalances = (await GetOrgBalancesAsync(year)).ToDictionary(r => r.UserId);
+        var projectNames = supervised.Count == 0
+            ? new Dictionary<string, string>()
+            : (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
+
+        var rows = new List<EmployeeLeaveBalancesDto>();
+        var coveredByTeam = new HashSet<string>();
+
+        foreach (var team in supervised)
+        {
+            foreach (var employeeId in team.MemberIds)
+            {
+                if (!orgBalances.TryGetValue(employeeId, out var row)) continue;
+                rows.Add(new EmployeeLeaveBalancesDto
+                {
+                    UserId = row.UserId,
+                    Email = row.Email,
+                    Role = row.Role,
+                    Balances = row.Balances,
+                    TeamId = team.TeamId,
+                    TeamName = team.TeamName,
+                    ProjectId = team.ProjectId,
+                    ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
+                });
+                coveredByTeam.Add(employeeId);
+            }
+        }
+
+        foreach (var employeeId in reportIds)
+        {
+            if (coveredByTeam.Contains(employeeId)) continue;
+            if (orgBalances.TryGetValue(employeeId, out var row)) rows.Add(row);
+        }
+
+        return rows;
     }
 
     // Who is out on APPROVED leave on `today` — the admin dashboard panel.
