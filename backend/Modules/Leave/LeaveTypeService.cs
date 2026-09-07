@@ -41,6 +41,31 @@ public class LeaveTypeService : ILeaveTypeService
         return added;
     }
 
+    public async Task<int> EnsureDefaultsForOrganizationAsync(string organizationId)
+    {
+        // A brand-new org has no leave types yet, so unlike EnsureDefaultsAsync
+        // there's nothing to dedupe against — every default gets added.
+        // OrganizationId is set explicitly: AppDbContext's tenant stamp only
+        // fills in a BLANK OrganizationId, and at org-creation time the
+        // caller's ambient org (if any) is the OLD one, not this new one.
+        var now = DateTime.UtcNow;
+        foreach (var seed in LeaveDefaults.All)
+        {
+            await _repo.AddAsync(new LeaveType
+            {
+                OrganizationId = organizationId,
+                Code = seed.Code,
+                Name = seed.Name,
+                Paid = seed.Paid,
+                DefaultDays = seed.DefaultDays,
+                AccrualMethod = LeaveAccrualMethod.LUMP_SUM,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+        return LeaveDefaults.All.Count;
+    }
+
     public async Task<LeaveTypeSaveResult> CreateAsync(SaveLeaveTypeDto dto)
     {
         if (Validate(dto) is { } invalid)
