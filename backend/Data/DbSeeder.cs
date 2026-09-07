@@ -333,7 +333,10 @@ public static class DbSeeder
             UpdatedAt = now,
         };
 
-        await leaveTypes.AddAsync(make("AL", "Annual Leave", true, 14));
+        // Code must be ANNUAL, not an abbreviation — LeaveTypeService.IsAnnualCode
+        // (and LeaveDefaults.AnnualCode) key the pro-rated/carry-forward
+        // restriction off this exact code, so a seeded "AL" could never use them.
+        await leaveTypes.AddAsync(make("ANNUAL", "Annual Leave", true, 14));
         await leaveTypes.AddAsync(make("MC", "Medical Leave", true, 14));
         await leaveTypes.AddAsync(make("UL", "Unpaid Leave", false, 0));
     }
