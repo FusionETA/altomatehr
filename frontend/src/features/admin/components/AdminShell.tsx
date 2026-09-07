@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Bell, LogOut } from "lucide-react";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
-import { LeaveTypesSettings } from "@/features/settings/components/LeaveTypesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
@@ -226,8 +225,6 @@ function AdminContent({
       return <ProjectsSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
-    case "settings-leave":
-      return <LeaveTypesSettings />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.

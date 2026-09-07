@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Building2,
-  CalendarDays,
   FolderKanban,
   Network,
   ShieldCheck,
@@ -12,20 +11,12 @@ import {
 import { OrganizationSettings } from "./OrganizationSettings";
 import { ProjectsSettings } from "./ProjectsSettings";
 import { AccountsSettings } from "./AccountsSettings";
-import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { EmployeesSettings } from "./EmployeesSettings";
 import { PoliciesSettings } from "./PoliciesSettings";
 import { CompanyStructure } from "./CompanyStructure";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 
-type SettingsTab =
-  | "organization"
-  | "employees"
-  | "policies"
-  | "projects"
-  | "teams"
-  | "accounts"
-  | "leave";
+type SettingsTab = "organization" | "employees" | "policies" | "projects" | "teams" | "accounts";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "organization", label: "Organization", icon: Building2 },
@@ -34,7 +25,6 @@ const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "teams", label: "Teams", icon: Network },
   { id: "accounts", label: "Accounts", icon: Wallet },
-  { id: "leave", label: "Leave", icon: CalendarDays },
 ];
 
 export function SettingsView() {
@@ -69,7 +59,6 @@ export function SettingsView() {
       {tab === "projects" ? <ProjectsSettings /> : null}
       {tab === "teams" ? <CompanyStructure /> : null}
       {tab === "accounts" ? <AccountsSettings /> : null}
-      {tab === "leave" ? <LeaveTypesSettings /> : null}
     </div>
   );
 }
