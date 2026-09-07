@@ -116,7 +116,9 @@ export function LeaveTypesSettings() {
         <p>
           These days apply org-wide. To give a specific policy more or fewer days for a leave
           type, set an override under{" "}
-          <span className="font-semibold text-foreground">System Settings → Policies</span>.
+          <span className="font-semibold text-foreground">System Settings → Policies</span>. To
+          adjust one employee's entitlement instead, open them from the{" "}
+          <span className="font-semibold text-foreground">Balances</span> tab.
         </p>
       </div>
 
