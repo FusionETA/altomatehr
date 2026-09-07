@@ -88,6 +88,60 @@ public class ApprovalRoutingTests
         Assert.Equal(["lead"], await router.CurrentApproversAsync(ApprovalModule.LEAVE, "staff", 0));
     }
 
+    // --- what happens when a layer is removed underneath an in-flight request ---
+
+    [Fact]
+    public async Task RemovingAMiddleLayer_AdvancesToTheNextOneUp()
+    {
+        // staff → lead → manager → director. A request that the lead approved
+        // sits at step 1, the manager. Pull the manager out and step 1 must
+        // resolve to the DIRECTOR, not to nothing: the chain is rebuilt dense on
+        // every read, so the steps re-index and the request moves up.
+        var withManager = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1, ["manager"] = 2, ["director"] = 3 },
+            layerCount: 4,
+            administrative: []);
+        Assert.Equal(["manager"], await withManager.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 1));
+
+        var managerGone = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1, ["director"] = 3 },
+            layerCount: 4,
+            administrative: []);
+
+        Assert.Equal(["director"], await managerGone.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 1));
+        Assert.Equal(2, await managerGone.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+    }
+
+    [Fact]
+    public async Task RemovingTheLastLayer_LeavesTheRequestPastTheEnd()
+    {
+        // Same shape, but it's the top that goes. A request at step 1 is now
+        // beyond the last surviving layer, and every layer that was going to
+        // review it is gone — so there is nobody to route to, which is what the
+        // callers turn into "approved".
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1 },
+            layerCount: 4,
+            administrative: []);
+
+        Assert.Equal(1, await router.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+        Assert.Empty(await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 1));
+    }
+
+    [Fact]
+    public async Task AnEmptyLayerIsSkipped_NotTreatedAsAStepWithNobodyInIt()
+    {
+        // The reason the middle case works at all: a vacant layer never becomes
+        // a step, so it can't strand anything by sitting in the chain empty.
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["director"] = 3 },
+            layerCount: 4,
+            administrative: []);
+
+        Assert.Equal(1, await router.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+        Assert.Equal(["director"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
+    }
+
     private static ApprovalRouter Build(
         Dictionary<string, int> layers,
         int layerCount,
