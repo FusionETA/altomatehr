@@ -13,6 +13,7 @@ import { defaultSubOf, employeeNav, findNavItem } from "../lib/nav";
 import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
 import { EmptyModule } from "./EmptyModule";
+import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 
 function CountBadge({ count, className = "" }: { count: number; className?: string }) {
   if (count <= 0) return null;
@@ -39,6 +40,7 @@ export function EmployeeShell({
   const [claimBadge, setClaimBadge] = useState(0);
   const [leaveBadge, setLeaveBadge] = useState(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   // No org-wide attendance-approval endpoint yet, so this stays 0 (hidden).
   const attendanceBadge = 0;
@@ -244,13 +246,16 @@ export function EmployeeShell({
 
                     <button
                       type="button"
-                      disabled
-                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground opacity-60"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setChangePasswordOpen(true);
+                      }}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:bg-muted"
                     >
                       <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
                       <span>
                         <span className="block font-semibold text-foreground">Change password</span>
-                        <span className="block text-xs">Coming later</span>
+                        <span className="block text-xs">Signs out every device</span>
                       </span>
                     </button>
 
@@ -283,6 +288,18 @@ export function EmployeeShell({
             </div>
           </div>
         </header>
+
+        {/* A successful change revokes every session, this one included, so the
+            only coherent next step is the login screen. */}
+        {changePasswordOpen ? (
+          <ChangePasswordModal
+            onClose={() => setChangePasswordOpen(false)}
+            onChanged={() => {
+              setChangePasswordOpen(false);
+              onLogout();
+            }}
+          />
+        ) : null}
 
         {/* Mobile sub-nav strip for the active tab's sub-pages. */}
         {activeChildren.length > 1 ? (

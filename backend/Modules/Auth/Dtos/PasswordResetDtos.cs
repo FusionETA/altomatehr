@@ -21,3 +21,20 @@ public class ResetPasswordDto
     [Required, MinLength(8), MaxLength(100)]
     public string NewPassword { get; set; } = string.Empty;
 }
+
+// A signed-in user changing their own password.
+//
+// Distinct from a reset: identity is proved by knowing the CURRENT password
+// rather than by possessing the email, so this needs its own endpoint. Nothing
+// here identifies the user — that comes from the token, so one account can't
+// change another's.
+public class ChangePasswordDto
+{
+    [Required, MaxLength(100)]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    // Same minimum as the reset path, for the same reason: a floor, not
+    // composition rules the rest of the app doesn't impose.
+    [Required, MinLength(8), MaxLength(100)]
+    public string NewPassword { get; set; } = string.Empty;
+}

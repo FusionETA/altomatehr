@@ -22,4 +22,8 @@ public interface IAuthService
     // Redeems a code and sets the new password. Returns an error message on
     // failure, or null on success.
     Task<string?> ResetPasswordAsync(string email, string otp, string newPassword);
+
+    // Change your own password using the current one. Null on success,
+    // otherwise a message safe to show the caller.
+    Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
 }

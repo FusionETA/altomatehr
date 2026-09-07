@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { login, type AuthResponse } from "../api";
+import { ForgotPasswordForm } from "./ForgotPasswordForm";
 
 export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => void }) {
   // Prefilled with the demo user so it's easy to test.
@@ -8,6 +9,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
   const [password, setPassword] = useState("password123");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [forgot, setForgot] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,6 +23,12 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
     } finally {
       setLoading(false);
     }
+  }
+
+  // Carries the typed email across, so someone who got their password wrong
+  // doesn't retype the address they just used.
+  if (forgot) {
+    return <ForgotPasswordForm initialEmail={email} onBackToLogin={() => setForgot(false)} />;
   }
 
   return (
@@ -99,6 +107,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
 
               <button
                 type="button"
+                onClick={() => setForgot(true)}
                 className="text-center text-sm font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 Forgot your password?
