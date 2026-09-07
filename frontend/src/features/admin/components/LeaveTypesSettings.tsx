@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, Plus } from "lucide-react";
+import { Info, LoaderCircle, Plus } from "lucide-react";
 import {
   archiveLeaveType,
   createLeaveType,
@@ -111,6 +111,15 @@ export function LeaveTypesSettings() {
 
   return (
     <div className="space-y-5">
+      <div className="flex items-start gap-3 rounded-2xl bg-surface-low p-4 text-sm text-muted-foreground">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p>
+          These days apply org-wide. To give a specific policy more or fewer days for a leave
+          type, set an override under{" "}
+          <span className="font-semibold text-foreground">System Settings → Policies</span>.
+        </p>
+      </div>
+
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
           <h2 className="text-lg font-black text-foreground">Leave types</h2>
