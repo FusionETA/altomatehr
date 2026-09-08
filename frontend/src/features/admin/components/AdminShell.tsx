@@ -14,6 +14,7 @@ import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
 import { AdminAttendance } from "./AdminAttendance";
+import { ActivityLog } from "./ActivityLog";
 import { AdminClaims } from "./AdminClaims";
 import { AdminLeave } from "./AdminLeave";
 import { AdminOverview } from "./AdminOverview";
@@ -317,12 +318,7 @@ function AdminContent({
     case "leave":
       return <AdminLeave />;
     case "audit":
-      return (
-        <EmptyModule
-          title="Activity Log"
-          body="A per-organization activity feed of admin and employee actions will live here."
-        />
-      );
+      return <ActivityLog />;
 
     default:
       return <AdminOverview user={user} onOpen={onOpen} />;

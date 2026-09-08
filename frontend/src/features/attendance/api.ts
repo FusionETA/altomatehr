@@ -161,6 +161,87 @@ export type HoursBuckets = {
 export const getMyHoursSummary = (from: string, to: string) =>
   apiGet<HoursBuckets>(`/attendance/hours-summary/me?from=${from}&to=${to}`);
 
+// ---- Admin reports ----
+//
+// All org-wide, all Admin/Owner. The three filters narrow every one of them the
+// same way, resolved server-side so the tabs cannot disagree about who a filter
+// means. Dates are inclusive plain YYYY-MM-DD days.
+
+export type AdminAttendanceFilter = {
+  projectId?: string;
+  teamId?: string;
+  q?: string;
+};
+
+function reportQuery(from: string, to: string, filter: AdminAttendanceFilter = {}) {
+  const params = new URLSearchParams({ from, to });
+  if (filter.projectId) params.set("projectId", filter.projectId);
+  if (filter.teamId) params.set("teamId", filter.teamId);
+  if (filter.q?.trim()) params.set("q", filter.q.trim());
+  return params.toString();
+}
+
+export type EmployeeHoursRow = { employeeId: string; email: string | null; buckets: HoursBuckets };
+export type OrgHoursSummary = { totals: HoursBuckets; employees: EmployeeHoursRow[] };
+
+export const getOrgHoursSummary = (from: string, to: string, teamId?: string) =>
+  apiGet<OrgHoursSummary>(
+    `/attendance/hours-summary/org?from=${from}&to=${to}${teamId ? `&teamId=${teamId}` : ""}`,
+  );
+
+export type SupervisorPerformance = {
+  reviewerId: string;
+  reviewerName: string;
+  totalDecisions: number;
+  approvedCount: number;
+  rejectedCount: number;
+  // Decisions that took longer than the org's SLA.
+  slowDecisionCount: number;
+  avgDelayMinutes: number | null;
+  // Beside the average because an average of 40 minutes hides the one request
+  // that waited three days.
+  maxDelayMinutes: number | null;
+};
+
+export const getSupervisorPerformance = (
+  from: string,
+  to: string,
+  filter: AdminAttendanceFilter = {},
+) =>
+  apiGet<SupervisorPerformance[]>(
+    `/attendance/supervisor-performance?${reportQuery(from, to, filter)}`,
+  );
+
+export type ApprovalAuditEntry = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  kind: string;
+  status: string;
+  eventAt: string;
+  submittedAt: string;
+  decidedAt: string | null;
+  reviewerId: string | null;
+  reviewerName: string | null;
+  reviewNotes: string | null;
+  // Measured to the decision, or to now while still pending — so a stale
+  // pending row reads on the same scale as a slow decided one.
+  delayMinutes: number | null;
+};
+
+export const getApprovalAudit = (from: string, to: string, filter: AdminAttendanceFilter = {}) =>
+  apiGet<ApprovalAuditEntry[]>(`/attendance/approval-audit?${reportQuery(from, to, filter)}`);
+
+export type SelfieStorage = {
+  photoCount: number;
+  totalBytes: number;
+  // Photos a record points at that are no longer on disk.
+  missingCount: number;
+  oldestPhotoAt: string | null;
+};
+
+export const getSelfieStorage = () => apiGet<SelfieStorage>("/attendance/selfie-storage");
+
 // A break within today's session. `endedAt` null means it's still running.
 // Breaks go through the same approval chain as clock events, so they carry the
 // same approval rollup.

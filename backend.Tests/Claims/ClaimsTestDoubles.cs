@@ -207,6 +207,7 @@ internal sealed class FakeOrganizationService : IOrganizationService
 
 internal sealed class FakeCurrentUser : ICurrentUser
 {
+    public string? Email => "test@altomate.com";
     public string? UserId { get; init; } = "usr-emp";
     public string? OrganizationId { get; init; } = "org-demo";
     public string? Role { get; init; } = "Employee";
@@ -304,6 +305,9 @@ internal sealed class FakeTeamService : ITeamService
 // Xero outage.
 internal sealed class FakeXeroBillService : IXeroService
 {
+    public Task<IReadOnlyList<XeroCurrencyResponse>> GetCurrenciesAsync() =>
+        Task.FromResult<IReadOnlyList<XeroCurrencyResponse>>([new("MYR", "Malaysian Ringgit")]);
+
     private readonly bool _connected;
     private readonly string? _failWith;
 

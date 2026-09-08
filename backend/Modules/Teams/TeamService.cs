@@ -4,6 +4,8 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Teams.Entities;
 
+using AltomateHR.Api.Modules.Audit;
+
 namespace AltomateHR.Api.Modules.Teams;
 
 // Owns team CRUD + membership. Employee emails are resolved through the Auth
@@ -15,19 +17,22 @@ public class TeamService : ITeamService
     private readonly ISupervisionService _supervision;
     private readonly IApprovalChainService _chain;
     private readonly ITeamApprovalOverrideRepository _overrides;
+    private readonly IAuditService _audit;
 
     public TeamService(
         ITeamRepository teams,
         ITeamMembershipRepository memberships,
         ISupervisionService supervision,
         IApprovalChainService chain,
-        ITeamApprovalOverrideRepository overrides)
+        ITeamApprovalOverrideRepository overrides,
+        IAuditService audit)
     {
         _teams = teams;
         _memberships = memberships;
         _supervision = supervision;
         _chain = chain;
         _overrides = overrides;
+        _audit = audit;
     }
 
     public async Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
@@ -73,6 +78,14 @@ public class TeamService : ITeamService
             UpdatedAt = now,
         };
         await _teams.AddAsync(team);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.TeamCreate,
+            $"{team.Name} · {team.LayerCount} layers",
+            TargetType: "Team",
+            TargetId: team.Id,
+            Metadata: new { team.Name, team.ProjectId, team.LayerCount }));
+
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
 
@@ -86,6 +99,12 @@ public class TeamService : ITeamService
         if (clash is not null && clash.Id != id)
             return new TeamSaveResult(false, null, $"This project already has a team named \"{name}\".");
 
+        // Layer count and the per-module config together decide the approval
+        // chain, so both sides are recorded: shrinking the layers is what leaves
+        // a pending request with nobody above it.
+        var previousLayerCount = team.LayerCount;
+        var previousConfig = team.ModuleApprovalConfig;
+
         team.Name = name;
         team.LayerCount = dto.LayerCount;
         team.LayerLabels = Serialize(dto.LayerLabels);
@@ -96,6 +115,19 @@ public class TeamService : ITeamService
         // longer exist — prune them, same reasoning as healing stranded
         // approval requests on this same edit.
         await _overrides.DeleteLayersAboveAsync(id, dto.LayerCount);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.TeamUpdate,
+            team.Name,
+            TargetType: "Team",
+            TargetId: team.Id,
+            Metadata: new
+            {
+                team.Name,
+                Layers = new { From = previousLayerCount, To = team.LayerCount },
+                ModuleConfig = new { From = previousConfig, To = team.ModuleApprovalConfig },
+            }));
+
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
 
@@ -107,6 +139,16 @@ public class TeamService : ITeamService
         await _memberships.DeleteByTeamAsync(id);   // clear the roster first
         await _overrides.DeleteByTeamAsync(id);
         await _teams.DeleteAsync(id);
+
+        // Deleting a team removes every approval chain derived from it, which is
+        // exactly how requests end up with no approver to route to.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.TeamDelete,
+            $"{team.Name} and its whole roster",
+            TargetType: "Team",
+            TargetId: team.Id,
+            Metadata: new { team.Name, team.ProjectId, team.LayerCount }));
+
         return true;
     }
 
@@ -125,6 +167,7 @@ public class TeamService : ITeamService
 
         var now = DateTime.UtcNow;
         var existing = await _memberships.GetByTeamAndEmployeeAsync(teamId, dto.EmployeeId);
+        int? previousLayer = null;
         if (existing is null)
         {
             await _memberships.AddAsync(new TeamMembership
@@ -138,10 +181,31 @@ public class TeamService : ITeamService
         }
         else
         {
+            previousLayer = existing.Layer;
             existing.Layer = dto.Layer;
             existing.UpdatedAt = now;
             await _memberships.UpdateAsync(existing);
         }
+
+        // A layer move is the finest-grained change that alters an approval
+        // chain — this is the event that explains why a request suddenly routes
+        // somewhere else, or nowhere.
+        var who = known[dto.EmployeeId];
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.TeamMemberSet,
+            // Terse on purpose: the Action column already says "Team member
+            // added or moved", and the before → after lives in the expandable
+            // detail. Repeating all three made the row unreadable at a glance.
+            $"{who} → {team.Name} layer {dto.Layer}",
+            TargetType: "Team",
+            TargetId: team.Id,
+            Metadata: new
+            {
+                team.Name,
+                Employee = who,
+                dto.EmployeeId,
+                Layer = new { From = previousLayer, To = dto.Layer },
+            }));
 
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
@@ -152,10 +216,24 @@ public class TeamService : ITeamService
         if (team is null) return new TeamSaveResult(false, null, null);
 
         var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
-        if (membership is not null) await _memberships.DeleteAsync(membership.Id);
-        // Their whole override config is moot once they leave the team — a
-        // re-add later should start from a fresh default, not stale picks.
-        await _overrides.DeleteByTeamAndEmployeeAsync(teamId, employeeId);
+        if (membership is not null)
+        {
+            await _memberships.DeleteAsync(membership.Id);
+            // Their whole override config is moot once they leave the team — a
+            // re-add later should start from a fresh default, not stale picks.
+            await _overrides.DeleteByTeamAndEmployeeAsync(teamId, employeeId);
+
+            // Taking the last person out of a layer empties it. The chain skips
+            // empty layers, so this can silently shorten everyone's approval
+            // path — worth a row saying who did it.
+            var emails = await _supervision.GetEmailsAsync([employeeId]);
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.TeamMemberRemove,
+                $"{emails.GetValueOrDefault(employeeId, employeeId)} out of {team.Name}",
+                TargetType: "Team",
+                TargetId: team.Id,
+                Metadata: new { team.Name, EmployeeId = employeeId, membership.Layer }));
+        }
 
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }

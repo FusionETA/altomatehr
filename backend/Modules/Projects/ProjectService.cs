@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Projects.Dtos;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Projects.Entities;
 
 namespace AltomateHR.Api.Modules.Projects;
@@ -6,8 +7,13 @@ namespace AltomateHR.Api.Modules.Projects;
 public class ProjectService : IProjectService
 {
     private readonly IProjectRepository _repo;
+    private readonly IAuditService _audit;
 
-    public ProjectService(IProjectRepository repo) => _repo = repo;
+    public ProjectService(IProjectRepository repo, IAuditService audit)
+    {
+        _repo = repo;
+        _audit = audit;
+    }
 
     public async Task<IEnumerable<ProjectDto>> GetAllAsync() =>
         (await _repo.GetAllAsync()).Select(ToDto);
@@ -30,6 +36,14 @@ public class ProjectService : IProjectService
             // OrganizationId is auto-stamped by AppDbContext on save.
         };
         await _repo.AddAsync(project);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.ProjectCreate,
+            project.Name,
+            TargetType: "Project",
+            TargetId: project.Id,
+            Metadata: new { project.Name, project.Latitude, project.Longitude }));
+
         return ToDto(project);
     }
 
@@ -43,6 +57,17 @@ public class ProjectService : IProjectService
         project.Longitude = dto.Longitude;
         project.AllowedIps = dto.AllowedIps;
         await _repo.UpdateAsync(project);
+
+        // The geofence centre and the IP allowlist both decide whether an
+        // attendance clock-in is accepted, so a change to either is worth being
+        // able to place on a timeline.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.ProjectUpdate,
+            project.Name,
+            TargetType: "Project",
+            TargetId: project.Id,
+            Metadata: new { project.Name, project.Latitude, project.Longitude, project.AllowedIps }));
+
         return ToDto(project);
     }
 
@@ -53,6 +78,13 @@ public class ProjectService : IProjectService
 
         project.IsArchived = archived;
         await _repo.UpdateAsync(project);
+
+        await _audit.WriteAsync(new AuditEvent(
+            archived ? AuditActions.ProjectArchive : AuditActions.ProjectRestore,
+            project.Name,
+            TargetType: "Project",
+            TargetId: project.Id));
+
         return ToDto(project);
     }
 

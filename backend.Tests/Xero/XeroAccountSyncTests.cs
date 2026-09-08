@@ -7,6 +7,8 @@ using AltomateHR.Api.Modules.Xero.Entities;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 
+using AltomateHR.Api.Tests.Audit;
+
 namespace AltomateHR.Api.Tests.Xero;
 
 // A real Xero chart of accounts holds revenue, receivables, equity and
@@ -128,7 +130,8 @@ public class XeroAccountSyncTests
             repo,
             new FakeXeroAccountsClient(accounts),
             Provider,
-            Options.Create(new XeroOptions()));
+            Options.Create(new XeroOptions()),
+            new FakeAuditService());
     }
 
     private static readonly IDataProtectionProvider Provider =
@@ -140,6 +143,7 @@ public class XeroAccountSyncTests
 
 internal sealed class FakeXeroCurrentUser : ICurrentUser
 {
+    public string? Email => "test@altomate.com";
     public string? UserId => "usr-admin";
     public string? OrganizationId => "org-1";
     public string? Role => "Owner";
@@ -179,6 +183,9 @@ internal sealed class FakeXeroRepository : IXeroRepository
 
 internal sealed class FakeXeroAccountsClient : IXeroClient
 {
+    public Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string accessToken, string tenantId) =>
+        Task.FromResult(new List<XeroCurrencyResponse> { new("MYR", "Malaysian Ringgit") });
+
     private readonly List<XeroAccountResponse> _accounts;
 
     public FakeXeroAccountsClient(List<XeroAccountResponse> accounts) => _accounts = accounts;

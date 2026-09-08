@@ -12,8 +12,11 @@ export type BulkResult = {
 };
 
 export type BulkSelection<T> = {
-  // Phone-only selection mode. Off by default: the cards carry no checkbox of
-  // their own, so outside this mode a tap opens a row as it always did.
+  // Selection mode, at every width. Off by default: outside it neither the
+  // cards nor the desktop table carry a checkbox, so a tap or click opens a row
+  // as it always did. Desktop used to show a permanent checkbox column instead
+  // — with most rows already decided that was a column of greyed-out boxes
+  // reading as broken, and nothing named what it was for.
   mode: boolean;
   enter: () => void;
   exit: () => void;

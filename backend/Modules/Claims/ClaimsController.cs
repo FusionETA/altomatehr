@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AltomateHR.Api.Common.Tabular;
@@ -60,7 +61,7 @@ public class ClaimsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
-        var claim = await _claims.GetVisibleByIdAsync(id, GetUserId(), User.IsInRole("Admin"));
+        var claim = await _claims.GetVisibleByIdAsync(id, GetUserId(), User.IsAdministrative());
         return claim is null ? NotFound() : Ok(claim);
     }
 
@@ -174,7 +175,7 @@ public class ClaimsController : ControllerBase
         var receipt = await _claims.GetReceiptForUserAsync(
             fileName,
             GetUserId(),
-            User.IsInRole("Admin"));
+            User.IsAdministrative());
 
         if (receipt is null)
             return NotFound();
@@ -294,7 +295,7 @@ public class ClaimsController : ControllerBase
     {
         try
         {
-            var claim = await _claims.UpdateAsync(id, dto, GetUserId(), User.IsInRole("Admin"));
+            var claim = await _claims.UpdateAsync(id, dto, GetUserId(), User.IsAdministrative());
             return claim is null ? NotFound() : Ok(claim);
         }
         catch (ClaimValidationException ex)

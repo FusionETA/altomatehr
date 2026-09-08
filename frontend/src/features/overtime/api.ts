@@ -61,6 +61,11 @@ export const getOvertimeRate = (date: string, projectId?: string) => {
 
 export const getMyOvertime = () => apiGet<OvertimeRequest[]>("/overtime");
 export const getTeamOvertime = () => apiGet<OvertimeRequest[]>("/overtime/team");
+
+// Org-wide, for the admin attendance view. Distinct from getTeamOvertime,
+// which is approver-scoped and returns nothing to an admin — admins are never
+// in an approval chain.
+export const getAllOvertime = () => apiGet<OvertimeRequest[]>("/overtime/all");
 export const createOvertime = (body: CreateOvertimeRequest) => apiPost<OvertimeRequest>("/overtime", body);
 export const attachOvertimeAfterPhoto = (id: string, afterPhotoUrl: string) =>
   apiPost<OvertimeRequest>(`/overtime/${id}/after-photo`, { afterPhotoUrl });

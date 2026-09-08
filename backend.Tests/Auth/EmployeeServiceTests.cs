@@ -7,6 +7,8 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Dtos;
 using AltomateHR.Api.Modules.Employees.Entities;
 
+using AltomateHR.Api.Tests.Audit;
+
 namespace AltomateHR.Api.Tests.Auth;
 
 public class EmployeeServiceTests
@@ -90,7 +92,8 @@ public class EmployeeServiceTests
         return new EmployeeService(
             new FakeMembershipRepository(memberships),
             new FakeUserRepository(users),
-            new FakeLeaveService());
+            new FakeLeaveService(),
+            new FakeAuditService());
     }
 
     private static User User(string id, string email) => new()

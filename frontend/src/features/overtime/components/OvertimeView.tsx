@@ -9,6 +9,7 @@ import {
   type OvertimeRequest,
 } from "../api";
 import { OtRatePreview } from "./OtRatePreview";
+import { OvertimeStatusBadge } from "./OvertimeStatusBadge";
 import {
   overtimeMatchesStatus,
   overtimeStatusLabels,
@@ -54,23 +55,6 @@ function fmtDuration(minutes: number) {
   const m = minutes % 60;
   if (h <= 0) return `${m}m`;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-function statusClass(status: OvertimeRequest["status"]) {
-  if (status === "APPROVED") return "bg-secondary text-secondary-foreground";
-  if (status === "REJECTED") return "bg-destructive/10 text-destructive";
-  if (status === "CANCELLED") return "bg-muted text-muted-foreground";
-  return "bg-warning text-warning-foreground";
-}
-
-function OvertimeStatusBadge({ status }: { status: OvertimeRequest["status"] }) {
-  return (
-    <span
-      className={`inline-flex rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] ${statusClass(status)}`}
-    >
-      {overtimeStatusLabels[status]}
-    </span>
-  );
 }
 
 export function OvertimeView() {

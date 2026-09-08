@@ -12,6 +12,7 @@ using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Cron;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Ai;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
@@ -268,6 +269,9 @@ builder.Services.AddScoped<ITeamApprovalOverrideRepository, TeamApprovalOverride
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
 builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<IApprovalReconciliationService, ApprovalReconciliationService>();
+builder.Services.AddScoped<IAdminAttendanceService, AdminAttendanceService>();
+builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
@@ -394,7 +398,8 @@ using (var scope = app.Services.CreateScope())
         var overtime = services.GetRequiredService<IOvertimeRepository>();
         var overtimePhotos = services.GetRequiredService<IOvertimePhotoStorage>();
         var leaveApplications = services.GetRequiredService<ILeaveApplicationRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications);
+        var shifts = services.GetRequiredService<IShiftRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications, shifts);
     }
 }
 

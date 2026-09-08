@@ -9,6 +9,10 @@ public interface IXeroClient
     Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken);
     Task<List<XeroTenantResponse>> GetTenantsAsync(string accessToken);
     Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId);
+
+    // The currencies the Xero org is subscribed to. Anything else is refused
+    // when a bill is pushed, so this is what a claim may legally be filed in.
+    Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string accessToken, string tenantId);
     Task<List<XeroProjectResponse>> GetProjectsAsync(string accessToken, string tenantId);
 
     // Raw bytes of a file in Xero Files. Used to PROXY attachments to the

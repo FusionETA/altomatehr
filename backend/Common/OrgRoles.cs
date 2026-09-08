@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace AltomateHR.Api.Common;
 
 // The administrative roles, and the rule that they are NOT part of any
@@ -23,4 +25,13 @@ public static class OrgRoles
 
     public static bool IsAdministrative(string? role) =>
         role is not null && Administrative.Contains(role, StringComparer.OrdinalIgnoreCase);
+
+    // The same question asked of a signed-in caller.
+    //
+    // Controllers reached for User.IsInRole("Admin") for this, which silently
+    // excludes the Owner — the one seat guaranteed to exist in every org. That
+    // read as missing data rather than as a permission failure: an owner opening
+    // the org roll call was handed their own records and no error.
+    public static bool IsAdministrative(this ClaimsPrincipal user) =>
+        Administrative.Any(user.IsInRole);
 }

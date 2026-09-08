@@ -151,46 +151,4 @@ public class OvertimeBulkApproveTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-
-    private sealed class FakeOvertimeRepository : IOvertimeRepository
-    {
-        private readonly List<OvertimeRequest> _requests;
-
-        public FakeOvertimeRepository(IEnumerable<OvertimeRequest> requests) => _requests = requests.ToList();
-
-        public Task<List<OvertimeRequest>> GetAllAsync() => Task.FromResult(_requests.ToList());
-
-        public Task<OvertimeRequest?> GetByIdAsync(string id) =>
-            Task.FromResult(_requests.FirstOrDefault(r => r.Id == id));
-
-        public Task<List<OvertimeRequest>> GetByEmployeeAsync(string employeeId) =>
-            Task.FromResult(_requests.Where(r => r.EmployeeId == employeeId).ToList());
-
-        public Task<OvertimeRequest?> GetByPhotoUrlAsync(string photoUrl) =>
-            Task.FromResult(_requests.FirstOrDefault(r =>
-                r.BeforePhotoUrl == photoUrl || r.AfterPhotoUrl == photoUrl));
-
-        public Task<OvertimeRequest> AddAsync(OvertimeRequest request)
-        {
-            _requests.Add(request);
-            return Task.FromResult(request);
-        }
-
-        // The fakes hold the same instances the tests assert on, so an in-place
-        // mutation is already visible — nothing to write back.
-        public Task UpdateAsync(OvertimeRequest request) => Task.CompletedTask;
-    }
-
-    // Bulk approve never touches photo storage; it only reads AfterPhotoUrl off
-    // the request. Anything calling through here is a bug the test should show.
-    private sealed class UnusedPhotoStorage : IOvertimePhotoStorage
-    {
-        public Task<OvertimePhotoUploadResult> StoreAsync(OvertimePhotoUpload upload) =>
-            throw new NotImplementedException();
-
-        public Task<OvertimePhotoFileResult?> GetAsync(string fileName) =>
-            throw new NotImplementedException();
-
-        public Task<bool> DeleteAsync(string fileName) => throw new NotImplementedException();
-    }
 }

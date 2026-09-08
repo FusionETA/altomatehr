@@ -142,20 +142,6 @@ export const claimSettlementHints: Record<ClaimSettlement, string> = {
     "Approved out-of-pocket claims are reimbursed through the employee's pay and collected in the payroll export instead of going to Xero.",
 };
 
-// The payroll reimbursement run: approved out-of-pocket claims routed to
-// payroll, one row per employee. Omit `month` for the run currently open.
-export function exportPayrollReimbursements(
-  format: ExportFormat,
-  month?: string,
-): Promise<ApiFile> {
-  const query = new URLSearchParams({ format });
-  if (month) query.set("month", month);
-  return apiGetFile(
-    `/claims/export/payroll?${query.toString()}`,
-    `payroll-reimbursements.${format}`,
-  );
-}
-
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 
@@ -220,7 +206,6 @@ function getApiPath(receiptUrl: string) {
 // Spreadsheet formats the summary export speaks. PDF is write-only — you file
 // it or send it, you don't upload it back.
 export type ExportFormat = "csv" | "xlsx" | "pdf";
-export type ImportFormat = Extract<ExportFormat, "csv" | "xlsx">;
 
 // Mirrors ClaimsExportQueryDto. Everything optional — an empty filter exports
 // every claim in the org.
@@ -235,16 +220,6 @@ export type ClaimsExportFilters = {
   paymentType?: "PERSONAL" | "COMPANY";
   employeeId?: string;
   projectId?: string;
-};
-
-// Mirrors TabularImportResult. Skipped is not a failure: the importer is
-// append-only and idempotent, so re-uploading a corrected file reports the rows
-// that already landed as skipped rather than duplicating them.
-export type ClaimsImportResult = {
-  imported: number;
-  skipped: number;
-  failed: number;
-  errors: { row: number; message: string }[];
 };
 
 function toQuery(params: Record<string, string | undefined>) {
@@ -262,16 +237,6 @@ export function exportClaimsSummary(
 ): Promise<ApiFile> {
   const query = toQuery({ ...filters, format });
   return apiGetFile(`/claims/export/summary${query}`, `claims-summary.${format}`);
-}
-
-export function downloadClaimsImportTemplate(format: ImportFormat): Promise<ApiFile> {
-  return apiGetFile(`/claims/import/template?format=${format}`, `claims-import-template.${format}`);
-}
-
-export function importClaims(file: File) {
-  const formData = new FormData();
-  formData.append("file", file);
-  return apiPostForm<ClaimsImportResult>("/claims/import", formData);
 }
 
 // ---- Claim settings ----
