@@ -394,7 +394,8 @@ using (var scope = app.Services.CreateScope())
         var overtime = services.GetRequiredService<IOvertimeRepository>();
         var overtimePhotos = services.GetRequiredService<IOvertimePhotoStorage>();
         var leaveApplications = services.GetRequiredService<ILeaveApplicationRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications);
+        var shifts = services.GetRequiredService<IShiftRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications, shifts);
     }
 }
 
