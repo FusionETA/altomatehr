@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import {
@@ -27,6 +27,7 @@ import {
   SelectModeButton,
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
+import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
@@ -49,7 +50,7 @@ export function LeaveApprovals() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
 
-  useEffect(() => {
+  const loadTeam = useCallback(() => {
     Promise.all([getTeamLeave(), getLeaveTypes()])
       .then(([t, ty]) => {
         setTeam(t);
@@ -58,6 +59,12 @@ export function LeaveApprovals() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(loadTeam, [loadTeam]);
+
+  // Someone else deciding or submitting a leave request refreshes this queue
+  // live instead of waiting for a manual reload.
+  useRealtimeEvent(["LEAVE"], loadTeam);
 
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
   const employeeName = (a: LeaveApplication) => (a.employeeEmail ? buildName(a.employeeEmail) : "—");

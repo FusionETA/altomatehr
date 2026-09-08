@@ -5,6 +5,7 @@ import { AdminShell } from "./features/admin/components/AdminShell";
 import { EmployeeShell } from "./features/employee-portal/components/EmployeeShell";
 import { LoadingScreen } from "./shared/components/LoadingScreen";
 import { setAuthToken } from "./shared/lib/api-client";
+import { connectRealtime, disconnectRealtime } from "./shared/lib/realtime-client";
 import type { SignedInUser } from "./shared/types/session";
 
 // Admins and owners get the admin portal; everyone else (supervisors,
@@ -24,11 +25,14 @@ function App() {
       .then((res) => {
         setAuthToken(res.token);
         setUser({ email: res.email, role: res.role });
+        connectRealtime();
       })
       .catch(() => {
         /* no valid refresh cookie: stay logged out */
       })
       .finally(() => setBooting(false));
+
+    return () => disconnectRealtime();
   }, []);
 
   if (booting) {
@@ -41,12 +45,14 @@ function App() {
         onSuccess={(res) => {
           setAuthToken(res.token);
           setUser({ email: res.email, role: res.role });
+          connectRealtime();
         }}
       />
     );
   }
 
   const handleLogout = async () => {
+    disconnectRealtime();
     await logout().catch(() => {});
     setAuthToken(null);
     setUser(null);

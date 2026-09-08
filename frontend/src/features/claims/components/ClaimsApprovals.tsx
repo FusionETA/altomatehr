@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { LoaderCircle, TriangleAlert, X } from "lucide-react";
 import {
@@ -32,6 +32,7 @@ import {
   SelectModeButton,
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
+import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -54,12 +55,18 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
 
-  useEffect(() => {
+  const loadClaims = useCallback(() => {
     getTeamClaims()
       .then(setClaims)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(loadClaims, [loadClaims]);
+
+  // Another admin (or the employee) acting on a claim shows up here without
+  // waiting for a manual refresh or a page reload.
+  useRealtimeEvent(["CLAIMS"], loadClaims);
 
   useEffect(() => {
     getAccounts()

@@ -182,6 +182,27 @@ export function saveFile({ blob, fileName }: ApiFile) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// Opens a streaming (e.g. SSE) response. Kept here rather than in the caller
+// because only this module holds `authToken` — EventSource can't attach it as
+// a header, so any long-lived stream has to go through `fetch` like every
+// other request.
+export async function apiOpenStream(path: string, signal: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    throw new ApiError(`GET ${path} failed: ${res.status}`, res.status);
+  }
+
+  return res;
+}
+
 export const apiGet = <T>(path: string) => request<T>("GET", path);
 export const apiPost = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
 export const apiPostForm = <T>(path: string, body: FormData) =>
