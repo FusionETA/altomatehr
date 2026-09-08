@@ -15,10 +15,15 @@ public static class TabularPdfRenderer
 {
     private const string Ink = "#1e1a2b";
     private const string Muted = "#6b6577";
-    private const string HeaderBg = "#f1eff5";
+    // The table header is a solid dark band with white type, matching the report
+    // production has been sending finance for years — it is the single strongest
+    // cue that two exports came out of the same system.
+    private const string HeaderBg = "#1f3352";
+    private const string HeaderInk = "#ffffff";
     private const string AltRow = "#fafafa";
     private const string White = "#ffffff";
     private const string TotalsBg = "#f1eff5";
+    private const string CardBorder = "#e3e0e8";
 
     // Landscape A4 is ~760pt of usable width. Past roughly this many columns the
     // cells get too narrow to read, which is why the modules hand the PDF a
@@ -46,7 +51,7 @@ public static class TabularPdfRenderer
             page.Header().Element(h => Heading(h, header, null));
             page.Content().PaddingTop(32).Text("Nothing to report for this selection.")
                 .FontSize(8).FontColor(Muted);
-            page.Footer().Element(Footer);
+            page.Footer().Element(f => Footer(f, header));
         });
 
     private static void SheetPages(IDocumentContainer doc, TabularPdfHeader header, TabularSheet sheet) =>
@@ -55,7 +60,11 @@ public static class TabularPdfRenderer
             Frame(page);
             page.Header().Element(h => Heading(h, header, sheet));
 
-            page.Content().PaddingTop(8).Element(content =>
+            page.Content().PaddingTop(8).Column(body =>
+            {
+                if (sheet.Summary.Count > 0) body.Item().Element(c => SummaryBand(c, sheet));
+
+                body.Item().Element(content =>
             {
                 if (sheet.Rows.Count == 0 && sheet.TotalsRow is null)
                 {
@@ -81,7 +90,8 @@ public static class TabularPdfRenderer
                     {
                         foreach (var head in sheet.Headers)
                             h.Cell().Background(HeaderBg).PaddingVertical(5).PaddingHorizontal(3)
-                                .Text(head).FontSize(6.5f).Bold().FontColor(Ink);
+                                .Text(head.ToUpperInvariant())
+                                .FontSize(6.5f).Bold().FontColor(HeaderInk).LetterSpacing(0.04f);
                     });
 
                     var index = 0;
@@ -111,8 +121,9 @@ public static class TabularPdfRenderer
                     }
                 });
             });
+            });
 
-            page.Footer().Element(Footer);
+            page.Footer().Element(f => Footer(f, header));
         });
 
     private static void Frame(PageDescriptor page)
@@ -126,9 +137,16 @@ public static class TabularPdfRenderer
     private static void Heading(IContainer container, TabularPdfHeader header, TabularSheet? sheet) =>
         container.Column(col =>
         {
-            col.Item().Text(header.OrganizationName).FontSize(13).Bold();
-            col.Item().Text(sheet is null ? header.Title : $"{header.Title} – {sheet.Name}")
-                .FontSize(10.5f).FontColor(Muted);
+            col.Item().Text(header.OrganizationName.ToUpperInvariant())
+                .FontSize(13).Bold().FontColor(HeaderBg);
+
+            // The sheet name is only worth appending when it says something the
+            // title does not. "Claims Report – Claims" was the old output: the
+            // suffix is for multi-sheet reports, not for one that repeats itself.
+            var subtitle = sheet is null || Echoes(header.Title, sheet.Name)
+                ? header.Title
+                : $"{header.Title} – {sheet.Name}";
+            col.Item().Text(subtitle).FontSize(10.5f).FontColor(Muted);
 
             // The filters live on the page, not just in the filename: a printed
             // report has to say what it covers, because the file it came from is
@@ -140,11 +158,41 @@ public static class TabularPdfRenderer
             col.Item().PaddingTop(6).LineHorizontal(0.75f).LineColor(Muted);
         });
 
-    private static void Footer(IContainer container) =>
+    // The headline figures, as bordered cards above the table. A printed report
+    // gets read away from the screen that produced it, so the two numbers an
+    // approver actually wants have to be on the page rather than inferred by
+    // scanning rows.
+    private static void SummaryBand(IContainer container, TabularSheet sheet) =>
+        container.PaddingBottom(10).Row(row =>
+        {
+            foreach (var (label, value) in sheet.Summary)
+            {
+                row.AutoItem().PaddingRight(8).Border(0.75f).BorderColor(CardBorder)
+                    .PaddingVertical(6).PaddingHorizontal(10)
+                    .Column(card =>
+                    {
+                        card.Item().Text(label.ToUpperInvariant())
+                            .FontSize(6).FontColor(Muted).LetterSpacing(0.08f);
+                        card.Item().PaddingTop(2).Text(value).FontSize(11).Bold().FontColor(Ink);
+                    });
+            }
+
+            row.RelativeItem();   // soaks up the rest so the cards stay left-packed
+        });
+
+    // "Claims Report" vs "Claims" — one already contains the other, so joining
+    // them adds nothing.
+    private static bool Echoes(string title, string sheetName) =>
+        title.Contains(sheetName, StringComparison.OrdinalIgnoreCase) ||
+        sheetName.Contains(title, StringComparison.OrdinalIgnoreCase);
+
+    private static void Footer(IContainer container, TabularPdfHeader header) =>
         container.PaddingTop(8).Row(row =>
         {
+            // The org name repeats down here because a page torn out of a
+            // stapled report has to still say whose report it is.
             row.RelativeItem()
-                .Text($"Generated on {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC")
+                .Text($"{header.OrganizationName} · Generated {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC")
                 .FontSize(7).FontColor(Muted);
 
             row.RelativeItem().AlignRight().Text(t =>

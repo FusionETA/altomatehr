@@ -230,6 +230,26 @@ public class ClaimsXeroSyncTests
     }
 
     [Fact]
+    public async Task SyncToXeroAsync_RefusesAClaimCodedToAnAccountXeroDoesNotHave()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED);
+        // acct-expense is a local account with no XeroAccountId.
+        claim.ChartOfAccountId = "acct-expense";
+
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.False(result.Ok);
+        // Nothing was pushed: Xero rejects the whole document over one bad code,
+        // and its reply is a validation dump. Say which account instead.
+        Assert.Empty(xero.Created);
+        Assert.Contains("doesn't exist in Xero", claim.XeroSyncError);
+        Assert.Equal(XeroSyncStatus.ERROR, claim.XeroSyncStatus);
+    }
+
+    [Fact]
     public async Task SyncToXeroAsync_ReturnsNotFoundForAnUnknownClaim()
     {
         var service = CreateService([], xero: new FakeXeroBillService());

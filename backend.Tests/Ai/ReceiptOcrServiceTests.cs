@@ -3,7 +3,9 @@ using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Accounts.Dtos;
 using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations.Dtos;
+using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Tests.Ai;
 
@@ -216,6 +218,11 @@ public class ReceiptOcrServiceTests
 
     private sealed class FakeOrganizationService : IOrganizationService
     {
+        public Task<OrganizationDto?> SetClaimSettingsAsync(
+            string organizationId, int cutoffDay, ClaimSettlement settlementRoute,
+            XeroBillStatus xeroBillStage) =>
+            throw new NotSupportedException();
+
         public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
             Task.FromResult<OrganizationDto?>(new OrganizationDto
             {

@@ -85,6 +85,44 @@ public class EmployeeServiceTests
         Assert.Null(result.Employee!.SupervisorId);
     }
 
+    [Fact]
+    public async Task UpdateAsync_DoesNotWipeProfileFieldsAnUpdateOmits()
+    {
+        var service = MakeService(out var memberships);
+        var membership = memberships.Single(m => m.UserId == "usr-emp");
+        membership.EmployeeNumber = "E-014";
+        membership.JobTitle = "Site Engineer";
+        membership.JoinDate = new DateTime(2024, 3, 1);
+
+        // What the employees table sends when an admin changes only the role.
+        var result = await service.UpdateAsync(
+            "usr-emp",
+            new UpdateEmployeeDto { Role = "Supervisor", SupervisorId = "usr-super" });
+
+        Assert.True(result.Ok);
+        // These used to be nulled by any update that omitted them — and losing
+        // the join date also re-derived the person's leave accrual.
+        Assert.Equal("E-014", membership.EmployeeNumber);
+        Assert.Equal("Site Engineer", membership.JobTitle);
+        Assert.Equal(new DateTime(2024, 3, 1), membership.JoinDate);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ClearsAJobTitleWhenAskedWithAnEmptyString()
+    {
+        var service = MakeService(out var memberships);
+        var membership = memberships.Single(m => m.UserId == "usr-emp");
+        membership.JobTitle = "Site Engineer";
+
+        // Empty string is the deliberate "remove it" — distinct from omitting.
+        var result = await service.UpdateAsync(
+            "usr-emp",
+            new UpdateEmployeeDto { Role = "Employee", JobTitle = "" });
+
+        Assert.True(result.Ok);
+        Assert.Null(membership.JobTitle);
+    }
+
     // --- helpers ---
 
     private static EmployeeService MakeService(out List<OrganizationMembership> memberships)
@@ -190,6 +228,7 @@ public class EmployeeServiceTests
         public Task<LeaveAuditResult> GetAuditTrailAsync(string i) => throw new NotImplementedException();
         public Task<LeaveAttachmentResult> GetAttachmentAsync(string f) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> ApproveAsync(string i, string a) => throw new NotImplementedException();
+        public Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string a) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> RejectAsync(string i, string a, string? n) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> CancelAsync(string i, string u) => throw new NotImplementedException();
     }

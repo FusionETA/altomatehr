@@ -3,6 +3,8 @@ import { apiGet, apiPost, apiPut } from "@/shared/lib/api-client";
 export type Employee = {
   id: string;
   email: string;
+  // The person's real name, stored on the global User. The app derived names
+  // from email addresses for a long time because this was never read.
   name: string;
   avatarUrl: string | null;
   role: string;
@@ -19,16 +21,20 @@ export type Employee = {
   modules: string[] | null;
 };
 
-// PUT /employees/{id} REPLACES the membership: every field omitted here is
-// written as null. Build one with toUpdateEmployee so the fields a screen
-// doesn't edit are carried through instead of wiped — sending just
-// { role, supervisorId, policyId } silently erased employee number, job title,
-// shift and module grants.
+// Name, employee number, job title and join date PATCH: omit to leave
+// unchanged, send an empty string to clear (the join date can only be
+// corrected, not blanked). Role is always required.
+//
+// shiftId and modules do NOT patch, and can't: null is a real value for both
+// — "fall back to the project's default shift" and "full access" — so there is
+// no spare value left to mean "leave this alone". They are written on every
+// update, which is why a caller must build the payload with toUpdateEmployee
+// rather than by hand.
 export type UpdateEmployee = {
   role: string;
-  name?: string | null;
-  employeeNumber?: string | null;
-  jobTitle?: string | null;
+  name?: string;
+  employeeNumber?: string;
+  jobTitle?: string;
   joinDate?: string | null;
   supervisorId?: string | null;
   policyId?: string | null;
@@ -36,12 +42,20 @@ export type UpdateEmployee = {
   modules?: string[] | null;
 };
 
-/** The employee's current state as an update payload, ready to be edited. */
+/**
+ * The employee's current state as an update payload, ready to be edited.
+ *
+ * The patch fields are omitted where the employee has no value: under the
+ * backend's semantics an empty string CLEARS, so sending "" for a field that
+ * was already empty would be a pointless write, and sending null is not
+ * expressible. shiftId and modules are always carried, because they don't
+ * patch — see UpdateEmployee.
+ */
 export const toUpdateEmployee = (employee: Employee): UpdateEmployee => ({
   role: employee.role,
   name: employee.name,
-  employeeNumber: employee.employeeNumber,
-  jobTitle: employee.jobTitle,
+  employeeNumber: employee.employeeNumber ?? undefined,
+  jobTitle: employee.jobTitle ?? undefined,
   joinDate: employee.joinDate,
   supervisorId: employee.supervisorId,
   policyId: employee.policyId,
@@ -64,11 +78,12 @@ export type CreateEmployee = {
   email: string;
   // Only needed for a brand-new account; ignored if the email already exists (multi-org reuse).
   password?: string;
-  // Same rule as password: the backend REQUIRES it for a new account and
-  // ignores it when reusing an existing identity.
+  // Required for a new account; ignored when reusing an existing identity,
+  // since that person keeps the name they already have.
   name?: string;
-  employeeNumber?: string | null;
-  jobTitle?: string | null;
+  employeeNumber?: string;
+  jobTitle?: string;
+  joinDate?: string | null;
   role: string;
   supervisorId?: string | null;
   policyId?: string | null;

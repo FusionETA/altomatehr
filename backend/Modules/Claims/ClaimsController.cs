@@ -204,6 +204,46 @@ public class ClaimsController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    // GET /claims/settings — the claims module's own org settings.
+    // Readable by any authenticated caller: the cutoff day is what tells an
+    // employee whether a claim they file today makes this month's run.
+    [HttpGet("settings")]
+    public async Task<IActionResult> GetSettings() =>
+        Ok(await _claims.GetSettingsAsync());
+
+    // PUT /claims/settings — change the claim-run cutoff (Admins only).
+    [HttpPut("settings")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> UpdateSettings(UpdateClaimSettingsDto dto)
+    {
+        try
+        {
+            var settings = await _claims.UpdateSettingsAsync(dto);
+            return settings is null ? NotFound() : Ok(settings);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    // GET /claims/export/payroll?format=csv|xlsx|pdf&month=yyyy-MM — the payroll
+    // reimbursement run: approved out-of-pocket claims routed to payroll, one
+    // row per employee. Omit `month` for the run that is currently open.
+    [RequireScope("claims:read")]
+    [HttpGet("export/payroll")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportPayroll(
+        [FromQuery] string? format,
+        [FromQuery] string? month)
+    {
+        var result = await _claims.ExportPayrollReimbursementsAsync(
+            TabularFormats.Parse(format), month);
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
     // GET /claims/import/template?format=csv|xlsx — the blank import template.
     // PDF is refused here on purpose: a template exists to be filled in.
     [HttpGet("import/template")]
@@ -290,7 +330,10 @@ public class ClaimsController : ControllerBase
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SyncToXero(string id, SyncClaimToXeroDto? dto)
     {
-        var result = await _claims.SyncToXeroAsync(id, dto?.Status ?? XeroBillStatus.AwaitingPayment);
+        // No fallback here: a null Status means "use the org's configured stage",
+        // which the service resolves. Hardcoding AwaitingPayment here would
+        // quietly override the setting for anything that omits it.
+        var result = await _claims.SyncToXeroAsync(id, dto?.Status);
 
         if (!result.Found) return NotFound();
         if (!result.Ok) return BadRequest(new { message = result.Error, claim = result.Claim });

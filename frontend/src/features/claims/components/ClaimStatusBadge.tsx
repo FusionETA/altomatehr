@@ -6,7 +6,7 @@ export function ClaimStatusBadge({ status }: { status: string }) {
   const className =
     status === "REJECTED"
       ? "bg-destructive/10 text-destructive"
-      : status === "APPROVED" || status === "REVIEWED"
+      : status === "APPROVED"
         ? "bg-secondary text-secondary-foreground"
         : "bg-warning text-warning-foreground";
 

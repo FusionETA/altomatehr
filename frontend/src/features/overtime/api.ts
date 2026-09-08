@@ -1,3 +1,4 @@
+import type { BulkResult } from "@/shared/lib/use-bulk-selection";
 import { apiGet, apiGetBlob, apiPost, apiPostForm } from "@/shared/lib/api-client";
 
 export type OvertimeStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
@@ -64,6 +65,17 @@ export const createOvertime = (body: CreateOvertimeRequest) => apiPost<OvertimeR
 export const attachOvertimeAfterPhoto = (id: string, afterPhotoUrl: string) =>
   apiPost<OvertimeRequest>(`/overtime/${id}/after-photo`, { afterPhotoUrl });
 export const approveOvertime = (id: string) => apiPost<OvertimeRequest>(`/overtime/${id}/approve`);
+
+// Per-id success/failure, so the response is a report rather than one pass/fail
+// for the batch. Requests with no after-work photo come back as failures WITH
+// their reason: approval gates on that photo, so saying so is what tells the
+// approver to chase it.
+export type OvertimeBulkResult = BulkResult;
+
+// Approve-only on purpose: rejection needs a remark about THAT request, so it
+// stays one at a time. See BulkApproveOvertimeDto on the server.
+export const bulkApproveOvertime = (ids: string[]) =>
+  apiPost<OvertimeBulkResult>("/overtime/bulk/approve", { ids });
 export const rejectOvertime = (id: string, reviewNotes: string) =>
   apiPost<OvertimeRequest>(`/overtime/${id}/reject`, { reviewNotes });
 

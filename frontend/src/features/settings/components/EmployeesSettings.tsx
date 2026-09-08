@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Plus, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
+import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
 import {
@@ -73,6 +74,8 @@ export function EmployeesSettings() {
       return [
         emp.name,
         emp.email,
+        emp.employeeNumber,
+        emp.jobTitle,
         emp.role,
         emp.employeeNumber,
         emp.jobTitle,
@@ -202,7 +205,7 @@ export function EmployeesSettings() {
                     <td className="px-3 py-3">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-foreground">
-                          {emp.name?.trim() || emp.email}
+                          {emp.name?.trim() || buildName(emp.email)}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") ||

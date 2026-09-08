@@ -382,7 +382,10 @@ using (var scope = app.Services.CreateScope())
         var attendance = services.GetRequiredService<IAttendanceRepository>();
         var attendanceApprovalRequests = services.GetRequiredService<IAttendanceApprovalRequestRepository>();
         var apiClients = services.GetRequiredService<IApiClientRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients);
+        var overtime = services.GetRequiredService<IOvertimeRepository>();
+        var overtimePhotos = services.GetRequiredService<IOvertimePhotoStorage>();
+        var leaveApplications = services.GetRequiredService<ILeaveApplicationRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications);
     }
 }
 

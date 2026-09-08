@@ -49,6 +49,9 @@ export type ChartOfAccount = {
   allowMileageClaim: boolean;
   mileageRate: number | null;
   isArchived: boolean;
+  // Set when the account came from Xero. Its code, name and type are Xero's;
+  // everything else on the row is this app's.
+  xeroAccountId?: string | null;
 };
 export type SaveAccount = {
   code: string;

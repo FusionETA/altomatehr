@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, X } from "lucide-react";
+import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, TriangleAlert, X } from "lucide-react";
 import {
   bulkApproveAttendance,
   getTeamAttendanceApprovals,
@@ -13,9 +13,11 @@ import {
 } from "../api";
 import {
   approveOvertime,
+  bulkApproveOvertime,
   getTeamOvertime,
   openOvertimePhoto,
   rejectOvertime,
+  type OvertimeBulkResult,
   type OvertimeRequest,
 } from "@/features/overtime/api";
 import {
@@ -28,6 +30,14 @@ import { getOrganization, getProjects, type Project } from "@/features/settings/
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
+import {
+  BulkActionBar,
+  BulkResultPanel,
+  SelectAllPill,
+  SelectHint,
+  SelectModeButton,
+} from "@/shared/components/BulkApprove";
+import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
 import { formatDistance } from "@/shared/lib/geolocation";
 
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -136,8 +146,37 @@ function groupApprovals(records: AttendanceRecord[], breaks: AttendanceApprovalR
   });
 }
 
+// The decision endpoints take approval-REQUEST ids, never record ids: the two
+// are separate GUIDs and the server resolves only the former, so passing a
+// record id silently finds nothing. Every caller goes through here.
+// What the reject dialog is about: a whole day, or one event on it. Both end up
+// at the same endpoint with a different number of ids, so the dialog only needs
+// to know which ids and what to call them.
+type RejectTarget = { key: string; ids: string[]; title: string; subtitle: string };
+
+function groupRequestIds(group: ApprovalGroup) {
+  return [...group.records.flatMap(pendingApprovalIds), ...group.breaks.map((b) => b.id)];
+}
+
+// The pending approval-request id for ONE event, so a clock-in can be decided
+// without touching the clock-out beside it. Returns null when that event has
+// already been decided — the panel still renders the row, it just gets no
+// buttons.
+function pendingApprovalIdFor(record: AttendanceRecord, kind: "CLOCK_IN" | "CLOCK_OUT") {
+  return (
+    (record.approvals ?? []).find((a) => a.kind === kind && a.approvalStatus === "PENDING")?.id ??
+    null
+  );
+}
+
+// Events actually AWAITING a decision — the same ids the approve and reject
+// calls send. It used to count a clock-in or clock-out whenever the time
+// existed, pending or not, so a day with an approved clock-in and a pending
+// clock-out read "2 events pending" and offered "Approve all (2)" while sending
+// one. The per-event buttons made that visible: the clock-in row correctly
+// showed no buttons while the header still claimed it was waiting.
 function eventCount(group: ApprovalGroup) {
-  return group.records.reduce((sum, record) => sum + (record.timeIn ? 1 : 0) + (record.timeOut ? 1 : 0), 0);
+  return groupRequestIds(group).length;
 }
 
 function lateCount(group: ApprovalGroup) {
@@ -163,11 +202,12 @@ export function AttendanceApprovals() {
   const [filter, setFilter] = useState<DateFilter>("ALL");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<AttendanceBulkResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [rejectingGroup, setRejectingGroup] = useState<ApprovalGroup | null>(null);
+  const [rejecting, setRejecting] = useState<RejectTarget | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
@@ -199,40 +239,105 @@ export function AttendanceApprovals() {
     );
   }, [records, breaks, filter, employeeSearch]);
 
-  function toggleSelected(key: string) {
-    setSelectedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // A day-group is selectable when it still has something pending. The decision
+  // endpoints take approval-REQUEST ids, not record ids, so a group whose events
+  // have all been decided has nothing to send.
+  const isBulkable = (group: ApprovalGroup) => groupRequestIds(group).length > 0;
+
+  // Selection is per EVENT, not per day.
+  //
+  // A day bundles a clock-in, a clock-out and any breaks, and ticking the day
+  // used to send all of them. But those are separate decisions: a supervisor
+  // will happily wave through the clock-ins and still want to look at a
+  // clock-out that came in off-site or three hours late. Keying the selection on
+  // the approval-REQUEST id — which is what the endpoint takes anyway — makes
+  // one event the unit, and a whole day just a convenient way to tick several.
+  const selectableEvents = useMemo(
+    () =>
+      groups.flatMap((group) =>
+        groupRequestIds(group).map((id) => ({ id, groupKey: group.key })),
+      ),
+    [groups],
+  );
+
+  const selection = useBulkSelection(selectableEvents, (event) => event.id, () => true);
+  const selectedEvents = selection.selected.length;
+  // The count is events now, so the days they span is the part that is no
+  // longer obvious — three events could be one messy day or three tidy ones.
+  const selectedDays = new Set(selection.selected.map((event) => event.groupKey)).size;
+
+  // How much of one day is ticked, for its header checkbox: all, some, none.
+  function groupSelectionState(group: ApprovalGroup) {
+    const ids = groupRequestIds(group);
+    const picked = ids.filter((id) => selection.has(id));
+    return {
+      ids,
+      all: ids.length > 0 && picked.length === ids.length,
+      some: picked.length > 0 && picked.length < ids.length,
+    };
+  }
+
+  // One request for the whole batch. Each group already approves through the
+  // bulk endpoint — a "row" here is a day, not an event — so this is the same
+  // call with the ids of every ticked day concatenated.
+  async function confirmBulkApprove() {
+    if (selection.selected.length === 0) return;
+
+    const requestIds = selection.selected.map((event) => event.id);
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const result = await bulkApproveAttendance(requestIds);
+      setBulkResult(result);
+      selection.clear();
+      await refreshQueue();
+      setOpenKey(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not approve those days.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Re-read rather than dropping rows by hand. /attendance/team returns only what
+  // is still awaiting THIS approver, so it is the authority on what should remain
+  // — and once a single event can be decided on its own, filtering out its whole
+  // record would take the still-pending events on that day with it.
+  async function refreshQueue() {
+    const [nextRecords, nextBreaks] = await Promise.all([
+      getTeamAttendanceApprovals(),
+      getTeamBreakApprovals().catch(() => []),
+    ]);
+    setRecords(nextRecords);
+    setBreaks(nextBreaks);
   }
 
   async function approveGroup(group: ApprovalGroup) {
-    setBusyKey(group.key);
-    setError(null);
-    const recordIds = group.records.map((record) => record.id);
-    // The decision endpoints take approval-request ids, not record ids.
-    const requestIds = [...group.records.flatMap(pendingApprovalIds), ...group.breaks.map((b) => b.id)];
+    const requestIds = groupRequestIds(group);
     if (requestIds.length === 0) {
       setError("Nothing pending on this day.");
-      setBusyKey(null);
       return;
     }
+    await approveRequestIds(group.key, requestIds, { closeIfOpen: group.key });
+  }
+
+  // Approves any set of approval-request ids: every pending event on a day, or a
+  // single clock-in. The endpoint takes a list either way.
+  async function approveRequestIds(
+    busy: string,
+    requestIds: string[],
+    options: { closeIfOpen?: string } = {},
+  ) {
+    setBusyKey(busy);
+    setError(null);
     try {
       const result = await bulkApproveAttendance(requestIds);
       if (result.failed > 0) {
         // Partial success is normal here: another approver may have moved first.
         setError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be approved.`);
       }
-      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
-      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
-      setSelectedKeys((current) => {
-        const next = new Set(current);
-        next.delete(group.key);
-        return next;
-      });
-      if (openKey === group.key) setOpenKey(null);
+      await refreshQueue();
+      if (options.closeIfOpen && openKey === options.closeIfOpen) setOpenKey(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not approve attendance.");
     } finally {
@@ -240,44 +345,59 @@ export function AttendanceApprovals() {
     }
   }
 
-  function openReject(group: ApprovalGroup) {
-    setRejectingGroup(group);
+  function openReject(target: RejectTarget) {
+    setRejecting(target);
     setRejectNotes("");
     setRejectError(null);
   }
 
+  const dayRejectTarget = (group: ApprovalGroup): RejectTarget => ({
+    key: group.key,
+    ids: groupRequestIds(group),
+    title: group.employeeName,
+    subtitle: `${group.date} · ${eventCount(group)} events`,
+  });
+
+  const eventRejectTarget = (
+    group: ApprovalGroup,
+    requestId: string,
+    label: string,
+  ): RejectTarget => ({
+    key: requestId,
+    ids: [requestId],
+    title: group.employeeName,
+    subtitle: `${group.date} · ${label}`,
+  });
+
   async function confirmReject() {
-    if (!rejectingGroup) return;
+    if (!rejecting) return;
     const notes = rejectNotes.trim();
     if (!notes) {
       setRejectError("Remark is required when rejecting attendance.");
       return;
     }
 
-    setBusyKey(rejectingGroup.key);
-    setError(null);
-    const recordIds = rejectingGroup.records.map((record) => record.id);
-    const requestIds = [
-      ...rejectingGroup.records.flatMap(pendingApprovalIds),
-      ...rejectingGroup.breaks.map((b) => b.id),
-    ];
-    if (requestIds.length === 0) {
-      setRejectError("Nothing pending on this day.");
-      setBusyKey(null);
+    const { key, ids } = rejecting;
+    if (ids.length === 0) {
+      setRejectError("Nothing pending here.");
       return;
     }
+
+    setBusyKey(key);
+    setError(null);
     try {
-      const result = await bulkRejectAttendance(requestIds, notes);
+      const result = await bulkRejectAttendance(ids, notes);
       if (result.failed > 0) {
-        setRejectError(firstBulkError(result) ?? `${result.failed} of ${requestIds.length} could not be rejected.`);
+        setRejectError(firstBulkError(result) ?? `${result.failed} of ${ids.length} could not be rejected.`);
         setBusyKey(null);
         return;
       }
-      setRecords((current) => current.filter((record) => !recordIds.includes(record.id)));
-      setBreaks((current) => current.filter((b) => !requestIds.includes(b.id)));
-      setRejectingGroup(null);
+      await refreshQueue();
+      setRejecting(null);
       setRejectNotes("");
-      if (openKey === rejectingGroup.key) setOpenKey(null);
+      // Only a whole-day rejection empties the card. Rejecting one event leaves
+      // the others, so the panel stays open on them.
+      if (ids.length > 1 && openKey === key) setOpenKey(null);
     } catch (e) {
       setRejectError(e instanceof Error ? e.message : "Could not reject attendance.");
     } finally {
@@ -299,6 +419,54 @@ export function AttendanceApprovals() {
               placeholder="Search employee"
               inputClassName="h-10 rounded-xl border-border/70 bg-card/90 font-semibold focus-visible:border-primary focus-visible:ring-primary/15 focus-visible:ring-offset-0"
             />
+
+            <div className="flex items-center justify-between gap-3 px-1 text-sm text-muted-foreground">
+              <p>
+                <span className="font-semibold text-foreground">{groups.length}</span>{" "}
+                {groups.length === 1 ? "day" : "days"} pending
+              </p>
+
+              {/* Shown at every width, unlike claims and leave: this queue is
+                  cards only, so there is no desktop table checkbox column. */}
+              {selection.selectable.length > 0 ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {selection.mode ? (
+                    <SelectAllPill
+                      inputRef={selection.selectAllRef}
+                      total={selection.selectable.length}
+                      allSelected={selection.allSelected}
+                      onToggleAll={selection.toggleAll}
+                    />
+                  ) : null}
+                  <SelectModeButton
+                    active={selection.mode}
+                    onToggle={() => (selection.mode ? selection.exit() : selection.enter())}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {selection.mode && selection.selected.length === 0 ? (
+              <SelectHint>
+                Tick a day to take all of it, or open one and tick just the clock-in or clock-out
+                you want.
+              </SelectHint>
+            ) : null}
+
+            {bulkResult ? (
+              <BulkResultPanel result={bulkResult} onDismiss={() => setBulkResult(null)} />
+            ) : null}
+
+            {selection.selected.length > 0 ? (
+              <BulkActionBar
+                count={selectedEvents}
+                noun="event"
+                summary={`Across ${selectedDays} day${selectedDays === 1 ? "" : "s"}`}
+                busy={bulkBusy}
+                onClear={selection.clear}
+                onApprove={confirmBulkApprove}
+              />
+            ) : null}
           </section>
         ) : null}
 
@@ -326,28 +494,54 @@ export function AttendanceApprovals() {
           <section className="space-y-3">
             {groups.map((group) => {
               const open = openKey === group.key;
+              // Expansion stays available while selecting — it is the ONLY way
+              // to reach a single clock-in or clock-out, which is the whole
+              // point of selecting at event level. The header splits the two
+              // gestures instead: its checkbox ticks the day, the rest of the
+              // row opens it.
+              const expanded = open;
+              const selectable = isBulkable(group);
+              const state = groupSelectionState(group);
               return (
                 <article
                   key={group.key}
-                  className={`${CARD} overflow-hidden transition-colors ${open ? "border-primary/35" : ""}`}
+                  className={`${CARD} overflow-hidden transition-colors ${
+                    expanded ? "border-primary/35" : ""
+                  } ${selection.mode && !selectable ? "opacity-45" : ""} ${
+                    selection.mode && (state.all || state.some)
+                      ? "border-primary/50 bg-primary/5 ring-2 ring-primary/25"
+                      : ""
+                  }`}
                 >
                   <GroupHeader
                     group={group}
-                    open={open}
-                    selected={selectedKeys.has(group.key)}
-                    onToggleSelected={() => toggleSelected(group.key)}
+                    open={expanded}
+                    selectMode={selection.mode}
+                    selectable={selectable}
+                    allSelected={state.all}
+                    someSelected={state.some}
+                    selectedCount={state.ids.filter((id) => selection.has(id)).length}
+                    onToggleSelectDay={() => selection.setMany(state.ids, !state.all)}
                     onToggleOpen={() => setOpenKey(open ? null : group.key)}
                   />
-                  {open ? (
+                  {expanded ? (
                     <ExpandedGroup
                       group={group}
                       radius={radius}
                       projectNames={projectNames}
                       busy={busyKey === group.key}
-                      selected={selectedKeys.has(group.key)}
-                      onToggleSelected={() => toggleSelected(group.key)}
+                      busyKey={busyKey}
+                      selectMode={selection.mode}
+                      isSelected={(requestId) => selection.has(requestId)}
+                      onToggleSelect={(requestId) => selection.toggle(requestId)}
                       onApprove={() => approveGroup(group)}
-                      onReject={() => openReject(group)}
+                      onReject={() => openReject(dayRejectTarget(group))}
+                      onApproveEvent={(requestId) =>
+                        approveRequestIds(requestId, [requestId])
+                      }
+                      onRejectEvent={(requestId, label) =>
+                        openReject(eventRejectTarget(group, requestId, label))
+                      }
                     />
                   ) : null}
                 </article>
@@ -357,14 +551,14 @@ export function AttendanceApprovals() {
         ) : null}
       </div>
 
-      {rejectingGroup ? (
+      {rejecting ? (
         <RejectDialog
-          group={rejectingGroup}
-          busy={busyKey === rejectingGroup.key}
+          target={rejecting}
+          busy={busyKey === rejecting.key}
           notes={rejectNotes}
           error={rejectError}
           onNotesChange={setRejectNotes}
-          onClose={() => setRejectingGroup(null)}
+          onClose={() => setRejecting(null)}
           onConfirm={confirmReject}
         />
       ) : null}
@@ -446,6 +640,8 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
   const [rejectingRequest, setRejectingRequest] = useState<OvertimeRequest | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<OvertimeBulkResult | null>(null);
 
   useEffect(() => {
     getTeamOvertime()
@@ -464,6 +660,22 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
     });
   }, [requests, status, employeeSearch]);
 
+  // Bulk approval is only offered on requests that are decidable AND have the
+  // after-work photo. ApproveAsync gates on that photo, so a request without one
+  // would come back as a per-row failure — excluding it up front is the same
+  // rule, applied before the approver taps rather than after.
+  const isBulkable = (request: OvertimeRequest) =>
+    request.status === "PENDING" && !!request.afterPhotoUrl;
+
+  const selection = useBulkSelection(filteredRequests, (request) => request.id, isBulkable);
+  const selectedMinutes = selection.selected.reduce(
+    (sum, request) => sum + request.requestedMinutes,
+    0,
+  );
+  const awaitingPhoto = filteredRequests.filter(
+    (request) => request.status === "PENDING" && !request.afterPhotoUrl,
+  ).length;
+
   async function decide(id: string, fn: (id: string) => Promise<OvertimeRequest>) {
     setBusyId(id);
     setError(null);
@@ -476,6 +688,25 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
       return false;
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function confirmBulkApprove() {
+    if (selection.selected.length === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const result = await bulkApproveOvertime(selection.selected.map((request) => request.id));
+      setBulkResult(result);
+      selection.clear();
+      // Re-read rather than patching rows: a request on a multi-step chain stays
+      // PENDING and moves to the next approver, so its row changes meaning.
+      setRequests(await getTeamOvertime());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not approve those requests.");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -512,10 +743,60 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
           placeholder="Search employee"
           inputClassName="h-10 rounded-xl border-border/70 bg-card/90 font-semibold focus-visible:border-primary focus-visible:ring-primary/15 focus-visible:ring-offset-0"
         />
-        <p className="px-1 text-sm text-muted-foreground">
-          Showing <span className="font-semibold text-foreground">{filteredRequests.length}</span> of{" "}
-          <span className="font-semibold text-foreground">{requests.length}</span> overtime approvals
-        </p>
+        <div className="flex items-center justify-between gap-3 px-1 text-sm text-muted-foreground">
+          <p>
+            Showing <span className="font-semibold text-foreground">{filteredRequests.length}</span> of{" "}
+            <span className="font-semibold text-foreground">{requests.length}</span> overtime approvals
+          </p>
+
+          {/* Shown at every width, unlike claims and leave: this queue is cards
+              only, so there is no desktop table with a checkbox column. */}
+          {selection.selectable.length > 0 ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {selection.mode ? (
+                <SelectAllPill
+                  inputRef={selection.selectAllRef}
+                  total={selection.selectable.length}
+                  allSelected={selection.allSelected}
+                  onToggleAll={selection.toggleAll}
+                />
+              ) : null}
+              <SelectModeButton
+                active={selection.mode}
+                onToggle={() => (selection.mode ? selection.exit() : selection.enter())}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {selection.mode && selection.selected.length === 0 ? (
+          <SelectHint>Or tap the requests you want to approve together.</SelectHint>
+        ) : null}
+
+        {bulkResult ? (
+          <BulkResultPanel result={bulkResult} onDismiss={() => setBulkResult(null)} />
+        ) : null}
+
+        {selection.selected.length > 0 ? (
+          <BulkActionBar
+            count={selection.selected.length}
+            noun="request"
+            summary={`Approving ${fmtDuration(selectedMinutes)} of overtime in one go`}
+            busy={bulkBusy}
+            onClear={selection.clear}
+            onApprove={confirmBulkApprove}
+          />
+        ) : null}
+
+        {/* The one thing an approver cannot fix from this screen, so it says so
+            rather than leaving them to wonder why a row won't tick. */}
+        {awaitingPhoto > 0 ? (
+          <p className="flex items-start gap-2 px-1 text-xs text-muted-foreground">
+            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            {awaitingPhoto} request{awaitingPhoto === 1 ? " is" : "s are"} still waiting on the
+            after-work photo and cannot be approved yet.
+          </p>
+        ) : null}
       </section>
 
       {loading ? <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading overtime approvals...</section> : null}
@@ -546,7 +827,18 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
                 employee={employee}
                 projectName={projectName}
                 busy={busyId === request.id}
-                onOpen={() => setSelectedRequest(request)}
+                selectMode={selection.mode}
+                selectable={isBulkable(request)}
+                selected={selection.has(request.id)}
+                onOpen={() => {
+                  // In select mode the card IS the checkbox — a full-card target
+                  // instead of a 16px one inside a card that is itself tappable.
+                  if (selection.mode) {
+                    if (isBulkable(request)) selection.toggle(request.id);
+                    return;
+                  }
+                  setSelectedRequest(request);
+                }}
                 onApprove={() => decide(request.id, approveOvertime)}
                 onReject={() => openReject(request)}
               />
@@ -584,6 +876,9 @@ function OvertimeApprovalCard({
   employee,
   projectName,
   busy,
+  selectMode,
+  selectable,
+  selected,
   onOpen,
   onApprove,
   onReject,
@@ -592,6 +887,9 @@ function OvertimeApprovalCard({
   employee: string;
   projectName: string | null | undefined;
   busy: boolean;
+  selectMode: boolean;
+  selectable: boolean;
+  selected: boolean;
   onOpen: () => void;
   onApprove: () => void;
   onReject: () => void;
@@ -599,8 +897,24 @@ function OvertimeApprovalCard({
   const pending = request.status === "PENDING";
 
   return (
-    <article className={`${CARD} overflow-hidden transition-colors hover:border-primary/35`}>
-      <button type="button" onClick={onOpen} className="block w-full space-y-3 p-4 text-left">
+    <article
+      className={`${CARD} overflow-hidden transition-colors ${
+        selectMode && !selectable
+          ? // Dimmed and inert: decided requests and ones still missing their
+            // after-work photo cannot be batch-approved, and offering them would
+            // only produce a per-row failure in the result panel.
+            "opacity-45"
+          : "hover:border-primary/35"
+      } ${selected ? "border-primary/50 bg-primary/5 ring-2 ring-primary/25" : ""}`}
+    >
+      <button
+        type="button"
+        disabled={selectMode && !selectable}
+        onClick={onOpen}
+        aria-label={selectMode ? `Select ${employee}'s overtime request` : undefined}
+        aria-pressed={selectMode && selectable ? selected : undefined}
+        className="block w-full space-y-3 p-4 text-left disabled:cursor-default"
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Overtime</p>
@@ -627,7 +941,9 @@ function OvertimeApprovalCard({
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Work date</p>
           <p className="mt-1 text-sm font-semibold text-foreground">{request.workDate}</p>
         </div>
-        {pending ? (
+        {/* Two ways to approve the same row on one card, one of which also
+            swallows the tap meant to tick it. */}
+        {pending && !selectMode ? (
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
@@ -841,39 +1157,47 @@ function OvertimeRejectDialog({
 function GroupHeader({
   group,
   open,
-  selected,
-  onToggleSelected,
+  selectMode,
+  selectable,
+  allSelected,
+  someSelected,
+  selectedCount,
+  onToggleSelectDay,
   onToggleOpen,
 }: {
   group: ApprovalGroup;
   open: boolean;
-  selected: boolean;
-  onToggleSelected: () => void;
+  selectMode: boolean;
+  selectable: boolean;
+  allSelected: boolean;
+  someSelected: boolean;
+  selectedCount: number;
+  onToggleSelectDay: () => void;
   onToggleOpen: () => void;
 }) {
   const count = eventCount(group);
   const late = lateCount(group);
-  const initials = group.employeeName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
+
+  // No checkbox on the card at all — the toolbar's select-all is the only one
+  // left. The header's two jobs are split by TARGET instead: in select mode the
+  // body takes the whole day, the chevron opens it to pick a single event.
+  const selectsDay = selectMode && selectable;
 
   return (
     <div className={`flex items-center gap-2.5 px-4 py-3.5 ${open ? "bg-primary/5" : ""}`}>
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={onToggleSelected}
-        className="h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-primary"
-        aria-label={`Select ${group.employeeName}`}
-      />
-      <button type="button" onClick={onToggleOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-xs font-black text-primary">
-          {initials || "E"}
-        </span>
+      <button
+        type="button"
+        disabled={selectMode && !selectable}
+        onClick={selectsDay ? onToggleSelectDay : onToggleOpen}
+        aria-expanded={selectMode ? undefined : open}
+        aria-pressed={selectsDay ? allSelected || someSelected : undefined}
+        aria-label={
+          selectsDay
+            ? `Select all ${count} pending event${count === 1 ? "" : "s"} for ${group.employeeName} on ${group.date}`
+            : undefined
+        }
+        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+      >
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <p className="truncate text-[14px] font-black text-foreground">{group.employeeName}</p>
@@ -882,7 +1206,9 @@ function GroupHeader({
             </span>
           </div>
           <p className="truncate text-xs font-medium text-muted-foreground">
-            {count} {count === 1 ? "event" : "events"} pending
+            {selectMode && selectedCount > 0
+              ? `${selectedCount} of ${count} selected`
+              : `${count} ${count === 1 ? "event" : "events"} pending`}
           </p>
         </div>
         {late > 0 ? (
@@ -890,14 +1216,34 @@ function GroupHeader({
             {late} late
           </span>
         ) : null}
-        <span
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition ${
+        {/* Outside select mode the whole header already expands, so the chevron
+            is decoration and must not be a nested button. */}
+        {selectMode ? null : (
+          <span
+            className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition ${
+              open ? "border-primary/45 text-primary" : ""
+            }`}
+          >
+            <ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} />
+          </span>
+        )}
+      </button>
+
+      {/* In select mode the header body selects, so opening a day needs its own
+          target — otherwise a single clock-in could not be reached at all. */}
+      {selectMode ? (
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          aria-expanded={open}
+          aria-label={open ? "Hide this day's events" : "Show this day's events to pick one"}
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:text-foreground ${
             open ? "border-primary/45 text-primary" : ""
           }`}
         >
           <ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} />
-        </span>
-      </button>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -907,21 +1253,37 @@ function ExpandedGroup({
   radius,
   projectNames,
   busy,
-  selected,
-  onToggleSelected,
+  busyKey,
   onApprove,
   onReject,
+  selectMode,
+  isSelected,
+  onToggleSelect,
+  onApproveEvent,
+  onRejectEvent,
 }: {
   group: ApprovalGroup;
   radius: number;
   projectNames: Map<string, string>;
   busy: boolean;
-  selected: boolean;
-  onToggleSelected: () => void;
+  busyKey: string | null;
   onApprove: () => void;
   onReject: () => void;
+  selectMode: boolean;
+  isSelected: (requestId: string) => boolean;
+  onToggleSelect: (requestId: string) => void;
+  onApproveEvent: (requestId: string) => void;
+  onRejectEvent: (requestId: string, label: string) => void;
 }) {
   const count = eventCount(group);
+  const eventActions = {
+    busyKey,
+    onApprove: onApproveEvent,
+    onReject: onRejectEvent,
+    selectMode,
+    isSelected,
+    onToggleSelect,
+  };
 
   return (
     <div className="border-t border-border/60 bg-surface-low/45 px-3.5 pb-3.5 pt-3">
@@ -933,7 +1295,7 @@ function ExpandedGroup({
         {group.records.map((record) => (
           <div key={record.id} className="space-y-2">
             <AdjustmentNotice record={record} />
-            {breakRowsFor(group, record, "in")}
+            {breakRowsFor(group, record, "in", eventActions)}
             {record.timeIn ? (
               <EventRow
                 title="Clock in"
@@ -944,11 +1306,16 @@ function ExpandedGroup({
                 projectName={record.projectId ? projectNames.get(record.projectId) : null}
                 location={locationText(record, "in")}
                 photoUrl={record.clockInPhotoUrl}
-                selected={selected}
-                onToggleSelected={onToggleSelected}
+                approvalId={pendingApprovalIdFor(record, "CLOCK_IN")}
+                busyKey={busyKey}
+                selectMode={selectMode}
+                isSelected={isSelected}
+                onToggleSelect={onToggleSelect}
+                onApprove={onApproveEvent}
+                onReject={onRejectEvent}
               />
             ) : null}
-            {breakRowsFor(group, record, "mid")}
+            {breakRowsFor(group, record, "mid", eventActions)}
             {record.timeOut ? (
               <EventRow
                 title="Clock out"
@@ -959,15 +1326,20 @@ function ExpandedGroup({
                 projectName={record.projectId ? projectNames.get(record.projectId) : null}
                 location={locationText(record, "out")}
                 photoUrl={record.clockOutPhotoUrl}
-                selected={selected}
-                onToggleSelected={onToggleSelected}
+                approvalId={pendingApprovalIdFor(record, "CLOCK_OUT")}
+                busyKey={busyKey}
+                selectMode={selectMode}
+                isSelected={isSelected}
+                onToggleSelect={onToggleSelect}
+                onApprove={onApproveEvent}
+                onReject={onRejectEvent}
               />
             ) : null}
           </div>
         ))}
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className={`mt-3 grid grid-cols-2 gap-2 ${selectMode ? "hidden" : ""}`}>
         <button
           type="button"
           disabled={busy}
@@ -1036,6 +1408,14 @@ function breakRowsFor(
   group: ApprovalGroup,
   record: AttendanceRecord,
   slot: "in" | "mid",
+  actions: {
+    busyKey: string | null;
+    onApprove: (requestId: string) => void;
+    onReject: (requestId: string, label: string) => void;
+    selectMode: boolean;
+    isSelected: (requestId: string) => boolean;
+    onToggleSelect: (requestId: string) => void;
+  },
 ) {
   const mine = group.breaks
     .filter((b) => b.attendanceRecordId === record.id)
@@ -1048,19 +1428,55 @@ function breakRowsFor(
   );
 
   return rows.map((brk) => (
-    <BreakEventRow key={brk.id} request={brk} />
+    <BreakEventRow
+      key={brk.id}
+      request={brk}
+      busyKey={actions.busyKey}
+      selectMode={actions.selectMode}
+      selected={actions.isSelected(brk.id)}
+      onToggleSelect={actions.onToggleSelect}
+      onApprove={actions.onApprove}
+      onReject={actions.onReject}
+    />
   ));
 }
 
 // Deliberately quieter than a clock event: a break carries no geofence or
 // photo, and the supervisor is mostly checking the time and the reason.
-function BreakEventRow({ request }: { request: AttendanceApprovalRequest }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-2xl border border-border/60 bg-card px-3.5 py-2.5">
+function BreakEventRow({
+  request,
+  busyKey,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onApprove,
+  onReject,
+}: {
+  request: AttendanceApprovalRequest;
+  busyKey: string | null;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: (requestId: string) => void;
+  onApprove: (requestId: string) => void;
+  onReject: (requestId: string, label: string) => void;
+}) {
+  const label = request.kind === "BREAK_START" ? "Break start" : "Break end";
+
+  // A break is an event like any other and is already inside the day's request
+  // ids, so it has to be tickable too — otherwise "select day" would sweep in
+  // breaks the approver could neither see nor untick.
+  const row = (
+    <div
+      className={`flex items-start gap-2.5 rounded-2xl border bg-card px-3.5 py-2.5 transition ${
+        selectMode && selected
+          ? "border-primary/50 bg-primary/5 ring-2 ring-primary/25"
+          : "border-border/60"
+      }`}
+    >
       <Coffee className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-foreground">
-          {request.kind === "BREAK_START" ? "Break start" : "Break end"}
+          {label}
           <span className="ml-2 text-xs font-semibold tabular-nums text-muted-foreground">
             {fmtTime(request.eventAt)}
           </span>
@@ -1068,7 +1484,36 @@ function BreakEventRow({ request }: { request: AttendanceApprovalRequest }) {
         {request.reason ? (
           <p className="mt-0.5 text-xs text-muted-foreground">&ldquo;{request.reason}&rdquo;</p>
         ) : null}
+
+        {/* group.breaks only ever holds requests awaiting this approver, so a
+            break row is always decidable — no pending check needed. */}
+        {selectMode ? null : (
+          <EventDecisionButtons
+            busy={busyKey === request.id}
+            onApprove={() => onApprove(request.id)}
+            onReject={() => onReject(request.id, label)}
+          />
+        )}
       </div>
+    </div>
+  );
+
+  if (!selectMode) return row;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={() => onToggleSelect(request.id)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onToggleSelect(request.id);
+      }}
+      className="cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
+    >
+      {row}
     </div>
   );
 }
@@ -1082,8 +1527,13 @@ function EventRow({
   projectName,
   location,
   photoUrl,
-  selected,
-  onToggleSelected,
+  approvalId,
+  busyKey,
+  selectMode,
+  isSelected,
+  onToggleSelect,
+  onApprove,
+  onReject,
 }: {
   title: string;
   time: string;
@@ -1093,21 +1543,29 @@ function EventRow({
   projectName: string | null | undefined;
   location: string;
   photoUrl: string | null;
-  selected: boolean;
-  onToggleSelected: () => void;
+  // Null when this event has already been decided: the row still renders (it is
+  // context for the ones that haven't), it just gets no buttons.
+  approvalId: string | null;
+  busyKey: string | null;
+  selectMode: boolean;
+  isSelected: (requestId: string) => boolean;
+  onToggleSelect: (requestId: string) => void;
+  onApprove: (requestId: string) => void;
+  onReject: (requestId: string, label: string) => void;
 }) {
   const isOffSite = offSite(distance, radius);
+  // Only a PENDING event can be ticked. A decided one still renders as context
+  // for the ones that haven't been, but it is not part of any batch.
+  const selectable = selectMode && approvalId !== null;
+  const ticked = selectable && isSelected(approvalId);
 
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card px-3.5 py-3 shadow-sm">
+  const row = (
+    <div
+      className={`rounded-2xl border bg-card px-3.5 py-3 shadow-sm transition ${
+        ticked ? "border-primary/50 bg-primary/5 ring-2 ring-primary/25" : "border-border/60"
+      } ${selectMode && !selectable ? "opacity-45" : ""}`}
+    >
       <div className="flex items-start gap-2.5">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelected}
-          className="mt-1 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-primary"
-          aria-label={`Select ${title}`}
-        />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -1163,14 +1621,81 @@ function EventRow({
               View photo
             </button>
           ) : null}
+
+          {/* This event on its own. Approving a clock-in here leaves the
+              clock-out beside it pending, which the day-level "Approve all"
+              cannot express. Hidden while selecting — the batch is the action
+              then, and two approve paths on one row is one too many. */}
+          {approvalId && !selectMode ? (
+            <EventDecisionButtons
+              busy={busyKey === approvalId}
+              onApprove={() => onApprove(approvalId)}
+              onReject={() => onReject(approvalId, title)}
+            />
+          ) : null}
         </div>
       </div>
+    </div>
+  );
+
+  // In select mode the whole row is the target, matching the claim cards: a
+  // 16px box inside a dense row is a poor thing to aim at on a phone.
+  if (!selectable) return row;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={ticked}
+      onClick={() => onToggleSelect(approvalId)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onToggleSelect(approvalId);
+      }}
+      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 rounded-2xl"
+    >
+      {row}
+    </div>
+  );
+}
+
+// Shared by the clock and break rows, so one event decides the same way
+// whichever kind it is.
+function EventDecisionButtons({
+  busy,
+  onApprove,
+  onReject,
+}: {
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onApprove}
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-secondary px-3.5 text-[11px] font-bold text-secondary-foreground transition hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
+        Approve
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onReject}
+        className="inline-flex h-8 items-center justify-center rounded-full bg-destructive/10 px-3.5 text-[11px] font-bold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+      >
+        Reject
+      </button>
     </div>
   );
 }
 
 function RejectDialog({
-  group,
+  target,
   busy,
   notes,
   error,
@@ -1178,7 +1703,7 @@ function RejectDialog({
   onClose,
   onConfirm,
 }: {
-  group: ApprovalGroup;
+  target: RejectTarget;
   busy: boolean;
   notes: string;
   error: string | null;
@@ -1192,10 +1717,8 @@ function RejectDialog({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Reject</p>
-            <h2 className="mt-1 text-lg font-black text-foreground">{group.employeeName}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {group.date} · {eventCount(group)} events
-            </p>
+            <h2 className="mt-1 text-lg font-black text-foreground">{target.title}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{target.subtitle}</p>
           </div>
           <button
             type="button"

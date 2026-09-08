@@ -18,8 +18,9 @@ public class CreateClaimDto
     [Range(0.01, 1_000_000, ErrorMessage = "Amount must be greater than 0.")]
     public decimal? Amount { get; set; }                         // EXPENSE only; MILEAGE is calculated
 
-    [MaxLength(3)]
-    public string Currency { get; set; } = "USD";
+    // No Currency field on purpose: claims are always in the org's default
+    // currency, stamped server-side. A client-supplied one produced claims in a
+    // currency the org's Xero was not subscribed to, which only failed at sync.
 
     [Required]
     public DateTime? SpentAt { get; set; }                    // nullable + required → missing date is caught

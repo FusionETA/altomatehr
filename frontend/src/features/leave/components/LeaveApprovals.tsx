@@ -3,10 +3,12 @@ import type { KeyboardEvent } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import {
   approveLeave,
+  bulkApproveLeave,
   getLeaveTypes,
   getTeamLeave,
   rejectLeave,
   type LeaveApplication,
+  type LeaveBulkResult,
   type LeaveType,
 } from "../api";
 import { formatDateRange, relativeDaysAgo, urgencyLabel } from "../lib/leave-formatters";
@@ -15,6 +17,16 @@ import { LeaveDetailsModal } from "./LeaveDetailsModal";
 import { LEAVE_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
+import {
+  BulkActionBar,
+  BulkResultPanel,
+  BulkRowCheckbox,
+  BulkSelectAllCheckbox,
+  SelectAllPill,
+  SelectHint,
+  SelectModeButton,
+} from "@/shared/components/BulkApprove";
+import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
@@ -29,7 +41,8 @@ export function LeaveApprovals() {
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<LeaveBulkResult | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
   const [rejecting, setRejecting] = useState<{ ids: string[]; label: string } | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
@@ -73,36 +86,45 @@ export function LeaveApprovals() {
     return filtered.slice(start, start + LEAVE_PAGE_SIZE);
   }, [filtered, page]);
 
-  const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedIds.has(a.id));
+  // /leave/team already returns only what is awaiting THIS approver, so every
+  // row here is theirs to decide. The status check is a belt-and-braces guard:
+  // a row that somehow arrives decided must not be selectable, because the
+  // server would refuse it and the approver would never learn why.
+  const isBulkable = (a: LeaveApplication) => a.status === "PENDING";
 
-  function toggleSelect(id: string) {
-    setSelectedIds((s) => {
-      const next = new Set(s);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const selection = useBulkSelection(filtered, (a) => a.id, isBulkable);
+  const selectedDays = selection.selected.reduce((sum, a) => sum + a.totalDays, 0);
+
+  // Approve in ONE request rather than N parallel ones. The old version fired a
+  // POST per row and reported "3 of 8 could not be processed" without saying
+  // which or why; the bulk endpoint answers per id.
+  async function confirmBulkApprove() {
+    if (selection.selected.length === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const result = await bulkApproveLeave(selection.selected.map((a) => a.id));
+      setBulkResult(result);
+      selection.clear();
+      // Re-read rather than patching rows: a request on a multi-step chain stays
+      // PENDING and moves to the next approver, so it may leave this queue.
+      setTeam(await getTeamLeave());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not approve those requests.");
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
-  function toggleSelectAll() {
-    setSelectedIds(allFilteredSelected ? new Set() : new Set(filtered.map((a) => a.id)));
-  }
-
-  // Shared by single-row actions and bulk toolbar actions — both just
-  // process a list of ids and drop whichever ones succeed from the queue.
+  // Single-row approve and reject. Batches go through confirmBulkApprove and the
+  // bulk endpoint instead — see above.
   async function processIds(ids: string[], fn: (id: string) => Promise<LeaveApplication>) {
     setBusyIds((s) => new Set([...s, ...ids]));
     setError(null);
     const results = await Promise.allSettled(ids.map((id) => fn(id)));
     const failed = ids.filter((_, i) => results[i].status === "rejected");
     setTeam((cur) => cur.filter((a) => !ids.includes(a.id) || failed.includes(a.id)));
-    setSelectedIds((s) => {
-      const next = new Set(s);
-      ids.forEach((id) => {
-        if (!failed.includes(id)) next.delete(id);
-      });
-      return next;
-    });
     setSelectedApplication((cur) => (cur && ids.includes(cur.id) && !failed.includes(cur.id) ? null : cur));
     setBusyIds((s) => {
       const next = new Set(s);
@@ -115,8 +137,9 @@ export function LeaveApprovals() {
     return failed.length === 0;
   }
 
-  function openReject(ids: string[]) {
-    setRejecting({ ids, label: ids.length === 1 ? "Reject leave request" : `Reject ${ids.length} requests` });
+  // One row at a time, always: the remark has to be about THAT request.
+  function openReject(id: string) {
+    setRejecting({ ids: [id], label: "Reject leave request" });
     setRejectNotes("");
     setRejectError(null);
   }
@@ -165,7 +188,7 @@ export function LeaveApprovals() {
           disabled={busy}
           onClick={(event) => {
             event.stopPropagation();
-            openReject([a.id]);
+            openReject(a.id);
           }}
           className={
             isDetail
@@ -195,8 +218,6 @@ export function LeaveApprovals() {
       </span>
     );
   }
-
-  const selectedCount = selectedIds.size;
 
   return (
     <>
@@ -228,39 +249,53 @@ export function LeaveApprovals() {
           </div>
         </section>
 
-        <div className="text-sm text-muted-foreground md:hidden">
+        <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground md:hidden">
           <p>
             <span className="font-semibold text-foreground">{filtered.length}</span> pending
           </p>
+
+          {/* Only offered when there is something to select. On desktop the
+              table has its own checkbox column, so this is phone-only. */}
+          {selection.selectable.length > 0 ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {selection.mode ? (
+                <SelectAllPill
+                  inputRef={selection.selectAllRef}
+                  total={selection.selectable.length}
+                  allSelected={selection.allSelected}
+                  onToggleAll={selection.toggleAll}
+                />
+              ) : null}
+              <SelectModeButton
+                active={selection.mode}
+                onToggle={() => (selection.mode ? selection.exit() : selection.enter())}
+              />
+            </div>
+          ) : null}
         </div>
 
-        {selectedCount > 0 ? (
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-primary/30 bg-primary/5 px-5 py-3">
-            <p className="text-sm font-semibold text-foreground">{selectedCount} selected</p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => processIds([...selectedIds], approveLeave)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-4 py-2 text-xs font-bold text-secondary-foreground transition hover:opacity-90"
-              >
-                Approve selected
-              </button>
-              <button
-                type="button"
-                onClick={() => openReject([...selectedIds])}
-                className="rounded-full bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive transition hover:bg-destructive/20"
-              >
-                Reject selected
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedIds(new Set())}
-                className="rounded-full border border-border/60 bg-card px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-              >
-                Clear
-              </button>
-            </div>
-          </section>
+        {selection.mode && selection.selected.length === 0 ? (
+          <SelectHint className="md:hidden">
+            Or tap the requests you want to approve together.
+          </SelectHint>
+        ) : null}
+
+        {bulkResult ? (
+          <BulkResultPanel result={bulkResult} onDismiss={() => setBulkResult(null)} />
+        ) : null}
+
+        {/* Approve-only. Bulk reject used to live here with ONE shared remark for
+            every ticked row, which told each employee nothing about why theirs
+            was refused — so rejection went back to one at a time. */}
+        {selection.selected.length > 0 ? (
+          <BulkActionBar
+            count={selection.selected.length}
+            noun="request"
+            summary={`Approving ${selectedDays} day${selectedDays === 1 ? "" : "s"} of leave in one go`}
+            busy={bulkBusy}
+            onClear={selection.clear}
+            onApprove={confirmBulkApprove}
+          />
         ) : null}
 
         {loading ? <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading approvals…</section> : null}
@@ -286,26 +321,33 @@ export function LeaveApprovals() {
             {paginated.map((a) => (
               <article
                 key={a.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedApplication(a)}
+                role={selection.mode && !isBulkable(a) ? undefined : "button"}
+                aria-pressed={selection.mode && isBulkable(a) ? selection.has(a.id) : undefined}
+                tabIndex={selection.mode && !isBulkable(a) ? -1 : 0}
+                onClick={() => {
+                  // In select mode the card IS the checkbox — a full-card target
+                  // instead of a 16px one inside a card that is itself tappable.
+                  if (selection.mode) {
+                    if (isBulkable(a)) selection.toggle(a.id);
+                    return;
+                  }
+                  setSelectedApplication(a);
+                }}
                 onKeyDown={(event) => handleRowKeyDown(event, a)}
-                className={`${CARD} cursor-pointer space-y-4 p-4 transition hover:border-primary/40 focus-visible:border-primary/50 focus-visible:outline-none sm:p-5`}
+                className={`${CARD} space-y-4 p-4 transition focus-visible:outline-none sm:p-5 ${
+                  selection.mode && !isBulkable(a)
+                    ? "cursor-default opacity-45"
+                    : "cursor-pointer hover:border-primary/40 focus-visible:border-primary/50"
+                } ${
+                  selection.mode && selection.has(a.id)
+                    ? "border-primary/50 bg-primary/5 ring-2 ring-primary/25"
+                    : ""
+                }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(a.id)}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() => toggleSelect(a.id)}
-                      className="mt-1 h-4 w-4 shrink-0 rounded border-border/70"
-                      aria-label={`Select ${employeeName(a)}'s request`}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-base font-black">{employeeName(a)}</p>
-                      <p className="text-sm text-muted-foreground">{typeName(a.leaveTypeId)}</p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-base font-black">{employeeName(a)}</p>
+                    <p className="text-sm text-muted-foreground">{typeName(a.leaveTypeId)}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <LeaveStatusBadge status={a.status} />
@@ -326,7 +368,9 @@ export function LeaveApprovals() {
                   <p className="text-sm font-semibold text-foreground">
                     {a.totalDays} day{a.totalDays === 1 ? "" : "s"}
                   </p>
-                  {actions(a)}
+                  {/* Two ways to approve the same row on one card, one of which
+                      also swallows the tap meant to tick it. */}
+                  {selection.mode ? null : actions(a)}
                 </div>
               </article>
             ))}
@@ -341,12 +385,11 @@ export function LeaveApprovals() {
                 <thead>
                   <tr className="border-b border-border/60">
                     <th className="h-12 w-12 pl-6 text-left">
-                      <input
-                        type="checkbox"
-                        checked={allFilteredSelected}
-                        onChange={toggleSelectAll}
-                        className="h-4 w-4 rounded border-border/70"
-                        aria-label="Select all pending requests"
+                      <BulkSelectAllCheckbox
+                        inputRef={selection.selectAllRef}
+                        checked={selection.allSelected}
+                        disabled={selection.selectable.length === 0}
+                        onChange={selection.toggleAll}
                       />
                     </th>
                     {["Employee", "Type", "Dates", "Days", "Submitted", "Action"].map((h) => (
@@ -368,14 +411,12 @@ export function LeaveApprovals() {
                       onKeyDown={(event) => handleRowKeyDown(event, a)}
                       className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                     >
-                      <td className="p-4 pl-6 align-middle">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(a.id)}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={() => toggleSelect(a.id)}
-                          className="h-4 w-4 rounded border-border/70"
-                          aria-label={`Select ${employeeName(a)}'s request`}
+                      <td className="p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <BulkRowCheckbox
+                          label={`Select ${employeeName(a)}'s request`}
+                          checked={selection.has(a.id)}
+                          disabled={!isBulkable(a)}
+                          onChange={() => selection.toggle(a.id)}
                         />
                       </td>
                       <td className="p-4 align-middle">

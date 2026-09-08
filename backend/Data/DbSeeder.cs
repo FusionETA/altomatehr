@@ -7,14 +7,18 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
+using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Overtime;
+using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Partners;
 using AltomateHR.Api.Modules.Partners.Entities;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Entities;
+using System.Text.Json;
 using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Data;
@@ -31,6 +35,15 @@ public static class DbSeeder
     // fixed dev value lets you exercise POST /partner/token locally.
     public const string DevAppraisifyClientSecret = "altomate_sk_dev_appraisify_secret_change_me";
 
+    // Placeholder overtime evidence: 160x120 solid PNGs, two tints so the before
+    // and after slots are told apart at a glance. Inline because the seeder has
+    // to work on a clean checkout, with no asset to copy from.
+    private const string DemoBeforePhotoPng =
+        "iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAIAAAD6wG44AAAAzklEQVR42u3RAQ0AAAjDsMtGADIQi4+nyRSsmT0VFwsAC7AAC7AAC7AAAxZgARZgARZgAQYswAIswAIswAIswIAFWIAFWIAFWIABC7AAC7AAC7AAAxZgARZgARZgARZgwAIswAIswAIswIAFWIAFWIAFWIABuwBYgAVYgAVYgAUYsAALsAALsAALMGABFmABFmABFmABBizAAizAAizAAgxYgAVYgAVYgAUYsAALsAALsAALsAADFmABFmABFmABBizAAizAAizAAgzYheYe9FWO+ldjGAUAAAAASUVORK5CYII=";
+
+    private const string DemoAfterPhotoPng =
+        "iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAIAAAD6wG44AAAAzklEQVR42u3RAQ0AAAjDsMtGADIQi4+nyRSsuR0VFwsAC7AAC7AAC7AAAxZgARZgARZgAQYswAIswAIswAIswIAFWIAFWIAFWIABC7AAC7AAC7AAAxZgARZgARZgARZgwAIswAIswAIswIAFWIAFWIAFWIABuwBYgAVYgAVYgAUYsAALsAALsAALMGABFmABFmABFmABBizAAizAAizAAgxYgAVYgAVYgAUYsAALsAALsAALsAADFmABFmABFmABBizAAizAAizAAgzYheYeDZ+O+lNchHwAAAAASUVORK5CYII=";
+
     public static async Task SeedAsync(
         IOrganizationRepository organizations,
         IUserRepository users,
@@ -41,7 +54,10 @@ public static class DbSeeder
         IProjectRepository projects,
         IAttendanceRepository attendance,
         IAttendanceApprovalRequestRepository approvalRequests,
-        IApiClientRepository apiClients)
+        IApiClientRepository apiClients,
+        IOvertimeRepository overtime,
+        IOvertimePhotoStorage overtimePhotos,
+        ILeaveApplicationRepository leaveApplications)
     {
         await SeedOrganizationAsync(organizations);
         await SeedApiClientsAsync(apiClients);
@@ -55,6 +71,8 @@ public static class DbSeeder
         var demoProject = await SeedAttendanceProjectAsync(projects);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
         await BackfillLatenessAsync(attendance, organizations);
+        await SeedOvertimeAsync(overtime, overtimePhotos, demoProject.Id);
+        await SeedLeaveAsync(leaveApplications, leaveTypes);
     }
 
     // Register the Appraisify partner app (idempotent). Read-only, employees:read only.
@@ -337,6 +355,217 @@ public static class DbSeeder
         await leaveTypes.AddAsync(make("MC", "Medical Leave", true, 14));
         await leaveTypes.AddAsync(make("UL", "Unpaid Leave", false, 0));
     }
+
+    // Demo overtime for Evan, whose approver is Sara (AssignSupervisorAsync above).
+    //
+    // Idempotent per ROW, on a fixed id — not "skip if the table has anything",
+    // which the attendance rows use. That rule would have made this a no-op on
+    // any database that already had a single overtime request in it, which is
+    // every database anyone has actually clicked around in. Keying on the id
+    // seeds what's missing and never touches a row you created or decided.
+    //
+    // One PENDING row deliberately has no after-work photo. ApproveAsync refuses
+    // without one, so a queue of rows that all had it would never exercise the
+    // gate; this way Sara's queue shows one she can sign off and one she can't yet.
+    private static async Task SeedOvertimeAsync(
+        IOvertimeRepository requests,
+        IOvertimePhotoStorage photos,
+        string projectId)
+    {
+        var now = DateTime.UtcNow;
+        var rows = new[]
+        {
+            //                 id             daysAgo  start   end     status                   after  project
+            new DemoOvertimeRow("ot-demo-1",  3,      19, 0,  21, 30, OvertimeStatus.PENDING,  true,  true,
+                "Client demo build — stayed back to finish the deployment.", null),
+            new DemoOvertimeRow("ot-demo-2",  2,      18, 30, 20, 0,  OvertimeStatus.PENDING,  false, false,
+                "Covered the evening support shift.", null),
+            new DemoOvertimeRow("ot-demo-3",  9,      19, 0,  22, 0,  OvertimeStatus.APPROVED, true,  true,
+                "Month-end stock count with the warehouse team.", null),
+            new DemoOvertimeRow("ot-demo-4",  12,     20, 0,  23, 0,  OvertimeStatus.REJECTED, true,  false,
+                "Reworked the report layout.", "Not urgent — do this in normal hours next week."),
+        };
+
+        var missing = new List<DemoOvertimeRow>();
+        foreach (var row in rows)
+            if (await requests.GetByIdAsync(row.Id) is null) missing.Add(row);
+
+        // Nothing to add → return BEFORE storing photos. StoreAsync names each
+        // file by timestamp, so calling it unconditionally would litter the
+        // upload directory with two more PNGs on every startup.
+        if (missing.Count == 0) return;
+
+        // Real files on disk, not made-up URLs: the photo route 404s on a missing
+        // file, and a demo row whose evidence won't load is a bug report waiting
+        // to happen.
+        var beforePhotoUrl = await StoreDemoPhotoAsync(photos, "demo-overtime-before.png", DemoBeforePhotoPng);
+        var afterPhotoUrl = await StoreDemoPhotoAsync(photos, "demo-overtime-after.png", DemoAfterPhotoPng);
+
+        foreach (var row in missing)
+        {
+            var workDate = AttendanceTime.StartOfLocalDay(now.AddDays(-row.DaysAgo));
+            var startAt = LocalToUtc(workDate, row.StartHour, row.StartMinute);
+            var endAt = LocalToUtc(workDate, row.EndHour, row.EndMinute);
+            var decided = row.Status is OvertimeStatus.APPROVED or OvertimeStatus.REJECTED;
+
+            await requests.AddAsync(new OvertimeRequest
+            {
+                Id = row.Id,
+                OrganizationId = DemoOrgId,   // set explicitly — no request context during seeding
+                EmployeeId = "usr-emp",
+                ProjectId = row.OnProject ? projectId : null,
+                WorkDate = workDate,
+                StartAt = startAt,
+                EndAt = endAt,
+                RequestedMinutes = (int)Math.Round((endAt - startAt).TotalMinutes),
+                Reason = row.Reason,
+                BeforePhotoUrl = beforePhotoUrl,
+                AfterPhotoUrl = row.HasAfterPhoto ? afterPhotoUrl : null,
+                Status = row.Status,
+                CurrentStep = 0,
+                ReviewNotes = row.ReviewNotes,
+                SubmittedAt = endAt,
+                DecidedAt = decided ? endAt.AddHours(14) : null,
+                CreatedAt = endAt,
+                UpdatedAt = decided ? endAt.AddHours(14) : endAt,
+            });
+        }
+    }
+
+    private static async Task<string> StoreDemoPhotoAsync(
+        IOvertimePhotoStorage photos, string fileName, string base64)
+    {
+        var bytes = Convert.FromBase64String(base64);
+        await using var content = new MemoryStream(bytes);
+        var stored = await photos.StoreAsync(
+            new OvertimePhotoUpload(fileName, "image/png", bytes.Length, content));
+        return stored.PhotoUrl;
+    }
+
+    // Demo leave for Evan: two PENDING rows for Sara's queue, plus a decided pair
+    // so the history and audit-trail screens aren't empty. Per-row idempotency on
+    // a fixed id, for the same reason as the overtime rows above.
+    //
+    // The decided rows carry a real Approvals trail, not just ReviewNotes —
+    // ReviewNotes holds the LAST decision only, so a row without a trail shows an
+    // empty audit log, which reads as a bug rather than as demo data.
+    private static async Task SeedLeaveAsync(
+        ILeaveApplicationRepository applications,
+        ILeaveTypeRepository leaveTypes)
+    {
+        var now = DateTime.UtcNow;
+        var rows = new[]
+        {
+            //               id            type      start  end   duration                 days  status
+            new DemoLeaveRow("lv-demo-1",  Annual,    5,    7,  LeaveDuration.FULL_DAY,  3,    LeaveStatus.PENDING,
+                "Family trip — flights already booked.", null),
+            new DemoLeaveRow("lv-demo-2",  Medical,  -1,   -1,  LeaveDuration.MORNING,   0.5,  LeaveStatus.PENDING,
+                "Clinic appointment, back after lunch.", null),
+            new DemoLeaveRow("lv-demo-3",  Annual,  -24,  -23,  LeaveDuration.FULL_DAY,  2,    LeaveStatus.APPROVED,
+                "Long weekend.", "Approved — enjoy the break."),
+            new DemoLeaveRow("lv-demo-4",  Unpaid,  -11,  -10,  LeaveDuration.FULL_DAY,  2,    LeaveStatus.REJECTED,
+                "Personal errand.", "Month-end close that week — please refile for the following one."),
+        };
+
+        foreach (var row in rows)
+        {
+            if (await applications.GetByIdAsync(row.Id) is not null) continue;
+
+            // Skip rather than invent a type: an application pointing at a
+            // LeaveTypeId that doesn't exist is worse than a missing demo row.
+            var type = await ResolveLeaveTypeAsync(leaveTypes, row.TypeCodes);
+            if (type is null) continue;
+
+            var startDate = AttendanceTime.StartOfLocalDay(now.AddDays(row.StartDaysFromToday));
+            var endDate = AttendanceTime.StartOfLocalDay(now.AddDays(row.EndDaysFromToday));
+            var submittedAt = now.AddDays(row.StartDaysFromToday - 4);
+            var decided = row.Status is LeaveStatus.APPROVED or LeaveStatus.REJECTED;
+            var decidedAt = decided ? submittedAt.AddDays(1) : (DateTime?)null;
+
+            await applications.AddAsync(new LeaveApplication
+            {
+                Id = row.Id,
+                OrganizationId = DemoOrgId,   // set explicitly — no request context during seeding
+                EmployeeId = "usr-emp",
+                LeaveTypeId = type.Id,
+                StartDate = startDate,
+                EndDate = endDate,
+                Duration = row.Duration,
+                TotalDays = row.TotalDays,
+                Reason = row.Reason,
+                Status = row.Status,
+                CurrentStep = 0,
+                ReviewNotes = row.ReviewNotes,
+                DecidedAt = decidedAt,
+                Approvals = decidedAt is null
+                    ? null
+                    : DemoApprovalTrail(row.Status.ToString(), row.ReviewNotes, decidedAt.Value),
+                CreatedAt = submittedAt,
+                UpdatedAt = decidedAt ?? submittedAt,
+            });
+        }
+    }
+
+    // Two vocabularies for the same three types are in the wild: SeedLeaveTypesAsync
+    // below writes AL/MC/UL, LeaveDefaults writes ANNUAL/MEDICAL/UNPAID, and a
+    // database that has been through both has a MIX of them. Hardcoding one set
+    // silently dropped the annual-leave rows on exactly such a database, so each
+    // demo row names every code it would accept and takes the first that resolves.
+    private static readonly string[] Annual = ["AL", "ANNUAL"];
+    private static readonly string[] Medical = ["MC", "MEDICAL"];
+    private static readonly string[] Unpaid = ["UL", "UNPAID"];
+
+    private static async Task<LeaveType?> ResolveLeaveTypeAsync(
+        ILeaveTypeRepository leaveTypes, string[] codes)
+    {
+        foreach (var code in codes)
+        {
+            var type = await leaveTypes.GetByCodeAsync(code);
+            if (type is not null) return type;
+        }
+
+        return null;
+    }
+
+    // Mirrors LeaveService.AppendTrail: camelCase JSON, one entry per decision.
+    private static string DemoApprovalTrail(string decision, string? notes, DateTime decidedAt) =>
+        JsonSerializer.Serialize(
+            new List<LeaveApprovalEntryDto>
+            {
+                new()
+                {
+                    Step = 0,
+                    ApproverId = "usr-super",
+                    Decision = decision,
+                    DecidedAt = decidedAt,
+                    Notes = notes,
+                },
+            },
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+    private sealed record DemoOvertimeRow(
+        string Id,
+        int DaysAgo,
+        int StartHour,
+        int StartMinute,
+        int EndHour,
+        int EndMinute,
+        OvertimeStatus Status,
+        bool HasAfterPhoto,
+        bool OnProject,
+        string Reason,
+        string? ReviewNotes);
+
+    private sealed record DemoLeaveRow(
+        string Id,
+        string[] TypeCodes,
+        int StartDaysFromToday,
+        int EndDaysFromToday,
+        LeaveDuration Duration,
+        double TotalDays,
+        LeaveStatus Status,
+        string Reason,
+        string? ReviewNotes);
 
     private static async Task SeedOrganizationAsync(IOrganizationRepository organizations)
     {

@@ -24,6 +24,10 @@ public class ClaimsService : IClaimsService
     // refused whole rather than half-applied.
     private const int MaxBulkIds = 200;
 
+    // The cutoff an org gets before anyone sets one. Matches the Organization
+    // entity default so the settings screen and the export never disagree.
+    private const int DefaultClaimRunCutoffDay = 25;
+
     private readonly IClaimsRepository _repo;
     private readonly IClaimReceiptStorage _receiptStorage;
     private readonly IChartOfAccountService _accounts;
@@ -143,7 +147,7 @@ public class ClaimsService : IClaimsService
             Description = dto.Description,
             Category = dto.Category,
             Amount = prepared.Amount,
-            Currency = dto.Currency,
+            Currency = await OrganizationCurrencyAsync(),
             SpentAt = dto.SpentAt!.Value,
             SubmittedAt = now,
             Status = ClaimStatus.PENDING,          // business rule: new claims start PENDING
@@ -166,6 +170,11 @@ public class ClaimsService : IClaimsService
             CreatedAt = now,
             UpdatedAt = now,
         };
+        // Stamped from the org policy at creation, not read live at payout: an
+        // admin switching the policy later must not re-route a claim that has
+        // already gone to Xero, which would pay the same receipt twice.
+        claim.Settlement = (await GetSettingsAsync()).SettlementRoute;
+
         // Nobody above them to ask → submitting is the decision. A PENDING claim
         // with no approver is invisible in every queue and undecidable by every
         // caller, so it would sit unresolved forever. See OrgRoles: admins are
@@ -174,6 +183,11 @@ public class ClaimsService : IClaimsService
             claim.Status = ClaimStatus.APPROVED;
 
         var saved = await _repo.AddAsync(claim);
+
+        // Approved on submission (nobody above them) → settle it here too, or
+        // this would be the one approved claim still needing a manual push.
+        if (saved.Status == ClaimStatus.APPROVED) saved = await SettleAsync(saved);
+
         await NotifyAsync(saved, RealtimeAction.SUBMITTED, notifyClaimant: false);
         return saved;
     }
@@ -198,7 +212,7 @@ public class ClaimsService : IClaimsService
         claim.Category = dto.Category;
         var prepared = await PrepareClaimValuesAsync(dto, claim.EmployeeId);
         claim.Amount = prepared.Amount;
-        claim.Currency = dto.Currency;
+        claim.Currency = await OrganizationCurrencyAsync();
         claim.SpentAt = dto.SpentAt!.Value;
         claim.ClaimType = dto.ClaimType;
         claim.PaymentType = dto.PaymentType;
@@ -251,6 +265,9 @@ public class ClaimsService : IClaimsService
 
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
+
+        // Approval IS the trigger to pay. Nothing else has to happen by hand.
+        if (isFinal) claim = await SettleAsync(claim);
 
         // Notifies the claimant AND, when the chain advanced rather than ended,
         // whoever is now the current-step approver — so the claim appears in the
@@ -307,7 +324,9 @@ public class ClaimsService : IClaimsService
 
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
-            approved.Add(claim);
+
+            var settled = claim.Status == ClaimStatus.APPROVED ? await SettleAsync(claim) : claim;
+            approved.Add(settled);
             items.Add(new ClaimsBulkResultItem(id, true));
         }
 
@@ -354,8 +373,13 @@ public class ClaimsService : IClaimsService
     // Idempotent on XeroBillId rather than on status. Status could be reset by
     // an edit; the bill id is proof a bill exists, and it is what stops a retry
     // after a partial failure from billing the same claim twice.
-    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status)
+    // `status: null` means "whatever the org's Xero bill stage setting says".
+    // Resolved here so the auto-settle path, the admin's retry and the bulk push
+    // cannot drift apart on which stage a bill lands at.
+    public async Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus? status = null)
     {
+        var stage = status ?? (await GetSettingsAsync()).XeroBillStage;
+
         var claim = await _repo.GetByIdAsync(id);
         if (claim is null) return new ClaimXeroSyncResult(false, false, null);
 
@@ -368,16 +392,47 @@ public class ClaimsService : IClaimsService
                 Error: "Only approved claims can be billed to Xero.");
         }
 
+        // Routed to payroll: it gets reimbursed through the employee's pay, so
+        // billing it here as well would pay the same receipt twice.
+        if (claim.Settlement == ClaimSettlement.PAYROLL)
+        {
+            return new ClaimXeroSyncResult(true, false, claim,
+                Error: "This claim is set to be reimbursed through payroll. "
+                     + "Switch it to a Xero bill first if you want it billed instead.");
+        }
+
         var directory = await _employees.GetSnapshotAsync();
         var identity = directory.ById(claim.EmployeeId);
         var contactName = identity?.Name is { Length: > 0 } name
             ? name
             : identity?.Email ?? claim.EmployeeId;
 
-        // Xero wants its own account CODE, not our internal id.
-        var accountCode = claim.ChartOfAccountId is null
-            ? null
-            : (await _accounts.GetByIdAsync(claim.ChartOfAccountId))?.Code;
+        // Xero wants its own account CODE, not our internal id — and only a
+        // code Xero actually has. A locally-created account (no XeroAccountId)
+        // has a code Xero will reject, and it rejects the WHOLE document with a
+        // validation dump. Refusing here says which account is at fault.
+        string? accountCode = null;
+        if (claim.ChartOfAccountId is not null)
+        {
+            var account = await _accounts.GetByIdAsync(claim.ChartOfAccountId);
+            if (account is not null)
+            {
+                if (string.IsNullOrWhiteSpace(account.XeroAccountId))
+                {
+                    var unsynced =
+                        $"Account {account.Code} · {account.Name} doesn't exist in Xero. " +
+                        "Recode the claim to a synced account, or sync your chart of accounts.";
+
+                    claim.XeroSyncStatus = XeroSyncStatus.ERROR;
+                    claim.XeroSyncError = unsynced;
+                    claim.UpdatedAt = DateTime.UtcNow;
+                    await _repo.UpdateAsync(claim);
+                    return new ClaimXeroSyncResult(true, false, claim, Error: unsynced);
+                }
+
+                accountCode = account.Code;
+            }
+        }
 
         // A company-paid claim never created a debt — the money already left a
         // company account — so it is a SPEND transaction, not a bill. Same
@@ -393,7 +448,7 @@ public class ClaimsService : IClaimsService
             // approved — the employee has been out of pocket since they spent it.
             DueDate: claim.SpentAt,
             CurrencyCode: claim.Currency,
-            Status: status,
+            Status: stage,
             Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
 
         try
@@ -493,7 +548,7 @@ public class ClaimsService : IClaimsService
     // Each claim is judged on its own — already-billed ones report as fine
     // rather than as errors, since the desired end state is already true.
     public async Task<ClaimsBulkResult> BulkSyncToXeroAsync(
-        IReadOnlyList<string> ids, XeroBillStatus status)
+        IReadOnlyList<string> ids, XeroBillStatus? status = null)
     {
         if (ids.Count > MaxBulkIds)
         {
@@ -583,15 +638,19 @@ public class ClaimsService : IClaimsService
     private static string DescribeSelection(ClaimsExportQueryDto query, bool bySubmitted, int count)
     {
         var dateLabel = bySubmitted ? "submitted" : "spent";
+        // "Period: …", matching the report finance already knows. The claim count
+        // is no longer folded in here — it has its own card above the table.
         var range = (query.From, query.To) switch
         {
-            ({ } from, { } to) => $"{from:dd MMM yyyy} – {to:dd MMM yyyy} ({dateLabel})",
-            ({ } from, null) => $"from {from:dd MMM yyyy} ({dateLabel})",
-            (null, { } to) => $"up to {to:dd MMM yyyy} ({dateLabel})",
-            _ => "All dates",
+            ({ } from, { } to) => $"Period: {from:d MMM yyyy} – {to:d MMM yyyy} ({dateLabel})",
+            ({ } from, null) => $"Period: from {from:d MMM yyyy} ({dateLabel})",
+            (null, { } to) => $"Period: up to {to:d MMM yyyy} ({dateLabel})",
+            _ => "Period: all dates",
         };
 
-        var parts = new List<string> { range, $"{count} claim(s)" };
+        // count is deliberately absent: it is on the "Matching claims" card now,
+        // and printing it twice on one page invites them to disagree.
+        var parts = new List<string> { range };
         if (query.Status is { } status) parts.Add($"status {status}");
         if (query.PaymentType is { } paymentType) parts.Add($"paid with {paymentType.ToString().ToLowerInvariant()} money");
         if (!string.IsNullOrWhiteSpace(query.EmployeeId)) parts.Add("one employee");
@@ -894,6 +953,137 @@ public class ClaimsService : IClaimsService
         }
 
         return stuck;
+    }
+
+    // ---- Settings ----
+
+    public async Task<ClaimSettingsDto> GetSettingsAsync()
+    {
+        var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
+
+        // Range-checked, not null-checked: ClaimRunCutoffDay is a non-nullable
+        // int, so `org?.Day ?? Default` hands back 0 for a row that holds 0 —
+        // the ?? never fires. And 0 would mean "the run closed on the 1st",
+        // which is the exact failure the 1-28 cap exists to prevent.
+        var day = org?.ClaimRunCutoffDay ?? 0;
+
+        return new ClaimSettingsDto
+        {
+            ClaimRunCutoffDay = day is >= 1 and <= 28 ? day : DefaultClaimRunCutoffDay,
+            SettlementRoute =
+                Enum.TryParse<ClaimSettlement>(org?.ClaimSettlementRoute, out var route)
+                    ? route
+                    : ClaimSettlement.XERO_BILL,
+            XeroBillStage =
+                Enum.TryParse<XeroBillStatus>(org?.XeroBillStage, out var stage)
+                    ? stage
+                    : XeroBillStatus.AwaitingPayment,
+        };
+    }
+
+    public async Task<ClaimSettingsDto?> UpdateSettingsAsync(UpdateClaimSettingsDto dto)
+    {
+        var org = await _organizations.SetClaimSettingsAsync(
+            _currentUser.OrganizationId ?? string.Empty,
+            dto.ClaimRunCutoffDay,
+            dto.SettlementRoute,
+            dto.XeroBillStage);
+
+        if (org is null) return null;
+
+        return new ClaimSettingsDto
+        {
+            ClaimRunCutoffDay = org.ClaimRunCutoffDay,
+            SettlementRoute =
+                Enum.TryParse<ClaimSettlement>(org.ClaimSettlementRoute, out var route)
+                    ? route
+                    : ClaimSettlement.XERO_BILL,
+            XeroBillStage =
+                Enum.TryParse<XeroBillStatus>(org.XeroBillStage, out var stage)
+                    ? stage
+                    : XeroBillStatus.AwaitingPayment,
+        };
+    }
+
+
+    public async Task<TabularExportResult> ExportPayrollReimbursementsAsync(
+        TabularFormat format, string? month)
+    {
+        var cutoffDay = (await GetSettingsAsync()).ClaimRunCutoffDay;
+        var run = ClaimRunWindow.For(month, cutoffDay, DateTime.UtcNow);
+
+        var claims = (await _repo.GetAllAsync())
+            .Where(c => c.Settlement == ClaimSettlement.PAYROLL
+                     && c.Status == ClaimStatus.APPROVED
+                     && c.PaymentType == PaymentType.PERSONAL
+                     && c.SubmittedAt >= run.From
+                     && c.SubmittedAt < run.To)
+            .ToList();
+
+        var employees = await _employees.GetSnapshotAsync();
+        var caption =
+            $"Approved out-of-pocket claims routed to payroll · submitted {TabularSheet.Date(run.From)} "
+            + $"to {TabularSheet.Date(run.To.AddDays(-1))} · cutoff day {cutoffDay}";
+
+        var sheet = ClaimsSummarySheet.BuildPayrollReimbursements(
+            claims, employees, run.Label, caption);
+
+        var fileName = $"payroll-reimbursements-{run.Label}";
+
+        if (format == TabularFormat.Pdf)
+        {
+            return TabularExportResult.From(
+                sheet, format, fileName,
+                new TabularPdfHeader(await OrganizationNameAsync(), "Payroll Reimbursements"));
+        }
+
+        return TabularExportResult.From(sheet, format, fileName);
+    }
+
+    // The org's default currency, which every claim is denominated in. Falls back
+    // to MYR rather than to a blank, since Xero rejects a bill with no currency
+    // just as firmly as one in a currency the org has not subscribed to.
+    private async Task<string> OrganizationCurrencyAsync()
+    {
+        var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
+        var code = org?.DefaultCurrency;
+        return string.IsNullOrWhiteSpace(code) ? "MYR" : code.Trim().ToUpperInvariant();
+    }
+
+    // Acts on the payout route the moment a claim is approved, so an admin never
+    // has to press anything for a claim that cleared its chain.
+    //
+    // Deliberately cannot fail the approval. The supervisor's decision is made
+    // and recorded; Xero being down, unconnected or refusing the bill is an
+    // accounting problem to fix afterwards, not a reason to un-approve someone's
+    // reimbursement. Failures land on the claim as XeroSyncStatus.ERROR with the
+    // reason, which the admin table surfaces with a Retry.
+    private async Task<Claim> SettleAsync(Claim claim)
+    {
+        // PAYROLL pushes nowhere — the payroll reimbursement export collects it.
+        if (claim.Settlement != ClaimSettlement.XERO_BILL) return claim;
+
+        // Already billed (a re-approval, or an import that arrived synced).
+        if (!string.IsNullOrWhiteSpace(claim.XeroBillId)) return claim;
+
+        try
+        {
+            // Not connected is NOT an error state: marking every approved claim
+            // ERROR because the org has not set Xero up yet would bury the real
+            // failures. Left NOT_SYNCED, so connecting Xero and syncing picks
+            // them all up.
+            if (!await _xero.IsConnectedAsync()) return claim;
+
+            var result = await SyncToXeroAsync(claim.Id);   // stage comes from the org setting
+            return result.Claim ?? claim;
+        }
+        catch (Exception)
+        {
+            // SyncToXeroAsync records Xero's own refusals on the claim itself;
+            // this catch is for the unexpected (network, token refresh) so an
+            // approval can never be lost to it.
+            return claim;
+        }
     }
 
     // Best available human label for a user id: directory name, else email,

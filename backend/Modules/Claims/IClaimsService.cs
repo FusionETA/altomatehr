@@ -23,11 +23,12 @@ public interface IClaimsService
 
     // Push an approved claim to Xero as a bill. Idempotent: a claim already
     // carrying a XeroBillId is returned untouched rather than billed twice.
-    Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus status);
+    // Omit `status` to use the org's configured Xero bill stage.
+    Task<ClaimXeroSyncResult> SyncToXeroAsync(string id, XeroBillStatus? status = null);
 
     // Push many claims in one call. Sequential and independent: Xero rate-limits,
     // and one claim it refuses must not stop the rest.
-    Task<ClaimsBulkResult> BulkSyncToXeroAsync(IReadOnlyList<string> ids, XeroBillStatus status);
+    Task<ClaimsBulkResult> BulkSyncToXeroAsync(IReadOnlyList<string> ids, XeroBillStatus? status = null);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
@@ -58,6 +59,19 @@ public interface IClaimsService
     // Resolves PENDING items that no longer have any approver to route to.
     // `apply: false` only counts them. See the implementation for why.
     Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
+
+    // ---- Settings ----
+
+    // The claims module's own org settings (the claim-run cutoff day).
+    Task<ClaimSettingsDto> GetSettingsAsync();
+
+    // Null when the org is missing; throws ArgumentException on a day out of range.
+    Task<ClaimSettingsDto?> UpdateSettingsAsync(UpdateClaimSettingsDto dto);
+
+    // The payroll reimbursement run: approved, personal-paid claims routed to
+    // PAYROLL, one row per employee. `month` is "yyyy-MM"; null means the run
+    // that the org's cutoff day says is current.
+    Task<TabularExportResult> ExportPayrollReimbursementsAsync(TabularFormat format, string? month);
 }
 
 // Mirrors the attendance bulk contract: per-id success/failure, so the response

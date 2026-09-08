@@ -438,7 +438,10 @@ function ClaimDetailsForm({
   const [amount, setAmount] = useState(
     editingClaim ? String(editingClaim.amount) : read?.total != null ? String(read.total) : "",
   );
-  const [currency, setCurrency] = useState(
+  // No setter: the currency is settled before this form opens — the server
+  // resolved it from the receipt, or fell back — and re-deriving it here from
+  // the org is how the two drift apart.
+  const [currency] = useState(
     editingClaim?.currency ?? read?.resolvedCurrency ?? DEFAULT_CURRENCY,
   );
   const [spentAt, setSpentAt] = useState(
@@ -550,7 +553,6 @@ function ClaimDetailsForm({
         title: title.trim(),
         description: description.trim(),
         category: claimType === "MILEAGE" ? "TRANSPORT" : "OTHER",
-        currency: currency.toUpperCase(),
         spentAt: new Date(`${spentAt}T00:00:00`).toISOString(),
         claimType,
         paymentType,
@@ -730,15 +732,16 @@ function ClaimDetailsForm({
           </>
         )}
 
+        {/* Read-only: claims are denominated in the org's default currency and
+            the server stamps it. This was a free-text box, which is how a USD
+            claim got filed against a Xero org subscribed only to MYR — a
+            mistake that surfaced only when the bill was refused. */}
         <label className="space-y-3">
           <span className={LABEL}>Currency</span>
-          <input
-            required
-            maxLength={3}
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-            className={`${INPUT} uppercase`}
-          />
+          <p className={`${INPUT} flex items-center text-muted-foreground`}>
+            {currency.toUpperCase()}
+            <span className="ml-2 text-xs">· set in System Settings → Organization</span>
+          </p>
         </label>
 
         {paymentType === "COMPANY" ? (

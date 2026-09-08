@@ -199,12 +199,22 @@ public class XeroClient : IXeroClient
                     Reference = spend.Reference,
                     CurrencyCode = spend.CurrencyCode,
                     Status = "AUTHORISED",
+                    // Bank transactions require an explicit tax treatment —
+                    // unlike invoices, Xero will not infer one from the account
+                    // and rejects the whole document without it.
+                    //
+                    // NoTax/NONE because a claim carries a single amount and no
+                    // tax breakdown. Inventing INPUT would assert a tax figure
+                    // nobody entered; declaring none is the honest reading, and
+                    // an accountant can recode it in Xero.
+                    LineAmountTypes = "NoTax",
                     LineItems = spend.Lines.Select(line => new
                     {
                         line.Description,
                         Quantity = 1,
                         UnitAmount = line.Amount,
                         AccountCode = line.AccountCode,
+                        TaxType = "NONE",
                     }).ToArray(),
                 },
             },
@@ -339,8 +349,10 @@ public class XeroClient : IXeroClient
         if (response.IsSuccessStatusCode) return;
 
         var body = await response.Content.ReadAsStringAsync();
-        throw new XeroConnectionException($"{message} Xero returned {(int)response.StatusCode}: {body}");
+        throw new XeroConnectionException(
+            $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}");
     }
+
 
     private sealed class XeroTokenPayload
     {

@@ -4,9 +4,22 @@ namespace AltomateHR.Api.Modules.Claims.Entities;
 // Stored as strings in the DB (configured in AppDbContext) and shown as
 // strings in JSON (configured in Program.cs).
 
-public enum ClaimStatus { SUBMITTED, PENDING, APPROVED, REVIEWED, REJECTED }
+// REVIEWED is deliberately absent. The production schema used it as a separate
+// settled state after APPROVED; this app leaves APPROVED terminal, so a second
+// settled state only ever meant two spellings of the same thing — and every
+// read had to remember to accept both. Dropped, with the rows migrated over.
+public enum ClaimStatus { SUBMITTED, PENDING, APPROVED, REJECTED }
 
 public enum ClaimType { EXPENSE, MILEAGE }
+
+// How an approved claim gets settled. XERO_BILL pushes it to Xero (a bill for a
+// personal-paid claim, a spend-money transaction for a company-paid one);
+// PAYROLL reimburses it through the employee's pay instead, so it is excluded
+// from Xero and picked up by the payroll reimbursement export.
+//
+// PAYROLL is only meaningful for PERSONAL claims: a COMPANY-paid claim's money
+// already left a company account, so there is nothing to reimburse.
+public enum ClaimSettlement { XERO_BILL, PAYROLL }
 
 public enum PaymentType { PERSONAL, COMPANY }
 

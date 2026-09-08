@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link2, LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { AccountEditorModal } from "./AccountEditorModal";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
   archiveAccount,
@@ -68,6 +69,7 @@ export function AccountsSettings() {
   // showing what a claim CAN be coded to. Still reachable, because archiving
   // has to be undoable.
   const [showArchived, setShowArchived] = useState(false);
+  const [editing, setEditing] = useState<ChartOfAccount | null>(null);
   // Expense and bank accounts answer different questions — what a claim is
   // coded TO versus what company money is spent FROM — and a Xero org has far
   // more of the former, so they get their own lists.
@@ -154,6 +156,14 @@ export function AccountsSettings() {
 
   return (
     <div className="space-y-5">
+      {editing ? (
+        <AccountEditorModal
+          account={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => setAccounts(await getAccounts())}
+        />
+      ) : null}
+
       {/* Connected to Xero, Xero owns this list. The backend refuses hand-made
           accounts outright — this swaps the form for the only action that still
           makes sense, rather than leaving a form that can only 409. */}
@@ -379,7 +389,15 @@ export function AccountsSettings() {
                         .filter(Boolean)
                         .join(", ") || "—"}
                     </td>
-                    <td className="px-3 py-3 text-right">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(account)}
+                        className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         disabled={busyId === account.id}
@@ -388,6 +406,7 @@ export function AccountsSettings() {
                       >
                         {account.isArchived ? "Restore" : "Archive"}
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

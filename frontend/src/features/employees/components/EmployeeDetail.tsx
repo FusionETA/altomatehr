@@ -218,9 +218,12 @@ export function EmployeeDetail({
         role: placement.role,
         supervisorId: placement.supervisorId === NONE ? null : placement.supervisorId,
         policyId: placement.policyId === NONE ? null : placement.policyId,
-        name: blank(placement.name) ?? employee.name,
-        employeeNumber: blank(placement.employeeNumber),
-        jobTitle: blank(placement.jobTitle),
+        // The endpoint patches these: an empty string clears the field, which
+        // is exactly what an admin emptying the box means. Sending null (or
+        // omitting it) would silently keep the old value.
+        name: placement.name.trim() || employee.name,
+        employeeNumber: placement.employeeNumber.trim(),
+        jobTitle: placement.jobTitle.trim(),
         joinDate: blank(placement.joinDate),
       });
       // The whole profile goes back: PUT replaces the record, so a partial

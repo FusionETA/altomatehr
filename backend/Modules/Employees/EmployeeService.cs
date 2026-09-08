@@ -148,16 +148,35 @@ public class EmployeeService : IEmployeeService
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
         membership.ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId;
         membership.Modules = modulesCsv;
-        membership.EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim();
-        membership.JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim();
+        // Same patch semantics as Name, and for the same reason. These
+        // overwrote unconditionally, so a caller that sent only role and
+        // supervisor — which is exactly what the employees table did — silently
+        // wiped the person's employee number and job title.
+        //
+        // null → leave unchanged. Empty string → deliberately clear, so an
+        // admin can still remove a job title on purpose.
+        if (dto.EmployeeNumber is not null)
+        {
+            membership.EmployeeNumber = dto.EmployeeNumber.Trim() is { Length: > 0 } number
+                ? number
+                : null;
+        }
+
+        if (dto.JobTitle is not null)
+        {
+            membership.JobTitle = dto.JobTitle.Trim() is { Length: > 0 } title ? title : null;
+        }
 
         // Setting or correcting the join date changes how much pro-rated leave
         // this person has earned, and nothing else would ever recalculate it —
         // the monthly cron only ever ADDS, never re-derives. Production hooks
         // the same trigger onto its employee save: "closes the 'I set joinDate
         // after hiring and the balance didn't move' gap."
+        // Also patch semantics: omitting the join date used to null it, which
+        // both lost the date AND triggered the accrual recompute below — so
+        // changing somebody's role quietly rewrote their leave balance.
         var previousJoinDate = membership.JoinDate;
-        membership.JoinDate = dto.JoinDate?.Date;
+        if (dto.JoinDate is not null) membership.JoinDate = dto.JoinDate.Value.Date;
         var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
 

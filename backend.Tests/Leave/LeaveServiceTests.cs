@@ -13,6 +13,7 @@ using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Holidays.Dtos;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
@@ -518,6 +519,125 @@ public class LeaveServiceTests
         Assert.Equal(LeaveStatus.CANCELLED, byOwner.Application!.Status);
     }
 
+    // ---- Bulk approve ----
+    //
+    // Mirrors ClaimsBulkApproveTests: what bulk REFUSES matters more than what
+    // it approves, because a refusal that fails silently is a request the
+    // approver thinks they signed off.
+
+    [Fact]
+    public async Task BulkApproveAsync_ApprovesEveryApplicationTheCallerMayDecide()
+    {
+        var a = MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var b = MakeApp("a2", "usr-emp", "t-al", 2, LeaveStatus.PENDING);
+        var service = MakeService(
+            apps: [a, b],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        var result = await service.BulkApproveAsync(["a1", "a2"], "usr-super");
+
+        Assert.Equal(2, result.Succeeded);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(LeaveStatus.APPROVED, a.Status);
+        Assert.Equal(LeaveStatus.APPROVED, b.Status);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_FailsOnlyTheApplicationsTheCallerCannotDecide()
+    {
+        var mine = MakeApp("mine", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var other = MakeApp("other", "usr-other", "t-al", 1, LeaveStatus.PENDING);
+        var service = MakeService(
+            apps: [mine, other],
+            router: new FakeApprovalRouter(new()
+            {
+                ["usr-emp"] = [["usr-super"]],
+                ["usr-other"] = [["usr-someone-else"]],
+            }));
+
+        var result = await service.BulkApproveAsync(["mine", "other"], "usr-super");
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(LeaveStatus.APPROVED, mine.Status);
+        Assert.Equal(LeaveStatus.PENDING, other.Status);
+        Assert.False(result.Items.Single(i => i.Id == "other").Ok);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_SkipsApplicationsThatWereAlreadyDecided()
+    {
+        var decided = MakeApp("done", "usr-emp", "t-al", 1, LeaveStatus.REJECTED);
+        var service = MakeService(
+            apps: [decided],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        var result = await service.BulkApproveAsync(["done"], "usr-super");
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(LeaveStatus.REJECTED, decided.Status);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_CountsARepeatedIdOnce()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var service = MakeService(
+            apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        var result = await service.BulkApproveAsync(["a1", "a1"], "usr-super");
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(0, result.Failed);
+        Assert.Single(result.Items);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_RefusesTheWholeBatchWhenItIsTooLarge()
+    {
+        var service = MakeService(router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+        var ids = Enumerable.Range(0, 201).Select(i => $"a{i}").ToList();
+
+        var result = await service.BulkApproveAsync(ids, "usr-super");
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(201, result.Failed);
+        Assert.Contains("Too many", result.Items.Single().Error);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_AdvancesTheChainInsteadOfApprovingOnAMultiStepChain()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var service = MakeService(
+            apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"], ["usr-boss"]] }));
+
+        var result = await service.BulkApproveAsync(["a1"], "usr-super");
+
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(LeaveStatus.PENDING, app.Status);   // still waiting on usr-boss
+        Assert.Equal(1, app.CurrentStep);
+    }
+
+    [Fact]
+    public async Task BulkApproveAsync_WritesOneTrailEntryPerApprovedApplication()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 1, LeaveStatus.PENDING);
+        var service = MakeService(
+            apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        await service.BulkApproveAsync(["a1"], "usr-super");
+
+        // The audit log is the only record of WHO signed off in bulk, so a batch
+        // approval that skipped the trail would be indistinguishable from none.
+        Assert.Contains("usr-super", app.Approvals);
+        Assert.Contains("APPROVED", app.Approvals);
+    }
+
     // --- helpers ---
 
     private static CreateLeaveApplicationDto NewDto(string typeId) => new()
@@ -834,6 +954,11 @@ public class LeaveServiceTests
 
     private sealed class FakeOrganizationService : IOrganizationService
     {
+        public Task<OrganizationDto?> SetClaimSettingsAsync(
+            string organizationId, int cutoffDay, ClaimSettlement settlementRoute,
+            XeroBillStatus xeroBillStage) =>
+            throw new NotSupportedException();
+
         public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
             Task.FromResult<OrganizationDto?>(new OrganizationDto { Id = organizationId, Name = "Test Org" });
         public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId) => throw new NotImplementedException();

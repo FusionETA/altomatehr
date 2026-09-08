@@ -67,7 +67,6 @@ public class ClaimsServiceOwnershipTests
 
     [Theory]
     [InlineData(ClaimStatus.APPROVED)]
-    [InlineData(ClaimStatus.REVIEWED)]
     [InlineData(ClaimStatus.REJECTED)]
     public async Task UpdateAsync_DoesNotAllowReviewedClaimsToBeEdited(ClaimStatus status)
     {
@@ -115,7 +114,6 @@ public class ClaimsServiceOwnershipTests
         Description = "Team lunch",
         Category = ClaimCategory.MEAL,
         Amount = 12,
-        Currency = "MYR",
         SpentAt = DateTime.UtcNow,
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,

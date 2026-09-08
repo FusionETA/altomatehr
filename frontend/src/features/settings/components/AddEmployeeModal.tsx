@@ -32,9 +32,10 @@ export function AddEmployeeModal({
   onCreated: (created: Employee) => void;
 }) {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
   const [employeeNumber, setEmployeeNumber] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [joinDate, setJoinDate] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<string>("Employee");
   const [supervisorId, setSupervisorId] = useState<string>(NONE);
@@ -51,9 +52,12 @@ export function AddEmployeeModal({
       const created = await createEmployee({
         email: email.trim(),
         password: password.trim() || undefined,
+        // Blank stays undefined rather than "": an empty string means
+        // "clear this" to the API, which is not what an untouched field means.
         name: name.trim() || undefined,
-        jobTitle: jobTitle.trim() || null,
-        employeeNumber: employeeNumber.trim() || null,
+        employeeNumber: employeeNumber.trim() || undefined,
+        jobTitle: jobTitle.trim() || undefined,
+        joinDate: joinDate || undefined,
         role,
         supervisorId: supervisorId === NONE ? null : supervisorId,
         policyId: policyId === NONE ? null : policyId,
@@ -112,6 +116,49 @@ export function AddEmployeeModal({
             />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor="add-employee-number" className={LABEL}>
+                Employee ID
+              </label>
+              <input
+                id="add-employee-number"
+                className={INPUT}
+                value={employeeNumber}
+                onChange={(e) => setEmployeeNumber(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="add-job-title" className={LABEL}>
+                Job title
+              </label>
+              <input
+                id="add-job-title"
+                className={INPUT}
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="add-join-date" className={LABEL}>
+              Join date
+            </label>
+            <input
+              id="add-join-date"
+              type="date"
+              className={INPUT}
+              value={joinDate}
+              onChange={(e) => setJoinDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Drives pro-rated leave — setting it recomputes what they have earned this year.
+            </p>
+          </div>
+
           <div className="space-y-2">
             <label htmlFor="add-email" className={LABEL}>
               Email
@@ -160,33 +207,6 @@ export function AddEmployeeModal({
               Share this with the new hire so they can log in. Leave blank if they already have an
               account.
             </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label htmlFor="add-title" className={LABEL}>
-                Job title <span className="font-normal text-muted-foreground">(optional)</span>
-              </label>
-              <input
-                id="add-title"
-                className={INPUT}
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="Site Engineer"
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="add-empno" className={LABEL}>
-                Employee number <span className="font-normal text-muted-foreground">(optional)</span>
-              </label>
-              <input
-                id="add-empno"
-                className={INPUT}
-                value={employeeNumber}
-                onChange={(e) => setEmployeeNumber(e.target.value)}
-                placeholder="EMP-001"
-              />
-            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

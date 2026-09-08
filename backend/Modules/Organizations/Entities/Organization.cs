@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Modules.Organizations.Entities;
@@ -43,6 +45,23 @@ public class Organization
     // csv of addon keys ("expense_claim,clock"). Empty = no paid modules.
     [MaxLength(200)]
     public string Addons { get; set; } = string.Empty;
+
+    // Day of month that closes the claims run. Claims submitted on or before it
+    // belong to the current month's run; later ones still go through but fall
+    // into the next run. Capped at 28 so every month actually has this day.
+    public int ClaimRunCutoffDay { get; set; } = 25;
+
+    // How approved claims get paid out, org-wide. Each claim is stamped with
+    // this at creation (see Claim.Settlement) rather than reading the setting
+    // live — changing the policy must not silently re-route claims that have
+    // already been billed to Xero, which would pay them a second time.
+    public ClaimSettlement ClaimSettlementRoute { get; set; } = ClaimSettlement.XERO_BILL;
+
+    // Which stage a claim's bill lands at in Xero. AwaitingPayment is a live
+    // payable the moment it arrives; Draft parks it in the accountant's queue to
+    // be reviewed there first. Orgs that want a second pair of eyes on the
+    // accounting side pick Draft.
+    public XeroBillStatus XeroBillStage { get; set; } = XeroBillStatus.AwaitingPayment;
 
     // Org-wide default working days as a CSV of weekday numbers 1-7
     // (Mon = 1 … Sun = 7). Null means Mon-Fri. Leave counts only these days,

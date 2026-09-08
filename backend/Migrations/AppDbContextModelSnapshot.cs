@@ -704,6 +704,11 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("ReviewNotes")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Settlement")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("SpendingAt")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -1349,6 +1354,14 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<int>("ClaimRunCutoffDay")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ClaimSettlementRoute")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1396,6 +1409,11 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(5)
                         .HasColumnType("varchar(5)");
+
+                    b.Property<string>("XeroBillStage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.HasKey("Id");
 

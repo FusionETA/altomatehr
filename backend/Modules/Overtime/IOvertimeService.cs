@@ -12,6 +12,12 @@ public interface IOvertimeService
     Task<OvertimeTransitionResult> AttachAfterPhotoAsync(string id, string userId, AttachOvertimeAfterPhotoDto dto);
     Task<OvertimeTransitionResult> DeleteAfterPhotoAsync(string id, string userId);
     Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId);
+
+    // Sign off many requests at once, as the current-step approver of each.
+    // Independent per-id success/failure, so the result is a report rather than
+    // a single verdict. No bulk REJECT counterpart on purpose — see
+    // OvertimeService.BulkApproveAsync.
+    Task<OvertimeBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId);
     Task<OvertimeTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<OvertimeTransitionResult> CancelAsync(string id, string userId);
     Task<OvertimePhotoUploadResult> StorePhotoAsync(OvertimePhotoUpload upload);
@@ -32,3 +38,10 @@ public record OvertimeTransitionResult(
     bool Transitioned,
     OvertimeRequestDto? Request,
     string? Error = null);
+
+// Mirrors the claims and attendance bulk contract: per-id success/failure, so a
+// run where eighteen of twenty landed reports as exactly that instead of as a
+// failed request.
+public record OvertimeBulkResultItem(string Id, bool Ok, string? Error = null);
+
+public record OvertimeBulkResult(int Succeeded, int Failed, IReadOnlyList<OvertimeBulkResultItem> Items);

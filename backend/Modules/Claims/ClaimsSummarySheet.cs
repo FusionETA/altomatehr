@@ -93,6 +93,19 @@ public static class ClaimsSummarySheet
     {
         var sheet = new TabularSheet(SheetName, PrintHeaders, caption);
 
+        // The two figures the report is actually read for, as cards above the
+        // table. Totals split per currency for the same reason the totals row
+        // does — one number across MYR and USD would be meaningless.
+        var perCurrency = claims
+            .GroupBy(c => c.Currency)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => $"{g.Key} {TabularSheet.Money(g.Sum(c => c.Amount))}")
+            .ToList();
+
+        sheet.SetSummary(
+            ("Matching claims", claims.Count.ToString()),
+            ("Total amount", perCurrency.Count == 0 ? "—" : string.Join("  ·  ", perCurrency)));
+
         foreach (var claim in claims)
         {
             accounts.TryGetValue(claim.ChartOfAccountId ?? string.Empty, out var account);
@@ -163,4 +176,75 @@ public static class ClaimsSummarySheet
 
     public static TabularSheet BuildImportTemplate() =>
         TabularTemplate.Build(ImportSheetName, ImportColumns);
+
+    // ---- Payroll reimbursements ----
+
+    public const string PayrollSheetName = "Payroll Reimbursements";
+
+    private static readonly string[] PayrollHeaders =
+    [
+        "Employee", "Employee Email", "Claims", "Claim #s", "Total Amount", "Currency", "Run Month",
+    ];
+
+    // One row per employee, not per claim — payroll enters ONE reimbursement
+    // line per person, so a per-claim sheet would make them do the adding up
+    // (and get it wrong). The claim numbers ride along in their own column so a
+    // figure on someone's payslip can still be traced back to the receipts.
+    //
+    // Grouped by employee AND currency: a single total across mixed currencies
+    // would be a meaningless number, the same reason the PDF splits its totals.
+    public static TabularSheet BuildPayrollReimbursements(
+        IEnumerable<Claim> claims,
+        EmployeeRowIndex employees,
+        string runMonth,
+        string? caption = null)
+    {
+        var sheet = new TabularSheet(PayrollSheetName, PayrollHeaders, caption);
+
+        var groups = claims
+            .GroupBy(c => (c.EmployeeId, c.Currency))
+            .Select(g => new
+            {
+                Name = employees.NameOf(g.Key.EmployeeId),
+                Email = employees.EmailOf(g.Key.EmployeeId),
+                g.Key.Currency,
+                Count = g.Count(),
+                Numbers = g.Select(c => c.ClaimNumber).OrderBy(n => n, StringComparer.Ordinal).ToList(),
+                Total = g.Sum(c => c.Amount),
+            })
+            .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(g => g.Currency, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            sheet.AddRow(
+                group.Name,
+                group.Email,
+                group.Count.ToString(),
+                string.Join(", ", group.Numbers),
+                TabularSheet.Money(group.Total),
+                group.Currency,
+                runMonth);
+        }
+
+        // A payroll run gets checked against a control total before it is
+        // committed, so the file has to carry one. Split per currency for the
+        // same reason the rows are.
+        var totals = groups
+            .GroupBy(g => g.Currency)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => $"{g.Key} {TabularSheet.Money(g.Sum(x => x.Total))}");
+
+        sheet.SetTotals(
+            $"{groups.Count} employee{(groups.Count == 1 ? "" : "s")}",
+            null,
+            groups.Sum(g => g.Count).ToString(),
+            null,
+            string.Join("  ·  ", totals),
+            null,
+            runMonth);
+
+        return sheet;
+    }
 }
