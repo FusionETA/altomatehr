@@ -4,6 +4,8 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Notifications;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
@@ -56,6 +58,7 @@ public class AttendanceService : IAttendanceService
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
     private readonly IRealtimeService _realtime;
+    private readonly INotificationService _notifications;
     private readonly IEmployeeRowResolver _employees;
     private readonly IHoursSummaryService _hours;
     private readonly ITeamService _teams;
@@ -75,6 +78,7 @@ public class AttendanceService : IAttendanceService
         IApprovalRouter router,
         IDirectoryService directory,
         IRealtimeService realtime,
+        INotificationService notifications,
         IEmployeeRowResolver employees,
         IHoursSummaryService hours,
         ITeamService teams)
@@ -94,6 +98,7 @@ public class AttendanceService : IAttendanceService
         _router = router;
         _directory = directory;
         _realtime = realtime;
+        _notifications = notifications;
         _employees = employees;
         _hours = hours;
     }
@@ -1191,7 +1196,27 @@ public class AttendanceService : IAttendanceService
                 RealtimeScope.ATTENDANCE,
                 approve ? RealtimeAction.APPROVED : RealtimeAction.REJECTED,
                 request.Id));
+
+        // Persisted in-app notification for the employee, on top of the
+        // ephemeral SSE nudge above — same "needs your attention" moment as
+        // Claims/Leave's APPROVED/REJECTED.
+        await _notifications.NotifyAsync(
+            request.OrganizationId, request.EmployeeId, NotificationType.ATTENDANCE_APPROVAL,
+            approve ? "Attendance approved" : "Attendance rejected",
+            approve
+                ? $"Your {KindLabel(request.Kind)} request was approved."
+                : $"Your {KindLabel(request.Kind)} request was rejected.{(string.IsNullOrEmpty(request.ReviewNotes) ? "" : $" Reason: {request.ReviewNotes}")}",
+            "/attendance");
     }
+
+    private static string KindLabel(AttendanceApprovalKind kind) => kind switch
+    {
+        AttendanceApprovalKind.CLOCK_IN => "clock-in",
+        AttendanceApprovalKind.CLOCK_OUT => "clock-out",
+        AttendanceApprovalKind.BREAK_START => "break-start",
+        AttendanceApprovalKind.BREAK_END => "break-end",
+        _ => "attendance",
+    };
 
     // ---- Import / export ----
 
@@ -1441,6 +1466,16 @@ public class AttendanceService : IAttendanceService
             request.OrganizationId,
             approvers,
             RealtimeEventDto.For(RealtimeScope.ATTENDANCE, action, request.Id));
+
+        foreach (var approverId in approvers)
+        {
+            if (string.IsNullOrEmpty(approverId)) continue;
+            await _notifications.NotifyAsync(
+                request.OrganizationId, approverId, NotificationType.ATTENDANCE_APPROVAL,
+                "New attendance request to review",
+                $"A {KindLabel(request.Kind)} request needs your review.",
+                "/attendance");
+        }
     }
 
     private async Task DecideInMemoryAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)

@@ -7,6 +7,7 @@ using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays.Entities;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Partners.Entities;
@@ -57,6 +58,8 @@ public class AppDbContext : DbContext
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -191,6 +194,16 @@ public class AppDbContext : DbContext
         profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
+        var notification = modelBuilder.Entity<Notification>();
+        notification.Property(n => n.Type).HasConversion<string>().HasMaxLength(30);
+        // The bell's two queries: "my recent notifications" and "my unread count".
+        notification.HasIndex(n => new { n.UserId, n.CreatedAt });
+        notification.HasIndex(n => new { n.UserId, n.ReadAt });
+
+        // A re-subscribing browser upserts by Endpoint — see WebPushSubscriptionRepository.
+        modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.Endpoint).IsUnique();
+        modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.UserId);
+
         // ---- Multi-tenant global query filters ----
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
@@ -244,6 +257,8 @@ public class AppDbContext : DbContext
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Notification>().HasQueryFilter(
+            n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

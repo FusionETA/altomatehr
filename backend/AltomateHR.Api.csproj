@@ -21,6 +21,13 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
     <PackageReference Include="QuestPDF" Version="2026.8.0" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.16.16" />
+    <!-- WebPush transitively pulls Portable.BouncyCastle, whose Org.BouncyCastle.*
+         types collide at compile time with the modern BouncyCastle.Cryptography
+         already used by PasswordHasher. Excluding just the compile asset keeps
+         it available at runtime (which is what WebPush.dll's IL actually binds
+         against) while resolving the ambiguity for our own code. -->
+    <PackageReference Include="WebPush" Version="1.0.13" />
+    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" ExcludeAssets="compile" />
   </ItemGroup>
 
 </Project>

@@ -5,6 +5,8 @@ using AltomateHR.Api.Modules.Claims.Dtos;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Notifications;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
@@ -32,6 +34,7 @@ public class ClaimsService : IClaimsService
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
     private readonly IRealtimeService _realtime;
+    private readonly INotificationService _notifications;
     private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
     private readonly IXeroService _xero;
@@ -45,6 +48,7 @@ public class ClaimsService : IClaimsService
         IOrganizationService organizations,
         ICurrentUser currentUser,
         IRealtimeService realtime,
+        INotificationService notifications,
         IEmployeeRowResolver employees,
         IProjectService projects,
         IXeroService xero)
@@ -57,6 +61,7 @@ public class ClaimsService : IClaimsService
         _organizations = organizations;
         _currentUser = currentUser;
         _realtime = realtime;
+        _notifications = notifications;
         _employees = employees;
         _projects = projects;
         _xero = xero;
@@ -255,7 +260,7 @@ public class ClaimsService : IClaimsService
         // Notifies the claimant AND, when the chain advanced rather than ended,
         // whoever is now the current-step approver — so the claim appears in the
         // next reviewer's queue without them reloading.
-        await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
+        await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true, approverId: approverId);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -314,7 +319,7 @@ public class ClaimsService : IClaimsService
         // Notify after every write lands, so a claimant refreshing on the first
         // notification sees the whole batch settled rather than a partial state.
         foreach (var claim in approved)
-            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
+            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true, approverId: approverId);
 
         return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
@@ -341,7 +346,7 @@ public class ClaimsService : IClaimsService
 
         // Rejection is terminal, so there is no next approver — only the
         // claimant needs to know.
-        await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true);
+        await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true, approverId: approverId);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -851,18 +856,70 @@ public class ClaimsService : IClaimsService
     // there is nobody left to tell — but a peer approver at the same step still
     // needs the row to leave their queue.
     private async Task NotifyAsync(
-        Claim claim, RealtimeAction action, bool notifyClaimant, bool notifyApprovers = false)
+        Claim claim, RealtimeAction action, bool notifyClaimant, bool notifyApprovers = false, string? approverId = null)
     {
         var targets = new List<string?>();
         if (notifyClaimant) targets.Add(claim.EmployeeId);
 
-        if (notifyApprovers || claim.Status == ClaimStatus.PENDING)
-            targets.AddRange(await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep));
+        var approvers = notifyApprovers || claim.Status == ClaimStatus.PENDING
+            ? await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep)
+            : [];
+        targets.AddRange(approvers);
 
         await _realtime.PublishAsync(
             claim.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.CLAIMS, action, claim.Id));
+
+        // Persisted in-app notification, on top of the ephemeral SSE nudge above.
+        // Only the two "needs someone's attention" moments get one — UPDATED and
+        // DELETED are noisier than they're worth in a bell.
+        switch (action)
+        {
+            case RealtimeAction.SUBMITTED:
+                foreach (var reviewerId in approvers)
+                {
+                    if (string.IsNullOrEmpty(reviewerId)) continue;
+                    await _notifications.NotifyAsync(
+                        claim.OrganizationId, reviewerId, NotificationType.CLAIM_SUBMITTED,
+                        "New claim to review",
+                        $"A claim for {claim.Currency} {claim.Amount:0.00} (\"{claim.Title}\") needs your review.",
+                        "/claims");
+                }
+                break;
+
+            case RealtimeAction.APPROVED or RealtimeAction.REJECTED when notifyClaimant:
+            {
+                var title = action == RealtimeAction.APPROVED ? "Claim approved" : "Claim rejected";
+                await _notifications.NotifyAsync(
+                    claim.OrganizationId, claim.EmployeeId, NotificationType.CLAIM_REVIEWED,
+                    title,
+                    action == RealtimeAction.APPROVED
+                        ? $"Your claim \"{claim.Title}\" was approved."
+                        : $"Your claim \"{claim.Title}\" was rejected.{(string.IsNullOrEmpty(claim.ReviewNotes) ? "" : $" Reason: {claim.ReviewNotes}")}",
+                    "/claims");
+
+                // The employee's own manager, not just the claimant — visibility
+                // into their reports' outcomes even on a decision they didn't make
+                // themselves (multi-step chains, or a peer approver at the same
+                // step). Skipped when the supervisor IS the one who just decided —
+                // they don't need telling about their own click.
+                var supervisorId = await _supervision.GetSupervisorIdAsync(claim.EmployeeId);
+                if (!string.IsNullOrEmpty(supervisorId) && supervisorId != approverId)
+                {
+                    var emails = await _supervision.GetEmailsAsync([claim.EmployeeId]);
+                    var employeeLabel = emails.GetValueOrDefault(claim.EmployeeId) ?? "An employee";
+                    await _notifications.NotifyAsync(
+                        claim.OrganizationId, supervisorId, NotificationType.CLAIM_REVIEWED,
+                        title,
+                        action == RealtimeAction.APPROVED
+                            ? $"{employeeLabel}'s claim \"{claim.Title}\" was approved."
+                            : $"{employeeLabel}'s claim \"{claim.Title}\" was rejected.",
+                        "/claims");
+                }
+                break;
+            }
+        }
     }
 
     // Resolves requests that no longer have anyone to approve them.

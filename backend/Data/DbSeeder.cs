@@ -57,7 +57,9 @@ public static class DbSeeder
         await BackfillLatenessAsync(attendance, organizations);
     }
 
-    // Register the Appraisify partner app (idempotent). Read-only, employees:read only.
+    // Register the Appraisify partner app (idempotent). Reads the roster
+    // (employees:read) and sends notifications (notifications:write) — no
+    // other scope granted.
     // Fills LateByMin on rows written before clock-in started computing it.
     //
     // Only ever fills nulls, so it's safe on every boot and never overwrites a
@@ -99,7 +101,7 @@ public static class DbSeeder
             Id = "client-appraisify",
             Name = "appraisify",                                   // also the /sso/launch/{app} slug
             SecretHash = PartnerTokenGenerator.Hash(DevAppraisifyClientSecret),
-            Scopes = "employees:read",                             // least privilege — read-only, one resource
+            Scopes = "employees:read,notifications:write",         // read the roster, and send bell/email notifications
             RedirectUrl = "https://appraisify.app/auth/altomate-callback",
             Audience = "appraisify",
             Active = true,

@@ -36,3 +36,45 @@ public class PartnerOrgDto
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 }
+
+// POST /partner/notifications — body. Requires the "notifications:write" scope.
+// OrganizationId is required (not inferred): ApiClient rows are NOT tenant-scoped —
+// one client secret serves every customer org — so there's no "the caller's org"
+// to fall back on the way a partner ACCESS TOKEN would carry one.
+public class SendPartnerNotificationDto
+{
+    public string UserId { get; set; } = string.Empty;
+    public string OrganizationId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public NotificationChannel Channel { get; set; } = NotificationChannel.Both;
+
+    // Deep link back into the partner app (e.g. AppraisifyAlt's own appraisal
+    // page) — opaque to AltomateHR, stored as the notification's Url.
+    public string? Link { get; set; }
+}
+
+public enum NotificationChannel
+{
+    Email,
+    NotificationCenter,
+    Both,
+}
+
+public class SendPartnerNotificationResponseDto
+{
+    public PartnerNotificationStatus Status { get; set; }
+    public string? NotificationId { get; set; }
+}
+
+// Forbidden is deliberately NOT part of the wire contract's Status values
+// (Success/Failed/UserNotFound only) — a missing scope is refused as an
+// HTTP 403 before a response body is ever built. It lives in this enum only
+// so the service has one return type to hand the controller.
+public enum PartnerNotificationStatus
+{
+    Success,
+    Failed,
+    UserNotFound,
+    Forbidden,
+}

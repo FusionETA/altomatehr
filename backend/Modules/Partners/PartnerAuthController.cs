@@ -41,6 +41,25 @@ public class PartnerAuthController : ControllerBase
         return result is null ? Unauthorized(Err("Invalid client secret or refresh token.")) : Ok(result);
     }
 
+    // POST /partner/notifications — client secret (with the "notifications:write"
+    // scope) → deliver a notification to one AltomateHR user, via the in-app bell,
+    // email, or both. Unlike /partner/token, this needs no ticket/access-token
+    // round trip: it's meant for a partner's own backend event (e.g. "appraisal
+    // ready") firing whether or not that user currently has a live session.
+    [HttpPost("notifications")]
+    public async Task<IActionResult> SendNotification(SendPartnerNotificationDto dto)
+    {
+        var secret = BearerSecret();
+        if (secret is null) return Unauthorized(Err("Missing client secret."));
+
+        var result = await _partners.SendNotificationAsync(secret, dto);
+        if (result is null) return Unauthorized(Err("Invalid client secret."));
+
+        return result.Status == PartnerNotificationStatus.Forbidden
+            ? StatusCode(403, new { error = new { status = 403, message = "This client is not granted the notifications:write scope." } })
+            : Ok(result);
+    }
+
     private string? BearerSecret()
     {
         var header = Request.Headers.Authorization.ToString();
