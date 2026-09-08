@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from "@/shared/lib/api-client";
+import { apiDelete, apiGet, apiGetFile, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
 
 export type Employee = {
   id: string;
@@ -13,8 +13,6 @@ export type Employee = {
   /** First day in THIS org. Drives pro-rated leave accrual. */
   joinDate: string | null;
   otTimeBalanceMin: number;
-  supervisorId: string | null;
-  supervisorEmail: string | null;
   policyId: string | null;
   shiftId: string | null;
   /** Per-admin module grant. null = full access. */
@@ -33,10 +31,10 @@ export type Employee = {
 export type UpdateEmployee = {
   role: string;
   name?: string;
+  email?: string;
   employeeNumber?: string;
   jobTitle?: string;
   joinDate?: string | null;
-  supervisorId?: string | null;
   policyId?: string | null;
   shiftId?: string | null;
   modules?: string[] | null;
@@ -54,10 +52,10 @@ export type UpdateEmployee = {
 export const toUpdateEmployee = (employee: Employee): UpdateEmployee => ({
   role: employee.role,
   name: employee.name,
+  email: employee.email,
   employeeNumber: employee.employeeNumber ?? undefined,
   jobTitle: employee.jobTitle ?? undefined,
   joinDate: employee.joinDate,
-  supervisorId: employee.supervisorId,
   policyId: employee.policyId,
   shiftId: employee.shiftId,
   modules: employee.modules,
@@ -85,7 +83,6 @@ export type CreateEmployee = {
   jobTitle?: string;
   joinDate?: string | null;
   role: string;
-  supervisorId?: string | null;
   policyId?: string | null;
 };
 
@@ -155,6 +152,8 @@ export type EmployeeProfile = {
   maritalStatus: MaritalStatus | null;
   isResident: boolean;
   isOku: boolean;
+  addressLine1: string | null;
+  addressLine2: string | null;
   city: string | null;
   postcode: string | null;
   state: string | null;
@@ -190,6 +189,9 @@ export type EmployeeProfile = {
   epfEmployeeRate: number;
   epfEmployeeVoluntary: number;
   epfEmployerVoluntary: number;
+  /** Non-Malaysian, non-PR employees who joined EPF before 1 Aug 1998 stay on
+   * the standard Part A/C rates instead of dropping to Part F (2%/2%). */
+  epfMemberBefore1998: boolean;
 
   // SOCSO / EIS / SKBBK
   socsoNumber: string | null;
@@ -237,42 +239,79 @@ export type EmployeeProfile = {
 // previous system settled on — kept byte-compatible so payroll reads what it
 // already expects rather than a second dialect of the same data.
 
-/** One dependent child, for the PCB child relief (QC) calculation. */
+/**
+ * One dependent child, for the PCB child relief (QC) calculation per LHDN
+ * Public Ruling 5/2019 §7.3. Only two amounts exist under the ruling — RM
+ * 2,000 or RM 8,000 per child — so `currentlyStudying` doubles as the age
+ * bracket: UNDER_18 is a fixed RM 2,000, and the other three values are all
+ * 18+, split by education so Form E / CP8D can report the two RM 8,000
+ * cohorts (Malaysia vs abroad) separately. There is no separate `age` field —
+ * it was never referenced by any calc.
+ */
 export type ChildRelief = {
-  age: number | null;
   abilityStatus: "NORMAL" | "DISABLED";
-  currentlyStudying: "PRESCHOOL" | "PRIMARY" | "SECONDARY" | "HIGHER_ED" | "NONE";
-  /** How much of the relief this employee claims — split with the spouse. */
+  currentlyStudying: "UNDER_18" | "PRE_UNIVERSITY" | "DIPLOMA_MALAYSIA" | "DEGREE_ABROAD";
+  /** What share of the PCB relief is claimed for this child. */
   pcbDeduction: "FULL" | "HALF" | "NONE";
 };
 
 export const CHILD_ABILITY: ChildRelief["abilityStatus"][] = ["NORMAL", "DISABLED"];
 export const CHILD_ABILITY_LABELS: Record<ChildRelief["abilityStatus"], string> = {
-  NORMAL: "No disability",
+  NORMAL: "Non-disabled",
   DISABLED: "Disabled (OKU)",
 };
 
 export const CHILD_STUDYING: ChildRelief["currentlyStudying"][] = [
-  "NONE",
-  "PRESCHOOL",
-  "PRIMARY",
-  "SECONDARY",
-  "HIGHER_ED",
+  "UNDER_18",
+  "PRE_UNIVERSITY",
+  "DIPLOMA_MALAYSIA",
+  "DEGREE_ABROAD",
 ];
 export const CHILD_STUDYING_LABELS: Record<ChildRelief["currentlyStudying"], string> = {
-  NONE: "Not studying",
-  PRESCHOOL: "Preschool",
-  PRIMARY: "Primary school",
-  SECONDARY: "Secondary school",
-  HIGHER_ED: "Higher education",
+  UNDER_18: "Not applicable (under 18)",
+  PRE_UNIVERSITY: "Pre-university or lower — RM 2,000",
+  DIPLOMA_MALAYSIA: "Diploma or higher (Malaysia) — RM 8,000",
+  DEGREE_ABROAD: "Degree or higher (Abroad) — RM 8,000",
 };
+
+/** True for the three "18 and above" studying levels. */
+export const isAdultChild = (child: ChildRelief) =>
+  child.currentlyStudying === "PRE_UNIVERSITY" ||
+  child.currentlyStudying === "DIPLOMA_MALAYSIA" ||
+  child.currentlyStudying === "DEGREE_ABROAD";
 
 export const CHILD_DEDUCTION: ChildRelief["pcbDeduction"][] = ["FULL", "HALF", "NONE"];
 export const CHILD_DEDUCTION_LABELS: Record<ChildRelief["pcbDeduction"], string> = {
-  FULL: "Full relief",
-  HALF: "Half (shared with spouse)",
+  FULL: "100%",
+  HALF: "50%",
   NONE: "None",
 };
+
+// Rows written before this model was simplified carried an `age` number and a
+// five-level `currentlyStudying` (NONE/PRESCHOOL/PRIMARY/SECONDARY/HIGHER_ED).
+// Mapped on read so old data lands on a valid option instead of leaving the
+// picker blank — NONE/PRESCHOOL/PRIMARY/SECONDARY all meant "under 18"
+// (RM 2,000); HIGHER_ED meant RM 8,000, mapped to the Malaysia cohort as the
+// safer default. Rewritten to the current shape the next time it's saved.
+const LEGACY_CHILD_STUDYING: Record<string, ChildRelief["currentlyStudying"]> = {
+  NONE: "UNDER_18",
+  PRESCHOOL: "UNDER_18",
+  PRIMARY: "UNDER_18",
+  SECONDARY: "UNDER_18",
+  HIGHER_ED: "DIPLOMA_MALAYSIA",
+};
+
+function normalizeChildRelief(raw: Record<string, unknown>): ChildRelief {
+  const studying = typeof raw.currentlyStudying === "string" ? raw.currentlyStudying : "";
+  return {
+    abilityStatus: raw.abilityStatus === "DISABLED" ? "DISABLED" : "NORMAL",
+    currentlyStudying: (CHILD_STUDYING as string[]).includes(studying)
+      ? (studying as ChildRelief["currentlyStudying"])
+      : (LEGACY_CHILD_STUDYING[studying] ?? "UNDER_18"),
+    pcbDeduction:
+      raw.pcbDeduction === "HALF" || raw.pcbDeduction === "NONE" ? raw.pcbDeduction : "FULL",
+  };
+}
 
 /** A fixed adjustment applied on every payroll run. */
 export type FixedAllowance = {
@@ -294,7 +333,7 @@ function parseList<T>(json: string | null | undefined): T[] {
 }
 
 export const parseChildRelief = (json: string | null | undefined) =>
-  parseList<ChildRelief>(json);
+  parseList<Record<string, unknown>>(json).map(normalizeChildRelief);
 export const parseFixedAllowances = (json: string | null | undefined) =>
   parseList<FixedAllowance>(json);
 
@@ -310,3 +349,61 @@ export const getEmployeeProfile = (id: string) =>
 // statutory and payroll value the payroll screens own.
 export const saveEmployeeProfile = (id: string, profile: EmployeeProfile) =>
   apiPut<EmployeeProfile>(`/employees/${id}/profile`, profile);
+
+// ---- Documents ----
+//
+// Files attached to the employee's profile (ID scan, contract, certificate,
+// etc). The server stores the bytes and returns only metadata — there's no
+// public URL, since the file is served through an authenticated download
+// route keyed by id.
+
+export type EmployeeDocument = {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+};
+
+export const getEmployeeDocuments = (id: string) =>
+  apiGet<EmployeeDocument[]>(`/employees/${id}/documents`);
+
+export const uploadEmployeeDocument = (id: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<EmployeeDocument>(`/employees/${id}/documents`, form);
+};
+
+export const deleteEmployeeDocument = (id: string, documentId: string) =>
+  apiDelete<void>(`/employees/${id}/documents/${documentId}`);
+
+/** Fetches the file's bytes, ready for `saveFile` (shared/lib/api-client). */
+export const downloadEmployeeDocument = (id: string, doc: EmployeeDocument) =>
+  apiGetFile(`/employees/${id}/documents/${doc.id}/download`, doc.name);
+
+// ---- LHDN statutory forms ----
+//
+// Auto-generated per-employee PDFs (PCB 2(II), CP22, CP22A, CP21, PCB/TP3),
+// summarising the LHDN-required fields in our own layout — HR transcribes
+// onto the official LHDN form before submission, or pastes into e-PCB.
+
+export type LhdnFormDescriptor = {
+  kind: string;
+  code: string;
+  title: string;
+  description: string;
+  needsYearPicker: boolean;
+  enabled: boolean;
+  disabledReason: string | null;
+  /** CP22 only: "Due in N days" / "Overdue by N days" / "Overdue — file late". */
+  badge: string | null;
+  badgeVariant: string | null;
+};
+
+export const getLhdnForms = (id: string) =>
+  apiGet<LhdnFormDescriptor[]>(`/employees/${id}/lhdn-forms`);
+
+export const downloadLhdnForm = (id: string, kind: string, year: number | null) => {
+  const query = year !== null ? `?year=${year}` : "";
+  return apiGetFile(`/employees/${id}/lhdn-forms/${kind}/download${query}`, `${kind}.pdf`);
+};

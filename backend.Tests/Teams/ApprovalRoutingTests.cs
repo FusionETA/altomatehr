@@ -1,5 +1,7 @@
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Teams.Entities;
 
@@ -8,11 +10,11 @@ namespace AltomateHR.Api.Tests.Teams;
 // Admins are oversight, not links in the chain of command.
 //
 // An Admin/Owner may SEE anything in the org, and approves nothing: never an
-// approver in a team chain, never the supervisor fallback, never occupying a
-// layer. The consequence these tests exist to pin down is that "nobody above
-// me" becomes a REACHABLE state — remove the admin from a team and the person
-// at the top has zero approval steps, which callers must handle at submit
-// rather than by handing the admin approval power back.
+// approver in a team chain, never occupying a layer. The consequence these
+// tests exist to pin down is that "nobody above me" becomes a REACHABLE
+// state — remove the admin from a team and the person at the top has zero
+// approval steps, which callers must handle at submit rather than by handing
+// the admin approval power back.
 public class ApprovalRoutingTests
 {
     private const string Team = "team-1";
@@ -57,35 +59,6 @@ public class ApprovalRoutingTests
 
         Assert.Equal(1, await router.StepCountAsync(ApprovalModule.ATTENDANCE, "staff"));
         Assert.Equal(["lead"], await router.CurrentApproversAsync(ApprovalModule.ATTENDANCE, "staff", 0));
-    }
-
-    [Fact]
-    public async Task AnAdminAssignedAsSomeonesSupervisor_IsNotTheirApprover()
-    {
-        // The flat fallback, used when the employee has no team. Being recorded
-        // as someone's supervisor is an org-chart fact; it doesn't make an admin
-        // an approver.
-        var router = Build(
-            layers: [],
-            layerCount: 1,
-            administrative: ["boss"],
-            supervisorOf: new() { ["staff"] = "boss" });
-
-        Assert.Equal(0, await router.StepCountAsync(ApprovalModule.LEAVE, "staff"));
-        Assert.Empty(await router.CurrentApproversAsync(ApprovalModule.LEAVE, "staff", 0));
-    }
-
-    [Fact]
-    public async Task ANonAdminSupervisor_IsStillTheFallbackApprover()
-    {
-        var router = Build(
-            layers: [],
-            layerCount: 1,
-            administrative: ["boss"],
-            supervisorOf: new() { ["staff"] = "lead" });
-
-        Assert.Equal(1, await router.StepCountAsync(ApprovalModule.LEAVE, "staff"));
-        Assert.Equal(["lead"], await router.CurrentApproversAsync(ApprovalModule.LEAVE, "staff", 0));
     }
 
     // --- what happens when a layer is removed underneath an in-flight request ---
@@ -167,12 +140,111 @@ public class ApprovalRoutingTests
             await withoutLayer0.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
     }
 
+    // --- explicit per-employee approver overrides ---
+
+    [Fact]
+    public async Task ExplicitOverride_ReplacesTheDefaultApprovers()
+    {
+        // staff, emma → layer 0; ben, cathy → layer 1. Without an override,
+        // staff's layer-1 step would be both ben and cathy (the implicit
+        // default). An override naming only ben should narrow it to just him.
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["emma"] = 0, ["ben"] = 1, ["cathy"] = 1 },
+            layerCount: 2,
+            administrative: [],
+            overrides: [new TeamApprovalOverride { TeamId = Team, EmployeeId = "staff", Layer = 1, ApproverIdsJson = "[\"ben\"]" }]);
+
+        Assert.Equal(1, await router.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+        Assert.Equal(["ben"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
+    }
+
+    [Fact]
+    public async Task ExplicitEmptyOverride_SkipsTheLayerForThisEmployeeOnly()
+    {
+        // Same shape, but staff's override deliberately names nobody — their
+        // layer-1 step should vanish entirely (not "a step with zero
+        // approvers"), while emma — no override configured for her — still
+        // gets the normal implicit default at the very same layer.
+        var overrides = new List<TeamApprovalOverride>
+        {
+            new() { TeamId = Team, EmployeeId = "staff", Layer = 1, ApproverIdsJson = "[]" },
+        };
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["emma"] = 0, ["ben"] = 1, ["cathy"] = 1 },
+            layerCount: 2,
+            administrative: [],
+            overrides: overrides);
+
+        Assert.Equal(0, await router.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+        Assert.Empty(await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
+
+        Assert.Equal(1, await router.StepCountAsync(ApprovalModule.CLAIMS, "emma"));
+        Assert.Equal(["ben", "cathy"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "emma", 0));
+    }
+
+    // --- multi-team, project-aware resolution ---
+
+    [Fact]
+    public async Task MultiTeamWithProjectId_RoutesThroughTheMatchingProjectsTeam()
+    {
+        // staff is on two teams at once: Team Alpha (project "Alpha Project",
+        // approver alice) and Team Beta (project "Beta Project", approver
+        // bob). A CLAIMS request tagged with Beta's project id must resolve
+        // through Beta's chain, not Alpha's — and vice versa.
+        var (chain, _) = BuildMultiTeam();
+        var router = new ApprovalRouter(chain);
+
+        Assert.Equal(["bob"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0, "proj-beta"));
+        Assert.Equal(["alice"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0, "proj-alpha"));
+    }
+
+    [Fact]
+    public async Task MultiTeamNoProjectId_FallsBackToAlphabeticallyFirstProjectName()
+    {
+        // Same two-team shape, but no projectId given — exactly Leave's case,
+        // since it has no project concept at all. Resolution falls back to
+        // whichever team's PROJECT NAME sorts first alphabetically
+        // ("Alpha Project" before "Beta Project"), not team id order — Team
+        // Beta's id ("team-beta") would sort before Team Alpha's
+        // ("team-alpha") were it going by id, so this also proves the rule
+        // really is project-name-based.
+        var (chain, _) = BuildMultiTeam();
+        var router = new ApprovalRouter(chain);
+
+        Assert.Equal(["alice"], await router.CurrentApproversAsync(ApprovalModule.LEAVE, "staff", 0));
+    }
+
+    private static (ApprovalChainService Chain, List<Team> Teams) BuildMultiTeam()
+    {
+        var teamAlpha = new Team { Id = "team-alpha", ProjectId = "proj-alpha", LayerCount = 2, LayerLabels = "[]" };
+        var teamBeta = new Team { Id = "team-beta", ProjectId = "proj-beta", LayerCount = 2, LayerLabels = "[]" };
+        var memberships = new List<TeamMembership>
+        {
+            new() { TeamId = "team-alpha", EmployeeId = "staff", Layer = 0 },
+            new() { TeamId = "team-alpha", EmployeeId = "alice", Layer = 1 },
+            new() { TeamId = "team-beta", EmployeeId = "staff", Layer = 0 },
+            new() { TeamId = "team-beta", EmployeeId = "bob", Layer = 1 },
+        };
+        var projects = new List<Project>
+        {
+            new() { Id = "proj-alpha", Name = "Alpha Project" },
+            new() { Id = "proj-beta", Name = "Beta Project" },
+        };
+        var chain = new ApprovalChainService(
+            new StubTeams(teamAlpha, teamBeta),
+            new StubTeamMemberships(memberships),
+            new StubSupervision([]),
+            new StubTeamApprovalOverrides([]),
+            new StubProjects(projects));
+        return (chain, [teamAlpha, teamBeta]);
+    }
+
     private static ApprovalRouter Build(
         Dictionary<string, int> layers,
         int layerCount,
         string[] administrative,
-        Dictionary<string, string>? supervisorOf = null,
-        int[]? claimsLayers = null)
+        int[]? claimsLayers = null,
+        List<TeamApprovalOverride>? overrides = null)
     {
         var team = new Team
         {
@@ -186,19 +258,31 @@ public class ApprovalRoutingTests
         var memberships = layers
             .Select(kv => new TeamMembership { TeamId = Team, EmployeeId = kv.Key, Layer = kv.Value })
             .ToList();
-        var supervision = new StubSupervision(administrative.ToHashSet(), supervisorOf ?? []);
-        var chain = new ApprovalChainService(new StubTeams(team), new StubTeamMemberships(memberships), supervision);
-        return new ApprovalRouter(chain, supervision);
+        var chain = new ApprovalChainService(
+            new StubTeams(team),
+            new StubTeamMemberships(memberships),
+            new StubSupervision(administrative.ToHashSet()),
+            new StubTeamApprovalOverrides(overrides ?? []),
+            new StubProjects([]));
+        return new ApprovalRouter(chain);
     }
 
-    private sealed class StubTeams(Team team) : ITeamRepository
+    private sealed class StubTeams(params Team[] teams) : ITeamRepository
     {
-        public Task<Team?> GetByIdAsync(string id) => Task.FromResult<Team?>(team.Id == id ? team : null);
-        public Task<List<Team>> GetAllAsync() => Task.FromResult<List<Team>>([team]);
+        public Task<Team?> GetByIdAsync(string id) => Task.FromResult(teams.FirstOrDefault(t => t.Id == id));
+        public Task<List<Team>> GetAllAsync() => Task.FromResult(teams.ToList());
         public Task<Team?> GetByProjectAndNameAsync(string projectId, string name) => Task.FromResult<Team?>(null);
         public Task<Team> AddAsync(Team t) => Task.FromResult(t);
         public Task UpdateAsync(Team t) => Task.CompletedTask;
         public Task DeleteAsync(string id) => Task.CompletedTask;
+    }
+
+    private sealed class StubProjects(List<Project> projects) : IProjectRepository
+    {
+        public Task<List<Project>> GetAllAsync() => Task.FromResult(projects);
+        public Task<Project?> GetByIdAsync(string id) => Task.FromResult(projects.FirstOrDefault(p => p.Id == id));
+        public Task<Project> AddAsync(Project p) => Task.FromResult(p);
+        public Task UpdateAsync(Project p) => Task.CompletedTask;
     }
 
     private sealed class StubTeamMemberships(List<TeamMembership> rows) : ITeamMembershipRepository
@@ -216,24 +300,27 @@ public class ApprovalRoutingTests
         public Task DeleteByTeamAsync(string teamId) => Task.CompletedTask;
     }
 
-    private sealed class StubSupervision(HashSet<string> administrative, Dictionary<string, string> supervisorOf)
-        : ISupervisionService
+    private sealed class StubTeamApprovalOverrides(List<TeamApprovalOverride> rows) : ITeamApprovalOverrideRepository
+    {
+        public Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId) =>
+            Task.FromResult(rows.Where(o => o.TeamId == teamId && o.EmployeeId == employeeId).ToList());
+        public Task<TeamApprovalOverride?> GetAsync(string teamId, string employeeId, int layer) =>
+            Task.FromResult(rows.FirstOrDefault(o => o.TeamId == teamId && o.EmployeeId == employeeId && o.Layer == layer));
+        public Task UpsertAsync(TeamApprovalOverride ov) => Task.CompletedTask;
+        public Task DeleteAsync(string teamId, string employeeId, int layer) => Task.CompletedTask;
+        public Task DeleteByTeamAsync(string teamId) => Task.CompletedTask;
+        public Task DeleteByTeamAndEmployeeAsync(string teamId, string employeeId) => Task.CompletedTask;
+        public Task DeleteLayersAboveAsync(string teamId, int maxLayer) => Task.CompletedTask;
+    }
+
+    private sealed class StubSupervision(HashSet<string> administrative) : ISupervisionService
     {
         public Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
             Task.FromResult<IReadOnlySet<string>>(administrative);
-
-        public Task<string?> GetSupervisorIdAsync(string employeeId) =>
-            Task.FromResult(supervisorOf.GetValueOrDefault(employeeId));
-
-        public Task<IReadOnlyList<string>> GetReportIdsAsync(string supervisorId) =>
-            Task.FromResult<IReadOnlyList<string>>([]);
 
         public Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds) =>
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
 
         public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
-
-        public Task<bool> CanApproveAsync(string applicantId, string approverId, string? role) =>
-            Task.FromResult(false);
     }
 }

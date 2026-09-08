@@ -17,9 +17,6 @@ public interface IOrganizationMembershipRepository
     // One user's membership in the CURRENT (active) org — tenant-filtered.
     Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId);
 
-    // Current-org memberships whose SupervisorId == supervisorId.
-    Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId);
-
     Task AddAsync(OrganizationMembership membership);
     Task UpdateAsync(OrganizationMembership membership);
 

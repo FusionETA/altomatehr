@@ -9,6 +9,7 @@ using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Support;
@@ -24,6 +25,7 @@ internal static class ClaimsTestFactory
         IEnumerable<Claim> claims,
         IApprovalRouter? router = null,
         ISupervisionService? supervision = null,
+        ITeamService? teams = null,
         IChartOfAccountService? accounts = null,
         IClaimReceiptStorage? receiptStorage = null,
         IOrganizationService? organizations = null,
@@ -38,6 +40,7 @@ internal static class ClaimsTestFactory
             accounts ?? new FakeChartOfAccountService(),
             supervision ?? new FakeSupervisionService(),
             router ?? new FakeApprovalRouter(),
+            teams ?? new FakeTeamService(),
             organizations ?? new FakeOrganizationService(),
             currentUser ?? new FakeCurrentUser(),
             realtime ?? new FakeRealtimeService(),
@@ -212,27 +215,13 @@ internal sealed class FakeCurrentUser : ICurrentUser
     public bool IsAuthenticated => UserId is not null;
 }
 
-// Mirrors the real routing logic: org approvers (Admin/Owner) may act on
-// anything; otherwise only the applicant's assigned supervisor may.
+// Org-approver check + email lookup only — routing and "who are my reports"
+// both come from ITeamService now (see FakeTeamService below).
 internal sealed class FakeSupervisionService : ISupervisionService
 {
-    private readonly Dictionary<string, string> _supervisorOf;   // employeeId -> supervisorId
     private readonly Dictionary<string, string> _emails;
 
-    public FakeSupervisionService(
-        Dictionary<string, string>? supervisorOf = null,
-        Dictionary<string, string>? emails = null)
-    {
-        _supervisorOf = supervisorOf ?? new();
-        _emails = emails ?? new();
-    }
-
-    public Task<string?> GetSupervisorIdAsync(string employeeId) =>
-        Task.FromResult(_supervisorOf.GetValueOrDefault(employeeId));
-
-    public Task<IReadOnlyList<string>> GetReportIdsAsync(string supervisorId) =>
-        Task.FromResult<IReadOnlyList<string>>(
-            _supervisorOf.Where(kv => kv.Value == supervisorId).Select(kv => kv.Key).ToList());
+    public FakeSupervisionService(Dictionary<string, string>? emails = null) => _emails = emails ?? new();
 
     public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
 
@@ -241,13 +230,6 @@ internal sealed class FakeSupervisionService : ISupervisionService
 
     public Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
         Task.FromResult<IReadOnlySet<string>>(AdministrativeUserIds);
-
-    public async Task<bool> CanApproveAsync(string applicantId, string approverId, string? role)
-    {
-        if (IsOrgApprover(role)) return true;
-        var supervisor = await GetSupervisorIdAsync(applicantId);
-        return supervisor is not null && supervisor == approverId;
-    }
 
     public Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds) =>
         Task.FromResult<IReadOnlyDictionary<string, string>>(
@@ -265,15 +247,55 @@ internal sealed class FakeApprovalRouter : IApprovalRouter
     public FakeApprovalRouter(Dictionary<string, List<List<string>>>? chains = null) =>
         _chains = chains ?? new();
 
-    public Task<IReadOnlyList<string>> CurrentApproversAsync(ApprovalModule module, string applicantId, int currentStep)
+    public Task<IReadOnlyList<string>> CurrentApproversAsync(
+        ApprovalModule module, string applicantId, int currentStep, string? projectId = null)
     {
         var steps = _chains.GetValueOrDefault(applicantId) ?? [];
         return Task.FromResult<IReadOnlyList<string>>(
             currentStep >= 0 && currentStep < steps.Count ? steps[currentStep] : []);
     }
 
-    public Task<int> StepCountAsync(ApprovalModule module, string applicantId) =>
+    public Task<int> StepCountAsync(ApprovalModule module, string applicantId, string? projectId = null) =>
         Task.FromResult((_chains.GetValueOrDefault(applicantId) ?? []).Count);
+}
+
+// Minimal ITeamService double. `reportsOf` maps a supervisor id to the flat
+// list of employee ids GetReportEmployeeIdsAsync should return for them —
+// enough for the "team view" visibility tests, without a real Team/layer
+// model behind it.
+internal sealed class FakeTeamService : ITeamService
+{
+    private readonly Dictionary<string, List<string>> _reportsOf;
+
+    public FakeTeamService(Dictionary<string, List<string>>? reportsOf = null) =>
+        _reportsOf = reportsOf ?? new();
+
+    public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
+    public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotSupportedException();
+    public Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto) => throw new NotSupportedException();
+    public Task<bool> DeleteAsync(string id) => throw new NotSupportedException();
+    public Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto) =>
+        throw new NotSupportedException();
+    public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>
+        throw new NotSupportedException();
+    public Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
+        string employeeId, ApprovalModule module, string? projectId = null) =>
+        Task.FromResult<IEnumerable<ApprovalStepDto>>([]);
+    public Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+    public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
+        Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+    public Task<IReadOnlyList<string>> GetReportEmployeeIdsAsync(string supervisorId) =>
+        Task.FromResult<IReadOnlyList<string>>(_reportsOf.GetValueOrDefault(supervisorId, []));
+    public Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+    public Task<IReadOnlyList<LayerApproverOptionsDto>?> GetApproverOptionsAsync(string teamId, string employeeId) =>
+        Task.FromResult<IReadOnlyList<LayerApproverOptionsDto>?>(null);
+    public Task<ApproverOverrideResult> SetApproverOverrideAsync(
+        string teamId, string employeeId, int layer, List<string> approverIds) =>
+        throw new NotSupportedException();
+    public Task<ApproverOverrideResult> ClearApproverOverrideAsync(string teamId, string employeeId, int layer) =>
+        throw new NotSupportedException();
 }
 
 

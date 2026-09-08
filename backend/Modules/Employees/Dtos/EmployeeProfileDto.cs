@@ -27,6 +27,8 @@ public class EmployeeProfileDto
     public MaritalStatus? MaritalStatus { get; set; }
     public bool IsResident { get; set; } = true;
     public bool IsOku { get; set; }
+    public string? AddressLine1 { get; set; }
+    public string? AddressLine2 { get; set; }
     public string? City { get; set; }
     public string? Postcode { get; set; }
     public string? State { get; set; }
@@ -63,6 +65,7 @@ public class EmployeeProfileDto
     public decimal EpfEmployeeRate { get; set; }
     public decimal EpfEmployeeVoluntary { get; set; }
     public decimal EpfEmployerVoluntary { get; set; }
+    public bool EpfMemberBefore1998 { get; set; }
 
     // ---- SOCSO / EIS / SKBBK ----
     public string? SocsoNumber { get; set; }

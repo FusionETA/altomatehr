@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, Plus, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   CHILD_ABILITY,
   CHILD_ABILITY_LABELS,
@@ -17,19 +17,41 @@ import {
   SALARY_TYPES,
   SOCSO_SCHEMES,
   SOCSO_SCHEME_LABELS,
+  isAdultChild,
+  deleteEmployeeDocument,
+  downloadEmployeeDocument,
+  downloadLhdnForm,
+  getEmployeeDocuments,
   getEmployeeProfile,
+  getLhdnForms,
   parseChildRelief,
   parseFixedAllowances,
   saveEmployeeProfile,
   serializeList,
   toUpdateEmployee,
   updateEmployee,
+  uploadEmployeeDocument,
   type ChildRelief,
   type Employee,
+  type EmployeeDocument,
   type EmployeeProfile,
   type FixedAllowance,
+  type LhdnFormDescriptor,
 } from "../api";
+import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
+import { getProjects, type Project } from "@/features/settings/api";
+import {
+  addTeamMember,
+  clearApproverOverride,
+  getApproverOptions,
+  getTeams,
+  layerLabel,
+  removeTeamMember,
+  setApproverOverride,
+  type LayerApproverOptions,
+  type Team,
+} from "@/features/teams/api";
 import {
   DEFAULT_CATEGORY,
   categoriesFor,
@@ -37,10 +59,20 @@ import {
   labelForCategory,
   type AdjustmentKind,
 } from "../lib/payroll-adjustments";
+import {
+  calculateAge,
+  epfBranchInfo,
+  formatEpfRate,
+  isMalaysianNationality,
+  pickEpfBranch,
+  recommendSocsoScheme,
+  socsoSchemeNeedsManualChoice,
+} from "../lib/statutory";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
   Field,
   Group,
+  LockedValue,
   Money,
   NONE,
   Num,
@@ -68,6 +100,7 @@ const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "employment", label: "Employment" },
   { id: "statutory", label: "Statutory" },
   { id: "company", label: "Company" },
+  { id: "documents", label: "Documents" },
 ];
 
 function message(err: unknown, fallback: string) {
@@ -80,13 +113,19 @@ function blank(value: string) {
   return trimmed.length === 0 ? null : trimmed;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // The fields that live on the org membership rather than the HR profile. They
 // are edited here alongside it, but travel on a different endpoint.
 type Placement = {
   role: string;
-  supervisorId: string;
   policyId: string;
   name: string;
+  email: string;
   employeeNumber: string;
   jobTitle: string;
   joinDate: string;
@@ -102,13 +141,11 @@ type Placement = {
 export function EmployeeDetail({
   employee,
   policies,
-  employees,
   onBack,
   onSaved,
 }: {
   employee: Employee;
   policies: Policy[];
-  employees: Employee[];
   onBack: () => void;
   onSaved: (updated: Employee) => void;
 }) {
@@ -119,12 +156,46 @@ export function EmployeeDetail({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The scheme as actually saved, before any auto-fill — distinct from
+  // `profile.socsoScheme`, which gets pre-filled with the recommendation on
+  // load. Used only to tell "still on the auto-fill" from "admin re-picked
+  // the same value", for the hint text below the field.
+  const [originalSocsoScheme, setOriginalSocsoScheme] = useState<EmployeeProfile["socsoScheme"]>(null);
+
+  // Documents are their own API surface (upload/delete are immediate actions,
+  // not part of the profile's Save/Discard flow), so they get their own
+  // loading/error state rather than riding along on `profile`.
+  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+
+  const [lhdnForms, setLhdnForms] = useState<LhdnFormDescriptor[]>([]);
+  const [lhdnFormsLoading, setLhdnFormsLoading] = useState(true);
+  const [lhdnFormsError, setLhdnFormsError] = useState<string | null>(null);
+  const [lhdnYear, setLhdnYear] = useState<number>(new Date().getFullYear());
+  const [downloadingLhdnKind, setDownloadingLhdnKind] = useState<string | null>(null);
+
+  // Team/approval-chain assignment — its own API surface (Teams feature),
+  // edited immediately rather than riding along on the profile Save/Discard.
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [assigningTeamId, setAssigningTeamId] = useState(NONE);
+  const [assigningLayer, setAssigningLayer] = useState(0);
+  // Keyed by team id — an employee can be on several teams at once, each with
+  // its own set of layers above them.
+  const [approverOptionsByTeam, setApproverOptionsByTeam] = useState<Record<string, LayerApproverOptions[]>>({});
+  const [approverOptionsLoading, setApproverOptionsLoading] = useState(false);
+  const [savingLayer, setSavingLayer] = useState<{ teamId: string; layer: number } | null>(null);
 
   const initialPlacement: Placement = {
     role: employee.role,
-    supervisorId: employee.supervisorId ?? NONE,
     policyId: employee.policyId ?? NONE,
     name: employee.name,
+    email: employee.email,
     employeeNumber: employee.employeeNumber ?? "",
     jobTitle: employee.jobTitle ?? "",
     joinDate: employee.joinDate?.slice(0, 10) ?? "",
@@ -137,8 +208,20 @@ export function EmployeeDetail({
     setError(null);
     getEmployeeProfile(employee.id)
       .then((p) => {
-        setProfile(p);
-        setBaseline(p);
+        setOriginalSocsoScheme(p.socsoScheme);
+        // Pre-fill an unset scheme with PERKESO's age-based recommendation.
+        // Baseline gets the same seed so this alone doesn't count as a
+        // change — only an actual edit shows "Unsaved changes".
+        const recommendedScheme = recommendSocsoScheme({
+          dateOfBirth: p.dateOfBirth,
+          isMalaysianCitizen: isMalaysianNationality(p.nationality),
+        });
+        const seeded =
+          p.socsoScheme === null && recommendedScheme
+            ? { ...p, socsoScheme: recommendedScheme }
+            : p;
+        setProfile(seeded);
+        setBaseline(seeded);
         // Two join dates existed before this screen did: one on the membership
         // (which pro-rates leave) and one on the profile. Where only the
         // profile has a value, show it rather than an empty field — the first
@@ -153,6 +236,186 @@ export function EmployeeDetail({
       .finally(() => setLoading(false));
   }, [employee.id, employee.joinDate]);
 
+  useEffect(() => {
+    setDocumentsLoading(true);
+    setDocumentsError(null);
+    getEmployeeDocuments(employee.id)
+      .then(setDocuments)
+      .catch((e: unknown) => setDocumentsError(message(e, "Could not load documents.")))
+      .finally(() => setDocumentsLoading(false));
+  }, [employee.id]);
+
+  useEffect(() => {
+    setLhdnFormsLoading(true);
+    setLhdnFormsError(null);
+    getLhdnForms(employee.id)
+      .then(setLhdnForms)
+      .catch((e: unknown) => setLhdnFormsError(message(e, "Could not load LHDN forms.")))
+      .finally(() => setLhdnFormsLoading(false));
+  }, [employee.id]);
+
+  useEffect(() => {
+    setTeamsLoading(true);
+    setTeamsError(null);
+    Promise.all([getTeams(), getProjects()])
+      .then(([t, p]) => {
+        setTeams(t);
+        setProjects(p);
+      })
+      .catch((e: unknown) => setTeamsError(message(e, "Could not load teams.")))
+      .finally(() => setTeamsLoading(false));
+  }, [employee.id]);
+
+  // This employee's membership(s) across every team, freshly derived from
+  // `teams` on every render — the same data Company Structure's roster
+  // reads, so an edit from either screen shows up on both.
+  const myMemberships = useMemo(
+    () =>
+      teams
+        .map((team) => ({ team, member: team.members.find((m) => m.employeeId === employee.id) }))
+        .filter((x): x is { team: Team; member: NonNullable<typeof x.member> } => x.member !== undefined),
+    [teams, employee.id],
+  );
+  // A stable key that changes exactly when the set of memberships or any of
+  // their layers changes — what the approver options actually depend on.
+  const membershipKey = myMemberships.map((m) => `${m.team.id}:${m.member.layer}`).join(",");
+
+  useEffect(() => {
+    if (myMemberships.length === 0) {
+      setApproverOptionsByTeam({});
+      return;
+    }
+    setApproverOptionsLoading(true);
+    setTeamsError(null);
+    Promise.all(
+      myMemberships.map((m) =>
+        getApproverOptions(m.team.id, employee.id).then((options) => [m.team.id, options] as const),
+      ),
+    )
+      .then((entries) => setApproverOptionsByTeam(Object.fromEntries(entries)))
+      .catch((e: unknown) => setTeamsError(message(e, "Could not load approvers.")))
+      .finally(() => setApproverOptionsLoading(false));
+  }, [membershipKey, employee.id]);
+
+  async function handleUploadDocument(file: File) {
+    setUploadingDocument(true);
+    setDocumentsError(null);
+    try {
+      const uploaded = await uploadEmployeeDocument(employee.id, file);
+      setDocuments((docs) => [uploaded, ...docs]);
+    } catch (e: unknown) {
+      setDocumentsError(message(e, "Could not upload this file."));
+    } finally {
+      setUploadingDocument(false);
+    }
+  }
+
+  async function handleDeleteDocument(documentId: string) {
+    setDocumentsError(null);
+    try {
+      await deleteEmployeeDocument(employee.id, documentId);
+      setDocuments((docs) => docs.filter((d) => d.id !== documentId));
+    } catch (e: unknown) {
+      setDocumentsError(message(e, "Could not remove this document."));
+    }
+  }
+
+  async function handleDownloadDocument(doc: EmployeeDocument) {
+    try {
+      saveFile(await downloadEmployeeDocument(employee.id, doc));
+    } catch (e: unknown) {
+      setDocumentsError(message(e, "Could not download this file."));
+    }
+  }
+
+  async function handleDownloadLhdnForm(form: LhdnFormDescriptor) {
+    setDownloadingLhdnKind(form.kind);
+    setLhdnFormsError(null);
+    try {
+      saveFile(await downloadLhdnForm(employee.id, form.kind, form.needsYearPicker ? lhdnYear : null));
+    } catch (e: unknown) {
+      setLhdnFormsError(message(e, "Could not generate this form."));
+    } finally {
+      setDownloadingLhdnKind(null);
+    }
+  }
+
+  async function handleAssignTeam() {
+    if (assigningTeamId === NONE) return;
+    setSavingAssignment(true);
+    setTeamsError(null);
+    try {
+      const updated = await addTeamMember(assigningTeamId, { employeeId: employee.id, layer: assigningLayer });
+      setTeams((ts) => ts.map((t) => (t.id === updated.id ? updated : t)));
+      setAssigningTeamId(NONE);
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not assign this employee to a team."));
+    } finally {
+      setSavingAssignment(false);
+    }
+  }
+
+  async function handleChangeLayer(teamId: string, layer: number) {
+    setSavingAssignment(true);
+    setTeamsError(null);
+    try {
+      const updated = await addTeamMember(teamId, { employeeId: employee.id, layer });
+      setTeams((ts) => ts.map((t) => (t.id === updated.id ? updated : t)));
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not change this employee's layer."));
+    } finally {
+      setSavingAssignment(false);
+    }
+  }
+
+  async function handleRemoveFromTeam(teamId: string) {
+    setSavingAssignment(true);
+    setTeamsError(null);
+    try {
+      const updated = await removeTeamMember(teamId, employee.id);
+      setTeams((ts) => ts.map((t) => (t.id === updated.id ? updated : t)));
+      setApproverOptionsByTeam((cur) => {
+        const { [teamId]: _removed, ...rest } = cur;
+        return rest;
+      });
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not remove this employee from the team."));
+    } finally {
+      setSavingAssignment(false);
+    }
+  }
+
+  async function handleToggleApprover(teamId: string, layer: number, approverId: string, checked: boolean) {
+    const current = approverOptionsByTeam[teamId]?.find((o) => o.layer === layer);
+    if (!current) return;
+    const nextIds = checked
+      ? [...current.effectiveApproverIds, approverId]
+      : current.effectiveApproverIds.filter((id) => id !== approverId);
+    setSavingLayer({ teamId, layer });
+    setTeamsError(null);
+    try {
+      const options = await setApproverOverride(teamId, employee.id, layer, nextIds);
+      setApproverOptionsByTeam((cur) => ({ ...cur, [teamId]: options }));
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not update the approver for this layer."));
+    } finally {
+      setSavingLayer(null);
+    }
+  }
+
+  async function handleResetLayer(teamId: string, layer: number) {
+    setSavingLayer({ teamId, layer });
+    setTeamsError(null);
+    try {
+      const options = await clearApproverOverride(teamId, employee.id, layer);
+      setApproverOptionsByTeam((cur) => ({ ...cur, [teamId]: options }));
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not reset this layer."));
+    } finally {
+      setSavingLayer(null);
+    }
+  }
+
   // Cheap and honest: the payload is flat, so a stringify comparison catches
   // any edit without maintaining a per-field dirty map that would drift as
   // sections are added.
@@ -160,16 +423,6 @@ export function EmployeeDetail({
     (profile !== null && baseline !== null && JSON.stringify(profile) !== JSON.stringify(baseline)) ||
     JSON.stringify(placement) !== JSON.stringify(placementBase);
 
-  // Anyone who could actually approve for this person. Admins and owners are
-  // excluded because the backend's router skips administrative approvers —
-  // offering one here would file requests into a step nobody can action.
-  const supervisorOptions = useMemo(
-    () =>
-      employees.filter(
-        (e) => e.id !== employee.id && (e.role === "Supervisor" || e.role === "Employee"),
-      ),
-    [employees, employee.id],
-  );
   const activePolicies = useMemo(() => policies.filter((p) => !p.isArchived), [policies]);
 
   function set<K extends keyof EmployeeProfile>(key: K, value: EmployeeProfile[K]) {
@@ -216,24 +469,39 @@ export function EmployeeDetail({
       const updated = await updateEmployee(employee.id, {
         ...toUpdateEmployee(employee),
         role: placement.role,
-        supervisorId: placement.supervisorId === NONE ? null : placement.supervisorId,
         policyId: placement.policyId === NONE ? null : placement.policyId,
         // The endpoint patches these: an empty string clears the field, which
         // is exactly what an admin emptying the box means. Sending null (or
         // omitting it) would silently keep the old value.
         name: placement.name.trim() || employee.name,
+        email: placement.email.trim() || employee.email,
         employeeNumber: placement.employeeNumber.trim(),
         jobTitle: placement.jobTitle.trim(),
         joinDate: blank(placement.joinDate),
       });
       // The whole profile goes back: PUT replaces the record, so a partial
-      // payload would null every field the other sections own.
-      const savedProfile = await saveEmployeeProfile(employee.id, profile);
+      // payload would null every field the other sections own. The employee
+      // EPF rate is computed, not admin-entered — stamp the current branch's
+      // rate in so what's saved always matches what the locked field shows.
+      const savedProfile = await saveEmployeeProfile(employee.id, {
+        ...profile,
+        epfEmployeeRate: epfInfo.employeeRate,
+      });
 
       setProfile(savedProfile);
       setBaseline(savedProfile);
       setPlacementBase(placement);
       onSaved(updated);
+
+      // Archive status, join date, and other saved fields all drive which
+      // LHDN forms are enabled and what badge they show — refetch so the
+      // card reflects what was just saved instead of the pre-save state.
+      getLhdnForms(employee.id)
+        .then(setLhdnForms)
+        .catch(() => {
+          // Non-fatal: the profile save already succeeded. The card just
+          // keeps showing its last-known state until the next reload.
+        });
     } catch (e: unknown) {
       setError(message(e, "Could not save this employee."));
     } finally {
@@ -244,6 +512,31 @@ export function EmployeeDetail({
   const name = placement.name.trim() || profile?.name?.trim() || employee.email;
   const ready = profile ? isReadyForPayroll(profile) : false;
   const sectionGaps = profile ? missingFields(profile, section) : [];
+
+  // Statutory branch detection — drives the locked EPF rate display and the
+  // SOCSO recommendation hint. Kept at this level (not just inside the tab's
+  // JSX) so handleSave can stamp the computed EPF rate into the save payload.
+  const isMalaysianCitizen = isMalaysianNationality(profile?.nationality);
+  const isForeignWorker = profile ? !(isMalaysianCitizen || profile.hasPr) : false;
+  const employeeAge = calculateAge(profile?.dateOfBirth);
+  const epfBranch = pickEpfBranch({
+    isMalaysianCitizen,
+    hasPr: profile?.hasPr ?? false,
+    epfMemberBefore1998: profile?.epfMemberBefore1998 ?? false,
+    age: employeeAge,
+  });
+  const epfInfo = epfBranchInfo(
+    epfBranch,
+    profile?.salaryType === "MONTHLY" ? profile.monthlySalary : null,
+  );
+  const recommendedScheme = recommendSocsoScheme({
+    dateOfBirth: profile?.dateOfBirth ?? null,
+    isMalaysianCitizen,
+  });
+  const needsManualSocsoChoice = socsoSchemeNeedsManualChoice({
+    dateOfBirth: profile?.dateOfBirth ?? null,
+    isMalaysianCitizen,
+  });
 
   return (
     <div className="space-y-4 pb-24">
@@ -339,6 +632,19 @@ export function EmployeeDetail({
             {section === "personal" ? (
               <>
                 <Group title="Contact">
+                  <Field label="Full name">
+                    <Text
+                      value={placement.name}
+                      onChange={(v) => setPlacement((p) => ({ ...p, name: v ?? "" }))}
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <Text
+                      type="email"
+                      value={placement.email}
+                      onChange={(v) => setPlacement((p) => ({ ...p, email: v ?? "" }))}
+                    />
+                  </Field>
                   <Field label="Phone">
                     <Text type="tel" value={profile.phone} onChange={(v) => set("phone", v)} />
                   </Field>
@@ -426,6 +732,12 @@ export function EmployeeDetail({
                 </Group>
 
                 <Group title="Address" columns={3}>
+                  <Field label="Address line 1" span>
+                    <Text value={profile.addressLine1} onChange={(v) => set("addressLine1", v)} />
+                  </Field>
+                  <Field label="Address line 2" span>
+                    <Text value={profile.addressLine2} onChange={(v) => set("addressLine2", v)} />
+                  </Field>
                   <Field label="City">
                     <Text value={profile.city} onChange={(v) => set("city", v)} />
                   </Field>
@@ -459,37 +771,39 @@ export function EmployeeDetail({
                   </Field>
                 </Group>
 
-                <Group
-                  title="Spouse"
-                  hint="Used for the employee's own PCB relief, not the spouse's."
-                >
-                  <TriToggle
-                    label="Spouse working"
-                    value={profile.spouseWorking}
-                    onChange={(v) => set("spouseWorking", v)}
-                  />
-                  <TriToggle
-                    label="Spouse disabled"
-                    value={profile.spouseDisabled}
-                    onChange={(v) => set("spouseDisabled", v)}
-                  />
-                  <Field label="Spouse ID number">
-                    <Text
-                      value={profile.spouseIdNumber}
-                      onChange={(v) => set("spouseIdNumber", v)}
+                {profile.maritalStatus === "MARRIED" ? (
+                  <Group
+                    title="Spouse"
+                    hint="Used for the employee's own PCB relief, not the spouse's."
+                  >
+                    <TriToggle
+                      label="Spouse working"
+                      value={profile.spouseWorking}
+                      onChange={(v) => set("spouseWorking", v)}
                     />
-                  </Field>
-                  <Field label="Spouse PCB number">
-                    <Text
-                      value={profile.spousePcbNumber}
-                      onChange={(v) => set("spousePcbNumber", v)}
+                    <TriToggle
+                      label="Spouse disabled"
+                      value={profile.spouseDisabled}
+                      onChange={(v) => set("spouseDisabled", v)}
                     />
-                  </Field>
-                </Group>
+                    <Field label="Spouse ID number">
+                      <Text
+                        value={profile.spouseIdNumber}
+                        onChange={(v) => set("spouseIdNumber", v)}
+                      />
+                    </Field>
+                    <Field label="Spouse PCB number">
+                      <Text
+                        value={profile.spousePcbNumber}
+                        onChange={(v) => set("spousePcbNumber", v)}
+                      />
+                    </Field>
+                  </Group>
+                ) : null}
 
                 <Stack
                   title="Dependent children"
-                  hint="Each child adds PCB child relief. Half applies when the other parent claims the rest."
+                  hint="Used for PCB child relief (QC). Up to 10 children."
                   action={
                     <button
                       type="button"
@@ -497,9 +811,8 @@ export function EmployeeDetail({
                         setChildren([
                           ...children,
                           {
-                            age: null,
                             abilityStatus: "NORMAL",
-                            currentlyStudying: "NONE",
+                            currentlyStudying: "UNDER_18",
                             pcbDeduction: "FULL",
                           },
                         ])
@@ -513,58 +826,88 @@ export function EmployeeDetail({
                 >
                   {children.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No children recorded — no child relief is claimed.
+                      No children added. Add to claim child relief in PCB.
                     </p>
                   ) : (
-                    children.map((child, index) => (
-                      <RepeaterRow
-                        key={index}
-                        removeLabel="Remove this child"
-                        onRemove={() => setChildren(children.filter((_, i) => i !== index))}
-                      >
-                        <Field label="Age">
-                          <Num
-                            value={child.age}
-                            max={100}
-                            onChange={(v) => patchChild(index, { age: v })}
-                          />
-                        </Field>
-                        <Field label="Ability">
-                          <Picker
-                            value={child.abilityStatus}
-                            onChange={(v) =>
-                              patchChild(index, { abilityStatus: v ?? "NORMAL" })
-                            }
-                            options={CHILD_ABILITY.map((a) => ({
-                              value: a,
-                              label: CHILD_ABILITY_LABELS[a],
-                            }))}
-                          />
-                        </Field>
-                        <Field label="Currently studying">
-                          <Picker
-                            value={child.currentlyStudying}
-                            onChange={(v) =>
-                              patchChild(index, { currentlyStudying: v ?? "NONE" })
-                            }
-                            options={CHILD_STUDYING.map((c) => ({
-                              value: c,
-                              label: CHILD_STUDYING_LABELS[c],
-                            }))}
-                          />
-                        </Field>
-                        <Field label="Relief claimed here">
-                          <Picker
-                            value={child.pcbDeduction}
-                            onChange={(v) => patchChild(index, { pcbDeduction: v ?? "FULL" })}
-                            options={CHILD_DEDUCTION.map((d) => ({
-                              value: d,
-                              label: CHILD_DEDUCTION_LABELS[d],
-                            }))}
-                          />
-                        </Field>
-                      </RepeaterRow>
-                    ))
+                    children.map((child, index) => {
+                      const isAdult = isAdultChild(child);
+                      return (
+                        <div
+                          key={index}
+                          className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm"
+                        >
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-foreground">
+                              Child {index + 1}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setChildren(children.filter((_, i) => i !== index))}
+                              className="inline-flex h-7 items-center gap-1 text-xs font-bold text-destructive transition hover:underline"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          </div>
+                          <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <Field label="Age bracket">
+                              <Picker
+                                value={isAdult ? "ADULT" : "UNDER_18"}
+                                onChange={(bracket) =>
+                                  patchChild(index, {
+                                    // Default the 18+ pick to Pre-University; the
+                                    // admin can switch to Diploma / Degree Abroad
+                                    // in the field beside it.
+                                    currentlyStudying:
+                                      bracket === "UNDER_18" ? "UNDER_18" : "PRE_UNIVERSITY",
+                                  })
+                                }
+                                options={[
+                                  { value: "UNDER_18", label: "Under 18" },
+                                  { value: "ADULT", label: "18 and above" },
+                                ]}
+                              />
+                            </Field>
+                            <Field label="Education level">
+                              <Picker
+                                value={child.currentlyStudying}
+                                disabled={!isAdult}
+                                onChange={(v) =>
+                                  patchChild(index, { currentlyStudying: v ?? "UNDER_18" })
+                                }
+                                options={CHILD_STUDYING.map((c) => ({
+                                  value: c,
+                                  label: CHILD_STUDYING_LABELS[c],
+                                  disabled: c === "UNDER_18" ? isAdult : !isAdult,
+                                }))}
+                              />
+                            </Field>
+                            <Field label="Ability">
+                              <Picker
+                                value={child.abilityStatus}
+                                onChange={(v) =>
+                                  patchChild(index, { abilityStatus: v ?? "NORMAL" })
+                                }
+                                options={CHILD_ABILITY.map((a) => ({
+                                  value: a,
+                                  label: CHILD_ABILITY_LABELS[a],
+                                }))}
+                              />
+                            </Field>
+                            <Field label="PCB share">
+                              <Picker
+                                value={child.pcbDeduction}
+                                onChange={(v) => patchChild(index, { pcbDeduction: v ?? "FULL" })}
+                                options={CHILD_DEDUCTION.map((d) => ({
+                                  value: d,
+                                  label: CHILD_DEDUCTION_LABELS[d],
+                                }))}
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </Stack>
               </>
@@ -770,18 +1113,38 @@ export function EmployeeDetail({
               </>
             ) : section === "statutory" ? (
               <>
-                <Group title="EPF">
+                {isForeignWorker ? (
+                  <p className="flex items-start gap-2 rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      <strong>Foreign worker statutory profile.</strong> Detected
+                      because nationality is not Malaysian and PR is not set.{" "}
+                      {profile.epfMemberBefore1998
+                        ? "Pre-1998 EPF member: standard EPF rates apply (Part A / C)."
+                        : "EPF runs on the post-1998 non-Malaysian branch (2% / 2%, effective Oct 2025 salary)."}{" "}
+                      EIS still applies (Act 800 covers foreign workers on valid
+                      permits, age 18–60). SOCSO scheme should typically be
+                      "Employment injury only".
+                    </span>
+                  </p>
+                ) : null}
+
+                <Group
+                  title="EPF"
+                  hint="Employees Provident Fund. Statutory rates below come from EPF Act 452 (Third Schedule) — shown locked for reference. Voluntary contributions on top are editable."
+                >
                   <Field label="EPF number" span>
                     <Text value={profile.epfNumber} onChange={(v) => set("epfNumber", v)} />
                   </Field>
-                  <Field
-                    label="Employee rate"
-                    hint="Statutory is 11%. Entered as a percentage."
-                  >
-                    <Percent
-                      value={profile.epfEmployeeRate}
-                      onChange={(v) => set("epfEmployeeRate", v)}
-                    />
+                  <Field label="Employer mandatory rate" locked>
+                    <LockedValue value={epfInfo.employerText} />
+                    <span className="text-xs text-muted-foreground">
+                      KWSP branch: {epfInfo.branchLabel}.
+                    </span>
+                  </Field>
+                  <Field label="Employee mandatory rate" locked>
+                    <LockedValue value={formatEpfRate(epfInfo.employeeRate)} />
+                    <span className="text-xs text-muted-foreground">{epfInfo.employeeNote}</span>
                   </Field>
                   <Field label="Employee voluntary" hint="On top of the statutory rate.">
                     <Percent
@@ -795,14 +1158,18 @@ export function EmployeeDetail({
                       onChange={(v) => set("epfEmployerVoluntary", v)}
                     />
                   </Field>
-                  <Field label="Contributing" span>
-                    <Toggle
-                      label="Contributes to EPF"
-                      hint="Off stops both employee and employer contributions."
-                      checked={profile.contributeToEpf}
-                      onChange={(v) => set("contributeToEpf", v)}
-                    />
-                  </Field>
+                  <Toggle
+                    label="Contributes to EPF"
+                    hint="Off stops both employee and employer contributions."
+                    checked={profile.contributeToEpf}
+                    onChange={(v) => set("contributeToEpf", v)}
+                  />
+                  <Toggle
+                    label="EPF member before Aug 1998?"
+                    hint="Only meaningful for a non-Malaysian, non-PR employee — keeps them on the standard rates instead of the post-1998 branch."
+                    checked={profile.epfMemberBefore1998}
+                    onChange={(v) => set("epfMemberBefore1998", v)}
+                  />
                 </Group>
 
                 <Group title="SOCSO, EIS & SKBBK">
@@ -820,6 +1187,30 @@ export function EmployeeDetail({
                         label: SOCSO_SCHEME_LABELS[s],
                       }))}
                     />
+                    {recommendedScheme &&
+                    profile.socsoScheme === recommendedScheme &&
+                    !originalSocsoScheme ? (
+                      <span className="text-xs text-muted-foreground">
+                        Auto-selected from age{employeeAge ? ` (${employeeAge})` : ""}.
+                        Override above if needed.
+                      </span>
+                    ) : null}
+                    {needsManualSocsoChoice && profile.socsoScheme === null ? (
+                      <span className="text-xs font-medium text-warning-foreground">
+                        Age {employeeAge} — please pick manually: Scheme 1 if the
+                        employee has an existing SOCSO number from a previous job,
+                        Scheme 2 if this is their first-time PERKESO registration.
+                      </span>
+                    ) : null}
+                    {recommendedScheme &&
+                    profile.socsoScheme !== null &&
+                    profile.socsoScheme !== recommendedScheme ? (
+                      <span className="text-xs font-medium text-warning-foreground">
+                        PERKESO would normally recommend{" "}
+                        {SOCSO_SCHEME_LABELS[recommendedScheme]} for this employee
+                        (age {employeeAge}). Confirm before saving.
+                      </span>
+                    ) : null}
                   </Field>
                   <Toggle
                     label="Contributes to EIS"
@@ -893,15 +1284,9 @@ export function EmployeeDetail({
                   ) : null}
                 </Group>
               </>
-            ) : (
+            ) : section === "company" ? (
               <>
-                <Group title="Identity at work" hint="What this person is called and known by across the app.">
-                  <Field label="Full name">
-                    <Text
-                      value={placement.name}
-                      onChange={(v) => setPlacement((p) => ({ ...p, name: v ?? "" }))}
-                    />
-                  </Field>
+                <Group title="Identity at work" columns={3}>
                   <Field label="Employee number">
                     <Text
                       value={placement.employeeNumber}
@@ -909,18 +1294,12 @@ export function EmployeeDetail({
                       placeholder="EMP-001"
                     />
                   </Field>
-                  <Field label="Job title" span>
+                  <Field label="Job title">
                     <Text
                       value={placement.jobTitle}
                       onChange={(v) => setPlacement((p) => ({ ...p, jobTitle: v ?? "" }))}
                     />
                   </Field>
-                </Group>
-
-                <Group
-                  title="Placement"
-                  hint="What the rest of the app routes on: approvals follow the supervisor, entitlements follow the policy."
-                >
                   <Field label="Role">
                     <Picker
                       value={placement.role}
@@ -930,22 +1309,6 @@ export function EmployeeDetail({
                       // and doing it here would quietly put an admin into an
                       // approval chain they're meant to sit outside of.
                       options={STAFF_ROLES.map((r) => ({ value: r, label: r }))}
-                    />
-                  </Field>
-                  <Field label="Approving supervisor">
-                    <Picker
-                      value={placement.supervisorId}
-                      onChange={(v) =>
-                        setPlacement((p) => ({ ...p, supervisorId: v ?? NONE }))
-                      }
-                      placeholder="None"
-                      options={[
-                        { value: NONE, label: "None" },
-                        ...supervisorOptions.map((e) => ({
-                          value: e.id,
-                          label: e.name?.trim() ? `${e.name} — ${e.email}` : e.email,
-                        })),
-                      ]}
                     />
                   </Field>
                   <Field label="Policy">
@@ -964,37 +1327,323 @@ export function EmployeeDetail({
                   </Field>
                 </Group>
 
-                <Group title="Working arrangement">
-                  <Field label="Location">
-                    <Text value={profile.location} onChange={(v) => set("location", v)} />
-                  </Field>
-                  <Field label="Work schedule">
-                    <Text value={profile.workSchedule} onChange={(v) => set("workSchedule", v)} />
-                  </Field>
-                  <Field
-                    label="Temporary review date"
-                    hint="Probation end or fixed-term checkpoint. Only meaningful on a temporary policy."
-                    span
-                  >
-                    <Text
-                      type="date"
-                      value={profile.temporaryReviewDate}
-                      onChange={(v) => set("temporaryReviewDate", v)}
-                    />
-                  </Field>
-                </Group>
+                <Stack
+                  title="Approval routing"
+                  hint="Who approves this person's leave, claims, and attendance requests — layer by layer."
+                >
+                  {teamsError ? (
+                    <p className="text-sm font-medium text-destructive">{teamsError}</p>
+                  ) : null}
+                  {teamsLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading teams…</p>
+                  ) : (
+                    myMemberships.map(({ team, member }) => {
+                      const options = approverOptionsByTeam[team.id] ?? [];
+                      return (
+                        <div key={team.id} className="space-y-3">
+                          <div className="rounded-2xl border border-border/60 bg-card p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">{team.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {projects.find((p) => p.id === team.projectId)?.name ?? "Unknown project"}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Picker
+                                  value={String(member.layer)}
+                                  onChange={(v) => void handleChangeLayer(team.id, v ? Number(v) : member.layer)}
+                                  options={Array.from({ length: team.layerCount }, (_, layer) => ({
+                                    value: String(layer),
+                                    label: layerLabel(team, layer),
+                                  }))}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={savingAssignment}
+                                  onClick={() => void handleRemoveFromTeam(team.id)}
+                                  className="shrink-0 text-xs font-bold text-destructive transition hover:underline disabled:opacity-50"
+                                >
+                                  Remove from team
+                                </button>
+                              </div>
+                            </div>
+                          </div>
 
-                <Group title="Payroll handling" hint="How this person's pay run is labelled and grouped.">
-                  <Field label="Payroll policy">
-                    <Text
-                      value={profile.payrollPolicy}
-                      onChange={(v) => set("payrollPolicy", v)}
+                          {approverOptionsLoading ? (
+                            <p className="text-sm text-muted-foreground">Loading approvers…</p>
+                          ) : options.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              Nobody sits above this employee in {team.name} — there's no one left to approve
+                              for them.
+                            </p>
+                          ) : (
+                            options.map((option) => (
+                              <div
+                                key={option.layer}
+                                className="rounded-2xl border border-border/60 bg-card p-4"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-foreground">{option.layerLabel}</p>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                        option.isOverridden
+                                          ? "bg-warning/40 text-warning-foreground"
+                                          : "bg-muted text-muted-foreground"
+                                      }`}
+                                    >
+                                      {option.isOverridden ? "Custom" : "Auto"}
+                                    </span>
+                                    {option.isOverridden ? (
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          savingLayer?.teamId === team.id && savingLayer.layer === option.layer
+                                        }
+                                        onClick={() => void handleResetLayer(team.id, option.layer)}
+                                        className="text-xs font-bold text-primary transition hover:underline disabled:opacity-50"
+                                      >
+                                        Reset to automatic
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                {option.candidates.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    Nobody sits at this layer yet — assign someone in Company Structure first.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {option.candidates.map((candidate) => (
+                                      <label
+                                        key={candidate.employeeId}
+                                        className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={option.effectiveApproverIds.includes(candidate.employeeId)}
+                                          disabled={
+                                            savingLayer?.teamId === team.id && savingLayer.layer === option.layer
+                                          }
+                                          onChange={(e) =>
+                                            void handleToggleApprover(
+                                              team.id,
+                                              option.layer,
+                                              candidate.employeeId,
+                                              e.target.checked,
+                                            )
+                                          }
+                                          className="h-4 w-4 rounded border-border accent-primary"
+                                        />
+                                        {candidate.email ?? candidate.employeeId}
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {/* Always available, not just when the employee has no team yet — an
+                      admin can add them to an additional team without removing an
+                      existing one first. */}
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Field label="Add to a team">
+                      <Picker
+                        value={assigningTeamId}
+                        onChange={(v) => {
+                          setAssigningTeamId(v ?? NONE);
+                          setAssigningLayer(0);
+                        }}
+                        placeholder="Choose a team"
+                        allowNone
+                        noneLabel="Choose a team"
+                        options={teams.map((t) => ({
+                          value: t.id,
+                          label: `${projects.find((p) => p.id === t.projectId)?.name ?? "Unknown project"} — ${t.name}`,
+                        }))}
+                      />
+                    </Field>
+                    {assigningTeamId !== NONE ? (
+                      <Field label="Layer">
+                        <Picker
+                          value={String(assigningLayer)}
+                          onChange={(v) => setAssigningLayer(v ? Number(v) : 0)}
+                          options={Array.from(
+                            { length: teams.find((t) => t.id === assigningTeamId)?.layerCount ?? 1 },
+                            (_, layer) => ({
+                              value: String(layer),
+                              label: layerLabel(teams.find((t) => t.id === assigningTeamId)!, layer),
+                            }),
+                          )}
+                        />
+                      </Field>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={assigningTeamId === NONE || savingAssignment}
+                      onClick={() => void handleAssignTeam()}
+                      className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-border bg-card px-4 text-sm font-bold text-foreground transition hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      Assign
+                    </button>
+                  </div>
+                </Stack>
+              </>
+            ) : (
+              <>
+                <div className={`${CARD} p-4 sm:p-5`}>
+                  <h3 className="text-sm font-black text-foreground">LHDN Forms</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Per-employee statutory PDFs. Each summarises the LHDN-required fields in an AltomateHR
+                    layout — transcribe onto the official LHDN form before submission, or paste values into
+                    e-PCB.
+                  </p>
+
+                  <div className="mt-4 max-w-[140px]">
+                    <Field label="Year" hint="Only used by year-scoped forms, like PCB 2(II).">
+                      <Num
+                        value={lhdnYear}
+                        min={2000}
+                        max={2100}
+                        onChange={(v) => setLhdnYear(v ?? new Date().getFullYear())}
+                      />
+                    </Field>
+                  </div>
+
+                  {lhdnFormsError ? (
+                    <p className="mt-4 text-sm font-medium text-destructive">{lhdnFormsError}</p>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {lhdnFormsLoading ? (
+                      <p className="text-sm text-muted-foreground sm:col-span-2">Loading forms…</p>
+                    ) : (
+                      lhdnForms.map((form) => (
+                        <div
+                          key={form.kind}
+                          className={`rounded-2xl border border-border/60 bg-card p-4 ${
+                            form.enabled ? "" : "opacity-60"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-sm font-black text-foreground">{form.code}</span>
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                {form.title}
+                              </span>
+                              {form.badge ? (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                    form.badgeVariant === "success"
+                                      ? "bg-success/10 text-success"
+                                      : form.badgeVariant === "rejected"
+                                        ? "bg-destructive/10 text-destructive"
+                                        : form.badgeVariant === "pending"
+                                          ? "bg-warning/40 text-warning-foreground"
+                                          : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {form.badge}
+                                </span>
+                              ) : null}
+                            </div>
+                            {form.enabled ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleDownloadLhdnForm(form)}
+                                disabled={downloadingLhdnKind === form.kind}
+                                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+                              >
+                                {downloadingLhdnKind === form.kind ? (
+                                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                                ) : null}
+                                Download PDF
+                              </button>
+                            ) : (
+                              <span className="h-8 shrink-0 rounded-xl border border-border/60 px-3 text-xs font-bold leading-8 text-muted-foreground">
+                                Download PDF
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">{form.description}</p>
+                          {form.disabledReason ? (
+                            <p className="mt-2 text-xs font-semibold text-warning-foreground">
+                              {form.disabledReason}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <Stack
+                title="Documents"
+                hint="ID scans, contracts, certificates — up to 10 MB each (PDF, Word, or image)."
+                action={
+                  <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50">
+                    {uploadingDocument ? (
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    Upload
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={uploadingDocument}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleUploadDocument(file);
+                      }}
                     />
-                  </Field>
-                  <Field label="Payroll cycle" hint="e.g. Monthly, Bi-weekly.">
-                    <Text value={profile.payrollCycle} onChange={(v) => set("payrollCycle", v)} />
-                  </Field>
-                </Group>
+                  </label>
+                }
+              >
+                {documentsError ? (
+                  <p className="text-sm font-medium text-destructive">{documentsError}</p>
+                ) : null}
+                {documentsLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading documents…</p>
+                ) : documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
+                ) : (
+                  documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadDocument(doc)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <span className="block truncate text-sm font-semibold text-foreground hover:underline">
+                          {doc.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatFileSize(doc.sizeBytes)} · uploaded{" "}
+                          {new Date(doc.uploadedAt).toLocaleDateString()}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteDocument(doc.id)}
+                        className="shrink-0 text-xs font-bold text-destructive transition hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
+              </Stack>
               </>
             )}
           </div>

@@ -52,6 +52,7 @@ public class AppDbContext : DbContext
     public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
+    public DbSet<TeamApprovalOverride> TeamApprovalOverrides => Set<TeamApprovalOverride>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
@@ -174,6 +175,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Team>().HasIndex(t => new { t.ProjectId, t.Name }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => new { m.TeamId, m.EmployeeId }).IsUnique();
         modelBuilder.Entity<TeamMembership>().HasIndex(m => m.EmployeeId);
+        modelBuilder.Entity<TeamApprovalOverride>()
+            .HasIndex(o => new { o.TeamId, o.EmployeeId, o.Layer }).IsUnique();
 
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
@@ -251,6 +254,8 @@ public class AppDbContext : DbContext
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamMembership>().HasQueryFilter(
             m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<TeamApprovalOverride>().HasQueryFilter(
+            o => _currentUser.OrganizationId == null || o.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroConnection>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroOAuthState>().HasQueryFilter(

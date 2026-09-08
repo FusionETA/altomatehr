@@ -95,7 +95,8 @@ public class HoursSummaryService : IHoursSummaryService
         string employeeId, DateTime from, DateTime to, string requestingUserId, string? requestingRole)
     {
         var authorized = requestingUserId == employeeId
-            || await _supervision.CanApproveAsync(employeeId, requestingUserId, requestingRole);
+            || _supervision.IsOrgApprover(requestingRole)
+            || (await _teams.GetReportEmployeeIdsAsync(requestingUserId)).Contains(employeeId);
         if (!authorized) return null;
 
         var ctx = await BuildContextAsync();

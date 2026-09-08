@@ -158,10 +158,12 @@ public class AttendanceService : IAttendanceService
     public async Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId)
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(RecordKinds);
+        var projectIdByRecord = await ResolveProjectIdsAsync(pending);
         var mine = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             if (approvers.Contains(userId)) mine.Add(request);
         }
         if (mine.Count == 0) return [];
@@ -410,9 +412,9 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
-        });
+        }, record.ProjectId);
 
-        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED);
+        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED, record.ProjectId);
         return new AttendanceActionResult(true, await ToDayDtoAsync(record, [request]));
     }
 
@@ -477,8 +479,8 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
-        });
-        await NotifyPendingAsync(clockOutRequest, RealtimeAction.SUBMITTED);
+        }, record.ProjectId);
+        await NotifyPendingAsync(clockOutRequest, RealtimeAction.SUBMITTED, record.ProjectId);
 
         var allApprovals = await _approvalRequests.GetByRecordIdsAsync([record.Id]);
         return new AttendanceActionResult(true, await ToDayDtoAsync(record, allApprovals));
@@ -486,18 +488,18 @@ public class AttendanceService : IAttendanceService
 
     public async Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId)
     {
-        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
+        var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
         if (!found) return new AttendanceTransitionResult(false, false, null);
         if (error is not null)
             return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!), error);
 
-        await DecideAsync(request!, approverId, approve: true, reviewNotes: null);
+        await DecideAsync(request!, approverId, approve: true, reviewNotes: null, projectId);
         return new AttendanceTransitionResult(true, true, await ToRecordDtoAsync(request!));
     }
 
     public async Task<AttendanceTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)
     {
-        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
+        var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, RecordKinds);
         if (!found) return new AttendanceTransitionResult(false, false, null);
         if (error is not null)
             return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!), error);
@@ -507,7 +509,7 @@ public class AttendanceService : IAttendanceService
             return new AttendanceTransitionResult(true, false, await ToRecordDtoAsync(request!),
                 "Enter a rejection remark before rejecting this attendance record.");
 
-        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes, projectId);
         return new AttendanceTransitionResult(true, true, await ToRecordDtoAsync(request!));
     }
 
@@ -560,9 +562,9 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
-        });
+        }, record.ProjectId);
 
-        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED);
+        await NotifyPendingAsync(request, RealtimeAction.SUBMITTED, record.ProjectId);
         return new AttendanceBreakActionResult(true, ToBreakDto(saved, [request]));
     }
 
@@ -603,8 +605,8 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
-        });
-        await NotifyPendingAsync(breakEndRequest, RealtimeAction.SUBMITTED);
+        }, record.ProjectId);
+        await NotifyPendingAsync(breakEndRequest, RealtimeAction.SUBMITTED, record.ProjectId);
 
         var allApprovals = await _approvalRequests.GetByBreakIdsAsync([brk.Id]);
         return new AttendanceBreakActionResult(true, ToBreakDto(brk, allApprovals));
@@ -612,18 +614,18 @@ public class AttendanceService : IAttendanceService
 
     public async Task<AttendanceBreakTransitionResult> ApproveBreakAsync(string id, string approverId)
     {
-        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
+        var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
         if (!found) return new AttendanceBreakTransitionResult(false, false, null);
         if (error is not null)
             return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!), error);
 
-        await DecideAsync(request!, approverId, approve: true, reviewNotes: null);
+        await DecideAsync(request!, approverId, approve: true, reviewNotes: null, projectId);
         return new AttendanceBreakTransitionResult(true, true, await ToBreakDtoAsync(request!));
     }
 
     public async Task<AttendanceBreakTransitionResult> RejectBreakAsync(string id, string approverId, string? reviewNotes)
     {
-        var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
+        var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, BreakKinds);
         if (!found) return new AttendanceBreakTransitionResult(false, false, null);
         if (error is not null)
             return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!), error);
@@ -633,17 +635,19 @@ public class AttendanceService : IAttendanceService
             return new AttendanceBreakTransitionResult(true, false, await ToBreakDtoAsync(request!),
                 "Enter a rejection remark before rejecting this break.");
 
-        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+        await DecideAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes, projectId);
         return new AttendanceBreakTransitionResult(true, true, await ToBreakDtoAsync(request!));
     }
 
     public async Task<IEnumerable<AttendanceApprovalRequestDto>> GetTeamBreakApprovalsAsync(string userId)
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(BreakKinds);
+        var projectIdByRecord = await ResolveProjectIdsAsync(pending);
         var visible = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             if (approvers.Contains(userId)) visible.Add(request);
         }
 
@@ -661,7 +665,8 @@ public class AttendanceService : IAttendanceService
             return new AttendanceBreakListResult(false, false, null);
 
         var authorized = requestingUserId == record.EmployeeId
-            || await _supervision.CanApproveAsync(record.EmployeeId, requestingUserId, requestingRole);
+            || _supervision.IsOrgApprover(requestingRole)
+            || (await _teams.GetReportEmployeeIdsAsync(requestingUserId)).Contains(record.EmployeeId);
         if (!authorized)
             return new AttendanceBreakListResult(true, false, null, "Not authorized to view this employee's breaks.");
 
@@ -685,11 +690,11 @@ public class AttendanceService : IAttendanceService
 
         foreach (var id in toProcess)
         {
-            var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
+            var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
             if (!found) { items.Add(new AttendanceBulkResultItem(id, false, "Not found.")); continue; }
             if (error is not null) { items.Add(new AttendanceBulkResultItem(id, false, error)); continue; }
 
-            await DecideInMemoryAsync(request!, approverId, approve: true, reviewNotes: null);
+            await DecideInMemoryAsync(request!, approverId, approve: true, reviewNotes: null, projectId);
             toSave.Add(request!);
             items.Add(new AttendanceBulkResultItem(id, true));
         }
@@ -715,11 +720,11 @@ public class AttendanceService : IAttendanceService
 
         foreach (var id in toProcess)
         {
-            var (request, found, error) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
+            var (request, found, error, projectId) = await LoadDecidableRequestAsync(id, approverId, AllKinds);
             if (!found) { items.Add(new AttendanceBulkResultItem(id, false, "Not found.")); continue; }
             if (error is not null) { items.Add(new AttendanceBulkResultItem(id, false, error)); continue; }
 
-            await DecideInMemoryAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes);
+            await DecideInMemoryAsync(request!, approverId, approve: false, reviewNotes: cleanedReviewNotes, projectId);
             toSave.Add(request!);
             items.Add(new AttendanceBulkResultItem(id, true));
         }
@@ -895,8 +900,8 @@ public class AttendanceService : IAttendanceService
             SubmittedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
-        });
-        await NotifyPendingAsync(created, RealtimeAction.SUBMITTED);
+        }, record.ProjectId);
+        await NotifyPendingAsync(created, RealtimeAction.SUBMITTED, record.ProjectId);
         return (true, null, created);
     }
 
@@ -974,11 +979,11 @@ public class AttendanceService : IAttendanceService
                     SubmittedAt = now,
                     CreatedAt = now,
                     UpdatedAt = now,
-                });
+                }, record.ProjectId);
 
                 // The employee is long gone, but their approver may well have a
                 // tab open — and this is a request they now have to review.
-                await NotifyPendingAsync(autoRequest, RealtimeAction.SUBMITTED);
+                await NotifyPendingAsync(autoRequest, RealtimeAction.SUBMITTED, record.ProjectId);
 
                 clockedOut++;
             }
@@ -1019,10 +1024,12 @@ public class AttendanceService : IAttendanceService
     public async Task<PendingApprovalDigestDto> GetPendingApprovalDigestAsync(string userId)
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+        var projectIdByRecord = await ResolveProjectIdsAsync(pending);
         var mine = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             if (approvers.Contains(userId)) mine.Add(request);
         }
 
@@ -1036,11 +1043,13 @@ public class AttendanceService : IAttendanceService
     public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+        var projectIdByRecord = await ResolveProjectIdsAsync(pending);
 
         var countByReviewer = new Dictionary<string, int>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             foreach (var reviewerId in approvers)
                 countByReviewer[reviewerId] = countByReviewer.GetValueOrDefault(reviewerId) + 1;
         }
@@ -1155,28 +1164,44 @@ public class AttendanceService : IAttendanceService
     //     (collapses "not your approval" into "not found" — pre-existing
     //     behavior from before this change, kept as-is).
     //   already decided → Found=true with an Error.
-    private async Task<(AttendanceApprovalRequest? Request, bool Found, string? Error)> LoadDecidableRequestAsync(
+    // Batched project lookup for a set of requests — one query for however
+    // many distinct records are involved, rather than one per request.
+    private async Task<IReadOnlyDictionary<string, string?>> ResolveProjectIdsAsync(
+        IEnumerable<AttendanceApprovalRequest> requests)
+    {
+        var recordIds = requests.Select(r => r.AttendanceRecordId).Distinct().ToList();
+        var records = await _repo.GetByIdsAsync(recordIds);
+        return records.ToDictionary(r => r.Id, r => r.ProjectId);
+    }
+
+    // Also resolves and returns the record's project, so callers can pass the
+    // SAME value into every subsequent router call for this decision — the
+    // project can't drift mid-flow that way.
+    private async Task<(AttendanceApprovalRequest? Request, bool Found, string? Error, string? ProjectId)> LoadDecidableRequestAsync(
         string id,
         string approverId,
         IReadOnlySet<AttendanceApprovalKind> allowedKinds)
     {
         var request = await _approvalRequests.GetByIdAsync(id);
         if (request is null || !allowedKinds.Contains(request.Kind))
-            return (null, false, null);
+            return (null, false, null, null);
 
-        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        var projectId = (await _repo.GetByIdAsync(request.AttendanceRecordId))?.ProjectId;
+
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, projectId);
         if (!approvers.Contains(approverId))
-            return (null, false, null);
+            return (null, false, null, null);
 
         if (request.ApprovalStatus != AttendanceApprovalStatus.PENDING)
-            return (request, true, "Only pending approvals can be approved or rejected.");
+            return (request, true, "Only pending approvals can be approved or rejected.", projectId);
 
-        return (request, true, null);
+        return (request, true, null, projectId);
     }
 
-    private async Task DecideAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)
+    private async Task DecideAsync(
+        AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes, string? projectId)
     {
-        await DecideInMemoryAsync(request, approverId, approve, reviewNotes);
+        await DecideInMemoryAsync(request, approverId, approve, reviewNotes, projectId);
         await _approvalRequests.UpdateAsync(request);
 
         // The single choke point for EVERY attendance decision — single, break
@@ -1186,7 +1211,7 @@ public class AttendanceService : IAttendanceService
         {
             // Still pending means the chain ADVANCED rather than ended: the next
             // step's approver needs it in their queue now.
-            targets.AddRange(await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep));
+            targets.AddRange(await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, projectId));
         }
 
         await _realtime.PublishAsync(
@@ -1459,9 +1484,9 @@ public class AttendanceService : IAttendanceService
 
     // A newly-submitted request: nudge whoever has to review it. Nobody else —
     // the employee just performed the action, so their own UI already knows.
-    private async Task NotifyPendingAsync(AttendanceApprovalRequest request, RealtimeAction action)
+    private async Task NotifyPendingAsync(AttendanceApprovalRequest request, RealtimeAction action, string? projectId)
     {
-        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, projectId);
         await _realtime.PublishAsync(
             request.OrganizationId,
             approvers,
@@ -1478,7 +1503,8 @@ public class AttendanceService : IAttendanceService
         }
     }
 
-    private async Task DecideInMemoryAsync(AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes)
+    private async Task DecideInMemoryAsync(
+        AttendanceApprovalRequest request, string approverId, bool approve, string? reviewNotes, string? projectId)
     {
         var now = DateTime.UtcNow;
         request.ReviewerId = approverId;
@@ -1492,7 +1518,7 @@ public class AttendanceService : IAttendanceService
             return;
         }
 
-        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, projectId);
         var isFinal = request.CurrentStep + 1 >= stepCount;
         if (isFinal)
         {
@@ -1534,11 +1560,13 @@ public class AttendanceService : IAttendanceService
     {
         var now = DateTime.UtcNow;
         var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
+        var projectIdByRecord = await ResolveProjectIdsAsync(pending);
         var stuck = 0;
 
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -1557,9 +1585,9 @@ public class AttendanceService : IAttendanceService
         return stuck;
     }
 
-    private async Task<AttendanceApprovalRequest> FileRequestAsync(AttendanceApprovalRequest request)
+    private async Task<AttendanceApprovalRequest> FileRequestAsync(AttendanceApprovalRequest request, string? projectId)
     {
-        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, projectId);
         if (stepCount == 0)
         {
             request.ApprovalStatus = AttendanceApprovalStatus.APPROVED;

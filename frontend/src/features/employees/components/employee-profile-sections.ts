@@ -20,7 +20,7 @@ import type { EmployeeProfile } from "../api";
 // (LHDN issues the TIN later), and bank details (needed to disburse, not to
 // calculate).
 
-export type SectionId = "personal" | "employment" | "statutory" | "company";
+export type SectionId = "personal" | "employment" | "statutory" | "company" | "documents";
 
 /** null / undefined / "" / "   " are blank; 0 and false are real answers. */
 function present(value: unknown): boolean {

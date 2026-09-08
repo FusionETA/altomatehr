@@ -17,8 +17,6 @@ public class EmployeeDto
     public DateTime? JoinDate { get; set; }
     public int OtTimeBalanceMin { get; set; }
 
-    public string? SupervisorId { get; set; }
-    public string? SupervisorEmail { get; set; }
     public string? PolicyId { get; set; }
     public string? ShiftId { get; set; }
 
@@ -26,12 +24,17 @@ public class EmployeeDto
     public IReadOnlyList<string>? Modules { get; set; }
 }
 
-// What an admin sends to change a user's role and/or assigned supervisor.
+// What an admin sends to change a user's role and org-membership fields.
 public class UpdateEmployeeDto
 {
     // null → leave the person's name unchanged. Non-null → update the global User.Name.
     [MaxLength(160)]
     public string? Name { get; set; }
+
+    // null → leave the person's login email unchanged. Non-null → update the
+    // global User.Email (rejected if another user already has it).
+    [EmailAddress, MaxLength(120)]
+    public string? Email { get; set; }
 
     [MaxLength(40)]
     public string? EmployeeNumber { get; set; }
@@ -45,9 +48,6 @@ public class UpdateEmployeeDto
 
     [Required, MaxLength(20)]
     public string Role { get; set; } = "Employee";
-
-    [MaxLength(40)]
-    public string? SupervisorId { get; set; }   // null clears the assignment
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }        // null → falls back to the org default policy
@@ -90,9 +90,6 @@ public class CreateEmployeeDto
 
     [Required, MaxLength(20)]
     public string Role { get; set; } = "Employee";
-
-    [MaxLength(40)]
-    public string? SupervisorId { get; set; }
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }

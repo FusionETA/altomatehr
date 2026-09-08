@@ -775,6 +775,14 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("AddressLine1")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("AddressLine2")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
                     b.Property<string>("AlternateEmail")
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
@@ -847,6 +855,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal>("EpfEmployerVoluntary")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
+
+                    b.Property<bool>("EpfMemberBefore1998")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("EpfNumber")
                         .HasMaxLength(40)
@@ -1076,10 +1087,6 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("varchar(20)");
 
                     b.Property<string>("ShiftId")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.Property<string>("SupervisorId")
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
@@ -1946,6 +1953,47 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Teams");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Teams.Entities.TeamApprovalOverride", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ApproverIdsJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("Layer")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("TeamId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId", "EmployeeId", "Layer")
+                        .IsUnique();
+
+                    b.ToTable("TeamApprovalOverrides");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Teams.Entities.TeamMembership", b =>

@@ -9,9 +9,6 @@ namespace AltomateHR.Api.Modules.Employees;
 // in one org and be a plain employee in another.
 public interface ISupervisionService
 {
-    Task<string?> GetSupervisorIdAsync(string employeeId);
-    Task<IReadOnlyList<string>> GetReportIdsAsync(string supervisorId);
-
     // Email lookup so approver views can label a request by who filed it.
     Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds);
 
@@ -28,10 +25,6 @@ public interface ISupervisionService
     // routing subtracts these, so an admin sitting in a team never becomes
     // somebody's approver.
     Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync();
-
-    // True when `approverId`/`role` may act on `applicantId`'s request:
-    // an org approver, or the applicant's directly-assigned supervisor.
-    Task<bool> CanApproveAsync(string applicantId, string approverId, string? role);
 }
 
 public class SupervisionService : ISupervisionService
@@ -44,14 +37,6 @@ public class SupervisionService : ISupervisionService
         _memberships = memberships;
         _directory = directory;
     }
-
-    // The supervisor assigned to this employee IN THE ACTIVE ORG.
-    public async Task<string?> GetSupervisorIdAsync(string employeeId) =>
-        (await _memberships.GetForUserInCurrentOrgAsync(employeeId))?.SupervisorId;
-
-    // Everyone in the active org whose assigned supervisor is this person.
-    public async Task<IReadOnlyList<string>> GetReportIdsAsync(string supervisorId) =>
-        (await _memberships.GetBySupervisorAsync(supervisorId)).Select(m => m.UserId).ToList();
 
     public async Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds)
     {
@@ -68,11 +53,4 @@ public class SupervisionService : ISupervisionService
             .Where(m => OrgRoles.IsAdministrative(m.Role))
             .Select(m => m.UserId)
             .ToHashSet();
-
-    public async Task<bool> CanApproveAsync(string applicantId, string approverId, string? role)
-    {
-        if (IsOrgApprover(role)) return true;
-        var supervisorId = await GetSupervisorIdAsync(applicantId);
-        return supervisorId is not null && supervisorId == approverId;
-    }
 }

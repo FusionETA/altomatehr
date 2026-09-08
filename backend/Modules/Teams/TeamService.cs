@@ -14,22 +14,26 @@ public class TeamService : ITeamService
     private readonly ITeamMembershipRepository _memberships;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalChainService _chain;
+    private readonly ITeamApprovalOverrideRepository _overrides;
 
     public TeamService(
         ITeamRepository teams,
         ITeamMembershipRepository memberships,
         ISupervisionService supervision,
-        IApprovalChainService chain)
+        IApprovalChainService chain,
+        ITeamApprovalOverrideRepository overrides)
     {
         _teams = teams;
         _memberships = memberships;
         _supervision = supervision;
         _chain = chain;
+        _overrides = overrides;
     }
 
-    public async Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(string employeeId, ApprovalModule module)
+    public async Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
+        string employeeId, ApprovalModule module, string? projectId = null)
     {
-        var chain = await _chain.GetChainAsync(employeeId, module);
+        var chain = await _chain.GetChainAsync(employeeId, module, projectId);
         var emails = await _supervision.GetEmailsAsync(chain.SelectMany(s => s.ApproverIds).Distinct());
         return chain.Select(s => new ApprovalStepDto
         {
@@ -88,6 +92,10 @@ public class TeamService : ITeamService
         team.ModuleApprovalConfig = SerializeConfig(dto.ModuleApprovalConfig);
         team.UpdatedAt = DateTime.UtcNow;
         await _teams.UpdateAsync(team);
+        // A shrunk LayerCount can leave overrides pointing at layers that no
+        // longer exist — prune them, same reasoning as healing stranded
+        // approval requests on this same edit.
+        await _overrides.DeleteLayersAboveAsync(id, dto.LayerCount);
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
 
@@ -97,6 +105,7 @@ public class TeamService : ITeamService
         if (team is null) return false;
 
         await _memberships.DeleteByTeamAsync(id);   // clear the roster first
+        await _overrides.DeleteByTeamAsync(id);
         await _teams.DeleteAsync(id);
         return true;
     }
@@ -144,6 +153,9 @@ public class TeamService : ITeamService
 
         var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
         if (membership is not null) await _memberships.DeleteAsync(membership.Id);
+        // Their whole override config is moot once they leave the team — a
+        // re-add later should start from a fresh default, not stale picks.
+        await _overrides.DeleteByTeamAndEmployeeAsync(teamId, employeeId);
 
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
@@ -227,6 +239,13 @@ public class TeamService : ITeamService
 
         return supervised;
     }
+
+    public async Task<IReadOnlyList<string>> GetReportEmployeeIdsAsync(string supervisorId) =>
+        (await GetSupervisedTeamsAsync(supervisorId))
+            .SelectMany(t => t.MemberIds)
+            .Distinct()
+            .ToList();
+
     public async Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId)
     {
         var mine = await _memberships.GetByEmployeeAsync(employeeId);
@@ -245,4 +264,97 @@ public class TeamService : ITeamService
 
     public async Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
         (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();
+
+    public async Task<IReadOnlyList<LayerApproverOptionsDto>?> GetApproverOptionsAsync(string teamId, string employeeId)
+    {
+        var team = await _teams.GetByIdAsync(teamId);
+        if (team is null) return null;
+
+        var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
+        if (membership is null) return null;   // not a member of this team
+
+        var roster = await _memberships.GetByTeamAsync(teamId);
+        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
+        var overridesByLayer = (await _overrides.GetByTeamAndEmployeeAsync(teamId, employeeId))
+            .ToDictionary(o => o.Layer);
+        var labels = Deserialize(team.LayerLabels);
+        var emails = await _supervision.GetEmailsAsync(roster.Select(m => m.EmployeeId).Distinct());
+
+        var options = new List<LayerApproverOptionsDto>();
+        for (var layer = membership.Layer + 1; layer < team.LayerCount; layer++)
+        {
+            // The implicit default: everyone else at this layer, minus admins.
+            var candidateIds = roster
+                .Where(m => m.Layer == layer && m.EmployeeId != employeeId && !administrative.Contains(m.EmployeeId))
+                .Select(m => m.EmployeeId)
+                .Distinct()
+                .ToList();
+
+            var isOverridden = overridesByLayer.TryGetValue(layer, out var ov);
+            var effective = isOverridden
+                ? Deserialize(ov!.ApproverIdsJson).Where(id => candidateIds.Contains(id)).ToList()
+                : candidateIds;
+
+            options.Add(new LayerApproverOptionsDto
+            {
+                Layer = layer,
+                LayerLabel = LabelFor(labels, layer),
+                Candidates = candidateIds
+                    .Select(id => new ApproverCandidateDto { EmployeeId = id, Email = emails.GetValueOrDefault(id) })
+                    .ToList(),
+                EffectiveApproverIds = effective,
+                IsOverridden = isOverridden,
+            });
+        }
+        return options;
+    }
+
+    public async Task<ApproverOverrideResult> SetApproverOverrideAsync(
+        string teamId, string employeeId, int layer, List<string> approverIds)
+    {
+        var team = await _teams.GetByIdAsync(teamId);
+        if (team is null) return new ApproverOverrideResult(false, null, null);
+
+        var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
+        if (membership is null) return new ApproverOverrideResult(false, null, null);
+
+        if (layer <= membership.Layer || layer >= team.LayerCount)
+            return new ApproverOverrideResult(false, null, "That layer isn't above this employee's own layer.");
+
+        var roster = await _memberships.GetByTeamAsync(teamId);
+        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
+        var validAtLayer = roster.Where(m => m.Layer == layer).Select(m => m.EmployeeId).ToHashSet();
+        var distinctIds = approverIds.Distinct().ToList();
+        if (distinctIds.Any(id => !validAtLayer.Contains(id) || administrative.Contains(id)))
+            return new ApproverOverrideResult(
+                false, null, "Every approver must be a member of this team at that exact layer.");
+
+        var now = DateTime.UtcNow;
+        await _overrides.UpsertAsync(new TeamApprovalOverride
+        {
+            TeamId = teamId,
+            EmployeeId = employeeId,
+            Layer = layer,
+            ApproverIdsJson = Serialize(distinctIds),
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        return new ApproverOverrideResult(true, await GetApproverOptionsAsync(teamId, employeeId), null);
+    }
+
+    public async Task<ApproverOverrideResult> ClearApproverOverrideAsync(string teamId, string employeeId, int layer)
+    {
+        var team = await _teams.GetByIdAsync(teamId);
+        if (team is null) return new ApproverOverrideResult(false, null, null);
+
+        var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
+        if (membership is null) return new ApproverOverrideResult(false, null, null);
+
+        await _overrides.DeleteAsync(teamId, employeeId, layer);
+        return new ApproverOverrideResult(true, await GetApproverOptionsAsync(teamId, employeeId), null);
+    }
+
+    private static string LabelFor(IReadOnlyList<string> labels, int layer) =>
+        layer < labels.Count && !string.IsNullOrWhiteSpace(labels[layer]) ? labels[layer] : $"Layer {layer + 1}";
 }

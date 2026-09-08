@@ -720,12 +720,15 @@ public class AttendanceApprovalRegressionTests
             throw new NotSupportedException();
         public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>
             throw new NotSupportedException();
-        public Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(string employeeId, ApprovalModule module) =>
+        public Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
+            string employeeId, ApprovalModule module, string? projectId = null) =>
             Task.FromResult<IEnumerable<ApprovalStepDto>>([]);
         public Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
             Task.FromResult<IReadOnlyList<string>>([]);
         public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
             Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+        public Task<IReadOnlyList<string>> GetReportEmployeeIdsAsync(string supervisorId) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
 
         // These tests clock in without a project, so the membership check never
         // fires; ProjectsOf lets a test opt into one when it needs to.
@@ -733,6 +736,14 @@ public class AttendanceApprovalRegressionTests
 
         public Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId) =>
             Task.FromResult<IReadOnlyList<string>>(ProjectsOf.GetValueOrDefault(employeeId, []));
+
+        public Task<IReadOnlyList<LayerApproverOptionsDto>?> GetApproverOptionsAsync(string teamId, string employeeId) =>
+            Task.FromResult<IReadOnlyList<LayerApproverOptionsDto>?>(null);
+        public Task<ApproverOverrideResult> SetApproverOverrideAsync(
+            string teamId, string employeeId, int layer, List<string> approverIds) =>
+            throw new NotSupportedException();
+        public Task<ApproverOverrideResult> ClearApproverOverrideAsync(string teamId, string employeeId, int layer) =>
+            throw new NotSupportedException();
     }
 
 }

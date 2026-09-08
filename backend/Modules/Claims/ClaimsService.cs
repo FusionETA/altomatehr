@@ -35,6 +35,7 @@ public class ClaimsService : IClaimsService
     private readonly IChartOfAccountService _accounts;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
+    private readonly ITeamService _teams;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
     private readonly IRealtimeService _realtime;
@@ -49,6 +50,7 @@ public class ClaimsService : IClaimsService
         IChartOfAccountService accounts,
         ISupervisionService supervision,
         IApprovalRouter router,
+        ITeamService teams,
         IOrganizationService organizations,
         ICurrentUser currentUser,
         IRealtimeService realtime,
@@ -62,6 +64,7 @@ public class ClaimsService : IClaimsService
         _accounts = accounts;
         _supervision = supervision;
         _router = router;
+        _teams = teams;
         _organizations = organizations;
         _currentUser = currentUser;
         _realtime = realtime;
@@ -88,7 +91,7 @@ public class ClaimsService : IClaimsService
     public async Task<IEnumerable<Claim>> GetTeamAsync(string userId)
     {
         var all = await _repo.GetAllAsync();
-        var reportIds = (await _supervision.GetReportIdsAsync(userId)).ToHashSet(StringComparer.Ordinal);
+        var reportIds = (await _teams.GetReportEmployeeIdsAsync(userId)).ToHashSet(StringComparer.Ordinal);
 
         var directory = await _employees.GetSnapshotAsync();
         var claims = new List<Claim>();
@@ -101,7 +104,7 @@ public class ClaimsService : IClaimsService
             if (claim.Status == ClaimStatus.PENDING)
             {
                 approvers = await _router.CurrentApproversAsync(
-                    Module, claim.EmployeeId, claim.CurrentStep);
+                    Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
                 actionable = approvers.Contains(userId);
             }
 
@@ -184,7 +187,7 @@ public class ClaimsService : IClaimsService
         // with no approver is invisible in every queue and undecidable by every
         // caller, so it would sit unresolved forever. See OrgRoles: admins are
         // oversight and are not a fallback approver.
-        if (await _router.StepCountAsync(Module, employeeId) == 0)
+        if (await _router.StepCountAsync(Module, employeeId, claim.ProjectId) == 0)
             claim.Status = ClaimStatus.APPROVED;
 
         var saved = await _repo.AddAsync(claim);
@@ -261,7 +264,7 @@ public class ClaimsService : IClaimsService
         var (claim, error) = await AuthorizeAsync(id, approverId);
         if (error is not null) return error;
 
-        var stepCount = await _router.StepCountAsync(Module, claim!.EmployeeId);
+        var stepCount = await _router.StepCountAsync(Module, claim!.EmployeeId, claim.ProjectId);
         var isFinal = claim.CurrentStep + 1 >= stepCount;
         if (isFinal)
             claim.Status = ClaimStatus.APPROVED;
@@ -277,7 +280,7 @@ public class ClaimsService : IClaimsService
         // Notifies the claimant AND, when the chain advanced rather than ended,
         // whoever is now the current-step approver — so the claim appears in the
         // next reviewer's queue without them reloading.
-        await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true, approverId: approverId);
+        await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -321,7 +324,7 @@ public class ClaimsService : IClaimsService
                 continue;
             }
 
-            var stepCount = await _router.StepCountAsync(Module, claim.EmployeeId);
+            var stepCount = await _router.StepCountAsync(Module, claim.EmployeeId, claim.ProjectId);
             if (claim.CurrentStep + 1 >= stepCount)
                 claim.Status = ClaimStatus.APPROVED;
             else
@@ -338,7 +341,7 @@ public class ClaimsService : IClaimsService
         // Notify after every write lands, so a claimant refreshing on the first
         // notification sees the whole batch settled rather than a partial state.
         foreach (var claim in approved)
-            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true, approverId: approverId);
+            await NotifyAsync(claim, RealtimeAction.APPROVED, notifyClaimant: true);
 
         return new ClaimsBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
@@ -365,7 +368,7 @@ public class ClaimsService : IClaimsService
 
         // Rejection is terminal, so there is no next approver — only the
         // claimant needs to know.
-        await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true, approverId: approverId);
+        await NotifyAsync(claim, RealtimeAction.REJECTED, notifyClaimant: true, notifyApprovers: true);
         return new ClaimStatusTransitionResult(true, true, claim);
     }
 
@@ -915,13 +918,13 @@ public class ClaimsService : IClaimsService
     // there is nobody left to tell — but a peer approver at the same step still
     // needs the row to leave their queue.
     private async Task NotifyAsync(
-        Claim claim, RealtimeAction action, bool notifyClaimant, bool notifyApprovers = false, string? approverId = null)
+        Claim claim, RealtimeAction action, bool notifyClaimant, bool notifyApprovers = false)
     {
         var targets = new List<string?>();
         if (notifyClaimant) targets.Add(claim.EmployeeId);
 
         var approvers = notifyApprovers || claim.Status == ClaimStatus.PENDING
-            ? await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep)
+            ? await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId)
             : [];
         targets.AddRange(approvers);
 
@@ -957,25 +960,6 @@ public class ClaimsService : IClaimsService
                         ? $"Your claim \"{claim.Title}\" was approved."
                         : $"Your claim \"{claim.Title}\" was rejected.{(string.IsNullOrEmpty(claim.ReviewNotes) ? "" : $" Reason: {claim.ReviewNotes}")}",
                     "/claims");
-
-                // The employee's own manager, not just the claimant — visibility
-                // into their reports' outcomes even on a decision they didn't make
-                // themselves (multi-step chains, or a peer approver at the same
-                // step). Skipped when the supervisor IS the one who just decided —
-                // they don't need telling about their own click.
-                var supervisorId = await _supervision.GetSupervisorIdAsync(claim.EmployeeId);
-                if (!string.IsNullOrEmpty(supervisorId) && supervisorId != approverId)
-                {
-                    var emails = await _supervision.GetEmailsAsync([claim.EmployeeId]);
-                    var employeeLabel = emails.GetValueOrDefault(claim.EmployeeId) ?? "An employee";
-                    await _notifications.NotifyAsync(
-                        claim.OrganizationId, supervisorId, NotificationType.CLAIM_REVIEWED,
-                        title,
-                        action == RealtimeAction.APPROVED
-                            ? $"{employeeLabel}'s claim \"{claim.Title}\" was approved."
-                            : $"{employeeLabel}'s claim \"{claim.Title}\" was rejected.",
-                        "/claims");
-                }
                 break;
             }
         }
@@ -998,7 +982,7 @@ public class ClaimsService : IClaimsService
 
         foreach (var claim in (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING))
         {
-            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -1305,7 +1289,7 @@ public class ClaimsService : IClaimsService
 
         // Only the current-step approver may act (by team seat); others are
         // treated as not-found so the claim stays hidden.
-        var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+        var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
         if (!approvers.Contains(approverId))
             return (null, new ClaimStatusTransitionResult(false, false, null));
 
@@ -1329,7 +1313,7 @@ public class ClaimsService : IClaimsService
             if (claim.Status != ClaimStatus.PENDING) continue;
 
             var approvers = await _router.CurrentApproversAsync(
-                Module, claim.EmployeeId, claim.CurrentStep);
+                Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
 
             claim.CanAct = approvers.Contains(approverId);
             claim.AwaitingApprovers = claim.CanAct

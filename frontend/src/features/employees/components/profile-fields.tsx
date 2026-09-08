@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
 
 export const NONE = "__none__";
 
@@ -47,22 +48,41 @@ export function Field({
   label,
   hint,
   span,
+  locked,
   children,
 }: {
   label: string;
   hint?: string;
   /** Full-width inside its grid. */
   span?: boolean;
+  /** Shows a "Locked" pill next to the label — for computed, read-only values. */
+  locked?: boolean;
   children: ReactNode;
 }) {
   return (
     <label className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""}`}>
       <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
+        {locked ? (
+          <span className="ml-1.5 rounded border border-border/70 bg-muted px-1.5 py-px align-middle text-[9px] font-semibold normal-case tracking-wide text-muted-foreground">
+            Locked
+          </span>
+        ) : null}
       </span>
       {children}
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </label>
+  );
+}
+
+/** A read-only value the admin can't edit directly — computed from other
+ * fields (age, nationality, EPF branch) rather than entered. Pair with
+ * `Field`'s `locked` prop for the badge. */
+export function LockedValue({ value }: { value: string }) {
+  return (
+    <div className="flex h-11 w-full items-center rounded-2xl border border-border bg-muted/40 px-4 text-sm text-foreground shadow-sm">
+      {value}
+    </div>
   );
 }
 
@@ -155,18 +175,21 @@ export function Picker<T extends string>({
   placeholder,
   allowNone = false,
   noneLabel = "Not set",
+  disabled = false,
 }: {
   value: T | null;
   onChange: (value: T | null) => void;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; disabled?: boolean }[];
   placeholder?: string;
   allowNone?: boolean;
   noneLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <Select
       value={value ?? NONE}
       onValueChange={(v) => onChange(v === NONE ? null : (v as T))}
+      disabled={disabled}
     >
       <SelectTrigger className="h-11 bg-card">
         <SelectValue placeholder={placeholder} />
@@ -174,7 +197,7 @@ export function Picker<T extends string>({
       <SelectContent>
         {allowNone ? <SelectItem value={NONE}>{noneLabel}</SelectItem> : null}
         {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
+          <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
           </SelectItem>
         ))}
@@ -202,12 +225,7 @@ export function Toggle({
         <span className="block text-sm font-bold text-foreground">{label}</span>
         {hint ? <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span> : null}
       </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
-      />
+      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5 shrink-0" />
     </label>
   );
 }

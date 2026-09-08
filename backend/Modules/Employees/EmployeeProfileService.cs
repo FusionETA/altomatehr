@@ -69,6 +69,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.Nationality = d.Nationality; e.Race = d.Race; e.HasPr = d.HasPr;
         e.IdType = d.IdType; e.IdNumber = d.IdNumber;
         e.MaritalStatus = d.MaritalStatus; e.IsResident = d.IsResident; e.IsOku = d.IsOku;
+        e.AddressLine1 = d.AddressLine1; e.AddressLine2 = d.AddressLine2;
         e.City = d.City; e.Postcode = d.Postcode; e.State = d.State;
         e.EmergencyContactName = d.EmergencyContactName;
         e.EmergencyContactPhone = d.EmergencyContactPhone;
@@ -91,6 +92,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.EpfEmployeeRate = d.EpfEmployeeRate;
         e.EpfEmployeeVoluntary = d.EpfEmployeeVoluntary;
         e.EpfEmployerVoluntary = d.EpfEmployerVoluntary;
+        e.EpfMemberBefore1998 = d.EpfMemberBefore1998;
 
         e.SocsoNumber = d.SocsoNumber; e.SocsoScheme = d.SocsoScheme;
         e.ContributeToEis = d.ContributeToEis; e.ContributeToSkbbk = d.ContributeToSkbbk;
@@ -128,6 +130,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         Nationality = e.Nationality, Race = e.Race, HasPr = e.HasPr,
         IdType = e.IdType, IdNumber = e.IdNumber,
         MaritalStatus = e.MaritalStatus, IsResident = e.IsResident, IsOku = e.IsOku,
+        AddressLine1 = e.AddressLine1, AddressLine2 = e.AddressLine2,
         City = e.City, Postcode = e.Postcode, State = e.State,
         EmergencyContactName = e.EmergencyContactName,
         EmergencyContactPhone = e.EmergencyContactPhone,
@@ -150,6 +153,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         EpfEmployeeRate = e.EpfEmployeeRate,
         EpfEmployeeVoluntary = e.EpfEmployeeVoluntary,
         EpfEmployerVoluntary = e.EpfEmployerVoluntary,
+        EpfMemberBefore1998 = e.EpfMemberBefore1998,
 
         SocsoNumber = e.SocsoNumber, SocsoScheme = e.SocsoScheme,
         ContributeToEis = e.ContributeToEis, ContributeToSkbbk = e.ContributeToSkbbk,

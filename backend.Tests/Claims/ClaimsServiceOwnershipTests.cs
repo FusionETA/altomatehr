@@ -131,7 +131,7 @@ public class ClaimsServiceOwnershipTests
         var service = CreateService(
             [pending, approved, otherTeam],
             router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-approver"]] }),
-            supervision: new FakeSupervisionService(supervisorOf: new() { ["usr-emp"] = "usr-approver" }));
+            teams: new FakeTeamService(new() { ["usr-approver"] = ["usr-emp"] }));
 
         var team = (await service.GetTeamAsync("usr-approver")).ToList();
 

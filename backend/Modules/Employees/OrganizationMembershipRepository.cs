@@ -26,9 +26,6 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
     public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) =>
         _db.OrganizationMemberships.FirstOrDefaultAsync(m => m.UserId == userId);
 
-    public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) =>
-        _db.OrganizationMemberships.Where(m => m.SupervisorId == supervisorId).ToListAsync();
-
     public Task<int> CountByShiftIdAsync(string shiftId) =>
         _db.OrganizationMemberships.CountAsync(m => m.ShiftId == shiftId);
 

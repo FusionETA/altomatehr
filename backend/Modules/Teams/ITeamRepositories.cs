@@ -23,3 +23,17 @@ public interface ITeamMembershipRepository
     Task DeleteAsync(string id);
     Task DeleteByTeamAsync(string teamId);
 }
+
+// Explicit per-employee approver overrides — see TeamApprovalOverride.
+public interface ITeamApprovalOverrideRepository
+{
+    Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId);
+    Task<TeamApprovalOverride?> GetAsync(string teamId, string employeeId, int layer);
+    Task UpsertAsync(TeamApprovalOverride ov);
+    Task DeleteAsync(string teamId, string employeeId, int layer);
+    Task DeleteByTeamAsync(string teamId);
+    Task DeleteByTeamAndEmployeeAsync(string teamId, string employeeId);
+    // Prunes overrides pointing at layers that no longer exist after a
+    // team's LayerCount shrinks.
+    Task DeleteLayersAboveAsync(string teamId, int maxLayer);
+}

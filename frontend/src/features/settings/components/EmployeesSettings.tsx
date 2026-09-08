@@ -61,8 +61,6 @@ export function EmployeesSettings() {
     () => employees.filter((e) => e.role === "Employee" || e.role === "Supervisor"),
     [employees],
   );
-  const excluded = employees.length - staff.length;
-
   const policyName = (id: string | null) =>
     id ? (policies.find((p) => p.id === id)?.name ?? "—") : "Default";
 
@@ -79,7 +77,6 @@ export function EmployeesSettings() {
         emp.role,
         emp.employeeNumber,
         emp.jobTitle,
-        emp.supervisorEmail,
         policyName(emp.policyId),
       ]
         .filter(Boolean)
@@ -109,7 +106,6 @@ export function EmployeesSettings() {
     return (
       <EmployeeDetail
         employee={selected}
-        employees={employees}
         policies={policies}
         onBack={() => setSelectedId(null)}
         onSaved={(updated) =>
@@ -130,18 +126,6 @@ export function EmployeesSettings() {
               {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Set each person's role and approving supervisor. Leave and claim approvals route to the
-            assigned supervisor.
-            {excluded > 0 ? (
-              <>
-                {" "}
-                {excluded} admin{excluded === 1 ? "" : "s"} and owner
-                {excluded === 1 ? "" : "s"} are not listed — administrative access is granted, not
-                employed.
-              </>
-            ) : null}
-          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <SearchInput
@@ -183,7 +167,6 @@ export function EmployeesSettings() {
                 <tr className="border-b border-border/60">
                   <th className={TH}>Person</th>
                   <th className={TH}>Role</th>
-                  <th className={TH}>Supervisor</th>
                   <th className={TH}>Policy</th>
                   <th className={TH} />
                 </tr>
@@ -222,7 +205,6 @@ export function EmployeesSettings() {
                         {emp.role}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-muted-foreground">{emp.supervisorEmail ?? "—"}</td>
                     <td className="px-3 py-3 text-muted-foreground">{policyName(emp.policyId)}</td>
                     <td className="px-3 py-3 text-right">
                       <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
@@ -252,7 +234,6 @@ export function EmployeesSettings() {
 
       {showAdd ? (
         <AddEmployeeModal
-          employees={employees}
           policies={policies}
           onClose={() => setShowAdd(false)}
           onCreated={(created) => {

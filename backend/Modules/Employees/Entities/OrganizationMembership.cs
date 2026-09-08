@@ -4,8 +4,10 @@ using AltomateHR.Api.Common;
 namespace AltomateHR.Api.Modules.Employees.Entities;
 
 // Links a User to an Organization they belong to (many-to-many) and holds the
-// PER-ORG profile: their role in THIS org, plus (for staff) their supervisor and
-// policy in this org.
+// PER-ORG profile: their role in THIS org, plus (for staff) their policy in
+// this org. Who approves for them, and who can view their data, is derived
+// entirely from Teams (Modules/Teams/) — there is no separate flat supervisor
+// concept here.
 //
 // Role is per membership, not global: a person can be a Supervisor in one org and
 // a plain Employee in another — they're only a supervisor where they've been
@@ -37,10 +39,6 @@ public class OrganizationMembership : ITenantScoped
 
     // Banked overtime time-off, in minutes (the monolith's otTimeBalanceMin).
     public int OtTimeBalanceMin { get; set; }
-
-    // The approving supervisor in THIS org (a UserId). Null = unassigned.
-    [MaxLength(40)]
-    public string? SupervisorId { get; set; }
 
     // The policy that governs this person IN THIS org. Null = use the org default.
     [MaxLength(40)]

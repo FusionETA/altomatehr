@@ -38,6 +38,8 @@ public class EmployeeProfile : ITenantScoped
     public bool IsOku { get; set; }                              // person with disability
 
     // Home address
+    [MaxLength(160)] public string? AddressLine1 { get; set; }
+    [MaxLength(160)] public string? AddressLine2 { get; set; }
     [MaxLength(120)] public string? City { get; set; }
     [MaxLength(20)] public string? Postcode { get; set; }
     [MaxLength(60)] public string? State { get; set; }
@@ -76,6 +78,9 @@ public class EmployeeProfile : ITenantScoped
     [Precision(6, 4)] public decimal EpfEmployeeRate { get; set; }
     [Precision(12, 2)] public decimal EpfEmployeeVoluntary { get; set; }
     [Precision(12, 2)] public decimal EpfEmployerVoluntary { get; set; }
+    // Non-Malaysian, non-PR employees who joined EPF before 1 Aug 1998 stay on
+    // the standard Part A/C rates instead of dropping to Part F (2%/2%).
+    public bool EpfMemberBefore1998 { get; set; }
 
     // ---- SOCSO / EIS / SKBBK ----
     [MaxLength(40)] public string? SocsoNumber { get; set; }

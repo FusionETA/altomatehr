@@ -151,7 +151,7 @@ public class AdminOverviewService : IAdminOverviewService
             // Who the claim is waiting on right now — the approvers of the step
             // it stalled at, not the whole chain.
             var approvers = await _router.CurrentApproversAsync(
-                Module, claim.EmployeeId, claim.CurrentStep);
+                Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
 
             result.Add(new StalePendingClaimDto
             {
@@ -195,7 +195,7 @@ public class AdminOverviewService : IAdminOverviewService
 
         foreach (var claim in overturned)
         {
-            var layerOne = await _router.CurrentApproversAsync(Module, claim.EmployeeId, 0);
+            var layerOne = await _router.CurrentApproversAsync(Module, claim.EmployeeId, 0, claim.ProjectId);
             foreach (var approverId in layerOne)
             {
                 if (!tally.TryGetValue(approverId, out var entry))

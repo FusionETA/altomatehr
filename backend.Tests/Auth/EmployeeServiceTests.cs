@@ -12,51 +12,11 @@ namespace AltomateHR.Api.Tests.Auth;
 public class EmployeeServiceTests
 {
     [Fact]
-    public async Task UpdateAsync_SetsRoleAndSupervisor_AndResolvesSupervisorEmail()
-    {
-        var service = MakeService(out _);
-
-        var result = await service.UpdateAsync(
-            "usr-emp",
-            new UpdateEmployeeDto { Role = "Employee", SupervisorId = "usr-super" });
-
-        Assert.True(result.Ok);
-        Assert.Equal("usr-super", result.Employee!.SupervisorId);
-        Assert.Equal("supervisor@altomate.com", result.Employee.SupervisorEmail);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_RejectsSelfSupervisor()
-    {
-        var service = MakeService(out _);
-
-        var result = await service.UpdateAsync(
-            "usr-emp",
-            new UpdateEmployeeDto { Role = "Employee", SupervisorId = "usr-emp" });
-
-        Assert.False(result.Ok);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
     public async Task UpdateAsync_RejectsUnknownRole()
     {
         var service = MakeService(out _);
 
         var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto { Role = "Wizard" });
-
-        Assert.False(result.Ok);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_RejectsSupervisorNotInOrg()
-    {
-        var service = MakeService(out _);
-
-        var result = await service.UpdateAsync(
-            "usr-emp",
-            new UpdateEmployeeDto { Role = "Employee", SupervisorId = "ghost" });
 
         Assert.False(result.Ok);
         Assert.NotNull(result.Error);
@@ -74,18 +34,6 @@ public class EmployeeServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_ClearsSupervisorWhenNull()
-    {
-        var service = MakeService(out var memberships);
-        memberships.Single(m => m.UserId == "usr-emp").SupervisorId = "usr-super";
-
-        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto { Role = "Employee", SupervisorId = null });
-
-        Assert.True(result.Ok);
-        Assert.Null(result.Employee!.SupervisorId);
-    }
-
-    [Fact]
     public async Task UpdateAsync_DoesNotWipeProfileFieldsAnUpdateOmits()
     {
         var service = MakeService(out var memberships);
@@ -97,7 +45,7 @@ public class EmployeeServiceTests
         // What the employees table sends when an admin changes only the role.
         var result = await service.UpdateAsync(
             "usr-emp",
-            new UpdateEmployeeDto { Role = "Supervisor", SupervisorId = "usr-super" });
+            new UpdateEmployeeDto { Role = "Supervisor" });
 
         Assert.True(result.Ok);
         // These used to be nulled by any update that omitted them — and losing
@@ -171,8 +119,6 @@ public class EmployeeServiceTests
         public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() => Task.FromResult(_m.ToList());
         public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) =>
             Task.FromResult(_m.FirstOrDefault(x => x.UserId == userId));
-        public Task<List<OrganizationMembership>> GetBySupervisorAsync(string supervisorId) =>
-            Task.FromResult(_m.Where(x => x.SupervisorId == supervisorId).ToList());
         public Task<int> CountByShiftIdAsync(string shiftId) =>
             Task.FromResult(_m.Count(x => x.ShiftId == shiftId));
         public Task AddAsync(OrganizationMembership m) { _m.Add(m); return Task.CompletedTask; }

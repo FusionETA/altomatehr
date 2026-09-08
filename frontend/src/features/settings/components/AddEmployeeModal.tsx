@@ -18,15 +18,13 @@ function generatePassword() {
 }
 
 // Mirrors the monolith's "Add employee" dialog, mapped to what our slim account model
-// supports: email + initial password + role + supervisor + policy. If the email already
+// supports: email + initial password + role + policy. If the email already
 // belongs to a user, the backend reuses that identity (the multi-org case).
 export function AddEmployeeModal({
-  employees,
   policies,
   onClose,
   onCreated,
 }: {
-  employees: Employee[];
   policies: Policy[];
   onClose: () => void;
   onCreated: (created: Employee) => void;
@@ -38,7 +36,6 @@ export function AddEmployeeModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<string>("Employee");
-  const [supervisorId, setSupervisorId] = useState<string>(NONE);
   const [policyId, setPolicyId] = useState<string>(NONE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +56,6 @@ export function AddEmployeeModal({
         jobTitle: jobTitle.trim() || undefined,
         joinDate: joinDate || undefined,
         role,
-        supervisorId: supervisorId === NONE ? null : supervisorId,
         policyId: policyId === NONE ? null : policyId,
       });
       onCreated(created);
@@ -247,25 +243,6 @@ export function AddEmployeeModal({
                   ))}
               </select>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="add-supervisor" className={LABEL}>
-              Supervisor
-            </label>
-            <select
-              id="add-supervisor"
-              className={INPUT}
-              value={supervisorId}
-              onChange={(e) => setSupervisorId(e.target.value)}
-            >
-              <option value={NONE}>No supervisor</option>
-              {employees.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.email}
-                </option>
-              ))}
-            </select>
           </div>
 
           {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}

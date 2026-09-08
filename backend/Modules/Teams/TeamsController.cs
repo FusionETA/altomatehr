@@ -31,11 +31,16 @@ public class TeamsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _teams.GetAllAsync());
 
-    // GET /teams/chain/{employeeId}?module=LEAVE — preview the derived chain for a module.
+    // GET /teams/chain/{employeeId}?module=LEAVE&projectId=... — preview the
+    // derived chain for a module; projectId disambiguates when the employee
+    // is on more than one team.
     [RequireScope("teams:read")]
     [HttpGet("chain/{employeeId}")]
-    public async Task<IActionResult> Chain(string employeeId, [FromQuery] ApprovalModule module = ApprovalModule.CLAIMS) =>
-        Ok(await _teams.GetApprovalChainAsync(employeeId, module));
+    public async Task<IActionResult> Chain(
+        string employeeId,
+        [FromQuery] ApprovalModule module = ApprovalModule.CLAIMS,
+        [FromQuery] string? projectId = null) =>
+        Ok(await _teams.GetApprovalChainAsync(employeeId, module, projectId));
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateTeamDto dto) => await ToResponse(await _teams.CreateAsync(dto));
@@ -63,6 +68,30 @@ public class TeamsController : ControllerBase
     [HttpDelete("{id}/members/{employeeId}")]
     public async Task<IActionResult> RemoveMember(string id, string employeeId) =>
         await ToResponse(await _teams.RemoveMemberAsync(id, employeeId), healApprovals: true);
+
+    // GET /teams/{id}/members/{employeeId}/approver-options — per-layer picker
+    // data: candidates, what's currently in effect, and whether it's custom.
+    [RequireScope("teams:read")]
+    [HttpGet("{id}/members/{employeeId}/approver-options")]
+    public async Task<IActionResult> GetApproverOptions(string id, string employeeId)
+    {
+        var options = await _teams.GetApproverOptionsAsync(id, employeeId);
+        return options is null ? NotFound() : Ok(options);
+    }
+
+    // PUT /teams/{id}/members/{employeeId}/approvers/{layer} — set/replace the
+    // explicit approver list for this employee at this layer.
+    [HttpPut("{id}/members/{employeeId}/approvers/{layer:int}")]
+    public async Task<IActionResult> SetApproverOverride(
+        string id, string employeeId, int layer, SetApproverOverrideDto dto) =>
+        await ToApproverResponse(
+            await _teams.SetApproverOverrideAsync(id, employeeId, layer, dto.ApproverIds));
+
+    // DELETE /teams/{id}/members/{employeeId}/approvers/{layer} — revert to
+    // the team's implicit default at this layer.
+    [HttpDelete("{id}/members/{employeeId}/approvers/{layer:int}")]
+    public async Task<IActionResult> ClearApproverOverride(string id, string employeeId, int layer) =>
+        await ToApproverResponse(await _teams.ClearApproverOverrideAsync(id, employeeId, layer));
 
     // Editing the hierarchy can leave in-flight requests parked past the end of
     // a chain that just got shorter — nothing routes to them and no waiting
@@ -97,5 +126,15 @@ public class TeamsController : ControllerBase
         if (!result.Ok) return BadRequest(new { message = result.Error });
         if (healApprovals) await HealStrandedApprovalsAsync();
         return Ok(result.Team);
+    }
+
+    // An override changes who's asked next, same as adding/moving/removing a
+    // member — so it heals stranded approvals too.
+    private async Task<IActionResult> ToApproverResponse(ApproverOverrideResult result)
+    {
+        if (!result.Ok && result.Error is null) return NotFound();
+        if (!result.Ok) return BadRequest(new { message = result.Error });
+        await HealStrandedApprovalsAsync();
+        return Ok(result.Options);
     }
 }

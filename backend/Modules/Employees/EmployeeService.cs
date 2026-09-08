@@ -74,15 +74,6 @@ public class EmployeeService : IEmployeeService
         if (await _memberships.GetForUserInCurrentOrgAsync(user.Id) is not null)
             return new EmployeeSaveResult(false, null, "This person is already a member of this organization.");
 
-        var supervisorId = string.IsNullOrWhiteSpace(dto.SupervisorId) ? null : dto.SupervisorId;
-        if (supervisorId is not null)
-        {
-            if (supervisorId == user.Id)
-                return new EmployeeSaveResult(false, null, "A user can't be their own supervisor.");
-            if (await _memberships.GetForUserInCurrentOrgAsync(supervisorId) is null)
-                return new EmployeeSaveResult(false, null, "The chosen supervisor doesn't exist in this organization.");
-        }
-
         var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
@@ -92,7 +83,6 @@ public class EmployeeService : IEmployeeService
             UserId = user.Id,
             Role = role,
             JoinDate = dto.JoinDate?.Date,
-            SupervisorId = supervisorId,
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
@@ -115,36 +105,37 @@ public class EmployeeService : IEmployeeService
         if (role is null)
             return new EmployeeSaveResult(false, null, $"Role must be one of: {string.Join(", ", AllowedRoles)}.");
 
-        var supervisorId = string.IsNullOrWhiteSpace(dto.SupervisorId) ? null : dto.SupervisorId;
-        if (supervisorId is not null)
-        {
-            if (supervisorId == id)
-                return new EmployeeSaveResult(false, null, "A user can't be their own supervisor.");
-
-            // The supervisor must also be a member of THIS org (blocks cross-org assignment).
-            var supervisor = await _memberships.GetForUserInCurrentOrgAsync(supervisorId);
-            if (supervisor is null)
-                return new EmployeeSaveResult(false, null, "The chosen supervisor doesn't exist in this organization.");
-        }
-
         var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
 
-        // Name lives on the global User. Patch semantics: null → leave unchanged
-        // (so an update that omits it can't wipe the person's identity).
-        if (dto.Name is not null)
+        // Email is checked for uniqueness before anything is touched, so a
+        // rejected change never leaves a partial write behind.
+        if (dto.Email is not null)
+        {
+            var newEmail = dto.Email.Trim();
+            if (newEmail.Length == 0)
+                return new EmployeeSaveResult(false, null, "Email cannot be empty.");
+
+            var existing = await _users.GetByEmailAsync(newEmail);
+            if (existing is not null && existing.Id != id)
+                return new EmployeeSaveResult(false, null, "That email is already in use.");
+        }
+
+        // Name and email live on the global User. Patch semantics: null → leave
+        // unchanged (so an update that omits them can't wipe the person's identity).
+        if (dto.Name is not null || dto.Email is not null)
         {
             var user = await _users.GetByIdAsync(id);
             if (user is not null)
             {
-                user.Name = dto.Name.Trim();
+                if (dto.Name is not null) user.Name = dto.Name.Trim();
+                if (dto.Email is not null) user.Email = dto.Email.Trim();
                 await _users.UpdateAsync(user);
             }
         }
 
         membership.Role = role;
-        membership.SupervisorId = supervisorId;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
         membership.ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId;
         membership.Modules = modulesCsv;
@@ -198,10 +189,6 @@ public class EmployeeService : IEmployeeService
         EmployeeNumber = m.EmployeeNumber,
         JobTitle = m.JobTitle,
         OtTimeBalanceMin = m.OtTimeBalanceMin,
-        SupervisorId = m.SupervisorId,
-        SupervisorEmail = m.SupervisorId is not null && usersById.TryGetValue(m.SupervisorId, out var sup)
-            ? sup.Email
-            : null,
         PolicyId = m.PolicyId,
         ShiftId = m.ShiftId,
         JoinDate = m.JoinDate,

@@ -87,3 +87,71 @@ public class TeamMembershipRepository : ITeamMembershipRepository
         await _db.SaveChangesAsync();
     }
 }
+
+public class TeamApprovalOverrideRepository : ITeamApprovalOverrideRepository
+{
+    private readonly AppDbContext _db;
+
+    public TeamApprovalOverrideRepository(AppDbContext db) => _db = db;
+
+    public Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId) =>
+        _db.TeamApprovalOverrides
+            .Where(o => o.TeamId == teamId && o.EmployeeId == employeeId)
+            .ToListAsync();
+
+    public Task<TeamApprovalOverride?> GetAsync(string teamId, string employeeId, int layer) =>
+        _db.TeamApprovalOverrides
+            .FirstOrDefaultAsync(o => o.TeamId == teamId && o.EmployeeId == employeeId && o.Layer == layer);
+
+    public async Task UpsertAsync(TeamApprovalOverride ov)
+    {
+        var existing = await GetAsync(ov.TeamId, ov.EmployeeId, ov.Layer);
+        if (existing is null)
+        {
+            _db.TeamApprovalOverrides.Add(ov);
+        }
+        else
+        {
+            existing.ApproverIdsJson = ov.ApproverIdsJson;
+            existing.UpdatedAt = ov.UpdatedAt;
+            _db.TeamApprovalOverrides.Update(existing);
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteAsync(string teamId, string employeeId, int layer)
+    {
+        var row = await GetAsync(teamId, employeeId, layer);
+        if (row is null) return;
+        _db.TeamApprovalOverrides.Remove(row);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteByTeamAsync(string teamId)
+    {
+        var rows = await _db.TeamApprovalOverrides.Where(o => o.TeamId == teamId).ToListAsync();
+        if (rows.Count == 0) return;
+        _db.TeamApprovalOverrides.RemoveRange(rows);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteByTeamAndEmployeeAsync(string teamId, string employeeId)
+    {
+        var rows = await _db.TeamApprovalOverrides
+            .Where(o => o.TeamId == teamId && o.EmployeeId == employeeId)
+            .ToListAsync();
+        if (rows.Count == 0) return;
+        _db.TeamApprovalOverrides.RemoveRange(rows);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteLayersAboveAsync(string teamId, int maxLayer)
+    {
+        var rows = await _db.TeamApprovalOverrides
+            .Where(o => o.TeamId == teamId && o.Layer >= maxLayer)
+            .ToListAsync();
+        if (rows.Count == 0) return;
+        _db.TeamApprovalOverrides.RemoveRange(rows);
+        await _db.SaveChangesAsync();
+    }
+}

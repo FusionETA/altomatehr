@@ -64,7 +64,6 @@ public static class DbSeeder
         await EnsureUserAsync(users, memberships, "usr-admin", "admin@altomate.com", "Owner", "Demo Admin", "Founder");
         await EnsureUserAsync(users, memberships, "usr-super", "supervisor@altomate.com", "Supervisor", "Sara Supervisor", "Team Lead");
         await EnsureUserAsync(users, memberships, "usr-emp", "employee@altomate.com", "Employee", "Evan Employee", "Associate");
-        await AssignSupervisorAsync(memberships, "usr-emp", "usr-super");
         await BackfillClaimsAsync(claims);
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
@@ -326,17 +325,6 @@ public static class DbSeeder
         });
     }
 
-    // Point an employee at their approving supervisor in the demo org (idempotent).
-    private static async Task AssignSupervisorAsync(
-        IOrganizationMembershipRepository memberships, string employeeId, string supervisorId)
-    {
-        var membership = await memberships.GetAsync(DemoOrgId, employeeId);
-        if (membership is null || membership.SupervisorId == supervisorId) return;
-
-        membership.SupervisorId = supervisorId;
-        await memberships.UpdateAsync(membership);
-    }
-
     private static async Task SeedLeaveTypesAsync(ILeaveTypeRepository leaveTypes)
     {
         if ((await leaveTypes.GetAllAsync()).Count > 0) return;
@@ -361,7 +349,7 @@ public static class DbSeeder
         await leaveTypes.AddAsync(make("UL", "Unpaid Leave", false, 0));
     }
 
-    // Demo overtime for Evan, whose approver is Sara (AssignSupervisorAsync above).
+    // Demo overtime for Evan, whose approver is Sara (via their shared Team).
     //
     // Idempotent per ROW, on a fixed id — not "skip if the table has anything",
     // which the attendance rows use. That rule would have made this a no-op on

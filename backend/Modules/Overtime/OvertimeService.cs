@@ -45,7 +45,7 @@ public class OvertimeService : IOvertimeService
         var visible = new List<OvertimeRequest>();
         foreach (var request in all)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
             if (approvers.Contains(userId)) visible.Add(request);
         }
 
@@ -167,7 +167,7 @@ public class OvertimeService : IOvertimeService
         // refuses without an after-work photo, and there isn't one until now.
         // So the request waits here, not on an approver who doesn't exist.
         // See OrgRoles — admins are oversight, not a fallback approver.
-        if (await _router.StepCountAsync(Module, request.EmployeeId) == 0)
+        if (await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId) == 0)
         {
             request.Status = OvertimeStatus.APPROVED;
             request.DecidedAt = now;
@@ -188,7 +188,7 @@ public class OvertimeService : IOvertimeService
                 "The after-work photo must be attached before approval.");
 
         var now = DateTime.UtcNow;
-        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+        var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
         var isFinal = request.CurrentStep + 1 >= stepCount;
         if (isFinal)
         {
@@ -202,7 +202,7 @@ public class OvertimeService : IOvertimeService
 
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
-        await NotifyDecisionAsync(request, approved: true, approverId);
+        await NotifyDecisionAsync(request, approved: true);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
@@ -250,7 +250,7 @@ public class OvertimeService : IOvertimeService
             }
 
             var now = DateTime.UtcNow;
-            var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+            var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
             if (request.CurrentStep + 1 >= stepCount)
             {
                 request.Status = OvertimeStatus.APPROVED;
@@ -285,7 +285,7 @@ public class OvertimeService : IOvertimeService
         request.DecidedAt = now;
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
-        await NotifyDecisionAsync(request, approved: false, approverId);
+        await NotifyDecisionAsync(request, approved: false);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
@@ -320,7 +320,7 @@ public class OvertimeService : IOvertimeService
 
         if (!isAdmin && request.EmployeeId != userId)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
             if (!approvers.Contains(userId)) return null;
         }
 
@@ -335,7 +335,7 @@ public class OvertimeService : IOvertimeService
         if (request is null)
             return (null, new OvertimeTransitionResult(false, false, null));
 
-        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
         if (!approvers.Contains(approverId))
             return (null, new OvertimeTransitionResult(false, false, null));
 
@@ -369,7 +369,7 @@ public class OvertimeService : IOvertimeService
             // around that.
             if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
 
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -390,7 +390,7 @@ public class OvertimeService : IOvertimeService
     // asked for.
     private async Task NotifyReviewersAsync(OvertimeRequest request)
     {
-        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
         foreach (var reviewerId in approvers)
         {
             if (string.IsNullOrEmpty(reviewerId)) continue;
@@ -402,10 +402,8 @@ public class OvertimeService : IOvertimeService
         }
     }
 
-    // Notifies the employee AND their direct supervisor of a decision — same
-    // "manager visibility into their reports' outcomes" as Claims/Leave.
-    // Skipped for the supervisor when they're the one who just decided.
-    private async Task NotifyDecisionAsync(OvertimeRequest request, bool approved, string approverId)
+    // Notifies the employee of a decision.
+    private async Task NotifyDecisionAsync(OvertimeRequest request, bool approved)
     {
         var title = approved ? "Overtime approved" : "Overtime rejected";
         await _notifications.NotifyAsync(
@@ -415,20 +413,6 @@ public class OvertimeService : IOvertimeService
                 ? $"Your overtime request on {request.WorkDate:MMM d} was approved."
                 : $"Your overtime request on {request.WorkDate:MMM d} was rejected.{(string.IsNullOrEmpty(request.ReviewNotes) ? "" : $" Reason: {request.ReviewNotes}")}",
             "/overtime");
-
-        var supervisorId = await _supervision.GetSupervisorIdAsync(request.EmployeeId);
-        if (!string.IsNullOrEmpty(supervisorId) && supervisorId != approverId)
-        {
-            var emails = await _supervision.GetEmailsAsync([request.EmployeeId]);
-            var employeeLabel = emails.GetValueOrDefault(request.EmployeeId) ?? "An employee";
-            await _notifications.NotifyAsync(
-                request.OrganizationId, supervisorId, NotificationType.OVERTIME_REVIEWED,
-                title,
-                approved
-                    ? $"{employeeLabel}'s overtime request on {request.WorkDate:MMM d} was approved."
-                    : $"{employeeLabel}'s overtime request on {request.WorkDate:MMM d} was rejected.",
-                "/overtime");
-        }
     }
 
     private static bool IsOvertimePhotoUrl(string? url) =>
