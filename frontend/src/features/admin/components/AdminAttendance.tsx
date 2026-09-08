@@ -10,6 +10,7 @@ import {
   type ApprovalAuditEntry,
   type AttendanceRecord,
   type OrgHoursSummary,
+  type HoursBuckets,
   type SelfieStorage,
   type SupervisorPerformance,
 } from "@/features/attendance/api";
@@ -75,6 +76,15 @@ export type TodayCounts = {
 };
 
 type TodayChip = keyof TodayCounts;
+
+// One employee card: the person, the sites they are attached to, their hours
+// over the selected range, and today's record if they have one.
+export type EmployeeRow = {
+  employee: Employee;
+  projects: string[];
+  buckets: HoursBuckets | null;
+  record: AttendanceRecord | null;
+};
 
 const TODAY_CHIPS: { key: TodayChip; label: string }[] = [
   { key: "all", label: "All" },
@@ -218,6 +228,10 @@ export function AdminAttendance() {
     try {
       if (section === "overtime") setOvertime(await getAllOvertime());
       if (section === "shifts") setShifts(await getShifts());
+      // Employees shows each person's hours against the same range, so it reads
+      // the same report Analytics does rather than a second source that could
+      // total differently.
+      if (section === "employees") setHours(await getOrgHoursSummary(from, to, filter.teamId));
       if (section !== "overview") return;
 
       if (tab === "analytics") setHours(await getOrgHoursSummary(from, to, filter.teamId));
@@ -268,18 +282,6 @@ export function AdminAttendance() {
   // Today's rows come from the records already loaded — the day is a slice of
   // the same roll call, not a separate query.
   const today = isoDay(new Date());
-  const teamOf = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const team of teamIndex) {
-      for (const employeeId of team.members) {
-        // First team wins. Someone on two teams gets one label rather than a
-        // joined string that breaks the column width.
-        if (!map.has(employeeId)) map.set(employeeId, team.name);
-      }
-    }
-    return map;
-  }, [teamIndex]);
-
   // Who the project/team filters admit. null = no filter at all, which is not
   // the same as an empty set — that one matched nobody.
   const scopedIds = useMemo(() => {
@@ -371,7 +373,37 @@ export function AdminAttendance() {
 
   const employeeRows = useMemo(() => {
     const term = (filter.q ?? "").trim().toLowerCase();
-    const inRange = records.filter((r) => r.date >= from && r.date <= to);
+    const todayByEmployee = new Map(
+      records.filter((r) => r.date === today).map((r) => [r.employeeId, r] as const),
+    );
+    const hoursByEmployee = new Map(
+      (hours?.employees ?? []).map((row) => [row.employeeId, row.buckets] as const),
+    );
+
+    // Where the person works: the projects their teams are on, plus anywhere
+    // they have actually clocked in. Team membership alone understates it —
+    // someone can be rostered to one site and spend the month on another, and
+    // the row that says only the first is the misleading one.
+    const clockedProjects = new Map<string, Set<string>>();
+    for (const record of records) {
+      if (!record.projectId) continue;
+      const name = projectNames.get(record.projectId);
+      if (!name) continue;
+      const seen = clockedProjects.get(record.employeeId) ?? new Set<string>();
+      seen.add(name);
+      clockedProjects.set(record.employeeId, seen);
+    }
+
+    const projectsOf = (employeeId: string) =>
+      [
+        ...new Set([
+          ...teamIndex
+            .filter((team) => team.members.includes(employeeId))
+            .map((team) => projectNames.get(team.projectId))
+            .filter((name): name is string => Boolean(name)),
+          ...(clockedProjects.get(employeeId) ?? []),
+        ]),
+      ];
 
     return roster
       .filter((e) => !scopedIds || scopedIds.has(e.id))
@@ -382,25 +414,14 @@ export function AdminAttendance() {
               .toLowerCase()
               .includes(term),
       )
-      .map((employee) => {
-        const own = inRange.filter((r) => r.employeeId === employee.id);
-        const days = new Set(own.map((r) => r.date));
-        const last = own
-          .map((r) => r.timeIn)
-          .filter((t): t is string => Boolean(t))
-          .sort()
-          .at(-1) ?? null;
-
-        return {
-          employee,
-          team: teamOf.get(employee.id) ?? null,
-          daysPresent: days.size,
-          minutes: own.reduce((sum, r) => sum + (r.durationMin ?? 0), 0),
-          lastSeen: last,
-        };
-      })
-      .sort((a, b) => b.daysPresent - a.daysPresent || a.employee.name.localeCompare(b.employee.name));
-  }, [roster, records, from, to, filter.q, scopedIds, teamOf]);
+      .map((employee) => ({
+        employee,
+        projects: projectsOf(employee.id),
+        buckets: hoursByEmployee.get(employee.id) ?? null,
+        record: todayByEmployee.get(employee.id) ?? null,
+      }))
+      .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+  }, [roster, records, hours, teamIndex, projectNames, today, filter.q, scopedIds]);
 
   const overtimeRows = useMemo(() => {
     const term = (filter.q ?? "").trim().toLowerCase();
@@ -1010,19 +1031,16 @@ function Stat({
 
 // ---- Employees ----
 
-// The roster as attendance sees it: who is on it, and how much of the selected
-// range each person actually turned up for. Zero days present is the row worth
-// having — an employee nobody has noticed is missing.
+// The roster the way production presents it: one card per person, carrying the
+// two things an admin scans for — how their hours are tracking against the
+// range, and whether they turned up today.
+//
+// No drill-in chevron. Production's opens a per-employee attendance page we do
+// not have yet, and an affordance that goes nowhere is worse than none.
 function EmployeesTab({
   rows,
 }: {
-  rows: {
-    employee: Employee;
-    team: string | null;
-    daysPresent: number;
-    minutes: number;
-    lastSeen: string | null;
-  }[];
+  rows: EmployeeRow[];
 }) {
   if (rows.length === 0) {
     return (
@@ -1033,42 +1051,101 @@ function EmployeesTab({
   }
 
   return (
-    <section className={CARD_BARE}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead>
-            <tr className="border-b border-border/60">
-              {["Employee", "Team", "Job title", "Days present", "Worked", "Last clock in"].map((h) => (
-                <th key={h} className={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.employee.id} className="border-b border-border/60">
-                <td className="p-4 pl-6">
-                  <p className="font-semibold text-foreground">{row.employee.name}</p>
-                  <p className="text-xs text-muted-foreground">{row.employee.email}</p>
-                </td>
-                <td className="p-4 text-muted-foreground">{row.team ?? "—"}</td>
-                <td className="p-4 text-muted-foreground">{row.employee.jobTitle ?? "—"}</td>
-                <td className="p-4 tabular-nums">
-                  {row.daysPresent === 0 ? (
-                    <span className="font-semibold text-warning-foreground">None</span>
-                  ) : (
-                    row.daysPresent
-                  )}
-                </td>
-                <td className="p-4 tabular-nums">{formatMinutes(row.minutes)}</td>
-                <td className="p-4 pr-6 tabular-nums text-muted-foreground">
-                  {row.lastSeen ? new Date(row.lastSeen).toLocaleDateString() : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="space-y-4">
+      <header>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {rows.length} {rows.length === 1 ? "person" : "people"}
+        </p>
+        <h3 className="text-2xl font-bold text-foreground">Employees</h3>
+      </header>
+
+      <section className={`${CARD_BARE} divide-y divide-border/60`}>
+        {rows.map(({ employee, projects, buckets, record }) => (
+          <article
+            key={employee.id}
+            className="flex flex-col gap-3 p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6"
+          >
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-bold uppercase tracking-wide text-foreground">
+                  {employee.name}
+                </h4>
+                <span className="inline-flex rounded-full border border-border/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                  {employee.role}
+                </span>
+              </div>
+              {/* Job title and sites on one line, truncated — the full list is
+                  in the title attribute rather than wrapping a card to three
+                  lines for the one person on six projects. */}
+              <p className="truncate text-xs text-muted-foreground" title={detailLine(employee, projects)}>
+                {detailLine(employee, projects)}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-6">
+              <HoursMeter buckets={buckets} />
+              <div className="w-24 text-right">
+                <TodayPill record={record} />
+              </div>
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function detailLine(employee: Employee, projects: string[]): string {
+  return [employee.jobTitle, ...projects].filter(Boolean).join(" • ") || "—";
+}
+
+// Hours worked against hours scheduled, as a number and a bar.
+//
+// The bar is capped at 100% so it cannot overflow its track, but the figures
+// above it are not — someone on 52/48 should read as over, not as full.
+function HoursMeter({ buckets }: { buckets: HoursBuckets | null }) {
+  const worked = (buckets?.totalMin ?? 0) / 60;
+  const expected = (buckets?.expectedMin ?? 0) / 60;
+  const pct = expected > 0 ? Math.min(100, (worked / expected) * 100) : 0;
+
+  return (
+    <div className="w-32">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Hours
+      </p>
+      <p className="text-sm font-bold tabular-nums text-foreground">
+        {buckets ? `${round1(worked)}/${round1(expected)}` : "—"}
+      </p>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
-    </section>
+    </div>
+  );
+}
+
+function round1(hours: number): string {
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+}
+
+// Today at a glance. Deliberately quieter than the daily board's badge — here
+// it is one column of many, not the subject of the screen.
+function TodayPill({ record }: { record: AttendanceRecord | null }) {
+  if (!record?.timeIn) {
+    return <span className="text-xs text-muted-foreground">no clock-in</span>;
+  }
+
+  const late = (record.lateByMin ?? 0) > 0;
+  return (
+    <>
+      <span
+        className={`inline-flex rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+          late ? "bg-warning text-warning-foreground" : "bg-secondary text-secondary-foreground"
+        }`}
+      >
+        {late ? "Late" : "On time"}
+      </span>
+      <p className="mt-1 text-xs tabular-nums text-muted-foreground">{timeLabel(record.timeIn)}</p>
+    </>
   );
 }
 
