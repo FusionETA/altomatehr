@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AltomateHR.Api.Common.Tabular;
@@ -32,7 +33,7 @@ public class AttendanceController : ControllerBase
     [RequireScope("attendance:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() =>
-        Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsInRole("Admin")));
+        Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsAdministrative()));
 
     // GET /attendance/team — records awaiting the caller as current-step approver.
     [RequireScope("attendance:read")]
@@ -377,7 +378,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)
     {
-        var photo = await _attendance.GetPhotoForUserAsync(fileName, GetUserId(), User.IsInRole("Admin"));
+        var photo = await _attendance.GetPhotoForUserAsync(fileName, GetUserId(), User.IsAdministrative());
         if (photo is null)
             return NotFound();
 

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AltomateHR.Api.Modules.Overtime.Dtos;
@@ -51,7 +52,7 @@ public class OvertimeController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
-        var request = await _overtime.GetVisibleByIdAsync(id, GetUserId(), User.IsInRole("Admin"));
+        var request = await _overtime.GetVisibleByIdAsync(id, GetUserId(), User.IsAdministrative());
         return request is null ? NotFound() : Ok(request);
     }
 
@@ -120,7 +121,7 @@ public class OvertimeController : ControllerBase
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)
     {
-        var photo = await _overtime.GetPhotoForUserAsync(fileName, GetUserId(), User.IsInRole("Admin"));
+        var photo = await _overtime.GetPhotoForUserAsync(fileName, GetUserId(), User.IsAdministrative());
         if (photo is null)
             return NotFound();
 
