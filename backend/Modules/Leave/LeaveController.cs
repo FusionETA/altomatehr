@@ -381,6 +381,16 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> Approve(string id) =>
         ToTransitionResponse(await _leave.ApproveAsync(id, GetUserId()));
 
+    // POST /leave/bulk/approve — sign off many applications at once, as the
+    // current-step approver of each. Always 200: the body reports per id,
+    // because a run where eighteen of twenty landed is not a failed request.
+    //
+    // No bulk reject counterpart on purpose — see BulkApproveLeaveDto.
+    [HttpPost("bulk/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkApprove(BulkApproveLeaveDto dto) =>
+        Ok(await _leave.BulkApproveAsync(dto.Ids, GetUserId()));
+
     // POST /leave/{id}/reject — the current-step approver in the applicant's chain.
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]

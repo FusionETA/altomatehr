@@ -68,6 +68,7 @@ public class AppDbContext : DbContext
         claim.Property(c => c.Category).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.MileageUnitUsed).HasConversion<string>().HasMaxLength(20);
         claim.Property(c => c.XeroSyncStatus).HasConversion<string>().HasMaxLength(20);
+        claim.Property(c => c.Settlement).HasConversion<string>().HasMaxLength(20);
 
         // A Xero bill belongs to exactly one claim, so a duplicate id means a
         // double-push and the database should refuse it rather than leave two
@@ -81,6 +82,10 @@ public class AppDbContext : DbContext
             .HasMaxLength(20);
         modelBuilder.Entity<Organization>()
             .Property(o => o.Plan).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<Organization>()
+            .Property(o => o.ClaimSettlementRoute).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<Organization>()
+            .Property(o => o.XeroBillStage).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<Organization>()
             .Property(o => o.Tier).HasConversion<string>().HasMaxLength(20);
 

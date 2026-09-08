@@ -3,6 +3,7 @@ import { Download, Upload, X } from "lucide-react";
 import {
   downloadClaimsImportTemplate,
   exportClaimsSummary,
+  exportPayrollReimbursements,
   importClaims,
   type ClaimsExportFilters,
   type ClaimsImportResult,
@@ -57,6 +58,11 @@ export function ClaimsMonthEndActions({
   const exportAs = (format: ExportFormat) =>
     run(`export:${format}`, async () => saveFile(await exportClaimsSummary(format, filters)));
 
+  // The other half of the settlement choice: claims routed to payroll are not
+  // pushed anywhere, so this export IS how they reach the people who pay them.
+  const payroll = (format: ExportFormat) =>
+    run(`payroll:${format}`, async () => saveFile(await exportPayrollReimbursements(format)));
+
   const template = (format: ImportFormat) =>
     run(`template:${format}`, async () => saveFile(await downloadClaimsImportTemplate(format)));
 
@@ -105,6 +111,25 @@ export function ClaimsMonthEndActions({
             ))}
             <p className="px-3 pb-1 pt-2 text-[11px] leading-snug text-muted-foreground">
               {filterSummary}
+            </p>
+
+            <div className="my-1.5 h-px bg-border/60" />
+
+            <p className={`px-3 pb-1.5 pt-1 ${EYEBROW}`}>Payroll run</p>
+            {EXPORT_FORMATS.map((format) => (
+              <button
+                key={`payroll-${format}`}
+                type="button"
+                disabled={working}
+                onClick={() => payroll(format)}
+                className={ACTION_MENU_ITEM}
+              >
+                <Download className="h-3.5 w-3.5 shrink-0" />
+                {format.toUpperCase()}
+              </button>
+            ))}
+            <p className="px-3 pb-1 pt-1 text-[11px] leading-snug text-muted-foreground">
+              Approved out-of-pocket claims set to payroll, one row per employee.
             </p>
         </>
       </ActionMenu>

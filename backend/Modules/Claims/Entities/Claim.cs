@@ -30,8 +30,12 @@ public class Claim : ITenantScoped
     [Precision(12, 2)]
     public decimal Amount { get; set; }
 
+    // Set from the ORG's default currency on every write, never from the client.
+    // It used to default to "USD" while orgs default to MYR, so any claim created
+    // without an explicit currency became a USD claim that Xero then refused
+    // with "Organisation is not subscribed to currency USD".
     [MaxLength(3)]
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "MYR";
 
     public DateTime SpentAt { get; set; }
     public DateTime SubmittedAt { get; set; }
@@ -116,6 +120,11 @@ public class Claim : ITenantScoped
     // unless the row can say whose desk it is on now.
     [NotMapped]
     public List<string> AwaitingApprovers { get; set; } = new();
+
+    // Which way this claim gets paid out. Defaults to XERO_BILL so existing
+    // behaviour is unchanged; an admin can switch it to PAYROLL, which takes the
+    // claim out of Xero sync and into the payroll reimbursement export.
+    public ClaimSettlement Settlement { get; set; } = ClaimSettlement.XERO_BILL;
 
     // ---- Xero ----
     // An approved claim becomes an accounts-payable bill in Xero. The id and

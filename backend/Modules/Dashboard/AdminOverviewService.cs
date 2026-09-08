@@ -64,12 +64,42 @@ public class AdminOverviewService : IAdminOverviewService
             dto.ProjectSpend = await ProjectSpendThisMonthAsync(claims);
             dto.StalePendingClaims = await StalePendingClaimsAsync(claims);
             dto.OverturnedSupervisors = await OverturnedSupervisorsAsync(claims);
+            dto.UpcomingClaimRun = await UpcomingClaimRunAsync(claims);
         }
 
-        // AttendanceHealth (attendance) / SlowOtApprovers (overtime) / UpcomingClaimRun
-        // are built next. UpcomingClaimRun additionally needs an org claim-cutoff
-        // setting, which does not exist yet — the card renders its empty state.
+        // AttendanceHealth (attendance) / SlowOtApprovers (overtime) are built next.
         return dto;
+    }
+
+    // Card — the claims run that is currently open: when it closes, and what is
+    // in it. Deliberately counts what is IN the run rather than the calendar
+    // month: with a cutoff of 25, a claim filed on the 26th is next month's
+    // problem, and showing it here would have an admin chasing an approval that
+    // this run does not need. See ClaimRunWindow.
+    private async Task<UpcomingClaimRunDto> UpcomingClaimRunAsync(IReadOnlyList<Claim> claims)
+    {
+        var cutoffDay = (await _claims.GetSettingsAsync()).ClaimRunCutoffDay;
+        var now = DateTime.UtcNow;
+        var run = ClaimRunWindow.For(null, cutoffDay, now);
+
+        var inRun = claims
+            .Where(c => c.Status != ClaimStatus.REJECTED
+                     && c.SubmittedAt >= run.From
+                     && c.SubmittedAt < run.To)
+            .ToList();
+
+        return new UpcomingClaimRunDto
+        {
+            CutoffDate = run.CutoffDate,
+            CutoffDay = cutoffDay,
+            // Floored at 0: on the cutoff day itself the answer is "today", and a
+            // negative number would read as a run that closed in the past.
+            DaysUntilCutoff = Math.Max(0, (run.CutoffDate.Date - now.Date).Days),
+            ClaimsInRun = inRun.Count,
+            PendingInRun = inRun.Count(c => c.Status == ClaimStatus.PENDING
+                                         || c.Status == ClaimStatus.SUBMITTED),
+            TotalAmountInRun = inRun.Sum(c => c.Amount),
+        };
     }
 
     // Card 1 — claim spend grouped by project for the current month (excludes rejected).

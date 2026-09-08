@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
-import { ChevronDown, Filter, LoaderCircle, SlidersHorizontal, X } from "lucide-react";
-import { approveClaim, rejectClaim, type Claim } from "@/features/claims/api";
+import type { KeyboardEvent } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Filter,
+  LoaderCircle,
+  SlidersHorizontal,
+  TriangleAlert,
+  X,
+} from "lucide-react";
+import { approveClaim, rejectClaim, syncClaimToXero, type Claim } from "@/features/claims/api";
 import { ClaimDetailsModal } from "@/features/claims/components/ClaimDetailsModal";
 import { ClaimStatusBadge } from "@/features/claims/components/ClaimStatusBadge";
 import { ClaimStatusTabs } from "@/features/claims/components/ClaimStatusTabs";
@@ -46,18 +54,15 @@ export const ALL_PROJECTS = ALL;
 
 const CONTROL =
   "h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
-const FIELD_LABEL =
-  "block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
+// The date row reads as a sentence — "Date spent · From … To …" — so its labels
+// sit inline at label size rather than stacked above full-width inputs.
+const DATE_LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
+const DATE_INPUT =
+  "h-11 rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="space-y-1.5">
-      <span className={FIELD_LABEL}>{label}</span>
-      {children}
-    </label>
-  );
-}
 
+// "Action" covers two different jobs depending on the row: decide a pending
+// claim, or choose how an approved one gets settled.
 const COLUMNS = ["Employee", "Claim", "Project", "Submitted", "Waiting", "Amount", "Status", "Action"];
 
 export function AdminClaimsTable({
@@ -89,8 +94,9 @@ export function AdminClaimsTable({
 }) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Claim | null>(null);
-  // Collapsed by default: search and status answer most questions, and six
-  // controls permanently open pushed the claims themselves off the screen.
+  // Collapsed by default. The panel is far denser than it was — no label rows,
+  // dates on one line — but six controls on screen still competes with the
+  // claims themselves, which are what the page is for.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<Claim | null>(null);
@@ -112,10 +118,31 @@ export function AdminClaimsTable({
     }
   }
 
+  async function syncToXero(claim: Claim) {
+    setBusyId(claim.id);
+    setDecideError(null);
+    try {
+      await syncClaimToXero(claim.id);   // stage comes from Claims → Settings
+      onDecided();
+    } catch (e) {
+      setDecideError(e instanceof Error ? e.message : "Could not push the claim to Xero.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   // An admin sits in the approval chain like anyone else, so the rows they can
   // decide get buttons and the rest say why they do not.
   function rowActions(claim: Claim) {
     if (!claim.canAct) {
+      // Approved: the decision left is how it gets PAID, which is where the old
+      // "Ready to pay" tab's job now lives. The ROUTE is not chosen here — it is
+      // an org policy under Settings, stamped on the claim when it was created —
+      // so this shows which route the claim is on, plus the one action it needs.
+      if (claim.status === "APPROVED") {
+        return <ClaimPayout claim={claim} busy={busyId === claim.id} onSync={syncToXero} />;
+      }
+
       if (claim.status !== "PENDING") return <span className="text-muted-foreground">—</span>;
 
       const waiting = claim.awaitingApprovers ?? [];
@@ -128,9 +155,15 @@ export function AdminClaimsTable({
         );
       }
 
+      // Wraps within the column rather than widening it. `title` keeps the
+      // full list reachable when several approvers push it onto three lines.
+      const names = waiting.map(displayPerson).join(", ");
       return (
-        <span className="text-xs text-muted-foreground">
-          With {waiting.map(displayPerson).join(", ")}
+        <span
+          title={`Waiting on ${names}`}
+          className="block text-xs leading-snug text-muted-foreground"
+        >
+          With {names}
         </span>
       );
     }
@@ -203,6 +236,9 @@ export function AdminClaimsTable({
     [filtered, page],
   );
 
+  // The figure an admin is usually here for: how much of what they filtered to
+  // still needs a decision.
+  const pendingCount = filtered.filter(isPendingClaim).length;
   const advancedCount = activeAdvancedCount(filters);
   const hasFilters = hasAnyFilter(filters) || drilldown !== null;
 
@@ -269,13 +305,19 @@ export function AdminClaimsTable({
           </div>
         ) : null}
 
-        <section className={`${CARD_BARE} p-5 sm:p-6`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Filters follow the production claims screen: one full-width search,
+            then controls that say what they do instead of carrying a label row
+            above them. Dropping the labels and compacting the dates is what
+            makes it affordable to show every filter at once — the old version
+            hid them behind a "Filters" toggle precisely because six labelled
+            fields pushed the claims off the screen. */}
+        <section className={`${CARD_BARE} space-y-3 p-5 sm:p-6`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <SearchInput
               value={filters.search}
               onChange={(value) => set("search", value)}
               placeholder="Search by claim, employee, or project"
-              className="sm:max-w-sm sm:flex-1"
+              className="sm:flex-1"
               inputClassName="h-12"
             />
 
@@ -305,122 +347,142 @@ export function AdminClaimsTable({
             </button>
           </div>
 
-          <div
-            id="claims-filter-panel"
-            hidden={!filtersOpen}
-            className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            <Field label="Project">
-              <Select value={filters.projectId} onValueChange={(v) => set("projectId", v)}>
-                <SelectTrigger className={CONTROL}>
-                  <SelectValue placeholder="All projects" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All projects</SelectItem>
-                  {Array.from(projectNames.entries()).map(([id, name]) => (
-                    <SelectItem key={id} value={id}>
-                      {name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+          <div id="claims-filter-panel" hidden={!filtersOpen} className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Select value={filters.projectId} onValueChange={(v) => set("projectId", v)}>
+              <SelectTrigger className={CONTROL} aria-label="Project">
+                <SelectValue placeholder="All projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All projects</SelectItem>
+                {Array.from(projectNames.entries()).map(([id, name]) => (
+                  <SelectItem key={id} value={id}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <Field label="Employee">
-              <Select value={filters.employeeId} onValueChange={(v) => set("employeeId", v)}>
-                <SelectTrigger className={CONTROL}>
-                  <SelectValue placeholder="Everyone" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Everyone</SelectItem>
-                  {Array.from(employeeEmails.entries()).map(([id, email]) => (
-                    <SelectItem key={id} value={id}>
-                      {buildName(email)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <Select value={filters.employeeId} onValueChange={(v) => set("employeeId", v)}>
+              <SelectTrigger className={CONTROL} aria-label="Employee">
+                <SelectValue placeholder="Everyone" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Everyone</SelectItem>
+                {Array.from(employeeEmails.entries()).map(([id, email]) => (
+                  <SelectItem key={id} value={id}>
+                    {buildName(email)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <Field label="Paid with">
-              <Select value={filters.paymentType} onValueChange={(v) => set("paymentType", v)}>
-                <SelectTrigger className={CONTROL}>
-                  <SelectValue placeholder="Any source" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any source</SelectItem>
-                  {/* PERSONAL is money the org owes back; COMPANY already left a
-                      company account. */}
-                  <SelectItem value="PERSONAL">Own money</SelectItem>
-                  <SelectItem value="COMPANY">Company money</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-
-            {/* Which date the range applies to. Finance reconciles on spend
-                date, payroll on submission date. */}
-            <Field label="Date counted as">
-              <Select value={filters.dateBasis} onValueChange={(v) => set("dateBasis", v as "spent" | "submitted")}>
-                <SelectTrigger className={CONTROL}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="spent">Date spent</SelectItem>
-                  <SelectItem value="submitted">Date submitted</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field label="From">
-              <input
-                type="date"
-                value={filters.from}
-                max={filters.to || undefined}
-                onChange={(event) => set("from", event.target.value)}
-                className={CONTROL}
-              />
-            </Field>
-
-            <Field label="To">
-              <input
-                type="date"
-                value={filters.to}
-                min={filters.from || undefined}
-                onChange={(event) => set("to", event.target.value)}
-                className={CONTROL}
-              />
-            </Field>
+            <Select value={filters.paymentType} onValueChange={(v) => set("paymentType", v)}>
+              <SelectTrigger className={CONTROL} aria-label="Paid with">
+                <SelectValue placeholder="Any source" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Any source</SelectItem>
+                {/* PERSONAL is money the org owes back; COMPANY already left a
+                    company account. */}
+                <SelectItem value="PERSONAL">Own money</SelectItem>
+                <SelectItem value="COMPANY">Company money</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <ClaimStatusTabs
-            value={filters.status}
-            onChange={(value) => set("status", value)}
-            className="mt-4"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Which date the range applies to. Finance reconciles on spend
+                date, payroll on submission date — so it sits with the dates it
+                governs rather than in the row of entity filters above. */}
+            <Select
+              value={filters.dateBasis}
+              onValueChange={(v) => set("dateBasis", v as "spent" | "submitted")}
+            >
+              <SelectTrigger className={`${CONTROL} w-auto min-w-[9.5rem]`} aria-label="Date counted as">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="spent">Date spent</SelectItem>
+                <SelectItem value="submitted">Date submitted</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <div className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              Showing <span className="font-semibold text-foreground">{filtered.length}</span> of{" "}
-              <span className="font-semibold text-foreground">{claims.length}</span> claims ·{" "}
-              <span className="font-semibold text-foreground">
-                {formatCurrency(sumAmount(filtered))}
-              </span>
-            </p>
+            <span className={DATE_LABEL}>From</span>
+            <input
+              type="date"
+              aria-label="From date"
+              value={filters.from}
+              max={filters.to || undefined}
+              onChange={(event) => set("from", event.target.value)}
+              className={DATE_INPUT}
+            />
+
+            <span className={DATE_LABEL}>To</span>
+            <input
+              type="date"
+              aria-label="To date"
+              value={filters.to}
+              min={filters.from || undefined}
+              onChange={(event) => set("to", event.target.value)}
+              className={DATE_INPUT}
+            />
+
             {hasFilters ? (
               <button
                 type="button"
                 onClick={clearAll}
-                className="w-fit rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                className="ml-auto inline-flex h-11 items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground"
               >
+                <X className="h-3.5 w-3.5" />
                 Clear filters
               </button>
             ) : null}
           </div>
+          </div>
+
+          <ClaimStatusTabs value={filters.status} onChange={(value) => set("status", value)} />
+
+          {/* What the filters left, and what it means — production puts the
+              headline figures out to the right rather than folding one total
+              into the sentence, and "how many still need a decision" is the
+              number an admin is usually here for. */}
+          <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing <span className="font-semibold text-foreground">{filtered.length}</span> of{" "}
+              <span className="font-semibold text-foreground">{claims.length}</span> claims
+            </p>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
+              <span>
+                <span className="font-semibold text-foreground">{pendingCount}</span> need review
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                <span className="font-semibold text-foreground">
+                  {formatCurrency(sumAmount(filtered))}
+                </span>{" "}
+                total
+              </span>
+            </p>
+          </div>
         </section>
 
         {decideError ? (
-          <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-4 text-sm font-medium text-destructive">
-            {decideError}
+          <section className="flex items-start justify-between gap-3 rounded-[28px] border border-destructive/20 bg-destructive/5 p-4">
+            {/* break-words and a height cap: the backend now sends one sentence,
+                but an unrecognised payload still falls back to a trimmed body,
+                and that must not be able to push the claims table off screen. */}
+            <p className="nice-scrollbar max-h-32 overflow-y-auto break-words text-sm font-medium text-destructive">
+              {decideError}
+            </p>
+            <button
+              type="button"
+              onClick={() => setDecideError(null)}
+              aria-label="Dismiss error"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-destructive/70 transition hover:bg-destructive/10 hover:text-destructive"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </section>
         ) : null}
 
@@ -509,7 +571,13 @@ export function AdminClaimsTable({
                     {COLUMNS.map((column) => (
                       <th
                         key={column}
-                        className="h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground first:pl-6 last:pr-6"
+                        // The last column holds either buttons or a list of
+                        // approver names. Left unbounded, a day with three
+                        // approvers stretched the table past the viewport and
+                        // pushed everything behind a horizontal scrollbar.
+                        className={`h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground first:pl-6 last:pr-6 ${
+                          column === "Action" ? "w-[200px]" : ""
+                        }`}
                       >
                         {column}
                       </th>
@@ -551,7 +619,7 @@ export function AdminClaimsTable({
                           {claim.exceedsLimit ? <OverLimitBadge /> : null}
                         </div>
                       </td>
-                      <td className="p-4 pr-6 align-middle">{rowActions(claim)}</td>
+                      <td className="w-[200px] p-4 pr-6 align-middle">{rowActions(claim)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -635,5 +703,93 @@ export function AdminClaimsTable({
         />
       ) : null}
     </>
+  );
+}
+
+// Where an approved claim's money went — a status, not a to-do list.
+//
+// Approval settles the claim on its own (ClaimsService.SettleAsync), so there is
+// no "Sync to Xero" button in the happy path: by the time a row reads APPROVED
+// the push has already been attempted. The only action left is a retry, and it
+// only appears when that attempt actually failed.
+//
+// The route itself is set once under Claims → Settings and stamped onto each
+// claim at creation. A per-row picker invited exactly the mistake the guards
+// exist to stop — re-routing a claim already billed in Xero, and paying the
+// same receipt twice.
+function ClaimPayout({
+  claim,
+  busy,
+  onSync,
+}: {
+  claim: Claim;
+  busy: boolean;
+  onSync: (claim: Claim) => void;
+}) {
+  if (claim.xeroSyncStatus === "SYNCED") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-secondary-foreground">
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+        In Xero{claim.xeroBillRef ? ` · ${claim.xeroBillRef}` : ""}
+      </span>
+    );
+  }
+
+  // Nothing to push on the payroll route — it is collected by the payroll
+  // reimbursement export under Export, so a button here would do nothing.
+  if (claim.settlement === "PAYROLL") {
+    return <span className="text-xs text-muted-foreground">In the payroll run</span>;
+  }
+
+  // The push failed — this is the one case that still needs a human, because
+  // the fix is usually elsewhere (recode the account, connect Xero, subscribe
+  // to the currency) and only then is a retry worth anything.
+  if (claim.xeroSyncStatus === "ERROR") {
+    return (
+      <div className="space-y-1" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSync(claim)}
+          className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+        >
+          {busy ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
+          Retry Xero sync
+        </button>
+
+        {claim.xeroSyncError ? (
+          <p className="flex items-start gap-1 text-xs font-medium text-destructive">
+            <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+            {claim.xeroSyncError}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Approved, routed to Xero, no bill and no error yet.
+  //
+  // Do NOT read a cause into this. It covers claims approved before approval
+  // started settling them, claims approved while Xero was disconnected, and
+  // claims whose push has not returned — SettleAsync deliberately leaves all of
+  // them NOT_SYNCED rather than marking them failed. An earlier version of this
+  // asserted "Xero not connected" and was simply wrong for the backlog rows.
+  //
+  // These are the one case that still wants a manual push, and that does not
+  // contradict the settle-on-approval rule: nothing approved from now on lands
+  // here, so the button is for catching up, not for the normal path.
+  return (
+    <div className="space-y-1" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => onSync(claim)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-primary disabled:opacity-50"
+      >
+        {busy ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
+        Push to Xero
+      </button>
+      <p className="text-xs text-muted-foreground">Not in Xero yet</p>
+    </div>
   );
 }

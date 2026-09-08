@@ -349,8 +349,10 @@ public class XeroClient : IXeroClient
         if (response.IsSuccessStatusCode) return;
 
         var body = await response.Content.ReadAsStringAsync();
-        throw new XeroConnectionException($"{message} Xero returned {(int)response.StatusCode}: {body}");
+        throw new XeroConnectionException(
+            $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}");
     }
+
 
     private sealed class XeroTokenPayload
     {

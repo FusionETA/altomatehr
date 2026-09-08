@@ -73,7 +73,6 @@ public class ClaimsServiceReceiptTests
         Description = "Project travel",
         Category = ClaimCategory.TRANSPORT,
         Amount = 25,
-        Currency = "MYR",
         SpentAt = DateTime.UtcNow,
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,

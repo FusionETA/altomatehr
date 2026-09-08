@@ -1,6 +1,8 @@
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Organizations.Dtos;
+using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Modules.Organizations.Entities;
 
 namespace AltomateHR.Api.Modules.Organizations;
@@ -76,6 +78,26 @@ public class OrganizationService : IOrganizationService
         return ToDto(org);
     }
 
+    public async Task<OrganizationDto?> SetClaimSettingsAsync(
+        string organizationId, int cutoffDay, ClaimSettlement settlementRoute, XeroBillStatus xeroBillStage)
+    {
+        // Capped at 28: a cutoff of 30 would silently not exist in February, and
+        // "the run closed on a day that never came" is the worst possible bug in
+        // a month-end process.
+        if (cutoffDay is < 1 or > 28)
+            throw new ArgumentException("Cutoff day must be between 1 and 28.");
+
+        var org = await _repo.GetByIdAsync(organizationId);
+        if (org is null) return null;
+
+        org.ClaimRunCutoffDay = cutoffDay;
+        org.ClaimSettlementRoute = settlementRoute;
+        org.XeroBillStage = xeroBillStage;
+        await _repo.UpdateAsync(org);
+
+        return ToDto(org);
+    }
+
     public async Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto)
     {
         var org = await _repo.GetByIdAsync(organizationId);
@@ -116,6 +138,9 @@ public class OrganizationService : IOrganizationService
         WorkingDays = o.WorkingDays,
         WorkingHoursStart = o.WorkingHoursStart,
         WorkingHoursEnd = o.WorkingHoursEnd,
+        ClaimRunCutoffDay = o.ClaimRunCutoffDay,
+        ClaimSettlementRoute = o.ClaimSettlementRoute.ToString(),
+        XeroBillStage = o.XeroBillStage.ToString(),
         Plan = o.Plan.ToString(),
         Tier = o.Tier?.ToString(),
         Addons = OrgModules.Split(o.Addons),

@@ -25,6 +25,9 @@ export type Claim = {
   xeroBillRef?: string | null;
   xeroSyncError?: string | null;
   xeroSyncedAt?: string | null;
+  // How this claim gets paid out. XERO_BILL pushes it to Xero; PAYROLL takes it
+  // out of Xero entirely and into the payroll reimbursement run.
+  settlement: ClaimSettlement;
   // Position in the approval chain. A REJECTED claim with currentStep > 0 got
   // past its first-line approver before a later layer turned it down — that is
   // how the dashboard spots an overturned approval.
@@ -64,7 +67,7 @@ export type CreateClaimRequest = {
   description: string;
   category: string;
   amount?: number;
-  currency: string;
+  // No currency: the server stamps the org's default. See CreateClaimDto.
   spentAt: string;
   claimType: string;
   paymentType: string;
@@ -114,13 +117,45 @@ export type ClaimXeroSyncResponse = { alreadySynced: boolean; claim: Claim };
 // reviewable version that sits in the accountant's queue.
 export type XeroBillStage = "AwaitingPayment" | "Draft";
 
-export const syncClaimToXero = (id: string, status: XeroBillStage) =>
-  apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`, { status });
+// Omit `status` to use the org's configured stage (the normal case). Passing one
+// overrides the setting for this push only.
+export const syncClaimToXero = (id: string, status?: XeroBillStage) =>
+  apiPost<ClaimXeroSyncResponse>(`/claims/${id}/xero-sync`, status ? { status } : {});
 
 // The server sequences these — Xero rate-limits per tenant, so firing them
 // from the browser in parallel is how half a run lands and the rest 429s.
-export const bulkSyncClaimsToXero = (ids: string[], status: XeroBillStage) =>
-  apiPost<ClaimsBulkResult>("/claims/bulk/xero-sync", { ids, status });
+export const bulkSyncClaimsToXero = (ids: string[], status?: XeroBillStage) =>
+  apiPost<ClaimsBulkResult>("/claims/bulk/xero-sync", status ? { ids, status } : { ids });
+// ---- Settlement route ----
+
+export type ClaimSettlement = "XERO_BILL" | "PAYROLL";
+
+export const claimSettlementLabels: Record<ClaimSettlement, string> = {
+  XERO_BILL: "Sync to Xero as a bill",
+  PAYROLL: "Add to payroll",
+};
+
+export const claimSettlementHints: Record<ClaimSettlement, string> = {
+  XERO_BILL:
+    "Approved claims are pushed to Xero — a bill for out-of-pocket claims, a spend-money transaction for company-paid ones.",
+  PAYROLL:
+    "Approved out-of-pocket claims are reimbursed through the employee's pay and collected in the payroll export instead of going to Xero.",
+};
+
+// The payroll reimbursement run: approved out-of-pocket claims routed to
+// payroll, one row per employee. Omit `month` for the run currently open.
+export function exportPayrollReimbursements(
+  format: ExportFormat,
+  month?: string,
+): Promise<ApiFile> {
+  const query = new URLSearchParams({ format });
+  if (month) query.set("month", month);
+  return apiGetFile(
+    `/claims/export/payroll?${query.toString()}`,
+    `payroll-reimbursements.${format}`,
+  );
+}
+
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 
@@ -206,3 +241,32 @@ export function importClaims(file: File) {
   formData.append("file", file);
   return apiPostForm<ClaimsImportResult>("/claims/import", formData);
 }
+
+// ---- Claim settings ----
+
+export type ClaimSettings = {
+  // Day of month that closes the claims run (1-28).
+  claimRunCutoffDay: number;
+  // How approved claims are paid out, org-wide. Each claim is stamped with this
+  // when it is created, so changing it never re-routes a claim already billed.
+  settlementRoute: ClaimSettlement;
+  // Which stage a bill lands at in Xero. Only applies on the XERO_BILL route.
+  xeroBillStage: XeroBillStage;
+};
+
+export const xeroBillStageLabels: Record<XeroBillStage, string> = {
+  AwaitingPayment: "Awaiting payment",
+  Draft: "Draft",
+};
+
+export const xeroBillStageHints: Record<XeroBillStage, string> = {
+  AwaitingPayment:
+    "The bill is a live payable the moment it arrives — the claim already cleared approval, so the money is genuinely owed.",
+  Draft:
+    "The bill parks in your accountant's queue in Xero to be reviewed there before it counts.",
+};
+
+export const getClaimSettings = () => apiGet<ClaimSettings>("/claims/settings");
+
+export const updateClaimSettings = (body: ClaimSettings) =>
+  apiPut<ClaimSettings>("/claims/settings", body);

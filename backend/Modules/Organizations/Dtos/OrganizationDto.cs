@@ -17,6 +17,12 @@ public class OrganizationDto
     public string WorkingHoursStart { get; set; } = string.Empty;
     public string WorkingHoursEnd { get; set; } = string.Empty;
 
+    // Claim settings. Read here so any settings surface can show them; written
+    // through the claims settings endpoint.
+    public int ClaimRunCutoffDay { get; set; }
+    public string ClaimSettlementRoute { get; set; } = "XERO_BILL";
+    public string XeroBillStage { get; set; } = "AwaitingPayment";
+
     // Subscription / package + the modules it resolves to (read-only view).
     public string Plan { get; set; } = "DIY";
     public string? Tier { get; set; }

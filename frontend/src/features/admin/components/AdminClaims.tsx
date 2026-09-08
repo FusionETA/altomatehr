@@ -5,8 +5,7 @@ import {
   type ClaimsExportFilters,
   type ClaimsImportResult,
 } from "@/features/claims/api";
-import { isReadyToPay, isStaleClaim, sumAmount } from "@/features/claims/lib/claim-insights";
-import { formatCurrency } from "@/features/claims/lib/claim-formatters";
+import { isStaleClaim } from "@/features/claims/lib/claim-insights";
 import { getEmployees } from "@/features/employees/api";
 import { getAccounts, getProjects } from "@/features/settings/api";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
@@ -19,8 +18,8 @@ import {
   type ClaimsFilters,
 } from "../lib/claims-filters";
 import { AdminClaimsAttention } from "./AdminClaimsAttention";
-import { AdminClaimsReadyToPay } from "./AdminClaimsReadyToPay";
 import { AdminClaimsTable } from "./AdminClaimsTable";
+import { ClaimSettings } from "./ClaimSettings";
 import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
@@ -30,7 +29,7 @@ import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActio
 // totals — it leads with what is late and with whom. Its badge carries the
 // stale count so the tab itself says whether anything needs looking at.
 
-type ClaimsTab = "overview" | "all" | "pay";
+type ClaimsTab = "overview" | "all" | "settings";
 
 export function AdminClaims() {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -77,7 +76,6 @@ export function AdminClaims() {
   }, [load]);
 
   const staleCount = useMemo(() => claims.filter((claim) => isStaleClaim(claim)).length, [claims]);
-  const readyToPay = useMemo(() => claims.filter(isReadyToPay), [claims]);
 
   // Clicking a number opens the claims behind it — and drops any status filter
   // that would silently hide some of them.
@@ -89,27 +87,18 @@ export function AdminClaims() {
     setTab("all");
   }
 
-  const exportFilters: ClaimsExportFilters = useMemo(() => {
-    // On the payment run, the export IS the run: approved claims the employee
-    // paid for themselves. Anything else would hand payroll rows it must not pay.
-    if (tab === "pay") return { status: "APPROVED", paymentType: "PERSONAL" };
-
-    return toExportFilters(filters);
-  }, [tab, filters]);
+  const exportFilters: ClaimsExportFilters = useMemo(
+    () => toExportFilters(filters),
+    [filters],
+  );
 
   const filterSummary = useMemo(() => {
-    if (tab === "pay") {
-      return `The payment run — ${readyToPay.length} approved out-of-pocket claim${
-        readyToPay.length === 1 ? "" : "s"
-      }, ${formatCurrency(sumAmount(readyToPay))}`;
-    }
-
     const base = describeFilters(filters, projectNames, employeeEmails);
 
     // Be straight about it: the export speaks the API's filters, not the
     // client-side subset a card click produced.
     return drilldown ? `${base} — a drill-through view isn't part of the export` : base;
-  }, [tab, readyToPay, filters, projectNames, employeeEmails, drilldown]);
+  }, [filters, projectNames, employeeEmails, drilldown]);
 
   return (
     <div className="space-y-6">
@@ -118,15 +107,22 @@ export function AdminClaims() {
           items={[
             { id: "overview", label: "Overview", badge: staleCount },
             { id: "all", label: "All claims" },
-            { id: "pay", label: "Ready to pay", badge: readyToPay.length },
+            { id: "settings", label: "Settings" },
           ]}
           value={tab}
           onChange={setTab}
-          className="sm:max-w-md"
+          // sm:flex-1 matters: without it this flex item shrink-wraps to its
+          // own content, so OverflowTabList measures its tabs against a box
+          // sized BY those tabs and sits permanently on the fit/collapse
+          // boundary — sub-pixel font differences then decide whether the last
+          // tab collapses into the overflow menu. AdminLeave already passes this.
+          className="sm:max-w-md sm:flex-1"
           ariaLabel="Claims dashboard views"
         />
 
-        <div className="shrink-0 pb-1">
+        {/* Export/Import act on the claims themselves, so they are hidden on the
+            settings tab rather than offering to export a form. */}
+        <div className={`shrink-0 pb-1 ${tab === "settings" ? "hidden" : ""}`}>
           <ClaimsMonthEndActions
             filters={exportFilters}
             filterSummary={filterSummary}
@@ -140,7 +136,9 @@ export function AdminClaims() {
         <ClaimsImportReport report={importReport} onDismiss={() => setImportReport(null)} />
       ) : null}
 
-      {tab === "overview" ? (
+      {tab === "settings" ? (
+        <ClaimSettings />
+      ) : tab === "overview" ? (
         error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">
             Error: {error}
@@ -157,7 +155,7 @@ export function AdminClaims() {
             onDrill={openDrilldown}
           />
         )
-      ) : tab === "all" ? (
+      ) : (
         <AdminClaimsTable
           claims={claims}
           loading={loading}
@@ -170,17 +168,6 @@ export function AdminClaims() {
           employeeEmails={employeeEmails}
           accountLabels={accountLabels}
           onDecided={() => void load()}
-        />
-      ) : loading ? (
-        <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
-          Loading claims…
-        </section>
-      ) : (
-        <AdminClaimsReadyToPay
-          claims={claims}
-          employeeEmails={employeeEmails}
-          onDrill={openDrilldown}
-          onSynced={() => void load()}
         />
       )}
     </div>

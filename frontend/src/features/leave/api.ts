@@ -1,3 +1,4 @@
+import type { BulkResult } from "@/shared/lib/use-bulk-selection";
 import { apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
 
 export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
@@ -145,6 +146,16 @@ export const getLeaveBalances = () => apiGet<LeaveBalance[]>("/leave/balances");
 export const applyLeave = (body: CreateLeaveApplication) =>
   apiPost<LeaveApplication>("/leave", body);
 export const approveLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/approve`);
+
+// Per-id success/failure, so the response is a report rather than one pass/fail
+// for the batch. Same shape as the claims, overtime and attendance bulk calls —
+// see shared/lib/use-bulk-selection.
+export type LeaveBulkResult = BulkResult;
+
+// Approve-only on purpose: rejection needs a remark about THAT request, so it
+// stays one at a time. See BulkApproveLeaveDto on the server.
+export const bulkApproveLeave = (ids: string[]) =>
+  apiPost<LeaveBulkResult>("/leave/bulk/approve", { ids });
 export const rejectLeave = (id: string, reviewNotes?: string) =>
   apiPost<LeaveApplication>(`/leave/${id}/reject`, { reviewNotes });
 export const cancelLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/cancel`);

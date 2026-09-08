@@ -164,6 +164,17 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
 
 internal sealed class FakeOrganizationService : IOrganizationService
 {
+    // Claims settings read through here now, so this one actually works rather
+    // than throwing: ClaimsService.GetSettingsAsync calls GetByIdAsync.
+    public Task<OrganizationDto?> SetClaimSettingsAsync(
+        string organizationId, int cutoffDay, ClaimSettlement settlementRoute, XeroBillStatus xeroBillStage)
+    {
+        _organization.ClaimRunCutoffDay = cutoffDay;
+        _organization.ClaimSettlementRoute = settlementRoute.ToString();
+        _organization.XeroBillStage = xeroBillStage.ToString();
+        return Task.FromResult<OrganizationDto?>(_organization);
+    }
+
     private readonly OrganizationDto _organization;
 
     public FakeOrganizationService(OrganizationDto? organization = null) =>

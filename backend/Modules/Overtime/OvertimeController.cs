@@ -70,6 +70,16 @@ public class OvertimeController : ControllerBase
     public async Task<IActionResult> Approve(string id) =>
         ToTransitionResponse(await _overtime.ApproveAsync(id, GetUserId()));
 
+    // POST /overtime/bulk/approve — sign off many requests at once, as the
+    // current-step approver of each. Always 200: the body reports per id,
+    // because a run where eighteen of twenty landed is not a failed request.
+    //
+    // No bulk reject counterpart on purpose — see BulkApproveOvertimeDto.
+    [HttpPost("bulk/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> BulkApprove(BulkApproveOvertimeDto dto) =>
+        Ok(await _overtime.BulkApproveAsync(dto.Ids, GetUserId()));
+
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectOvertimeDto dto) =>

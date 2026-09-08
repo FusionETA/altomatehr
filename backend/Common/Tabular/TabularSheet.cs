@@ -38,6 +38,18 @@ public sealed class TabularSheet
     // the totals missing would just send someone to a calculator.
     public IReadOnlyList<string>? TotalsRow { get; private set; }
 
+    // Headline figures for the PDF's summary band ("Matching claims: 42",
+    // "Total amount: MYR 13,462.84"). PDF-only, like Caption: CSV and XLSX put
+    // the header row first so the file stays machine-readable, and a band of
+    // label/value pairs above it would break a re-import.
+    public IReadOnlyList<(string Label, string Value)> Summary { get; private set; } = [];
+
+    public TabularSheet SetSummary(params (string Label, string Value)[] stats)
+    {
+        Summary = stats;
+        return this;
+    }
+
     public TabularSheet AddRow(params string?[] cells)
     {
         _rows.Add(cells.Select(c => c ?? string.Empty).ToList());

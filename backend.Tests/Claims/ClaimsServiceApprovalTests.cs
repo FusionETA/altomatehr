@@ -39,7 +39,6 @@ public class ClaimsServiceApprovalTests
         Description = "Client meeting",
         Category = ClaimCategory.TRANSPORT,
         Amount = 25.00m,
-        Currency = "MYR",
         SpentAt = DateTime.UtcNow,
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,
@@ -104,7 +103,6 @@ public class ClaimsServiceApprovalTests
     [Theory]
     [InlineData(ClaimStatus.APPROVED)]
     [InlineData(ClaimStatus.REJECTED)]
-    [InlineData(ClaimStatus.REVIEWED)]
     [InlineData(ClaimStatus.SUBMITTED)]
     public async Task ApproveAsync_DoesNotTransitionNonPendingClaim(ClaimStatus currentStatus)
     {

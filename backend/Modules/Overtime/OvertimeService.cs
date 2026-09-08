@@ -11,6 +11,9 @@ public class OvertimeService : IOvertimeService
     private const ApprovalModule Module = ApprovalModule.OT;
     private const string PhotoRoutePrefix = "/overtime/photos/";
 
+    // Same cap as the claims and attendance bulk endpoints.
+    private const int MaxBulkIds = 200;
+
     private readonly IOvertimeRepository _requests;
     private readonly IOvertimePhotoStorage _photos;
     private readonly ISupervisionService _supervision;
@@ -194,6 +197,69 @@ public class OvertimeService : IOvertimeService
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
         return new OvertimeTransitionResult(true, true, ToDto(request));
+    }
+
+    // Approve many requests in one gesture. Every id is judged on its own: one
+    // that isn't the caller's to decide, or that someone else already decided,
+    // fails on its own line and never blocks the rest.
+    //
+    // There is deliberately no bulk REJECT counterpart. Rejection requires a
+    // remark, and one remark stapled to a dozen unrelated requests tells each
+    // employee nothing about why theirs was refused — so rejection stays one at
+    // a time, where the reason can be about that request.
+    //
+    // A request with no after-work photo is refused WITH ITS REASON rather than
+    // silently dropped. ApproveAsync gates on that photo, so these would fail
+    // anyway; saying so is what tells the approver to chase the photo instead of
+    // wondering why the row is still in their queue.
+    public async Task<OvertimeBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new OvertimeBulkResult(0, ids.Count, [
+                new OvertimeBulkResultItem(string.Empty, false, $"Too many requests — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<OvertimeBulkResultItem>(ids.Count);
+
+        // Distinct: the same id twice would otherwise count as two successes
+        // while only one request moved.
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var (request, error) = await AuthorizeAsync(id, approverId);
+            if (error is not null)
+            {
+                items.Add(new OvertimeBulkResultItem(id, false,
+                    error.Error ?? "You can't approve this overtime request."));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(request!.AfterPhotoUrl))
+            {
+                items.Add(new OvertimeBulkResultItem(id, false,
+                    "The after-work photo must be attached before approval."));
+                continue;
+            }
+
+            var now = DateTime.UtcNow;
+            var stepCount = await _router.StepCountAsync(Module, request.EmployeeId);
+            if (request.CurrentStep + 1 >= stepCount)
+            {
+                request.Status = OvertimeStatus.APPROVED;
+                request.DecidedAt = now;
+            }
+            else
+            {
+                request.CurrentStep += 1;
+            }
+
+            request.UpdatedAt = now;
+            await _requests.UpdateAsync(request);
+            items.Add(new OvertimeBulkResultItem(id, true));
+        }
+
+        return new OvertimeBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
 
     public async Task<OvertimeTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)

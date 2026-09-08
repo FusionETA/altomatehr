@@ -1,11 +1,10 @@
 import type { Claim } from "../api";
 
-export type ClaimStatusFilter = "ALL" | "SUBMITTED" | "PENDING" | "APPROVED" | "REVIEWED" | "REJECTED";
+export type ClaimStatusFilter = "ALL" | "SUBMITTED" | "PENDING" | "APPROVED" | "REJECTED";
 
 export const visibleClaimStatuses: Exclude<ClaimStatusFilter, "ALL">[] = [
   "PENDING",
   "APPROVED",
-  "REVIEWED",
   "REJECTED",
 ];
 
@@ -13,7 +12,6 @@ export const claimStatusLabels: Record<Exclude<ClaimStatusFilter, "ALL">, string
   SUBMITTED: "Pending",
   PENDING: "Pending",
   APPROVED: "Approved",
-  REVIEWED: "Reviewed",
   REJECTED: "Rejected",
 };
 

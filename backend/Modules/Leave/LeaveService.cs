@@ -23,6 +23,9 @@ public class LeaveService : ILeaveService
 {
     private const ApprovalModule Module = ApprovalModule.LEAVE;
 
+    // Same cap as the claims and attendance bulk endpoints.
+    private const int MaxBulkIds = 200;
+
     private readonly IDirectoryService _directory;
     private readonly ILeaveApplicationRepository _apps;
     private readonly ILeaveTypeRepository _types;
@@ -1219,6 +1222,70 @@ public class LeaveService : ILeaveService
         // reaches the next step's approver.
         await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
         return new LeaveTransitionResult(true, true, ToDto(app));
+    }
+
+    // Approve many applications in one gesture. Every id is judged on its own:
+    // one that isn't the caller's to decide, or that someone else already
+    // decided, fails on its own line and never blocks the rest.
+    //
+    // There is deliberately no bulk REJECT counterpart. Rejection requires a
+    // remark, and one remark stapled to a dozen unrelated requests tells each
+    // employee nothing about why theirs was refused — so rejection stays one at
+    // a time, where the reason can be about that request.
+    //
+    // No balance check here, matching the single-approve path above (and
+    // production, which checks balance on APPLY only). Adding one here would
+    // make bulk stricter than the button next to it.
+    public async Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId)
+    {
+        if (ids.Count > MaxBulkIds)
+        {
+            return new LeaveBulkResult(0, ids.Count, [
+                new LeaveBulkResultItem(string.Empty, false, $"Too many requests — pick fewer than {MaxBulkIds}."),
+            ]);
+        }
+
+        var items = new List<LeaveBulkResultItem>(ids.Count);
+        var approved = new List<LeaveApplication>();
+
+        // Distinct: the same id twice would otherwise count as two successes
+        // while only one application moved.
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            var (found, error) = await AuthorizeAsync(id, approverId);
+            if (error is not null)
+            {
+                items.Add(new LeaveBulkResultItem(id, false,
+                    error.Error ?? "You can't approve this leave request."));
+                continue;
+            }
+
+            var app = found!;
+            var now = DateTime.UtcNow;
+            AppendTrail(app, app.CurrentStep, approverId, "APPROVED", null);
+            var stepCount = await _router.StepCountAsync(Module, app.EmployeeId);
+            if (app.CurrentStep + 1 >= stepCount)
+            {
+                app.Status = LeaveStatus.APPROVED;
+                app.DecidedAt = now;
+            }
+            else
+            {
+                app.CurrentStep += 1;   // advance to the next step; stays PENDING
+            }
+
+            app.UpdatedAt = now;
+            await _apps.UpdateAsync(app);
+            approved.Add(app);
+            items.Add(new LeaveBulkResultItem(id, true));
+        }
+
+        // Notify after every write lands, so an applicant refreshing on the first
+        // notification sees the whole batch decided rather than a partial state.
+        foreach (var app in approved)
+            await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
+
+        return new LeaveBulkResult(items.Count(i => i.Ok), items.Count(i => !i.Ok), items);
     }
 
     public async Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes)

@@ -228,6 +228,7 @@ public class EmployeeServiceTests
         public Task<LeaveAuditResult> GetAuditTrailAsync(string i) => throw new NotImplementedException();
         public Task<LeaveAttachmentResult> GetAttachmentAsync(string f) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> ApproveAsync(string i, string a) => throw new NotImplementedException();
+        public Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string a) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> RejectAsync(string i, string a, string? n) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> CancelAsync(string i, string u) => throw new NotImplementedException();
     }

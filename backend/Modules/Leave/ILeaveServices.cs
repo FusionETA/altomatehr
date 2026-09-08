@@ -84,6 +84,12 @@ public interface ILeaveService
     // The decision trail for one request.
     Task<LeaveAuditResult> GetAuditTrailAsync(string applicationId);
     Task<LeaveTransitionResult> ApproveAsync(string id, string approverId);
+
+    // Sign off many applications at once, as the current-step approver of each.
+    // Independent per-id success/failure, so the result is a report rather than
+    // a single verdict. No bulk REJECT counterpart on purpose — see
+    // LeaveService.BulkApproveAsync.
+    Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string approverId);
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
 
@@ -134,3 +140,10 @@ public record LeaveTransitionResult(
     bool Transitioned,
     LeaveApplicationDto? Application,
     string? Error = null);
+
+// Mirrors the claims and attendance bulk contract: per-id success/failure, so a
+// run where eighteen of twenty landed reports as exactly that instead of as a
+// failed request.
+public record LeaveBulkResultItem(string Id, bool Ok, string? Error = null);
+
+public record LeaveBulkResult(int Succeeded, int Failed, IReadOnlyList<LeaveBulkResultItem> Items);

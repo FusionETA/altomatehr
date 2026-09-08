@@ -86,11 +86,12 @@ function isSpend(claim: Claim) {
 // here — that spend already left a company account, so there is nothing to
 // reimburse and counting it would overstate what is owed.
 //
-// APPROVED and REVIEWED both count: REVIEWED is the settled state in the
-// production schema, and this app leaves APPROVED terminal, so a claim in
-// either state has finished its approval chain.
+// APPROVED is the only settled state: this app leaves it terminal. The
+// production schema also carried REVIEWED as a second settled state; it has
+// been removed and its rows migrated to APPROVED, so there is no longer a
+// second spelling to remember to accept here.
 function isSettled(claim: Claim) {
-  return claim.status === "APPROVED" || claim.status === "REVIEWED";
+  return claim.status === "APPROVED";
 }
 
 export function isReadyToPay(claim: Claim) {
