@@ -142,13 +142,47 @@ public class ApprovalRoutingTests
         Assert.Equal(["director"], await router.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
     }
 
+    [Fact]
+    public async Task Layer0InTheModuleConfig_ChangesNothing()
+    {
+        // The chain starts at membership.Layer + 1, so the bottom layer is never
+        // iterated for anyone — nobody sits below it. Whether layer 0 is ticked
+        // in the module config is therefore invisible to routing.
+        var withLayer0 = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1 },
+            layerCount: 2,
+            administrative: [],
+            claimsLayers: [0, 1]);
+        var withoutLayer0 = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1 },
+            layerCount: 2,
+            administrative: [],
+            claimsLayers: [1]);
+
+        Assert.Equal(
+            await withLayer0.StepCountAsync(ApprovalModule.CLAIMS, "staff"),
+            await withoutLayer0.StepCountAsync(ApprovalModule.CLAIMS, "staff"));
+        Assert.Equal(
+            await withLayer0.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0),
+            await withoutLayer0.CurrentApproversAsync(ApprovalModule.CLAIMS, "staff", 0));
+    }
+
     private static ApprovalRouter Build(
         Dictionary<string, int> layers,
         int layerCount,
         string[] administrative,
-        Dictionary<string, string>? supervisorOf = null)
+        Dictionary<string, string>? supervisorOf = null,
+        int[]? claimsLayers = null)
     {
-        var team = new Team { Id = Team, LayerCount = layerCount, LayerLabels = "[]" };
+        var team = new Team
+        {
+            Id = Team,
+            LayerCount = layerCount,
+            LayerLabels = "[]",
+            ModuleApprovalConfig = claimsLayers is null
+                ? "{}"
+                : $"{{\"CLAIMS\":[{string.Join(',', claimsLayers)}]}}",
+        };
         var memberships = layers
             .Select(kv => new TeamMembership { TeamId = Team, EmployeeId = kv.Key, Layer = kv.Value })
             .ToList();
