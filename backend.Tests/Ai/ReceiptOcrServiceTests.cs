@@ -239,6 +239,7 @@ public class ReceiptOcrServiceTests
 
     private sealed class FakeCurrentUser(string? orgId) : ICurrentUser
     {
+    public string? Email => "test@altomate.com";
         public string? UserId => "usr-emp";
         public string? OrganizationId => orgId;
         public string? Role => "Employee";

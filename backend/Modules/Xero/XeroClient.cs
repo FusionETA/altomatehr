@@ -16,6 +16,7 @@ public class XeroClient : IXeroClient
     private const string TokenUrl = "https://identity.xero.com/connect/token";
     private const string ConnectionsUrl = "https://api.xero.com/connections";
     private const string AccountsUrl = "https://api.xero.com/api.xro/2.0/Accounts";
+    private const string CurrenciesUrl = "https://api.xero.com/api.xro/2.0/Currencies";
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
     private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
@@ -240,6 +241,25 @@ public class XeroClient : IXeroClient
         return new XeroSpendResponse(created.BankTransactionID);
     }
 
+    public async Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string accessToken, string tenantId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, CurrenciesUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Could not read the currencies from Xero.");
+
+        var payload = await response.Content.ReadFromJsonAsync<XeroCurrenciesPayload>(JsonOptions);
+        return payload?.Currencies?
+            .Where(c => !string.IsNullOrWhiteSpace(c.Code))
+            .Select(c => new XeroCurrencyResponse(
+                c.Code!.ToUpperInvariant(),
+                c.Description ?? c.Code!))
+            .ToList() ?? [];
+    }
+
     public async Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, AccountsUrl);
@@ -353,6 +373,21 @@ public class XeroClient : IXeroClient
             $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}");
     }
 
+
+    private sealed class XeroCurrenciesPayload
+    {
+        [JsonPropertyName("Currencies")]
+        public List<XeroCurrencyPayload>? Currencies { get; set; }
+    }
+
+    private sealed class XeroCurrencyPayload
+    {
+        [JsonPropertyName("Code")]
+        public string? Code { get; set; }
+
+        [JsonPropertyName("Description")]
+        public string? Description { get; set; }
+    }
 
     private sealed class XeroTokenPayload
     {

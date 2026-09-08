@@ -6,6 +6,8 @@ using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using BC = BCrypt.Net.BCrypt;
 
+using AltomateHR.Api.Modules.Audit;
+
 namespace AltomateHR.Api.Modules.Employees;
 
 // Admin management of employees in the ACTIVE org. An "employee" is a User with
@@ -20,16 +22,19 @@ public class EmployeeService : IEmployeeService
 
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly IUserRepository _users;
+    private readonly IAuditService _audit;
     private readonly ILeaveService _leave;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
         IUserRepository users,
-        ILeaveService leave)
+        ILeaveService leave,
+        IAuditService audit)
     {
         _memberships = memberships;
         _users = users;
         _leave = leave;
+        _audit = audit;
     }
 
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
@@ -101,8 +106,31 @@ public class EmployeeService : IEmployeeService
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeCreate,
+            $"{dto.Email} as {membership.Role}",
+            TargetType: "Employee",
+            TargetId: membership.UserId,
+            Metadata: new { dto.Email, membership.Role, membership.SupervisorId }));
+
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
+    }
+
+    // Names the change rather than saying "updated": a feed of twenty identical
+    // "Employee updated" lines is a feed nobody reads.
+    private static string DescribeEmployeeChange(
+        string userId, string? fromRole, string toRole, string? fromSupervisor, string? toSupervisor)
+    {
+        var parts = new List<string>();
+        if (!string.Equals(fromRole, toRole, StringComparison.Ordinal))
+            parts.Add($"role {fromRole ?? "none"} → {toRole}");
+        if (!string.Equals(fromSupervisor, toSupervisor, StringComparison.Ordinal))
+            parts.Add($"supervisor {fromSupervisor ?? "none"} → {toSupervisor ?? "none"}");
+
+        return parts.Count == 0
+            ? userId
+            : $"{userId} — {string.Join(", ", parts)}";
     }
 
     public async Task<EmployeeSaveResult> UpdateAsync(string id, UpdateEmployeeDto dto)
@@ -143,6 +171,12 @@ public class EmployeeService : IEmployeeService
             }
         }
 
+        // Read before the overwrite: a role or supervisor change is the one thing
+        // on this form that alters who can approve whom, and "what was it
+        // before" is the question that gets asked afterwards.
+        var previousRole = membership.Role;
+        var previousSupervisorId = membership.SupervisorId;
+
         membership.Role = role;
         membership.SupervisorId = supervisorId;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
@@ -179,6 +213,31 @@ public class EmployeeService : IEmployeeService
         if (dto.JoinDate is not null) membership.JoinDate = dto.JoinDate.Value.Date;
         var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
+
+        // Both sides of the two fields that matter. Everything else on the form
+        // is detail; these two decide what this person can approve.
+        var roleChanged = !string.Equals(previousRole, membership.Role, StringComparison.Ordinal);
+        var supervisorChanged =
+            !string.Equals(previousSupervisorId, membership.SupervisorId, StringComparison.Ordinal);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeUpdate,
+            DescribeEmployeeChange(membership.UserId, previousRole, membership.Role,
+                previousSupervisorId, membership.SupervisorId),
+            TargetType: "Employee",
+            TargetId: membership.UserId,
+            Metadata: new
+            {
+                Role = new { From = previousRole, To = membership.Role, Changed = roleChanged },
+                Supervisor = new
+                {
+                    From = previousSupervisorId,
+                    To = membership.SupervisorId,
+                    Changed = supervisorChanged,
+                },
+                membership.PolicyId,
+                membership.ShiftId,
+            }));
 
         // Only after the membership is saved — the recompute reads JoinDate back.
         if (joinDateChanged)

@@ -4,6 +4,8 @@ using AltomateHR.Api.Modules.Email;
 using AltomateHR.Api.Modules.Employees;
 using BC = BCrypt.Net.BCrypt;
 
+using AltomateHR.Api.Modules.Audit;
+using AltomateHR.Api.Modules.Audit.Entities;
 namespace AltomateHR.Api.Modules.Auth;
 
 // Orchestration: validate credentials (against hashed passwords), resolve which org
@@ -19,6 +21,7 @@ public class AuthService : IAuthService
     private readonly IEmailSender _email;
     private readonly ILogger<AuthService> _logger;
     private readonly int _refreshDays;
+    private readonly IAuditService _audit;
 
     public AuthService(
         ITokenService tokens,
@@ -28,7 +31,8 @@ public class AuthService : IAuthService
         IPasswordResetOtpRepository otpRepo,
         IEmailSender email,
         ILogger<AuthService> logger,
-        IConfiguration config)
+        IConfiguration config,
+        IAuditService audit)
     {
         _tokens = tokens;
         _refreshRepo = refreshRepo;
@@ -38,6 +42,7 @@ public class AuthService : IAuthService
         _email = email;
         _logger = logger;
         _refreshDays = int.Parse(config["Jwt:RefreshTokenDays"] ?? "7");
+        _audit = audit;
     }
 
     public async Task<AuthResult?> LoginAsync(string email, string password)
@@ -47,7 +52,31 @@ public class AuthService : IAuthService
         // Verify against the stored hash — BCrypt (native) OR legacy scrypt (migrated
         // from the monolith). Exception-safe: a bad hash fails the login, never 500s.
         if (user is null || !PasswordHasher.Verify(password, user.PasswordHash))
+        {
+            // Recorded against the org this account actually belongs to, since
+            // there is no session yet to infer one from. An unknown email has no
+            // org at all and is dropped — logging it would let anyone write rows
+            // into a tenant's audit log by guessing addresses.
+            var owner = user is null
+                ? null
+                : (await _directory.GetMembershipsByUserAsync(user.Id)).FirstOrDefault();
+
+            if (owner is not null)
+            {
+                await _audit.WriteAsync(new AuditEvent(
+                    AuditActions.AuthLoginFailed,
+                    user!.Email,
+                    Status: AuditStatuses.Failed,
+                    ErrorReason: "Incorrect password",
+                    TargetType: "User",
+                    TargetId: user.Id,
+                    OrganizationId: owner.OrganizationId,
+                    ActorEmail: user.Email,
+                    ActorName: user.Email));
+            }
+
             return null;
+        }
 
         // Transparent upgrade: a legacy scrypt password that just verified is re-hashed
         // to BCrypt, so this account's NEXT login uses the native format and the old
@@ -63,6 +92,19 @@ public class AuthService : IAuthService
         var active = memberships.FirstOrDefault();
         if (active is null)
             return null;   // valid credentials, but not a member of any org yet
+
+        // Recorded with the role, because the question this answers is usually
+        // "has anyone but the admins been in" — and the org comes from the
+        // membership rather than a session, which does not exist yet.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.AuthLogin,
+            user.Email,
+            TargetType: "User",
+            TargetId: user.Id,
+            Metadata: new { active.Role, user.Email },
+            OrganizationId: active.OrganizationId,
+            ActorEmail: user.Email,
+            ActorName: user.Email));
 
         return await IssueTokensAsync(user.Id, user.Email, active.Role, active.OrganizationId);
     }
@@ -178,6 +220,21 @@ public class AuthService : IAuthService
         // The password changed, so every existing session must die — otherwise a
         // stolen refresh token survives the very reset meant to lock the attacker out.
         await _refreshRepo.RevokeAllForUserAsync(user.Id);
+
+        // Runs unauthenticated — the caller proved an OTP, not a session — so
+        // the org comes from the account's own membership.
+        var owner = (await _directory.GetMembershipsByUserAsync(user.Id)).FirstOrDefault();
+        if (owner is not null)
+        {
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.AuthPasswordChange,
+                $"{user.Email} — all sessions revoked",
+                TargetType: "User",
+                TargetId: user.Id,
+                OrganizationId: owner.OrganizationId,
+                ActorEmail: user.Email,
+                ActorName: user.Email));
+        }
 
         return null;
     }

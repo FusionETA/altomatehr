@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Accounts.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Accounts.Entities;
+using AltomateHR.Api.Modules.Audit;
 
 namespace AltomateHR.Api.Modules.Accounts;
 
@@ -8,11 +9,14 @@ public class ChartOfAccountService : IChartOfAccountService
 {
     private readonly IChartOfAccountRepository _repo;
     private readonly IXeroService _xero;
+    private readonly IAuditService _audit;
 
-    public ChartOfAccountService(IChartOfAccountRepository repo, IXeroService xero)
+    public ChartOfAccountService(IChartOfAccountRepository repo, IXeroService xero,
+        IAuditService audit)
     {
         _repo = repo;
         _xero = xero;
+        _audit = audit;
     }
 
     public async Task<IEnumerable<ChartOfAccountDto>> GetAllAsync() =>
@@ -52,6 +56,14 @@ public class ChartOfAccountService : IChartOfAccountService
             // OrganizationId is auto-stamped by AppDbContext on save.
         };
         await _repo.AddAsync(account);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.AccountCreate,
+            $"{account.Code} · {account.Name}",
+            TargetType: "ChartOfAccount",
+            TargetId: account.Id,
+            Metadata: new { account.Code, account.Name, account.Type }));
+
         return ToDto(account);
     }
 
@@ -68,6 +80,25 @@ public class ChartOfAccountService : IChartOfAccountService
         account.AllowMileageClaim = dto.AllowMileageClaim;
         account.MileageRate = dto.MileageRate;
         await _repo.UpdateAsync(account);
+
+        // The spend limit is the field worth being able to answer questions
+        // about later — "who raised this account's limit before that claim went
+        // through" is exactly what an audit log is read for.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.AccountUpdate,
+            $"{account.Code} · {account.Name}",
+            TargetType: "ChartOfAccount",
+            TargetId: account.Id,
+            Metadata: new
+            {
+                account.Code,
+                account.Name,
+                account.IsSelectable,
+                account.LimitAmount,
+                account.AllowMileageClaim,
+                account.MileageRate,
+            }));
+
         return ToDto(account);
     }
 
@@ -78,6 +109,13 @@ public class ChartOfAccountService : IChartOfAccountService
 
         account.IsArchived = archived;
         await _repo.UpdateAsync(account);
+
+        await _audit.WriteAsync(new AuditEvent(
+            archived ? AuditActions.AccountArchive : AuditActions.AccountRestore,
+            $"{account.Code} · {account.Name}",
+            TargetType: "ChartOfAccount",
+            TargetId: account.Id));
+
         return ToDto(account);
     }
 

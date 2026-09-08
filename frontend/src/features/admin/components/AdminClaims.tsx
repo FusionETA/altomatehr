@@ -3,7 +3,6 @@ import {
   getAllClaims,
   type Claim,
   type ClaimsExportFilters,
-  type ClaimsImportResult,
 } from "@/features/claims/api";
 import { isStaleClaim } from "@/features/claims/lib/claim-insights";
 import { getEmployees } from "@/features/employees/api";
@@ -20,7 +19,7 @@ import {
 import { AdminClaimsAttention } from "./AdminClaimsAttention";
 import { AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimSettings } from "./ClaimSettings";
-import { ClaimsImportReport, ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
+import { ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
 // decision, then what is owed, then every claim behind both.
@@ -41,7 +40,6 @@ export function AdminClaims() {
   const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<ClaimsTab>("overview");
-  const [importReport, setImportReport] = useState<ClaimsImportResult | null>(null);
   const [drilldown, setDrilldown] = useState<ClaimDrilldown | null>(null);
   const [filters, setFilters] = useState<ClaimsFilters>(EMPTY_FILTERS);
 
@@ -126,15 +124,9 @@ export function AdminClaims() {
           <ClaimsMonthEndActions
             filters={exportFilters}
             filterSummary={filterSummary}
-            onImported={() => void load()}
-            onReport={setImportReport}
           />
         </div>
       </div>
-
-      {importReport ? (
-        <ClaimsImportReport report={importReport} onDismiss={() => setImportReport(null)} />
-      ) : null}
 
       {tab === "settings" ? (
         <ClaimSettings />

@@ -6,6 +6,11 @@ public interface ICurrentUser
 {
     string? UserId { get; }
     string? OrganizationId { get; }
+
+    // The signed-in address. Already minted into the JWT — surfaced here so the
+    // audit log can name a person rather than a GUID, without a directory
+    // lookup on every write.
+    string? Email { get; }
     string? Role { get; }
     bool IsAdmin { get; }
     bool IsAuthenticated { get; }

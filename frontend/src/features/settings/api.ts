@@ -104,6 +104,13 @@ export type XeroStatus = {
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");
 
+// The currencies the connected Xero org is subscribed to. Empty when Xero is
+// not connected — which the settings form reads as "we cannot constrain the
+// choice", not "no currency is allowed".
+export type XeroCurrency = { code: string; description: string };
+
+export const getXeroCurrencies = () => apiGet<XeroCurrency[]>("/xero/currencies");
+
 // Starts the OAuth handshake. The backend records the state and hands back the
 // Xero URL to send the admin to; Xero returns them to /xero/callback, which
 // redirects back into the app.

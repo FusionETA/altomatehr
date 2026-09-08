@@ -4,6 +4,7 @@ using AltomateHR.Api.Modules.Accounts.Entities;
 using AltomateHR.Api.Modules.ApiKeys.Entities;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Audit.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays.Entities;
@@ -31,6 +32,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Claim> Claims => Set<Claim>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PasswordResetOtp> PasswordResetOtps => Set<PasswordResetOtp>();
     public DbSet<User> Users => Set<User>();
@@ -60,6 +62,17 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        var audit = modelBuilder.Entity<AuditLog>();
+        // One composite index does both jobs: its uniqueness serialises
+        // concurrent appends without an advisory lock (two writers racing for
+        // the same seq means one insert fails and retries), and it is the order
+        // the feed reads in, with Seq as the cursor.
+        audit.HasIndex(a => new { a.OrganizationId, a.Seq })
+            .IsUnique()
+            .HasDatabaseName("IX_AuditLogs_Org_Seq_Desc");
+        audit.HasIndex(a => a.Action);
+        audit.HasIndex(a => a.CreatedAt);
+
         var claim = modelBuilder.Entity<Claim>();
         claim.HasIndex(c => c.ClaimNumber).IsUnique();
         claim.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
@@ -200,6 +213,8 @@ public class AppDbContext : DbContext
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
         // calls), the filter is a no-op so those flows still work.
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Claim>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         // User is global (not tenant-scoped) — a login account reaches its orgs

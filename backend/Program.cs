@@ -12,6 +12,7 @@ using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Cron;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Ai;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
@@ -262,6 +263,8 @@ builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>(
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
 builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<IApprovalReconciliationService, ApprovalReconciliationService>();
+builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();

@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.RegularExpressions;
 using BC = BCrypt.Net.BCrypt;
 
+using AltomateHR.Api.Tests.Audit;
+
 namespace AltomateHR.Api.Tests.Auth;
 
 public class AuthServiceTests
@@ -200,7 +202,8 @@ public class AuthServiceTests
                 {
                     ["Jwt:RefreshTokenDays"] = "7",
                 })
-                .Build());
+                .Build(),
+            audit: new FakeAuditService());
 
         return new ResetHarness(service, userRepo, otps, email, refreshTokens);
     }
@@ -393,7 +396,8 @@ public class AuthServiceTests
                 {
                     ["Jwt:RefreshTokenDays"] = "7",
                 })
-                .Build());
+                .Build(),
+            audit: new FakeAuditService());
     }
 
     private static User CreateUser(string password) => new()

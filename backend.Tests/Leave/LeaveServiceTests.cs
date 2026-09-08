@@ -968,6 +968,9 @@ public class LeaveServiceTests
 
     private sealed class FakeXeroService(XeroFileContent? file = null) : IXeroService
     {
+        public Task<IReadOnlyList<XeroCurrencyResponse>> GetCurrenciesAsync() =>
+            Task.FromResult<IReadOnlyList<XeroCurrencyResponse>>([]);
+
         public Task<XeroFileContent?> GetFileContentAsync(string fileId) => Task.FromResult(file);
         public Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? r) => throw new NotImplementedException();
         public Task<string> CompleteCallbackAsync(string c, string s) => throw new NotImplementedException();
@@ -982,6 +985,7 @@ public class LeaveServiceTests
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser
     {
+    public string? Email => "test@altomate.com";
         public string? UserId => userId;
         public string? Role => role;
         public string? OrganizationId => "org-1";
