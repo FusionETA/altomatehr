@@ -27,6 +27,7 @@ public class PartnerTokenResponseDto
 public class PartnerUserDto
 {
     public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;   // the user's role IN this org
 }

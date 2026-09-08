@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Building2, KeyRound, LogOut, MoreVertical } from "lucide-react";
+import { Building2, ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
+import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getTeamClaims } from "@/features/claims/api";
@@ -269,6 +270,20 @@ export function EmployeeShell({
                         <span className="block font-semibold text-foreground">Switch company</span>
                         <span className="block text-xs">Shown when multiple companies are available</span>
                       </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        launchAppraisify().catch(() => {
+                          window.alert("Couldn't open Appraisify — please try again.");
+                        });
+                      }}
+                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    >
+                      <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
+                      Launch Appraisify
                     </button>
 
                     <button
