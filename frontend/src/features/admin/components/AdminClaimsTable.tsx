@@ -9,7 +9,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { approveClaim, rejectClaim, syncClaimToXero, type Claim } from "@/features/claims/api";
+import { syncClaimToXero, type Claim } from "@/features/claims/api";
 import { ClaimDetailsModal } from "@/features/claims/components/ClaimDetailsModal";
 import { ClaimStatusBadge } from "@/features/claims/components/ClaimStatusBadge";
 import { ClaimStatusTabs } from "@/features/claims/components/ClaimStatusTabs";
@@ -99,24 +99,7 @@ export function AdminClaimsTable({
   // claims themselves, which are what the page is for.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState<Claim | null>(null);
-  const [rejectNotes, setRejectNotes] = useState("");
-  const [decideError, setDecideError] = useState<string | null>(null);
-
-  async function decide(claim: Claim, run: (id: string) => Promise<Claim>) {
-    setBusyId(claim.id);
-    setDecideError(null);
-    try {
-      await run(claim.id);
-      onDecided();
-      return true;
-    } catch (e) {
-      setDecideError(e instanceof Error ? e.message : "Could not update the claim.");
-      return false;
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const [actionError, setDecideError] = useState<string | null>(null);
 
   async function syncToXero(claim: Claim) {
     setBusyId(claim.id);
@@ -131,66 +114,45 @@ export function AdminClaimsTable({
     }
   }
 
-  // An admin sits in the approval chain like anyone else, so the rows they can
-  // decide get buttons and the rest say why they do not.
+  // This table never decides a claim. An admin is oversight, not a link in the
+  // chain of command — they hold no seat in any approval chain, so there is no
+  // claim here that is theirs to approve. What an admin needs from this column
+  // is different: who a claim is waiting on, when nobody can move it, and how
+  // an approved one gets paid.
+  //
+  // (Approve and Reject used to live here, gated on the viewer's own canAct.
+  // They could never render, because the router leaves administrative seats out
+  // of every chain — see AdminNeverApprovesTests. Deciding happens in the
+  // approver's own queue, which is where the seat is.)
   function rowActions(claim: Claim) {
-    if (!claim.canAct) {
-      // Approved: the decision left is how it gets PAID, which is where the old
-      // "Ready to pay" tab's job now lives. The ROUTE is not chosen here — it is
-      // an org policy under Settings, stamped on the claim when it was created —
-      // so this shows which route the claim is on, plus the one action it needs.
-      if (claim.status === "APPROVED") {
-        return <ClaimPayout claim={claim} busy={busyId === claim.id} onSync={syncToXero} />;
-      }
-
-      if (claim.status !== "PENDING") return <span className="text-muted-foreground">—</span>;
-
-      const waiting = claim.awaitingApprovers ?? [];
-
-      // No approver at the step it reached: a routing fault, not a queue. An
-      // admin is the person who can fix it, so it is called out here loudest.
-      if (waiting.length === 0) {
-        return (
-          <span className="text-xs font-semibold text-destructive">Nobody can approve</span>
-        );
-      }
-
-      // Wraps within the column rather than widening it. `title` keeps the
-      // full list reachable when several approvers push it onto three lines.
-      const names = waiting.map(displayPerson).join(", ");
-      return (
-        <span
-          title={`Waiting on ${names}`}
-          className="block text-xs leading-snug text-muted-foreground"
-        >
-          With {names}
-        </span>
-      );
+    // Approved: the decision left is how it gets PAID, which is where the old
+    // "Ready to pay" tab's job now lives. The ROUTE is not chosen here — it is
+    // an org policy under Settings, stamped on the claim when it was created —
+    // so this shows which route the claim is on, plus the one action it needs.
+    if (claim.status === "APPROVED") {
+      return <ClaimPayout claim={claim} busy={busyId === claim.id} onSync={syncToXero} />;
     }
 
+    if (claim.status !== "PENDING") return <span className="text-muted-foreground">—</span>;
+
+    const waiting = claim.awaitingApprovers ?? [];
+
+    // No approver at the step it reached: a routing fault, not a queue. An
+    // admin is the person who can fix it, so it is called out here loudest.
+    if (waiting.length === 0) {
+      return <span className="text-xs font-semibold text-destructive">Nobody can approve</span>;
+    }
+
+    // Wraps within the column rather than widening it. `title` keeps the full
+    // list reachable when several approvers push it onto three lines.
+    const names = waiting.map(displayPerson).join(", ");
     return (
-      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-        <button
-          type="button"
-          disabled={busyId === claim.id}
-          onClick={() => decide(claim, approveClaim)}
-          className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
-          {busyId === claim.id ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
-          Approve
-        </button>
-        <button
-          type="button"
-          disabled={busyId === claim.id}
-          onClick={() => {
-            setRejecting(claim);
-            setRejectNotes("");
-          }}
-          className="rounded-full bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
-        >
-          Reject
-        </button>
-      </div>
+      <span
+        title={`Waiting on ${names}`}
+        className="block text-xs leading-snug text-muted-foreground"
+      >
+        With {names}
+      </span>
     );
   }
 
@@ -467,13 +429,13 @@ export function AdminClaimsTable({
           </div>
         </section>
 
-        {decideError ? (
+        {actionError ? (
           <section className="flex items-start justify-between gap-3 rounded-[28px] border border-destructive/20 bg-destructive/5 p-4">
             {/* break-words and a height cap: the backend now sends one sentence,
                 but an unrecognised payload still falls back to a trimmed body,
                 and that must not be able to push the claims table off screen. */}
             <p className="nice-scrollbar max-h-32 overflow-y-auto break-words text-sm font-medium text-destructive">
-              {decideError}
+              {actionError}
             </p>
             <button
               type="button"
@@ -646,52 +608,6 @@ export function AdminClaimsTable({
           </div>
         ) : null}
       </div>
-
-      {rejecting ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-[520px] rounded-[26px] border border-white/40 bg-card p-6 shadow-[0_18px_48px_rgba(76,26,134,0.16)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Reject claim
-            </p>
-            <h3 className="mt-1 truncate text-xl font-black text-foreground">{rejecting.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{rejecting.claimNumber}</p>
-
-            <label className="mt-5 block space-y-3">
-              <span className="text-sm font-bold text-foreground">Remark</span>
-              <textarea
-                value={rejectNotes}
-                onChange={(event) => setRejectNotes(event.target.value)}
-                placeholder="Explain why this claim is rejected."
-                className="min-h-32 w-full resize-none rounded-[18px] border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              />
-            </label>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setRejecting(null)}
-                className="h-12 rounded-[18px] border border-border/70 bg-card text-sm font-bold text-muted-foreground transition hover:text-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                // The API refuses a rejection with no remark, so the button
-                // does too rather than round-tripping to be told.
-                disabled={rejectNotes.trim().length === 0 || busyId === rejecting.id}
-                onClick={async () => {
-                  const ok = await decide(rejecting, (id) => rejectClaim(id, rejectNotes.trim()));
-                  if (ok) setRejecting(null);
-                }}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-destructive/10 text-sm font-bold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
-              >
-                {busyId === rejecting.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Reject
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
 
       {selected ? (
         <ClaimDetailsModal

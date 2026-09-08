@@ -107,8 +107,14 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.PayrollPolicy = d.PayrollPolicy; e.PayrollCycle = d.PayrollCycle;
         e.LeaveEntitlementJson = d.LeaveEntitlementJson; e.PayrollDocumentsJson = d.PayrollDocumentsJson;
 
-        e.IsArchived = d.IsArchived; e.ArchivedAt = d.ArchivedAt;
-        e.ArchiveReason = d.ArchiveReason; e.TemporaryReviewDate = d.TemporaryReviewDate;
+        // ArchivedAt is stamped here, not taken from the client: it records WHEN
+        // the archive happened, so it must come from the server's clock and must
+        // not be re-stamped by later saves to an already-archived profile.
+        if (d.IsArchived && !e.IsArchived) e.ArchivedAt = DateTime.UtcNow;
+        else if (!d.IsArchived) e.ArchivedAt = null;
+        e.IsArchived = d.IsArchived;
+        e.ArchiveReason = d.IsArchived ? d.ArchiveReason : null;
+        e.TemporaryReviewDate = d.TemporaryReviewDate;
     }
 
     private static EmployeeProfileDto ToDto(EmployeeProfile e, User? user) => new()

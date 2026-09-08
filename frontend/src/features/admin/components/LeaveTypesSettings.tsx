@@ -1,13 +1,21 @@
-import { useEffect, useState } from "react";
-import { LoaderCircle, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Info, LoaderCircle, Plus } from "lucide-react";
 import {
   archiveLeaveType,
   createLeaveType,
   getLeaveTypes,
   restoreLeaveType,
   updateLeaveType,
+  type LeaveAccrualMethod,
   type LeaveType,
 } from "@/features/leave/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -20,8 +28,30 @@ function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
 
-type Draft = { code: string; name: string; paid: boolean; defaultDays: string };
-const emptyDraft: Draft = { code: "", name: "", paid: true, defaultDays: "0" };
+// Carries the accrual/carry-forward fields through row edits even though this
+// form has no controls for them — those live in the dedicated Annual leave
+// card below, and saving here does a full replace, so dropping them would
+// silently reset the Annual type's carry-forward settings.
+type Draft = {
+  code: string;
+  name: string;
+  paid: boolean;
+  defaultDays: string;
+  accrualMethod: LeaveAccrualMethod;
+  carryForward: boolean;
+  carryExpiryMonth: number | null;
+  maxCarryForwardDays: number | null;
+};
+const emptyDraft: Draft = {
+  code: "",
+  name: "",
+  paid: true,
+  defaultDays: "0",
+  accrualMethod: "LUMP_SUM",
+  carryForward: false,
+  carryExpiryMonth: null,
+  maxCarryForwardDays: null,
+};
 
 export function LeaveTypesSettings() {
   const [types, setTypes] = useState<LeaveType[]>([]);
@@ -85,6 +115,10 @@ export function LeaveTypesSettings() {
       name: type.name,
       paid: type.paid,
       defaultDays: String(type.defaultDays),
+      accrualMethod: type.accrualMethod,
+      carryForward: type.carryForward,
+      carryExpiryMonth: type.carryExpiryMonth,
+      maxCarryForwardDays: type.maxCarryForwardDays,
     });
     setError(null);
   }
@@ -99,6 +133,10 @@ export function LeaveTypesSettings() {
         name: edit.name.trim(),
         paid: edit.paid,
         defaultDays: edit.paid ? Number(edit.defaultDays) || 0 : 0,
+        accrualMethod: edit.accrualMethod,
+        carryForward: edit.carryForward,
+        carryExpiryMonth: edit.carryExpiryMonth,
+        maxCarryForwardDays: edit.maxCarryForwardDays,
       });
       setTypes((cur) => cur.map((t) => (t.id === updated.id ? updated : t)));
       setEditingId(null);
@@ -109,8 +147,24 @@ export function LeaveTypesSettings() {
     }
   }
 
+  const annualType = useMemo(
+    () => types.find((t) => t.code.trim().toUpperCase() === "ANNUAL"),
+    [types],
+  );
+
   return (
     <div className="space-y-5">
+      <div className="flex items-start gap-3 rounded-2xl bg-surface-low p-4 text-sm text-muted-foreground">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p>
+          These days apply org-wide. To give a specific policy more or fewer days for a leave
+          type, set an override under{" "}
+          <span className="font-semibold text-foreground">System Settings → Policies</span>. To
+          adjust one employee's entitlement instead, open them from the{" "}
+          <span className="font-semibold text-foreground">Balances</span> tab.
+        </p>
+      </div>
+
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
           <h2 className="text-lg font-black text-foreground">Leave types</h2>
@@ -289,6 +343,169 @@ export function LeaveTypesSettings() {
           </div>
         )}
       </div>
+
+      {annualType ? (
+        <AnnualLeaveCard
+          type={annualType}
+          onSaved={(updated) => setTypes((cur) => cur.map((t) => (t.id === updated.id ? updated : t)))}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// Accrual method and carry-forward only ever apply to the ANNUAL type — the
+// backend rejects them for anything else — so they get their own card instead
+// of cluttering every row's edit form with fields that are almost always
+// inapplicable.
+function AnnualLeaveCard({
+  type,
+  onSaved,
+}: {
+  type: LeaveType;
+  onSaved: (updated: LeaveType) => void;
+}) {
+  const [accrualMethod, setAccrualMethod] = useState<LeaveAccrualMethod>(type.accrualMethod);
+  const [carryForward, setCarryForward] = useState(type.carryForward);
+  const [carryExpiryMonth, setCarryExpiryMonth] = useState(
+    type.carryExpiryMonth != null ? String(type.carryExpiryMonth) : "",
+  );
+  const [maxCarryForwardDays, setMaxCarryForwardDays] = useState(
+    type.maxCarryForwardDays != null ? String(type.maxCarryForwardDays) : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Re-sync if a different Annual type loads (e.g. after archiving one and
+  // creating another) — not on every keystroke, since `type` is a stable
+  // reference between saves.
+  useEffect(() => {
+    setAccrualMethod(type.accrualMethod);
+    setCarryForward(type.carryForward);
+    setCarryExpiryMonth(type.carryExpiryMonth != null ? String(type.carryExpiryMonth) : "");
+    setMaxCarryForwardDays(type.maxCarryForwardDays != null ? String(type.maxCarryForwardDays) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type.id]);
+
+  async function handleSave() {
+    setError(null);
+    if (carryForward) {
+      const month = Number(carryExpiryMonth);
+      if (!carryExpiryMonth || month < 1 || month > 12) {
+        setError("Carry-forward requires an expiry month (1-12).");
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const updated = await updateLeaveType(type.id, {
+        code: type.code,
+        name: type.name,
+        paid: type.paid,
+        defaultDays: type.defaultDays,
+        accrualMethod,
+        carryForward,
+        carryExpiryMonth: carryForward ? Number(carryExpiryMonth) : null,
+        maxCarryForwardDays: maxCarryForwardDays.trim() ? Number(maxCarryForwardDays) : null,
+      });
+      onSaved(updated);
+    } catch (err) {
+      setError(message(err, "Could not save these settings."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={`${CARD} space-y-4`}>
+      <div>
+        <h2 className="text-lg font-black text-foreground">
+          {type.name} — accrual &amp; carry-forward
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          These only apply to {type.name} ({type.code}) — every other leave type is granted in
+          full and doesn't roll over.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <label className={LABEL}>Accrual method</label>
+          <Select
+            value={accrualMethod}
+            onValueChange={(v) => setAccrualMethod(v as LeaveAccrualMethod)}
+          >
+            <SelectTrigger className={INPUT}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="LUMP_SUM">Lump sum (all available at year start)</SelectItem>
+              <SelectItem value="PRO_RATED">Pro-rated (entitlement / 12 each month)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className={LABEL}>Carry forward</label>
+          <Select
+            value={carryForward ? "yes" : "no"}
+            onValueChange={(v) => setCarryForward(v === "yes")}
+          >
+            <SelectTrigger className={INPUT}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="no">No</SelectItem>
+              <SelectItem value="yes">Yes</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div />
+
+        <div className="space-y-1.5">
+          <label className={LABEL}>Expiry month (1–12)</label>
+          <input
+            className={INPUT}
+            type="number"
+            min="1"
+            max="12"
+            disabled={!carryForward}
+            value={carryExpiryMonth}
+            onChange={(e) => setCarryExpiryMonth(e.target.value)}
+            placeholder="e.g. 3"
+          />
+          <p className="text-xs text-muted-foreground">
+            Carried days expire at the start of this month next year.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className={LABEL}>Max carry-forward days</label>
+          <input
+            className={INPUT}
+            type="number"
+            min="0"
+            step="0.5"
+            disabled={!carryForward}
+            value={maxCarryForwardDays}
+            onChange={(e) => setMaxCarryForwardDays(e.target.value)}
+            placeholder="Uncapped"
+          />
+        </div>
+      </div>
+
+      {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+
+      <button
+        type="button"
+        disabled={saving}
+        onClick={handleSave}
+        className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90 disabled:opacity-50"
+      >
+        {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+        Save settings
+      </button>
     </div>
   );
 }

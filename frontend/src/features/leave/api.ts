@@ -10,12 +10,23 @@ export type LeaveType = {
   paid: boolean;
   defaultDays: number;
   isArchived: boolean;
+  accrualMethod: "LUMP_SUM" | "PRO_RATED";
+  carryForward: boolean;
+  carryExpiryMonth: number | null;
+  maxCarryForwardDays: number | null;
+  prorateFirstYear: boolean;
 };
 export type SaveLeaveType = {
   code: string;
   name: string;
   paid: boolean;
   defaultDays: number;
+  // Backend restricts PRO_RATED and carryForward=true to the ANNUAL code —
+  // omit these and it defaults to LUMP_SUM / no carry-forward.
+  accrualMethod?: "LUMP_SUM" | "PRO_RATED";
+  carryForward?: boolean;
+  carryExpiryMonth?: number | null;
+  maxCarryForwardDays?: number | null;
 };
 
 export type LeaveApplication = {
@@ -80,6 +91,13 @@ export type EmployeeLeaveBalances = {
   email: string;
   role: string;
   balances: LeaveBalance[];
+  // Only set on the supervisor "team balances" screen — which team this row is
+  // shown under, for the team switcher. Null on the admin org-wide grid, and
+  // null here too for a direct report not on any team the caller supervises.
+  teamId?: string | null;
+  teamName?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
 };
 
 // --- Admin: entitlements ---
@@ -175,6 +193,12 @@ export const getLeaveOverview = (year?: number) =>
 export const getAllLeaveBalances = (year?: number) =>
   apiGet<{ data: EmployeeLeaveBalances[]; total: number; year: number }>(
     `/leave/balances/all${year ? `?year=${year}` : ""}`,
+  );
+// Supervisor view: the caller's team(s), tagged with team/project when the
+// caller supervises a real Team, so the UI can offer a switcher.
+export const getTeamLeaveBalances = (year?: number) =>
+  apiGet<{ data: EmployeeLeaveBalances[]; total: number; year: number }>(
+    `/leave/team/balances${year ? `?year=${year}` : ""}`,
   );
 export const getEmployeeLeaveBalances = (employeeId: string, year?: number) =>
   apiGet<{ data: LeaveBalance[]; total: number; year: number }>(

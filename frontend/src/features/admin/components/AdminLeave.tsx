@@ -57,6 +57,7 @@ import {
 import { SearchInput } from "@/shared/components/SearchInput";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { EmployeeLeaveModal } from "./EmployeeLeaveModal";
+import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { CardHead, EmptyState } from "./DashboardCard";
 import {
   ACTION_MENU_EYEBROW,
@@ -71,7 +72,7 @@ const TILE = "rounded-2xl border border-border/60 bg-surface-low p-4";
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 
-type AdminLeaveTab = "overview" | "history" | "balances";
+type AdminLeaveTab = "overview" | "history" | "balances" | "types";
 
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
@@ -142,6 +143,7 @@ export function AdminLeave() {
       { id: "overview" as AdminLeaveTab, label: "Overview", badge: overview?.totals.pending },
       { id: "history" as AdminLeaveTab, label: "History" },
       { id: "balances" as AdminLeaveTab, label: "Balances" },
+      { id: "types" as AdminLeaveTab, label: "Types" },
     ],
     [overview?.totals.pending],
   );
@@ -337,6 +339,8 @@ export function AdminLeave() {
           onSelect={setSelectedEmployee}
         />
       ) : null}
+
+      {tab === "types" ? <LeaveTypesSettings /> : null}
 
       {selectedApplication ? (
         <LeaveDetailsModal

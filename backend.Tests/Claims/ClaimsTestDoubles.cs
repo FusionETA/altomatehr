@@ -41,6 +41,7 @@ internal static class ClaimsTestFactory
             organizations ?? new FakeOrganizationService(),
             currentUser ?? new FakeCurrentUser(),
             realtime ?? new FakeRealtimeService(),
+            new FakeNotificationService(),
             employees ?? new FakeEmployeeDirectory(),
             projects ?? new FakeProjectServiceForExport(),
             xero ?? new FakeXeroBillService());

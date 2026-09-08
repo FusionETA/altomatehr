@@ -145,6 +145,38 @@ export const claimSettlementHints: Record<ClaimSettlement, string> = {
 export const rejectClaim = (id: string, reviewNotes: string) =>
   apiPost<Claim>(`/claims/${id}/reject`, { reviewNotes });
 
+// What the OCR pass read off a receipt. Everything is nullable: the model is
+// told to return null rather than guess, and the server discards an account
+// suggestion below its confidence threshold or outside the offered list. Treat
+// all of it as form pre-fill, never as authoritative.
+export type ReceiptExtraction = {
+  supplier: string | null;
+  total: number | null;
+  date: string | null;               // yyyy-MM-dd
+  description: string | null;
+  detectedCurrency: string | null;
+  /** What to actually use: the detected code, or the org default when unreadable. */
+  resolvedCurrency: string | null;
+  currencyWasOverridden: boolean;
+  suggestedAccountId: string | null;
+  suggestedAccountConfidence: number;
+  provider: string;
+};
+
+export type AnalyzeReceiptResponse = {
+  receiptUrl: string;
+  extraction: ReceiptExtraction;
+};
+
+// Uploads the receipt AND reads it, in one round trip. The file is stored
+// either way, so a failed read still returns a receiptUrl and the claim can be
+// filled in by hand without uploading again.
+export function analyzeClaimReceipt(file: File) {
+  const formData = new FormData();
+  formData.append("receiptFile", file);
+  return apiPostForm<AnalyzeReceiptResponse>("/claims/receipts/analyze", formData);
+}
+
 export function uploadClaimReceipt(file: File) {
   const formData = new FormData();
   formData.append("receiptFile", file);

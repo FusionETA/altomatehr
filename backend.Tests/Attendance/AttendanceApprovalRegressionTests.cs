@@ -95,6 +95,7 @@ public class AttendanceApprovalRegressionTests
             router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }),
             directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
             realtime: new FakeRealtimeService(),
+            notifications: new FakeNotificationService(),
             employees: new FakeEmployeeDirectory(),
             hours: new FakeHoursSummaryService(),
             teams: new FakeTeamService());
@@ -505,6 +506,7 @@ public class AttendanceApprovalRegressionTests
             router: router ?? new FakeApprovalRouter(),
             directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
             realtime: new FakeRealtimeService(),
+            notifications: new FakeNotificationService(),
             employees: new FakeEmployeeDirectory(),
             hours: new FakeHoursSummaryService(),
             teams: teams ?? new FakeTeamService());

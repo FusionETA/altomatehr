@@ -1,10 +1,4 @@
 import {
-  Building2,
-  CalendarClock,
-  Clock,
-  ShieldAlert,
-  TimerReset,
-  TrendingUp,
 } from "lucide-react";
 import type {
   AdminOverview,
@@ -53,7 +47,7 @@ function ProjectClaimsCard({ projects }: { projects: ProjectClaimSpend[] }) {
 
   return (
     <section className={CARD}>
-      <CardHead icon={TrendingUp} title="Project claims" meta="This month" />
+      <CardHead title="Project claims" meta="This month" />
       <div className="space-y-3">
         {projects.length === 0 ? (
           <EmptyState text="No claims submitted this month yet." />
@@ -96,7 +90,7 @@ function ProjectClaimsCard({ projects }: { projects: ProjectClaimSpend[] }) {
 function AttendanceHealthCard({ projects }: { projects: AttendanceHealth[] }) {
   return (
     <section className={CARD}>
-      <CardHead icon={Building2} title="Attendance health" meta="Last 30 days" />
+      <CardHead title="Attendance health" meta="Last 30 days" />
       <div className="space-y-3">
         {projects.length === 0 ? (
           <EmptyState text="No attendance recorded in the last 30 days." />
@@ -127,11 +121,8 @@ function SlowOtApproversCard({ approvers }: { approvers: SlowOtApprover[] }) {
   return (
     <section className={CARD}>
       <CardHead
-        icon={TimerReset}
         title="Slow OT approvers"
         meta="> 24h average"
-        tone="text-tertiary"
-        toneBg="bg-tertiary/10"
       />
       <div className="space-y-3">
         {approvers.length === 0 ? (
@@ -165,11 +156,8 @@ function StalePendingClaimsCard({ claims }: { claims: StalePendingClaim[] }) {
   return (
     <section className={CARD}>
       <CardHead
-        icon={Clock}
         title="Stale pending claims"
         meta="> 7 days"
-        tone="text-tertiary"
-        toneBg="bg-tertiary/10"
       />
       <div className="space-y-3">
         {claims.length === 0 ? (
@@ -202,7 +190,6 @@ function UpcomingClaimRunCard({ run }: { run: UpcomingClaimRun | null }) {
   return (
     <section className={CARD}>
       <CardHead
-        icon={CalendarClock}
         title="Upcoming claim run"
         meta={
           run
@@ -246,11 +233,8 @@ function OverturnedSupervisorsCard({
   return (
     <section className={CARD}>
       <CardHead
-        icon={ShieldAlert}
         title="Most-overturned approvers"
         meta="Last 90 days"
-        tone="text-destructive"
-        toneBg="bg-destructive/10"
       />
       <div className="space-y-3">
         {samples.length === 0 ? (

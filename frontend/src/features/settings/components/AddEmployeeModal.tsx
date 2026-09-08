@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
-import { createEmployee, ROLES, type Employee } from "@/features/employees/api";
+import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
 
 const INPUT =
@@ -220,7 +220,7 @@ export function AddEmployeeModal({
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
-                {ROLES.map((r) => (
+                {STAFF_ROLES.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>

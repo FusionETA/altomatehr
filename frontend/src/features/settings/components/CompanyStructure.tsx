@@ -10,7 +10,7 @@ import {
 } from "@/features/teams/api";
 import { getProjects, type Project } from "@/features/settings/api";
 import { getEmployees, type Employee } from "@/features/employees/api";
-import { TeamEditorModal } from "./TeamEditorModal";
+import { TeamEditor } from "./TeamEditor";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
@@ -21,6 +21,34 @@ import {
 } from "@/shared/components/ui/select";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
+
+// Seven rows visible before a list scrolls, and the same seven is when its
+// search box appears. Tying the two together means a list that fits never
+// offers a search you don't need, and one that doesn't always gives you a way
+// to jump — rather than a threshold picked independently of what's on screen.
+const VISIBLE_ROWS = 7;
+
+// All three panes are this tall, always: exactly seven rows.
+//
+// 36.5rem = 584px, measured rather than estimated — pane padding, the header,
+// and seven 66px team rows with the 6px space-y-1.5 gaps between them. Teams
+// set the number because their rows are the tallest (name plus the
+// layer/member line); a project row is 46px, so seven of those fit easily.
+//
+// Fixed, not content-sized. The height is the layout, so it doesn't move when
+// a team is added, when a project with no teams is picked, or when the editor's
+// form grows a layer. Each pane scrolls its own overflow instead.
+const PANE_H = "lg:h-[36.5rem]";
+
+// Same seven-row rule for a layer section in the members card, and the same
+// arithmetic: a member row is 36px (email, layer select, Remove) with the 6px
+// space-y-1.5 gaps, so 7×36 + 6×6 = 288px.
+//
+// Measured because the consequence of leaving it out is severe: fifty people
+// in one layer rendered a 2,144px section, and three such layers a 6,432px
+// card — about seven screens, with no search in it.
+const MEMBER_ROWS = 7;
+const MEMBER_LIST_MAX = "max-h-[18rem]";   // 7×36 + 6×6 = 288px
 
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
@@ -43,7 +71,6 @@ export function CompanyStructure() {
   // the list is already unmanageable.
   const [projectSearch, setProjectSearch] = useState("");
   const [teamSearch, setTeamSearch] = useState("");
-  const [editing, setEditing] = useState<Team | null>(null);
 
   useEffect(() => {
     Promise.all([getTeams(), getProjects(), getEmployees()])
@@ -120,13 +147,11 @@ export function CompanyStructure() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-black text-foreground">Company Structure</h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Define teams and approval layers per project. Members' approval chains are derived from
-          the team config plus their direct supervisor — no per-employee overrides.
-        </p>
-      </div>
+      {/* Title only. The two lines of prose that used to sit here explained the
+          approval model to someone reading it once and cost every visit after
+          that the vertical space — but with nothing at all the panes floated
+          under the portal header with no anchor. */}
+      <h2 className="text-2xl font-black text-foreground">Company Structure</h2>
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
@@ -135,7 +160,7 @@ export function CompanyStructure() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[260px_minmax(220px,1fr)_minmax(0,2fr)]">
           {/* Pane 1 — Projects */}
-          <section className={`${CARD} flex flex-col p-4`}>
+          <section className={`${CARD} ${PANE_H} flex flex-col p-4`}>
             <div className="mb-1 flex items-center gap-2">
               <FolderKanban className="h-4 w-4 text-primary" />
               <h3 className="text-base font-black text-foreground">Projects</h3>
@@ -143,7 +168,7 @@ export function CompanyStructure() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {projects.length} total
             </p>
-            {projects.length > 5 ? (
+            {projects.length > VISIBLE_ROWS ? (
               <SearchInput
                 value={projectSearch}
                 onChange={setProjectSearch}
@@ -155,7 +180,7 @@ export function CompanyStructure() {
             ) : null}
             {/* Capped height so a long list scrolls inside the pane instead of
                 stretching the page past the other two panes. */}
-            <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
+            <div className="nice-scrollbar min-h-0 flex-1 space-y-1.5 overflow-y-auto">
               {projects.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No projects yet.</p>
               ) : sortedProjects.length === 0 ? (
@@ -196,7 +221,7 @@ export function CompanyStructure() {
           </section>
 
           {/* Pane 2 — Teams in the selected project */}
-          <section className={`${CARD} flex flex-col p-4`}>
+          <section className={`${CARD} ${PANE_H} flex flex-col p-4`}>
             <div className="mb-3 flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-primary" />
@@ -209,14 +234,17 @@ export function CompanyStructure() {
               </div>
               <button
                 type="button"
-                onClick={() => setCreating(true)}
+                onClick={() => {
+                  setSelectedTeamId(null);
+                  setCreating(true);
+                }}
                 disabled={!selectedProjectId}
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 <Plus className="h-3.5 w-3.5" /> New
               </button>
             </div>
-            {teamsInProject.length > 5 ? (
+            {teamsInProject.length > VISIBLE_ROWS ? (
               <SearchInput
                 value={teamSearch}
                 onChange={setTeamSearch}
@@ -231,7 +259,7 @@ export function CompanyStructure() {
             ) : filteredTeams.length === 0 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">No team matches that search.</p>
             ) : (
-              <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
+              <div className="nice-scrollbar min-h-0 flex-1 space-y-1.5 overflow-y-auto">
                 {filteredTeams.map((t) => {
                   const active = t.id === selectedTeamId;
                   return (
@@ -259,17 +287,27 @@ export function CompanyStructure() {
             )}
           </section>
 
-          {/* Pane 3 — Team editor / detail */}
-          <section className={`${CARD} p-5 sm:p-6`}>
-            {selectedTeam ? (
-              <TeamDetail
+          {/* Pane 3 — the editor itself, as in the previous system. Editing
+              happens beside the list you picked from, not on top of it. */}
+          <section className={`${CARD} ${PANE_H} nice-scrollbar space-y-5 overflow-y-auto p-5 sm:p-6`}>
+            {creating ? (
+              <TeamEditor
+                team={null}
+                projects={projects}
+                onCancel={() => setCreating(false)}
+                onSaved={(t) => {
+                  upsert(t);
+                  // Flip straight into editing what was just created, rather
+                  // than clearing the pane and making the admin find it.
+                  setCreating(false);
+                }}
+              />
+            ) : selectedTeam ? (
+              <TeamEditor
                 team={selectedTeam}
-                employees={employees}
-                projectName={projectName(selectedTeam.projectId)}
-                onEdit={() => setEditing(selectedTeam)}
-                onDelete={() => onDelete(selectedTeam)}
-                onUpdated={upsert}
-                onError={setError}
+                projects={projects}
+                onCancel={() => setSelectedTeamId(null)}
+                onSaved={upsert}
               />
             ) : (
               <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
@@ -283,22 +321,22 @@ export function CompanyStructure() {
         </div>
       )}
 
-      {creating ? (
-        <TeamEditorModal
-          team={null}
-          projects={projects}
-          onClose={() => setCreating(false)}
-          onSaved={upsert}
-        />
+      {/* Members, full width below the panes rather than inside the narrow
+          third one — as the previous system does it. A roster with a layer
+          dropdown and a remove action per row doesn't fit a third of a row. */}
+      {!loading && selectedTeam && !creating ? (
+        <section className={`${CARD} p-5 sm:p-6`}>
+          <TeamDetail
+            team={selectedTeam}
+            employees={employees}
+            projectName={projectName(selectedTeam.projectId)}
+            onDelete={() => onDelete(selectedTeam)}
+            onUpdated={upsert}
+            onError={setError}
+          />
+        </section>
       ) : null}
-      {editing ? (
-        <TeamEditorModal
-          team={editing}
-          projects={projects}
-          onClose={() => setEditing(null)}
-          onSaved={upsert}
-        />
-      ) : null}
+
     </div>
   );
 }
@@ -308,7 +346,6 @@ function TeamDetail({
   team,
   employees,
   projectName,
-  onEdit,
   onDelete,
   onUpdated,
   onError,
@@ -316,11 +353,12 @@ function TeamDetail({
   team: Team;
   employees: Employee[];
   projectName: string;
-  onEdit: () => void;
   onDelete: () => void;
   onUpdated: (t: Team) => void;
   onError: (msg: string) => void;
 }) {
+  const [memberSearch, setMemberSearch] = useState("");
+  const memberQuery = memberSearch.trim().toLowerCase();
   const [addEmp, setAddEmp] = useState("");
   const [addLayer, setAddLayer] = useState("0");
   const [working, setWorking] = useState(false);
@@ -350,19 +388,12 @@ function TeamDetail({
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-lg font-black text-foreground">{team.name}</p>
+          <p className="text-base font-black text-foreground">Members</p>
           <p className="text-xs text-muted-foreground">
-            {projectName} · {team.layerCount} layer{team.layerCount === 1 ? "" : "s"}
+            {projectName} · {team.members.length} assigned
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Edit
-          </button>
           <button
             type="button"
             onClick={onDelete}
@@ -374,19 +405,53 @@ function TeamDetail({
         </div>
       </div>
 
+      {/* Search across every layer at once. A crew of forty is three sections
+          you'd otherwise scroll separately to find one person, and the grouping
+          is the point of this view so it shouldn't be flattened to get a
+          filter. Offered only once the roster is bigger than a section shows. */}
+      {team.members.length > MEMBER_ROWS ? (
+        <div className="mt-4">
+          <SearchInput
+            value={memberSearch}
+            onChange={setMemberSearch}
+            placeholder="Search members…"
+            inputClassName="h-10 rounded-xl"
+            clearLabel="Clear member search"
+          />
+        </div>
+      ) : null}
+
       {/* Roster grouped by layer, top layer first */}
       <div className="mt-4 space-y-3">
         {[...layers].reverse().map((layer) => {
-          const members = team.members.filter((m) => m.layer === layer);
+          const all = team.members.filter((m) => m.layer === layer);
+          const members = memberQuery
+            ? all.filter((m) => (m.email ?? m.employeeId).toLowerCase().includes(memberQuery))
+            : all;
           return (
             <div key={layer} className="rounded-2xl border border-border/60 bg-background/50 p-3">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                {layerLabel(team, layer)}
+              <p className="flex items-baseline justify-between gap-3 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <span>{layerLabel(team, layer)}</span>
+                {/* The count matters once the list scrolls: seven visible rows
+                    out of thirty looks like the whole layer otherwise. */}
+                {all.length > 0 ? (
+                  <span className="font-semibold normal-case tracking-normal">
+                    {memberQuery && members.length !== all.length
+                      ? `${members.length} of ${all.length}`
+                      : `${all.length}`}
+                  </span>
+                ) : null}
               </p>
-              {members.length === 0 ? (
+              {all.length === 0 ? (
                 <p className="mt-1 text-xs text-muted-foreground">No one at this layer.</p>
+              ) : members.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">No one here matches that search.</p>
               ) : (
-                <ul className="mt-2 space-y-1.5">
+                // Seven rows, then scroll — the same rule as the panes above.
+                // Unbounded, a fifty-person layer was 2,144px and three of them
+                // ran to 6,432px: seven screens of card with no way to find
+                // anyone in it.
+                <ul className={`nice-scrollbar mt-2 ${MEMBER_LIST_MAX} space-y-1.5 overflow-y-auto`}>
                   {members.map((m) => (
                     <li
                       key={m.employeeId}

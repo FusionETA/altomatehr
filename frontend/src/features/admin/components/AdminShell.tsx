@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { Bell, LogOut } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { launchAppraisify } from "@/features/appraisify/api";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
-import { LeaveTypesSettings } from "@/features/settings/components/LeaveTypesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
@@ -27,10 +28,33 @@ export function AdminShell({
 }) {
   const [activeParent, setActiveParent] = useState("overview");
   const [activeChild, setActiveChild] = useState("overview");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeItem = findNavItem(activeParent);
   const initials = useMemo(() => buildInitials(user.email), [user.email]);
   const displayName = useMemo(() => buildName(user.email), [user.email]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   function selectParent(id: string) {
     const item = findNavItem(id);
@@ -41,6 +65,16 @@ export function AdminShell({
   function open(parentId: string, childId: string) {
     setActiveParent(parentId);
     setActiveChild(childId);
+  }
+
+  // A notification's url is a bare frontend path (e.g. "/claims") — this app
+  // has no router, so map the paths the backend actually sends to nav ids.
+  // Anything unmapped just closes the bell without navigating.
+  function navigateFromNotification(url: string) {
+    const path = url.split("?")[0];
+    if (path === "/claims") selectParent("claims");
+    else if (path === "/leave") selectParent("leave");
+    else if (path === "/attendance" || path === "/overtime") selectParent("attendance");
   }
 
   return (
@@ -114,15 +148,14 @@ export function AdminShell({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                type="button"
-                aria-label="Notifications"
-                className="hidden h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/90 text-muted-foreground shadow-ambient transition hover:text-foreground sm:flex"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
+              <div className="hidden sm:block">
+                <NotificationBell onNavigate={navigateFromNotification} />
+              </div>
 
-              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-2 shadow-ambient sm:gap-3 sm:px-3">
+              <div
+                ref={accountMenuRef}
+                className="relative flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-2 shadow-ambient sm:gap-3 sm:px-3"
+              >
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                   {initials}
                 </div>
@@ -132,12 +165,48 @@ export function AdminShell({
                 </div>
                 <button
                   type="button"
-                  onClick={onLogout}
-                  aria-label="Log out"
+                  aria-label="Account menu"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() => setAccountMenuOpen((open) => !open)}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <MoreVertical className="h-4 w-4" />
                 </button>
+
+                {accountMenuOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-64 overflow-hidden rounded-2xl border border-border/70 bg-card/98 p-2 text-left shadow-[0_18px_48px_rgba(76,26,134,0.14)] backdrop-blur-xl">
+                    <div className="border-b border-border/60 px-3 py-2.5">
+                      <p className="truncate text-sm font-bold text-foreground">{displayName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        launchAppraisify().catch(() => {
+                          window.alert("Couldn't open Appraisify — please try again.");
+                        });
+                      }}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    >
+                      <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
+                      Launch Appraisify
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        onLogout();
+                      }}
+                      className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+                    >
+                      <LogOut className="h-4 w-4 shrink-0" />
+                      Log out
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -227,8 +296,6 @@ function AdminContent({
       return <ProjectsSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
-    case "settings-leave":
-      return <LeaveTypesSettings />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.

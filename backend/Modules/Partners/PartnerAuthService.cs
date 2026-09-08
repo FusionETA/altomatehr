@@ -1,5 +1,9 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Email;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Notifications;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Partners.Dtos;
 using AltomateHR.Api.Modules.Partners.Entities;
@@ -19,17 +23,23 @@ public class PartnerAuthService : IPartnerAuthService
     private readonly IApiClientRepository _clients;
     private readonly IPartnerAuthStore _store;
     private readonly IOrganizationService _organizations;
+    private readonly INotificationService _notifications;
+    private readonly IEmailSender _email;
 
     public PartnerAuthService(
         IApiClientRepository clients,
         IPartnerAuthStore store,
         IDirectoryService directory,
-        IOrganizationService organizations)
+        IOrganizationService organizations,
+        INotificationService notifications,
+        IEmailSender email)
     {
         _clients = clients;
         _store = store;
         _directory = directory;
         _organizations = organizations;
+        _notifications = notifications;
+        _email = email;
     }
 
     public async Task<string?> MintLaunchTicketAsync(string appName, string userId, string organizationId)
@@ -66,6 +76,61 @@ public class PartnerAuthService : IPartnerAuthService
         return await IssueAsync(client, data.UserId, data.OrganizationId);
     }
 
+    public async Task<SendPartnerNotificationResponseDto?> SendNotificationAsync(
+        string clientSecret, SendPartnerNotificationDto dto)
+    {
+        var client = await AuthenticateClientAsync(clientSecret);
+        if (client is null) return null;   // → 401, same as the token endpoints
+
+        if (!ApiScopes.Split(client.Scopes).Contains("notifications:write"))
+            return new SendPartnerNotificationResponseDto { Status = PartnerNotificationStatus.Forbidden };
+
+        // GetMembershipAsync is the same "does this user actually belong to this
+        // org" check IssueAsync relies on below — null covers both an unknown
+        // user id and a real user who isn't a member of the claimed org, and
+        // either way the caller gets the same answer.
+        var membership = await _directory.GetMembershipAsync(dto.OrganizationId, dto.UserId);
+        if (membership is null)
+            return new SendPartnerNotificationResponseDto { Status = PartnerNotificationStatus.UserNotFound };
+
+        string? notificationId = null;
+        var delivered = false;
+
+        if (dto.Channel is NotificationChannel.NotificationCenter or NotificationChannel.Both)
+        {
+            notificationId = await _notifications.NotifyAsync(
+                dto.OrganizationId, dto.UserId, NotificationType.PARTNER_MESSAGE, dto.Title, dto.Message, dto.Link);
+            delivered = notificationId is not null;
+        }
+
+        if (dto.Channel is NotificationChannel.Email or NotificationChannel.Both)
+        {
+            var user = await _directory.GetUserAsync(dto.UserId);
+            if (!string.IsNullOrEmpty(user?.Email))
+            {
+                // Best-effort, like every other email send in this codebase
+                // (see AuthService) — a bounced/rejected send doesn't flip an
+                // otherwise-successful NotificationCenter write to Failed.
+                var sent = await _email.SendAsync(user.Email, dto.Title, BuildEmailBody(dto));
+                delivered = delivered || sent;
+            }
+        }
+
+        return delivered
+            ? new SendPartnerNotificationResponseDto { Status = PartnerNotificationStatus.Success, NotificationId = notificationId }
+            : new SendPartnerNotificationResponseDto { Status = PartnerNotificationStatus.Failed };
+    }
+
+    // Generic on purpose — this endpoint serves every registered partner app
+    // (see PartnerAuthController), not just Appraisify.
+    private static string BuildEmailBody(SendPartnerNotificationDto dto)
+    {
+        var body = $"<p>{System.Net.WebUtility.HtmlEncode(dto.Message)}</p>";
+        if (!string.IsNullOrEmpty(dto.Link))
+            body += $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(dto.Link)}\">View details</a></p>";
+        return body;
+    }
+
     // Hash the presented secret and look the app up. Vague on failure by design.
     private async Task<ApiClient?> AuthenticateClientAsync(string clientSecret)
     {
@@ -98,6 +163,7 @@ public class PartnerAuthService : IPartnerAuthService
             User = new PartnerUserDto
             {
                 Id = userId,
+                Name = user?.Name ?? string.Empty,
                 Email = user?.Email ?? string.Empty,
                 Role = membership?.Role ?? string.Empty,
             },

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Building2, KeyRound, LogOut, MoreVertical } from "lucide-react";
+import { Building2, ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
+import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
@@ -13,6 +15,7 @@ import { defaultSubOf, employeeNav, findNavItem } from "../lib/nav";
 import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
 import { EmptyModule } from "./EmptyModule";
+import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 
 function CountBadge({ count, className = "" }: { count: number; className?: string }) {
   if (count <= 0) return null;
@@ -39,6 +42,7 @@ export function EmployeeShell({
   const [claimBadge, setClaimBadge] = useState(0);
   const [leaveBadge, setLeaveBadge] = useState(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   // No org-wide attendance-approval endpoint yet, so this stays 0 (hidden).
   const attendanceBadge = 0;
@@ -117,10 +121,20 @@ export function EmployeeShell({
     setSub(childId);
   }
 
+  // A notification's url is a bare frontend path (e.g. "/leave") — this app
+  // has no router, so map the paths the backend actually sends to nav ids.
+  // Anything unmapped just closes the bell without navigating.
+  function navigateFromNotification(url: string) {
+    const path = url.split("?")[0];
+    if (path === "/claims") selectChild("claims", isSupervisor ? "claims-queue" : "claims-mine");
+    else if (path === "/leave") selectChild("leave", isSupervisor ? "leave-approvals" : "leave-mine");
+    else if (path === "/attendance") selectChild("attendance", isSupervisor ? "att-approvals" : "att-dashboard");
+    else if (path === "/overtime") selectChild("attendance", "att-overtime");
+  }
+
   const visibleChildren = (item = activeItem) =>
     (item.children ?? []).filter((c) => !c.supervisorOnly || isSupervisor);
   const activeChildren = visibleChildren();
-  const notificationCount = claimBadge + leaveBadge + attendanceBadge;
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[280px_1fr]">
@@ -198,18 +212,7 @@ export function EmployeeShell({
             </div>
 
             <div className="flex shrink-0 items-center gap-3">
-              <button
-                type="button"
-                aria-label="Notifications"
-                className="relative flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/90 text-muted-foreground shadow-ambient transition hover:text-foreground"
-              >
-                <Bell className="h-5 w-5" />
-                {notificationCount > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-destructive-foreground">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                ) : null}
-              </button>
+              <NotificationBell onNavigate={navigateFromNotification} />
 
               <div
                 ref={accountMenuRef}
@@ -244,13 +247,16 @@ export function EmployeeShell({
 
                     <button
                       type="button"
-                      disabled
-                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground opacity-60"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setChangePasswordOpen(true);
+                      }}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:bg-muted"
                     >
                       <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
                       <span>
                         <span className="block font-semibold text-foreground">Change password</span>
-                        <span className="block text-xs">Coming later</span>
+                        <span className="block text-xs">Signs out every device</span>
                       </span>
                     </button>
 
@@ -270,6 +276,20 @@ export function EmployeeShell({
                       type="button"
                       onClick={() => {
                         setAccountMenuOpen(false);
+                        launchAppraisify().catch(() => {
+                          window.alert("Couldn't open Appraisify — please try again.");
+                        });
+                      }}
+                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    >
+                      <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
+                      Launch Appraisify
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
                         onLogout();
                       }}
                       className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
@@ -283,6 +303,18 @@ export function EmployeeShell({
             </div>
           </div>
         </header>
+
+        {/* A successful change revokes every session, this one included, so the
+            only coherent next step is the login screen. */}
+        {changePasswordOpen ? (
+          <ChangePasswordModal
+            onClose={() => setChangePasswordOpen(false)}
+            onChanged={() => {
+              setChangePasswordOpen(false);
+              onLogout();
+            }}
+          />
+        ) : null}
 
         {/* Mobile sub-nav strip for the active tab's sub-pages. */}
         {activeChildren.length > 1 ? (

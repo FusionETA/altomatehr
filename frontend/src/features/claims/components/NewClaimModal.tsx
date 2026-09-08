@@ -3,7 +3,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  FileText,
   LoaderCircle,
+  Sparkles,
   MapPin,
   Receipt,
   TriangleAlert,
@@ -14,7 +16,9 @@ import {
 import {
   createClaim,
   updateClaim,
+  analyzeClaimReceipt,
   uploadClaimReceipt,
+  type AnalyzeReceiptResponse,
   type Claim,
   type CreateClaimRequest,
 } from "../api";
@@ -37,6 +41,10 @@ import {
 type FlowStep = "payment" | "type" | "receipt" | "form";
 type ClaimType = "EXPENSE" | "MILEAGE";
 type PaymentType = "PERSONAL" | "COMPANY";
+
+// Everything is priced in ringgit for now. One constant so a claim, a
+// pre-fill fallback and the copy that explains it cannot disagree.
+const DEFAULT_CURRENCY = "MYR";
 
 const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-white/80 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
@@ -64,6 +72,10 @@ export function NewClaimModal({
     editingClaim ? toPaymentType(editingClaim.paymentType) : null,
   );
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  // What OCR read, and where the analyze call already stored the file. Holding
+  // the url matters: analyze stores the receipt itself, so submitting must reuse
+  // it rather than uploading the same bytes a second time.
+  const [scan, setScan] = useState<AnalyzeReceiptResponse | null>(null);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
 
   useEffect(() => {
@@ -118,7 +130,12 @@ export function NewClaimModal({
           {step === "receipt" && claimType === "EXPENSE" && paymentType && !isEditing ? (
             <ReceiptStep
               receiptFile={receiptFile}
-              setReceiptFile={setReceiptFile}
+              setReceiptFile={(file) => {
+                setReceiptFile(file);
+                // A new file invalidates the previous read, and its stored copy.
+                setScan(null);
+              }}
+              onScanned={setScan}
               onBack={() => {
                 setClaimType(null);
                 setStep("type");
@@ -132,6 +149,7 @@ export function NewClaimModal({
               claimType={claimType}
               paymentType={paymentType}
               receiptFile={receiptFile}
+              scan={scan}
               supportingFiles={supportingFiles}
               setSupportingFiles={setSupportingFiles}
               onBack={() => setStep(claimType === "MILEAGE" ? "type" : "receipt")}
@@ -233,35 +251,117 @@ function TypeStep({
 function ReceiptStep({
   receiptFile,
   setReceiptFile,
+  onScanned,
   onBack,
   onContinue,
 }: {
   receiptFile: File | null;
   setReceiptFile: (file: File | null) => void;
+  onScanned: (scan: AnalyzeReceiptResponse | null) => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const [reading, setReading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  // HEIC/HEIF are accepted by the API but most browsers can't decode them, and
+  // a PDF isn't an <img> at all — so a preview is best-effort and this flips to
+  // the filename-only fallback when the image fails to load.
+  const [previewBroken, setPreviewBroken] = useState(false);
+
+  const isImage = receiptFile?.type.startsWith("image/") ?? false;
+  const previewUrl = useMemo(
+    () => (receiptFile && isImage ? URL.createObjectURL(receiptFile) : null),
+    [receiptFile, isImage],
+  );
+
+  // Revoke on change and on unmount, or every re-pick leaks the last blob for
+  // as long as the tab lives.
+  useEffect(() => {
+    setPreviewBroken(false);
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  // Read the receipt, then continue either way.
+  //
+  // A failed read must not block the claim: the endpoint stores the file before
+  // it calls the model, so the upload is never wasted, and the form still opens
+  // for manual entry. Only the pre-fill is lost.
+  async function scanAndContinue() {
+    if (!receiptFile) {
+      onContinue();
+      return;
+    }
+    setReading(true);
+    setReadError(null);
+    try {
+      onScanned(await analyzeClaimReceipt(receiptFile));
+      onContinue();
+    } catch (e: unknown) {
+      onScanned(null);
+      setReadError(
+        e instanceof Error
+          ? `Couldn't read the receipt (${e.message}). Fill it in below.`
+          : "Couldn't read the receipt. Fill it in below.",
+      );
+      setReading(false);
+    }
+  }
+
   return (
     <section className="space-y-5">
       <StepWithBack eyebrow="Step 3 - Main document" title="Attach the main receipt" onBack={onBack} />
+      {/* Once a file is attached the receipt itself replaces the prompt. Reading
+          it is about to be done by a model, and the only way to know it picked
+          the right document — or that the photo is legible at all — is to see
+          it. The whole tile stays the file picker, so tapping the image
+          re-opens it. */}
       <label
         htmlFor="claimReceipt"
         className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-surface-low/50 px-5 py-8 text-center transition hover:border-primary/50"
       >
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
-          <Upload className="h-5 w-5" />
-        </div>
-        <p className="mt-4 text-sm font-bold text-foreground">
-          {receiptFile ? "Main receipt attached" : "Upload main receipt"}
-        </p>
-        <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-          JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. This is the primary document for OCR later.
-        </p>
-        {receiptFile ? (
-          <p className="mt-3 max-w-full truncate rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground">
-            {receiptFile.name}
-          </p>
-        ) : null}
+        {receiptFile && previewUrl && !previewBroken ? (
+          <>
+            <img
+              src={previewUrl}
+              alt={`Receipt preview: ${receiptFile.name}`}
+              onError={() => setPreviewBroken(true)}
+              // Contained and capped: a portrait phone photo would otherwise
+              // push the buttons off the bottom of the modal.
+              className="max-h-64 w-auto max-w-full rounded-2xl border border-border/60 bg-background object-contain shadow-sm"
+            />
+            <p className="mt-3 max-w-full truncate text-xs font-medium text-muted-foreground">
+              {receiptFile.name}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-primary">Tap to choose a different file</p>
+          </>
+        ) : (
+          <>
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+              {receiptFile ? <FileText className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
+            </div>
+            <p className="mt-4 text-sm font-bold text-foreground">
+              {receiptFile ? "Main receipt attached" : "Upload main receipt"}
+            </p>
+            {receiptFile ? (
+              <>
+                <p className="mt-1 max-w-full truncate text-xs font-medium text-muted-foreground">
+                  {receiptFile.name}
+                </p>
+                <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                  {isImage
+                    ? "This format can't be previewed here, but it will still be read."
+                    : "PDFs can't be previewed here, but they will still be read."}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. We'll read the supplier, amount and
+                date off it so you don't have to type them.
+              </p>
+            )}
+          </>
+        )}
       </label>
       <input
         id="claimReceipt"
@@ -270,21 +370,31 @@ function ReceiptStep({
         className="sr-only"
         onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
       />
+      {readError ? (
+        <p className="text-sm font-medium text-destructive">{readError}</p>
+      ) : null}
+
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
-          onClick={onContinue}
-          className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+          disabled={reading}
+          onClick={() => {
+            onScanned(null);
+            onContinue();
+          }}
+          className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
         >
           Skip and fill manually
         </button>
         <button
           type="button"
-          onClick={onContinue}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90"
+          disabled={reading}
+          onClick={() => void scanAndContinue()}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:opacity-60"
         >
-          Continue
-          <ArrowRight className="h-4 w-4" />
+          {reading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {reading ? "Reading receipt…" : receiptFile ? "Read receipt & continue" : "Continue"}
+          {reading ? null : <ArrowRight className="h-4 w-4" />}
         </button>
       </div>
     </section>
@@ -295,6 +405,7 @@ function ClaimDetailsForm({
   claimType,
   paymentType,
   receiptFile,
+  scan,
   supportingFiles,
   setSupportingFiles,
   onBack,
@@ -306,6 +417,7 @@ function ClaimDetailsForm({
   claimType: ClaimType;
   paymentType: PaymentType;
   receiptFile: File | null;
+  scan: AnalyzeReceiptResponse | null;
   supportingFiles: File[];
   setSupportingFiles: (files: File[]) => void;
   onBack: () => void;
@@ -315,15 +427,32 @@ function ClaimDetailsForm({
   onUpdated?: (claim: Claim) => void;
 }) {
   const isEditing = Boolean(editingClaim);
-  const [title, setTitle] = useState(editingClaim?.title ?? "");
-  const [description, setDescription] = useState(editingClaim?.description ?? "");
-  const [amount, setAmount] = useState(editingClaim ? String(editingClaim.amount) : "");
-  const [currency, setCurrency] = useState(editingClaim?.currency ?? "MYR");
+
+  // Seeded from the OCR read where there is one. Pre-fill only — every field
+  // stays editable, because the model is instructed to return null rather than
+  // guess and a receipt can still be misread.
+  const read = scan?.extraction ?? null;
+
+  const [title, setTitle] = useState(editingClaim?.title ?? read?.supplier ?? "");
+  const [description, setDescription] = useState(editingClaim?.description ?? read?.description ?? "");
+  const [amount, setAmount] = useState(
+    editingClaim ? String(editingClaim.amount) : read?.total != null ? String(read.total) : "",
+  );
+  // No setter: the currency is settled before this form opens — the server
+  // resolved it from the receipt, or fell back — and re-deriving it here from
+  // the org is how the two drift apart.
+  const [currency] = useState(
+    editingClaim?.currency ?? read?.resolvedCurrency ?? DEFAULT_CURRENCY,
+  );
   const [spentAt, setSpentAt] = useState(
-    editingClaim?.spentAt ? editingClaim.spentAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    editingClaim?.spentAt
+      ? editingClaim.spentAt.slice(0, 10)
+      : (read?.date ?? new Date().toISOString().slice(0, 10)),
   );
   const [projectId, setProjectId] = useState(editingClaim?.projectId ?? "");
-  const [chartOfAccountId, setChartOfAccountId] = useState(editingClaim?.chartOfAccountId ?? "");
+  const [chartOfAccountId, setChartOfAccountId] = useState(
+    editingClaim?.chartOfAccountId ?? read?.suggestedAccountId ?? "",
+  );
   const [payViaAccountId, setPayViaAccountId] = useState(editingClaim?.payViaAccountId ?? "");
   const [spendingAt, setSpendingAt] = useState(editingClaim?.spendingAt ?? "");
   const [spendingWith, setSpendingWith] = useState(editingClaim?.spendingWith ?? "");
@@ -348,7 +477,11 @@ function ClaimDetailsForm({
       setProjects(projectList.filter((p) => !p.isArchived));
       setAccounts(accountList.filter((a) => !a.isArchived));
       setOrganization(org);
-      if (!editingClaim && org?.defaultCurrency) setCurrency(org.defaultCurrency);
+      // Currency is deliberately NOT re-read from the org here. The server
+      // already resolved it — the code off the receipt, or the fallback when it
+      // was unreadable — and setting it again from a second source is how the
+      // two drift. It also used to overwrite a currency Gemini had read
+      // correctly, because this effect runs after the initial state.
     });
     return () => {
       active = false;
@@ -403,7 +536,13 @@ function ClaimDetailsForm({
 
     try {
       const existingSupportingDocumentUrls = editingClaim?.supportingDocumentUrls ?? [];
-      const uploadedReceipt = receiptFile ? await uploadClaimReceipt(receiptFile) : null;
+      // Analyze already stored this exact file and gave us its url — uploading
+      // again would leave two copies on disk and charge the claim the second.
+      const uploadedReceipt = scan
+        ? { receiptUrl: scan.receiptUrl }
+        : receiptFile
+          ? await uploadClaimReceipt(receiptFile)
+          : null;
       const filesToUpload = isEditing ? additionalSupportingFiles : supportingFiles;
       const uploadedSupportingDocuments = await Promise.all(filesToUpload.map((file) => uploadClaimReceipt(file)));
       const supportingDocumentUrls = [
@@ -465,6 +604,24 @@ function ClaimDetailsForm({
           </span>
         </div>
       </div>
+
+      {/* Say where these values came from. A pre-filled form that doesn't
+          explain itself invites the employee to trust a reading of a photo —
+          and it is the employee who signs the claim, not the model. */}
+      {read ? (
+        <div className="flex gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0 text-xs">
+            <p className="font-bold text-primary">Filled in from your receipt</p>
+            <p className="mt-0.5 text-muted-foreground">
+              Check every field before submitting &mdash; especially the amount.
+              {read.currencyWasOverridden
+                ? ` The currency wasn't readable, so ${DEFAULT_CURRENCY} was used.`
+                : ""}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-3 sm:col-span-2">

@@ -17,6 +17,7 @@ public static class ApiScopes
         "accounts:read",      "accounts:write",
         "policies:read",      "policies:write",
         "organizations:read", "organizations:write",
+        "notifications:write",   // no :read pair — there's nothing to list, only send
     };
 
     private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);

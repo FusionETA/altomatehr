@@ -59,7 +59,7 @@ public class EngineMailerEmailSender : IEmailSender
             SenderEmail = _options.FromEmail,
             SenderName = _options.FromName,
             Subject = subject,
-            Body = htmlBody,
+            SubmittedContent = htmlBody,
             ToEmail = toEmail,
         };
 
@@ -128,10 +128,12 @@ public class EngineMailerEmailSender : IEmailSender
                 var statusCode = ReadString(result, "StatusCode");
                 var status = ReadString(result, "Status");
 
-                // EngineMailer reports its own status as a string code; 200/OK is
-                // the only accepted outcome.
+                // Any 2xx is an accept, not just an exact "200" — EngineMailer
+                // answers 202 for accepted-for-delivery, and demanding 200
+                // would log a perfectly good send as a rejection. Matches the
+                // monolith's rule (`code.startsWith("2")`).
                 var accepted =
-                    string.Equals(statusCode, "200", StringComparison.Ordinal) ||
+                    statusCode?.StartsWith('2') == true ||
                     string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(status, "Success", StringComparison.OrdinalIgnoreCase);
 
@@ -174,8 +176,15 @@ public class EngineMailerEmailSender : IEmailSender
         [JsonPropertyName("Subject")]
         public string Subject { get; set; } = string.Empty;
 
-        [JsonPropertyName("Body")]
-        public string Body { get; set; } = string.Empty;
+        // The HTML goes in SubmittedContent, NOT Body.
+        //
+        // EngineMailer silently ignores an unknown field, so sending it as
+        // `Body` produced a delivered email with an empty message — a 200 from
+        // the API, an "accepted" verdict in the response body, and nothing to
+        // read. Confirmed against the monolith's working client, which posts
+        // SubmittedContent.
+        [JsonPropertyName("SubmittedContent")]
+        public string SubmittedContent { get; set; } = string.Empty;
 
         [JsonPropertyName("ToEmail")]
         public string ToEmail { get; set; } = string.Empty;

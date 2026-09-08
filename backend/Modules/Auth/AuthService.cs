@@ -239,6 +239,37 @@ public class AuthService : IAuthService
         return null;
     }
 
+    // Change your own password, proving it's you with the current one.
+    //
+    // Returns an error string, or null on success — same shape as
+    // ResetPasswordAsync. The wrong-password message is specific here, unlike
+    // the reset path: the caller is already authenticated, so telling them the
+    // current password is wrong reveals nothing they don't know.
+    public async Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+    {
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user is null) return "Account not found.";
+
+        // Verify through PasswordHasher, not BC directly: accounts migrated from
+        // the monolith still carry scrypt hashes, and BC.Verify would throw on
+        // one instead of simply rejecting it.
+        if (!PasswordHasher.Verify(currentPassword, user.PasswordHash))
+            return "That's not your current password.";
+
+        if (PasswordHasher.Verify(newPassword, user.PasswordHash))
+            return "Choose a password you haven't used here before.";
+
+        user.PasswordHash = BC.HashPassword(newPassword);
+        await _userRepo.UpdateAsync(user);
+
+        // Same reason as the reset path: a stolen refresh token must not survive
+        // the change meant to shut it out. The caller's own session goes too —
+        // the client re-authenticates, which is the honest outcome.
+        await _refreshRepo.RevokeAllForUserAsync(user.Id);
+
+        return null;
+    }
+
     // Uniform across the full 000000-999999 range; RandomNumberGenerator avoids
     // the modulo bias a naive Random.Next would introduce.
     private static string GenerateOtp() =>
@@ -246,14 +277,26 @@ public class AuthService : IAuthService
 
     private static string BuildOtpEmail(string name, string code, int minutes)
     {
-        var greeting = string.IsNullOrWhiteSpace(name) ? "Hello," : $"Hello {System.Net.WebUtility.HtmlEncode(name)},";
-        return $"""
-            <p>{greeting}</p>
-            <p>Use this code to reset your AltomateHR password:</p>
-            <p style="font-size:28px;font-weight:bold;letter-spacing:4px;">{code}</p>
-            <p>It expires in {minutes} minutes and can only be used once.</p>
-            <p>If you didn't request this, you can ignore this email — your password won't change.</p>
-            """;
+        var greeting = string.IsNullOrWhiteSpace(name)
+            ? "Hello,"
+            : $"Hello {System.Net.WebUtility.HtmlEncode(name)},";
+
+        var body =
+            EmailTemplate.Paragraph(greeting)
+            + EmailTemplate.Paragraph("Use this code to reset your AltomateHR password:")
+            + EmailTemplate.CodeBlock(code)
+            + EmailTemplate.Paragraph(
+                $"It expires in <strong>{minutes} minutes</strong> and can only be used once.")
+            + EmailTemplate.Paragraph(
+                "If you didn't request this, you can ignore this email — your password won't change.",
+                muted: true);
+
+        // The preheader carries the code, so the inbox list already shows it and
+        // a reader on a phone often doesn't need to open the mail at all.
+        return EmailTemplate.Wrap(
+            "Reset your password",
+            body,
+            preheader: $"Your code is {code}. It expires in {minutes} minutes.");
     }
 
     private async Task<AuthResult> IssueTokensAsync(string userId, string email, string role, string organizationId)

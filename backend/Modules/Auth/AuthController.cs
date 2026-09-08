@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -89,6 +90,32 @@ public class AuthController : ControllerBase
     {
         var error = await _auth.ResetPasswordAsync(dto.Email.Trim(), dto.Otp, dto.NewPassword);
         return error is null ? NoContent() : BadRequest(new { message = error });
+    }
+
+    // POST /auth/change-password — a signed-in user changing their own password.
+    //
+    // Authenticated, and the user comes from the token rather than the body, so
+    // one account can't change another's. Rate-limited on the same policy as the
+    // reset flow: this endpoint also accepts a password guess, so it needs the
+    // same protection against being walked.
+    //
+    // Every session is revoked on success, including this one — so the refresh
+    // cookie is cleared here too. Leaving it would hand the client a cookie the
+    // server has already thrown away, and the next silent refresh would fail
+    // for no visible reason.
+    [Authorize]
+    [HttpPost("change-password")]
+    [EnableRateLimiting("auth-forgot-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+
+        var error = await _auth.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword);
+        if (error is not null) return BadRequest(new { message = error });
+
+        Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = "/auth" });
+        return NoContent();
     }
 
     // POST /auth/switch-org/{organizationId} — re-mint the token for another org you belong to.

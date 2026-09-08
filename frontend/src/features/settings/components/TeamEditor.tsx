@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import { LoaderCircle, Lock } from "lucide-react";
 import {
   APPROVAL_MODULES,
   createTeam,
@@ -19,15 +19,22 @@ import {
 const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-white/80 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
-export function TeamEditorModal({
+// The team editor, living in the third pane rather than a modal.
+//
+// Follows the previous system's flow: pick a project, pick a team, edit it in
+// place. A modal made the pane a placeholder that said "Pick a team" and then
+// covered the very list you picked from — you couldn't see the roster you were
+// changing the layers for.
+export function TeamEditor({
   team,
   projects,
-  onClose,
+  onCancel,
   onSaved,
 }: {
+  /** Null puts the panel in create mode. */
   team: Team | null;
   projects: Project[];
-  onClose: () => void;
+  onCancel: () => void;
   onSaved: (t: Team) => void;
 }) {
   const [projectId, setProjectId] = useState(team?.projectId ?? projects[0]?.id ?? "");
@@ -47,10 +54,29 @@ export function TeamEditorModal({
 
   function setCount(n: number) {
     const count = Math.max(1, Math.min(6, Math.round(n) || 1));
+    const grew = count > layerCount;
     setLayerCount(count);
     setLabels((prev) => Array.from({ length: count }, (_, i) => prev[i] ?? ""));
     setConfig((prev) =>
-      Object.fromEntries(APPROVAL_MODULES.map((m) => [m, (prev[m] ?? []).filter((l) => l < count)])),
+      Object.fromEntries(
+        APPROVAL_MODULES.map((m) => {
+          const within = (prev[m] ?? []).filter((l) => l < count);
+
+          // A newly-added layer approves by default — but only where the module
+          // already has an approving layer. Without this, growing the team left
+          // the new layer approving nothing, silently: an admin adds a Manager
+          // tier and it reviews none of the four modules until they notice.
+          //
+          // An intentionally emptied column means "skip approvals for this
+          // module", so it stays empty rather than being re-populated behind
+          // the admin's back.
+          if (grew && within.length > 0) {
+            for (let l = layerCount; l < count; l += 1) within.push(l);
+            within.sort((a, b) => a - b);
+          }
+          return [m, within];
+        }),
+      ),
     );
   }
 
@@ -69,14 +95,21 @@ export function TeamEditorModal({
     setSaving(true);
     setError(null);
     const layerLabels = labels.map((l) => l.trim());
+    // Layer 0 is always present in what gets saved — the row is locked on, so
+    // the payload has to agree with the screen.
     const moduleApprovalConfig = Object.fromEntries(
-      APPROVAL_MODULES.map((m) => [m, (config[m] ?? []).filter((l) => l < layerCount)]),
+      APPROVAL_MODULES.map((m) => {
+        const layers = new Set((config[m] ?? []).filter((l) => l < layerCount));
+        layers.add(0);
+        return [m, [...layers].sort((a, b) => a - b)];
+      }),
     );
     const base = { name: name.trim(), layerCount, layerLabels, moduleApprovalConfig };
     try {
       const saved = team ? await updateTeam(team.id, base) : await createTeam({ projectId, ...base });
+      // The parent selects the new team, so creating flips straight into
+      // editing it rather than dropping back to an empty pane.
       onSaved(saved);
-      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the team.");
     } finally {
@@ -85,19 +118,16 @@ export function TeamEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
-        <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
-          <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
-            <h2 className="text-2xl font-black text-foreground">{team ? "Edit team" : "New team"}</h2>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={onClose}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
+    <form onSubmit={handleSubmit}>
+          <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-3">
+            <div>
+              <h3 className="text-base font-black text-foreground">
+                {team ? team.name : "New team"}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {team ? "Layers and approvals" : "Name it, then set its layers"}
+              </p>
+            </div>
           </div>
 
           <div className="mt-5 space-y-4">
@@ -179,26 +209,48 @@ export function TeamEditorModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {labels.map((label, i) => (
-                      <tr key={i} className="border-b border-border/60 last:border-b-0">
-                        <td className="py-2 pl-2 pr-2 text-sm font-medium text-foreground">
-                          {label.trim() || `Layer ${i + 1}`}
-                        </td>
-                        {APPROVAL_MODULES.map((m) => (
-                          <td key={m} className="px-2 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-border accent-primary"
-                              checked={(config[m] ?? []).includes(i)}
-                              onChange={() => toggle(m, i)}
-                            />
+                    {labels.map((label, i) => {
+                      // The bottom layer is locked on. It's the base of the
+                      // team — where requests come FROM — so it isn't a choice.
+                      const locked = i === 0;
+                      return (
+                        <tr key={i} className="border-b border-border/60 last:border-b-0">
+                          <td className="py-2 pl-2 pr-2 text-sm font-medium text-foreground">
+                            {label.trim() || `Layer ${i + 1}`}
+                            {locked ? (
+                              <Lock className="ml-1.5 inline h-3 w-3 -translate-y-px text-muted-foreground" />
+                            ) : null}
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          {APPROVAL_MODULES.map((m) => (
+                            <td key={m} className="px-2 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                disabled={locked}
+                                aria-label={
+                                  locked
+                                    ? `${m}: the base layer is always included`
+                                    : `${m} approved at ${label.trim() || `layer ${i + 1}`}`
+                                }
+                                className="h-4 w-4 rounded border-border accent-primary disabled:opacity-60"
+                                checked={locked || (config[m] ?? []).includes(i)}
+                                onChange={locked ? undefined : () => toggle(m, i)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              <p className="text-xs text-muted-foreground">
+                {/* Said plainly because the locked row otherwise reads as "Staff
+                    approves everything", which never happens: a chain starts at
+                    the layer ABOVE the person filing, so nothing routes to the
+                    bottom layer — there is nobody below it. */}
+                The base layer is locked on: it's where requests are filed from, so it never
+                receives one to approve.
+              </p>
               <p className="text-xs text-muted-foreground">
                 OT &amp; Attendance are saved but only take effect once those modules land.
               </p>
@@ -212,13 +264,17 @@ export function TeamEditorModal({
           ) : null}
 
           <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
-            >
-              Cancel
-            </button>
+            {/* Nothing to cancel out of once a team exists — the panel just
+                shows the selected team, so a Cancel would be a no-op button. */}
+            {team ? null : (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="submit"
               disabled={saving || !name.trim() || (!team && !projectId)}
@@ -228,8 +284,6 @@ export function TeamEditorModal({
               {team ? "Save changes" : "Create team"}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+    </form>
   );
 }
