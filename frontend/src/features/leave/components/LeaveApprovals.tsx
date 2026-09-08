@@ -21,7 +21,6 @@ import {
   BulkActionBar,
   BulkResultPanel,
   BulkRowCheckbox,
-  BulkSelectAllCheckbox,
   SelectAllPill,
   SelectHint,
   SelectModeButton,
@@ -233,11 +232,31 @@ export function LeaveApprovals() {
       <div className="space-y-4 sm:space-y-6">
         <section className={`hidden md:block ${CARD}`}>
           <div className="space-y-4 px-5 pb-5 pt-3 sm:space-y-5 sm:p-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-lg font-black text-foreground">Team approvals</h2>
-              <p className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{filtered.length}</span> pending
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">{filtered.length}</span> pending
+                </p>
+                {/* The same control the phone gets — see ClaimsApprovals for why
+                    a permanent checkbox column was the wrong desktop pattern. */}
+                {selection.selectable.length > 0 ? (
+                  <>
+                    {selection.mode ? (
+                      <SelectAllPill
+                        inputRef={selection.selectAllRef}
+                        total={selection.selectable.length}
+                        allSelected={selection.allSelected}
+                        onToggleAll={selection.toggleAll}
+                      />
+                    ) : null}
+                    <SelectModeButton
+                      active={selection.mode}
+                      onToggle={() => (selection.mode ? selection.exit() : selection.enter())}
+                    />
+                  </>
+                ) : null}
+              </div>
             </div>
             <SearchInput
               value={searchTerm}
@@ -384,14 +403,7 @@ export function LeaveApprovals() {
               <table className="w-full min-w-[960px] caption-bottom text-sm">
                 <thead>
                   <tr className="border-b border-border/60">
-                    <th className="h-12 w-12 pl-6 text-left">
-                      <BulkSelectAllCheckbox
-                        inputRef={selection.selectAllRef}
-                        checked={selection.allSelected}
-                        disabled={selection.selectable.length === 0}
-                        onChange={selection.toggleAll}
-                      />
-                    </th>
+                    {selection.mode ? <th className="h-12 w-12 pl-6 text-left" /> : null}
                     {["Employee", "Type", "Dates", "Days", "Submitted", "Action"].map((h) => (
                       <th
                         key={h}
@@ -411,14 +423,18 @@ export function LeaveApprovals() {
                       onKeyDown={(event) => handleRowKeyDown(event, a)}
                       className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                     >
-                      <td className="p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
-                        <BulkRowCheckbox
-                          label={`Select ${employeeName(a)}'s request`}
-                          checked={selection.has(a.id)}
-                          disabled={!isBulkable(a)}
-                          onChange={() => selection.toggle(a.id)}
-                        />
-                      </td>
+                      {selection.mode ? (
+                        <td className="w-12 p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
+                          {isBulkable(a) ? (
+                            <BulkRowCheckbox
+                              label={`Select ${employeeName(a)}'s request`}
+                              checked={selection.has(a.id)}
+                              disabled={false}
+                              onChange={() => selection.toggle(a.id)}
+                            />
+                          ) : null}
+                        </td>
+                      ) : null}
                       <td className="p-4 align-middle">
                         <p className="font-bold text-foreground">{employeeName(a)}</p>
                         <p className="text-xs text-muted-foreground">{a.employeeEmail ?? ""}</p>
