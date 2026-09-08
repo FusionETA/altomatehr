@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Overtime.Dtos;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Tests.Claims;
+using AltomateHR.Api.Tests.Support;
 
 namespace AltomateHR.Api.Tests.Teams;
 
@@ -89,7 +90,8 @@ public class NoApproverAboveTests
             repo,
             new StubOvertimePhotos(),
             new FakeSupervisionService(),
-            new FakeApprovalRouter(chains));
+            new FakeApprovalRouter(chains),
+            new FakeNotificationService());
     }
 
     private sealed class StubOvertimeRepository : IOvertimeRepository

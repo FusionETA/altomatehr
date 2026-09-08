@@ -839,6 +839,7 @@ public class LeaveServiceTests
             new FakeOrganizationService(),
             new FakeHolidayService(),
             new FakeRealtimeService(),
+            new FakeNotificationService(),
             employees ?? new FakeEmployeeDirectory(),
             new FakeTeamService(),
             new FakeProjectService());

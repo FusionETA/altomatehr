@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
+using AltomateHR.Api.Tests.Support;
 
 namespace AltomateHR.Api.Tests.Overtime;
 
@@ -126,7 +127,8 @@ public class OvertimeBulkApproveTests
         new(new FakeOvertimeRepository(requests),
             new UnusedPhotoStorage(),
             new FakeSupervisionService(),
-            router);
+            router,
+            new FakeNotificationService());
 
     private static OvertimeRequest NewRequest(
         string id,
