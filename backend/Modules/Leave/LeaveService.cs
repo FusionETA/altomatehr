@@ -1182,6 +1182,29 @@ public class LeaveService : ILeaveService
         return stuck;
     }
 
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
+        foreach (var app in (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING))
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+            foreach (var reviewerId in approvers)
+            {
+                var key = (reviewerId, app.OrganizationId);
+                countByKey[key] = countByKey.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        return countByKey
+            .Select(kv => new OrgApprovalDigestEntryDto
+            {
+                ReviewerId = kv.Key.ReviewerId,
+                OrganizationId = kv.Key.OrganizationId,
+                PendingCount = kv.Value,
+            })
+            .ToList();
+    }
+
     private static void AppendTrail(
         LeaveApplication app, int step, string actorId, string decision, string? notes)
     {

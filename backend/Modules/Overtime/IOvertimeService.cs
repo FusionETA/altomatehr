@@ -29,6 +29,10 @@ public interface IOvertimeService
     // Resolves PENDING items that no longer have any approver to route to.
     // `apply: false` only counts them. See the implementation for why.
     Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
+
+    // Every reviewer's current pending-overtime count, org-wide — consumed by
+    // Modules/Approvals/ApprovalDigestService for the daily cross-module digest.
+    Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
 }
 
 public record OvertimeSubmitResult(bool Ok, OvertimeRequestDto? Request, string? Error);
