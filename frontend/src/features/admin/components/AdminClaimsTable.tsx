@@ -131,8 +131,15 @@ export function AdminClaimsTable({
     }
   }
 
-  // An admin sits in the approval chain like anyone else, so the rows they can
-  // decide get buttons and the rest say why they do not.
+  // Rows the viewer can decide get buttons; the rest say why they cannot.
+  //
+  // An admin is never such a viewer: the router leaves administrative seats out
+  // of every chain, so canAct is always false for the role that sees this
+  // table, and the Approve/Reject branch below is unreachable from here. It is
+  // kept because canAct is the viewer's own permission rather than a role
+  // check, so this table stays correct if a non-administrative approver is ever
+  // given it. Do NOT "fix" the empty state by putting an admin back in a chain
+  // — see AdminNeverApprovesTests.
   function rowActions(claim: Claim) {
     if (!claim.canAct) {
       // Approved: the decision left is how it gets PAID, which is where the old
