@@ -9,6 +9,7 @@ export type NotificationType =
   | "ATTENDANCE_APPROVAL"
   | "OVERTIME_SUBMITTED"
   | "OVERTIME_REVIEWED"
+  | "APPROVAL_DIGEST"
   | "PARTNER_MESSAGE";
 
 export type Notification = {

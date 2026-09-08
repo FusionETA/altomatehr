@@ -8,11 +8,13 @@ import {
 } from "../api";
 import { timeAgo } from "../lib/format";
 import { disablePush, enablePush, getPushStatus, isPushSupported, type PushStatus } from "../lib/push";
+import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 
-// How often the badge refreshes itself while the bell just sits in the
-// header. There's no realtime scope for notifications (unlike Claims/Leave/
-// Attendance's SSE nudges), so this is a plain poll rather than a push-driven
-// refetch — good enough for a bell, not worth a backend change on its own.
+// There's no realtime scope dedicated to "a notification was persisted" —
+// only CLAIMS/ATTENDANCE/LEAVE domain nudges exist — but every one of those
+// actions also creates a bell notification, so treating any of them as "go
+// refetch the bell" gets it live-updating anyway. The poll stays as a
+// fallback for the (rare) stretch where the SSE stream is reconnecting.
 const POLL_MS = 45_000;
 
 export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) => void }) {
@@ -41,6 +43,8 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
     const interval = window.setInterval(refresh, POLL_MS);
     return () => window.clearInterval(interval);
   }, [refresh]);
+
+  useRealtimeEvent(["CLAIMS", "ATTENDANCE", "LEAVE"], refresh);
 
   useEffect(() => {
     if (isPushSupported()) getPushStatus().then(setPushStatus);

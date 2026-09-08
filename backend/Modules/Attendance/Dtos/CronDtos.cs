@@ -33,9 +33,13 @@ public class PendingApprovalDigestDto
 
 // One reviewer's pending-approval count in the org-wide digest sweep — the
 // background service's view (every reviewer), as opposed to the per-caller
-// PendingApprovalDigestDto. Detection only; the cron just logs these.
+// PendingApprovalDigestDto. Consumed by Modules/Approvals/ApprovalDigestService,
+// which merges this with the other three modules' equivalents and sends the
+// actual daily notification — OrganizationId travels with each entry because
+// the sweep that produces this list has no request context and spans every org.
 public class OrgApprovalDigestEntryDto
 {
     public string ReviewerId { get; set; } = string.Empty;
+    public string OrganizationId { get; set; } = string.Empty;
     public int PendingCount { get; set; }
 }

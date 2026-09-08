@@ -399,6 +399,34 @@ public class OvertimeService : IOvertimeService
         return stuck;
     }
 
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
+        foreach (var request in (await _requests.GetAllAsync()).Where(r => r.Status == OvertimeStatus.PENDING))
+        {
+            // Same exclusion as ReconcileUnreachableApprovalsAsync: without an
+            // after-work photo this isn't actually approvable yet, so counting
+            // it would overstate a reviewer's real backlog.
+            if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
+
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            foreach (var reviewerId in approvers)
+            {
+                var key = (reviewerId, request.OrganizationId);
+                countByKey[key] = countByKey.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        return countByKey
+            .Select(kv => new OrgApprovalDigestEntryDto
+            {
+                ReviewerId = kv.Key.ReviewerId,
+                OrganizationId = kv.Key.OrganizationId,
+                PendingCount = kv.Value,
+            })
+            .ToList();
+    }
+
     // A newly-submitted request: nudge whoever has to review it. Same shape as
     // Claims/Leave's SUBMITTED notification — no realtime SSE nudge here since
     // Overtime never had one, but the persisted bell entry is the part that was

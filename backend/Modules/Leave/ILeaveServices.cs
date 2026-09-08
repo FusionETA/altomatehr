@@ -102,6 +102,10 @@ public interface ILeaveService
     // Resolves PENDING items that no longer have any approver to route to.
     // `apply: false` only counts them. See the implementation for why.
     Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
+
+    // Every reviewer's current pending-leave count, org-wide — consumed by
+    // Modules/Approvals/ApprovalDigestService for the daily cross-module digest.
+    Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
 }
 
 // Ok=false carries a human-readable Error (e.g. duplicate code, bad dates).

@@ -60,6 +60,10 @@ public interface IClaimsService
     // `apply: false` only counts them. See the implementation for why.
     Task<int> ReconcileUnreachableApprovalsAsync(bool apply);
 
+    // Every reviewer's current pending-claim count, org-wide — consumed by
+    // Modules/Approvals/ApprovalDigestService for the daily cross-module digest.
+    Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync();
+
     // ---- Settings ----
 
     // The claims module's own org settings (the claim-run cutoff day).
