@@ -40,6 +40,13 @@ public class OvertimeController : ControllerBase
     public async Task<IActionResult> GetTeam() =>
         Ok(await _overtime.GetTeamAsync(GetUserId()));
 
+    // GET /overtime/all — org-wide, for the admin attendance view.
+    [RequireScope("overtime:read")]
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetAllForAdmin() =>
+        Ok(await _overtime.GetAllForAdminAsync());
+
     [RequireScope("overtime:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)

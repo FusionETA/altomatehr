@@ -209,6 +209,7 @@ public class OrganizationService : IOrganizationService
         ClaimRunCutoffDay = o.ClaimRunCutoffDay,
         ClaimSettlementRoute = o.ClaimSettlementRoute.ToString(),
         XeroBillStage = o.XeroBillStage.ToString(),
+        SupervisorSlaMinutes = o.SupervisorSlaMinutes,
         Plan = o.Plan.ToString(),
         Tier = o.Tier?.ToString(),
         Addons = OrgModules.Split(o.Addons),

@@ -23,6 +23,9 @@ public class OrganizationDto
     public string ClaimSettlementRoute { get; set; } = "XERO_BILL";
     public string XeroBillStage { get; set; } = "AwaitingPayment";
 
+    // The line the attendance performance report measures supervisors against.
+    public int SupervisorSlaMinutes { get; set; } = 60;
+
     // Subscription / package + the modules it resolves to (read-only view).
     public string Plan { get; set; } = "DIY";
     public string? Tier { get; set; }

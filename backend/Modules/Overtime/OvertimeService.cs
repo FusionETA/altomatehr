@@ -58,6 +58,21 @@ public class OvertimeService : IOvertimeService
         });
     }
 
+    public async Task<IEnumerable<OvertimeRequestDto>> GetAllForAdminAsync()
+    {
+        var all = (await _requests.GetAllAsync())
+            .OrderByDescending(r => r.WorkDate)
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(all.Select(r => r.EmployeeId).Distinct());
+        return all.Select(request =>
+        {
+            var dto = ToDto(request);
+            dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
+            return dto;
+        });
+    }
+
     public async Task<OvertimeRequestDto?> GetVisibleByIdAsync(string id, string userId, bool isAdmin)
     {
         var request = await _requests.GetByIdAsync(id);

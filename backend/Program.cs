@@ -268,6 +268,7 @@ builder.Services.AddScoped<ITeamMembershipRepository, TeamMembershipRepository>(
 builder.Services.AddScoped<IApprovalChainService, ApprovalChainService>();
 builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<IApprovalReconciliationService, ApprovalReconciliationService>();
+builder.Services.AddScoped<IAdminAttendanceService, AdminAttendanceService>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ITeamService, TeamService>();

@@ -7,6 +7,14 @@ public interface IOvertimeService
 {
     Task<IEnumerable<OvertimeRequestDto>> GetMineAsync(string userId);
     Task<IEnumerable<OvertimeRequestDto>> GetTeamAsync(string userId);
+
+    // Every overtime request in the org, for the admin attendance view.
+    //
+    // Deliberately not GetTeamAsync: that one is approver-scoped, and an admin
+    // is never in an approval chain (OrgRoles.IsAdministrative), so it would
+    // hand an admin an empty list. Oversight reads the whole org; the tenant
+    // filter keeps "whole org" honest.
+    Task<IEnumerable<OvertimeRequestDto>> GetAllForAdminAsync();
     Task<OvertimeRequestDto?> GetVisibleByIdAsync(string id, string userId, bool isAdmin);
     Task<OvertimeSubmitResult> SubmitAsync(CreateOvertimeRequestDto dto, string employeeId);
     Task<OvertimeTransitionResult> AttachAfterPhotoAsync(string id, string userId, AttachOvertimeAfterPhotoDto dto);
