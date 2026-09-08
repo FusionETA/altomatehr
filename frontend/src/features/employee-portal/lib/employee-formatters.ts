@@ -1,8 +1,10 @@
-export function buildInitials(email: string) {
+// Prefers a real name when one is known — "Evan Employee" reads as EE, where
+// the email local part would give EM.
+export function buildInitials(email: string, name?: string | null) {
+  const source = name?.trim() ? name.trim() : email.split("@")[0];
   return (
-    email
-      .split("@")[0]
-      .split(/[._-]/)
+    source
+      .split(/[\s._-]+/)
       .filter(Boolean)
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())

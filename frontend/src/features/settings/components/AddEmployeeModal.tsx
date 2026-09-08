@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
-import { createEmployee, ROLES, type Employee } from "@/features/employees/api";
+import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
 
 const INPUT =
@@ -31,7 +31,10 @@ export function AddEmployeeModal({
   onClose: () => void;
   onCreated: (created: Employee) => void;
 }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [employeeNumber, setEmployeeNumber] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<string>("Employee");
   const [supervisorId, setSupervisorId] = useState<string>(NONE);
@@ -48,6 +51,9 @@ export function AddEmployeeModal({
       const created = await createEmployee({
         email: email.trim(),
         password: password.trim() || undefined,
+        name: name.trim() || undefined,
+        jobTitle: jobTitle.trim() || null,
+        employeeNumber: employeeNumber.trim() || null,
         role,
         supervisorId: supervisorId === NONE ? null : supervisorId,
         policyId: policyId === NONE ? null : policyId,
@@ -90,6 +96,20 @@ export function AddEmployeeModal({
             >
               <X className="h-4 w-4" />
             </button>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="add-name" className={LABEL}>
+              Full name
+            </label>
+            <input
+              id="add-name"
+              required
+              className={INPUT}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ahmad bin Ali"
+            />
           </div>
 
           <div className="space-y-2">
@@ -144,6 +164,33 @@ export function AddEmployeeModal({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <label htmlFor="add-title" className={LABEL}>
+                Job title <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <input
+                id="add-title"
+                className={INPUT}
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="Site Engineer"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="add-empno" className={LABEL}>
+                Employee number <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <input
+                id="add-empno"
+                className={INPUT}
+                value={employeeNumber}
+                onChange={(e) => setEmployeeNumber(e.target.value)}
+                placeholder="EMP-001"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
               <label htmlFor="add-role" className={LABEL}>
                 Role
               </label>
@@ -153,7 +200,7 @@ export function AddEmployeeModal({
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
-                {ROLES.map((r) => (
+                {STAFF_ROLES.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
