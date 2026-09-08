@@ -1,5 +1,7 @@
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Notifications;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Overtime.Dtos;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Teams;
@@ -18,17 +20,20 @@ public class OvertimeService : IOvertimeService
     private readonly IOvertimePhotoStorage _photos;
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
+    private readonly INotificationService _notifications;
 
     public OvertimeService(
         IOvertimeRepository requests,
         IOvertimePhotoStorage photos,
         ISupervisionService supervision,
-        IApprovalRouter router)
+        IApprovalRouter router,
+        INotificationService notifications)
     {
         _requests = requests;
         _photos = photos;
         _supervision = supervision;
         _router = router;
+        _notifications = notifications;
     }
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetMineAsync(string userId) =>
@@ -101,6 +106,7 @@ public class OvertimeService : IOvertimeService
         };
 
         await _requests.AddAsync(request);
+        await NotifyReviewersAsync(request);
         return new OvertimeSubmitResult(true, ToDto(request), null);
     }
 
@@ -196,6 +202,7 @@ public class OvertimeService : IOvertimeService
 
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
+        await NotifyDecisionAsync(request, approved: true, approverId);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
@@ -278,6 +285,7 @@ public class OvertimeService : IOvertimeService
         request.DecidedAt = now;
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
+        await NotifyDecisionAsync(request, approved: false, approverId);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
@@ -374,6 +382,53 @@ public class OvertimeService : IOvertimeService
         }
 
         return stuck;
+    }
+
+    // A newly-submitted request: nudge whoever has to review it. Same shape as
+    // Claims/Leave's SUBMITTED notification — no realtime SSE nudge here since
+    // Overtime never had one, but the persisted bell entry is the part that was
+    // asked for.
+    private async Task NotifyReviewersAsync(OvertimeRequest request)
+    {
+        var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+        foreach (var reviewerId in approvers)
+        {
+            if (string.IsNullOrEmpty(reviewerId)) continue;
+            await _notifications.NotifyAsync(
+                request.OrganizationId, reviewerId, NotificationType.OVERTIME_SUBMITTED,
+                "New overtime request to review",
+                $"{request.RequestedMinutes / 60.0:0.#}h of overtime on {request.WorkDate:MMM d} needs your review.",
+                "/overtime");
+        }
+    }
+
+    // Notifies the employee AND their direct supervisor of a decision — same
+    // "manager visibility into their reports' outcomes" as Claims/Leave.
+    // Skipped for the supervisor when they're the one who just decided.
+    private async Task NotifyDecisionAsync(OvertimeRequest request, bool approved, string approverId)
+    {
+        var title = approved ? "Overtime approved" : "Overtime rejected";
+        await _notifications.NotifyAsync(
+            request.OrganizationId, request.EmployeeId, NotificationType.OVERTIME_REVIEWED,
+            title,
+            approved
+                ? $"Your overtime request on {request.WorkDate:MMM d} was approved."
+                : $"Your overtime request on {request.WorkDate:MMM d} was rejected.{(string.IsNullOrEmpty(request.ReviewNotes) ? "" : $" Reason: {request.ReviewNotes}")}",
+            "/overtime");
+
+        var supervisorId = await _supervision.GetSupervisorIdAsync(request.EmployeeId);
+        if (!string.IsNullOrEmpty(supervisorId) && supervisorId != approverId)
+        {
+            var emails = await _supervision.GetEmailsAsync([request.EmployeeId]);
+            var employeeLabel = emails.GetValueOrDefault(request.EmployeeId) ?? "An employee";
+            await _notifications.NotifyAsync(
+                request.OrganizationId, supervisorId, NotificationType.OVERTIME_REVIEWED,
+                title,
+                approved
+                    ? $"{employeeLabel}'s overtime request on {request.WorkDate:MMM d} was approved."
+                    : $"{employeeLabel}'s overtime request on {request.WorkDate:MMM d} was rejected.",
+                "/overtime");
+        }
     }
 
     private static bool IsOvertimePhotoUrl(string? url) =>

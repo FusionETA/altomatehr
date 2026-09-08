@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { Bell, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
-import { LeaveTypesSettings } from "@/features/settings/components/LeaveTypesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
@@ -40,6 +40,16 @@ export function AdminShell({
   function open(parentId: string, childId: string) {
     setActiveParent(parentId);
     setActiveChild(childId);
+  }
+
+  // A notification's url is a bare frontend path (e.g. "/claims") — this app
+  // has no router, so map the paths the backend actually sends to nav ids.
+  // Anything unmapped just closes the bell without navigating.
+  function navigateFromNotification(url: string) {
+    const path = url.split("?")[0];
+    if (path === "/claims") selectParent("claims");
+    else if (path === "/leave") selectParent("leave");
+    else if (path === "/attendance" || path === "/overtime") selectParent("attendance");
   }
 
   return (
@@ -113,13 +123,9 @@ export function AdminShell({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                type="button"
-                aria-label="Notifications"
-                className="hidden h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/90 text-muted-foreground shadow-ambient transition hover:text-foreground sm:flex"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
+              <div className="hidden sm:block">
+                <NotificationBell onNavigate={navigateFromNotification} />
+              </div>
 
               <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-2 shadow-ambient sm:gap-3 sm:px-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
@@ -226,8 +232,6 @@ function AdminContent({
       return <ProjectsSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
-    case "settings-leave":
-      return <LeaveTypesSettings />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.

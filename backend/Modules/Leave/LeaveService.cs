@@ -7,8 +7,11 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays;
+using AltomateHR.Api.Modules.Notifications;
+using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
+using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
@@ -38,7 +41,10 @@ public class LeaveService : ILeaveService
     private readonly IOrganizationService _organizations;
     private readonly IHolidayService _holidays;
     private readonly IRealtimeService _realtime;
+    private readonly INotificationService _notifications;
     private readonly IEmployeeRowResolver _employees;
+    private readonly ITeamService _teams;
+    private readonly IProjectService _projects;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -53,7 +59,10 @@ public class LeaveService : ILeaveService
         IOrganizationService organizations,
         IHolidayService holidays,
         IRealtimeService realtime,
-        IEmployeeRowResolver employees)
+        INotificationService notifications,
+        IEmployeeRowResolver employees,
+        ITeamService teams,
+        IProjectService projects)
     {
         _apps = apps;
         _types = types;
@@ -67,7 +76,10 @@ public class LeaveService : ILeaveService
         _organizations = organizations;
         _holidays = holidays;
         _realtime = realtime;
+        _notifications = notifications;
         _employees = employees;
+        _teams = teams;
+        _projects = projects;
     }
 
     public async Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
@@ -730,17 +742,61 @@ public class LeaveService : ILeaveService
         };
     }
 
-    // Balances for the caller's direct reports only — the supervisor view of
-    // the admin grid. Reuses the same bulk readers, so it stays one flat set
-    // of queries rather than one per report.
+    // Balances for the caller's team(s) — the supervisor view of the admin grid.
+    // Reuses the same bulk readers as GetOrgBalancesAsync, so it stays one flat
+    // set of queries rather than one per report.
+    //
+    // Two membership models feed this, same split as Attendance's team-presence
+    // (AttendanceService.GetTeamTodayAsync): real Teams (project-scoped, a
+    // supervisor can oversee several and switch between them) plus the flat
+    // OrganizationMembership.SupervisorId reports, for supervisors who don't use
+    // the Teams module. A report covered by both isn't double-counted as a plain
+    // report, but IS repeated once per supervised team they're on — same as
+    // Attendance, since "which of my sites is this person on" is a real question
+    // when they're on more than one.
     public async Task<IEnumerable<EmployeeLeaveBalancesDto>> GetTeamBalancesAsync(
         string supervisorId, int year)
     {
+        var supervised = await _teams.GetSupervisedTeamsAsync(supervisorId);
         var reportIds = (await _supervision.GetReportIdsAsync(supervisorId)).ToHashSet();
-        if (reportIds.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
+        if (supervised.Count == 0 && reportIds.Count == 0)
+            return Array.Empty<EmployeeLeaveBalancesDto>();
 
-        return (await GetOrgBalancesAsync(year))
-            .Where(r => reportIds.Contains(r.UserId));
+        var orgBalances = (await GetOrgBalancesAsync(year)).ToDictionary(r => r.UserId);
+        var projectNames = supervised.Count == 0
+            ? new Dictionary<string, string>()
+            : (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
+
+        var rows = new List<EmployeeLeaveBalancesDto>();
+        var coveredByTeam = new HashSet<string>();
+
+        foreach (var team in supervised)
+        {
+            foreach (var employeeId in team.MemberIds)
+            {
+                if (!orgBalances.TryGetValue(employeeId, out var row)) continue;
+                rows.Add(new EmployeeLeaveBalancesDto
+                {
+                    UserId = row.UserId,
+                    Email = row.Email,
+                    Role = row.Role,
+                    Balances = row.Balances,
+                    TeamId = team.TeamId,
+                    TeamName = team.TeamName,
+                    ProjectId = team.ProjectId,
+                    ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
+                });
+                coveredByTeam.Add(employeeId);
+            }
+        }
+
+        foreach (var employeeId in reportIds)
+        {
+            if (coveredByTeam.Contains(employeeId)) continue;
+            if (orgBalances.TryGetValue(employeeId, out var row)) rows.Add(row);
+        }
+
+        return rows;
     }
 
     // Who is out on APPROVED leave on `today` — the admin dashboard panel.
@@ -937,7 +993,7 @@ public class LeaveService : ILeaveService
 
         // The employee never asked for this, so their calendar/balance changing
         // out from under them is exactly the case live updates exist for.
-        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
+        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true, approverId: adminUserId);
         return new LeaveApplyResult(true, ToDto(app), null);
     }
 
@@ -1220,7 +1276,7 @@ public class LeaveService : ILeaveService
 
         // Still PENDING here means the chain advanced, so NotifyAsync also
         // reaches the next step's approver.
-        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true);
+        await NotifyAsync(app, RealtimeAction.APPROVED, notifyApplicant: true, approverId: approverId);
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
@@ -1306,7 +1362,7 @@ public class LeaveService : ILeaveService
 
         // notifyApprovers: the request just left every reviewer's queue, and a
         // rejected row is no longer PENDING for NotifyAsync to infer that from.
-        await NotifyAsync(app, RealtimeAction.REJECTED, notifyApplicant: true, notifyApprovers: true);
+        await NotifyAsync(app, RealtimeAction.REJECTED, notifyApplicant: true, notifyApprovers: true, approverId: approverId);
         return new LeaveTransitionResult(true, true, ToDto(app));
     }
 
@@ -1360,18 +1416,73 @@ public class LeaveService : ILeaveService
         LeaveApplication app,
         RealtimeAction action,
         bool notifyApplicant,
-        bool notifyApprovers = false)
+        bool notifyApprovers = false,
+        string? approverId = null)
     {
         var targets = new List<string?>();
         if (notifyApplicant) targets.Add(app.EmployeeId);
 
-        if (notifyApprovers || app.Status == LeaveStatus.PENDING)
-            targets.AddRange(await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep));
+        var approvers = notifyApprovers || app.Status == LeaveStatus.PENDING
+            ? await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep)
+            : [];
+        targets.AddRange(approvers);
 
         await _realtime.PublishAsync(
             app.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.LEAVE, action, app.Id));
+
+        // Persisted in-app notification, on top of the ephemeral SSE nudge above.
+        // Only the two "needs someone's attention" moments get one — UPDATED and
+        // CANCELLED are noisier than they're worth in a bell (same call as Claims).
+        switch (action)
+        {
+            case RealtimeAction.SUBMITTED:
+            {
+                var typeName = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
+                foreach (var reviewerId in approvers)
+                {
+                    if (string.IsNullOrEmpty(reviewerId)) continue;
+                    await _notifications.NotifyAsync(
+                        app.OrganizationId, reviewerId, NotificationType.LEAVE_SUBMITTED,
+                        "New leave request to review",
+                        $"{app.TotalDays:0.#} day(s) of {typeName} ({app.StartDate:MMM d}–{app.EndDate:MMM d}) needs your review.",
+                        "/leave");
+                }
+                break;
+            }
+
+            case RealtimeAction.APPROVED or RealtimeAction.REJECTED when notifyApplicant:
+            {
+                var typeName = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
+                var title = action == RealtimeAction.APPROVED ? "Leave approved" : "Leave rejected";
+                await _notifications.NotifyAsync(
+                    app.OrganizationId, app.EmployeeId, NotificationType.LEAVE_REVIEWED,
+                    title,
+                    action == RealtimeAction.APPROVED
+                        ? $"Your {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was approved."
+                        : $"Your {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was rejected.{(string.IsNullOrEmpty(app.ReviewNotes) ? "" : $" Reason: {app.ReviewNotes}")}",
+                    "/leave");
+
+                // The employee's own manager, not just the applicant — same
+                // reasoning as ClaimsService.NotifyAsync. Skipped when the
+                // supervisor IS the one who just decided.
+                var supervisorId = await _supervision.GetSupervisorIdAsync(app.EmployeeId);
+                if (!string.IsNullOrEmpty(supervisorId) && supervisorId != approverId)
+                {
+                    var emails = await _supervision.GetEmailsAsync([app.EmployeeId]);
+                    var employeeLabel = emails.GetValueOrDefault(app.EmployeeId) ?? "An employee";
+                    await _notifications.NotifyAsync(
+                        app.OrganizationId, supervisorId, NotificationType.LEAVE_REVIEWED,
+                        title,
+                        action == RealtimeAction.APPROVED
+                            ? $"{employeeLabel}'s {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was approved."
+                            : $"{employeeLabel}'s {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was rejected.",
+                        "/leave");
+                }
+                break;
+            }
+        }
     }
 
     // Loads the app and checks the caller may act at its current step. Returns

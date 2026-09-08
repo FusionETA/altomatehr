@@ -52,7 +52,6 @@ export const adminNav: AdminNavItem[] = [
       { id: "settings-accounts", label: "Accounts" },
       { id: "settings-projects", label: "Projects" },
       { id: "settings-policies", label: "Policies" },
-      { id: "settings-leave", label: "Leave Types" },
     ],
   },
 ];

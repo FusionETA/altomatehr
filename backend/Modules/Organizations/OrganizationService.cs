@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Xero.Dtos;
@@ -13,11 +14,16 @@ public class OrganizationService : IOrganizationService
 {
     private readonly IOrganizationRepository _repo;
     private readonly IOrganizationMembershipRepository _memberships;
+    private readonly ILeaveTypeService _leaveTypes;
 
-    public OrganizationService(IOrganizationRepository repo, IOrganizationMembershipRepository memberships)
+    public OrganizationService(
+        IOrganizationRepository repo,
+        IOrganizationMembershipRepository memberships,
+        ILeaveTypeService leaveTypes)
     {
         _repo = repo;
         _memberships = memberships;
+        _leaveTypes = leaveTypes;
     }
 
     public async Task<OrganizationDto?> GetByIdAsync(string organizationId)
@@ -74,6 +80,10 @@ public class OrganizationService : IOrganizationService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         });
+
+        // So a new org isn't left with zero leave types until someone finds the
+        // otherwise-unreachable /leave-types/defaults endpoint by hand.
+        await _leaveTypes.EnsureDefaultsForOrganizationAsync(org.Id);
 
         return ToDto(org);
     }

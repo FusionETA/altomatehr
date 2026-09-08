@@ -13,6 +13,12 @@ public interface ILeaveTypeService
     // Creates any of the default leave types the current org is missing.
     // Idempotent — matches on code, so re-running adds nothing.
     Task<int> EnsureDefaultsAsync();
+
+    // Same defaults, for a brand-new org at creation time — before the caller's
+    // JWT (and so ICurrentUser.OrganizationId) has been reissued for it, so the
+    // ambient-tenant version above can't be used. OrganizationId is passed and
+    // set explicitly for that reason.
+    Task<int> EnsureDefaultsForOrganizationAsync(string organizationId);
     Task<int> CountActiveTypesAsync();
 }
 

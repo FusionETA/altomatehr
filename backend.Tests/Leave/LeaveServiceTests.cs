@@ -10,11 +10,14 @@ using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Holidays.Dtos;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Organizations.Dtos;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Projects.Dtos;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
@@ -836,7 +839,9 @@ public class LeaveServiceTests
             new FakeOrganizationService(),
             new FakeHolidayService(),
             new FakeRealtimeService(),
-            employees ?? new FakeEmployeeDirectory());
+            employees ?? new FakeEmployeeDirectory(),
+            new FakeTeamService(),
+            new FakeProjectService());
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {
@@ -950,6 +955,38 @@ public class LeaveServiceTests
         public Task<HolidaySaveResult> UpdateAsync(string id, SaveHolidayDto dto) => throw new NotImplementedException();
         public Task<bool> DeleteAsync(string id) => throw new NotImplementedException();
         public Task<bool> IsHolidayAsync(DateTime date, string? projectId) => throw new NotImplementedException();
+    }
+
+    // None of the existing tests exercise GetTeamBalancesAsync's team-scoped
+    // path — they only need the constructor satisfied. No supervised teams,
+    // no projects.
+    private sealed class FakeTeamService : ITeamService
+    {
+        public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
+        public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotImplementedException();
+        public Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto) => throw new NotImplementedException();
+        public Task<bool> DeleteAsync(string id) => throw new NotImplementedException();
+        public Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto) =>
+            throw new NotImplementedException();
+        public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>
+            throw new NotImplementedException();
+        public Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(string employeeId, ApprovalModule module) =>
+            Task.FromResult<IEnumerable<ApprovalStepDto>>([]);
+        public Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+        public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
+            Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+        public Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
+    private sealed class FakeProjectService : IProjectService
+    {
+        public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult<IEnumerable<ProjectDto>>([]);
+        public Task<ProjectDto?> GetByIdAsync(string id) => Task.FromResult<ProjectDto?>(null);
+        public Task<ProjectDto> CreateAsync(SaveProjectDto dto) => throw new NotImplementedException();
+        public Task<ProjectDto?> UpdateAsync(string id, SaveProjectDto dto) => throw new NotImplementedException();
+        public Task<ProjectDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
     }
 
     private sealed class FakeOrganizationService : IOrganizationService

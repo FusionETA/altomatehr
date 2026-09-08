@@ -17,4 +17,13 @@ public interface IPartnerAuthService
     // Phase B step 6: client secret + refresh token → a fresh access token. The
     // refresh token rotates (single-use). Null on failure.
     Task<PartnerTokenResponseDto?> RefreshAsync(string clientSecret, string refreshToken);
+
+    // POST /partner/notifications — a standing, non-user-bound capability (unlike
+    // the ticket/token flow above): the client secret alone authenticates it, no
+    // per-user access token involved, so a backend event (e.g. "appraisal ready")
+    // can notify someone whether or not they currently hold a live session. Null
+    // on a bad/inactive secret only — every other failure (missing scope, unknown
+    // user) is a value in the returned DTO, not null, so the controller can map
+    // "missing scope" to 403 while everything else is a normal 200 body.
+    Task<SendPartnerNotificationResponseDto?> SendNotificationAsync(string clientSecret, SendPartnerNotificationDto dto);
 }

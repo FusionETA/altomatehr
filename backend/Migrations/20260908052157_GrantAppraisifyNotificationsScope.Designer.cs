@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908052157_GrantAppraisifyNotificationsScope")]
+    partial class GrantAppraisifyNotificationsScope
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -704,11 +707,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("ReviewNotes")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Settlement")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
                     b.Property<string>("SpendingAt")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -1392,44 +1390,6 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("Notifications");
                 });
 
-            modelBuilder.Entity("AltomateHR.Api.Modules.Notifications.Entities.WebPushSubscription", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("Auth")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Endpoint")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<string>("P256dh")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Endpoint")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("WebPushSubscriptions");
-                });
-
             modelBuilder.Entity("AltomateHR.Api.Modules.Organizations.Entities.Organization", b =>
                 {
                     b.Property<string>("Id")
@@ -1439,14 +1399,6 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
-
-                    b.Property<int>("ClaimRunCutoffDay")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ClaimSettlementRoute")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -1495,11 +1447,6 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(5)
                         .HasColumnType("varchar(5)");
-
-                    b.Property<string>("XeroBillStage")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.HasKey("Id");
 

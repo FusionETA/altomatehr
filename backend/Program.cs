@@ -16,6 +16,7 @@ using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Cron;
+using AltomateHR.Api.Modules.Notifications;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Overtime;
@@ -221,6 +222,10 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 // like every other service so it can read ICurrentUser.
 builder.Services.AddSingleton<IRealtimeHub, RealtimeHub>();
 builder.Services.AddScoped<IRealtimeService, RealtimeService>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<IWebPushSubscriptionRepository, WebPushSubscriptionRepository>();
+builder.Services.AddScoped<IWebPushService, WebPushService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
