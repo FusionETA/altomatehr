@@ -1,0 +1,31 @@
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_gcServer: "0"
+      ConnectionStrings__Redis: "redis:6379,abortConnect=false"
+    depends_on:
+      - redis
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - api_storage:/app/storage
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "128mb", "--save", "60", "1"]
+    mem_limit: 192m
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+
+volumes:
+  api_storage:
+  redis_data:
