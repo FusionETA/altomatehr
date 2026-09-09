@@ -45,8 +45,11 @@ public interface IAttendanceService
     // ---- Import / export ----
 
     // Worked-hours summary + the daily records behind it, as CSV or XLSX.
+    // employeeId narrows it to one person, for the per-employee report on the
+    // admin detail page. Null exports the whole org.
     Task<TabularExportResult> ExportSummaryAsync(
-        DateTime from, DateTime to, string? teamId, TabularFormat format);
+        DateTime from, DateTime to, string? teamId, TabularFormat format,
+        string? employeeId = null);
 
     TabularExportResult BuildImportTemplate(TabularFormat format);
 

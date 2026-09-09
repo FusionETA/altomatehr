@@ -163,7 +163,7 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetSelfieStorage() =>
         Ok(await _adminAttendance.GetSelfieStorageAsync());
 
-    // GET /attendance/export/summary?from=&to=&teamId=&format=csv|xlsx|pdf
+    // GET /attendance/export/summary?from=&to=&teamId=&employeeId=&format=csv|xlsx|pdf
     // Worked-hours summary plus the daily records behind it. Admin/Owner only —
     // it spans the org. Omitting from/to exports the current month.
     [RequireScope("attendance:read")]
@@ -173,14 +173,15 @@ public class AttendanceController : ControllerBase
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         [FromQuery] string? teamId,
-        [FromQuery] string? format)
+        [FromQuery] string? format,
+        [FromQuery] string? employeeId)
     {
         var (start, end) = ResolveRange(from, to);
         if (start > end)
             return BadRequest(new { message = "'from' must not be after 'to'." });
 
         var result = await _attendance.ExportSummaryAsync(
-            start, end, teamId, TabularFormats.Parse(format));
+            start, end, teamId, TabularFormats.Parse(format), employeeId);
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);

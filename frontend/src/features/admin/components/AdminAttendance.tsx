@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, MapPin } from "lucide-react";
 import {
   getApprovalAudit,
+  exportEmployeeAttendancePdf,
   getAttendanceHistory,
   getOrgHoursSummary,
   getSelfieStorage,
   getSupervisorPerformance,
   type AdminAttendanceFilter,
   type ApprovalAuditEntry,
+  type AttendanceApprovalRequest,
   type AttendanceRecord,
   type OrgHoursSummary,
   type HoursBuckets,
@@ -17,8 +19,9 @@ import {
 import { AttendanceStatusBadge } from "@/features/attendance/components/AttendanceStatusBadge";
 import { OvertimeStatusBadge } from "@/features/overtime/components/OvertimeStatusBadge";
 import { getEmployees, type Employee } from "@/features/employees/api";
+import { exportEmployeeLeaveSummaryPdf } from "@/features/leave/api";
 import { getProjects } from "@/features/settings/api";
-import { getTeams } from "@/features/teams/api";
+import { getTeams, type TeamMember } from "@/features/teams/api";
 import { getAllOvertime, type OvertimeRequest } from "@/features/overtime/api";
 import { getShifts, type Shift } from "@/features/shifts/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
@@ -50,6 +53,11 @@ type TeamIndexEntry = {
   name: string;
   projectId: string;
   members: string[];
+  // The same people with their approval layer, which is what "reports to" is
+  // read from. Kept beside `members` rather than replacing it: the scope
+  // filters only ever ask "is this person in?", and a set of ids answers that
+  // without walking objects.
+  roster: TeamMember[];
 };
 
 const REPORT_TABS: { key: ReportTab; label: string }[] = [
@@ -168,6 +176,8 @@ function dateLabel(key: string): string {
 // resets on every tab change is a filter nobody trusts.
 export function AdminAttendance() {
   const [section, setSection] = useState<Section>("overview");
+  // Which employee the roster has drilled into, if any.
+  const [openEmployeeId, setOpenEmployeeId] = useState<string | null>(null);
   const [tab, setTab] = useState<ReportTab>("today");
   const [filter, setFilter] = useState<AdminAttendanceFilter>({});
   const [from, setFrom] = useState(startOfMonth);
@@ -210,6 +220,7 @@ export function AdminAttendance() {
             name: t.name,
             projectId: t.projectId,
             members: t.members.map((m) => m.employeeId),
+            roster: t.members,
           })),
         );
         setProjectNames(new Map(projectList.map((p) => [p.id, p.name])));
@@ -226,7 +237,9 @@ export function AdminAttendance() {
   const loadTab = useCallback(async () => {
     setError(null);
     try {
-      if (section === "overtime") setOvertime(await getAllOvertime());
+      // Employees loads overtime too — the drill-in shows a person's OT beside
+      // their attendance, which is the pairing that explains a long day.
+      if (section === "overtime" || section === "employees") setOvertime(await getAllOvertime());
       if (section === "shifts") setShifts(await getShifts());
       // Employees shows each person's hours against the same range, so it reads
       // the same report Analytics does rather than a second source that could
@@ -448,7 +461,40 @@ export function AdminAttendance() {
     [overtimeRows],
   );
 
-  const showFilters = section !== "shifts";
+  // "Reports to", rebuilt from the team hierarchy. The old membership column
+  // that held this was dropped when approvals moved to Teams, so the answer now
+  // lives where the routing itself reads it: the next occupied layer above the
+  // person in their own team.
+  const reportsTo = useCallback(
+    (employeeId: string): string | null => {
+      for (const team of teamIndex) {
+        const self = team.roster.find((m) => m.employeeId === employeeId);
+        if (!self) continue;
+
+        const above = team.roster
+          .filter((m) => m.layer > self.layer)
+          .sort((a, b) => a.layer - b.layer);
+        if (above.length === 0) continue;
+
+        const nextLayer = above[0].layer;
+        const approvers = above
+          .filter((m) => m.layer === nextLayer)
+          .map((m) => names.get(m.employeeId) ?? m.email ?? m.employeeId);
+        return approvers.join(", ");
+      }
+      return null;
+    },
+    [teamIndex, names],
+  );
+
+  const openEmployee = useMemo(
+    () => employeeRows.find((row) => row.employee.id === openEmployeeId) ?? null,
+    [employeeRows, openEmployeeId],
+  );
+
+  // The drill-in stands alone: the filter bar scopes a roster, and there is
+  // only one person on screen.
+  const showFilters = section !== "shifts" && !openEmployee;
   const showDateRange =
     section === "overtime" ||
     section === "employees" ||
@@ -467,7 +513,10 @@ export function AdminAttendance() {
           { id: "shifts", label: "Shifts" },
         ]}
         value={section}
-        onChange={setSection}
+        onChange={(next) => {
+          setSection(next);
+          setOpenEmployeeId(null);
+        }}
         className="sm:max-w-lg sm:flex-1"
         ariaLabel="Attendance views"
       />
@@ -530,7 +579,21 @@ export function AdminAttendance() {
           Loading attendance…
         </section>
       ) : section === "employees" ? (
-        <EmployeesTab rows={employeeRows} />
+        openEmployee ? (
+          <EmployeeDetail
+            row={openEmployee}
+            records={records.filter((r) => r.employeeId === openEmployee.employee.id)}
+            overtime={overtime.filter((r) => r.employeeId === openEmployee.employee.id)}
+            reportsTo={reportsTo(openEmployee.employee.id)}
+            projectNames={projectNames}
+            today={today}
+            from={from}
+            to={to}
+            onBack={() => setOpenEmployeeId(null)}
+          />
+        ) : (
+          <EmployeesTab rows={employeeRows} onOpen={setOpenEmployeeId} />
+        )
       ) : section === "overtime" ? (
         <OvertimeTab rows={overtimeRows} name={name} projectNames={projectNames} />
       ) : section === "shifts" ? (
@@ -1035,12 +1098,14 @@ function Stat({
 // two things an admin scans for — how their hours are tracking against the
 // range, and whether they turned up today.
 //
-// No drill-in chevron. Production's opens a per-employee attendance page we do
-// not have yet, and an affordance that goes nowhere is worse than none.
+// Each card opens that person's attendance detail, the way production's roster
+// does.
 function EmployeesTab({
   rows,
+  onOpen,
 }: {
   rows: EmployeeRow[];
+  onOpen: (employeeId: string) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1061,9 +1126,11 @@ function EmployeesTab({
 
       <section className={`${CARD_BARE} divide-y divide-border/60`}>
         {rows.map(({ employee, projects, buckets, record }) => (
-          <article
+          <button
             key={employee.id}
-            className="flex flex-col gap-3 p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6"
+            type="button"
+            onClick={() => onOpen(employee.id)}
+            className="flex w-full flex-col gap-3 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6"
           >
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -1087,8 +1154,9 @@ function EmployeesTab({
               <div className="w-24 text-right">
                 <TodayPill record={record} />
               </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </div>
-          </article>
+          </button>
         ))}
       </section>
     </div>
@@ -1146,6 +1214,367 @@ function TodayPill({ record }: { record: AttendanceRecord | null }) {
       </span>
       <p className="mt-1 text-xs tabular-nums text-muted-foreground">{timeLabel(record.timeIn)}</p>
     </>
+  );
+}
+
+// ---- One employee ----
+
+const EVENT_LABEL: Record<AttendanceApprovalRequest["kind"], string> = {
+  CLOCK_IN: "Clock in",
+  CLOCK_OUT: "Clock out",
+  BREAK_START: "Break start",
+  BREAK_END: "Break end",
+};
+
+// One person's attendance in full: who they are, today, the month, the day-by-day
+// history, and the overtime that explains the long days. Mirrors production's
+// per-employee page.
+//
+// Every figure here is derived from records already loaded for the roster, so
+// opening someone costs no extra request and cannot disagree with the list you
+// came from.
+function EmployeeDetail({
+  row,
+  records,
+  overtime,
+  reportsTo,
+  projectNames,
+  today,
+  from,
+  to,
+  onBack,
+}: {
+  row: EmployeeRow;
+  records: AttendanceRecord[];
+  overtime: OvertimeRequest[];
+  reportsTo: string | null;
+  projectNames: Map<string, string>;
+  today: string;
+  from: string;
+  to: string;
+  onBack: () => void;
+}) {
+  const [exporting, setExporting] = useState<"attendance" | "leave" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const runExport = async (which: "attendance" | "leave") => {
+    setExporting(which);
+    setExportError(null);
+    try {
+      if (which === "attendance") {
+        await exportEmployeeAttendancePdf(row.employee.id, from, to);
+      } else {
+        await exportEmployeeLeaveSummaryPdf(row.employee.id);
+      }
+    } catch (e) {
+      // Surfaced rather than swallowed: a download that silently does nothing
+      // reads as a dead button.
+      setExportError(e instanceof Error ? e.message : "Could not build that report.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const { employee, projects, buckets } = row;
+  const todayRecord = records.find((r) => r.date === today) ?? null;
+
+  const history = useMemo(
+    () => [...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+    [records],
+  );
+
+  // Counts over the month the roster is showing, so the tiles agree with the
+  // hours figure beside them.
+  const monthPrefix = today.slice(0, 7);
+  const monthRecords = useMemo(
+    () => records.filter((r) => r.date.startsWith(monthPrefix)),
+    [records, monthPrefix],
+  );
+
+  const stats = {
+    onTime: monthRecords.filter((r) => r.timeIn && !r.lateByMin).length,
+    late: monthRecords.filter((r) => (r.lateByMin ?? 0) > 0).length,
+    offSite: monthRecords.filter((r) => isOffSite(r)).length,
+    onLeave: monthRecords.filter((r) => r.status === "ON_LEAVE").length,
+    missing: monthRecords.filter((r) => !r.timeIn && r.status !== "ON_LEAVE").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+          All employees
+        </button>
+
+        <div className="flex flex-wrap gap-2">
+          <ExportButton
+            label="Export attendance PDF"
+            busy={exporting === "attendance"}
+            disabled={exporting !== null}
+            onClick={() => void runExport("attendance")}
+          />
+          <ExportButton
+            label="Export leave PDF"
+            busy={exporting === "leave"}
+            disabled={exporting !== null}
+            onClick={() => void runExport("leave")}
+          />
+        </div>
+      </div>
+
+      {exportError ? (
+        <p className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3 text-sm font-medium text-destructive">
+          {exportError}
+        </p>
+      ) : null}
+
+      {/* Who */}
+      <section className={`${CARD_BARE} p-5 sm:p-6`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xl font-bold text-foreground">{employee.name}</h3>
+          <span className="inline-flex rounded-full border border-border/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+            {employee.role}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">{employee.email}</p>
+        <dl className="mt-3 grid gap-1 text-xs sm:grid-cols-2">
+          <Fact label="Employee ID" value={employee.employeeNumber} />
+          <Fact label="Title" value={employee.jobTitle} />
+          <Fact label="Projects" value={projects.join(", ") || null} />
+          <Fact label="Reports to" value={reportsTo} />
+          <Fact label="Joined" value={employee.joinDate ? new Date(employee.joinDate).toLocaleDateString() : null} />
+        </dl>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Today, and the events behind it */}
+        <section className={`${CARD_BARE} space-y-3 p-5 sm:p-6`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Today
+          </p>
+
+          {todayRecord ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold tabular-nums text-foreground">
+                  {timeLabel(todayRecord.timeIn)} – {timeLabel(todayRecord.timeOut)}
+                </p>
+                <AttendanceStatusBadge status={todayRecord.status} />
+              </div>
+              {todayRecord.projectId ? (
+                <p className="text-xs text-muted-foreground">
+                  {projectNames.get(todayRecord.projectId) ?? todayRecord.projectId}
+                </p>
+              ) : null}
+              {isOffSite(todayRecord) ? (
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-destructive">
+                  Off-site · {metreLabel(todayRecord.clockInDistanceMeters)}
+                </p>
+              ) : null}
+              {todayRecord.lateByMin ? (
+                <p className="text-xs text-muted-foreground">
+                  Late by {formatMinutes(todayRecord.lateByMin)}
+                </p>
+              ) : null}
+              {todayRecord.remark ? (
+                <p className="rounded-2xl bg-muted/60 p-3 text-xs text-foreground">
+                  <span className="font-semibold">Reason:</span> {todayRecord.remark}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No clock-in yet today.</p>
+          )}
+
+          {/* The audit trail: each clock event, when it happened, and whether
+              anyone has signed it off. A record with an approved clock-in and a
+              pending clock-out is the shape a query usually starts from. */}
+          {(todayRecord?.approvals ?? []).length > 0 ? (
+            <div className="border-t border-border/60 pt-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Events today
+              </p>
+              <ul className="space-y-1.5">
+                {[...(todayRecord?.approvals ?? [])]
+                  .sort((a, b) => a.eventAt.localeCompare(b.eventAt))
+                  .map((event) => (
+                    <li key={event.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-20 shrink-0 font-semibold text-foreground">
+                        {EVENT_LABEL[event.kind]}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {timeLabel(event.eventAt)}
+                      </span>
+                      <span className="ml-auto">
+                        <ApprovalStatusBadge status={event.approvalStatus} />
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+
+        {/* The month */}
+        <section className={`${CARD_BARE} p-5 sm:p-6`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            This month
+          </p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+            {formatMinutes(buckets?.totalMin ?? 0)}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Worked{buckets ? ` of ${formatMinutes(buckets.expectedMin)} scheduled` : ""}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="On time" value={String(stats.onTime)} />
+            <Stat label="Late" value={String(stats.late)} />
+            <Stat label="Off-site" value={String(stats.offSite)} />
+            <Stat label="Not clocked in" value={String(stats.missing)} />
+            <Stat label="On leave" value={String(stats.onLeave)} />
+          </div>
+        </section>
+      </div>
+
+      {/* Day by day */}
+      <section className={`${CARD_BARE} overflow-hidden`}>
+        <header className="flex items-baseline justify-between gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
+          <h4 className="font-bold text-foreground">Recent attendance</h4>
+          <span className="text-xs text-muted-foreground">
+            {history.length} {history.length === 1 ? "day" : "days"}
+          </span>
+        </header>
+
+        {history.length === 0 ? (
+          <EmptyRow>No attendance recorded for this employee.</EmptyRow>
+        ) : (
+          <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
+            {history.map((record) => (
+              <li key={record.id} className="flex flex-wrap items-start justify-between gap-3 p-4 px-6">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm font-bold tabular-nums text-foreground">{record.date}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {record.timeIn ? (
+                      <span className="tabular-nums">
+                        {timeLabel(record.timeIn)} – {timeLabel(record.timeOut)}
+                      </span>
+                    ) : (
+                      "No clock-in"
+                    )}
+                    {record.projectId ? ` • ${projectNames.get(record.projectId) ?? record.projectId}` : ""}
+                    {record.durationMin ? ` • ${formatMinutes(record.durationMin)}` : ""}
+                  </p>
+
+                  {record.clockInLat !== null && record.clockInLng !== null ? (
+                    <p className="flex flex-wrap items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                      {record.clockInLat.toFixed(5)}, {record.clockInLng.toFixed(5)}
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${record.clockInLat},${record.clockInLng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                      >
+                        <MapPin className="h-3 w-3" aria-hidden />
+                        Clock-in map
+                      </a>
+                    </p>
+                  ) : null}
+
+                  {isOffSite(record) ? (
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-destructive">
+                      Off-site · {metreLabel(record.clockInDistanceMeters)}
+                    </p>
+                  ) : null}
+                  {record.remark ? (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">Reason:</span> {record.remark}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <AttendanceStatusBadge status={record.status} />
+                  <ApprovalStatusBadge status={record.approvalStatus} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Overtime, beside the attendance it belongs to */}
+      <section className={`${CARD_BARE} overflow-hidden`}>
+        <header className="flex items-baseline justify-between gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
+          <h4 className="font-bold text-foreground">Overtime</h4>
+          <span className="text-xs text-muted-foreground">
+            {overtime.length} {overtime.length === 1 ? "entry" : "entries"}
+          </span>
+        </header>
+
+        {overtime.length === 0 ? (
+          <EmptyRow>No overtime entries.</EmptyRow>
+        ) : (
+          <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
+            {[...overtime]
+              .sort((a, b) => b.workDate.localeCompare(a.workDate))
+              .map((request) => (
+                <li key={request.id} className="flex items-start justify-between gap-4 p-4 px-6">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold tabular-nums text-foreground">
+                      {dateLabel(request.workDate.slice(0, 10))} · {formatMinutes(request.requestedMinutes)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground" title={request.reason}>
+                      {request.reason}
+                    </p>
+                  </div>
+                  <OvertimeStatusBadge status={request.status} />
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ExportButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-card px-3.5 py-2 text-xs font-bold text-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-60"
+    >
+      <Download className="h-3.5 w-3.5" aria-hidden />
+      {busy ? "Building…" : label}
+    </button>
+  );
+}
+
+// A labelled fact, dropped entirely when there is nothing to say — an empty
+// dash next to "Employee ID" tells the reader less than the absence does.
+function Fact({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div>
+      <dt className="inline text-muted-foreground">{label}: </dt>
+      <dd className="inline font-semibold text-foreground">{value}</dd>
+    </div>
   );
 }
 
