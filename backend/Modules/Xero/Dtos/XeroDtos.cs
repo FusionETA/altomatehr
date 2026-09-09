@@ -42,6 +42,11 @@ public class XeroSyncProjectsResultDto
 // The distinction is the admin's to make, not ours — some finance teams want
 // every bill reviewed before it counts, others treat an approved claim as
 // already owed.
+// A currency the Xero organisation is actually subscribed to. Billing in
+// anything else is refused outright — "Organisation is not subscribed to
+// currency USD" — so this is the real list of what a claim may be filed in.
+public sealed record XeroCurrencyResponse(string Code, string Description);
+
 public enum XeroBillStatus { AwaitingPayment, Draft }
 
 public sealed record XeroBillRequest(

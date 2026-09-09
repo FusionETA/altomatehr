@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Approvals.Dtos;
 using AltomateHR.Api.Modules.Attendance;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Overtime;
@@ -18,17 +19,20 @@ public class ApprovalReconciliationService : IApprovalReconciliationService
     private readonly ILeaveService _leave;
     private readonly IClaimsService _claims;
     private readonly IOvertimeService _overtime;
+    private readonly IAuditService _audit;
 
     public ApprovalReconciliationService(
         IAttendanceService attendance,
         ILeaveService leave,
         IClaimsService claims,
-        IOvertimeService overtime)
+        IOvertimeService overtime,
+        IAuditService audit)
     {
         _attendance = attendance;
         _leave = leave;
         _claims = claims;
         _overtime = overtime;
+        _audit = audit;
     }
 
     public async Task<ApprovalReconciliationDto> RunAsync(bool apply)
@@ -41,6 +45,20 @@ public class ApprovalReconciliationService : IApprovalReconciliationService
             ["OT"] = await _overtime.ReconcileUnreachableApprovalsAsync(apply),
         };
 
-        return new ApprovalReconciliationDto(apply, byModule.Values.Sum(), byModule);
+        var total = byModule.Values.Sum();
+
+        // Only the real thing. A dry run reads and changes nothing, so logging
+        // it would fill the feed with rows that mean "somebody looked".
+        if (apply && total > 0)
+        {
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.ApprovalsReconcile,
+                $"Resolved {total} request(s) that had no approver left — "
+                    + string.Join(", ", byModule.Where(m => m.Value > 0).Select(m => $"{m.Value} {m.Key}")),
+                TargetType: "Approvals",
+                Metadata: byModule));
+        }
+
+        return new ApprovalReconciliationDto(apply, total, byModule);
     }
 }

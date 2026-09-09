@@ -24,6 +24,13 @@ public class XeroController : ControllerBase
     [HttpGet("status")]
     public async Task<ActionResult<XeroStatusDto>> Status() => Ok(await _xero.GetStatusAsync());
 
+    // GET /xero/currencies — what this org's Xero is subscribed to. Empty when
+    // Xero is not connected, which the settings form reads as "we cannot
+    // constrain the choice" rather than "no currencies allowed".
+    [HttpGet("currencies")]
+    public async Task<ActionResult<IReadOnlyList<XeroCurrencyResponse>>> Currencies() =>
+        Ok(await _xero.GetCurrenciesAsync());
+
     [Authorize(Roles = "Admin,Owner")]
     [HttpPost("connect-url")]
     public async Task<ActionResult<XeroConnectUrlDto>> ConnectUrl([FromQuery] string? returnUrl = null) =>

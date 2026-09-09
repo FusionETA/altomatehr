@@ -1,47 +1,40 @@
-import { useRef, useState } from "react";
-import { Download, Upload, X } from "lucide-react";
+import { useState } from "react";
+import { Download } from "lucide-react";
 import {
-  downloadClaimsImportTemplate,
   exportClaimsSummary,
-  exportPayrollReimbursements,
-  importClaims,
   type ClaimsExportFilters,
-  type ClaimsImportResult,
   type ExportFormat,
-  type ImportFormat,
 } from "@/features/claims/api";
 import { saveFile } from "@/shared/lib/api-client";
 import { EYEBROW } from "../lib/dashboard-styles";
 import { ACTION_MENU_ITEM, ActionMenu } from "./ActionMenu";
 
-// Month-end, in reach but out of the way. Getting claims out of the system (and
-// history back into it) matters once a month; what needs a decision matters
-// every day. So these sit beside the tabs as two menus rather than as a banner
-// above the dashboard — one click away, but never the first thing an admin reads.
-
+// Month-end, in reach but out of the way. Getting claims out of the system
+// matters once a month; what needs a decision matters every day. So this sits
+// beside the tabs as a menu rather than a banner above the dashboard — one
+// click away, but never the first thing an admin reads.
+//
+// EXPORT ONLY. Claims import was removed: the reference app has never had one
+// (its only claims route is an export), and ours wrote rows straight to
+// APPROVED with no receipt, no approver and nothing marking them as imported —
+// a money record asserting an approval that never happened, indistinguishable
+// from one this app actually approved.
 
 const EXPORT_FORMATS: ExportFormat[] = ["csv", "xlsx", "pdf"];
-const TEMPLATE_FORMATS: ImportFormat[] = ["csv", "xlsx"];
 
 export function ClaimsMonthEndActions({
   filters,
   filterSummary,
-  onImported,
-  onReport,
 }: {
   // The export mirrors what the admin is looking at — export what you filtered,
   // not everything.
   filters: ClaimsExportFilters;
   filterSummary: string;
-  onImported: () => void;
-  // The import report is raised to the page, which shows it under the tabs —
-  // a menu that closes shouldn't take the result with it.
-  onReport: (report: ClaimsImportResult | null) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<"export" | "import" | null>(null);
-  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = useState<"export" | null>(null);
+
   async function run(key: string, action: () => Promise<void>) {
     setBusy(key);
     setError(null);
@@ -58,24 +51,6 @@ export function ClaimsMonthEndActions({
   const exportAs = (format: ExportFormat) =>
     run(`export:${format}`, async () => saveFile(await exportClaimsSummary(format, filters)));
 
-  // The other half of the settlement choice: claims routed to payroll are not
-  // pushed anywhere, so this export IS how they reach the people who pay them.
-  const payroll = (format: ExportFormat) =>
-    run(`payroll:${format}`, async () => saveFile(await exportPayrollReimbursements(format)));
-
-  const template = (format: ImportFormat) =>
-    run(`template:${format}`, async () => saveFile(await downloadClaimsImportTemplate(format)));
-
-  function pickFile(file: File | undefined) {
-    if (!file) return;
-    onReport(null);
-    run("import", async () => {
-      const result = await importClaims(file);
-      onReport(result);
-      // Rows landed, so whatever the page is showing is now out of date.
-      if (result.imported > 0) onImported();
-    });
-  }
 
   const working = busy !== null;
 
@@ -113,136 +88,10 @@ export function ClaimsMonthEndActions({
               {filterSummary}
             </p>
 
-            <div className="my-1.5 h-px bg-border/60" />
-
-            <p className={`px-3 pb-1.5 pt-1 ${EYEBROW}`}>Payroll run</p>
-            {EXPORT_FORMATS.map((format) => (
-              <button
-                key={`payroll-${format}`}
-                type="button"
-                disabled={working}
-                onClick={() => payroll(format)}
-                className={ACTION_MENU_ITEM}
-              >
-                <Download className="h-3.5 w-3.5 shrink-0" />
-                {format.toUpperCase()}
-              </button>
-            ))}
-            <p className="px-3 pb-1 pt-1 text-[11px] leading-snug text-muted-foreground">
-              Approved out-of-pocket claims set to payroll, one row per employee.
-            </p>
         </>
       </ActionMenu>
 
-      <ActionMenu
-        label="Import"
-        icon={<Upload className="h-3.5 w-3.5" />}
-        open={open === "import"}
-        onOpenChange={(next) => setOpen(next ? "import" : null)}
-        busy={busy === "import" || (busy?.startsWith("template") ?? false)}
-        disabled={working}
-      >
-        <>
-            <p className={`px-3 pb-1.5 pt-1 ${EYEBROW}`}>Blank template</p>
-            {TEMPLATE_FORMATS.map((format) => (
-              <button
-                key={format}
-                type="button"
-                disabled={working}
-                onClick={() => template(format)}
-                className={ACTION_MENU_ITEM}
-              >
-                <Download className="h-3.5 w-3.5 shrink-0" />
-                {format.toUpperCase()} template
-              </button>
-            ))}
-
-            <div className="my-1.5 h-px bg-border/60" />
-
-            <button
-              type="button"
-              disabled={working}
-              onClick={() => fileInput.current?.click()}
-              className={`${ACTION_MENU_ITEM} text-primary hover:bg-primary/10 hover:text-primary`}
-            >
-              <Upload className="h-3.5 w-3.5 shrink-0" />
-              Upload a filled file
-            </button>
-            <p className="px-3 pb-1 pt-1 text-[11px] leading-snug text-muted-foreground">
-              Re-uploading is safe — rows already here are skipped.
-            </p>
-        </>
-      </ActionMenu>
-
-      <input
-        ref={fileInput}
-        type="file"
-        accept=".csv,.xlsx"
-        className="hidden"
-        onChange={(event) => {
-          pickFile(event.target.files?.[0]);
-          // Let the same file be picked again after a fix.
-          event.target.value = "";
-        }}
-      />
     </div>
   );
 }
 
-// What actually happened to an uploaded file, in the three buckets that matter:
-// what landed, what was already there, and what needs fixing.
-export function ClaimsImportReport({
-  report,
-  onDismiss,
-}: {
-  report: ClaimsImportResult;
-  onDismiss: () => void;
-}) {
-  return (
-    <section className="rounded-[24px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-bold text-foreground">Import result</p>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Dismiss import result"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 gap-3">
-        <ReportStat label="Imported" value={report.imported} tone="text-foreground" />
-        <ReportStat label="Skipped" value={report.skipped} tone="text-muted-foreground" />
-        <ReportStat
-          label="Failed"
-          value={report.failed}
-          tone={report.failed > 0 ? "text-destructive" : "text-muted-foreground"}
-        />
-      </div>
-
-      {report.errors.length > 0 ? (
-        <ul className="nice-scrollbar mt-3 max-h-48 space-y-1.5 overflow-y-auto">
-          {report.errors.map((issue, index) => (
-            <li
-              key={`${issue.row}-${index}`}
-              className="rounded-xl bg-destructive/5 px-3 py-2 text-xs text-destructive"
-            >
-              <span className="font-bold">Row {issue.row}</span> — {issue.message}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
-function ReportStat({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-surface-low p-3">
-      <p className={`text-xl font-black tabular-nums ${tone}`}>{value}</p>
-      <p className={`mt-0.5 ${EYEBROW}`}>{label}</p>
-    </div>
-  );
-}

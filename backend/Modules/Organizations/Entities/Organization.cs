@@ -63,6 +63,13 @@ public class Organization
     // accounting side pick Draft.
     public XeroBillStatus XeroBillStage { get; set; } = XeroBillStatus.AwaitingPayment;
 
+    // How long a supervisor may sit on an attendance request before the
+    // performance card counts it as slow. Not an enforcement threshold —
+    // nothing is blocked — it is the line the report measures against, so an
+    // org that genuinely approves weekly can move it rather than reading every
+    // row as a breach.
+    public int SupervisorSlaMinutes { get; set; } = 60;
+
     // Org-wide default working days as a CSV of weekday numbers 1-7
     // (Mon = 1 … Sun = 7). Null means Mon-Fri. Leave counts only these days,
     // so a Fri-Mon request costs 2 days rather than 4.

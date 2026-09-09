@@ -1045,17 +1045,29 @@ public class AttendanceService : IAttendanceService
         var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
 
-        var countByReviewer = new Dictionary<string, int>();
+        // Keyed by (reviewer, org) rather than reviewer alone: this runs with
+        // no request context (like the Leave accrual sweep), so the tenant
+        // filter is a no-op and it scans every org's pending rows at once —
+        // the digest notification needs to know which org each count is for.
+        var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
         foreach (var request in pending)
         {
             var approvers = await _router.CurrentApproversAsync(
                 Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
             foreach (var reviewerId in approvers)
-                countByReviewer[reviewerId] = countByReviewer.GetValueOrDefault(reviewerId) + 1;
+            {
+                var key = (reviewerId, request.OrganizationId);
+                countByKey[key] = countByKey.GetValueOrDefault(key) + 1;
+            }
         }
 
-        return countByReviewer
-            .Select(kv => new OrgApprovalDigestEntryDto { ReviewerId = kv.Key, PendingCount = kv.Value })
+        return countByKey
+            .Select(kv => new OrgApprovalDigestEntryDto
+            {
+                ReviewerId = kv.Key.ReviewerId,
+                OrganizationId = kv.Key.OrganizationId,
+                PendingCount = kv.Value,
+            })
             .ToList();
     }
 
@@ -1482,8 +1494,10 @@ public class AttendanceService : IAttendanceService
             RealtimeEventDto.For(RealtimeScope.ATTENDANCE, RealtimeAction.UPDATED));
     }
 
-    // A newly-submitted request: nudge whoever has to review it. Nobody else —
-    // the employee just performed the action, so their own UI already knows.
+    // A newly-submitted request: nudge whoever has to review it via realtime
+    // only. The persisted per-submission notification was removed in favor of
+    // the daily cross-module digest (see Modules/Approvals/ApprovalDigestService)
+    // — an approver's open tab still live-updates via the SSE nudge below.
     private async Task NotifyPendingAsync(AttendanceApprovalRequest request, RealtimeAction action, string? projectId)
     {
         var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, projectId);
@@ -1491,16 +1505,6 @@ public class AttendanceService : IAttendanceService
             request.OrganizationId,
             approvers,
             RealtimeEventDto.For(RealtimeScope.ATTENDANCE, action, request.Id));
-
-        foreach (var approverId in approvers)
-        {
-            if (string.IsNullOrEmpty(approverId)) continue;
-            await _notifications.NotifyAsync(
-                request.OrganizationId, approverId, NotificationType.ATTENDANCE_APPROVAL,
-                "New attendance request to review",
-                $"A {KindLabel(request.Kind)} request needs your review.",
-                "/attendance");
-        }
     }
 
     private async Task DecideInMemoryAsync(

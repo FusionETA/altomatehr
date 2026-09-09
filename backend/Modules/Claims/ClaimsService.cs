@@ -996,6 +996,29 @@ public class ClaimsService : IClaimsService
         return stuck;
     }
 
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
+        foreach (var claim in (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING))
+        {
+            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+            foreach (var reviewerId in approvers)
+            {
+                var key = (reviewerId, claim.OrganizationId);
+                countByKey[key] = countByKey.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        return countByKey
+            .Select(kv => new OrgApprovalDigestEntryDto
+            {
+                ReviewerId = kv.Key.ReviewerId,
+                OrganizationId = kv.Key.OrganizationId,
+                PendingCount = kv.Value,
+            })
+            .ToList();
+    }
+
     // ---- Settings ----
 
     public async Task<ClaimSettingsDto> GetSettingsAsync()

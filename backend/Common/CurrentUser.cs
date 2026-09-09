@@ -17,6 +17,10 @@ public class CurrentUser : ICurrentUser
 
     public string? OrganizationId => Principal?.FindFirstValue("org");
 
+    public string? Email =>
+        Principal?.FindFirstValue(ClaimTypes.Email)
+        ?? Principal?.FindFirstValue(JwtRegisteredClaimNames.Email);
+
     public string? Role => Principal?.FindFirstValue(ClaimTypes.Role);
 
     public bool IsAdmin => Principal?.IsInRole("Admin") ?? false;

@@ -1,5 +1,13 @@
 // Generic HTTP layer — knows HOW to call the backend, nothing feature-specific.
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5001";
+//
+// Default to the SAME-ORIGIN "/api" prefix, which is correct in every
+// environment: in production nginx proxies /api/ -> :8080 with the prefix
+// stripped, and in dev the vite.config.ts server.proxy does the same to :5001.
+// Do NOT restore an absolute "http://localhost:5001" default — Vite inlines
+// this at BUILD time, so that value ships to browsers and makes every request
+// hit port 5001 on the VIEWER'S machine, which looks exactly like a dead
+// database while the API and DB are perfectly healthy.
+const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
 // The ACCESS token, held in memory. Set after login; attached below.
 let authToken: string | null = null;
@@ -180,6 +188,27 @@ export function saveFile({ blob, fileName }: ApiFile) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Opens a streaming (e.g. SSE) response. Kept here rather than in the caller
+// because only this module holds `authToken` — EventSource can't attach it as
+// a header, so any long-lived stream has to go through `fetch` like every
+// other request.
+export async function apiOpenStream(path: string, signal: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    throw new ApiError(`GET ${path} failed: ${res.status}`, res.status);
+  }
+
+  return res;
 }
 
 export const apiGet = <T>(path: string) => request<T>("GET", path);

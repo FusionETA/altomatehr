@@ -2,6 +2,8 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Organizations.Dtos;
+using AltomateHR.Api.Modules.Audit;
+using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Modules.Organizations.Entities;
@@ -13,16 +15,22 @@ namespace AltomateHR.Api.Modules.Organizations;
 public class OrganizationService : IOrganizationService
 {
     private readonly IOrganizationRepository _repo;
+    private readonly IXeroService _xero;
+    private readonly IAuditService _audit;
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly ILeaveTypeService _leaveTypes;
 
     public OrganizationService(
         IOrganizationRepository repo,
         IOrganizationMembershipRepository memberships,
+        IAuditService audit,
+        IXeroService xero,
         ILeaveTypeService leaveTypes)
     {
         _repo = repo;
         _memberships = memberships;
+        _audit = audit;
+        _xero = xero;
         _leaveTypes = leaveTypes;
     }
 
@@ -40,8 +48,27 @@ public class OrganizationService : IOrganizationService
         if (string.Compare(dto.WorkingHoursStart, dto.WorkingHoursEnd, StringComparison.Ordinal) >= 0)
             throw new ArgumentException("Working hours start must be before end.");
 
+        // Every claim is denominated in this, and Xero refuses a bill in a
+        // currency the organisation is not subscribed to. Caught here rather
+        // than at sync time: otherwise one wrong setting silently breaks EVERY
+        // subsequent claim, and the error surfaces weeks later on a bill.
+        //
+        // Only enforced while Xero is connected — an org that has not linked it
+        // has nothing to check against, and refusing every currency then would
+        // make the field unusable.
+        var currency = dto.DefaultCurrency.Trim().ToUpperInvariant();
+        var allowed = await _xero.GetCurrenciesAsync();
+        if (allowed.Count > 0 &&
+            !allowed.Any(c => string.Equals(c.Code, currency, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException(
+                $"Xero is not subscribed to {currency}. "
+                + $"Pick one it holds ({string.Join(", ", allowed.Select(c => c.Code))}), "
+                + "or add the currency in Xero first.");
+        }
+
         org.Name = dto.Name;
-        org.DefaultCurrency = dto.DefaultCurrency;
+        org.DefaultCurrency = currency;
         org.DefaultMileageRate = dto.DefaultMileageRate;
         org.MileageUnit = dto.MileageUnit;
         org.GeofenceRadiusMeters = dto.GeofenceRadiusMeters;
@@ -49,6 +76,23 @@ public class OrganizationService : IOrganizationService
         org.WorkingHoursStart = dto.WorkingHoursStart;
         org.WorkingHoursEnd = dto.WorkingHoursEnd;
         await _repo.UpdateAsync(org);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            org.Name,
+            TargetType: "Organization",
+            TargetId: org.Id,
+            Metadata: new
+            {
+                org.Name,
+                org.DefaultCurrency,
+                org.DefaultMileageRate,
+                MileageUnit = org.MileageUnit.ToString(),
+                org.GeofenceRadiusMeters,
+                org.WorkingHoursStart,
+                org.WorkingHoursEnd,
+                org.WorkingDays,
+            }));
 
         return ToDto(org);
     }
@@ -105,6 +149,20 @@ public class OrganizationService : IOrganizationService
         org.XeroBillStage = xeroBillStage;
         await _repo.UpdateAsync(org);
 
+        // Where approved money goes and when the run closes — the two claim
+        // settings someone would most want a date and a name against.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsClaimsUpdate,
+            $"{settlementRoute} · run closes day {cutoffDay}",
+            TargetType: "Organization",
+            TargetId: org.Id,
+            Metadata: new
+            {
+                CutoffDay = cutoffDay,
+                SettlementRoute = settlementRoute.ToString(),
+                XeroBillStage = xeroBillStage.ToString(),
+            }));
+
         return ToDto(org);
     }
 
@@ -151,6 +209,7 @@ public class OrganizationService : IOrganizationService
         ClaimRunCutoffDay = o.ClaimRunCutoffDay,
         ClaimSettlementRoute = o.ClaimSettlementRoute.ToString(),
         XeroBillStage = o.XeroBillStage.ToString(),
+        SupervisorSlaMinutes = o.SupervisorSlaMinutes,
         Plan = o.Plan.ToString(),
         Tier = o.Tier?.ToString(),
         Addons = OrgModules.Split(o.Addons),

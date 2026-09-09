@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { LoaderCircle, TriangleAlert, X } from "lucide-react";
 import {
@@ -26,12 +26,12 @@ import {
   BulkActionBar,
   BulkResultPanel,
   BulkRowCheckbox,
-  BulkSelectAllCheckbox,
   SelectAllPill,
   SelectHint,
   SelectModeButton,
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
+import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -54,12 +54,18 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
 
-  useEffect(() => {
+  const loadClaims = useCallback(() => {
     getTeamClaims()
       .then(setClaims)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(loadClaims, [loadClaims]);
+
+  // Another admin (or the employee) acting on a claim shows up here without
+  // waiting for a manual refresh or a page reload.
+  useRealtimeEvent(["CLAIMS"], loadClaims);
 
   useEffect(() => {
     getAccounts()
@@ -278,18 +284,41 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
                 Showing <span className="font-semibold text-foreground">{filteredClaims.length}</span> of{" "}
                 <span className="font-semibold text-foreground">{claims.length}</span> claims
               </p>
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  className="w-fit rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                  onClick={() => {
-                    setStatus("ALL");
-                    setSearchTerm("");
-                  }}
-                >
-                  Clear filters
-                </button>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    className="w-fit rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => {
+                      setStatus("ALL");
+                      setSearchTerm("");
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                ) : null}
+
+                {/* The same control the phone gets. Desktop used to show a bare
+                    checkbox column permanently — with most rows already decided,
+                    that was a column of greyed-out boxes that read as broken
+                    rather than as a feature, and nothing named what it was for. */}
+                {selection.selectable.length > 0 ? (
+                  <>
+                    {selection.mode ? (
+                      <SelectAllPill
+                        inputRef={selection.selectAllRef}
+                        total={selection.selectable.length}
+                        allSelected={selection.allSelected}
+                        onToggleAll={selection.toggleAll}
+                      />
+                    ) : null}
+                    <SelectModeButton
+                      active={selection.mode}
+                      onToggle={() => (selection.mode ? selection.exit() : selection.enter())}
+                    />
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
@@ -455,14 +484,10 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
               <table className="w-full min-w-[1020px] caption-bottom text-sm">
                 <thead>
                   <tr className="border-b border-border/60">
-                    <th className="h-12 w-12 pl-6 text-left">
-                      <BulkSelectAllCheckbox
-                        inputRef={selection.selectAllRef}
-                        checked={selection.allSelected}
-                        disabled={selection.selectable.length === 0}
-                        onChange={selection.toggleAll}
-                      />
-                    </th>
+                    {/* Only while selecting. The select-all lives on the pill
+                        above, so this is a spacer that keeps the header aligned
+                        with the rows rather than a second control. */}
+                    {selection.mode ? <th className="h-12 w-12 pl-6 text-left" /> : null}
                     {["Employee", "Claim", "Account", "Submitted", "Amount", "Status", "Action"].map((h) => (
                       <th
                         key={h}
@@ -482,19 +507,27 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
                       onKeyDown={(event) => handleClaimKeyDown(event, claim)}
                       className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                     >
-                      <td className="w-12 p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
-                        <BulkRowCheckbox
-                          label={`Select ${claim.claimNumber}`}
-                          checked={selection.has(claim.id)}
-                          disabled={!isBulkable(claim)}
-                          onChange={() => selection.toggle(claim.id)}
-                          title={
-                            claim.exceedsLimit
-                              ? "Over the spend limit — approve this one on its own"
-                              : undefined
-                          }
-                        />
-                      </td>
+                      {/* Nothing at all on a row that cannot be batched, rather
+                          than a disabled box. A settled or over-limit claim
+                          showing a greyed checkbox looks like the control is
+                          broken; an empty cell reads as "not this one". */}
+                      {selection.mode ? (
+                        <td className="w-12 p-4 pl-6 align-middle" onClick={(e) => e.stopPropagation()}>
+                          {isBulkable(claim) ? (
+                            <BulkRowCheckbox
+                              label={`Select ${claim.claimNumber}`}
+                              checked={selection.has(claim.id)}
+                              disabled={false}
+                              onChange={() => selection.toggle(claim.id)}
+                              title={
+                                claim.exceedsLimit
+                                  ? "Over the spend limit — approve this one on its own"
+                                  : undefined
+                              }
+                            />
+                          ) : null}
+                        </td>
+                      ) : null}
                       <td className="p-4 align-middle">
                         <p className="font-bold text-foreground">{employeeName(claim)}</p>
                         <p className="text-xs text-muted-foreground">{claim.employeeEmail ?? ""}</p>

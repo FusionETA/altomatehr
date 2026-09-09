@@ -15,6 +15,11 @@ public enum NotificationType
     OVERTIME_SUBMITTED,
     OVERTIME_REVIEWED,
 
+    // The once-daily cross-module pending-approval summary (Claims + Leave +
+    // Attendance + Overtime combined) — see Modules/Approvals/ApprovalDigestService.
+    // Not tagged as any one module's type since it always spans all four.
+    APPROVAL_DIGEST,
+
     // Sent by an external partner app (e.g. AppraisifyAlt) via POST
     // /partner/notifications. Deliberately generic: the partner supplies its
     // own title/body directly rather than us templating one per business

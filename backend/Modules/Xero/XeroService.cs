@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Accounts.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Xero.Dtos;
@@ -13,6 +14,7 @@ public class XeroService : IXeroService
 {
     private readonly ICurrentUser _currentUser;
     private readonly IXeroRepository _repo;
+    private readonly IAuditService _audit;
     private readonly IXeroClient _client;
     private readonly IDataProtector _protector;
     private readonly XeroOptions _options;
@@ -22,13 +24,15 @@ public class XeroService : IXeroService
         IXeroRepository repo,
         IXeroClient client,
         IDataProtectionProvider dataProtection,
-        IOptions<XeroOptions> options)
+        IOptions<XeroOptions> options,
+        IAuditService audit)
     {
         _currentUser = currentUser;
         _repo = repo;
         _client = client;
         _protector = dataProtection.CreateProtector("AltomateHR.XeroTokens.v1");
         _options = options.Value;
+        _audit = audit;
     }
 
     public async Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? returnUrl)
@@ -85,6 +89,18 @@ public class XeroService : IXeroService
         storedState.UsedAt = now;
         await _repo.UpdateStateAsync(storedState);
 
+        // The OAuth callback runs BEFORE the app has a session for this request,
+        // so the org comes from the state row rather than from ICurrentUser —
+        // otherwise the one event proving who connected the accounting system
+        // would be the one event that never gets written.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroConnect,
+            tenant.TenantName,
+            TargetType: "XeroConnection",
+            TargetId: tenant.TenantId,
+            Metadata: new { tenant.TenantName, tenant.TenantType },
+            OrganizationId: storedState.OrganizationId));
+
         return storedState.ReturnUrl ?? _options.SuccessRedirectUrl;
     }
 
@@ -113,6 +129,27 @@ public class XeroService : IXeroService
         connection.DisconnectedAt = DateTime.UtcNow;
         connection.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateConnectionAsync(connection);
+
+        // Disconnecting stops every approved claim reaching the accounting
+        // system. Worth a name and a timestamp.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroDisconnect,
+            connection.TenantName,
+            TargetType: "XeroConnection",
+            TargetId: connection.TenantId));
+    }
+
+    // The currencies this org may file claims in. Empty when Xero is not
+    // connected — the caller decides what that means rather than being handed a
+    // guess, because "we could not ask" and "Xero allows nothing" are very
+    // different situations.
+    public async Task<IReadOnlyList<XeroCurrencyResponse>> GetCurrenciesAsync()
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected) return [];
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        return await _client.GetCurrenciesAsync(accessToken, connection.TenantId);
     }
 
     public async Task<XeroSyncAccountsResultDto> SyncAccountsAsync()
@@ -180,6 +217,15 @@ public class XeroService : IXeroService
             await _repo.UpdateAccountAsync(existing);
             result.Updated++;
         }
+
+        // A sync rewrites the chart of accounts every claim is coded against,
+        // so the counts are worth keeping even though nothing failed.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroSyncAccounts,
+            $"{result.Imported} imported · {result.Updated} updated · {result.Skipped} skipped",
+            TargetType: "XeroConnection",
+            TargetId: connection.TenantId,
+            Metadata: new { result.Imported, result.Updated, result.Skipped }));
 
         return result;
     }

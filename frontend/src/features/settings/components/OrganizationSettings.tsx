@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
-import { getOrganization, updateOrganization, type Organization } from "../api";
+import {
+  getOrganization,
+  getXeroCurrencies,
+  updateOrganization,
+  type Organization,
+  type XeroCurrency,
+} from "../api";
 import { XeroConnectionCard } from "./XeroConnectionCard";
 
 const CARD =
@@ -19,12 +25,19 @@ export function OrganizationSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [currencies, setCurrencies] = useState<XeroCurrency[]>([]);
 
   useEffect(() => {
     getOrganization()
       .then(setOrg)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
+
+    // Best-effort: a Xero outage must not stop the settings form loading, it
+    // just falls back to the free-text field.
+    getXeroCurrencies()
+      .then(setCurrencies)
+      .catch(() => setCurrencies([]));
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -123,14 +136,51 @@ export function OrganizationSettings() {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor="org-currency" className={LABEL}>Default currency</label>
-          <input
-            id="org-currency"
-            className={INPUT}
-            maxLength={3}
-            value={org.defaultCurrency}
-            onChange={(e) => setOrg({ ...org, defaultCurrency: e.target.value.toUpperCase() })}
-            placeholder="MYR"
-          />
+          {/* A picker once Xero is connected, free text otherwise. Every claim
+              is denominated in this, and Xero refuses a bill in a currency the
+              organisation is not subscribed to — so typing one it does not hold
+              breaks EVERY subsequent claim, and only says so weeks later when a
+              bill is pushed. The server enforces the same rule. */}
+          {currencies.length > 0 ? (
+            <>
+              <select
+                id="org-currency"
+                className={INPUT}
+                value={org.defaultCurrency}
+                onChange={(e) => setOrg({ ...org, defaultCurrency: e.target.value })}
+              >
+                {/* A currency already saved but since removed in Xero would
+                    otherwise vanish from the box and look like a blank field. */}
+                {currencies.some((c) => c.code === org.defaultCurrency) ? null : (
+                  <option value={org.defaultCurrency}>
+                    {org.defaultCurrency} — not in Xero
+                  </option>
+                )}
+                {currencies.map((currency) => (
+                  <option key={currency.code} value={currency.code}>
+                    {currency.code} — {currency.description}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                From your Xero organisation. Add one there to see it here.
+              </p>
+            </>
+          ) : (
+            <>
+              <input
+                id="org-currency"
+                className={INPUT}
+                maxLength={3}
+                value={org.defaultCurrency}
+                onChange={(e) => setOrg({ ...org, defaultCurrency: e.target.value.toUpperCase() })}
+                placeholder="MYR"
+              />
+              <p className="text-xs text-muted-foreground">
+                Connect Xero to pick from the currencies it holds.
+              </p>
+            </>
+          )}
         </div>
         <div className="space-y-2">
           <label htmlFor="org-mileage" className={LABEL}>Default mileage rate</label>

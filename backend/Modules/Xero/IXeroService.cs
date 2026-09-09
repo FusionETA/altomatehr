@@ -9,6 +9,10 @@ public interface IXeroService
     Task<XeroStatusDto> GetStatusAsync();
     Task DisconnectAsync();
     Task<XeroSyncAccountsResultDto> SyncAccountsAsync();
+
+    // The currencies the connected Xero org is subscribed to. Empty when there
+    // is no connection.
+    Task<IReadOnlyList<XeroCurrencyResponse>> GetCurrenciesAsync();
     Task<XeroSyncProjectsResultDto> SyncProjectsAsync();
 
     // Fetch a file from Xero Files for the CURRENT org's connection. Other

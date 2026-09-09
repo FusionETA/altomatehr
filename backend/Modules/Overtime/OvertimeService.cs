@@ -58,6 +58,21 @@ public class OvertimeService : IOvertimeService
         });
     }
 
+    public async Task<IEnumerable<OvertimeRequestDto>> GetAllForAdminAsync()
+    {
+        var all = (await _requests.GetAllAsync())
+            .OrderByDescending(r => r.WorkDate)
+            .ToList();
+
+        var emails = await _supervision.GetEmailsAsync(all.Select(r => r.EmployeeId).Distinct());
+        return all.Select(request =>
+        {
+            var dto = ToDto(request);
+            dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
+            return dto;
+        });
+    }
+
     public async Task<OvertimeRequestDto?> GetVisibleByIdAsync(string id, string userId, bool isAdmin)
     {
         var request = await _requests.GetByIdAsync(id);
@@ -382,6 +397,34 @@ public class OvertimeService : IOvertimeService
         }
 
         return stuck;
+    }
+
+    public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
+    {
+        var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
+        foreach (var request in (await _requests.GetAllAsync()).Where(r => r.Status == OvertimeStatus.PENDING))
+        {
+            // Same exclusion as ReconcileUnreachableApprovalsAsync: without an
+            // after-work photo this isn't actually approvable yet, so counting
+            // it would overstate a reviewer's real backlog.
+            if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
+
+            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            foreach (var reviewerId in approvers)
+            {
+                var key = (reviewerId, request.OrganizationId);
+                countByKey[key] = countByKey.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        return countByKey
+            .Select(kv => new OrgApprovalDigestEntryDto
+            {
+                ReviewerId = kv.Key.ReviewerId,
+                OrganizationId = kv.Key.OrganizationId,
+                PendingCount = kv.Value,
+            })
+            .ToList();
     }
 
     // A newly-submitted request: nudge whoever has to review it. Same shape as

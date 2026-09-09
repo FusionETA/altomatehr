@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AltomateHR.Api.Common.Tabular;
@@ -17,11 +18,14 @@ public class AttendanceController : ControllerBase
 {
     private readonly IAttendanceService _attendance;
     private readonly IHoursSummaryService _hoursSummary;
+    private readonly IAdminAttendanceService _adminAttendance;
 
-    public AttendanceController(IAttendanceService attendance, IHoursSummaryService hoursSummary)
+    public AttendanceController(IAttendanceService attendance, IHoursSummaryService hoursSummary,
+        IAdminAttendanceService adminAttendance)
     {
         _attendance = attendance;
         _hoursSummary = hoursSummary;
+        _adminAttendance = adminAttendance;
     }
 
     // GET /attendance — history. Admins see the whole org (roll call);
@@ -29,7 +33,7 @@ public class AttendanceController : ControllerBase
     [RequireScope("attendance:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() =>
-        Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsInRole("Admin")));
+        Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsAdministrative()));
 
     // GET /attendance/team — records awaiting the caller as current-step approver.
     [RequireScope("attendance:read")]
@@ -120,6 +124,44 @@ public class AttendanceController : ControllerBase
             employeeId, from, to, GetUserId(), User.FindFirstValue(ClaimTypes.Role));
         return result is null ? Forbid() : Ok(result);
     }
+
+    // ---- Admin reports ----
+    //
+    // All three span the whole org, so all three are Admin/Owner. They share
+    // the same project / team / search narrowing, resolved once in the service
+    // so the tabs cannot disagree about who a filter means.
+
+    // GET /attendance/supervisor-performance — how long each supervisor takes
+    // to decide, against the org's SLA.
+    [RequireScope("attendance:read")]
+    [HttpGet("supervisor-performance")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetSupervisorPerformance(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string? projectId,
+        [FromQuery] string? teamId,
+        [FromQuery] string? q) =>
+        Ok(await _adminAttendance.GetSupervisorPerformanceAsync(from, to, projectId, teamId, q));
+
+    // GET /attendance/approval-audit — who decided what, pending included.
+    [RequireScope("attendance:read")]
+    [HttpGet("approval-audit")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetApprovalAudit(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string? projectId,
+        [FromQuery] string? teamId,
+        [FromQuery] string? q) =>
+        Ok(await _adminAttendance.GetApprovalAuditAsync(from, to, projectId, teamId, q));
+
+    // GET /attendance/selfie-storage — what the clock-in photos are costing.
+    [RequireScope("attendance:read")]
+    [HttpGet("selfie-storage")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetSelfieStorage() =>
+        Ok(await _adminAttendance.GetSelfieStorageAsync());
 
     // GET /attendance/export/summary?from=&to=&teamId=&format=csv|xlsx|pdf
     // Worked-hours summary plus the daily records behind it. Admin/Owner only —
@@ -336,7 +378,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)
     {
-        var photo = await _attendance.GetPhotoForUserAsync(fileName, GetUserId(), User.IsInRole("Admin"));
+        var photo = await _attendance.GetPhotoForUserAsync(fileName, GetUserId(), User.IsAdministrative());
         if (photo is null)
             return NotFound();
 

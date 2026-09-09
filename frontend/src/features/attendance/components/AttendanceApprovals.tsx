@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, TriangleAlert, X } from "lucide-react";
 import {
   bulkApproveAttendance,
@@ -38,6 +38,7 @@ import {
   SelectModeButton,
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
+import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 import { formatDistance } from "@/shared/lib/geolocation";
 
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -212,7 +213,7 @@ export function AttendanceApprovals() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
 
-  useEffect(() => {
+  const loadAttendance = useCallback(() => {
     Promise.all([
       getTeamAttendanceApprovals(),
       getTeamBreakApprovals().catch(() => []),
@@ -228,6 +229,12 @@ export function AttendanceApprovals() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(loadAttendance, [loadAttendance]);
+
+  // A clock-in/out or break decided elsewhere refreshes this tab live. There's
+  // no realtime scope for overtime yet, so that tab (below) stays reload-only.
+  useRealtimeEvent(["ATTENDANCE"], loadAttendance);
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const groups = useMemo(() => {

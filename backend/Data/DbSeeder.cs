@@ -18,6 +18,8 @@ using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Entities;
+using AltomateHR.Api.Modules.Shifts;
+using AltomateHR.Api.Modules.Shifts.Entities;
 using System.Text.Json;
 using BC = BCrypt.Net.BCrypt;
 
@@ -57,7 +59,8 @@ public static class DbSeeder
         IApiClientRepository apiClients,
         IOvertimeRepository overtime,
         IOvertimePhotoStorage overtimePhotos,
-        ILeaveApplicationRepository leaveApplications)
+        ILeaveApplicationRepository leaveApplications,
+        IShiftRepository shifts)
     {
         await SeedOrganizationAsync(organizations);
         await SeedApiClientsAsync(apiClients);
@@ -68,7 +71,10 @@ public static class DbSeeder
         await SeedLeaveTypesAsync(leaveTypes);
         await SeedPolicyAsync(policies);
         var demoProject = await SeedAttendanceProjectAsync(projects);
+        await SeedShiftsAsync(shifts, demoProject.Id);
+        await SeedDemoTeamAsync(users, memberships);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
+        await SeedTodayAsync(attendance, approvalRequests, demoProject.Id);
         await BackfillLatenessAsync(attendance, organizations);
         await SeedOvertimeAsync(overtime, overtimePhotos, demoProject.Id);
         await SeedLeaveAsync(leaveApplications, leaveTypes);
@@ -305,7 +311,154 @@ public static class DbSeeder
         int? OutMinute,
         AttendanceStatus Status,
         int? LateByMin,
-        double? DistanceMeters);
+        double? DistanceMeters,
+        string? Remark = null);
+
+    // Two shifts on the demo project. Without at least one, nothing on the
+    // attendance screens has an expected day to measure against — "late" and
+    // "beyond shift" are both relative to a shift, so an org with none makes
+    // those columns quietly meaningless rather than empty.
+    private static async Task SeedShiftsAsync(IShiftRepository shifts, string projectId)
+    {
+        var rows = new[]
+        {
+            new Shift
+            {
+                Id = "shift-demo-office",
+                OrganizationId = DemoOrgId,
+                ProjectId = projectId,
+                Name = "Office Hours",
+                StartTime = "09:00",
+                EndTime = "18:00",
+                WorkingDays = "1,2,3,4,5",
+                LunchBreakMinutes = 60,
+                IsDefault = true,
+            },
+            new Shift
+            {
+                Id = "shift-demo-site",
+                OrganizationId = DemoOrgId,
+                ProjectId = projectId,
+                Name = "Site Shift",
+                StartTime = "07:30",
+                EndTime = "16:30",
+                WorkingDays = "1,2,3,4,5,6",
+                LunchBreakMinutes = 45,
+                IsDefault = false,
+            },
+        };
+
+        foreach (var row in rows)
+        {
+            if (await shifts.GetByIdAsync(row.Id) is not null) continue;
+            row.CreatedAt = DateTime.UtcNow;
+            row.UpdatedAt = DateTime.UtcNow;
+            await shifts.AddAsync(row);
+        }
+    }
+
+    // A few more demo teammates, so the daily board reads like a board rather
+    // than three rows. Ids are prefixed usr-demo- precisely so they can be told
+    // apart from real accounts later — see SeedTodayAsync, which will only ever
+    // write attendance for this set.
+    private static readonly (string Id, string Email, string Name, string JobTitle)[] DemoTeam =
+    [
+        ("usr-demo-aisyah", "aisyah.rahman@altomate.com", "Aisyah Binti Rahman", "Site Engineer"),
+        ("usr-demo-farid", "farid.hassan@altomate.com", "Farid Bin Hassan", "Technician"),
+        ("usr-demo-mei", "mei.ling.chan@altomate.com", "Chan Mei Ling", "QS Executive"),
+        ("usr-demo-arjun", "arjun.pillai@altomate.com", "Arjun Pillai", "Safety Officer"),
+        ("usr-demo-syafiq", "syafiq.osman@altomate.com", "Syafiq Bin Osman", "Foreman"),
+        ("usr-demo-priya", "priya.devi@altomate.com", "Priya Devi", "Admin Assistant"),
+    ];
+
+    private static async Task SeedDemoTeamAsync(
+        IUserRepository users, IOrganizationMembershipRepository memberships)
+    {
+        foreach (var (id, email, name, jobTitle) in DemoTeam)
+            await EnsureUserAsync(users, memberships, id, email, "Employee", name, jobTitle);
+    }
+
+    // Today's board.
+    //
+    // SeedAttendanceAsync deliberately refuses to touch today — it runs on every
+    // startup, and it twice destroyed a clock-in someone was actually testing.
+    // That guard stays. This is a separate, additive pass that is safe for a
+    // different reason: it only ever writes for the usr-demo- accounts above,
+    // which nobody clocks in as, and it skips any day that already has a record.
+    // It never updates and never deletes, so there is no path here that can lose
+    // a real clock-in.
+    private static async Task SeedTodayAsync(
+        IAttendanceRepository attendance,
+        IAttendanceApprovalRequestRepository approvalRequests,
+        string projectId)
+    {
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+
+        // Every state the daily board can render, so the counters above the
+        // table each have something behind them: on time, late, still working,
+        // clocked out, off-site with the employee's own reason, on leave, and
+        // absent (seeded as nothing at all — the board derives those from the
+        // roster, not from a row).
+        var rows = new[]
+        {
+            TodayRow("usr-demo-aisyah", 8, 42, null, null, AttendanceStatus.CLOCKED_IN, null, 12),
+            TodayRow("usr-demo-farid", 9, 34, null, null, AttendanceStatus.LATE, 34, 998,
+                remark: "Parking motorcycle"),
+            TodayRow("usr-demo-mei", 8, 55, 18, 6, AttendanceStatus.CLOCKED_OUT, null, 7),
+            TodayRow("usr-demo-arjun", 7, 58, null, null, AttendanceStatus.CLOCKED_IN, null, 1240,
+                remark: "At the Cyberjaya site today"),
+            TodayRow("usr-demo-syafiq", 9, 12, null, null, AttendanceStatus.LATE, 12, 5),
+            TodayRow("usr-demo-priya", null, null, null, null, AttendanceStatus.ON_LEAVE, null, null),
+        };
+
+        foreach (var row in rows)
+        {
+            if (await attendance.GetForEmployeeOnDateAsync(row.EmployeeId, today) is not null) continue;
+
+            DateTime? timeIn = row.InHour is null ? null : LocalToUtc(today, row.InHour.Value, row.InMinute!.Value);
+            DateTime? timeOut = row.OutHour is null ? null : LocalToUtc(today, row.OutHour.Value, row.OutMinute!.Value);
+            var duration = timeIn is not null && timeOut is not null
+                ? (int)Math.Round((timeOut.Value - timeIn.Value).TotalMinutes)
+                : (int?)null;
+
+            var record = new AttendanceRecord { OrganizationId = DemoOrgId, EmployeeId = row.EmployeeId };
+            var approvalStatus = ApplyDemoAttendance(record, row, projectId, today, timeIn, timeOut, duration);
+            // Only override the generic remark ApplyDemoAttendance picks; a row
+            // that supplies none keeps that default rather than being blanked.
+            if (row.Remark is not null) record.Remark = row.Remark;
+            record = await attendance.AddAsync(record);
+
+            if (timeIn is null) continue;
+
+            var eventAt = timeOut ?? timeIn.Value;
+            await approvalRequests.AddAsync(new AttendanceApprovalRequest
+            {
+                OrganizationId = DemoOrgId,
+                EmployeeId = row.EmployeeId,
+                Kind = timeOut is null ? AttendanceApprovalKind.CLOCK_IN : AttendanceApprovalKind.CLOCK_OUT,
+                AttendanceRecordId = record.Id,
+                EventAt = eventAt,
+                ApprovalStatus = approvalStatus,
+                CurrentStep = 0,
+                SubmittedAt = timeIn.Value,
+                DecidedAt = approvalStatus == AttendanceApprovalStatus.APPROVED ? eventAt : null,
+                CreatedAt = eventAt,
+                UpdatedAt = eventAt,
+            });
+        }
+    }
+
+    private static DemoAttendanceRow TodayRow(
+        string employeeId,
+        int? inHour,
+        int? inMinute,
+        int? outHour,
+        int? outMinute,
+        AttendanceStatus status,
+        int? lateByMin,
+        double? distanceMeters,
+        string? remark = null) =>
+        new(employeeId, 0, inHour, inMinute, outHour, outMinute, status, lateByMin, distanceMeters, remark);
 
     private static async Task SeedPolicyAsync(IEmployeePolicyRepository policies)
     {
