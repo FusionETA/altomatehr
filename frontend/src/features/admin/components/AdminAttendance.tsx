@@ -24,6 +24,7 @@ import { getProjects } from "@/features/settings/api";
 import { getTeams, type TeamMember } from "@/features/teams/api";
 import { getAllOvertime, type OvertimeRequest } from "@/features/overtime/api";
 import { getShifts, type Shift } from "@/features/shifts/api";
+import { getOrganization, type Organization } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { CARD_BARE } from "../lib/dashboard-styles";
@@ -151,6 +152,18 @@ function metreLabel(metres: number | null): string {
   return metres >= 1000 ? `${(metres / 1000).toFixed(1)}KM` : `${Math.round(metres)}M`;
 }
 
+// Which ISO weekdays this person is expected in. Their shift wins; failing
+// that the org's policy; failing that Mon-Fri, which is what the backend
+// assumes too.
+function workingDaysFor(shift: Shift | null, org: Organization | null): Set<number> {
+  const csv = shift?.workingDays ?? org?.workingDays ?? "1,2,3,4,5";
+  const days = csv
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((n) => n >= 1 && n <= 7);
+  return new Set(days.length > 0 ? days : [1, 2, 3, 4, 5]);
+}
+
 function timeLabel(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-US", {
@@ -197,6 +210,7 @@ export function AdminAttendance() {
   const [selfies, setSelfies] = useState<SelfieStorage | null>(null);
   const [overtime, setOvertime] = useState<OvertimeRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [org, setOrg] = useState<Organization | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -241,6 +255,17 @@ export function AdminAttendance() {
       // their attendance, which is the pairing that explains a long day.
       if (section === "overtime" || section === "employees") setOvertime(await getAllOvertime());
       if (section === "shifts") setShifts(await getShifts());
+      // The detail heatmap needs to tell "wasn't scheduled" from "didn't turn
+      // up", which means knowing the employee's working days: their shift if
+      // they have one, else the org's.
+      if (section === "employees" && shifts.length === 0) {
+        const [shiftList, organization] = await Promise.all([
+          getShifts().catch(() => []),
+          getOrganization().catch(() => null),
+        ]);
+        setShifts(shiftList);
+        setOrg(organization);
+      }
       // Employees shows each person's hours against the same range, so it reads
       // the same report Analytics does rather than a second source that could
       // total differently.
@@ -260,6 +285,9 @@ export function AdminAttendance() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load that report.");
     }
+    // shifts.length is read to avoid refetching, not to react to — a
+    // dependency on it would refetch the moment it lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, tab, from, to, filter]);
 
   useEffect(() => {
@@ -585,6 +613,10 @@ export function AdminAttendance() {
             records={records.filter((r) => r.employeeId === openEmployee.employee.id)}
             overtime={overtime.filter((r) => r.employeeId === openEmployee.employee.id)}
             reportsTo={reportsTo(openEmployee.employee.id)}
+            workingDays={workingDaysFor(
+              shifts.find((sh) => sh.id === openEmployee.employee.shiftId) ?? null,
+              org,
+            )}
             projectNames={projectNames}
             today={today}
             from={from}
@@ -1217,6 +1249,173 @@ function TodayPill({ record }: { record: AttendanceRecord | null }) {
   );
 }
 
+// ---- Activity heatmap ----
+
+// One cell per day for the last year, laid out like a contribution graph:
+// columns are weeks, rows are Monday through Sunday.
+//
+// Colour encodes STATUS, not hours. The contribution-graph convention —
+// darker means more — is exactly wrong for attendance: a run of eleven-hour
+// days is the thing you want flagged, not the thing you want rewarded. Here
+// the eye is drawn to the exception instead, which is what the page is for.
+type DayCell = {
+  date: string;
+  kind: "onTime" | "late" | "absent" | "leave" | "offDuty" | "noData" | "future";
+  record: AttendanceRecord | null;
+};
+
+const CELL_CLASS: Record<DayCell["kind"], string> = {
+  onTime: "bg-secondary",
+  late: "bg-warning",
+  absent: "bg-destructive/70",
+  leave: "bg-primary/60",
+  // A day nobody was expected in reads as background, not as a gap in the
+  // record — otherwise every weekend looks like an absence.
+  offDuty: "bg-muted",
+  // Before this employee has any record at all. Distinct from absent on
+  // purpose: we have no evidence either way, and colouring it red would invent
+  // months of absence out of a system that simply was not recording yet.
+  noData: "bg-transparent ring-1 ring-inset ring-border/60",
+  future: "bg-muted/40",
+};
+
+const LEGEND: { kind: DayCell["kind"]; label: string }[] = [
+  { kind: "onTime", label: "On time" },
+  { kind: "late", label: "Late" },
+  { kind: "absent", label: "Absent" },
+  { kind: "leave", label: "On leave" },
+  { kind: "offDuty", label: "Not scheduled" },
+  { kind: "noData", label: "No records" },
+];
+
+function AttendanceHeatmap({
+  records,
+  workingDays,
+  today,
+  weeks = 26,
+}: {
+  records: AttendanceRecord[];
+  workingDays: Set<number>;
+  today: string;
+  weeks?: number;
+}) {
+  const { columns, summary } = useMemo(() => {
+    const byDate = new Map(records.map((r) => [r.date, r] as const));
+
+    // Nothing before the first record can be called an absence — there is no
+    // evidence either way, and the employee may not have been here yet.
+    const firstRecorded = records
+      .map((r) => r.date)
+      .sort()
+      .at(0) ?? null;
+
+    // Walk back to the Monday of the first week so the grid's rows line up
+    // with weekdays rather than drifting by whatever day today happens to be.
+    const end = new Date(`${today}T00:00:00Z`);
+    const endMonday = new Date(end);
+    const shift = (end.getUTCDay() + 6) % 7;           // Mon = 0
+    endMonday.setUTCDate(end.getUTCDate() - shift);
+
+    const start = new Date(endMonday);
+    start.setUTCDate(endMonday.getUTCDate() - (weeks - 1) * 7);
+
+    const cols: DayCell[][] = [];
+    const tally = { onTime: 0, late: 0, absent: 0, leave: 0, offSite: 0, scheduled: 0 };
+
+    for (let w = 0; w < weeks; w++) {
+      const column: DayCell[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start);
+        day.setUTCDate(start.getUTCDate() + w * 7 + d);
+        const iso = day.toISOString().slice(0, 10);
+        const isoWeekday = ((day.getUTCDay() + 6) % 7) + 1;   // Mon = 1
+        const record = byDate.get(iso) ?? null;
+
+        let kind: DayCell["kind"];
+        if (iso > today) kind = "future";
+        else if (record?.status === "ON_LEAVE") kind = "leave";
+        else if (record?.timeIn) kind = (record.lateByMin ?? 0) > 0 ? "late" : "onTime";
+        else if (!workingDays.has(isoWeekday)) kind = "offDuty";
+        else if (firstRecorded === null || iso < firstRecorded) kind = "noData";
+        else kind = "absent";
+
+        if (kind !== "future" && kind !== "offDuty" && kind !== "noData") tally.scheduled++;
+        if (kind === "onTime") tally.onTime++;
+        if (kind === "late") tally.late++;
+        if (kind === "absent") tally.absent++;
+        if (kind === "leave") tally.leave++;
+        if (isOffSite(record)) tally.offSite++;
+
+        column.push({ date: iso, kind, record });
+      }
+      cols.push(column);
+    }
+
+    return { columns: cols, summary: tally };
+  }, [records, workingDays, today, weeks]);
+
+  return (
+    <section className={`${CARD_BARE} space-y-4 p-5 sm:p-6`}>
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h4 className="font-bold text-foreground">Activity</h4>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Last {weeks} weeks
+        </span>
+      </header>
+
+      <div className="nice-scrollbar overflow-x-auto">
+        <div className="flex gap-1">
+          {columns.map((week) => (
+            <div key={week[0].date} className="flex flex-col gap-1">
+              {week.map((cell) => (
+                <span
+                  key={cell.date}
+                  // A native title is enough here: the grid is a scanning aid,
+                  // and the day-by-day list underneath carries the detail.
+                  title={describeCell(cell)}
+                  className={`h-3 w-3 rounded-[3px] ${CELL_CLASS[cell.kind]}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {LEGEND.map((item) => (
+          <span key={item.kind} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className={`h-3 w-3 rounded-[3px] ${CELL_CLASS[item.kind]}`} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+
+      {/* The one-line read, so the grid does not have to be counted by eye. */}
+      <p className="text-xs text-muted-foreground">
+        Present {summary.onTime + summary.late} of {summary.scheduled} scheduled days
+        {summary.late > 0 ? ` · ${summary.late} late` : ""}
+        {summary.absent > 0 ? ` · ${summary.absent} absent` : ""}
+        {summary.leave > 0 ? ` · ${summary.leave} on leave` : ""}
+        {summary.offSite > 0 ? ` · ${summary.offSite} off-site` : ""}
+      </p>
+    </section>
+  );
+}
+
+function describeCell(cell: DayCell): string {
+  if (cell.kind === "future") return cell.date;
+  if (cell.kind === "offDuty") return `${cell.date} · not scheduled`;
+  if (cell.kind === "noData") return `${cell.date} · no records`;
+  if (cell.kind === "absent") return `${cell.date} · no clock-in`;
+  if (cell.kind === "leave") return `${cell.date} · on leave`;
+
+  const parts = [cell.date, timeLabel(cell.record?.timeIn ?? null)];
+  if (cell.record?.durationMin) parts.push(formatMinutes(cell.record.durationMin));
+  if (cell.record?.lateByMin) parts.push(`late ${formatMinutes(cell.record.lateByMin)}`);
+  if (isOffSite(cell.record)) parts.push(`off-site ${metreLabel(cell.record?.clockInDistanceMeters ?? null)}`);
+  return parts.join(" · ");
+}
+
 // ---- One employee ----
 
 const EVENT_LABEL: Record<AttendanceApprovalRequest["kind"], string> = {
@@ -1238,6 +1437,7 @@ function EmployeeDetail({
   records,
   overtime,
   reportsTo,
+  workingDays,
   projectNames,
   today,
   from,
@@ -1248,6 +1448,7 @@ function EmployeeDetail({
   records: AttendanceRecord[];
   overtime: OvertimeRequest[];
   reportsTo: string | null;
+  workingDays: Set<number>;
   projectNames: Map<string, string>;
   today: string;
   from: string;
@@ -1440,6 +1641,9 @@ function EmployeeDetail({
           </div>
         </section>
       </div>
+
+      {/* The shape of the year, above the day-by-day detail that explains it */}
+      <AttendanceHeatmap records={records} workingDays={workingDays} today={today} />
 
       {/* Day by day */}
       <section className={`${CARD_BARE} overflow-hidden`}>
