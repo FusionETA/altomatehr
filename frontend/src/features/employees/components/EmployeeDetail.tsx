@@ -183,6 +183,9 @@ export function EmployeeDetail({
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [savingAssignment, setSavingAssignment] = useState(false);
+  // The add-flow narrows in the order the previous system uses: pick a project,
+  // which decides the teams on offer, which decides the levels on offer.
+  const [assigningProjectId, setAssigningProjectId] = useState(NONE);
   const [assigningTeamId, setAssigningTeamId] = useState(NONE);
   const [assigningLayer, setAssigningLayer] = useState(0);
   // Keyed by team id — an employee can be on several teams at once, each with
@@ -278,6 +281,44 @@ export function EmployeeDetail({
   );
   // A stable key that changes exactly when the set of memberships or any of
   // their layers changes — what the approver options actually depend on.
+  // A team belongs to exactly one project, so a membership IS the answer to
+  // "which team on this project" — presented project-first, the way an admin
+  // thinks about it and the way the previous system asks for it.
+  const myProjects = useMemo(
+    () =>
+      myMemberships
+        .map(({ team, member }) => ({
+          project: projects.find((p) => p.id === team.projectId) ?? {
+            id: team.projectId,
+            name: "Unknown project",
+          },
+          team,
+          member,
+        }))
+        .sort((a, b) => a.project.name.localeCompare(b.project.name)),
+    [myMemberships, projects],
+  );
+
+  // Only projects that have a team to join, and not one they are already on:
+  // two memberships on one project would make the chain resolution ambiguous.
+  const assignableProjects = useMemo(() => {
+    const taken = new Set(myMemberships.map(({ team }) => team.projectId));
+    return projects.filter((p) => !taken.has(p.id) && teams.some((t) => t.projectId === p.id));
+  }, [projects, teams, myMemberships]);
+
+  // Named so the empty-picker message can point at the actual blocker rather
+  // than leaving an admin staring at a dropdown with nothing in it.
+  const projectsWithoutTeams = useMemo(
+    () => projects.filter((p) => !teams.some((t) => t.projectId === p.id)),
+    [projects, teams],
+  );
+
+  const assigningProjectTeams = useMemo(
+    () => (assigningProjectId === NONE ? [] : teams.filter((t) => t.projectId === assigningProjectId)),
+    [teams, assigningProjectId],
+  );
+  const assigningTeam = teams.find((t) => t.id === assigningTeamId);
+
   const membershipKey = myMemberships.map((m) => `${m.team.id}:${m.member.layer}`).join(",");
 
   useEffect(() => {
@@ -347,7 +388,9 @@ export function EmployeeDetail({
     try {
       const updated = await addTeamMember(assigningTeamId, { employeeId: employee.id, layer: assigningLayer });
       setTeams((ts) => ts.map((t) => (t.id === updated.id ? updated : t)));
+      setAssigningProjectId(NONE);
       setAssigningTeamId(NONE);
+      setAssigningLayer(0);
     } catch (e: unknown) {
       setTeamsError(message(e, "Could not assign this employee to a team."));
     } finally {
@@ -363,6 +406,32 @@ export function EmployeeDetail({
       setTeams((ts) => ts.map((t) => (t.id === updated.id ? updated : t)));
     } catch (e: unknown) {
       setTeamsError(message(e, "Could not change this employee's layer."));
+    } finally {
+      setSavingAssignment(false);
+    }
+  }
+
+  // Switching the team within a project is a leave-and-join, since a membership
+  // is (team, level) and there is no "move" on the API. The level is carried
+  // across so changing team doesn't silently demote anyone.
+  async function handleMoveTeam(fromTeamId: string, toTeamId: string, layer: number) {
+    setSavingAssignment(true);
+    setTeamsError(null);
+    try {
+      const left = await removeTeamMember(fromTeamId, employee.id);
+      const target = teams.find((t) => t.id === toTeamId);
+      // The new team may be shallower than the old one.
+      const safeLayer = Math.min(layer, Math.max(0, (target?.layerCount ?? 1) - 1));
+      const joined = await addTeamMember(toTeamId, { employeeId: employee.id, layer: safeLayer });
+      setTeams((ts) =>
+        ts.map((t) => (t.id === left.id ? left : t.id === joined.id ? joined : t)),
+      );
+      setApproverOptionsByTeam((cur) => {
+        const { [fromTeamId]: _dropped, ...rest } = cur;
+        return rest;
+      });
+    } catch (e: unknown) {
+      setTeamsError(message(e, "Could not move this employee to that team."));
     } finally {
       setSavingAssignment(false);
     }
@@ -1329,167 +1398,246 @@ export function EmployeeDetail({
 
                 <Stack
                   title="Approval routing"
-                  hint="Who approves this person's leave, claims, and attendance requests — layer by layer."
+                  hint="Project, then team, then which level they sit at — their approvers follow from that."
                 >
                   {teamsError ? (
                     <p className="text-sm font-medium text-destructive">{teamsError}</p>
                   ) : null}
                   {teamsLoading ? (
                     <p className="text-sm text-muted-foreground">Loading teams…</p>
+                  ) : myProjects.length === 0 ? (
+                    // Not on any team means no chain at all, and a request with
+                    // no chain approves itself on submission. That is worth
+                    // saying out loud rather than showing an empty box.
+                    <p className="flex items-start gap-2 rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>
+                        Not on any project yet, so nobody approves for them —{" "}
+                        <strong>their claims, leave and overtime approve themselves on submission.</strong>{" "}
+                        Add a project below.
+                      </span>
+                    </p>
                   ) : (
-                    myMemberships.map(({ team, member }) => {
+                    myProjects.map(({ project, team, member }) => {
                       const options = approverOptionsByTeam[team.id] ?? [];
+                      const projectTeams = teams.filter((t) => t.projectId === project.id);
                       return (
-                        <div key={team.id} className="space-y-3">
-                          <div className="rounded-2xl border border-border/60 bg-card p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-foreground">{team.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {projects.find((p) => p.id === team.projectId)?.name ?? "Unknown project"}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Picker
-                                  value={String(member.layer)}
-                                  onChange={(v) => void handleChangeLayer(team.id, v ? Number(v) : member.layer)}
-                                  options={Array.from({ length: team.layerCount }, (_, layer) => ({
-                                    value: String(layer),
-                                    label: layerLabel(team, layer),
-                                  }))}
-                                />
-                                <button
-                                  type="button"
-                                  disabled={savingAssignment}
-                                  onClick={() => void handleRemoveFromTeam(team.id)}
-                                  className="shrink-0 text-xs font-bold text-destructive transition hover:underline disabled:opacity-50"
-                                >
-                                  Remove from team
-                                </button>
-                              </div>
+                        <div
+                          key={project.id}
+                          className="space-y-3 rounded-2xl border border-border/60 bg-card p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-foreground">{project.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Team and approvers for this project.
+                              </p>
                             </div>
+                            <button
+                              type="button"
+                              disabled={savingAssignment}
+                              onClick={() => void handleRemoveFromTeam(team.id)}
+                              className="shrink-0 text-xs font-bold text-destructive transition hover:underline disabled:opacity-50"
+                            >
+                              Remove from this project
+                            </button>
+                          </div>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="Team">
+                              <Picker
+                                value={team.id}
+                                onChange={(v) => {
+                                  // Moving team within the same project: leave
+                                  // the old one and join the new at the same
+                                  // level, so the level survives the move.
+                                  if (v && v !== team.id) void handleMoveTeam(team.id, v, member.layer);
+                                }}
+                                options={projectTeams.map((t) => ({
+                                  value: t.id,
+                                  label: `${t.name} · ${t.layerCount} level${t.layerCount === 1 ? "" : "s"}`,
+                                }))}
+                              />
+                            </Field>
+                            <Field label="Their level">
+                              <Picker
+                                value={String(member.layer)}
+                                onChange={(v) =>
+                                  void handleChangeLayer(team.id, v ? Number(v) : member.layer)
+                                }
+                                options={Array.from({ length: team.layerCount }, (_, layer) => ({
+                                  value: String(layer),
+                                  label: `L${layer + 1} — ${layerLabel(team, layer)}`,
+                                }))}
+                              />
+                            </Field>
                           </div>
 
                           {approverOptionsLoading ? (
                             <p className="text-sm text-muted-foreground">Loading approvers…</p>
                           ) : options.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
-                              Nobody sits above this employee in {team.name} — there's no one left to approve
-                              for them.
+                              Top level of {team.name} — nobody approves above them on this project.
                             </p>
                           ) : (
-                            options.map((option) => (
-                              <div
-                                key={option.layer}
-                                className="rounded-2xl border border-border/60 bg-card p-4"
-                              >
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                  <p className="text-sm font-semibold text-foreground">{option.layerLabel}</p>
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                                        option.isOverridden
-                                          ? "bg-warning/40 text-warning-foreground"
-                                          : "bg-muted text-muted-foreground"
-                                      }`}
-                                    >
-                                      {option.isOverridden ? "Custom" : "Auto"}
-                                    </span>
-                                    {option.isOverridden ? (
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          savingLayer?.teamId === team.id && savingLayer.layer === option.layer
-                                        }
-                                        onClick={() => void handleResetLayer(team.id, option.layer)}
-                                        className="text-xs font-bold text-primary transition hover:underline disabled:opacity-50"
+                            <div className="space-y-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Their supervisors
+                              </p>
+                              {options.map((option) => (
+                                <div
+                                  key={option.layer}
+                                  className="rounded-2xl border border-border/60 bg-surface-low/40 p-4"
+                                >
+                                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-foreground">
+                                      L{option.layer + 1} — {option.layerLabel}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                          option.isOverridden
+                                            ? "bg-warning text-warning-foreground"
+                                            : "bg-muted text-muted-foreground"
+                                        }`}
                                       >
-                                        Reset to automatic
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                {option.candidates.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground">
-                                    Nobody sits at this layer yet — assign someone in Company Structure first.
-                                  </p>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {option.candidates.map((candidate) => (
-                                      <label
-                                        key={candidate.employeeId}
-                                        className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={option.effectiveApproverIds.includes(candidate.employeeId)}
+                                        {option.isOverridden ? "Chosen" : "Everyone at this level"}
+                                      </span>
+                                      {option.isOverridden ? (
+                                        <button
+                                          type="button"
                                           disabled={
-                                            savingLayer?.teamId === team.id && savingLayer.layer === option.layer
+                                            savingLayer?.teamId === team.id &&
+                                            savingLayer.layer === option.layer
                                           }
-                                          onChange={(e) =>
-                                            void handleToggleApprover(
-                                              team.id,
-                                              option.layer,
-                                              candidate.employeeId,
-                                              e.target.checked,
-                                            )
-                                          }
-                                          className="h-4 w-4 rounded border-border accent-primary"
-                                        />
-                                        {candidate.email ?? candidate.employeeId}
-                                      </label>
-                                    ))}
+                                          onClick={() => void handleResetLayer(team.id, option.layer)}
+                                          className="text-xs font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                                        >
+                                          Reset
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            ))
+                                  {option.candidates.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      Nobody sits at this level yet — assign someone in Company Structure
+                                      first.
+                                    </p>
+                                  ) : (
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      {option.candidates.map((candidate) => (
+                                        <label
+                                          key={candidate.employeeId}
+                                          className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={option.effectiveApproverIds.includes(
+                                              candidate.employeeId,
+                                            )}
+                                            disabled={
+                                              savingLayer?.teamId === team.id &&
+                                              savingLayer.layer === option.layer
+                                            }
+                                            onChange={(e) =>
+                                              void handleToggleApprover(
+                                                team.id,
+                                                option.layer,
+                                                candidate.employeeId,
+                                                e.target.checked,
+                                              )
+                                            }
+                                            className="h-4 w-4 rounded border-border accent-primary"
+                                          />
+                                          {candidate.email ?? candidate.employeeId}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       );
                     })
                   )}
 
-                  {/* Always available, not just when the employee has no team yet — an
-                      admin can add them to an additional team without removing an
-                      existing one first. */}
-                  <div className="flex flex-wrap items-end gap-3">
-                    <Field label="Add to a team">
-                      <Picker
-                        value={assigningTeamId}
-                        onChange={(v) => {
-                          setAssigningTeamId(v ?? NONE);
-                          setAssigningLayer(0);
-                        }}
-                        placeholder="Choose a team"
-                        allowNone
-                        noneLabel="Choose a team"
-                        options={teams.map((t) => ({
-                          value: t.id,
-                          label: `${projects.find((p) => p.id === t.projectId)?.name ?? "Unknown project"} — ${t.name}`,
-                        }))}
-                      />
-                    </Field>
-                    {assigningTeamId !== NONE ? (
-                      <Field label="Layer">
+                  {/* Adding follows the same order as reading: project, then a
+                      team inside it, then the level. Always available — an
+                      employee can work on several projects at once. */}
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-surface-low/40 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Add a project
+                    </p>
+                    {/* An empty project picker has two different causes and an
+                        admin can act on both — but only if we say which. */}
+                    {assignableProjects.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {projectsWithoutTeams.length > 0
+                          ? `No team exists yet on ${projectsWithoutTeams
+                              .map((p) => p.name)
+                              .join(", ")} — create one in Company Structure first.`
+                          : "They are already on every project that has a team."}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <Field label="Project">
+                        <Picker
+                          value={assigningProjectId}
+                          onChange={(v) => {
+                            setAssigningProjectId(v ?? NONE);
+                            setAssigningTeamId(NONE);
+                            setAssigningLayer(0);
+                          }}
+                          placeholder="Choose a project"
+                          allowNone
+                          noneLabel="Choose a project"
+                          options={assignableProjects.map((p) => ({ value: p.id, label: p.name }))}
+                        />
+                      </Field>
+                      <Field label="Team">
+                        <Picker
+                          value={assigningTeamId}
+                          onChange={(v) => {
+                            setAssigningTeamId(v ?? NONE);
+                            setAssigningLayer(0);
+                          }}
+                          placeholder={
+                            assigningProjectId === NONE ? "Pick a project first" : "Choose a team"
+                          }
+                          allowNone
+                          noneLabel="Choose a team"
+                          options={assigningProjectTeams.map((t) => ({
+                            value: t.id,
+                            label: `${t.name} · ${t.layerCount} level${t.layerCount === 1 ? "" : "s"}`,
+                          }))}
+                        />
+                      </Field>
+                      <Field label="Their level">
                         <Picker
                           value={String(assigningLayer)}
                           onChange={(v) => setAssigningLayer(v ? Number(v) : 0)}
+                          placeholder={assigningTeamId === NONE ? "Pick a team first" : undefined}
                           options={Array.from(
-                            { length: teams.find((t) => t.id === assigningTeamId)?.layerCount ?? 1 },
+                            { length: assigningTeam?.layerCount ?? 0 },
                             (_, layer) => ({
                               value: String(layer),
-                              label: layerLabel(teams.find((t) => t.id === assigningTeamId)!, layer),
+                              label: assigningTeam
+                                ? `L${layer + 1} — ${layerLabel(assigningTeam, layer)}`
+                                : String(layer),
                             }),
                           )}
                         />
                       </Field>
-                    ) : null}
+                    </div>
                     <button
                       type="button"
                       disabled={assigningTeamId === NONE || savingAssignment}
                       onClick={() => void handleAssignTeam()}
-                      className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-border bg-card px-4 text-sm font-bold text-foreground transition hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+                      className="mt-3 inline-flex h-11 items-center gap-2 rounded-2xl border border-border bg-card px-4 text-sm font-bold text-foreground transition hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
                     >
+                      {savingAssignment ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                       Assign
                     </button>
                   </div>
