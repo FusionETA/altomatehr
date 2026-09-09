@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPin } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Download,
+  FileText,
+  MapPin,
+  Plus,
+} from "lucide-react";
 import {
   getApprovalAudit,
+  exportEmployeeAttendancePdf,
   getAttendanceHistory,
   getOrgHoursSummary,
   getSelfieStorage,
   getSupervisorPerformance,
   type AdminAttendanceFilter,
   type ApprovalAuditEntry,
+  type AttendanceApprovalRequest,
   type AttendanceRecord,
   type OrgHoursSummary,
   type HoursBuckets,
@@ -17,14 +28,27 @@ import {
 import { AttendanceStatusBadge } from "@/features/attendance/components/AttendanceStatusBadge";
 import { OvertimeStatusBadge } from "@/features/overtime/components/OvertimeStatusBadge";
 import { getEmployees, type Employee } from "@/features/employees/api";
+import { exportEmployeeLeaveSummaryPdf } from "@/features/leave/api";
 import { getProjects } from "@/features/settings/api";
-import { getTeams } from "@/features/teams/api";
-import { getAllOvertime, type OvertimeRequest } from "@/features/overtime/api";
+import { getTeams, type TeamMember } from "@/features/teams/api";
+import {
+  getAllOvertime,
+  openOvertimePhoto,
+  type OvertimeRequest,
+} from "@/features/overtime/api";
+import { overtimeStatusLabels } from "@/features/overtime/lib/overtime-status";
 import { getShifts, type Shift } from "@/features/shifts/api";
+import { getOrganization, type Organization } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { CARD_BARE } from "../lib/dashboard-styles";
-import { formatBytes, formatMinutes, formatWorkingDays } from "../lib/attendance-format";
+import {
+  ALL_FILTER,
+  formatBytes,
+  formatMinutes,
+  formatWorkingDays,
+} from "../lib/attendance-format";
+import { ShiftEditor } from "./ShiftEditor";
 import {
   AttendanceFilterBar,
   DateRangeBar,
@@ -50,6 +74,11 @@ type TeamIndexEntry = {
   name: string;
   projectId: string;
   members: string[];
+  // The same people with their approval layer, which is what "reports to" is
+  // read from. Kept beside `members` rather than replacing it: the scope
+  // filters only ever ask "is this person in?", and a set of ids answers that
+  // without walking objects.
+  roster: TeamMember[];
 };
 
 const REPORT_TABS: { key: ReportTab; label: string }[] = [
@@ -143,6 +172,18 @@ function metreLabel(metres: number | null): string {
   return metres >= 1000 ? `${(metres / 1000).toFixed(1)}KM` : `${Math.round(metres)}M`;
 }
 
+// Which ISO weekdays this person is expected in. Their shift wins; failing
+// that the org's policy; failing that Mon-Fri, which is what the backend
+// assumes too.
+function workingDaysFor(shift: Shift | null, org: Organization | null): Set<number> {
+  const csv = shift?.workingDays ?? org?.workingDays ?? "1,2,3,4,5";
+  const days = csv
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((n) => n >= 1 && n <= 7);
+  return new Set(days.length > 0 ? days : [1, 2, 3, 4, 5]);
+}
+
 function timeLabel(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-US", {
@@ -168,6 +209,8 @@ function dateLabel(key: string): string {
 // resets on every tab change is a filter nobody trusts.
 export function AdminAttendance() {
   const [section, setSection] = useState<Section>("overview");
+  // Which employee the roster has drilled into, if any.
+  const [openEmployeeId, setOpenEmployeeId] = useState<string | null>(null);
   const [tab, setTab] = useState<ReportTab>("today");
   const [filter, setFilter] = useState<AdminAttendanceFilter>({});
   const [from, setFrom] = useState(startOfMonth);
@@ -187,6 +230,7 @@ export function AdminAttendance() {
   const [selfies, setSelfies] = useState<SelfieStorage | null>(null);
   const [overtime, setOvertime] = useState<OvertimeRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [org, setOrg] = useState<Organization | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -210,6 +254,7 @@ export function AdminAttendance() {
             name: t.name,
             projectId: t.projectId,
             members: t.members.map((m) => m.employeeId),
+            roster: t.members,
           })),
         );
         setProjectNames(new Map(projectList.map((p) => [p.id, p.name])));
@@ -226,8 +271,21 @@ export function AdminAttendance() {
   const loadTab = useCallback(async () => {
     setError(null);
     try {
-      if (section === "overtime") setOvertime(await getAllOvertime());
+      // Employees loads overtime too — the drill-in shows a person's OT beside
+      // their attendance, which is the pairing that explains a long day.
+      if (section === "overtime" || section === "employees") setOvertime(await getAllOvertime());
       if (section === "shifts") setShifts(await getShifts());
+      // The detail heatmap needs to tell "wasn't scheduled" from "didn't turn
+      // up", which means knowing the employee's working days: their shift if
+      // they have one, else the org's.
+      if (section === "employees" && shifts.length === 0) {
+        const [shiftList, organization] = await Promise.all([
+          getShifts().catch(() => []),
+          getOrganization().catch(() => null),
+        ]);
+        setShifts(shiftList);
+        setOrg(organization);
+      }
       // Employees shows each person's hours against the same range, so it reads
       // the same report Analytics does rather than a second source that could
       // total differently.
@@ -247,6 +305,9 @@ export function AdminAttendance() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load that report.");
     }
+    // shifts.length is read to avoid refetching, not to react to — a
+    // dependency on it would refetch the moment it lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, tab, from, to, filter]);
 
   useEffect(() => {
@@ -448,7 +509,40 @@ export function AdminAttendance() {
     [overtimeRows],
   );
 
-  const showFilters = section !== "shifts";
+  // "Reports to", rebuilt from the team hierarchy. The old membership column
+  // that held this was dropped when approvals moved to Teams, so the answer now
+  // lives where the routing itself reads it: the next occupied layer above the
+  // person in their own team.
+  const reportsTo = useCallback(
+    (employeeId: string): string | null => {
+      for (const team of teamIndex) {
+        const self = team.roster.find((m) => m.employeeId === employeeId);
+        if (!self) continue;
+
+        const above = team.roster
+          .filter((m) => m.layer > self.layer)
+          .sort((a, b) => a.layer - b.layer);
+        if (above.length === 0) continue;
+
+        const nextLayer = above[0].layer;
+        const approvers = above
+          .filter((m) => m.layer === nextLayer)
+          .map((m) => names.get(m.employeeId) ?? m.email ?? m.employeeId);
+        return approvers.join(", ");
+      }
+      return null;
+    },
+    [teamIndex, names],
+  );
+
+  const openEmployee = useMemo(
+    () => employeeRows.find((row) => row.employee.id === openEmployeeId) ?? null,
+    [employeeRows, openEmployeeId],
+  );
+
+  // The drill-in stands alone: the filter bar scopes a roster, and there is
+  // only one person on screen.
+  const showFilters = section !== "shifts" && !openEmployee;
   const showDateRange =
     section === "overtime" ||
     section === "employees" ||
@@ -467,7 +561,10 @@ export function AdminAttendance() {
           { id: "shifts", label: "Shifts" },
         ]}
         value={section}
-        onChange={setSection}
+        onChange={(next) => {
+          setSection(next);
+          setOpenEmployeeId(null);
+        }}
         className="sm:max-w-lg sm:flex-1"
         ariaLabel="Attendance views"
       />
@@ -530,11 +627,38 @@ export function AdminAttendance() {
           Loading attendance…
         </section>
       ) : section === "employees" ? (
-        <EmployeesTab rows={employeeRows} />
+        openEmployee ? (
+          <EmployeeDetail
+            row={openEmployee}
+            records={records.filter((r) => r.employeeId === openEmployee.employee.id)}
+            overtime={overtime.filter((r) => r.employeeId === openEmployee.employee.id)}
+            reportsTo={reportsTo(openEmployee.employee.id)}
+            workingDays={workingDaysFor(
+              shifts.find((sh) => sh.id === openEmployee.employee.shiftId) ?? null,
+              org,
+            )}
+            projectNames={projectNames}
+            today={today}
+            from={from}
+            to={to}
+            onBack={() => setOpenEmployeeId(null)}
+          />
+        ) : (
+          <EmployeesTab rows={employeeRows} onOpen={setOpenEmployeeId} />
+        )
       ) : section === "overtime" ? (
         <OvertimeTab rows={overtimeRows} name={name} projectNames={projectNames} />
       ) : section === "shifts" ? (
-        <ShiftsTab rows={shifts} projectNames={projectNames} />
+        <ShiftsTab
+          rows={shifts}
+          projects={projects}
+          projectNames={projectNames}
+          // Refetch rather than append. Claiming the default clears it from
+          // whichever shift held it before, and a local append cannot know
+          // that — it left two rows both badged DEFAULT, which the server
+          // would never return.
+          onCreated={() => void getShifts().then(setShifts).catch(() => {})}
+        />
       ) : tab === "today" ? (
         <TodayTab
           rows={todayRows}
@@ -1035,12 +1159,14 @@ function Stat({
 // two things an admin scans for — how their hours are tracking against the
 // range, and whether they turned up today.
 //
-// No drill-in chevron. Production's opens a per-employee attendance page we do
-// not have yet, and an affordance that goes nowhere is worse than none.
+// Each card opens that person's attendance detail, the way production's roster
+// does.
 function EmployeesTab({
   rows,
+  onOpen,
 }: {
   rows: EmployeeRow[];
+  onOpen: (employeeId: string) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1061,9 +1187,11 @@ function EmployeesTab({
 
       <section className={`${CARD_BARE} divide-y divide-border/60`}>
         {rows.map(({ employee, projects, buckets, record }) => (
-          <article
+          <button
             key={employee.id}
-            className="flex flex-col gap-3 p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6"
+            type="button"
+            onClick={() => onOpen(employee.id)}
+            className="flex w-full flex-col gap-3 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6"
           >
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -1087,8 +1215,9 @@ function EmployeesTab({
               <div className="w-24 text-right">
                 <TodayPill record={record} />
               </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </div>
-          </article>
+          </button>
         ))}
       </section>
     </div>
@@ -1149,7 +1278,543 @@ function TodayPill({ record }: { record: AttendanceRecord | null }) {
   );
 }
 
+// ---- Activity heatmap ----
+
+// One cell per day for the last year, laid out like a contribution graph:
+// columns are weeks, rows are Monday through Sunday.
+//
+// Colour encodes STATUS, not hours. The contribution-graph convention —
+// darker means more — is exactly wrong for attendance: a run of eleven-hour
+// days is the thing you want flagged, not the thing you want rewarded. Here
+// the eye is drawn to the exception instead, which is what the page is for.
+type DayCell = {
+  date: string;
+  kind: "onTime" | "late" | "absent" | "leave" | "offDuty" | "noData" | "future";
+  record: AttendanceRecord | null;
+};
+
+const CELL_CLASS: Record<DayCell["kind"], string> = {
+  onTime: "bg-secondary",
+  late: "bg-warning",
+  absent: "bg-destructive/70",
+  leave: "bg-primary/60",
+  // A day nobody was expected in reads as background, not as a gap in the
+  // record — otherwise every weekend looks like an absence.
+  offDuty: "bg-muted",
+  // Before this employee has any record at all. Distinct from absent on
+  // purpose: we have no evidence either way, and colouring it red would invent
+  // months of absence out of a system that simply was not recording yet.
+  noData: "bg-transparent ring-1 ring-inset ring-border/60",
+  future: "bg-muted/40",
+};
+
+const LEGEND: { kind: DayCell["kind"]; label: string }[] = [
+  { kind: "onTime", label: "On time" },
+  { kind: "late", label: "Late" },
+  { kind: "absent", label: "Absent" },
+  { kind: "leave", label: "On leave" },
+  { kind: "offDuty", label: "Not scheduled" },
+  { kind: "noData", label: "No records" },
+];
+
+function AttendanceHeatmap({
+  records,
+  workingDays,
+  today,
+  weeks = 26,
+}: {
+  records: AttendanceRecord[];
+  workingDays: Set<number>;
+  today: string;
+  weeks?: number;
+}) {
+  const { columns, summary } = useMemo(() => {
+    const byDate = new Map(records.map((r) => [r.date, r] as const));
+
+    // Nothing before the first record can be called an absence — there is no
+    // evidence either way, and the employee may not have been here yet.
+    const firstRecorded = records
+      .map((r) => r.date)
+      .sort()
+      .at(0) ?? null;
+
+    // Walk back to the Monday of the first week so the grid's rows line up
+    // with weekdays rather than drifting by whatever day today happens to be.
+    const end = new Date(`${today}T00:00:00Z`);
+    const endMonday = new Date(end);
+    const shift = (end.getUTCDay() + 6) % 7;           // Mon = 0
+    endMonday.setUTCDate(end.getUTCDate() - shift);
+
+    const start = new Date(endMonday);
+    start.setUTCDate(endMonday.getUTCDate() - (weeks - 1) * 7);
+
+    const cols: DayCell[][] = [];
+    const tally = { onTime: 0, late: 0, absent: 0, leave: 0, offSite: 0, scheduled: 0 };
+
+    for (let w = 0; w < weeks; w++) {
+      const column: DayCell[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start);
+        day.setUTCDate(start.getUTCDate() + w * 7 + d);
+        const iso = day.toISOString().slice(0, 10);
+        const isoWeekday = ((day.getUTCDay() + 6) % 7) + 1;   // Mon = 1
+        const record = byDate.get(iso) ?? null;
+
+        let kind: DayCell["kind"];
+        if (iso > today) kind = "future";
+        else if (record?.status === "ON_LEAVE") kind = "leave";
+        else if (record?.timeIn) kind = (record.lateByMin ?? 0) > 0 ? "late" : "onTime";
+        else if (!workingDays.has(isoWeekday)) kind = "offDuty";
+        else if (firstRecorded === null || iso < firstRecorded) kind = "noData";
+        else kind = "absent";
+
+        if (kind !== "future" && kind !== "offDuty" && kind !== "noData") tally.scheduled++;
+        if (kind === "onTime") tally.onTime++;
+        if (kind === "late") tally.late++;
+        if (kind === "absent") tally.absent++;
+        if (kind === "leave") tally.leave++;
+        if (isOffSite(record)) tally.offSite++;
+
+        column.push({ date: iso, kind, record });
+      }
+      cols.push(column);
+    }
+
+    return { columns: cols, summary: tally };
+  }, [records, workingDays, today, weeks]);
+
+  return (
+    <section className={`${CARD_BARE} space-y-4 p-5 sm:p-6`}>
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h4 className="font-bold text-foreground">Activity</h4>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Last {weeks} weeks
+        </span>
+      </header>
+
+      <div className="nice-scrollbar overflow-x-auto">
+        <div className="flex gap-1">
+          {columns.map((week) => (
+            <div key={week[0].date} className="flex flex-col gap-1">
+              {week.map((cell) => (
+                <span
+                  key={cell.date}
+                  // A native title is enough here: the grid is a scanning aid,
+                  // and the day-by-day list underneath carries the detail.
+                  title={describeCell(cell)}
+                  className={`h-3 w-3 rounded-[3px] ${CELL_CLASS[cell.kind]}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {LEGEND.map((item) => (
+          <span key={item.kind} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className={`h-3 w-3 rounded-[3px] ${CELL_CLASS[item.kind]}`} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+
+      {/* The one-line read, so the grid does not have to be counted by eye. */}
+      <p className="text-xs text-muted-foreground">
+        Present {summary.onTime + summary.late} of {summary.scheduled} scheduled days
+        {summary.late > 0 ? ` · ${summary.late} late` : ""}
+        {summary.absent > 0 ? ` · ${summary.absent} absent` : ""}
+        {summary.leave > 0 ? ` · ${summary.leave} on leave` : ""}
+        {summary.offSite > 0 ? ` · ${summary.offSite} off-site` : ""}
+      </p>
+    </section>
+  );
+}
+
+function describeCell(cell: DayCell): string {
+  if (cell.kind === "future") return cell.date;
+  if (cell.kind === "offDuty") return `${cell.date} · not scheduled`;
+  if (cell.kind === "noData") return `${cell.date} · no records`;
+  if (cell.kind === "absent") return `${cell.date} · no clock-in`;
+  if (cell.kind === "leave") return `${cell.date} · on leave`;
+
+  const parts = [cell.date, timeLabel(cell.record?.timeIn ?? null)];
+  if (cell.record?.durationMin) parts.push(formatMinutes(cell.record.durationMin));
+  if (cell.record?.lateByMin) parts.push(`late ${formatMinutes(cell.record.lateByMin)}`);
+  if (isOffSite(cell.record)) parts.push(`off-site ${metreLabel(cell.record?.clockInDistanceMeters ?? null)}`);
+  return parts.join(" · ");
+}
+
+// ---- One employee ----
+
+const EVENT_LABEL: Record<AttendanceApprovalRequest["kind"], string> = {
+  CLOCK_IN: "Clock in",
+  CLOCK_OUT: "Clock out",
+  BREAK_START: "Break start",
+  BREAK_END: "Break end",
+};
+
+// One person's attendance in full: who they are, today, the month, the day-by-day
+// history, and the overtime that explains the long days. Mirrors production's
+// per-employee page.
+//
+// Every figure here is derived from records already loaded for the roster, so
+// opening someone costs no extra request and cannot disagree with the list you
+// came from.
+function EmployeeDetail({
+  row,
+  records,
+  overtime,
+  reportsTo,
+  workingDays,
+  projectNames,
+  today,
+  from,
+  to,
+  onBack,
+}: {
+  row: EmployeeRow;
+  records: AttendanceRecord[];
+  overtime: OvertimeRequest[];
+  reportsTo: string | null;
+  workingDays: Set<number>;
+  projectNames: Map<string, string>;
+  today: string;
+  from: string;
+  to: string;
+  onBack: () => void;
+}) {
+  const [exporting, setExporting] = useState<"attendance" | "leave" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const runExport = async (which: "attendance" | "leave") => {
+    setExporting(which);
+    setExportError(null);
+    try {
+      if (which === "attendance") {
+        await exportEmployeeAttendancePdf(row.employee.id, from, to);
+      } else {
+        await exportEmployeeLeaveSummaryPdf(row.employee.id);
+      }
+    } catch (e) {
+      // Surfaced rather than swallowed: a download that silently does nothing
+      // reads as a dead button.
+      setExportError(e instanceof Error ? e.message : "Could not build that report.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const { employee, projects, buckets } = row;
+  const todayRecord = records.find((r) => r.date === today) ?? null;
+
+  const history = useMemo(
+    () => [...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+    [records],
+  );
+
+  // Counts over the month the roster is showing, so the tiles agree with the
+  // hours figure beside them.
+  const monthPrefix = today.slice(0, 7);
+  const monthRecords = useMemo(
+    () => records.filter((r) => r.date.startsWith(monthPrefix)),
+    [records, monthPrefix],
+  );
+
+  const stats = {
+    onTime: monthRecords.filter((r) => r.timeIn && !r.lateByMin).length,
+    late: monthRecords.filter((r) => (r.lateByMin ?? 0) > 0).length,
+    offSite: monthRecords.filter((r) => isOffSite(r)).length,
+    onLeave: monthRecords.filter((r) => r.status === "ON_LEAVE").length,
+    missing: monthRecords.filter((r) => !r.timeIn && r.status !== "ON_LEAVE").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+          All employees
+        </button>
+
+        <div className="flex flex-wrap gap-2">
+          <ExportButton
+            label="Export attendance PDF"
+            busy={exporting === "attendance"}
+            disabled={exporting !== null}
+            onClick={() => void runExport("attendance")}
+          />
+          <ExportButton
+            label="Export leave PDF"
+            busy={exporting === "leave"}
+            disabled={exporting !== null}
+            onClick={() => void runExport("leave")}
+          />
+        </div>
+      </div>
+
+      {exportError ? (
+        <p className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3 text-sm font-medium text-destructive">
+          {exportError}
+        </p>
+      ) : null}
+
+      {/* Who */}
+      <section className={`${CARD_BARE} p-5 sm:p-6`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xl font-bold text-foreground">{employee.name}</h3>
+          <span className="inline-flex rounded-full border border-border/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+            {employee.role}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">{employee.email}</p>
+        <dl className="mt-3 grid gap-1 text-xs sm:grid-cols-2">
+          <Fact label="Employee ID" value={employee.employeeNumber} />
+          <Fact label="Title" value={employee.jobTitle} />
+          <Fact label="Projects" value={projects.join(", ") || null} />
+          <Fact label="Reports to" value={reportsTo} />
+          <Fact label="Joined" value={employee.joinDate ? new Date(employee.joinDate).toLocaleDateString() : null} />
+        </dl>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Today, and the events behind it */}
+        <section className={`${CARD_BARE} space-y-3 p-5 sm:p-6`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Today
+          </p>
+
+          {todayRecord ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold tabular-nums text-foreground">
+                  {timeLabel(todayRecord.timeIn)} – {timeLabel(todayRecord.timeOut)}
+                </p>
+                <AttendanceStatusBadge status={todayRecord.status} />
+              </div>
+              {todayRecord.projectId ? (
+                <p className="text-xs text-muted-foreground">
+                  {projectNames.get(todayRecord.projectId) ?? todayRecord.projectId}
+                </p>
+              ) : null}
+              {isOffSite(todayRecord) ? (
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-destructive">
+                  Off-site · {metreLabel(todayRecord.clockInDistanceMeters)}
+                </p>
+              ) : null}
+              {todayRecord.lateByMin ? (
+                <p className="text-xs text-muted-foreground">
+                  Late by {formatMinutes(todayRecord.lateByMin)}
+                </p>
+              ) : null}
+              {todayRecord.remark ? (
+                <p className="rounded-2xl bg-muted/60 p-3 text-xs text-foreground">
+                  <span className="font-semibold">Reason:</span> {todayRecord.remark}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No clock-in yet today.</p>
+          )}
+
+          {/* The audit trail: each clock event, when it happened, and whether
+              anyone has signed it off. A record with an approved clock-in and a
+              pending clock-out is the shape a query usually starts from. */}
+          {(todayRecord?.approvals ?? []).length > 0 ? (
+            <div className="border-t border-border/60 pt-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Events today
+              </p>
+              <ul className="space-y-1.5">
+                {[...(todayRecord?.approvals ?? [])]
+                  .sort((a, b) => a.eventAt.localeCompare(b.eventAt))
+                  .map((event) => (
+                    <li key={event.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-20 shrink-0 font-semibold text-foreground">
+                        {EVENT_LABEL[event.kind]}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {timeLabel(event.eventAt)}
+                      </span>
+                      <span className="ml-auto">
+                        <ApprovalStatusBadge status={event.approvalStatus} />
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+
+        {/* The month */}
+        <section className={`${CARD_BARE} p-5 sm:p-6`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            This month
+          </p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+            {formatMinutes(buckets?.totalMin ?? 0)}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Worked{buckets ? ` of ${formatMinutes(buckets.expectedMin)} scheduled` : ""}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="On time" value={String(stats.onTime)} />
+            <Stat label="Late" value={String(stats.late)} />
+            <Stat label="Off-site" value={String(stats.offSite)} />
+            <Stat label="Not clocked in" value={String(stats.missing)} />
+            <Stat label="On leave" value={String(stats.onLeave)} />
+          </div>
+        </section>
+      </div>
+
+      {/* The shape of the year, above the day-by-day detail that explains it */}
+      <AttendanceHeatmap records={records} workingDays={workingDays} today={today} />
+
+      {/* Day by day */}
+      <section className={`${CARD_BARE} overflow-hidden`}>
+        <header className="flex items-baseline justify-between gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
+          <h4 className="font-bold text-foreground">Recent attendance</h4>
+          <span className="text-xs text-muted-foreground">
+            {history.length} {history.length === 1 ? "day" : "days"}
+          </span>
+        </header>
+
+        {history.length === 0 ? (
+          <EmptyRow>No attendance recorded for this employee.</EmptyRow>
+        ) : (
+          <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
+            {history.map((record) => (
+              <li key={record.id} className="flex flex-wrap items-start justify-between gap-3 p-4 px-6">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm font-bold tabular-nums text-foreground">{record.date}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {record.timeIn ? (
+                      <span className="tabular-nums">
+                        {timeLabel(record.timeIn)} – {timeLabel(record.timeOut)}
+                      </span>
+                    ) : (
+                      "No clock-in"
+                    )}
+                    {record.projectId ? ` • ${projectNames.get(record.projectId) ?? record.projectId}` : ""}
+                    {record.durationMin ? ` • ${formatMinutes(record.durationMin)}` : ""}
+                  </p>
+
+                  {record.clockInLat !== null && record.clockInLng !== null ? (
+                    <p className="flex flex-wrap items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                      {record.clockInLat.toFixed(5)}, {record.clockInLng.toFixed(5)}
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${record.clockInLat},${record.clockInLng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                      >
+                        <MapPin className="h-3 w-3" aria-hidden />
+                        Clock-in map
+                      </a>
+                    </p>
+                  ) : null}
+
+                  {isOffSite(record) ? (
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-destructive">
+                      Off-site · {metreLabel(record.clockInDistanceMeters)}
+                    </p>
+                  ) : null}
+                  {record.remark ? (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">Reason:</span> {record.remark}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <AttendanceStatusBadge status={record.status} />
+                  <ApprovalStatusBadge status={record.approvalStatus} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Overtime, beside the attendance it belongs to */}
+      <section className={`${CARD_BARE} overflow-hidden`}>
+        <header className="flex items-baseline justify-between gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
+          <h4 className="font-bold text-foreground">Overtime</h4>
+          <span className="text-xs text-muted-foreground">
+            {overtime.length} {overtime.length === 1 ? "entry" : "entries"}
+          </span>
+        </header>
+
+        {overtime.length === 0 ? (
+          <EmptyRow>No overtime entries.</EmptyRow>
+        ) : (
+          <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
+            {[...overtime]
+              .sort((a, b) => b.workDate.localeCompare(a.workDate))
+              .map((request) => (
+                <li key={request.id} className="flex items-start justify-between gap-4 p-4 px-6">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold tabular-nums text-foreground">
+                      {dateLabel(request.workDate.slice(0, 10))} · {formatMinutes(request.requestedMinutes)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground" title={request.reason}>
+                      {request.reason}
+                    </p>
+                  </div>
+                  <OvertimeStatusBadge status={request.status} />
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ExportButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-card px-3.5 py-2 text-xs font-bold text-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-60"
+    >
+      <Download className="h-3.5 w-3.5" aria-hidden />
+      {busy ? "Building…" : label}
+    </button>
+  );
+}
+
+// A labelled fact, dropped entirely when there is nothing to say — an empty
+// dash next to "Employee ID" tells the reader less than the absence does.
+function Fact({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div>
+      <dt className="inline text-muted-foreground">{label}: </dt>
+      <dd className="inline font-semibold text-foreground">{value}</dd>
+    </div>
+  );
+}
+
 // ---- Overtime ----
+
+const OT_STATUSES = ["ALL", "PENDING", "APPROVED", "REJECTED", "CANCELLED"] as const;
+type OtStatusFilter = (typeof OT_STATUSES)[number];
 
 // Org-wide overtime, read-only. Deciding happens in the approvals queue, where
 // the approver and the routing rules are — an admin approving from here would
@@ -1163,116 +1828,309 @@ function OvertimeTab({
   name: (id: string) => string;
   projectNames: Map<string, string>;
 }) {
-  if (rows.length === 0) {
-    return (
-      <section className={CARD_BARE}>
-        <EmptyRow>No overtime requests in this range.</EmptyRow>
-      </section>
-    );
-  }
+  const [status, setStatus] = useState<OtStatusFilter>("ALL");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const shown = useMemo(
+    () => (status === "ALL" ? rows : rows.filter((r) => r.status === status)),
+    [rows, status],
+  );
 
   return (
-    <section className={CARD_BARE}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead>
-            <tr className="border-b border-border/60">
-              {["Work date", "Employee", "Project", "Hours", "Reason", "Status"].map((h) => (
-                <th key={h} className={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-border/60">
-                <td className="p-4 pl-6 tabular-nums">{dateLabel(r.workDate.slice(0, 10))}</td>
-                <td className="p-4">
-                  <p className="font-semibold text-foreground">{name(r.employeeId)}</p>
-                  {r.employeeEmail ? (
-                    <p className="text-xs text-muted-foreground">{r.employeeEmail}</p>
-                  ) : null}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {r.projectId ? projectNames.get(r.projectId) ?? "—" : "—"}
-                </td>
-                <td className="p-4 tabular-nums">{formatMinutes(r.requestedMinutes)}</td>
-                {/* Reasons run long, so the cell truncates and keeps the full
-                    text in the title rather than widening the whole table. */}
-                <td className="max-w-[260px] p-4 text-muted-foreground">
-                  <span className="block truncate" title={r.reason}>{r.reason}</span>
-                </td>
-                <td className="p-4 pr-6"><OvertimeStatusBadge status={r.status} /></td>
+    <section className={`${CARD_BARE} overflow-hidden`}>
+      <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6 sm:pt-6">
+        <div>
+          <h4 className="text-lg font-bold text-foreground">OT submissions</h4>
+          <p className="text-xs text-muted-foreground">
+            All overtime requests across the organisation.
+          </p>
+        </div>
+
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as OtStatusFilter)}
+          aria-label="Status"
+          className="h-11 rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {OT_STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {value === "ALL" ? "All statuses" : overtimeStatusLabels[value]}
+            </option>
+          ))}
+        </select>
+      </header>
+
+      {/* Two numbers, because "showing 4" alone hides how much was filtered
+          away — the gap between them is the point. */}
+      <p className="px-5 pt-3 text-xs text-muted-foreground sm:px-6">
+        Showing {shown.length} of {rows.length} submissions
+      </p>
+
+      {shown.length === 0 ? (
+        <EmptyRow>
+          {rows.length === 0
+            ? "No overtime requests in this range."
+            : "No submissions match this status."}
+        </EmptyRow>
+      ) : (
+        <div className="mt-4 overflow-x-auto border-t border-border/60">
+          <table className="w-full min-w-[960px] text-sm">
+            <thead>
+              <tr className="border-b border-border/60">
+                {["Employee", "Date", "Time range", "Duration", "Reviewed by", "Status"].map((h) => (
+                  <th key={h} className={TH}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {shown.map((r) => {
+                const attachments = [r.beforePhotoUrl, r.afterPhotoUrl].filter(Boolean).length;
+                const open = expanded === r.id;
+                return (
+                  <Fragment key={r.id}>
+                    <tr className="border-b border-border/60">
+                      <td className="max-w-[280px] p-4 pl-6 align-top">
+                        <p className="font-semibold uppercase text-foreground">{name(r.employeeId)}</p>
+                        <p className="truncate text-xs text-muted-foreground" title={otSubtitle(r, projectNames)}>
+                          {otSubtitle(r, projectNames)}
+                        </p>
+                      </td>
+                      <td className="p-4 align-top tabular-nums">{dateLabel(r.workDate.slice(0, 10))}</td>
+                      <td className="p-4 align-top tabular-nums">
+                        {timeLabel(r.startAt)} – {timeLabel(r.endAt)}
+                      </td>
+                      <td className="p-4 align-top tabular-nums">{formatMinutes(r.requestedMinutes)}</td>
+                      <td className="p-4 align-top">
+                        {/* Never a guessed name. A decided row with no reviewer
+                            is either one the rules resolved with nobody to ask,
+                            or one decided before this column existed — and the
+                            two are indistinguishable in the data, so the cell
+                            says what is true of both rather than picking. */}
+                        {r.reviewerId ? (
+                          <>
+                            <p className="font-semibold uppercase text-foreground">{name(r.reviewerId)}</p>
+                            {r.decidedAt ? (
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(r.decidedAt).toLocaleDateString()}
+                              </p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-xs italic text-muted-foreground">
+                            {r.decidedAt ? "Not recorded" : "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 pr-6 align-top">
+                        <div className="flex items-center justify-end gap-2">
+                          <OvertimeStatusBadge status={r.status} />
+                          {attachments > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpanded(open ? null : r.id)}
+                              aria-expanded={open}
+                              aria-label={`${open ? "Hide" : "Show"} attachments for ${name(r.employeeId)}`}
+                              className="inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                            >
+                              <FileText className="h-3 w-3" aria-hidden />
+                              {attachments}
+                              {open ? (
+                                <ChevronUp className="h-3 w-3" aria-hidden />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" aria-hidden />
+                              )}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {open ? (
+                      <tr className="border-b border-border/60 bg-muted/30">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="grid gap-6 sm:grid-cols-2">
+                            <PhotoSlot label="Before (justification)" url={r.beforePhotoUrl} />
+                            <PhotoSlot label="After (evidence)" url={r.afterPhotoUrl ?? null} />
+                          </div>
+                          {r.reviewNotes ? (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              <span className="font-semibold text-foreground">Review notes:</span>{" "}
+                              {r.reviewNotes}
+                            </p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
+  );
+}
+
+function otSubtitle(r: OvertimeRequest, projectNames: Map<string, string>): string {
+  const project = r.projectId ? projectNames.get(r.projectId) : null;
+  return [project, r.reason].filter(Boolean).join(" · ") || "—";
+}
+
+// One of the two OT photos. The photos are behind auth, so they open through
+// the API client rather than as a plain href — a bare src would 401.
+function PhotoSlot({ label, url }: { label: string; url: string | null }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      {url ? (
+        <button
+          type="button"
+          onClick={() => void openOvertimePhoto(url)}
+          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+        >
+          <FileText className="h-3 w-3 shrink-0" aria-hidden />
+          <span className="max-w-[220px] truncate">{url.split("/").pop()}</span>
+        </button>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">None uploaded.</p>
+      )}
+    </div>
   );
 }
 
 // ---- Shifts ----
 
 // The working patterns everything else on this screen is measured against: a
-// late clock-in is only late relative to one of these, so it belongs next to
-// the reports that use it.
+// late clock-in is only late relative to one of these, so they belong next to
+// the reports that use them.
 function ShiftsTab({
   rows,
+  projects,
   projectNames,
+  onCreated,
 }: {
   rows: Shift[];
+  projects: FilterOption[];
   projectNames: Map<string, string>;
+  onCreated: () => void;
 }) {
-  if (rows.length === 0) {
-    return (
-      <section className={CARD_BARE}>
-        <EmptyRow>
-          No shifts defined yet. Until one exists, attendance has no expected
-          hours to compare against.
-        </EmptyRow>
-      </section>
-    );
-  }
+  // Scoped here rather than in the shared bar above: that one searches
+  // employees and filters by team, and neither applies to a standing pattern.
+  const [projectId, setProjectId] = useState<string>(ALL_FILTER);
+  const [adding, setAdding] = useState(false);
+
+  const shown = useMemo(
+    () => (projectId === ALL_FILTER ? rows : rows.filter((s) => s.projectId === projectId)),
+    [rows, projectId],
+  );
 
   return (
-    <section className={CARD_BARE}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-sm">
-          <thead>
-            <tr className="border-b border-border/60">
-              {["Shift", "Project", "Hours", "Working days", "Unpaid break"].map((h) => (
-                <th key={h} className={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((shift) => (
-              <tr key={shift.id} className="border-b border-border/60">
-                <td className="p-4 pl-6">
-                  <span className="font-semibold text-foreground">{shift.name}</span>
-                  {shift.isDefault ? (
-                    <span className="ml-2 inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-secondary-foreground">
-                      Default
-                    </span>
-                  ) : null}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {projectNames.get(shift.projectId) ?? "—"}
-                </td>
-                <td className="p-4 tabular-nums">
-                  {shift.startTime} – {shift.endTime}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {formatWorkingDays(shift.workingDays)}
-                </td>
-                <td className="p-4 pr-6 tabular-nums">
-                  {formatMinutes(shift.lunchBreakMinutes)}
-                </td>
-              </tr>
+    <div className="space-y-4">
+      <header>
+        <h3 className="text-xl font-bold text-foreground">Shifts</h3>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+          One project can have several named shifts (Day 8am–5pm, Night 10pm–7am).
+          Mark one as the project default; an employee can still be assigned a
+          different one. Late detection and expected daily hours both read from
+          whichever shift applies to the employee.
+        </p>
+      </header>
+
+      <section className={`${CARD_BARE} flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:p-6`}>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <label
+            htmlFor="shifts-project"
+            className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+          >
+            Project
+          </label>
+          <select
+            id="shifts-project"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+            className="h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <option value={ALL_FILTER}>All projects</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          Add shift
+        </button>
+      </section>
+
+      {shown.length === 0 ? (
+        <section className={CARD_BARE}>
+          <EmptyRow>
+            {rows.length === 0
+              ? "No shifts defined yet. Until one exists, attendance has no expected hours to compare against."
+              : "No shifts match this filter."}
+          </EmptyRow>
+        </section>
+      ) : (
+        <section className={`${CARD_BARE} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b border-border/60">
+                  {["Shift", "Project", "Hours", "Working days", "Unpaid break"].map((h) => (
+                    <th key={h} className={TH}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((shift) => (
+                  <tr key={shift.id} className="border-b border-border/60 last:border-0">
+                    <td className="p-4 pl-6">
+                      <span className="font-semibold text-foreground">{shift.name}</span>
+                      {shift.isDefault ? (
+                        <span className="ml-2 inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-secondary-foreground">
+                          Default
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="p-4 text-muted-foreground">
+                      {projectNames.get(shift.projectId) ?? "—"}
+                    </td>
+                    <td className="p-4 tabular-nums">
+                      {shift.startTime} – {shift.endTime}
+                    </td>
+                    <td className="p-4 text-muted-foreground">
+                      {formatWorkingDays(shift.workingDays)}
+                    </td>
+                    <td className="p-4 pr-6 tabular-nums">
+                      {formatMinutes(shift.lunchBreakMinutes)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {adding ? (
+        <ShiftEditor
+          projects={projects}
+          defaultProjectId={projectId === ALL_FILTER ? undefined : projectId}
+          onClose={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false);
+            onCreated();
+          }}
+        />
+      ) : null}
+    </div>
   );
 }

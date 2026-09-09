@@ -1257,8 +1257,30 @@ public class AttendanceService : IAttendanceService
 
     // ---- Import / export ----
 
+    // One employee's slice of an org summary.
+    //
+    // Narrowed after the org query rather than by a second code path, so a
+    // one-person report is provably the same numbers as that person's row in
+    // the org one.
+    //
+    // Totals move with the rows: org-wide totals left standing above a single
+    // employee's row would state a figure that describes everybody else, on a
+    // page headed with that person's name.
+    public static HoursSummaryDto NarrowToEmployee(HoursSummaryDto summary, string employeeId)
+    {
+        var mine = summary.Employees.FirstOrDefault(e => e.EmployeeId == employeeId);
+        return new HoursSummaryDto
+        {
+            // Someone with no hours in the range has no row at all, which is a
+            // valid empty report rather than a reason to fail.
+            Employees = mine is null ? [] : [mine],
+            Totals = mine?.Buckets ?? new HoursBucketsDto(),
+        };
+    }
+
     public async Task<TabularExportResult> ExportSummaryAsync(
-        DateTime from, DateTime to, string? teamId, TabularFormat format)
+        DateTime from, DateTime to, string? teamId, TabularFormat format,
+        string? employeeId = null)
     {
         var start = from.Date;
         var end = to.Date;
@@ -1266,11 +1288,15 @@ public class AttendanceService : IAttendanceService
         var employees = await _employees.GetSnapshotAsync();
         var summary = await _hours.GetOrgHoursSummaryAsync(start, end, teamId);
 
+        if (employeeId is not null)
+            summary = NarrowToEmployee(summary, employeeId);
+
         // The daily rows behind the summary, same window. Filtered on the local-
         // day key (Date), not TimeIn, so a night shift lands on the day it was
         // booked to rather than the day it happened to end.
         var records = (await _repo.GetAllAsync())
             .Where(r => r.Date.Date >= start && r.Date.Date <= end)
+            .Where(r => employeeId is null || r.EmployeeId == employeeId)
             .OrderBy(r => r.Date)
             .ThenBy(r => employees.NameOf(r.EmployeeId), StringComparer.OrdinalIgnoreCase)
             .ToList();

@@ -353,3 +353,20 @@ function getApiPath(photoUrl: string) {
 
   return photoUrl;
 }
+
+// --- Exports ---
+
+// Opens the generated file in a new tab, the way leave and claims do.
+async function openAttendanceFile(path: string) {
+  const blob = await apiGetBlob(path);
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+// One person's worked-hours report over a range. Same endpoint as the org
+// export, narrowed server-side, so the figures cannot drift from the org one.
+export const exportEmployeeAttendancePdf = (employeeId: string, from: string, to: string) =>
+  openAttendanceFile(
+    `/attendance/export/summary?employeeId=${employeeId}&from=${from}&to=${to}&format=pdf`,
+  );
