@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The AltomateHR mark, from public/brand-icon.png. There is no vector of
+         it, so no SVG icon is declared: an SVG would outrank every PNG below in
+         Chrome and Firefox, which is how a leftover purple lightning bolt ended
+         up in the tab while the correct PNGs sat unused. .ico first for the
+         browser's automatic /favicon.ico request and for bookmark bars. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48 32x32 16x16" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
     <link rel="manifest" href="/manifest.json" />

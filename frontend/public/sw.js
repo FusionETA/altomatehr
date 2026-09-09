@@ -8,7 +8,10 @@
 // It deliberately never touches API calls (see the fetch handler below) —
 // those are live data (and the SSE stream), not something to cache or replay.
 
-const RUNTIME_CACHE = "altomatehr-runtime-v1";
+// Bumped to v2 when the favicon artwork changed: icons are served
+// cache-first, so without a new cache name an installed app would show the
+// old mark for one more load. activate deletes every cache but this one.
+const RUNTIME_CACHE = "altomatehr-runtime-v2";
 const APP_SHELL = ["/", "/manifest.json", "/apple-touch-icon.png", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
