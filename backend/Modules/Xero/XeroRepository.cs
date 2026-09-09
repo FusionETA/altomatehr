@@ -52,6 +52,7 @@ public class XeroRepository : IXeroRepository
         existing.AccessTokenExpiresAt = connection.AccessTokenExpiresAt;
         existing.UpdatedAt = connection.UpdatedAt;
         existing.DisconnectedAt = null;
+        existing.ReconnectRequiredAt = null;
         await _db.SaveChangesAsync();
         return existing;
     }

@@ -118,6 +118,11 @@ public class XeroService : IXeroService
             ConnectedAt = connection.ConnectedAt,
             UpdatedAt = connection.UpdatedAt,
             AccessTokenExpiresAt = connection.AccessTokenExpiresAt,
+            // Both ways a connection dies, reported the same way and without
+            // calling Xero: the flag a failed refresh left behind, or tokens that
+            // no longer decrypt. Either way the tenant name above still shows, so
+            // the admin knows which Xero org to reconnect.
+            NeedsReconnect = connection.NeedsReconnect || !CanDecryptTokens(connection),
         };
     }
 
@@ -282,11 +287,42 @@ public class XeroService : IXeroService
 
     private async Task<string> GetValidAccessTokenAsync(XeroConnection connection)
     {
-        if (connection.AccessTokenExpiresAt > DateTime.UtcNow.AddMinutes(2))
-            return _protector.Unprotect(connection.AccessTokenProtected);
+        string refreshToken;
+        try
+        {
+            if (connection.AccessTokenExpiresAt > DateTime.UtcNow.AddMinutes(2))
+                return _protector.Unprotect(connection.AccessTokenProtected);
 
-        var refreshToken = _protector.Unprotect(connection.RefreshTokenProtected);
-        var refreshed = await _client.RefreshTokenAsync(refreshToken);
+            refreshToken = _protector.Unprotect(connection.RefreshTokenProtected);
+        }
+        catch (CryptographicException)
+        {
+            // Decrypting can only fail because the key ring that wrote these
+            // tokens is gone, which makes the ciphertext in the DB permanently
+            // unreadable. Same outcome as a revoked token, so same handling.
+            await MarkReconnectRequiredAsync(
+                connection, "The data-protection key ring that encrypted the stored tokens is gone.");
+            throw new XeroReconnectRequiredException(
+                "The stored Xero tokens can no longer be decrypted, so this connection is dead. " +
+                "Reconnect Xero to continue.");
+        }
+
+        XeroTokenResponse refreshed;
+        try
+        {
+            refreshed = await _client.RefreshTokenAsync(refreshToken);
+        }
+        catch (XeroConnectionException ex) when (ex.StatusCode is 400 or 401)
+        {
+            // OAuth's invalid_grant: Xero has revoked the refresh token, or it
+            // lapsed after 60 days idle. No retry recovers it, and leaving the
+            // connection unflagged means every later call fails the same way.
+            await MarkReconnectRequiredAsync(
+                connection, "Xero expired or revoked the refresh token.");
+            throw new XeroReconnectRequiredException(
+                $"Xero has expired or revoked this connection. Reconnect Xero to continue. {ex.Message}");
+        }
+
         var now = DateTime.UtcNow;
 
         connection.AccessTokenProtected = _protector.Protect(refreshed.AccessToken);
@@ -295,6 +331,7 @@ public class XeroService : IXeroService
         connection.TokenType = refreshed.TokenType;
         connection.Scope = refreshed.Scope;
         connection.UpdatedAt = now;
+        connection.ReconnectRequiredAt = null;
         await _repo.UpdateConnectionAsync(connection);
 
         return refreshed.AccessToken;
@@ -385,4 +422,38 @@ public class XeroService : IXeroService
 
     private static bool IsClosedProject(string status) =>
         string.Equals(status, "CLOSED", StringComparison.OrdinalIgnoreCase);
+
+    // Mark a connection unusable without touching the tokens: IsConnected keys
+    // off DisconnectedAt, so /xero/status stops claiming to be connected and the
+    // UI offers Connect again. Audited under xero.disconnect like a manual one —
+    // the summary says it was Xero's doing, not an admin's.
+    private async Task MarkReconnectRequiredAsync(XeroConnection connection, string reason)
+    {
+        if (connection.NeedsReconnect) return;   // already flagged; don't re-audit on every call
+
+        connection.ReconnectRequiredAt = DateTime.UtcNow;
+        connection.UpdatedAt = connection.ReconnectRequiredAt.Value;
+        await _repo.UpdateConnectionAsync(connection);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroReconnectRequired,
+            connection.TenantName,
+            TargetType: "XeroConnection",
+            TargetId: connection.TenantId,
+            Metadata: new { Reason = reason },
+            OrganizationId: connection.OrganizationId));
+    }
+
+    private bool CanDecryptTokens(XeroConnection connection)
+    {
+        try
+        {
+            _protector.Unprotect(connection.RefreshTokenProtected);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+    }
 }
