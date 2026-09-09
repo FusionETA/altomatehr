@@ -239,6 +239,18 @@
   text-wrap: balance;
 }
 
+/* WebKit draws its own clear button inside input[type="search"], which sat
+   beside SearchInput's styled one and put two X's in every search field. The
+   type stays — it is the right semantics and gives mobile keyboards a search
+   key — so the native decoration is hidden here instead. Plain CSS rather than
+   an arbitrary Tailwind variant: the generated utility never materialised for
+   this pseudo-element, and this matches how the scrollbars below are handled. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* Slim, rounded, inset scrollbar for scroll containers (e.g. modal bodies). */
 .nice-scrollbar {
   scrollbar-width: thin;

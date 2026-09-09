@@ -396,12 +396,13 @@ using (var scope = app.Services.CreateScope())
         var projects = services.GetRequiredService<IProjectRepository>();
         var attendance = services.GetRequiredService<IAttendanceRepository>();
         var attendanceApprovalRequests = services.GetRequiredService<IAttendanceApprovalRequestRepository>();
+        var attendanceSessions = services.GetRequiredService<IAttendanceSessionRepository>();
         var apiClients = services.GetRequiredService<IApiClientRepository>();
         var overtime = services.GetRequiredService<IOvertimeRepository>();
         var overtimePhotos = services.GetRequiredService<IOvertimePhotoStorage>();
         var leaveApplications = services.GetRequiredService<ILeaveApplicationRepository>();
         var shifts = services.GetRequiredService<IShiftRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, apiClients, overtime, overtimePhotos, leaveApplications, shifts);
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, attendanceSessions, apiClients, overtime, overtimePhotos, leaveApplications, shifts);
     }
 }
 

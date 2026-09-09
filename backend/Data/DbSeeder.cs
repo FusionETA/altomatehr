@@ -56,6 +56,7 @@ public static class DbSeeder
         IProjectRepository projects,
         IAttendanceRepository attendance,
         IAttendanceApprovalRequestRepository approvalRequests,
+        IAttendanceSessionRepository attendanceSessions,
         IApiClientRepository apiClients,
         IOvertimeRepository overtime,
         IOvertimePhotoStorage overtimePhotos,
@@ -75,6 +76,7 @@ public static class DbSeeder
         await SeedDemoTeamAsync(users, memberships);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
         await SeedTodayAsync(attendance, approvalRequests, demoProject.Id);
+        await SeedSplitShiftsAsync(attendance, attendanceSessions, demoProject.Id);
         await BackfillLatenessAsync(attendance, organizations);
         await SeedOvertimeAsync(overtime, overtimePhotos, demoProject.Id);
         await SeedLeaveAsync(leaveApplications, leaveTypes);
@@ -445,6 +447,148 @@ public static class DbSeeder
                 CreatedAt = eventAt,
                 UpdatedAt = eventAt,
             });
+        }
+    }
+
+    // One stint of a seeded split-shift day. `OutDayOffset` is 1 for a night
+    // shift, whose clock-out lands on the following calendar date.
+    private sealed record DemoShift(
+        int InHour,
+        int InMinute,
+        int OutHour,
+        int OutMinute,
+        int OutDayOffset = 0,
+        int? LateByMin = null);
+
+    private sealed record DemoSplitDay(string EmployeeId, int DaysAgo, string Location, DemoShift[] Shifts);
+
+    // Days with more than one clock-in, which nothing else here produces.
+    //
+    // SeedAttendanceAsync and SeedTodayAsync write records but never sessions,
+    // so every seeded day looked like a single unbroken stint and the admin
+    // views had nothing to render a split shift from. These days exist to
+    // exercise that: the shifts expander, the day roll-up summing stints rather
+    // than spanning them, and the "+1d" marker on a clock-out past midnight.
+    //
+    // Same safety rules as SeedTodayAsync, for the same reasons: only
+    // `usr-demo-` accounts, which nobody clocks in as; skip any day that
+    // already has a record; never update and never delete.
+    private static async Task SeedSplitShiftsAsync(
+        IAttendanceRepository attendance,
+        IAttendanceSessionRepository sessions,
+        string projectId)
+    {
+        var now = DateTime.UtcNow;
+        var todayKey = AttendanceTime.StartOfLocalDay(now);
+
+        var days = new[]
+        {
+            // The textbook split shift: out for the afternoon, back in later.
+            // 8h worked across a 9h window, so the roll-up's sum-not-span rule
+            // is visible on screen.
+            new DemoSplitDay("usr-demo-mei", 3, "HQ Office",
+            [
+                new DemoShift(8, 30, 12, 0),
+                new DemoShift(13, 0, 17, 30),
+            ]),
+
+            // A night shift, and deliberately a SINGLE session: the clock-out
+            // crosses midnight on its own, with no second stint involved. This
+            // is the case that reads as clocking out before clocking in.
+            new DemoSplitDay("usr-demo-arjun", 4, "Client site",
+            [
+                new DemoShift(20, 0, 4, 30, OutDayOffset: 1),
+            ]),
+
+            // Late first arrival, and a second stint that also starts after the
+            // shift. The day badge must show 15 minutes late — the first
+            // arrival — not the afternoon session's much larger figure.
+            new DemoSplitDay("usr-demo-syafiq", 5, "HQ Office",
+            [
+                new DemoShift(9, 15, 12, 0, LateByMin: 15),
+                new DemoShift(14, 30, 18, 45, LateByMin: 330),
+            ]),
+
+            // Three stints, to prove the expander is not hard-coded to two.
+            new DemoSplitDay("usr-demo-farid", 6, "Client site",
+            [
+                new DemoShift(7, 0, 10, 0),
+                new DemoShift(11, 0, 14, 0),
+                new DemoShift(15, 0, 19, 0),
+            ]),
+        };
+
+        foreach (var day in days)
+        {
+            var date = AttendanceTime.StartOfLocalDay(now.AddDays(-day.DaysAgo));
+            if (date == todayKey) continue;
+            if (await attendance.GetForEmployeeOnDateAsync(day.EmployeeId, date) is not null) continue;
+
+            var offSite = day.Location == "Client site";
+            var stints = day.Shifts
+                .Select(s =>
+                {
+                    var start = LocalToUtc(date, s.InHour, s.InMinute);
+                    var end = LocalToUtc(date.AddDays(s.OutDayOffset), s.OutHour, s.OutMinute);
+                    return (Start: start, End: end,
+                        Minutes: (int)Math.Round((end - start).TotalMinutes), s.LateByMin);
+                })
+                .ToList();
+
+            // The roll-up, computed exactly as AttendanceService does it: first
+            // start, last end, and the SUM of the stints. Written by hand
+            // because the seeder talks to repositories, not to the service.
+            var first = stints[0];
+            var last = stints[^1];
+            var record = await attendance.AddAsync(new AttendanceRecord
+            {
+                OrganizationId = DemoOrgId,
+                EmployeeId = day.EmployeeId,
+                Date = date,
+                ProjectId = projectId,
+                Location = day.Location,
+                TimeIn = first.Start,
+                TimeOut = last.End,
+                DurationMin = stints.Sum(s => s.Minutes),
+                // The day's FIRST arrival, matching RecomputeRollupAsync.
+                LateByMin = first.LateByMin,
+                Status = AttendanceStatus.CLOCKED_OUT,
+                ClockInLat = offSite ? 3.1509 : 3.1478,
+                ClockInLng = offSite ? 101.6984 : 101.6953,
+                ClockInDistanceMeters = offSite ? 980 : 11,
+                ClockOutLat = offSite ? 3.1510 : 3.1479,
+                ClockOutLng = offSite ? 101.6982 : 101.6952,
+                ClockOutDistanceMeters = offSite ? 982 : 13,
+                Notes = day.Shifts.Length > 1 ? "Split shift recorded for demo data" : "Night shift recorded for demo data",
+                CreatedAt = first.Start,
+                UpdatedAt = last.End,
+            });
+
+            foreach (var stint in stints)
+            {
+                await sessions.AddAsync(new AttendanceSession
+                {
+                    OrganizationId = DemoOrgId,
+                    AttendanceRecordId = record.Id,
+                    EmployeeId = day.EmployeeId,
+                    StartedAt = stint.Start,
+                    EndedAt = stint.End,
+                    DurationMin = stint.Minutes,
+                    // Closed stints, so the session's own status is CLOCKED_OUT
+                    // just as clock-out leaves it. The punctuality lives in
+                    // LateByMin, which is what the badge reads.
+                    Status = AttendanceStatus.CLOCKED_OUT,
+                    LateByMin = stint.LateByMin,
+                    ClockInLat = offSite ? 3.1509 : 3.1478,
+                    ClockInLng = offSite ? 101.6984 : 101.6953,
+                    ClockInDistanceMeters = offSite ? 980 : 11,
+                    ClockOutLat = offSite ? 3.1510 : 3.1479,
+                    ClockOutLng = offSite ? 101.6982 : 101.6952,
+                    ClockOutDistanceMeters = offSite ? 982 : 13,
+                    CreatedAt = stint.Start,
+                    UpdatedAt = stint.End,
+                });
+            }
         }
     }
 
