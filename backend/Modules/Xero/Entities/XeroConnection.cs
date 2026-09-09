@@ -37,6 +37,16 @@ public class XeroConnection : ITenantScoped
     public DateTime UpdatedAt { get; set; }
     public DateTime? DisconnectedAt { get; set; }
 
+    // Set when Xero has revoked or expired the stored refresh token. Kept apart
+    // from DisconnectedAt on purpose: the connection is dead but still OURS, so
+    // the tenant name survives and the UI can say which Xero org to reconnect
+    // rather than falling back to a bare "Connect". Cleared on a fresh consent
+    // (XeroRepository.UpsertConnectionAsync) and on any refresh that succeeds.
+    public DateTime? ReconnectRequiredAt { get; set; }
+
     [NotMapped]
     public bool IsConnected => DisconnectedAt is null;
+
+    [NotMapped]
+    public bool NeedsReconnect => ReconnectRequiredAt is not null;
 }

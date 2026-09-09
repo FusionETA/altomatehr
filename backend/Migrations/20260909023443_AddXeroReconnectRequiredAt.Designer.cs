@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909023443_AddXeroReconnectRequiredAt")]
+    partial class AddXeroReconnectRequiredAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1655,10 +1658,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("ReviewNotes")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
-
-                    b.Property<string>("ReviewerId")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
 
                     b.Property<DateTime>("StartAt")
                         .HasColumnType("datetime(6)");
