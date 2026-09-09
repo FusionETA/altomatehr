@@ -319,6 +319,25 @@ export function EmployeeDetail({
   );
   const assigningTeam = teams.find((t) => t.id === assigningTeamId);
 
+  // What the chosen level would mean, computed from the team roster the same
+  // way the backend's implicit default does: everyone at each layer above.
+  // A preview only — the real approvers come back from the API after the
+  // assignment, and can then be narrowed per layer.
+  const assigningPreviewApprovers = useMemo(() => {
+    if (!assigningTeam) return [];
+    const rows: { layer: number; label: string; names: string[] }[] = [];
+    for (let layer = assigningLayer + 1; layer < assigningTeam.layerCount; layer++) {
+      rows.push({
+        layer,
+        label: layerLabel(assigningTeam, layer),
+        names: assigningTeam.members
+          .filter((m) => m.layer === layer && m.employeeId !== employee.id)
+          .map((m) => m.email ?? m.employeeId),
+      });
+    }
+    return rows;
+  }, [assigningTeam, assigningLayer, employee.id]);
+
   const membershipKey = myMemberships.map((m) => `${m.team.id}:${m.member.layer}`).join(",");
 
   useEffect(() => {
@@ -1581,8 +1600,13 @@ export function EmployeeDetail({
                           : "They are already on every project that has a team."}
                       </p>
                     ) : null}
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <Field label="Project">
+                    {/* One step at a time, in order. Each answer is what makes
+                        the next question askable: the project decides which
+                        teams exist, the team decides how many levels there are.
+                        Showing all three at once invites picking a level before
+                        anything knows how many there are. */}
+                    <div className="mt-3 space-y-3">
+                      <Field label="1. Project">
                         <Picker
                           value={assigningProjectId}
                           onChange={(v) => {
@@ -1596,40 +1620,85 @@ export function EmployeeDetail({
                           options={assignableProjects.map((p) => ({ value: p.id, label: p.name }))}
                         />
                       </Field>
-                      <Field label="Team">
-                        <Picker
-                          value={assigningTeamId}
-                          onChange={(v) => {
-                            setAssigningTeamId(v ?? NONE);
-                            setAssigningLayer(0);
-                          }}
-                          placeholder={
-                            assigningProjectId === NONE ? "Pick a project first" : "Choose a team"
+
+                      {assigningProjectId === NONE ? null : (
+                        <Field
+                          label="2. Team"
+                          hint={
+                            assigningProjectTeams.length === 0
+                              ? "This project has no team yet — create one in Company Structure."
+                              : undefined
                           }
-                          allowNone
-                          noneLabel="Choose a team"
-                          options={assigningProjectTeams.map((t) => ({
-                            value: t.id,
-                            label: `${t.name} · ${t.layerCount} level${t.layerCount === 1 ? "" : "s"}`,
-                          }))}
-                        />
-                      </Field>
-                      <Field label="Their level">
-                        <Picker
-                          value={String(assigningLayer)}
-                          onChange={(v) => setAssigningLayer(v ? Number(v) : 0)}
-                          placeholder={assigningTeamId === NONE ? "Pick a team first" : undefined}
-                          options={Array.from(
-                            { length: assigningTeam?.layerCount ?? 0 },
-                            (_, layer) => ({
-                              value: String(layer),
-                              label: assigningTeam
-                                ? `L${layer + 1} — ${layerLabel(assigningTeam, layer)}`
-                                : String(layer),
-                            }),
-                          )}
-                        />
-                      </Field>
+                        >
+                          <Picker
+                            value={assigningTeamId}
+                            onChange={(v) => {
+                              setAssigningTeamId(v ?? NONE);
+                              setAssigningLayer(0);
+                            }}
+                            placeholder="Choose a team"
+                            allowNone
+                            noneLabel="Choose a team"
+                            options={assigningProjectTeams.map((t) => ({
+                              value: t.id,
+                              label: t.name,
+                            }))}
+                          />
+                        </Field>
+                      )}
+
+                      {!assigningTeam ? null : (
+                        <Field
+                          label="3. Their level"
+                          hint={`${assigningTeam.name} has ${assigningTeam.layerCount} level${
+                            assigningTeam.layerCount === 1 ? "" : "s"
+                          }. Everyone above the level you pick approves for them.`}
+                        >
+                          <Picker
+                            value={String(assigningLayer)}
+                            onChange={(v) => setAssigningLayer(v ? Number(v) : 0)}
+                            options={Array.from(
+                              { length: assigningTeam.layerCount },
+                              (_, layer) => ({
+                                value: String(layer),
+                                label: `L${layer + 1} — ${layerLabel(assigningTeam, layer)}`,
+                              }),
+                            )}
+                          />
+                        </Field>
+                      )}
+
+                      {/* Who that choice lands them under, before they commit to
+                          it — the supervisors are editable per layer once the
+                          person is on the team, but an admin should be able to
+                          see the consequence first. */}
+                      {!assigningTeam ? null : assigningPreviewApprovers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Top level — nobody would approve above them on this project.
+                        </p>
+                      ) : (
+                        <div className="rounded-2xl border border-border/60 bg-card p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            4. Their supervisors would be
+                          </p>
+                          <div className="mt-2 space-y-1.5">
+                            {assigningPreviewApprovers.map(({ layer, label, names }) => (
+                              <p key={layer} className="text-sm text-foreground">
+                                <span className="font-semibold">
+                                  L{layer + 1} — {label}:
+                                </span>{" "}
+                                {names.length > 0 ? (
+                                  names.join(", ")
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    nobody at this level yet
+                                  </span>
+                                )}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
