@@ -29,6 +29,7 @@ using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -55,7 +56,14 @@ builder.Services.AddControllers(o => o.Filters.Add<PartnerAccessFilter>())   // 
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
-builder.Services.AddDataProtection();
+// Xero's OAuth tokens are encrypted with this key ring (XeroService), so the keys
+// MUST outlive the container — the default location is container-local, and losing
+// it orphans the stored tokens and forces a reconnect on every redeploy.
+// storage/ is the mounted volume, same as uploaded receipts/photos.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(
+        Path.Combine(builder.Environment.ContentRootPath, "storage", "dp-keys")))
+    .SetApplicationName("AltomateHR");
 builder.Services.Configure<XeroOptions>(builder.Configuration.GetSection("Xero"));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("EngineMailer"));
@@ -340,6 +348,30 @@ app.UseExceptionHandler(errorApp =>
         var logger = context.RequestServices
             .GetRequiredService<ILoggerFactory>()
             .CreateLogger("GlobalExceptionHandler");
+
+        // A Xero connection Xero itself has killed is an expected operational
+        // state, not a crash: answer 409 with a stable code the frontend keys
+        // off, and log a warning rather than an error. Handled here rather than
+        // per-action because claim settlement reaches Xero too, not just the
+        // /xero endpoints.
+        if (exception is XeroReconnectRequiredException reconnect)
+        {
+            logger.LogWarning(reconnect, "Xero reconnect required while processing {Path}", context.Request.Path);
+
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            context.Response.ContentType = "application/problem+json";
+
+            await context.Response.WriteAsJsonAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Xero needs reconnecting.",
+                // Deliberately shown in production too: it is the admin's cue to
+                // act, and carries no more than Xero's own error description.
+                Detail = reconnect.Message,
+                Extensions = { ["code"] = "xero_reconnect_required" },
+            });
+            return;
+        }
 
         if (exception is not null)
         {
