@@ -1,5 +1,13 @@
 // Generic HTTP layer — knows HOW to call the backend, nothing feature-specific.
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5001";
+//
+// Default to the SAME-ORIGIN "/api" prefix, which is correct in every
+// environment: in production nginx proxies /api/ -> :8080 with the prefix
+// stripped, and in dev the vite.config.ts server.proxy does the same to :5001.
+// Do NOT restore an absolute "http://localhost:5001" default — Vite inlines
+// this at BUILD time, so that value ships to browsers and makes every request
+// hit port 5001 on the VIEWER'S machine, which looks exactly like a dead
+// database while the API and DB are perfectly healthy.
+const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
 // The ACCESS token, held in memory. Set after login; attached below.
 let authToken: string | null = null;
