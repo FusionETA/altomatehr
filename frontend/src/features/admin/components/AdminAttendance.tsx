@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   MapPin,
+  Plus,
 } from "lucide-react";
 import {
   getApprovalAudit,
@@ -41,7 +42,13 @@ import { getOrganization, type Organization } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { CARD_BARE } from "../lib/dashboard-styles";
-import { formatBytes, formatMinutes, formatWorkingDays } from "../lib/attendance-format";
+import {
+  ALL_FILTER,
+  formatBytes,
+  formatMinutes,
+  formatWorkingDays,
+} from "../lib/attendance-format";
+import { ShiftEditor } from "./ShiftEditor";
 import {
   AttendanceFilterBar,
   DateRangeBar,
@@ -642,7 +649,16 @@ export function AdminAttendance() {
       ) : section === "overtime" ? (
         <OvertimeTab rows={overtimeRows} name={name} projectNames={projectNames} />
       ) : section === "shifts" ? (
-        <ShiftsTab rows={shifts} projectNames={projectNames} />
+        <ShiftsTab
+          rows={shifts}
+          projects={projects}
+          projectNames={projectNames}
+          // Refetch rather than append. Claiming the default clears it from
+          // whichever shift held it before, and a local append cannot know
+          // that — it left two rows both badged DEFAULT, which the server
+          // would never return.
+          onCreated={() => void getShifts().then(setShifts).catch(() => {})}
+        />
       ) : tab === "today" ? (
         <TodayTab
           rows={todayRows}
@@ -1988,65 +2004,133 @@ function PhotoSlot({ label, url }: { label: string; url: string | null }) {
 // ---- Shifts ----
 
 // The working patterns everything else on this screen is measured against: a
-// late clock-in is only late relative to one of these, so it belongs next to
-// the reports that use it.
+// late clock-in is only late relative to one of these, so they belong next to
+// the reports that use them.
 function ShiftsTab({
   rows,
+  projects,
   projectNames,
+  onCreated,
 }: {
   rows: Shift[];
+  projects: FilterOption[];
   projectNames: Map<string, string>;
+  onCreated: () => void;
 }) {
-  if (rows.length === 0) {
-    return (
-      <section className={CARD_BARE}>
-        <EmptyRow>
-          No shifts defined yet. Until one exists, attendance has no expected
-          hours to compare against.
-        </EmptyRow>
-      </section>
-    );
-  }
+  // Scoped here rather than in the shared bar above: that one searches
+  // employees and filters by team, and neither applies to a standing pattern.
+  const [projectId, setProjectId] = useState<string>(ALL_FILTER);
+  const [adding, setAdding] = useState(false);
+
+  const shown = useMemo(
+    () => (projectId === ALL_FILTER ? rows : rows.filter((s) => s.projectId === projectId)),
+    [rows, projectId],
+  );
 
   return (
-    <section className={CARD_BARE}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-sm">
-          <thead>
-            <tr className="border-b border-border/60">
-              {["Shift", "Project", "Hours", "Working days", "Unpaid break"].map((h) => (
-                <th key={h} className={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((shift) => (
-              <tr key={shift.id} className="border-b border-border/60">
-                <td className="p-4 pl-6">
-                  <span className="font-semibold text-foreground">{shift.name}</span>
-                  {shift.isDefault ? (
-                    <span className="ml-2 inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-secondary-foreground">
-                      Default
-                    </span>
-                  ) : null}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {projectNames.get(shift.projectId) ?? "—"}
-                </td>
-                <td className="p-4 tabular-nums">
-                  {shift.startTime} – {shift.endTime}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {formatWorkingDays(shift.workingDays)}
-                </td>
-                <td className="p-4 pr-6 tabular-nums">
-                  {formatMinutes(shift.lunchBreakMinutes)}
-                </td>
-              </tr>
+    <div className="space-y-4">
+      <header>
+        <h3 className="text-xl font-bold text-foreground">Shifts</h3>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+          One project can have several named shifts (Day 8am–5pm, Night 10pm–7am).
+          Mark one as the project default; an employee can still be assigned a
+          different one. Late detection and expected daily hours both read from
+          whichever shift applies to the employee.
+        </p>
+      </header>
+
+      <section className={`${CARD_BARE} flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:p-6`}>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <label
+            htmlFor="shifts-project"
+            className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+          >
+            Project
+          </label>
+          <select
+            id="shifts-project"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+            className="h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <option value={ALL_FILTER}>All projects</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          Add shift
+        </button>
+      </section>
+
+      {shown.length === 0 ? (
+        <section className={CARD_BARE}>
+          <EmptyRow>
+            {rows.length === 0
+              ? "No shifts defined yet. Until one exists, attendance has no expected hours to compare against."
+              : "No shifts match this filter."}
+          </EmptyRow>
+        </section>
+      ) : (
+        <section className={`${CARD_BARE} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b border-border/60">
+                  {["Shift", "Project", "Hours", "Working days", "Unpaid break"].map((h) => (
+                    <th key={h} className={TH}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((shift) => (
+                  <tr key={shift.id} className="border-b border-border/60 last:border-0">
+                    <td className="p-4 pl-6">
+                      <span className="font-semibold text-foreground">{shift.name}</span>
+                      {shift.isDefault ? (
+                        <span className="ml-2 inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-secondary-foreground">
+                          Default
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="p-4 text-muted-foreground">
+                      {projectNames.get(shift.projectId) ?? "—"}
+                    </td>
+                    <td className="p-4 tabular-nums">
+                      {shift.startTime} – {shift.endTime}
+                    </td>
+                    <td className="p-4 text-muted-foreground">
+                      {formatWorkingDays(shift.workingDays)}
+                    </td>
+                    <td className="p-4 pr-6 tabular-nums">
+                      {formatMinutes(shift.lunchBreakMinutes)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {adding ? (
+        <ShiftEditor
+          projects={projects}
+          defaultProjectId={projectId === ALL_FILTER ? undefined : projectId}
+          onClose={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false);
+            onCreated();
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
