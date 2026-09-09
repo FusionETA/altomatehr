@@ -19,6 +19,8 @@ public class OvertimeRequestDto
     public OvertimeStatus Status { get; set; }
     public int CurrentStep { get; set; }
     public string? ReviewNotes { get; set; }
+    public string? ReviewerId { get; set; }
+    public string? ReviewerEmail { get; set; }
     public string SubmittedAt { get; set; } = string.Empty;
     public string? DecidedAt { get; set; }
     public string CreatedAt { get; set; } = string.Empty;

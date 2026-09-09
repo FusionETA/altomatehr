@@ -18,6 +18,10 @@ export type OvertimeRequest = {
   status: OvertimeStatus;
   currentStep: number;
   reviewNotes?: string | null;
+  // Who last decided. Null where nobody did — auto-approved at submit for an
+  // employee with no approver, or resolved by the unreachable-approval sweep.
+  reviewerId?: string | null;
+  reviewerEmail?: string | null;
   submittedAt: string;
   decidedAt?: string | null;
   createdAt: string;

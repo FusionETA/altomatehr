@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, MapPin } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Download,
+  FileText,
+  MapPin,
+} from "lucide-react";
 import {
   getApprovalAudit,
   exportEmployeeAttendancePdf,
@@ -22,7 +30,12 @@ import { getEmployees, type Employee } from "@/features/employees/api";
 import { exportEmployeeLeaveSummaryPdf } from "@/features/leave/api";
 import { getProjects } from "@/features/settings/api";
 import { getTeams, type TeamMember } from "@/features/teams/api";
-import { getAllOvertime, type OvertimeRequest } from "@/features/overtime/api";
+import {
+  getAllOvertime,
+  openOvertimePhoto,
+  type OvertimeRequest,
+} from "@/features/overtime/api";
+import { overtimeStatusLabels } from "@/features/overtime/lib/overtime-status";
 import { getShifts, type Shift } from "@/features/shifts/api";
 import { getOrganization, type Organization } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
@@ -1784,6 +1797,9 @@ function Fact({ label, value }: { label: string; value: string | null | undefine
 
 // ---- Overtime ----
 
+const OT_STATUSES = ["ALL", "PENDING", "APPROVED", "REJECTED", "CANCELLED"] as const;
+type OtStatusFilter = (typeof OT_STATUSES)[number];
+
 // Org-wide overtime, read-only. Deciding happens in the approvals queue, where
 // the approver and the routing rules are — an admin approving from here would
 // bypass the chain entirely.
@@ -1796,51 +1812,176 @@ function OvertimeTab({
   name: (id: string) => string;
   projectNames: Map<string, string>;
 }) {
-  if (rows.length === 0) {
-    return (
-      <section className={CARD_BARE}>
-        <EmptyRow>No overtime requests in this range.</EmptyRow>
-      </section>
-    );
-  }
+  const [status, setStatus] = useState<OtStatusFilter>("ALL");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const shown = useMemo(
+    () => (status === "ALL" ? rows : rows.filter((r) => r.status === status)),
+    [rows, status],
+  );
 
   return (
-    <section className={CARD_BARE}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead>
-            <tr className="border-b border-border/60">
-              {["Work date", "Employee", "Project", "Hours", "Reason", "Status"].map((h) => (
-                <th key={h} className={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-border/60">
-                <td className="p-4 pl-6 tabular-nums">{dateLabel(r.workDate.slice(0, 10))}</td>
-                <td className="p-4">
-                  <p className="font-semibold text-foreground">{name(r.employeeId)}</p>
-                  {r.employeeEmail ? (
-                    <p className="text-xs text-muted-foreground">{r.employeeEmail}</p>
-                  ) : null}
-                </td>
-                <td className="p-4 text-muted-foreground">
-                  {r.projectId ? projectNames.get(r.projectId) ?? "—" : "—"}
-                </td>
-                <td className="p-4 tabular-nums">{formatMinutes(r.requestedMinutes)}</td>
-                {/* Reasons run long, so the cell truncates and keeps the full
-                    text in the title rather than widening the whole table. */}
-                <td className="max-w-[260px] p-4 text-muted-foreground">
-                  <span className="block truncate" title={r.reason}>{r.reason}</span>
-                </td>
-                <td className="p-4 pr-6"><OvertimeStatusBadge status={r.status} /></td>
+    <section className={`${CARD_BARE} overflow-hidden`}>
+      <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6 sm:pt-6">
+        <div>
+          <h4 className="text-lg font-bold text-foreground">OT submissions</h4>
+          <p className="text-xs text-muted-foreground">
+            All overtime requests across the organisation.
+          </p>
+        </div>
+
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as OtStatusFilter)}
+          aria-label="Status"
+          className="h-11 rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {OT_STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {value === "ALL" ? "All statuses" : overtimeStatusLabels[value]}
+            </option>
+          ))}
+        </select>
+      </header>
+
+      {/* Two numbers, because "showing 4" alone hides how much was filtered
+          away — the gap between them is the point. */}
+      <p className="px-5 pt-3 text-xs text-muted-foreground sm:px-6">
+        Showing {shown.length} of {rows.length} submissions
+      </p>
+
+      {shown.length === 0 ? (
+        <EmptyRow>
+          {rows.length === 0
+            ? "No overtime requests in this range."
+            : "No submissions match this status."}
+        </EmptyRow>
+      ) : (
+        <div className="mt-4 overflow-x-auto border-t border-border/60">
+          <table className="w-full min-w-[960px] text-sm">
+            <thead>
+              <tr className="border-b border-border/60">
+                {["Employee", "Date", "Time range", "Duration", "Reviewed by", "Status"].map((h) => (
+                  <th key={h} className={TH}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {shown.map((r) => {
+                const attachments = [r.beforePhotoUrl, r.afterPhotoUrl].filter(Boolean).length;
+                const open = expanded === r.id;
+                return (
+                  <Fragment key={r.id}>
+                    <tr className="border-b border-border/60">
+                      <td className="max-w-[280px] p-4 pl-6 align-top">
+                        <p className="font-semibold uppercase text-foreground">{name(r.employeeId)}</p>
+                        <p className="truncate text-xs text-muted-foreground" title={otSubtitle(r, projectNames)}>
+                          {otSubtitle(r, projectNames)}
+                        </p>
+                      </td>
+                      <td className="p-4 align-top tabular-nums">{dateLabel(r.workDate.slice(0, 10))}</td>
+                      <td className="p-4 align-top tabular-nums">
+                        {timeLabel(r.startAt)} – {timeLabel(r.endAt)}
+                      </td>
+                      <td className="p-4 align-top tabular-nums">{formatMinutes(r.requestedMinutes)}</td>
+                      <td className="p-4 align-top">
+                        {/* Never a guessed name. A decided row with no reviewer
+                            is either one the rules resolved with nobody to ask,
+                            or one decided before this column existed — and the
+                            two are indistinguishable in the data, so the cell
+                            says what is true of both rather than picking. */}
+                        {r.reviewerId ? (
+                          <>
+                            <p className="font-semibold uppercase text-foreground">{name(r.reviewerId)}</p>
+                            {r.decidedAt ? (
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(r.decidedAt).toLocaleDateString()}
+                              </p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-xs italic text-muted-foreground">
+                            {r.decidedAt ? "Not recorded" : "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 pr-6 align-top">
+                        <div className="flex items-center justify-end gap-2">
+                          <OvertimeStatusBadge status={r.status} />
+                          {attachments > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpanded(open ? null : r.id)}
+                              aria-expanded={open}
+                              aria-label={`${open ? "Hide" : "Show"} attachments for ${name(r.employeeId)}`}
+                              className="inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                            >
+                              <FileText className="h-3 w-3" aria-hidden />
+                              {attachments}
+                              {open ? (
+                                <ChevronUp className="h-3 w-3" aria-hidden />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" aria-hidden />
+                              )}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {open ? (
+                      <tr className="border-b border-border/60 bg-muted/30">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="grid gap-6 sm:grid-cols-2">
+                            <PhotoSlot label="Before (justification)" url={r.beforePhotoUrl} />
+                            <PhotoSlot label="After (evidence)" url={r.afterPhotoUrl ?? null} />
+                          </div>
+                          {r.reviewNotes ? (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              <span className="font-semibold text-foreground">Review notes:</span>{" "}
+                              {r.reviewNotes}
+                            </p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
+  );
+}
+
+function otSubtitle(r: OvertimeRequest, projectNames: Map<string, string>): string {
+  const project = r.projectId ? projectNames.get(r.projectId) : null;
+  return [project, r.reason].filter(Boolean).join(" · ") || "—";
+}
+
+// One of the two OT photos. The photos are behind auth, so they open through
+// the API client rather than as a plain href — a bare src would 401.
+function PhotoSlot({ label, url }: { label: string; url: string | null }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      {url ? (
+        <button
+          type="button"
+          onClick={() => void openOvertimePhoto(url)}
+          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+        >
+          <FileText className="h-3 w-3 shrink-0" aria-hidden />
+          <span className="max-w-[220px] truncate">{url.split("/").pop()}</span>
+        </button>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">None uploaded.</p>
+      )}
+    </div>
   );
 }
 

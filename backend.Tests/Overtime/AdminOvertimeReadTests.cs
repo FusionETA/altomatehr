@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Overtime;
+using AltomateHR.Api.Modules.Overtime.Dtos;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Tests.Claims;   // reuse FakeSupervisionService + FakeApprovalRouter
@@ -97,6 +98,74 @@ public class AdminOvertimeReadTests
         Assert.Equal(4, all.Count());
     }
 
+    [Fact]
+    public async Task ApproveAsync_RecordsWhoDecided()
+    {
+        // The admin table names the reviewer, so the decision has to leave a
+        // trace of who made it — DecidedAt alone says only that someone did.
+        var request = NewRequest("ot-a");
+        var service = CreateService(
+            [request],
+            new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        await service.ApproveAsync("ot-a", "usr-super");
+
+        Assert.Equal("usr-super", request.ReviewerId);
+        Assert.Equal(OvertimeStatus.APPROVED, request.Status);
+    }
+
+    [Fact]
+    public async Task RejectAsync_RecordsWhoDecided()
+    {
+        var request = NewRequest("ot-a");
+        var service = CreateService(
+            [request],
+            new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        await service.RejectAsync("ot-a", "usr-super", "Not approved for this project.");
+
+        Assert.Equal("usr-super", request.ReviewerId);
+        Assert.Equal(OvertimeStatus.REJECTED, request.Status);
+    }
+
+    [Fact]
+    public async Task AutoApprovalWithNoApproverNamesNobody()
+    {
+        // An employee with nobody above them has their request completed when
+        // the after-work photo lands — not at submit, because approval refuses
+        // without that photo. No person reviewed it, and putting a name in the
+        // reviewer column on an audit surface would be a fabrication.
+        var request = NewRequest("ot-a", afterPhoto: null);
+        var service = CreateService([request], new FakeApprovalRouter(new()));
+
+        var result = await service.AttachAfterPhotoAsync(
+            "ot-a", "usr-emp",
+            new AttachOvertimeAfterPhotoDto { AfterPhotoUrl = "/overtime/photos/after.png" });
+
+        Assert.True(result.Transitioned);
+        Assert.Equal(OvertimeStatus.APPROVED, request.Status);
+        Assert.Null(request.ReviewerId);
+        // Decided, but by the rules rather than by a person — the pairing the
+        // UI reads to show "Auto-approved" instead of a name.
+        Assert.NotNull(request.DecidedAt);
+    }
+
+    [Fact]
+    public async Task GetAllForAdminAsync_NamesTheReviewerNotJustTheirId()
+    {
+        var request = NewRequest("ot-a", status: OvertimeStatus.APPROVED);
+        request.ReviewerId = "usr-super";
+        var service = CreateService(
+            [request],
+            new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }),
+            emails: new() { ["usr-emp"] = "evan@x.com", ["usr-super"] = "sara@x.com" });
+
+        var row = Assert.Single(await service.GetAllForAdminAsync());
+
+        Assert.Equal("usr-super", row.ReviewerId);
+        Assert.Equal("sara@x.com", row.ReviewerEmail);
+    }
+
     private static OvertimeService CreateService(
         IEnumerable<OvertimeRequest> requests,
         IApprovalRouter router,
@@ -111,7 +180,8 @@ public class AdminOvertimeReadTests
         string id,
         string employeeId = "usr-emp",
         OvertimeStatus status = OvertimeStatus.PENDING,
-        DateTime? workDate = null) => new()
+        DateTime? workDate = null,
+        string? afterPhoto = "/overtime/photos/after.png") => new()
         {
             Id = id,
             OrganizationId = "org-1",
@@ -122,7 +192,7 @@ public class AdminOvertimeReadTests
             RequestedMinutes = 120,
             Reason = "Release night.",
             BeforePhotoUrl = "/overtime/photos/before.png",
-            AfterPhotoUrl = "/overtime/photos/after.png",
+            AfterPhotoUrl = afterPhoto,
             Status = status,
             SubmittedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,

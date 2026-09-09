@@ -37,6 +37,13 @@ public class OvertimeRequest : ITenantScoped
     [MaxLength(1000)]
     public string? ReviewNotes { get; set; }
 
+    // Who last decided on this request. Null where nobody did: a submission
+    // auto-approved because the employee has no approver, or one resolved by
+    // the unreachable-approval sweep. Naming a person for those would be a
+    // fabrication on an audit surface.
+    [MaxLength(40)]
+    public string? ReviewerId { get; set; }
+
     public DateTime SubmittedAt { get; set; }
     public DateTime? DecidedAt { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -64,11 +64,20 @@ public class OvertimeService : IOvertimeService
             .OrderByDescending(r => r.WorkDate)
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(all.Select(r => r.EmployeeId).Distinct());
+        // Reviewers resolved in the same lookup as employees — the admin table
+        // names both, and two round trips for one directory would be silly.
+        var emails = await _supervision.GetEmailsAsync(
+            all.Select(r => r.EmployeeId)
+                .Concat(all.Select(r => r.ReviewerId).Where(id => id is not null)!)
+                .Distinct());
+
         return all.Select(request =>
         {
             var dto = ToDto(request);
             dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
+            dto.ReviewerEmail = request.ReviewerId is null
+                ? null
+                : emails.GetValueOrDefault(request.ReviewerId);
             return dto;
         });
     }
@@ -205,6 +214,9 @@ public class OvertimeService : IOvertimeService
         var now = DateTime.UtcNow;
         var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
         var isFinal = request.CurrentStep + 1 >= stepCount;
+        // Recorded whether or not this is the final step: "who last acted on
+        // this" is the useful answer while a request is still climbing a chain.
+        request.ReviewerId = approverId;
         if (isFinal)
         {
             request.Status = OvertimeStatus.APPROVED;
@@ -266,6 +278,7 @@ public class OvertimeService : IOvertimeService
 
             var now = DateTime.UtcNow;
             var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
+            request.ReviewerId = approverId;
             if (request.CurrentStep + 1 >= stepCount)
             {
                 request.Status = OvertimeStatus.APPROVED;
@@ -297,6 +310,7 @@ public class OvertimeService : IOvertimeService
         var now = DateTime.UtcNow;
         request!.Status = OvertimeStatus.REJECTED;
         request.ReviewNotes = cleanedReviewNotes;
+        request.ReviewerId = approverId;
         request.DecidedAt = now;
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
@@ -485,6 +499,7 @@ public class OvertimeService : IOvertimeService
         Status = request.Status,
         CurrentStep = request.CurrentStep,
         ReviewNotes = request.ReviewNotes,
+        ReviewerId = request.ReviewerId,
         SubmittedAt = Iso(request.SubmittedAt) ?? string.Empty,
         DecidedAt = Iso(request.DecidedAt),
         CreatedAt = Iso(request.CreatedAt) ?? string.Empty,
