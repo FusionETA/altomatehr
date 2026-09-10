@@ -3,6 +3,7 @@ import { ChevronRight, Plus, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonRows } from "@/shared/components/Skeleton";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
@@ -122,10 +123,15 @@ export function EmployeesSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-black text-foreground">Employees</h2>
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-              <Users className="h-3 w-3" />
-              {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
-            </span>
+            {/* Hidden until the roster is in. A count of 0 next to a table of
+                skeleton rows reads as "this company has no employees", which is
+                a different and alarming statement. */}
+            {loading ? null : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -158,10 +164,7 @@ export function EmployeesSettings() {
 
       {loadError ? <p className="text-sm font-medium text-destructive">{loadError}</p> : null}
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading employees…</p>
-      ) : (
-        <>
+      <>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead>
@@ -173,6 +176,14 @@ export function EmployeesSettings() {
                 </tr>
               </thead>
               <tbody>
+                {loading ? (
+                  // Same four columns, same row height: the real rows replace
+                  // these in place rather than pushing the page around.
+                  <SkeletonRows
+                    rows={5}
+                    widths={["w-44", "w-20", "w-24", "w-4"]}
+                  />
+                ) : null}
                 {paged.map((emp) => (
                   <tr
                     key={emp.id}
@@ -214,7 +225,7 @@ export function EmployeesSettings() {
                 ))}
               </tbody>
             </table>
-            {filtered.length === 0 ? (
+            {!loading && filtered.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {staff.length === 0
                   ? "No employees yet. Add the first one to get started."
@@ -230,8 +241,7 @@ export function EmployeesSettings() {
             itemNoun="employees"
             onPageChange={setPage}
           />
-        </>
-      )}
+      </>
 
       {showAdd ? (
         <AddEmployeeModal
