@@ -28,6 +28,8 @@ export type UpdateOrganization = {
 export type Project = {
   id: string;
   name: string;
+  /** Street address of the site. Free text, shown to people — never parsed. */
+  location: string | null;
   latitude: number | null;
   longitude: number | null;
   isArchived: boolean;

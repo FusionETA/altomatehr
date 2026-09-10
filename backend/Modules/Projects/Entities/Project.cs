@@ -23,6 +23,13 @@ public class Project : ITenantScoped
 
     public DateTime? XeroSyncedAt { get; set; }
 
+    // Street address of the site, free text. Separate from Name because the
+    // name is the label everything else refers to (claims, attendance, the
+    // project picker), and folding an address into it would push a postcode
+    // into every one of those. Null for a project that has no fixed site.
+    [MaxLength(400)]
+    public string? Location { get; set; }
+
     // Geofence centre. Both null → the project isn't geofenced (attendance
     // clock-ins against it skip the distance check).
     public double? Latitude { get; set; }

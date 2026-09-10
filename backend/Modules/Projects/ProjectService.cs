@@ -29,6 +29,7 @@ public class ProjectService : IProjectService
         var project = new Project
         {
             Name = dto.Name,
+            Location = dto.Location,
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             AllowedIps = dto.AllowedIps,
@@ -53,6 +54,7 @@ public class ProjectService : IProjectService
         if (project is null) return null;
 
         project.Name = dto.Name;
+        project.Location = dto.Location;
         project.Latitude = dto.Latitude;
         project.Longitude = dto.Longitude;
         project.AllowedIps = dto.AllowedIps;
@@ -95,6 +97,7 @@ public class ProjectService : IProjectService
         XeroProjectId = p.XeroProjectId,
         XeroStatus = p.XeroStatus,
         XeroSyncedAt = p.XeroSyncedAt,
+        Location = p.Location,
         Latitude = p.Latitude,
         Longitude = p.Longitude,
         AllowedIps = p.AllowedIps,

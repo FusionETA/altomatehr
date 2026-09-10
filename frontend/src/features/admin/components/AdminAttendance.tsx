@@ -241,6 +241,10 @@ export function AdminAttendance() {
   const [roster, setRoster] = useState<Employee[]>([]);
   const [teamIndex, setTeamIndex] = useState<TeamIndexEntry[]>([]);
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
+  // Site address per project NAME, because that is what the employee rows
+  // carry — they are built from team membership and clocked-in projects, both
+  // of which resolve to names before they reach a row.
+  const [projectSites, setProjectSites] = useState<Map<string, string | null>>(new Map());
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [hours, setHours] = useState<OrgHoursSummary | null>(null);
@@ -277,6 +281,7 @@ export function AdminAttendance() {
           })),
         );
         setProjectNames(new Map(projectList.map((p) => [p.id, p.name])));
+        setProjectSites(new Map(projectList.map((p) => [p.name, p.location])));
         setProjects(projectList.filter((p) => !p.isArchived).map((p) => ({ id: p.id, name: p.name })));
         setTeams(teamList.map((t) => ({ id: t.id, name: t.name })));
       })
@@ -657,6 +662,7 @@ export function AdminAttendance() {
               org,
             )}
             projectNames={projectNames}
+            projectSites={projectSites}
             today={today}
             from={from}
             to={to}
@@ -1718,11 +1724,13 @@ function EmployeesTab({
                   {employee.role}
                 </span>
               </div>
-              {/* Job title and sites on one line, truncated — the full list is
-                  in the title attribute rather than wrapping a card to three
-                  lines for the one person on six projects. */}
+              {/* One project plus a count, not the whole list. Concatenating
+                  every site produced a line that truncated mid-word and told
+                  you nothing — the reference app renders the same data as
+                  three wrapped lines of project codes per row. The full list
+                  is on hover and on the detail page. */}
               <p className="truncate text-xs text-muted-foreground" title={detailLine(employee, projects)}>
-                {detailLine(employee, projects)}
+                {detailSummary(employee, projects)}
               </p>
             </div>
 
@@ -1740,8 +1748,18 @@ function EmployeesTab({
   );
 }
 
+// Every site, for the hover title and nothing else.
 function detailLine(employee: Employee, projects: string[]): string {
   return [employee.jobTitle, ...projects].filter(Boolean).join(" • ") || "—";
+}
+
+// What the row actually prints: the job title, then one site and how many
+// others. Bounded, so a person on two projects and a person on eleven produce
+// the same shaped line.
+function detailSummary(employee: Employee, projects: string[]): string {
+  const [first, ...rest] = projects;
+  const sites = first ? (rest.length > 0 ? `${first} +${rest.length}` : first) : null;
+  return [employee.jobTitle, sites].filter(Boolean).join(" • ") || "—";
 }
 
 // Hours worked against hours scheduled, as a number and a bar.
@@ -2210,6 +2228,7 @@ function EmployeeDetail({
   reportsTo,
   workingDays,
   projectNames,
+  projectSites,
   today,
   from,
   to,
@@ -2221,6 +2240,7 @@ function EmployeeDetail({
   reportsTo: string | null;
   workingDays: Set<number>;
   projectNames: Map<string, string>;
+  projectSites: Map<string, string | null>;
   today: string;
   from: string;
   to: string;
@@ -2308,6 +2328,39 @@ function EmployeeDetail({
           <Fact label="Reports to" value={reportsTo} />
           <Fact label="Joined" value={employee.joinDate ? new Date(employee.joinDate).toLocaleDateString() : null} />
         </dl>
+
+        {/* Addresses get their own block rather than a row in the fact grid.
+            Every Fact above is one inline "label: value" line; a name with a
+            street address under it is two, and forcing that into the grid put
+            the value at an offset that lined up with nothing. Only rendered
+            when an address actually exists — otherwise the Projects fact above
+            already says everything. */}
+        {projects.some((projectName) => projectSites.get(projectName)) ? (
+          <div className="mt-4 border-t border-border/60 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Sites
+            </p>
+            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+              {projects.map((projectName) => {
+                const site = projectSites.get(projectName);
+                return (
+                  <li key={projectName} className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-foreground" title={projectName}>
+                      {projectName}
+                    </p>
+                    {site ? (
+                      <p className="truncate text-xs text-muted-foreground" title={site}>
+                        {site}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/60">No address on file</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       {/* Today and This-month cards removed: the heatmap below answers the
