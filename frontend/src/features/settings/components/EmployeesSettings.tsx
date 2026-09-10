@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Plus, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
@@ -26,15 +27,10 @@ const ROLE_PILL: Record<string, string> = {
   Supervisor: "bg-warning text-warning-foreground",
 };
 
-function message(err: unknown, fallback: string) {
-  return err instanceof Error ? err.message : fallback;
-}
 
 export function EmployeesSettings() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
   const [page, setPage] = useState(1);
@@ -42,15 +38,20 @@ export function EmployeesSettings() {
   // Which employee's full record is open. Null = the list.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Served from cache on a revisit, so coming back to this screen shows the
+  // roster immediately and refreshes it behind the list rather than blanking
+  // it. Both paths are the cache keys apiGet uses.
+  const employeesQuery = useCachedQuery("/employees", getEmployees);
+  const policiesQuery = useCachedQuery("/policies", getPolicies);
+  const loading = employeesQuery.loading || policiesQuery.loading;
+  const loadError = employeesQuery.error ?? policiesQuery.error;
+
   useEffect(() => {
-    Promise.all([getEmployees(), getPolicies()])
-      .then(([emps, pols]) => {
-        setEmployees(emps);
-        setPolicies(pols);
-      })
-      .catch((e: unknown) => setError(message(e, "Could not load employees.")))
-      .finally(() => setLoading(false));
-  }, []);
+    if (employeesQuery.data) setEmployees(employeesQuery.data);
+  }, [employeesQuery.data]);
+  useEffect(() => {
+    if (policiesQuery.data) setPolicies(policiesQuery.data);
+  }, [policiesQuery.data]);
 
   // Employees and supervisors only — an admin is not an employee. They hold no
   // place in an approval chain, carry no payroll profile, and their access is
@@ -155,7 +156,7 @@ export function EmployeesSettings() {
         ariaLabel="Role filters"
       />
 
-      {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+      {loadError ? <p className="text-sm font-medium text-destructive">{loadError}</p> : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading employees…</p>

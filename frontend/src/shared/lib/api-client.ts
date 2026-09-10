@@ -9,10 +9,17 @@
 // database while the API and DB are perfectly healthy.
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
+import * as cache from "./api-cache";
+
 // The ACCESS token, held in memory. Set after login; attached below.
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
+  const changed = token !== authToken;
   authToken = token;
+  // Cached responses belong to the identity that fetched them. Sign out, sign
+  // in as somebody else, and a surviving entry would hand the new user the old
+  // one's rows — so the cache goes whenever the identity does.
+  if (changed) cache.clear();
 }
 
 // Thrown on any non-2xx response. Carries the parsed body so callers can branch
@@ -211,12 +218,39 @@ export async function apiOpenStream(path: string, signal: AbortSignal): Promise<
   return res;
 }
 
-export const apiGet = <T>(path: string) => request<T>("GET", path);
-export const apiPost = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
+// GETs are de-duplicated and their answers cached; see api-cache. Callers get
+// the same promise contract as before — the cache only changes how fast it
+// settles, and useCachedQuery is what turns that into "no spinner".
+export const apiGet = <T>(path: string) =>
+  cache.dedupe(path, async () => {
+    const data = await request<T>("GET", path);
+    cache.put(path, data);
+    return data;
+  });
+
+/** Bypass the cache for one read — for a poll that must see the server's truth. */
+export const apiGetFresh = <T>(path: string) => request<T>("GET", path);
+
+export const apiPost = <T>(path: string, body?: unknown) =>
+  request<T>("POST", path, body).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
 export const apiPostForm = <T>(path: string, body: FormData) =>
-  requestForm<T>("POST", path, body);
+  requestForm<T>("POST", path, body).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
 export const apiGetBlob = (path: string) => requestBlob(path);
 export const apiGetFile = (path: string, fallbackName: string) =>
   requestFile(path, fallbackName);
-export const apiPut = <T>(path: string, body?: unknown) => request<T>("PUT", path, body);
-export const apiDelete = <T>(path: string) => request<T>("DELETE", path);
+export const apiPut = <T>(path: string, body?: unknown) =>
+  request<T>("PUT", path, body).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
+export const apiDelete = <T>(path: string) =>
+  request<T>("DELETE", path).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
