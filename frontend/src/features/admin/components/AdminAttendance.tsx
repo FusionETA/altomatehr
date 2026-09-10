@@ -55,6 +55,7 @@ import {
   type FilterOption,
 } from "./AttendanceFilterBar";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards, SkeletonRows, SkeletonStats } from "@/shared/components/Skeleton";
 
 // Two levels, mirroring production's own split:
 //
@@ -634,9 +635,10 @@ export function AdminAttendance() {
       ) : null}
 
       {loading ? (
-        <section className={`${CARD_BARE} p-6 text-sm text-muted-foreground`}>
-          Loading attendance…
-        </section>
+        <div className="space-y-4">
+          <SkeletonStats count={4} />
+          <SkeletonCards count={3} />
+        </div>
       ) : section === "employees" ? (
         openEmployee ? (
           <EmployeeDetail
@@ -881,7 +883,11 @@ function AnalyticsTab({
   if (!summary) {
     return (
       <section className={CARD_BARE}>
-        <EmptyRow>Loading the hours summary…</EmptyRow>
+        <table className="w-full text-sm">
+          <tbody>
+            <SkeletonRows rows={5} widths={["w-40", "w-20", "w-20", "w-24"]} />
+          </tbody>
+        </table>
       </section>
     );
   }

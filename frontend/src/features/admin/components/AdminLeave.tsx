@@ -65,6 +65,7 @@ import {
   ActionMenu,
 } from "./ActionMenu";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards, SkeletonStats } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -282,7 +283,7 @@ export function AdminLeave() {
         </div>
       </div>
 
-      {loading ? <section className={`${CARD} text-sm text-muted-foreground`}>Loading…</section> : null}
+      {loading ? <SkeletonStats count={3} /> : null}
 
       {!loading && tab === "overview" && overview ? (
         <>
@@ -640,7 +641,7 @@ function HistoryTab({
           </button>
         </section>
       ) : loading ? (
-        <section className={`${CARD} text-sm text-muted-foreground`}>Loading history…</section>
+        <SkeletonCards count={4} />
       ) : filtered.length === 0 ? (
         <section className={`${CARD} text-center`}>
           <p className="text-sm text-muted-foreground">

@@ -25,6 +25,7 @@ import {
 } from "@/shared/components/ui/select";
 import { ApplyOnBehalfModal } from "./ApplyOnBehalfModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[22px] border border-border/70 bg-card/70 p-5";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -235,7 +236,11 @@ export function EmployeeLeaveModal({
             Report — {year}
           </p>
           {loadingReport ? (
-            <p className="mt-3 text-sm text-muted-foreground">Loading report…</p>
+            <div className="mt-3 space-y-2">
+              <Skeleton className="h-3 w-48" />
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-3 w-52" />
+            </div>
           ) : !report ? (
             <p className="mt-3 text-sm text-muted-foreground">No report available.</p>
           ) : (

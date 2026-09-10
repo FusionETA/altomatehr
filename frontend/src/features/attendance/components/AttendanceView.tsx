@@ -23,6 +23,7 @@ import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
 import { formatDistance } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const TZ = "Asia/Kuala_Lumpur";
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -474,7 +475,7 @@ export function AttendanceView({
           </button>
         </div>
         {loading ? (
-          <div className={`${CARD} p-4 text-sm text-muted-foreground`}>Loading attendance...</div>
+          <SkeletonPanel />
         ) : weekRecords.length === 0 ? (
           <div className={`${CARD} p-5 text-center text-sm text-muted-foreground`}>
             No attendance records yet this week.
@@ -1184,7 +1185,7 @@ function HistoryView({
     [history, period, now, radius],
   );
   if (loading) {
-    return <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading attendance history...</section>;
+    return <SkeletonCards count={4} />;
   }
 
   if (error) {

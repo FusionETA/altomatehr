@@ -44,6 +44,7 @@ import {
   matchesFilters,
   type ClaimsFilters,
 } from "../lib/claims-filters";
+import { SkeletonRows } from "@/shared/components/Skeleton";
 
 // Every claim in the org, and the place every number on the attention tab lands.
 // Arriving here from a card carries that card's subset with it, named on a
@@ -449,8 +450,12 @@ export function AdminClaimsTable({
         ) : null}
 
         {loading ? (
-          <section className={`${CARD_BARE} p-6 text-sm text-muted-foreground`}>
-            Loading claims…
+          <section className={CARD_BARE}>
+            <table className="w-full text-sm">
+              <tbody>
+                <SkeletonRows rows={6} widths={["w-36", "w-44", "w-24", "w-20", "w-16"]} />
+              </tbody>
+            </table>
           </section>
         ) : null}
 

@@ -12,6 +12,7 @@ import type { SignedInUser } from "@/shared/types/session";
 import { getAdminOverview, type AdminOverview as AdminOverviewData } from "../api";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonStats } from "@/shared/components/Skeleton";
 
 type QuickLink = { parent: string; child: string; label: string; hint: string; icon: LucideIcon };
 
@@ -79,8 +80,9 @@ export function AdminOverview({
           {error}
         </div>
       ) : !overview ? (
-        <div className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground">
-          Loading overview…
+        <div className="space-y-4">
+          <SkeletonStats count={3} />
+          <SkeletonStats count={2} />
         </div>
       ) : (
         <ExecutiveOverview data={overview} />

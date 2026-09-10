@@ -90,6 +90,7 @@ import {
   type SectionId,
 } from "./employee-profile-sections";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -693,7 +694,7 @@ export function EmployeeDetail({
       ) : null}
 
       {loading ? (
-        <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading profile…</section>
+        <SkeletonPanel />
       ) : !profile ? null : (
         <div className="space-y-4">
           {/* The count is what's still missing in that section; a finished one
@@ -1429,7 +1430,10 @@ export function EmployeeDetail({
                     <p className="text-sm font-medium text-destructive">{teamsError}</p>
                   ) : null}
                   {teamsLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading teams…</p>
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-56" />
+                    </div>
                   ) : myProjects.length === 0 ? (
                     // Not on any team means no chain at all, and a request with
                     // no chain approves itself on submission. That is worth
@@ -1499,7 +1503,10 @@ export function EmployeeDetail({
                           </div>
 
                           {approverOptionsLoading ? (
-                            <p className="text-sm text-muted-foreground">Loading approvers…</p>
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-48" />
+                              <Skeleton className="h-3 w-36" />
+                            </div>
                           ) : options.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
                               Top level of {team.name} — nobody approves above them on this project.
@@ -1745,7 +1752,10 @@ export function EmployeeDetail({
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {lhdnFormsLoading ? (
-                      <p className="text-sm text-muted-foreground sm:col-span-2">Loading forms…</p>
+                      <>
+                        <Skeleton className="h-11 w-full" />
+                        <Skeleton className="h-11 w-full" />
+                      </>
                     ) : (
                       lhdnForms.map((form) => (
                         <div
@@ -1834,7 +1844,10 @@ export function EmployeeDetail({
                   <p className="text-sm font-medium text-destructive">{documentsError}</p>
                 ) : null}
                 {documentsLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading documents…</p>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-52" />
+                    <Skeleton className="h-4 w-44" />
+                  </div>
                 ) : documents.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
                 ) : (
