@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 type FlowStep = "payment" | "type" | "receipt" | "form";
 type ClaimType = "EXPENSE" | "MILEAGE";
@@ -466,27 +467,27 @@ function ClaimDetailsForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // All three are reference data, so on a second open the dropdowns are
+  // already populated and the form is usable immediately.
+  //
+  // Currency is deliberately NOT re-read from the org here. The server already
+  // resolved it — the code off the receipt, or the fallback when it was
+  // unreadable — and setting it again from a second source is how the two
+  // drift. It also used to overwrite a currency Gemini had read correctly,
+  // because this ran after the initial state.
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const accountsQuery = useCachedQuery("/accounts", getAccounts);
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+
   useEffect(() => {
-    let active = true;
-    Promise.all([
-      getProjects().catch(() => [] as Project[]),
-      getAccounts().catch(() => [] as ChartOfAccount[]),
-      getOrganization().catch(() => null),
-    ]).then(([projectList, accountList, org]) => {
-      if (!active) return;
-      setProjects(projectList.filter((p) => !p.isArchived));
-      setAccounts(accountList.filter((a) => !a.isArchived));
-      setOrganization(org);
-      // Currency is deliberately NOT re-read from the org here. The server
-      // already resolved it — the code off the receipt, or the fallback when it
-      // was unreadable — and setting it again from a second source is how the
-      // two drift. It also used to overwrite a currency Gemini had read
-      // correctly, because this effect runs after the initial state.
-    });
-    return () => {
-      active = false;
-    };
-  }, [editingClaim]);
+    setProjects((projectsQuery.data ?? []).filter((p) => !p.isArchived));
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    setAccounts((accountsQuery.data ?? []).filter((a) => !a.isArchived));
+  }, [accountsQuery.data]);
+  useEffect(() => {
+    setOrganization(orgQuery.data ?? null);
+  }, [orgQuery.data]);
 
   const visibleAccounts = useMemo(
     () =>

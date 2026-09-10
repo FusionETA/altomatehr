@@ -54,6 +54,7 @@ import {
   DateRangeBar,
   type FilterOption,
 } from "./AttendanceFilterBar";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 // Two levels, mirroring production's own split:
 //
@@ -232,38 +233,48 @@ export function AdminAttendance() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [org, setOrg] = useState<Organization | null>(null);
 
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // The labels every tab needs, fetched once. A missing list degrades to ids
   // rather than failing the page.
+  // The roster, projects and teams are org-wide reference data; the attendance
+  // records are the page. Only the records gate `loading` or raise an error —
+  // a missing label list degrades to ids rather than failing the board.
+  const recordsQuery = useCachedQuery("/attendance", getAttendanceHistory);
+  const employeesQuery = useCachedQuery("/employees", getEmployees);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const teamsQuery = useCachedQuery("/teams", getTeams);
+  const loading = recordsQuery.loading;
+
   useEffect(() => {
-    Promise.all([
-      getAttendanceHistory(),
-      getEmployees().catch(() => []),
-      getProjects().catch(() => []),
-      getTeams().catch(() => []),
-    ])
-      .then(([recs, employees, projectList, teamList]) => {
-        setRecords(recs);
-        setEmails(new Map(employees.map((e) => [e.id, e.email])));
-        setRoster(employees);
-        setTeamIndex(
-          teamList.map((t) => ({
-            id: t.id,
-            name: t.name,
-            projectId: t.projectId,
-            members: t.members.map((m) => m.employeeId),
-            roster: t.members,
-          })),
-        );
-        setProjectNames(new Map(projectList.map((p) => [p.id, p.name])));
-        setProjects(projectList.filter((p) => !p.isArchived).map((p) => ({ id: p.id, name: p.name })));
-        setTeams(teamList.map((t) => ({ id: t.id, name: t.name })));
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    if (recordsQuery.data) setRecords(recordsQuery.data);
+  }, [recordsQuery.data]);
+  useEffect(() => {
+    const employees = employeesQuery.data ?? [];
+    setEmails(new Map(employees.map((e) => [e.id, e.email])));
+    setRoster(employees);
+  }, [employeesQuery.data]);
+  useEffect(() => {
+    const projectList = projectsQuery.data ?? [];
+    setProjectNames(new Map(projectList.map((p) => [p.id, p.name])));
+    setProjects(projectList.filter((p) => !p.isArchived).map((p) => ({ id: p.id, name: p.name })));
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    const teamList = teamsQuery.data ?? [];
+    setTeamIndex(
+      teamList.map((t) => ({
+        id: t.id,
+        name: t.name,
+        projectId: t.projectId,
+        members: t.members.map((m) => m.employeeId),
+        roster: t.members,
+      })),
+    );
+    setTeams(teamList.map((t) => ({ id: t.id, name: t.name })));
+  }, [teamsQuery.data]);
+  useEffect(() => {
+    if (recordsQuery.error) setError(recordsQuery.error);
+  }, [recordsQuery.error]);
 
   // Each report is fetched for the tab that shows it, when its inputs change —
   // loading all four up front would make opening the page four org-wide

@@ -3,6 +3,7 @@ import { Building2, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-re
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -29,11 +30,15 @@ export function XeroConnectionCard() {
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const statusQuery = useCachedQuery("/xero/status", getXeroStatus);
   useEffect(() => {
-    getXeroStatus()
-      .then(setStatus)
-      .catch(() => setStatus({ connected: false, tenantName: null, tenantId: null, connectedAt: null }));
-  }, []);
+    setStatus(
+      statusQuery.data ??
+        (statusQuery.error
+          ? { connected: false, tenantName: null, tenantId: null, connectedAt: null }
+          : null),
+    );
+  }, [statusQuery.data, statusQuery.error]);
 
   async function startConnect() {
     setBusy(true);

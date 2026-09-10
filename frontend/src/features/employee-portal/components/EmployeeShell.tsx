@@ -16,6 +16,7 @@ import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
 import { EmptyModule } from "./EmptyModule";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 function CountBadge({ count, className = "" }: { count: number; className?: string }) {
   if (count <= 0) return null;
@@ -51,11 +52,12 @@ export function EmployeeShell({
   const initials = useMemo(() => buildInitials(user.email), [user.email]);
   const displayName = useMemo(() => buildName(user.email), [user.email]);
 
+  // The org name never changes during a session, so once is enough — it was
+  // being refetched on every mount of the shell.
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
   useEffect(() => {
-    getOrganization()
-      .then((org) => setOrganizationName(org.name))
-      .catch(() => setOrganizationName(null));
-  }, []);
+    setOrganizationName(orgQuery.data?.name ?? null);
+  }, [orgQuery.data]);
 
   // Named so an approval can call it again. Fetched once on mount, the badge
   // kept claiming work was waiting after the approver had already cleared it.

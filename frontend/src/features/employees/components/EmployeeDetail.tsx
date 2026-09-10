@@ -89,6 +89,7 @@ import {
   missingFields,
   type SectionId,
 } from "./employee-profile-sections";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -180,7 +181,6 @@ export function EmployeeDetail({
   // edited immediately rather than riding along on the profile Save/Discard.
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [teamsLoading, setTeamsLoading] = useState(true);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [savingAssignment, setSavingAssignment] = useState(false);
   // The add-flow narrows in the order the previous system uses: pick a project,
@@ -257,17 +257,23 @@ export function EmployeeDetail({
       .finally(() => setLhdnFormsLoading(false));
   }, [employee.id]);
 
+  // Teams and projects are org-wide reference data, not this employee's — they
+  // were being refetched for every person an admin opened. The profile itself
+  // is deliberately left uncached below: it is the thing being edited here, and
+  // its load seeds a SOCSO recommendation and the dirty-check baseline.
+  const teamsQuery = useCachedQuery("/teams", getTeams);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const teamsLoading = teamsQuery.loading || projectsQuery.loading;
+
   useEffect(() => {
-    setTeamsLoading(true);
-    setTeamsError(null);
-    Promise.all([getTeams(), getProjects()])
-      .then(([t, p]) => {
-        setTeams(t);
-        setProjects(p);
-      })
-      .catch((e: unknown) => setTeamsError(message(e, "Could not load teams.")))
-      .finally(() => setTeamsLoading(false));
-  }, [employee.id]);
+    if (teamsQuery.data) setTeams(teamsQuery.data);
+  }, [teamsQuery.data]);
+  useEffect(() => {
+    if (projectsQuery.data) setProjects(projectsQuery.data);
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    setTeamsError(teamsQuery.error ?? projectsQuery.error);
+  }, [teamsQuery.error, projectsQuery.error]);
 
   // This employee's membership(s) across every team, freshly derived from
   // `teams` on every render — the same data Company Structure's roster

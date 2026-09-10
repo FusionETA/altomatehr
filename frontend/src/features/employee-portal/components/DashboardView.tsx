@@ -53,6 +53,7 @@ import {
 import type { SignedInUser } from "@/shared/types/session";
 import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 // The still-open session only matters here when it started on an EARLIER day —
 // today's open record is just a normal shift in progress.
@@ -129,19 +130,27 @@ export function DashboardView({
     return () => clearInterval(id);
   }, []);
 
+  // Projects and leave types are reference data and cached. Today's attendance
+  // and any open session are NOT: this screen's whole job is telling someone
+  // whether they are clocked in right now, and a remembered answer to that is
+  // worse than a moment's wait.
+  const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
+  const leaveTypesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+
   useEffect(() => {
-    Promise.all([
-      getTodayAttendance().catch(() => null),
-      getOpenSession().catch(() => null),
-      getMyProjects().catch(() => [] as Project[]),
-      getLeaveTypes().catch(() => [] as LeaveType[]),
-    ]).then(([t, open, p, lt]) => {
-      setToday(t);
-      setStale(staleFrom(open));
-      setProjects(p);
-      setLeaveTypes(lt.filter((x) => !x.isArchived));
-    });
+    Promise.all([getTodayAttendance().catch(() => null), getOpenSession().catch(() => null)]).then(
+      ([t, open]) => {
+        setToday(t);
+        setStale(staleFrom(open));
+      },
+    );
   }, []);
+  useEffect(() => {
+    setProjects(projectsQuery.data ?? []);
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    setLeaveTypes((leaveTypesQuery.data ?? []).filter((x) => !x.isArchived));
+  }, [leaveTypesQuery.data]);
 
   // Follows whichever record the card is acting on. Reading only `today` left
   // the picker empty while a stale shift was open — today has no record yet, so

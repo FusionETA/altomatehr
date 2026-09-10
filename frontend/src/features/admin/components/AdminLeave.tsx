@@ -64,6 +64,7 @@ import {
   ACTION_MENU_ITEM,
   ActionMenu,
 } from "./ActionMenu";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -84,7 +85,6 @@ export function AdminLeave() {
   const [overview, setOverview] = useState<LeaveOverview | null>(null);
   const [balancesRows, setBalancesRows] = useState<EmployeeLeaveBalances[]>([]);
   const [types, setTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
@@ -106,18 +106,27 @@ export function AdminLeave() {
   const [maintenanceBusy, setMaintenanceBusy] = useState<"rollover" | "accrual" | null>(null);
   const [maintenanceResult, setMaintenanceResult] = useState<string | null>(null);
 
+  // Keyed on the year, matching each request path, so switching years keeps
+  // both years rather than refetching on every flip.
+  const overviewQuery = useCachedQuery(`/leave/overview?year=${year}`, () => getLeaveOverview(year));
+  const balancesQuery = useCachedQuery(`/leave/balances/all?year=${year}`, () =>
+    getAllLeaveBalances(year),
+  );
+  const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  const loading = overviewQuery.loading || balancesQuery.loading || typesQuery.loading;
+
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([getLeaveOverview(year), getAllLeaveBalances(year), getLeaveTypes()])
-      .then(([ov, bal, ty]) => {
-        setOverview(ov);
-        setBalancesRows(bal.data);
-        setTypes(ty);
-      })
-      .catch((e: unknown) => setError(message(e, "Could not load leave data.")))
-      .finally(() => setLoading(false));
-  }, [year]);
+    if (overviewQuery.data) setOverview(overviewQuery.data);
+  }, [overviewQuery.data]);
+  useEffect(() => {
+    if (balancesQuery.data) setBalancesRows(balancesQuery.data.data);
+  }, [balancesQuery.data]);
+  useEffect(() => {
+    if (typesQuery.data) setTypes(typesQuery.data);
+  }, [typesQuery.data]);
+  useEffect(() => {
+    setError(overviewQuery.error ?? balancesQuery.error ?? typesQuery.error);
+  }, [overviewQuery.error, balancesQuery.error, typesQuery.error]);
 
   // History is a separate fetch: it's the whole org's applications, and the
   // overview shouldn't wait on it to render.
