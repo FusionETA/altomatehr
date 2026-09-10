@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
@@ -61,7 +63,6 @@ export function CompanyStructure() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -72,22 +73,33 @@ export function CompanyStructure() {
   const [projectSearch, setProjectSearch] = useState("");
   const [teamSearch, setTeamSearch] = useState("");
 
+  const teamsQuery = useCachedQuery("/teams", getTeams);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const employeesQuery = useCachedQuery("/employees", getEmployees);
+  const loading = teamsQuery.loading || projectsQuery.loading || employeesQuery.loading;
+
   useEffect(() => {
-    Promise.all([getTeams(), getProjects(), getEmployees()])
-      .then(([t, p, e]) => {
-        setTeams(t);
-        const active = p.filter((x) => !x.isArchived);
-        setProjects(active);
-        // Land on a project with teams rather than whichever happens to sort
-        // first. Opening onto an empty middle pane looks like the page failed
-        // to load, when it just picked a project nobody has staffed.
-        const withTeams = active.find((x) => t.some((team) => team.projectId === x.id));
-        setSelectedProjectId((cur) => cur ?? withTeams?.id ?? active[0]?.id ?? null);
-        setEmployees(e);
-      })
-      .catch((err: unknown) => setError(message(err, "Could not load company structure.")))
-      .finally(() => setLoading(false));
-  }, []);
+    const t = teamsQuery.data;
+    const p = projectsQuery.data;
+    if (!t || !p) return;
+    setTeams(t);
+    const active = p.filter((x) => !x.isArchived);
+    setProjects(active);
+    // Land on a project with teams rather than whichever happens to sort
+    // first. Opening onto an empty middle pane looks like the page failed
+    // to load, when it just picked a project nobody has staffed.
+    const withTeams = active.find((x) => t.some((team) => team.projectId === x.id));
+    setSelectedProjectId((cur) => cur ?? withTeams?.id ?? active[0]?.id ?? null);
+  }, [teamsQuery.data, projectsQuery.data]);
+
+  useEffect(() => {
+    if (employeesQuery.data) setEmployees(employeesQuery.data);
+  }, [employeesQuery.data]);
+
+  useEffect(() => {
+    const first = teamsQuery.error ?? projectsQuery.error ?? employeesQuery.error;
+    if (first) setError(first);
+  }, [teamsQuery.error, projectsQuery.error, employeesQuery.error]);
 
   const teamCountByProject = useMemo(() => {
     const m = new Map<string, number>();
@@ -156,7 +168,7 @@ export function CompanyStructure() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading company structure…</p>
+        <SkeletonPanel />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[260px_minmax(220px,1fr)_minmax(0,2fr)]">
           {/* Pane 1 — Projects */}
