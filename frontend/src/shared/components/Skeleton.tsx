@@ -59,3 +59,64 @@ export function SkeletonPerson() {
     </div>
   );
 }
+
+/**
+ * A stack of card placeholders, for the list-of-cards layout the claims, leave
+ * and overtime screens use on narrow widths and in their queues.
+ */
+export function SkeletonCards({
+  count = 3,
+  className,
+}: {
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-3 sm:gap-4", className)}>
+      {Array.from({ length: count }, (_, i) => (
+        <div
+          key={i}
+          className="rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-ambient sm:p-5"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            <div className="space-y-2 text-right">
+              <Skeleton className="ml-auto h-5 w-24" />
+              <Skeleton className="ml-auto h-5 w-20 rounded-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The row of summary tiles several dashboards open with. */
+export function SkeletonStats({ count = 3 }: { count?: number }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="mt-3 h-7 w-20" />
+          <Skeleton className="mt-2 h-3 w-36" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A plain panel placeholder, for a section whose shape isn't a list. */
+export function SkeletonPanel({ className }: { className?: string }) {
+  return (
+    <div className={cn("rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient", className)}>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="mt-3 h-3 w-full max-w-md" />
+      <Skeleton className="mt-2 h-3 w-full max-w-sm" />
+    </div>
+  );
+}

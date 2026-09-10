@@ -8,6 +8,8 @@ import {
 } from "../api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 const CURRENT_YEAR = new Date().getFullYear();
@@ -17,9 +19,6 @@ const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 // still need a group to sit in — this is that group's id.
 const DIRECT_GROUP = "__direct__";
 
-function message(err: unknown, fallback: string) {
-  return err instanceof Error ? err.message : fallback;
-}
 
 // A supervisor's team balances, one team at a time — mirrors Attendance's
 // TeamPresence: a stepper over the caller's teams (no merged "everyone" tab,
@@ -29,23 +28,28 @@ export function TeamBalancesView() {
   const [year, setYear] = useState(CURRENT_YEAR);
   const [rows, setRows] = useState<EmployeeLeaveBalances[]>([]);
   const [types, setTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Empty until the first load names a group — there is no "all" option.
   const [groupId, setGroupId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // The key carries the year, matching the request path, so flipping between
+  // years remembers each one instead of refetching every switch.
+  const balancesQuery = useCachedQuery(`/leave/team/balances?year=${year}`, () =>
+    getTeamLeaveBalances(year),
+  );
+  const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  const loading = balancesQuery.loading || typesQuery.loading;
+
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([getTeamLeaveBalances(year), getLeaveTypes()])
-      .then(([bal, ty]) => {
-        setRows(bal.data);
-        setTypes(ty);
-      })
-      .catch((e: unknown) => setError(message(e, "Could not load team balances.")))
-      .finally(() => setLoading(false));
-  }, [year]);
+    if (balancesQuery.data) setRows(balancesQuery.data.data);
+  }, [balancesQuery.data]);
+  useEffect(() => {
+    if (typesQuery.data) setTypes(typesQuery.data);
+  }, [typesQuery.data]);
+  useEffect(() => {
+    setError(balancesQuery.error ?? typesQuery.error);
+  }, [balancesQuery.error, typesQuery.error]);
 
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
 
@@ -105,7 +109,7 @@ export function TeamBalancesView() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading…</section>
+        <SkeletonPanel />
       ) : rows.length === 0 ? (
         <section className={`${CARD} border-dashed bg-surface-low p-8 text-center`}>
           <Users className="mx-auto h-6 w-6 text-primary" />

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 import type { KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import {
@@ -33,7 +35,6 @@ export function LeaveView() {
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [mine, setMine] = useState<LeaveApplication[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -42,16 +43,29 @@ export function LeaveView() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<LeaveApplication | null>(null);
 
+  // Three independent reads rather than one Promise.all: leave types and
+  // balances rarely change and stay cached across visits, so only the
+  // applications list is usually worth refetching.
+  const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  const balancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
+  const mineQuery = useCachedQuery("/leave", getMyLeave);
+  const loading = typesQuery.loading || balancesQuery.loading || mineQuery.loading;
+
   useEffect(() => {
-    Promise.all([getLeaveTypes(), getLeaveBalances(), getMyLeave()])
-      .then(([t, b, m]) => {
-        setTypes(t);
-        setBalances(b);
-        setMine([...m].sort((a, c) => c.createdAt.localeCompare(a.createdAt)));
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    if (typesQuery.data) setTypes(typesQuery.data);
+  }, [typesQuery.data]);
+  useEffect(() => {
+    if (balancesQuery.data) setBalances(balancesQuery.data);
+  }, [balancesQuery.data]);
+  useEffect(() => {
+    if (mineQuery.data) {
+      setMine([...mineQuery.data].sort((a, c) => c.createdAt.localeCompare(a.createdAt)));
+    }
+  }, [mineQuery.data]);
+  useEffect(() => {
+    const first = typesQuery.error ?? balancesQuery.error ?? mineQuery.error;
+    if (first) setError(first);
+  }, [typesQuery.error, balancesQuery.error, mineQuery.error]);
 
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
@@ -249,7 +263,7 @@ export function LeaveView() {
           </p>
         </div>
 
-        {loading ? <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading…</section> : null}
+        {loading ? <SkeletonCards count={4} /> : null}
 
         {!loading && filtered.length === 0 ? (
           <section className={`${CARD} p-8 text-center`}>

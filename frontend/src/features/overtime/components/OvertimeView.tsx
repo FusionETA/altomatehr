@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 import { CalendarClock, Camera, FileImage, Plus, Upload, X } from "lucide-react";
 import {
   attachOvertimeAfterPhoto,
@@ -62,25 +64,29 @@ export function OvertimeView() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [status, setStatus] = useState<OvertimeStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  function refresh() {
-    setLoading(true);
-    setError(null);
-    Promise.all([getMyOvertime(), getProjects().catch(() => [])])
-      .then(([nextRequests, nextProjects]) => {
-        setRequests(nextRequests);
-        setProjects(nextProjects.filter((project) => !project.isArchived));
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }
+  // Both cached. New requests are pushed onto the list locally (see the submit
+  // handler below), so this only needs to load once per visit — and on a
+  // revisit it doesn't need to load at all.
+  const requestsQuery = useCachedQuery("/overtime", getMyOvertime);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const loading = requestsQuery.loading || projectsQuery.loading;
 
   useEffect(() => {
-    refresh();
-  }, []);
+    if (requestsQuery.data) setRequests(requestsQuery.data);
+  }, [requestsQuery.data]);
+  useEffect(() => {
+    if (projectsQuery.data) {
+      setProjects(projectsQuery.data.filter((project) => !project.isArchived));
+    }
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    // A missing project list only costs labels, so it isn't worth an error
+    // banner over the requests themselves.
+    if (requestsQuery.error) setError(requestsQuery.error);
+  }, [requestsQuery.error]);
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const filteredRequests = useMemo(() => {
@@ -129,7 +135,7 @@ export function OvertimeView() {
         </section>
 
         {loading ? (
-          <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading overtime...</section>
+          <SkeletonCards count={3} />
         ) : null}
 
         {error ? (
