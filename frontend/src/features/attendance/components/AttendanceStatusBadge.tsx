@@ -4,7 +4,11 @@ const STYLES: Record<AttendanceStatus, string> = {
   CLOCKED_IN: "bg-secondary text-secondary-foreground",
   ON_TIME: "bg-secondary text-secondary-foreground",
   CLOCKED_OUT: "bg-muted text-muted-foreground",
-  LATE: "bg-amber-100 text-amber-800",
+  // Theme tokens, not amber-100/800: `tertiary` is this app's warn colour
+  // (the same one the hours tables and stat tiles use), and this style was
+  // effectively dead on admin history until the badge stopped reading the
+  // roll-up's overwritten status.
+  LATE: "bg-tertiary/15 text-tertiary",
   MISSING: "bg-muted text-muted-foreground",
   ON_LEAVE: "bg-primary/10 text-primary",
 };

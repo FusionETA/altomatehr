@@ -255,6 +255,13 @@ public class HoursSummaryService : IHoursSummaryService
         {
             totals.NormalMin += b.NormalMin;
             totals.RestDayMin += b.RestDayMin;
+            // These three were missing, so the org totals reported 0 for them
+            // while every employee row carried a real figure. Beyond-shift was
+            // the costly one: it is the unapproved-overtime liability, and the
+            // Analytics header showed it as always zero.
+            totals.PublicHolidayMin += b.PublicHolidayMin;
+            totals.BeyondShiftMin += b.BeyondShiftMin;
+            totals.BreakMin += b.BreakMin;
             totals.TotalMin += b.TotalMin;
             totals.OtApprovedMin += b.OtApprovedMin;
             totals.OtPendingMin += b.OtPendingMin;

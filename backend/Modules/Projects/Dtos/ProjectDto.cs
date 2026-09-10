@@ -7,6 +7,7 @@ public class ProjectDto
     public string? XeroProjectId { get; set; }
     public string? XeroStatus { get; set; }
     public DateTime? XeroSyncedAt { get; set; }
+    public string? Location { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public string? AllowedIps { get; set; }
