@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { createPortal } from "react-dom";
 import { LoaderCircle, X } from "lucide-react";
 import { createPolicy, updatePolicy, type Policy, type SavePolicy } from "@/features/policies/api";
 import type { LeaveType } from "@/features/leave/api";
@@ -104,11 +105,15 @@ export function PolicyEditorModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[620px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
-        <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
-          <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
+  // Portaled: PoliciesSettings renders this inside its card, and that card sets
+  // backdrop-filter — any ancestor with a filter becomes the containing block for
+  // position:fixed, so inset-0/90vh would resolve against the card and hang the
+  // dialog off both edges of the screen instead of centring it.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-[620px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/60 px-6 py-5 sm:px-8">
             <h2 className="text-2xl font-black text-foreground">{policy ? "Edit policy" : "New policy"}</h2>
             <button
               type="button"
@@ -120,7 +125,7 @@ export function PolicyEditorModal({
             </button>
           </div>
 
-          <div className="mt-5 space-y-5">
+          <div className="nice-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-foreground">Name</span>
@@ -213,7 +218,10 @@ export function PolicyEditorModal({
               </p>
               <div className="space-y-2">
                 {leaveTypes.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between gap-3">
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-white/40 px-4 py-2"
+                  >
                     <span className="text-sm font-medium text-foreground">
                       {t.name} <span className="text-xs text-muted-foreground">(default {t.defaultDays})</span>
                     </span>
@@ -224,7 +232,7 @@ export function PolicyEditorModal({
                       placeholder={String(t.defaultDays)}
                       value={ents[t.id] ?? ""}
                       onChange={(e) => setEnts((m) => ({ ...m, [t.id]: e.target.value }))}
-                      className="h-10 w-28 rounded-2xl border border-border bg-white/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="h-10 w-24 rounded-2xl border border-border bg-white/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
                   </div>
                 ))}
@@ -236,12 +244,12 @@ export function PolicyEditorModal({
           </div>
 
           {error ? (
-            <p className="mt-4 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <p className="mx-6 mt-4 shrink-0 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive sm:mx-8">
               {error}
             </p>
           ) : null}
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border/60 px-6 py-4 sm:px-8">
             <button
               type="button"
               onClick={onClose}
@@ -260,6 +268,7 @@ export function PolicyEditorModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

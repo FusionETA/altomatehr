@@ -8,6 +8,7 @@ import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
@@ -261,6 +262,11 @@ export function EmployeeShell({
                         <span className="block text-xs">Signs out every device</span>
                       </span>
                     </button>
+
+                    <PushToggleMenuItem
+                      onClose={() => setAccountMenuOpen(false)}
+                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
 
                     <button
                       type="button"

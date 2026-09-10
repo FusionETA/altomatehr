@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
 import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
@@ -73,16 +74,17 @@ export function AddEmployeeModal({
     });
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
-        <form
-          onSubmit={handleSubmit}
-          className="nice-scrollbar max-h-[90vh] space-y-5 overflow-y-auto p-6 pl-1 sm:p-8 sm:pl-1"
-        >
-          <div className="flex items-start justify-between gap-4">
+  // Portaled: EmployeesSettings renders this inside its card, and that card sets
+  // backdrop-filter — any ancestor with a filter becomes the containing block for
+  // position:fixed, so inset-0/90vh would resolve against the card and hang the
+  // dialog off both edges of the screen instead of centring it.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-[620px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/60 px-6 py-5 sm:px-8">
             <div>
-              <h2 className="text-lg font-black text-foreground">Add employee</h2>
+              <h2 className="text-2xl font-black text-foreground">Add employee</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Add a member to this company. If the email already exists, that person is reused —
                 no password needed.
@@ -98,167 +100,173 @@ export function AddEmployeeModal({
             </button>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="add-name" className={LABEL}>
-              Full name
-            </label>
-            <input
-              id="add-name"
-              required
-              className={INPUT}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ahmad bin Ali"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="nice-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
             <div className="space-y-2">
-              <label htmlFor="add-employee-number" className={LABEL}>
-                Employee ID
+              <label htmlFor="add-name" className={LABEL}>
+                Full name
               </label>
               <input
-                id="add-employee-number"
+                id="add-name"
+                required
                 className={INPUT}
-                value={employeeNumber}
-                onChange={(e) => setEmployeeNumber(e.target.value)}
-                placeholder="Optional"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ahmad bin Ali"
               />
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="add-employee-number" className={LABEL}>
+                  Employee ID
+                </label>
+                <input
+                  id="add-employee-number"
+                  className={INPUT}
+                  value={employeeNumber}
+                  onChange={(e) => setEmployeeNumber(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="add-job-title" className={LABEL}>
+                  Job title
+                </label>
+                <input
+                  id="add-job-title"
+                  className={INPUT}
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <label htmlFor="add-job-title" className={LABEL}>
-                Job title
+              <label htmlFor="add-join-date" className={LABEL}>
+                Join date
               </label>
               <input
-                id="add-job-title"
+                id="add-join-date"
+                type="date"
                 className={INPUT}
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="Optional"
+                value={joinDate}
+                onChange={(e) => setJoinDate(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Drives pro-rated leave — setting it recomputes what they have earned this year.
+              </p>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <label htmlFor="add-join-date" className={LABEL}>
-              Join date
-            </label>
-            <input
-              id="add-join-date"
-              type="date"
-              className={INPUT}
-              value={joinDate}
-              onChange={(e) => setJoinDate(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Drives pro-rated leave — setting it recomputes what they have earned this year.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="add-email" className={LABEL}>
-              Email
-            </label>
-            <input
-              id="add-email"
-              type="email"
-              required
-              className={INPUT}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="person@company.com"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="add-password" className={LABEL}>
-              Initial password
-            </label>
-            <div className="flex gap-2">
+            <div className="space-y-2">
+              <label htmlFor="add-email" className={LABEL}>
+                Email
+              </label>
               <input
-                id="add-password"
+                id="add-email"
+                type="email"
+                required
                 className={INPUT}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Only for a brand-new account"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="person@company.com"
               />
-              <button
-                type="button"
-                onClick={() => setPassword(generatePassword())}
-                className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-2xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:border-primary hover:text-primary"
-              >
-                <Sparkles className="h-4 w-4" /> Generate
-              </button>
-              <button
-                type="button"
-                onClick={copyPassword}
-                disabled={!password}
-                aria-label="Copy password"
-                className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-40"
-              >
-                {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-              </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Share this with the new hire so they can log in. Leave blank if they already have an
-              account.
-            </p>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="add-role" className={LABEL}>
-                Role
+              <label htmlFor="add-password" className={LABEL}>
+                Initial password
               </label>
-              <select
-                id="add-role"
-                className={INPUT}
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              >
-                {STAFF_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <input
+                  id="add-password"
+                  className={INPUT}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Only for a brand-new account"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPassword(generatePassword())}
+                  className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-2xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:border-primary hover:text-primary"
+                >
+                  <Sparkles className="h-4 w-4" /> Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={copyPassword}
+                  disabled={!password}
+                  aria-label="Copy password"
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-40"
+                >
+                  {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share this with the new hire so they can log in. Leave blank if they already have an
+                account.
+              </p>
             </div>
-            <div className="space-y-2">
-              <label htmlFor="add-policy" className={LABEL}>
-                Policy
-              </label>
-              <select
-                id="add-policy"
-                className={INPUT}
-                value={policyId}
-                onChange={(e) => setPolicyId(e.target.value)}
-              >
-                <option value={NONE}>Default policy</option>
-                {policies
-                  .filter((p) => !p.isArchived)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="add-role" className={LABEL}>
+                  Role
+                </label>
+                <select
+                  id="add-role"
+                  className={INPUT}
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                >
+                  {STAFF_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
                     </option>
                   ))}
-              </select>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="add-policy" className={LABEL}>
+                  Policy
+                </label>
+                <select
+                  id="add-policy"
+                  className={INPUT}
+                  value={policyId}
+                  onChange={(e) => setPolicyId(e.target.value)}
+                >
+                  <option value={NONE}>Default policy</option>
+                  {policies
+                    .filter((p) => !p.isArchived)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
           </div>
 
-          {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="mx-6 mt-4 shrink-0 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive sm:mx-8">
+              {error}
+            </p>
+          ) : null}
 
-          <div className="flex justify-end gap-3 pt-1">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border/60 px-6 py-4 sm:px-8">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-2xl border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
               Add employee
@@ -266,6 +274,7 @@ export function AddEmployeeModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
