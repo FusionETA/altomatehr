@@ -274,6 +274,28 @@ public class ApprovalRoutingTests
         }
     }
 
+    [Fact]
+    public async Task BatchedStepCounts_MatchAskingOneAtATime()
+    {
+        // Same contract as the approvers batch, for the other half of the API.
+        // Bulk approve reads step counts this way, and a wrong count is the
+        // difference between advancing a request and closing it.
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1, ["boss"] = 2 },
+            layerCount: 3,
+            administrative: ["boss"]);
+
+        (string, string?)[] cases = [("staff", null), ("lead", null), ("boss", null), ("nobody", null)];
+
+        var batched = await router.StepCountForManyAsync(ApprovalModule.CLAIMS, cases);
+
+        foreach (var (applicant, project) in cases)
+        {
+            var one = await router.StepCountAsync(ApprovalModule.CLAIMS, applicant, project);
+            Assert.Equal(one, batched[(applicant, project)]);
+        }
+    }
+
     private static ApprovalRouter Build(
         Dictionary<string, int> layers,
         int layerCount,

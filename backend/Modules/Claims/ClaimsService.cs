@@ -96,6 +96,13 @@ public class ClaimsService : IClaimsService
         var directory = await _employees.GetSnapshotAsync();
         var claims = new List<Claim>();
 
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            all
+                .Where(c => c.Status == ClaimStatus.PENDING)
+                .Select(c => (c.EmployeeId, c.ProjectId, c.CurrentStep))
+                .ToList());
+
         foreach (var claim in all)
         {
             var actionable = false;
@@ -103,8 +110,8 @@ public class ClaimsService : IClaimsService
 
             if (claim.Status == ClaimStatus.PENDING)
             {
-                approvers = await _router.CurrentApproversAsync(
-                    Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
+                approvers = approversByKey.GetValueOrDefault(
+                    (claim.EmployeeId, claim.ProjectId, claim.CurrentStep), []);
                 actionable = approvers.Contains(userId);
             }
 
@@ -306,6 +313,18 @@ public class ClaimsService : IClaimsService
         var items = new List<ClaimsBulkResultItem>(ids.Count);
         var approved = new List<Claim>();
 
+        // Step counts for the whole batch up front. AuthorizeAsync below stays
+        // per-claim on purpose: it is the security check that only the
+        // current-step approver may act, and a second batched copy of that rule
+        // is exactly the kind of duplicate that drifts. The step count is not a
+        // permission, so it batches safely.
+        var batch = (await _repo.GetAllAsync())
+            .Where(c => ids.Contains(c.Id))
+            .Select(c => (c.EmployeeId, c.ProjectId))
+            .Distinct()
+            .ToList();
+        var stepCounts = await _router.StepCountForManyAsync(Module, batch);
+
         // Distinct: the same id twice would otherwise be counted as two successes
         // while only one claim moved.
         foreach (var id in ids.Distinct(StringComparer.Ordinal))
@@ -324,7 +343,7 @@ public class ClaimsService : IClaimsService
                 continue;
             }
 
-            var stepCount = await _router.StepCountAsync(Module, claim.EmployeeId, claim.ProjectId);
+            var stepCount = stepCounts.GetValueOrDefault((claim.EmployeeId, claim.ProjectId));
             if (claim.CurrentStep + 1 >= stepCount)
                 claim.Status = ClaimStatus.APPROVED;
             else
@@ -979,10 +998,18 @@ public class ClaimsService : IClaimsService
     public async Task<int> ReconcileUnreachableApprovalsAsync(bool apply)
     {
         var stuck = 0;
+        var pending = (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING).ToList();
 
-        foreach (var claim in (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING))
+        // One batch, not one chain rebuild per claim. This runs over EVERY
+        // pending claim in the org, so it was the worst of the loops.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(c => (c.EmployeeId, c.ProjectId, c.CurrentStep)).ToList());
+
+        foreach (var claim in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
+            var approvers = approversByKey.GetValueOrDefault(
+                (claim.EmployeeId, claim.ProjectId, claim.CurrentStep), []);
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -999,9 +1026,18 @@ public class ClaimsService : IClaimsService
     public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
     {
         var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
-        foreach (var claim in (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING))
+        var pending = (await _repo.GetAllAsync()).Where(c => c.Status == ClaimStatus.PENDING).ToList();
+
+        // Note this one resolves WITHOUT a project id, unlike the reconcile
+        // above — the digest counts what is waiting on each reviewer overall.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(c => (c.EmployeeId, (string?)null, c.CurrentStep)).ToList());
+
+        foreach (var claim in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, claim.EmployeeId, claim.CurrentStep);
+            var approvers = approversByKey.GetValueOrDefault(
+                (claim.EmployeeId, null, claim.CurrentStep), []);
             foreach (var reviewerId in approvers)
             {
                 var key = (reviewerId, claim.OrganizationId);
@@ -1330,13 +1366,20 @@ public class ClaimsService : IClaimsService
 
         var directory = await _employees.GetSnapshotAsync();
 
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            claims
+                .Where(c => c.Status == ClaimStatus.PENDING)
+                .Select(c => (c.EmployeeId, c.ProjectId, c.CurrentStep))
+                .ToList());
+
         foreach (var claim in claims)
         {
             claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
             if (claim.Status != ClaimStatus.PENDING) continue;
 
-            var approvers = await _router.CurrentApproversAsync(
-                Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
+            var approvers = approversByKey.GetValueOrDefault(
+                (claim.EmployeeId, claim.ProjectId, claim.CurrentStep), []);
 
             claim.CanAct = approvers.Contains(approverId);
             claim.AwaitingApprovers = claim.CanAct

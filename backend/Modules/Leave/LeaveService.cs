@@ -111,12 +111,20 @@ public class LeaveService : ILeaveService
     public async Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId)
     {
         var all = await _apps.GetAllAsync();
-        var visible = new List<LeaveApplication>();
-        foreach (var a in all.Where(a => a.Status == LeaveStatus.PENDING))
-        {
-            var approvers = await _router.CurrentApproversAsync(Module, a.EmployeeId, a.CurrentStep);
-            if (approvers.Contains(userId)) visible.Add(a);
-        }
+        var pending = all.Where(a => a.Status == LeaveStatus.PENDING).ToList();
+
+        // Leave has no project of its own, so every key carries a null project
+        // id and the chain falls back to the alphabetically-first project's
+        // team — see ApprovalChainService.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+
+        var visible = pending
+            .Where(a => approversByKey
+                .GetValueOrDefault((a.EmployeeId, null, a.CurrentStep), [])
+                .Contains(userId))
+            .ToList();
 
         var emails = await _supervision.GetEmailsAsync(visible.Select(a => a.EmployeeId).Distinct());
         return visible.Select(a =>
@@ -1147,10 +1155,16 @@ public class LeaveService : ILeaveService
     {
         var now = DateTime.UtcNow;
         var stuck = 0;
+        var pending = (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING).ToList();
 
-        foreach (var app in (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING))
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+
+        foreach (var app in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+            var approvers = approversByKey.GetValueOrDefault(
+                (app.EmployeeId, null, app.CurrentStep), []);
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -1169,9 +1183,16 @@ public class LeaveService : ILeaveService
     public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
     {
         var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
-        foreach (var app in (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING))
+        var pending = (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING).ToList();
+
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+
+        foreach (var app in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CurrentStep);
+            var approvers = approversByKey.GetValueOrDefault(
+                (app.EmployeeId, null, app.CurrentStep), []);
             foreach (var reviewerId in approvers)
             {
                 var key = (reviewerId, app.OrganizationId);
@@ -1311,6 +1332,15 @@ public class LeaveService : ILeaveService
         var items = new List<LeaveBulkResultItem>(ids.Count);
         var approved = new List<LeaveApplication>();
 
+        // Same split as the claims bulk: step counts batched, AuthorizeAsync
+        // left per-application because it is the permission check.
+        var batch = (await _apps.GetAllAsync())
+            .Where(a => ids.Contains(a.Id))
+            .Select(a => (a.EmployeeId, (string?)null))
+            .Distinct()
+            .ToList();
+        var stepCounts = await _router.StepCountForManyAsync(Module, batch);
+
         // Distinct: the same id twice would otherwise count as two successes
         // while only one application moved.
         foreach (var id in ids.Distinct(StringComparer.Ordinal))
@@ -1326,7 +1356,7 @@ public class LeaveService : ILeaveService
             var app = found!;
             var now = DateTime.UtcNow;
             AppendTrail(app, app.CurrentStep, approverId, "APPROVED", null);
-            var stepCount = await _router.StepCountAsync(Module, app.EmployeeId);
+            var stepCount = stepCounts.GetValueOrDefault((app.EmployeeId, null));
             if (app.CurrentStep + 1 >= stepCount)
             {
                 app.Status = LeaveStatus.APPROVED;

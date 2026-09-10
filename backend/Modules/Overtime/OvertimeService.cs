@@ -42,12 +42,19 @@ public class OvertimeService : IOvertimeService
     public async Task<IEnumerable<OvertimeRequestDto>> GetTeamAsync(string userId)
     {
         var all = await _requests.GetAllAsync();
-        var visible = new List<OvertimeRequest>();
-        foreach (var request in all)
-        {
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
-            if (approvers.Contains(userId)) visible.Add(request);
-        }
+
+        // Note this walks EVERY request, not just pending ones — the OT queue
+        // shows decided rows too — so the loop cost scaled with the whole
+        // history rather than the backlog.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            all.Select(r => (r.EmployeeId, r.ProjectId, r.CurrentStep)).ToList());
+
+        var visible = all
+            .Where(r => approversByKey
+                .GetValueOrDefault((r.EmployeeId, r.ProjectId, r.CurrentStep), [])
+                .Contains(userId))
+            .ToList();
 
         var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
         return visible.Select(request =>
@@ -257,6 +264,15 @@ public class OvertimeService : IOvertimeService
 
         var items = new List<OvertimeBulkResultItem>(ids.Count);
 
+        // Same split as the claims bulk: step counts batched, AuthorizeAsync
+        // left per-request because it is the permission check.
+        var batch = (await _requests.GetAllAsync())
+            .Where(r => ids.Contains(r.Id))
+            .Select(r => (r.EmployeeId, r.ProjectId))
+            .Distinct()
+            .ToList();
+        var stepCounts = await _router.StepCountForManyAsync(Module, batch);
+
         // Distinct: the same id twice would otherwise count as two successes
         // while only one request moved.
         foreach (var id in ids.Distinct(StringComparer.Ordinal))
@@ -277,7 +293,7 @@ public class OvertimeService : IOvertimeService
             }
 
             var now = DateTime.UtcNow;
-            var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
+            var stepCount = stepCounts.GetValueOrDefault((request.EmployeeId, request.ProjectId));
             request.ReviewerId = approverId;
             if (request.CurrentStep + 1 >= stepCount)
             {
@@ -390,15 +406,23 @@ public class OvertimeService : IOvertimeService
     {
         var now = DateTime.UtcNow;
         var stuck = 0;
+        var pending = (await _requests.GetAllAsync())
+            .Where(r => r.Status == OvertimeStatus.PENDING)
+            .ToList();
 
-        foreach (var request in (await _requests.GetAllAsync()).Where(r => r.Status == OvertimeStatus.PENDING))
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending.Select(r => (r.EmployeeId, r.ProjectId, r.CurrentStep)).ToList());
+
+        foreach (var request in pending)
         {
             // Waiting on the employee's after-work photo, not on an approver.
             // Approval refuses without it, and reconciliation must not be a way
             // around that.
             if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
 
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
+            var approvers = approversByKey.GetValueOrDefault(
+                (request.EmployeeId, request.ProjectId, request.CurrentStep), []);
             if (approvers.Count > 0) continue;
 
             stuck++;
@@ -416,14 +440,23 @@ public class OvertimeService : IOvertimeService
     public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
     {
         var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
-        foreach (var request in (await _requests.GetAllAsync()).Where(r => r.Status == OvertimeStatus.PENDING))
+        var pendingForDigest = (await _requests.GetAllAsync())
+            .Where(r => r.Status == OvertimeStatus.PENDING)
+            .ToList();
+
+        var digestApprovers = await _router.CurrentApproversForManyAsync(
+            Module,
+            pendingForDigest.Select(r => (r.EmployeeId, (string?)null, r.CurrentStep)).ToList());
+
+        foreach (var request in pendingForDigest)
         {
             // Same exclusion as ReconcileUnreachableApprovalsAsync: without an
             // after-work photo this isn't actually approvable yet, so counting
             // it would overstate a reviewer's real backlog.
             if (string.IsNullOrWhiteSpace(request.AfterPhotoUrl)) continue;
 
-            var approvers = await _router.CurrentApproversAsync(Module, request.EmployeeId, request.CurrentStep);
+            var approvers = digestApprovers.GetValueOrDefault(
+                (request.EmployeeId, null, request.CurrentStep), []);
             foreach (var reviewerId in approvers)
             {
                 var key = (reviewerId, request.OrganizationId);

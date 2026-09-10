@@ -653,11 +653,18 @@ public class AttendanceService : IAttendanceService
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(BreakKinds);
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending
+                .Select(r => (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep))
+                .ToList());
+
         var visible = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(
-                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
+            var approvers = approversByKey.GetValueOrDefault(
+                (request.EmployeeId, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId), request.CurrentStep),
+                []);
             if (approvers.Contains(userId)) visible.Add(request);
         }
 
@@ -1035,11 +1042,18 @@ public class AttendanceService : IAttendanceService
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending
+                .Select(r => (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep))
+                .ToList());
+
         var mine = new List<AttendanceApprovalRequest>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(
-                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
+            var approvers = approversByKey.GetValueOrDefault(
+                (request.EmployeeId, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId), request.CurrentStep),
+                []);
             if (approvers.Contains(userId)) mine.Add(request);
         }
 
@@ -1059,11 +1073,18 @@ public class AttendanceService : IAttendanceService
         // no request context (like the Leave accrual sweep), so the tenant
         // filter is a no-op and it scans every org's pending rows at once —
         // the digest notification needs to know which org each count is for.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending
+                .Select(r => (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep))
+                .ToList());
+
         var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(
-                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
+            var approvers = approversByKey.GetValueOrDefault(
+                (request.EmployeeId, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId), request.CurrentStep),
+                []);
             foreach (var reviewerId in approvers)
             {
                 var key = (reviewerId, request.OrganizationId);
@@ -1603,10 +1624,17 @@ public class AttendanceService : IAttendanceService
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
         var stuck = 0;
 
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            pending
+                .Select(r => (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep))
+                .ToList());
+
         foreach (var request in pending)
         {
-            var approvers = await _router.CurrentApproversAsync(
-                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
+            var approvers = approversByKey.GetValueOrDefault(
+                (request.EmployeeId, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId), request.CurrentStep),
+                []);
             if (approvers.Count > 0) continue;
 
             stuck++;

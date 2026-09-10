@@ -28,6 +28,13 @@ public interface IApprovalRouter
         CurrentApproversForManyAsync(
             ApprovalModule module,
             IReadOnlyCollection<(string ApplicantId, string? ProjectId, int CurrentStep)> requests);
+
+    // Step counts for many applicants at once, for the same reason as above:
+    // a bulk approve of 20 items asked 20 times, each answer costing five
+    // tables.
+    Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId), int>> StepCountForManyAsync(
+        ApprovalModule module,
+        IReadOnlyCollection<(string ApplicantId, string? ProjectId)> applicants);
 }
 
 public class ApprovalRouter : IApprovalRouter
@@ -59,6 +66,14 @@ public class ApprovalRouter : IApprovalRouter
                     ? chain[r.CurrentStep].ApproverIds
                     : (IReadOnlyList<string>)[];
             });
+    }
+
+    public async Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId), int>> StepCountForManyAsync(
+        ApprovalModule module,
+        IReadOnlyCollection<(string ApplicantId, string? ProjectId)> applicants)
+    {
+        var chains = await _chain.GetChainsAsync(applicants.Distinct().ToList(), module);
+        return applicants.Distinct().ToDictionary(a => a, a => chains.GetValueOrDefault(a, []).Count);
     }
 
     public async Task<IReadOnlyList<string>> CurrentApproversAsync(
