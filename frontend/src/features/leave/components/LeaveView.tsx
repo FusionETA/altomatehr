@@ -263,7 +263,7 @@ export function LeaveView() {
           </p>
         </div>
 
-        {loading ? <SkeletonCards count={4} /> : null}
+        {loading ? <SkeletonCards /> : null}
 
         {!loading && filtered.length === 0 ? (
           <section className={`${CARD} p-8 text-center`}>

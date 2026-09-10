@@ -392,7 +392,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
         ) : null}
 
         {loading ? (
-          <SkeletonCards count={3} />
+          <SkeletonCards />
         ) : null}
 
         {error ? (

@@ -12,7 +12,7 @@ import type { SignedInUser } from "@/shared/types/session";
 import { getAdminOverview, type AdminOverview as AdminOverviewData } from "../api";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { SkeletonStats } from "@/shared/components/Skeleton";
+import { SkeletonPanels } from "@/shared/components/Skeleton";
 
 type QuickLink = { parent: string; child: string; label: string; hint: string; icon: LucideIcon };
 
@@ -80,10 +80,8 @@ export function AdminOverview({
           {error}
         </div>
       ) : !overview ? (
-        <div className="space-y-4">
-          <SkeletonStats count={3} />
-          <SkeletonStats count={2} />
-        </div>
+        // ExecutiveOverview renders six equal panels in a two-column grid.
+        <SkeletonPanels count={6} className="grid gap-6 lg:grid-cols-2" />
       ) : (
         <ExecutiveOverview data={overview} />
       )}

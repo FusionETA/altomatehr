@@ -21,7 +21,7 @@ import { AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimSettings } from "./ClaimSettings";
 import { ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { SkeletonCards, SkeletonStats } from "@/shared/components/Skeleton";
+import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
 // decision, then what is owed, then every claim behind both.
@@ -145,9 +145,10 @@ export function AdminClaims() {
             Error: {error}
           </section>
         ) : loading ? (
+          // Mirrors AdminClaimsAttention: three tiles, then two panels.
           <div className="space-y-4">
-            <SkeletonStats count={3} />
-            <SkeletonCards count={3} />
+            <SkeletonStats count={3} className="grid gap-3 sm:grid-cols-3" />
+            <SkeletonPanels count={2} className="grid gap-6 lg:grid-cols-2" />
           </div>
         ) : (
           <AdminClaimsAttention

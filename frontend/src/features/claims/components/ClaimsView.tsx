@@ -193,7 +193,7 @@ export function ClaimsView() {
           </p>
         </div>
 
-        {loading ? <SkeletonCards count={4} /> : null}
+        {loading ? <SkeletonCards /> : null}
 
         {error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

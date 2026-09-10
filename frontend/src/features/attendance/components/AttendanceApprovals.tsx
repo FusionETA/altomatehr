@@ -488,7 +488,7 @@ export function AttendanceApprovals() {
         {approvalType === "OVERTIME" ? <OvertimeApprovals projectNames={projectNames} /> : null}
 
         {approvalType === "ATTENDANCE" && loading ? (
-          <SkeletonCards count={3} />
+          <SkeletonCards />
         ) : null}
 
         {approvalType === "ATTENDANCE" && error ? (
@@ -816,7 +816,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
         ) : null}
       </section>
 
-      {loading ? <SkeletonCards count={3} /> : null}
+      {loading ? <SkeletonCards /> : null}
 
       {error ? (
         <section className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

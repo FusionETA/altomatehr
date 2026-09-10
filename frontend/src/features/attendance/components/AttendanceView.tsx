@@ -1185,7 +1185,7 @@ function HistoryView({
     [history, period, now, radius],
   );
   if (loading) {
-    return <SkeletonCards count={4} />;
+    return <SkeletonCards />;
   }
 
   if (error) {

@@ -26,6 +26,9 @@ export function Skeleton({ className }: { className?: string }) {
  * as a Tailwind class, so the bars line up under their real headers.
  */
 export function SkeletonRows({
+  // Table rows are compact, so more of them read as "a table is coming" without
+  // filling the screen. Kept as the default for every table for the same
+  // reason SkeletonCards has one: consistency across screens.
   rows = 5,
   widths,
 }: {
@@ -63,6 +66,12 @@ export function SkeletonPerson() {
 /**
  * A stack of card placeholders, for the list-of-cards layout the claims, leave
  * and overtime screens use on narrow widths and in their queues.
+ *
+ * A list's real length is unknowable before it loads, so unlike the fixed
+ * sections above this one CAN'T be matched exactly. The default is therefore
+ * the convention — every card list in the app shows the same number, so the
+ * app looks like itself while loading. Cards are tall, hence fewer than the
+ * table default.
  */
 export function SkeletonCards({
   count = 3,
@@ -95,16 +104,47 @@ export function SkeletonCards({
   );
 }
 
-/** The row of summary tiles several dashboards open with. */
-export function SkeletonStats({ count = 3 }: { count?: number }) {
+/**
+ * A row of summary tiles.
+ *
+ * `count` and `className` must MATCH the real section — same number of tiles,
+ * same grid classes. A guessed count reflows the page the moment the data
+ * lands, which defeats the point. Fixed sections (three stat cards, six
+ * panels) can be matched exactly; a variable-length list can't be, so those
+ * use a small constant instead.
+ */
+export function SkeletonStats({
+  count = 3,
+  className = "grid gap-3 sm:grid-cols-2 lg:grid-cols-3",
+}: {
+  count?: number;
+  className?: string;
+}) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className={className}>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient">
           <Skeleton className="h-3 w-28" />
           <Skeleton className="mt-3 h-7 w-20" />
           <Skeleton className="mt-2 h-3 w-36" />
         </div>
+      ))}
+    </div>
+  );
+}
+
+/** Several panels in a grid, matching a dashboard of equal-weight sections. */
+export function SkeletonPanels({
+  count = 2,
+  className = "grid gap-6 lg:grid-cols-2",
+}: {
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonPanel key={i} />
       ))}
     </div>
   );

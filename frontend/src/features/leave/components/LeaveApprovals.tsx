@@ -337,7 +337,7 @@ export function LeaveApprovals() {
           />
         ) : null}
 
-        {loading ? <SkeletonCards count={3} /> : null}
+        {loading ? <SkeletonCards /> : null}
 
         {error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

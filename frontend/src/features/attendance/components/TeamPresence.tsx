@@ -151,7 +151,7 @@ export function TeamPresence() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <SkeletonCards count={3} />
+        <SkeletonCards />
       ) : visible.length === 0 ? (
         <section className={`${CARD} border-dashed bg-surface-low p-8 text-center`}>
           <Users className="mx-auto h-6 w-6 text-primary" />

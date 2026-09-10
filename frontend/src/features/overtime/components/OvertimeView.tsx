@@ -135,7 +135,7 @@ export function OvertimeView() {
         </section>
 
         {loading ? (
-          <SkeletonCards count={3} />
+          <SkeletonCards />
         ) : null}
 
         {error ? (

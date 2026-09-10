@@ -55,7 +55,7 @@ import {
   type FilterOption,
 } from "./AttendanceFilterBar";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { SkeletonCards, SkeletonRows, SkeletonStats } from "@/shared/components/Skeleton";
+import { SkeletonRows, SkeletonStats } from "@/shared/components/Skeleton";
 
 // Two levels, mirroring production's own split:
 //
@@ -635,9 +635,10 @@ export function AdminAttendance() {
       ) : null}
 
       {loading ? (
+        // Matches the board: four tiles across, then a three-up row.
         <div className="space-y-4">
-          <SkeletonStats count={4} />
-          <SkeletonCards count={3} />
+          <SkeletonStats count={4} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" />
+          <SkeletonStats count={3} className="grid gap-3 sm:grid-cols-3" />
         </div>
       ) : section === "employees" ? (
         openEmployee ? (

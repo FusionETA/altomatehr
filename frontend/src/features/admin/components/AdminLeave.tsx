@@ -283,7 +283,7 @@ export function AdminLeave() {
         </div>
       </div>
 
-      {loading ? <SkeletonStats count={3} /> : null}
+      {loading ? <SkeletonStats count={3} className="grid gap-3 sm:grid-cols-3" /> : null}
 
       {!loading && tab === "overview" && overview ? (
         <>
@@ -641,7 +641,7 @@ function HistoryTab({
           </button>
         </section>
       ) : loading ? (
-        <SkeletonCards count={4} />
+        <SkeletonCards />
       ) : filtered.length === 0 ? (
         <section className={`${CARD} text-center`}>
           <p className="text-sm text-muted-foreground">
