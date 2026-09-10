@@ -258,6 +258,19 @@ internal sealed class FakeApprovalRouter : IApprovalRouter
 
     public Task<int> StepCountAsync(ApprovalModule module, string applicantId, string? projectId = null) =>
         Task.FromResult((_chains.GetValueOrDefault(applicantId) ?? []).Count);
+
+    // Delegates to the single-request answer, so batching can never quietly
+    // diverge from it in a test that only exercises one of the two.
+    public async Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId, int CurrentStep), IReadOnlyList<string>>>
+        CurrentApproversForManyAsync(
+            ApprovalModule module,
+            IReadOnlyCollection<(string ApplicantId, string? ProjectId, int CurrentStep)> requests)
+    {
+        var result = new Dictionary<(string, string?, int), IReadOnlyList<string>>();
+        foreach (var r in requests.Distinct())
+            result[r] = await CurrentApproversAsync(module, r.ApplicantId, r.CurrentStep, r.ProjectId);
+        return result;
+    }
 }
 
 // Minimal ITeamService double. `reportsOf` maps a supervisor id to the flat

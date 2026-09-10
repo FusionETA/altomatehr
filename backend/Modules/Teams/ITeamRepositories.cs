@@ -27,6 +27,9 @@ public interface ITeamMembershipRepository
 // Explicit per-employee approver overrides — see TeamApprovalOverride.
 public interface ITeamApprovalOverrideRepository
 {
+    // Every override in the org (the tenant filter scopes it). For resolving
+    // many employees' chains at once without a query per employee.
+    Task<List<TeamApprovalOverride>> GetAllAsync();
     Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId);
     Task<TeamApprovalOverride?> GetAsync(string teamId, string employeeId, int layer);
     Task UpsertAsync(TeamApprovalOverride ov);

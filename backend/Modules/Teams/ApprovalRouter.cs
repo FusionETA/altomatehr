@@ -20,6 +20,14 @@ public interface IApprovalRouter
     // Number of approval steps in the applicant's chain — 0 when they're on no
     // team, or sit at/above the top approving layer.
     Task<int> StepCountAsync(ApprovalModule module, string applicantId, string? projectId = null);
+
+    // Current-step approvers for many requests at once. Use this instead of
+    // calling CurrentApproversAsync in a loop: each call rebuilds a chain from
+    // five tables, so a queue of N pending requests cost N times that.
+    Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId, int CurrentStep), IReadOnlyList<string>>>
+        CurrentApproversForManyAsync(
+            ApprovalModule module,
+            IReadOnlyCollection<(string ApplicantId, string? ProjectId, int CurrentStep)> requests);
 }
 
 public class ApprovalRouter : IApprovalRouter
@@ -29,6 +37,28 @@ public class ApprovalRouter : IApprovalRouter
     public ApprovalRouter(IApprovalChainService chain)
     {
         _chain = chain;
+    }
+
+    public async Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId, int CurrentStep), IReadOnlyList<string>>>
+        CurrentApproversForManyAsync(
+            ApprovalModule module,
+            IReadOnlyCollection<(string ApplicantId, string? ProjectId, int CurrentStep)> requests)
+    {
+        // Several requests routinely share one chain — the same person with two
+        // pending days, or a whole crew on one team — so the chains are resolved
+        // per distinct (applicant, project) and the step read off afterwards.
+        var chains = await _chain.GetChainsAsync(
+            requests.Select(r => (r.ApplicantId, r.ProjectId)).Distinct().ToList(), module);
+
+        return requests.Distinct().ToDictionary(
+            r => r,
+            r =>
+            {
+                var chain = chains.GetValueOrDefault((r.ApplicantId, r.ProjectId), []);
+                return r.CurrentStep >= 0 && r.CurrentStep < chain.Count
+                    ? chain[r.CurrentStep].ApproverIds
+                    : (IReadOnlyList<string>)[];
+            });
     }
 
     public async Task<IReadOnlyList<string>> CurrentApproversAsync(

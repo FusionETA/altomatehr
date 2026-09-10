@@ -239,6 +239,41 @@ public class ApprovalRoutingTests
         return (chain, [teamAlpha, teamBeta]);
     }
 
+    [Fact]
+    public async Task BatchedApprovers_MatchAskingOneAtATime()
+    {
+        // The batch path exists purely for speed — resolving one chain touches
+        // five tables, so a queue of N pending requests used to cost N times
+        // that. It must therefore agree with the single-request path for every
+        // shape that matters, or the optimisation changes who can approve.
+        //
+        // Covered here: an ordinary employee, someone under an admin (excluded),
+        // the top of the chain (no approvers), a step past the end, and an
+        // employee on no team at all.
+        var router = Build(
+            layers: new() { ["staff"] = 0, ["lead"] = 1, ["boss"] = 2 },
+            layerCount: 3,
+            administrative: ["boss"]);
+
+        (string, string?, int)[] cases =
+        [
+            ("staff", null, 0),
+            ("staff", null, 1),
+            ("staff", null, 5),      // past the end of the chain
+            ("lead", null, 0),       // only an admin above → no approvers
+            ("boss", null, 0),       // top
+            ("nobody", null, 0),     // on no team
+        ];
+
+        var batched = await router.CurrentApproversForManyAsync(ApprovalModule.CLAIMS, cases);
+
+        foreach (var (applicant, project, step) in cases)
+        {
+            var one = await router.CurrentApproversAsync(ApprovalModule.CLAIMS, applicant, step, project);
+            Assert.Equal(one, batched[(applicant, project, step)]);
+        }
+    }
+
     private static ApprovalRouter Build(
         Dictionary<string, int> layers,
         int layerCount,
@@ -302,6 +337,7 @@ public class ApprovalRoutingTests
 
     private sealed class StubTeamApprovalOverrides(List<TeamApprovalOverride> rows) : ITeamApprovalOverrideRepository
     {
+        public Task<List<TeamApprovalOverride>> GetAllAsync() => Task.FromResult(rows.ToList());
         public Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId) =>
             Task.FromResult(rows.Where(o => o.TeamId == teamId && o.EmployeeId == employeeId).ToList());
         public Task<TeamApprovalOverride?> GetAsync(string teamId, string employeeId, int layer) =>

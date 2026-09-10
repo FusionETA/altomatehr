@@ -159,13 +159,23 @@ public class AttendanceService : IAttendanceService
     {
         var pending = await _approvalRequests.GetOpenByKindsAsync(RecordKinds);
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
-        var mine = new List<AttendanceApprovalRequest>();
-        foreach (var request in pending)
-        {
-            var approvers = await _router.CurrentApproversAsync(
-                Module, request.EmployeeId, request.CurrentStep, projectIdByRecord.GetValueOrDefault(request.AttendanceRecordId));
-            if (approvers.Contains(userId)) mine.Add(request);
-        }
+
+        // Resolved in one batch rather than per request. Asking the router
+        // inside the loop rebuilt a chain — five tables — for every pending
+        // item in the org, which on a remote database was seconds of round
+        // trips to answer "which of these are mine?".
+        var keys = pending
+            .Select(r => (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep))
+            .ToList();
+        var approversByKey = await _router.CurrentApproversForManyAsync(Module, keys);
+
+        var mine = pending
+            .Where(r => approversByKey
+                .GetValueOrDefault(
+                    (r.EmployeeId, projectIdByRecord.GetValueOrDefault(r.AttendanceRecordId), r.CurrentStep),
+                    [])
+                .Contains(userId))
+            .ToList();
         if (mine.Count == 0) return [];
 
         var recordIds = mine.Select(r => r.AttendanceRecordId).Distinct().ToList();

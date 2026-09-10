@@ -94,6 +94,9 @@ public class TeamApprovalOverrideRepository : ITeamApprovalOverrideRepository
 
     public TeamApprovalOverrideRepository(AppDbContext db) => _db = db;
 
+    public Task<List<TeamApprovalOverride>> GetAllAsync() =>
+        _db.TeamApprovalOverrides.ToListAsync();
+
     public Task<List<TeamApprovalOverride>> GetByTeamAndEmployeeAsync(string teamId, string employeeId) =>
         _db.TeamApprovalOverrides
             .Where(o => o.TeamId == teamId && o.EmployeeId == employeeId)
