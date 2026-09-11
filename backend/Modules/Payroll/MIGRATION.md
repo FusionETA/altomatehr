@@ -11,12 +11,15 @@ Core backend. Malaysia only, MYR only.
 ## Setup for a new session
 
 The reference app is **not in this repo** — the path in the root `CLAUDE.md`
-(`/Users/chenzirong/Documents/globe-engineering-claim`) does not exist. A clone
-already sits at `~/Empty/ClaimGuard` on this machine; if it is gone, re-clone it
-somewhere scratch **outside this repo**:
+(`/Users/chenzirong/Documents/globe-engineering-claim`) does not exist.
+
+⚠️ **Take a FRESH clone. Do not trust `~/Empty/ClaimGuard`.** That copy is
+hundreds of commits behind and carries uncommitted local edits, and reading it
+sent one session's work off the current design. Clone somewhere scratch
+**outside this repo** and read from `origin/main`:
 
 ```bash
-git clone --depth 1 https://github.com/FusionETA/ClaimGuard.git
+git clone --depth 1 https://github.com/FusionETA/ClaimGuard.git /tmp/cg-ref
 ```
 
 Every phase below needs it. The payroll source is at `modules/payroll/`, the
@@ -28,8 +31,8 @@ Verify the current state builds and passes before changing anything:
 cd backend && dotnet build && cd ../backend.Tests && dotnet test
 ```
 
-Expect **0 errors** and **1,326 passing** (1 pre-existing warning in
-`OvertimeService.cs:70`, unrelated to payroll — it only shows on a clean build).
+Expect **0 errors** and **1,338 passing** (2 pre-existing warnings, in
+`OvertimeService.cs` and `SalaryChangeService.cs`, unrelated to payroll).
 
 ---
 
@@ -55,8 +58,76 @@ Expect **0 errors** and **1,326 passing** (1 pre-existing warning in
 | 8e | Employee import — on the house `Common/Tabular` machinery | ✅ done |
 | 8f-1 | `SalaryChange` + mid-cycle hints — **the correctness gap** | ✅ done |
 | 8f-2 | Portal credentials + the past-leaver sweep | ✅ done |
+| UI-1 | Admin surface: Overview · Runs · Loans · Annual forms · Settings | ✅ done |
+| UI-2 | Run detail: payslips, adjustments, claims, downloads, the status machine | ✅ done |
+| UI-3 | **Employee payslip portal** | ⬜ **not started** |
 
-**911 payroll tests** of the 1,326 total, all in `backend.Tests/Payroll/`.
+**923 payroll tests** of the 1,338 total, all in `backend.Tests/Payroll/`.
+
+---
+
+## Picking this up cold — what is NOT done
+
+The sections below are a running log, appended as each phase landed. This is
+the short version of what is still open, so nobody has to read 2,000 lines to
+find it.
+
+### Not built
+
+1. **The employee payslip portal.** The backend is finished —
+   `PayslipsController` serves list, detail and PDF at `/payslips`, and
+   `EmployeePayrollService` already returns only SUBMITTED runs. The UI is
+   still a placeholder: `EmployeeShell.tsx` renders `<EmptyModule title="Payslips">`.
+   Worse, the employee dashboard has a **"Latest payslip"** card that links to
+   it and says *"No payslips yet — they'll appear here once payroll finalises
+   your first run"*, hardcoded. That sentence becomes false the moment a run is
+   approved. **This is the biggest remaining gap and the only user-facing lie.**
+2. **Three bank formats.** Only Public Bank ECP renders. The reference also has
+   Maybank M2E, CIMB BizChannel and Hong Leong Connect. The Settings bank
+   dropdown deliberately offers only Public Bank and "Other bank (no upload
+   file)" so it cannot promise a file that never arrives.
+3. **PCB borne by the employer (gross-up).** Not implemented — see the note at
+   the head of `PcbCalculator`. The profile toggle exists and must stay off.
+4. **Form E / CP8D do not print the declarant or tax agent.** Those fields are
+   now collectable in Settings → Form E, and stored, but no renderer reads
+   them. Neither does the reference's.
+5. **Xero preview and manual re-sync.** `getXeroPreview` / `syncPayrollToXero`
+   are typed in `api.ts` and unused. Sync-on-approval works on its own.
+6. **HRDF tier and the live SKBBK table.** The reference derives the Part I /
+   Part II tier from the Malaysian headcount and renders the gazette table;
+   ours takes the rate as an input and states the phase statically. Both would
+   need the figures exposed over the API.
+7. **Hand-varied loan schedules.** `SaveEmployeeLoan.schedule` is accepted by
+   the server; the form only offers equal-split and fixed-amount.
+8. **EmploymentStint / EmployeeTransfer.** Judged out of payroll scope. Needs
+   scoping separately.
+
+### Never verified
+
+- **decimal-vs-float parity against a real production payslip.** The engine is
+  tested against LHDN's own worked examples, but no figure has been compared
+  end to end with what the Next.js app pays the same employee.
+- **The approved-run download path.** Files are correctly refused on a draft
+  (tested), but no run in the dev org could be approved, so "approve → the
+  Documents section appears → the files download" has not been walked.
+
+### Environment gotchas
+
+- **User-secrets are required**, and one is new: `Jwt:Key`,
+  `ConnectionStrings:Default`, and `Secrets:PortalCredentialsKey`. `SecretBox`
+  **refuses to start in production** without the last one, by design — portal
+  passwords would otherwise be stored unprotected.
+- **Eleven EF migrations** ship with this work. `dotnet ef database update`.
+- **This org's stored Xero refresh token cannot be decrypted** — its
+  data-protection key is no longer in the ring. `/xero/status` still reports
+  connected, but anything needing the token (tracking categories) returns
+  empty. Reconnect Xero to fix.
+- **Claims will never reach payroll until the settlement route is switched.**
+  The org is on `XERO_BILL`; the route is stamped on each claim AT CREATION, so
+  changing it under Claims → Settings only affects claims submitted afterwards.
+- **Test data was written into the dev org** while verifying: employer name and
+  registration numbers, the Public Bank payor account `3161234567`, and a
+  declarant name. All placeholders — overwrite them.
 
 ---
 
