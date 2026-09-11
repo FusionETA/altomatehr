@@ -29,6 +29,17 @@ public interface IApprovalChainService
     // layer, or the module is configured to skip approvals.
     Task<IReadOnlyList<ApprovalStep>> GetChainAsync(
         string employeeId, ApprovalModule module, string? projectId = null);
+
+    // The same answer for many (employee, project) pairs, in a fixed number of
+    // queries rather than one set per pair.
+    //
+    // Resolving a chain touches five tables, so a caller asking "which of these
+    // 40 pending requests are mine to approve?" one at a time paid 40 round
+    // trips to a remote database — the single biggest cost in that endpoint.
+    // Every read here is org-scoped by the tenant filter and the tables are
+    // small, so loading them whole once beats fetching slices repeatedly.
+    Task<IReadOnlyDictionary<(string EmployeeId, string? ProjectId), IReadOnlyList<ApprovalStep>>> GetChainsAsync(
+        IReadOnlyCollection<(string EmployeeId, string? ProjectId)> keys, ApprovalModule module);
 }
 
 public class ApprovalChainService : IApprovalChainService
@@ -53,10 +64,56 @@ public class ApprovalChainService : IApprovalChainService
         _projects = projects;
     }
 
-    public async Task<IReadOnlyList<ApprovalStep>> GetChainAsync(
-        string employeeId, ApprovalModule module, string? projectId = null)
+    // Everything a chain build reads, loaded once. Held as a local for the
+    // duration of one call and then dropped: nothing is cached between calls,
+    // because a request that edits a team and then re-resolves chains (see
+    // TeamsController's reconcile-after-mutation) must see the edit.
+    private sealed record ChainData(
+        ILookup<string, TeamMembership> MembershipsByEmployee,
+        IReadOnlyDictionary<string, Team> TeamsById,
+        ILookup<string, TeamMembership> RosterByTeam,
+        IReadOnlyCollection<string> Administrative,
+        IReadOnlyDictionary<string, string> ProjectNames,
+        ILookup<(string TeamId, string EmployeeId), TeamApprovalOverride> OverridesByMember);
+
+    private async Task<ChainData> LoadAsync()
     {
-        var mine = await _memberships.GetByEmployeeAsync(employeeId);
+        var memberships = await _memberships.GetAllAsync();
+        var teams = await _teams.GetAllAsync();
+        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
+        var projects = await _projects.GetAllAsync();
+        var overrides = await _overrides.GetAllAsync();
+
+        return new ChainData(
+            memberships.ToLookup(m => m.EmployeeId),
+            teams.ToDictionary(t => t.Id),
+            memberships.ToLookup(m => m.TeamId),
+            administrative,
+            projects.ToDictionary(p => p.Id, p => p.Name),
+            overrides.ToLookup(o => (o.TeamId, o.EmployeeId)));
+    }
+
+    public async Task<IReadOnlyList<ApprovalStep>> GetChainAsync(
+        string employeeId, ApprovalModule module, string? projectId = null) =>
+        Build(employeeId, projectId, module, await LoadAsync());
+
+    public async Task<IReadOnlyDictionary<(string EmployeeId, string? ProjectId), IReadOnlyList<ApprovalStep>>> GetChainsAsync(
+        IReadOnlyCollection<(string EmployeeId, string? ProjectId)> keys, ApprovalModule module)
+    {
+        var distinct = keys.Distinct().ToList();
+        if (distinct.Count == 0)
+            return new Dictionary<(string, string?), IReadOnlyList<ApprovalStep>>();
+
+        var data = await LoadAsync();
+        return distinct.ToDictionary(k => k, k => Build(k.EmployeeId, k.ProjectId, module, data));
+    }
+
+    // The rule itself, in memory. Identical for one employee or forty — there is
+    // no second copy of this logic to drift from the first.
+    private static IReadOnlyList<ApprovalStep> Build(
+        string employeeId, string? projectId, ApprovalModule module, ChainData data)
+    {
+        var mine = data.MembershipsByEmployee[employeeId].ToList();
         if (mine.Count == 0) return [];
 
         // Each membership's team, kept alongside it so both the project-match
@@ -64,8 +121,7 @@ public class ApprovalChainService : IApprovalChainService
         var withTeams = new List<(TeamMembership Membership, Team Team)>();
         foreach (var m in mine)
         {
-            var t = await _teams.GetByIdAsync(m.TeamId);
-            if (t is not null) withTeams.Add((m, t));
+            if (data.TeamsById.TryGetValue(m.TeamId, out var t)) withTeams.Add((m, t));
         }
         if (withTeams.Count == 0) return [];
 
@@ -88,21 +144,20 @@ public class ApprovalChainService : IApprovalChainService
         }
         if (resolved is null)
         {
-            var projectNames = (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
             resolved = withTeams
-                .OrderBy(x => projectNames.GetValueOrDefault(x.Team.ProjectId, ""), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => data.ProjectNames.GetValueOrDefault(x.Team.ProjectId, ""), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Team.Id, StringComparer.Ordinal)
                 .First();
         }
 
         var (membership, team) = resolved.Value;
 
-        var roster = await _memberships.GetByTeamAsync(team.Id);
+        var roster = data.RosterByTeam[team.Id].ToList();
         // Admins/owners are oversight, not links in the chain — an admin sitting
         // in a team must not become anyone's approver. Subtracted here rather
         // than at the decision point so they never even APPEAR as an approver,
         // including in the chain the UI shows. See OrgRoles.
-        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
+        var administrative = data.Administrative;
         var labels = DeserializeList(team.LayerLabels);
         // Null → all layers approve (module unconfigured); a set (possibly empty)
         // → only those layers approve.
@@ -110,7 +165,7 @@ public class ApprovalChainService : IApprovalChainService
 
         // Explicit, admin-picked overrides for THIS employee, keyed by layer.
         // Absent for a layer → fall back to the implicit default below.
-        var overridesByLayer = (await _overrides.GetByTeamAndEmployeeAsync(team.Id, employeeId))
+        var overridesByLayer = data.OverridesByMember[(team.Id, employeeId)]
             .ToDictionary(o => o.Layer);
 
         var steps = new List<ApprovalStep>();

@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { eachDateInRange, formatDate, formatDateRange, relativeDaysAgo, urgencyLabel } from "../lib/leave-formatters";
 import { LeaveStatusBadge } from "./LeaveStatusBadge";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 // Fetches who else has approved leave overlapping this application's dates,
 // one day at a time (the API only exposes a single-day snapshot) and dedupes
@@ -208,7 +209,10 @@ export function LeaveDetailsModal({
               <p className="text-xs font-semibold uppercase tracking-[0.18em]">Approval trail</p>
             </div>
             {loadingAudit ? (
-              <p className="mt-3 text-sm text-muted-foreground">Loading history…</p>
+              <div className="mt-3 space-y-2">
+                <Skeleton className="h-3 w-56" />
+                <Skeleton className="h-3 w-44" />
+              </div>
             ) : auditEntries.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">No decisions recorded yet.</p>
             ) : (

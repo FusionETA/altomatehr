@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
@@ -179,6 +180,11 @@ export function AdminShell({
                       <p className="truncate text-sm font-bold text-foreground">{displayName}</p>
                       <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                     </div>
+
+                    <PushToggleMenuItem
+                      onClose={() => setAccountMenuOpen(false)}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
 
                     <button
                       type="button"

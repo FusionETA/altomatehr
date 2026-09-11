@@ -3,6 +3,7 @@ import { LoginForm } from "./features/auth/components/LoginForm";
 import { logout, refresh } from "./features/auth/api";
 import { AdminShell } from "./features/admin/components/AdminShell";
 import { EmployeeShell } from "./features/employee-portal/components/EmployeeShell";
+import { EnableNotificationsPrompt } from "./features/notifications/components/EnableNotificationsPrompt";
 import { LoadingScreen } from "./shared/components/LoadingScreen";
 import { setAuthToken } from "./shared/lib/api-client";
 import { connectRealtime, disconnectRealtime } from "./shared/lib/realtime-client";
@@ -58,11 +59,16 @@ function App() {
     setUser(null);
   };
 
-  if (isAdminRole(user.role)) {
-    return <AdminShell user={user} onLogout={handleLogout} />;
-  }
-
-  return <EmployeeShell user={user} onLogout={handleLogout} />;
+  return (
+    <>
+      {isAdminRole(user.role) ? (
+        <AdminShell user={user} onLogout={handleLogout} />
+      ) : (
+        <EmployeeShell user={user} onLogout={handleLogout} />
+      )}
+      <EnableNotificationsPrompt />
+    </>
+  );
 }
 
 export default App;

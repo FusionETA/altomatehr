@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { ApplyOnBehalfModal } from "./ApplyOnBehalfModal";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[22px] border border-border/70 bg-card/70 p-5";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -47,7 +49,6 @@ export function EmployeeLeaveModal({
 }) {
   const [balances, setBalances] = useState<LeaveBalance[]>(employee.balances);
   const [report, setReport] = useState<LeaveSummaryReport | null>(null);
-  const [loadingReport, setLoadingReport] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyTypeId, setBusyTypeId] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -55,12 +56,19 @@ export function EmployeeLeaveModal({
   const [exporting, setExporting] = useState(false);
   const employeeLabel = buildName(employee.email);
 
+  // Keyed on both employee and year, so reopening the same person's report —
+  // which an admin does repeatedly while comparing people — is instant.
+  const reportQuery = useCachedQuery(
+    `/leave/summary-report?employeeId=${employee.userId}&year=${year}`,
+    () => getLeaveSummaryReport(employee.userId, year),
+  );
+  const loadingReport = reportQuery.loading;
   useEffect(() => {
-    getLeaveSummaryReport(employee.userId, year)
-      .then(setReport)
-      .catch((e: unknown) => setError(message(e, "Could not load the leave report.")))
-      .finally(() => setLoadingReport(false));
-  }, [employee.userId, year]);
+    if (reportQuery.data) setReport(reportQuery.data);
+  }, [reportQuery.data]);
+  useEffect(() => {
+    if (reportQuery.error) setError(reportQuery.error);
+  }, [reportQuery.error]);
 
   function balanceFor(typeId: string) {
     return balances.find((b) => b.leaveTypeId === typeId);
@@ -228,7 +236,11 @@ export function EmployeeLeaveModal({
             Report — {year}
           </p>
           {loadingReport ? (
-            <p className="mt-3 text-sm text-muted-foreground">Loading report…</p>
+            <div className="mt-3 space-y-2">
+              <Skeleton className="h-3 w-48" />
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-3 w-52" />
+            </div>
           ) : !report ? (
             <p className="mt-3 text-sm text-muted-foreground">No report available.</p>
           ) : (

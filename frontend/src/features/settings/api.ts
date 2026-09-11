@@ -102,6 +102,12 @@ export type XeroStatus = {
   tenantName: string | null;
   tenantId: string | null;
   connectedAt: string | null;
+  /**
+   * Still connected on paper, but the stored tokens are unusable and only a
+   * fresh consent fixes it. Set so the card can prompt straight away instead of
+   * looking healthy until the next sync fails with a 409.
+   */
+  needsReconnect?: boolean;
 };
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");

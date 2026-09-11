@@ -20,6 +20,8 @@ import { AdminClaimsAttention } from "./AdminClaimsAttention";
 import { AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimSettings } from "./ClaimSettings";
 import { ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
 // decision, then what is owed, then every claim behind both.
@@ -36,42 +38,49 @@ export function AdminClaims() {
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
   const [employeeEmails, setEmployeeEmails] = useState<Map<string, string>>(new Map());
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<ClaimsTab>("overview");
   const [drilldown, setDrilldown] = useState<ClaimDrilldown | null>(null);
   const [filters, setFilters] = useState<ClaimsFilters>(EMPTY_FILTERS);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  // Claims are the page; the rest are labels. A missing label list degrades to
+  // ids rather than failing the whole dashboard, so only the claims query
+  // gates `loading` or raises an error.
+  const claimsQuery = useCachedQuery("/claims/all", getAllClaims);
+  const overviewQuery = useCachedQuery("/admin/overview", getAdminOverview);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const employeesQuery = useCachedQuery("/employees", getEmployees);
+  const accountsQuery = useCachedQuery("/accounts", getAccounts);
+  const loading = claimsQuery.loading;
 
-    // Claims are the page; the rest are labels. A missing label list degrades to
-    // ids rather than failing the whole dashboard.
-    return Promise.all([
-      getAllClaims(),
-      getAdminOverview().catch(() => null),
-      getProjects().catch(() => []),
-      getEmployees().catch(() => []),
-      getAccounts().catch(() => []),
-    ])
-      .then(([allClaims, adminOverview, projects, employees, accounts]) => {
-        setClaims(allClaims);
-        setOverview(adminOverview);
-        setProjectNames(new Map(projects.map((project) => [project.id, project.name])));
-        setEmployeeEmails(new Map(employees.map((employee) => [employee.id, employee.email])));
-        setAccountLabels(
-          new Map(accounts.map((account) => [account.id, `${account.code} · ${account.name}`])),
-        );
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+  // load() stays for the refetch after a decision — the four label lists are
+  // unaffected by approving a claim, so it only re-reads the claims.
+  const load = useCallback(() => claimsQuery.refresh(), [claimsQuery.refresh]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (claimsQuery.data) setClaims(claimsQuery.data);
+  }, [claimsQuery.data]);
+  useEffect(() => {
+    setOverview(overviewQuery.data ?? null);
+  }, [overviewQuery.data]);
+  useEffect(() => {
+    const projects = projectsQuery.data ?? [];
+    setProjectNames(new Map(projects.map((project) => [project.id, project.name])));
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    const employees = employeesQuery.data ?? [];
+    setEmployeeEmails(new Map(employees.map((employee) => [employee.id, employee.email])));
+  }, [employeesQuery.data]);
+  useEffect(() => {
+    const accounts = accountsQuery.data ?? [];
+    setAccountLabels(
+      new Map(accounts.map((account) => [account.id, `${account.code} · ${account.name}`])),
+    );
+  }, [accountsQuery.data]);
+  useEffect(() => {
+    if (claimsQuery.error) setError(claimsQuery.error);
+  }, [claimsQuery.error]);
 
   const staleCount = useMemo(() => claims.filter((claim) => isStaleClaim(claim)).length, [claims]);
 
@@ -136,9 +145,11 @@ export function AdminClaims() {
             Error: {error}
           </section>
         ) : loading ? (
-          <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
-            Loading claims…
-          </section>
+          // Mirrors AdminClaimsAttention: three tiles, then two panels.
+          <div className="space-y-4">
+            <SkeletonStats count={3} className="grid gap-3 sm:grid-cols-3" />
+            <SkeletonPanels count={2} className="grid gap-6 lg:grid-cols-2" />
+          </div>
         ) : (
           <AdminClaimsAttention
             claims={claims}

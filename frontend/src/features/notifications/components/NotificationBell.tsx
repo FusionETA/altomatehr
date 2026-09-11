@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, BellOff, BellRing, Loader2 } from "lucide-react";
+import { Bell, Loader2 } from "lucide-react";
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -7,7 +7,6 @@ import {
   type Notification,
 } from "../api";
 import { timeAgo } from "../lib/format";
-import { disablePush, enablePush, getPushStatus, isPushSupported, type PushStatus } from "../lib/push";
 import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 
 // There's no realtime scope dedicated to "a notification was persisted" —
@@ -22,9 +21,23 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [pushStatus, setPushStatus] = useState<PushStatus>("unsupported");
-  const [pushBusy, setPushBusy] = useState(false);
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number; width: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // The bell isn't the rightmost element in the header (an account menu sits
+  // to its right), so anchoring the panel to the bell's own right edge with a
+  // fixed width can push it off the left side of narrow screens. Measuring
+  // the button's actual viewport position lets the panel size itself to
+  // whatever room is really there, on every screen width.
+  function computePanelPosition() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 16;
+    const right = Math.max(margin, window.innerWidth - rect.right);
+    const width = Math.min(384, window.innerWidth - right - margin);
+    setPanelPos({ top: rect.bottom + 10, right, width });
+  }
 
   const refresh = useCallback(() => {
     getNotifications()
@@ -47,10 +60,6 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
   useRealtimeEvent(["CLAIMS", "ATTENDANCE", "LEAVE"], refresh);
 
   useEffect(() => {
-    if (isPushSupported()) getPushStatus().then(setPushStatus);
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
 
     function handlePointerDown(event: PointerEvent) {
@@ -70,7 +79,10 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
 
   function toggleOpen() {
     setOpen((was) => {
-      if (!was) refresh();
+      if (!was) {
+        refresh();
+        computePanelPosition();
+      }
       return !was;
     });
   }
@@ -100,26 +112,10 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
     markAllNotificationsRead().catch(() => refresh());
   }
 
-  async function handleTogglePush() {
-    setPushBusy(true);
-    try {
-      if (pushStatus === "subscribed") {
-        await disablePush();
-        setPushStatus("unsubscribed");
-      } else {
-        await enablePush();
-        setPushStatus("subscribed");
-      }
-    } catch {
-      setPushStatus(await getPushStatus());
-    } finally {
-      setPushBusy(false);
-    }
-  }
-
   return (
     <div ref={menuRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-label="Notifications"
         aria-expanded={open}
@@ -134,8 +130,11 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
         ) : null}
       </button>
 
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-80 overflow-hidden rounded-2xl border border-border/70 bg-card/98 text-left shadow-[0_18px_48px_rgba(76,26,134,0.14)] backdrop-blur-xl sm:w-96">
+      {open && panelPos ? (
+        <div
+          style={{ top: panelPos.top, right: panelPos.right, width: panelPos.width }}
+          className="fixed z-50 overflow-hidden rounded-2xl border border-border/70 bg-card/98 text-left shadow-[0_18px_48px_rgba(76,26,134,0.14)] backdrop-blur-xl"
+        >
           <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
             <p className="text-sm font-bold text-foreground">Notifications</p>
             {unreadCount > 0 ? (
@@ -186,26 +185,6 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (url: string) =>
               ))
             )}
           </div>
-
-          {isPushSupported() && pushStatus !== "denied" ? (
-            <button
-              type="button"
-              onClick={handleTogglePush}
-              disabled={pushBusy}
-              className="flex w-full items-center gap-2.5 border-t border-border/60 px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-60"
-            >
-              {pushBusy ? (
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-              ) : pushStatus === "subscribed" ? (
-                <BellOff className="h-3.5 w-3.5 shrink-0" />
-              ) : (
-                <BellRing className="h-3.5 w-3.5 shrink-0" />
-              )}
-              {pushStatus === "subscribed"
-                ? "Turn off push notifications on this device"
-                : "Enable push notifications on this device"}
-            </button>
-          ) : null}
         </div>
       ) : null}
     </div>

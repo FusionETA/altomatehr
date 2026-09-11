@@ -96,6 +96,7 @@ public static class AuditActions
     // Xero
     public const string XeroConnect = "xero.connect";
     public const string XeroDisconnect = "xero.disconnect";
+    public const string XeroReconnectRequired = "xero.reconnect_required";
     public const string XeroSyncAccounts = "xero.accounts.sync";
 
     // Auth. Successful sign-ins are recorded as well as failed ones: "has this
@@ -135,6 +136,7 @@ public static class AuditActions
         [ApprovalsReconcile] = "Unreachable approvals resolved",
         [XeroConnect] = "Xero connected",
         [XeroDisconnect] = "Xero disconnected",
+        [XeroReconnectRequired] = "Xero reconnect required",
         [XeroSyncAccounts] = "Xero accounts synced",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",

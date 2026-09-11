@@ -8,6 +8,8 @@ import {
   type XeroCurrency,
 } from "../api";
 import { XeroConnectionCard } from "./XeroConnectionCard";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -21,24 +23,27 @@ const titleCase = (s: string) =>
 
 export function OrganizationSettings() {
   const [org, setOrg] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [currencies, setCurrencies] = useState<XeroCurrency[]>([]);
 
-  useEffect(() => {
-    getOrganization()
-      .then(setOrg)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+  // Best-effort: a Xero outage must not stop the settings form loading, it
+  // just falls back to the free-text field — so its error is never surfaced
+  // and it never gates `loading`.
+  const currenciesQuery = useCachedQuery("/xero/currencies", getXeroCurrencies);
+  const loading = orgQuery.loading;
 
-    // Best-effort: a Xero outage must not stop the settings form loading, it
-    // just falls back to the free-text field.
-    getXeroCurrencies()
-      .then(setCurrencies)
-      .catch(() => setCurrencies([]));
-  }, []);
+  useEffect(() => {
+    if (orgQuery.data) setOrg(orgQuery.data);
+  }, [orgQuery.data]);
+  useEffect(() => {
+    setCurrencies(currenciesQuery.data ?? []);
+  }, [currenciesQuery.data]);
+  useEffect(() => {
+    if (orgQuery.error) setError(orgQuery.error);
+  }, [orgQuery.error]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,7 +69,7 @@ export function OrganizationSettings() {
   }
 
   if (loading) {
-    return <div className={`${CARD} text-sm text-muted-foreground`}>Loading organization…</div>;
+    return <SkeletonPanel />;
   }
   if (!org) {
     return (

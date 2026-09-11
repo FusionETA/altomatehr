@@ -9,6 +9,8 @@ import {
 } from "@/features/policies/api";
 import { getLeaveTypes, type LeaveType } from "@/features/leave/api";
 import { PolicyEditorModal } from "./PolicyEditorModal";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -20,21 +22,24 @@ function message(err: unknown, fallback: string) {
 export function PoliciesSettings() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Policy | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const policiesQuery = useCachedQuery("/policies", getPolicies);
+  const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  const loading = policiesQuery.loading || typesQuery.loading;
   useEffect(() => {
-    Promise.all([getPolicies(), getLeaveTypes()])
-      .then(([p, t]) => {
-        setPolicies(p);
-        setLeaveTypes(t.filter((x) => !x.isArchived));
-      })
-      .catch((e: unknown) => setError(message(e, "Could not load policies.")))
-      .finally(() => setLoading(false));
-  }, []);
+    if (policiesQuery.data) setPolicies(policiesQuery.data);
+  }, [policiesQuery.data]);
+  useEffect(() => {
+    if (typesQuery.data) setLeaveTypes(typesQuery.data.filter((x) => !x.isArchived));
+  }, [typesQuery.data]);
+  useEffect(() => {
+    const first = policiesQuery.error ?? typesQuery.error;
+    if (first) setError(first);
+  }, [policiesQuery.error, typesQuery.error]);
 
   // Insert/replace a policy, keeping "exactly one default" consistent locally.
   function applyPolicy(p: Policy) {
@@ -80,7 +85,7 @@ export function PoliciesSettings() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading policies…</p>
+        <SkeletonPanel />
       ) : policies.length === 0 ? (
         <p className="text-sm text-muted-foreground">No policies yet.</p>
       ) : (

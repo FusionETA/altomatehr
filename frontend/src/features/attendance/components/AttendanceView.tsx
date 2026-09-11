@@ -22,6 +22,8 @@ import { TeamPresence } from "./TeamPresence";
 import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
 import { formatDistance } from "@/shared/lib/geolocation";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const TZ = "Asia/Kuala_Lumpur";
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -330,18 +332,35 @@ export function AttendanceView({
     return { from: dateKey(start), to: dateKey(now), start, end: now };
   }, [now]);
 
+  // Today's record is read fresh every time. This screen's first job is
+  // telling someone whether they are currently clocked in, and a cached answer
+  // to that could have them clock in twice or think they already clocked out.
   useEffect(() => {
-    Promise.all([getTodayAttendance(), getAttendanceHistory(), getProjects(), getOrganization()])
-      .then(([t, h, p, org]) => {
-        setToday(t);
-        setHistory(h);
-        setProjects(p.filter((x) => !x.isArchived));
-        setRadius(org.geofenceRadiusMeters);
-        setOrgHours({ start: org.workingHoursStart, end: org.workingHoursEnd });
-      })
+    getTodayAttendance()
+      .then(setToday)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // History, projects and the org's geofence/working hours are all cached — a
+  // clock-in or clock-out invalidates /attendance*, so history can't go stale
+  // behind a change the user just made.
+  const historyQuery = useCachedQuery("/attendance", getAttendanceHistory);
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+
+  useEffect(() => {
+    if (historyQuery.data) setHistory(historyQuery.data);
+  }, [historyQuery.data]);
+  useEffect(() => {
+    setProjects((projectsQuery.data ?? []).filter((x) => !x.isArchived));
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    const org = orgQuery.data;
+    if (!org) return;
+    setRadius(org.geofenceRadiusMeters);
+    setOrgHours({ start: org.workingHoursStart, end: org.workingHoursEnd });
+  }, [orgQuery.data]);
 
   // Totals are computed server-side so they match what payroll reads. A failure
   // here leaves the cards showing a dash rather than a wrong number.
@@ -456,7 +475,7 @@ export function AttendanceView({
           </button>
         </div>
         {loading ? (
-          <div className={`${CARD} p-4 text-sm text-muted-foreground`}>Loading attendance...</div>
+          <SkeletonPanel />
         ) : weekRecords.length === 0 ? (
           <div className={`${CARD} p-5 text-center text-sm text-muted-foreground`}>
             No attendance records yet this week.
@@ -1166,7 +1185,7 @@ function HistoryView({
     [history, period, now, radius],
   );
   if (loading) {
-    return <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading attendance history...</section>;
+    return <SkeletonCards />;
   }
 
   if (error) {

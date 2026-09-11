@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -49,7 +51,6 @@ function message(err: unknown, fallback: string) {
 
 export function AccountsSettings() {
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<SaveAccount>(emptyForm);
   const [adding, setAdding] = useState(false);
@@ -76,12 +77,14 @@ export function AccountsSettings() {
   const [tab, setTab] = useState<AccountTab>("EXPENSE");
   const [page, setPage] = useState(1);
 
+  const query = useCachedQuery("/accounts", getAccounts);
+  const loading = query.loading;
   useEffect(() => {
-    getAccounts()
-      .then(setAccounts)
-      .catch((e: unknown) => setError(message(e, "Could not load accounts.")))
-      .finally(() => setLoading(false));
-  }, []);
+    if (query.data) setAccounts(query.data);
+  }, [query.data]);
+  useEffect(() => {
+    if (query.error) setError(query.error);
+  }, [query.error]);
 
   useEffect(() => {
     getXeroStatus()
@@ -352,7 +355,7 @@ export function AccountsSettings() {
         ) : null}
 
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading accounts…</p>
+          <SkeletonPanel />
         ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {accounts.length === 0 ? "No accounts yet." : "No active accounts."}

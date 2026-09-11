@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { CARD_BARE } from "../lib/dashboard-styles";
+import { SkeletonRows } from "@/shared/components/Skeleton";
 
 // Matches the shared pager, which computes its page numbers from that constant
 // — a different size here would make "Showing 1-10 of 47" disagree with the
@@ -149,7 +150,11 @@ export function ActivityLog() {
 
       <section className={CARD_BARE}>
         {loading ? (
-          <p className="p-6 text-sm text-muted-foreground">Loading activity…</p>
+          <table className="w-full text-sm">
+            <tbody>
+              <SkeletonRows rows={6} widths={["w-32", "w-40", "w-24", "w-20"]} />
+            </tbody>
+          </table>
         ) : visible.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-lg font-bold text-foreground">Nothing recorded yet.</p>

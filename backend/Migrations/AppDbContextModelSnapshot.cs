@@ -3145,6 +3145,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<DateTime?>("ReconnectRequiredAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("RefreshTokenProtected")
                         .IsRequired()
                         .HasColumnType("longtext");

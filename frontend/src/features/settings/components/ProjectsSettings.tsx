@@ -9,6 +9,8 @@ import {
   type Project,
 } from "../api";
 import { requestGeolocation } from "@/shared/lib/geolocation";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -21,7 +23,6 @@ function message(err: unknown, fallback: string) {
 
 export function ProjectsSettings() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -35,12 +36,14 @@ export function ProjectsSettings() {
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
 
+  const query = useCachedQuery("/projects", getProjects);
+  const loading = query.loading;
   useEffect(() => {
-    getProjects()
-      .then(setProjects)
-      .catch((e: unknown) => setError(message(e, "Could not load projects.")))
-      .finally(() => setLoading(false));
-  }, []);
+    if (query.data) setProjects(query.data);
+  }, [query.data]);
+  useEffect(() => {
+    if (query.error) setError(query.error);
+  }, [query.error]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -160,7 +163,7 @@ export function ProjectsSettings() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading projects…</p>
+        <SkeletonPanel />
       ) : projects.length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects yet.</p>
       ) : (

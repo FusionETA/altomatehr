@@ -8,6 +8,7 @@ import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
 import { getOrganization } from "@/features/settings/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
@@ -16,6 +17,7 @@ import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
 import { EmptyModule } from "./EmptyModule";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 function CountBadge({ count, className = "" }: { count: number; className?: string }) {
   if (count <= 0) return null;
@@ -51,11 +53,12 @@ export function EmployeeShell({
   const initials = useMemo(() => buildInitials(user.email), [user.email]);
   const displayName = useMemo(() => buildName(user.email), [user.email]);
 
+  // The org name never changes during a session, so once is enough — it was
+  // being refetched on every mount of the shell.
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
   useEffect(() => {
-    getOrganization()
-      .then((org) => setOrganizationName(org.name))
-      .catch(() => setOrganizationName(null));
-  }, []);
+    setOrganizationName(orgQuery.data?.name ?? null);
+  }, [orgQuery.data]);
 
   // Named so an approval can call it again. Fetched once on mount, the badge
   // kept claiming work was waiting after the approver had already cleared it.
@@ -259,6 +262,11 @@ export function EmployeeShell({
                         <span className="block text-xs">Signs out every device</span>
                       </span>
                     </button>
+
+                    <PushToggleMenuItem
+                      onClose={() => setAccountMenuOpen(false)}
+                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
 
                     <button
                       type="button"

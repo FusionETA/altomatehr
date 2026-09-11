@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Building2, Link2, LoaderCircle, Unplug } from "lucide-react";
+import { Building2, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -29,11 +30,15 @@ export function XeroConnectionCard() {
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const statusQuery = useCachedQuery("/xero/status", getXeroStatus);
   useEffect(() => {
-    getXeroStatus()
-      .then(setStatus)
-      .catch(() => setStatus({ connected: false, tenantName: null, tenantId: null, connectedAt: null }));
-  }, []);
+    setStatus(
+      statusQuery.data ??
+        (statusQuery.error
+          ? { connected: false, tenantName: null, tenantId: null, connectedAt: null }
+          : null),
+    );
+  }, [statusQuery.data, statusQuery.error]);
 
   async function startConnect() {
     setBusy(true);
@@ -64,6 +69,8 @@ export function XeroConnectionCard() {
   }
 
   const connected = status?.connected === true;
+  // Connected but dead: the row is still there, the tokens are not usable.
+  const needsReconnect = connected && status?.needsReconnect === true;
 
   return (
     <section className={CARD}>
@@ -74,9 +81,11 @@ export function XeroConnectionCard() {
             Xero connection
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {connected
-              ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
-              : "Connect Xero to push approved claims as bills and import the chart of accounts."}
+            {needsReconnect
+              ? "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts."
+              : connected
+                ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
+                : "Connect Xero to push approved claims as bills and import the chart of accounts."}
           </p>
         </div>
 
@@ -92,6 +101,19 @@ export function XeroConnectionCard() {
           </button>
         ) : null}
       </div>
+
+      {needsReconnect ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-amber-300/50 bg-amber-50/70 p-4 text-sm dark:bg-amber-500/10">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-900 dark:text-amber-200">Reconnect needed</p>
+            <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
+              Xero has expired or revoked this connection, so claims cannot be pushed and accounts
+              cannot sync. Nothing is lost — press Reconnect and sign in to Xero again.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {status === null ? (
         <p className="mt-4 text-sm text-muted-foreground">Checking Xero…</p>

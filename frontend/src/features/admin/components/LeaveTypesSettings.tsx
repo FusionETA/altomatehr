@@ -16,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -55,7 +57,6 @@ const emptyDraft: Draft = {
 
 export function LeaveTypesSettings() {
   const [types, setTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<Draft>(emptyDraft);
   const [adding, setAdding] = useState(false);
@@ -65,12 +66,14 @@ export function LeaveTypesSettings() {
   const [edit, setEdit] = useState<Draft>(emptyDraft);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const query = useCachedQuery("/leave-types", getLeaveTypes);
+  const loading = query.loading;
   useEffect(() => {
-    getLeaveTypes()
-      .then(setTypes)
-      .catch((e: unknown) => setError(message(e, "Could not load leave types.")))
-      .finally(() => setLoading(false));
-  }, []);
+    if (query.data) setTypes(query.data);
+  }, [query.data]);
+  useEffect(() => {
+    if (query.error) setError(query.error);
+  }, [query.error]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -229,7 +232,7 @@ export function LeaveTypesSettings() {
 
       <div className={CARD}>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading leave types…</p>
+          <SkeletonPanel />
         ) : types.length === 0 ? (
           <p className="text-sm text-muted-foreground">No leave types yet.</p>
         ) : (

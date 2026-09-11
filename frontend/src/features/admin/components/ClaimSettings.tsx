@@ -7,10 +7,11 @@ import {
   updateClaimSettings,
   xeroBillStageHints,
   xeroBillStageLabels,
-  type ClaimSettings as ClaimSettingsValues,
   type ClaimSettlement,
   type XeroBillStage,
 } from "@/features/claims/api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -32,22 +33,23 @@ export function ClaimSettings() {
   const [cutoffDay, setCutoffDay] = useState(25);
   const [route, setRoute] = useState<ClaimSettlement>("XERO_BILL");
   const [stage, setStage] = useState<XeroBillStage>("AwaitingPayment");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const query = useCachedQuery("/claims/settings", getClaimSettings);
+  const loading = query.loading;
   useEffect(() => {
-    getClaimSettings()
-      .then((settings: ClaimSettingsValues) => {
-        setCutoffDay(settings.claimRunCutoffDay);
-        setRoute(settings.settlementRoute);
-        setStage(settings.xeroBillStage);
-        setLoaded(true);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    const settings = query.data;
+    if (!settings) return;
+    setCutoffDay(settings.claimRunCutoffDay);
+    setRoute(settings.settlementRoute);
+    setStage(settings.xeroBillStage);
+    setLoaded(true);
+  }, [query.data]);
+  useEffect(() => {
+    if (query.error) setError(query.error);
+  }, [query.error]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -72,7 +74,7 @@ export function ClaimSettings() {
   }
 
   if (loading) {
-    return <div className={`${CARD} text-sm text-muted-foreground`}>Loading claim settings…</div>;
+    return <SkeletonPanel />;
   }
 
   if (!loaded) {

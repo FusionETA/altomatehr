@@ -40,6 +40,8 @@ import {
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
 import { useRealtimeEvent } from "@/shared/lib/use-realtime";
 import { formatDistance } from "@/shared/lib/geolocation";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 const TZ = "Asia/Kuala_Lumpur";
@@ -213,24 +215,30 @@ export function AttendanceApprovals() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
 
+  // The queues themselves stay uncached and reload on the realtime signal
+  // below: this screen exists to be acted on, and a decision made elsewhere
+  // must not leave a decided row sitting here. Projects and the geofence
+  // radius are reference data and cached.
   const loadAttendance = useCallback(() => {
-    Promise.all([
-      getTeamAttendanceApprovals(),
-      getTeamBreakApprovals().catch(() => []),
-      getProjects().catch(() => []),
-      getOrganization().catch(() => null),
-    ])
-      .then(([nextRecords, nextBreaks, nextProjects, organization]) => {
+    Promise.all([getTeamAttendanceApprovals(), getTeamBreakApprovals().catch(() => [])])
+      .then(([nextRecords, nextBreaks]) => {
         setRecords(nextRecords);
         setBreaks(nextBreaks);
-        setProjects(nextProjects.filter((project) => !project.isArchived));
-        if (organization) setRadius(organization.geofenceRadiusMeters);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(loadAttendance, [loadAttendance]);
+
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+  useEffect(() => {
+    setProjects((projectsQuery.data ?? []).filter((project) => !project.isArchived));
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    if (orgQuery.data) setRadius(orgQuery.data.geofenceRadiusMeters);
+  }, [orgQuery.data]);
 
   // A clock-in/out or break decided elsewhere refreshes this tab live. There's
   // no realtime scope for overtime yet, so that tab (below) stays reload-only.
@@ -480,7 +488,7 @@ export function AttendanceApprovals() {
         {approvalType === "OVERTIME" ? <OvertimeApprovals projectNames={projectNames} /> : null}
 
         {approvalType === "ATTENDANCE" && loading ? (
-          <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading approvals...</section>
+          <SkeletonCards />
         ) : null}
 
         {approvalType === "ATTENDANCE" && error ? (
@@ -650,6 +658,8 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<OvertimeBulkResult | null>(null);
 
+  // Same reasoning as the attendance queue: an approval queue is worked, not
+  // browsed, so it is read fresh.
   useEffect(() => {
     getTeamOvertime()
       .then(setRequests)
@@ -806,7 +816,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
         ) : null}
       </section>
 
-      {loading ? <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading overtime approvals...</section> : null}
+      {loading ? <SkeletonCards /> : null}
 
       {error ? (
         <section className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

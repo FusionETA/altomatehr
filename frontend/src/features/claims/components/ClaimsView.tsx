@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 import type { KeyboardEvent } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { getMyClaims, type Claim } from "../api";
@@ -24,7 +26,6 @@ import { SearchInput } from "@/shared/components/SearchInput";
 export function ClaimsView() {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -34,12 +35,16 @@ export function ClaimsView() {
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
 
+  // Cached: coming back from a claim's detail, or from another tab, shows the
+  // list that was already there instead of refetching it into a blank screen.
+  const claimsQuery = useCachedQuery("/claims", getMyClaims);
+  const loading = claimsQuery.loading;
   useEffect(() => {
-    getMyClaims()
-      .then(setClaims)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    if (claimsQuery.data) setClaims(claimsQuery.data);
+  }, [claimsQuery.data]);
+  useEffect(() => {
+    if (claimsQuery.error) setError(claimsQuery.error);
+  }, [claimsQuery.error]);
 
   // Claims carry project/account *ids*; resolve them to names from the org's
   // settings. Best-effort — if it fails, ids just don't render as labels.
@@ -188,11 +193,7 @@ export function ClaimsView() {
           </p>
         </div>
 
-        {loading ? (
-          <section className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground shadow-ambient backdrop-blur-sm">
-            Loading claims...
-          </section>
-        ) : null}
+        {loading ? <SkeletonCards /> : null}
 
         {error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

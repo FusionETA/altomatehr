@@ -27,6 +27,8 @@ import {
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
 import { useRealtimeEvent } from "@/shared/lib/use-realtime";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
@@ -36,7 +38,6 @@ const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient b
 export function LeaveApprovals() {
   const [team, setTeam] = useState<LeaveApplication[]>([]);
   const [types, setTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -55,11 +56,23 @@ export function LeaveApprovals() {
         setTeam(t);
         setTypes(ty);
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  useEffect(loadTeam, [loadTeam]);
+  // Cached on the way in; loadTeam remains for the refetch after a decision.
+  const teamQuery = useCachedQuery("/leave/team", getTeamLeave);
+  const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  const loading = teamQuery.loading || typesQuery.loading;
+  useEffect(() => {
+    if (teamQuery.data) setTeam(teamQuery.data);
+  }, [teamQuery.data]);
+  useEffect(() => {
+    if (typesQuery.data) setTypes(typesQuery.data);
+  }, [typesQuery.data]);
+  useEffect(() => {
+    const first = teamQuery.error ?? typesQuery.error;
+    if (first) setError(first);
+  }, [teamQuery.error, typesQuery.error]);
 
   // Someone else deciding or submitting a leave request refreshes this queue
   // live instead of waiting for a manual reload.
@@ -324,7 +337,7 @@ export function LeaveApprovals() {
           />
         ) : null}
 
-        {loading ? <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading approvals…</section> : null}
+        {loading ? <SkeletonCards /> : null}
 
         {error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

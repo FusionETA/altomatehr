@@ -18,6 +18,8 @@ import { ClaimStatusBadge } from "./ClaimStatusBadge";
 import { ClaimDetailsModal } from "./ClaimDetailsModal";
 import { ClaimStatusTabs } from "./ClaimStatusTabs";
 import { OverLimitBadge } from "./OverLimitBadge";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { getAccounts } from "@/features/settings/api";
 import { buildName, displayPerson } from "@/features/employee-portal/lib/employee-formatters";
@@ -40,7 +42,6 @@ const CARD =
 // there and has no other way to learn a claim just left the queue.
 export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) {
   const [claims, setClaims] = useState<Claim[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,11 +58,20 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   const loadClaims = useCallback(() => {
     getTeamClaims()
       .then(setClaims)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  useEffect(loadClaims, [loadClaims]);
+  // The initial load comes from the cache when there is one; loadClaims stays
+  // for the explicit refetch after a decision, where seeing the server's new
+  // truth matters more than speed.
+  const queueQuery = useCachedQuery("/claims/team", getTeamClaims);
+  const loading = queueQuery.loading;
+  useEffect(() => {
+    if (queueQuery.data) setClaims(queueQuery.data);
+  }, [queueQuery.data]);
+  useEffect(() => {
+    if (queueQuery.error) setError(queueQuery.error);
+  }, [queueQuery.error]);
 
   // Another admin (or the employee) acting on a claim shows up here without
   // waiting for a manual refresh or a page reload.
@@ -382,7 +392,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
         ) : null}
 
         {loading ? (
-          <section className={`${CARD} p-6 text-sm text-muted-foreground`}>Loading claims…</section>
+          <SkeletonCards />
         ) : null}
 
         {error ? (

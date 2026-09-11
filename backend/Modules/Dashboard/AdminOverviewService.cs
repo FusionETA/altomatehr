@@ -146,12 +146,17 @@ public class AdminOverviewService : IAdminOverviewService
         var directory = await _employees.GetSnapshotAsync();
         var result = new List<StalePendingClaimDto>(stale.Count);
 
+        // Who each claim is waiting on right now — the approvers of the step it
+        // stalled at, not the whole chain. Resolved in one batch: this runs on
+        // every dashboard load.
+        var approversByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            stale.Select(c => (c.EmployeeId, c.ProjectId, c.CurrentStep)).ToList());
+
         foreach (var claim in stale)
         {
-            // Who the claim is waiting on right now — the approvers of the step
-            // it stalled at, not the whole chain.
-            var approvers = await _router.CurrentApproversAsync(
-                Module, claim.EmployeeId, claim.CurrentStep, claim.ProjectId);
+            var approvers = approversByKey.GetValueOrDefault(
+                (claim.EmployeeId, claim.ProjectId, claim.CurrentStep), []);
 
             result.Add(new StalePendingClaimDto
             {
@@ -193,9 +198,14 @@ public class AdminOverviewService : IAdminOverviewService
         var directory = await _employees.GetSnapshotAsync();
         var tally = new Dictionary<string, OverturnedTally>(StringComparer.Ordinal);
 
+        // Step 0 for every overturned claim, in one batch.
+        var layerOneByKey = await _router.CurrentApproversForManyAsync(
+            Module,
+            overturned.Select(c => (c.EmployeeId, c.ProjectId, 0)).ToList());
+
         foreach (var claim in overturned)
         {
-            var layerOne = await _router.CurrentApproversAsync(Module, claim.EmployeeId, 0, claim.ProjectId);
+            var layerOne = layerOneByKey.GetValueOrDefault((claim.EmployeeId, claim.ProjectId, 0), []);
             foreach (var approverId in layerOne)
             {
                 if (!tally.TryGetValue(approverId, out var entry))

@@ -11,6 +11,8 @@ import {
 import type { SignedInUser } from "@/shared/types/session";
 import { getAdminOverview, type AdminOverview as AdminOverviewData } from "../api";
 import { ExecutiveOverview } from "./ExecutiveOverview";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanels } from "@/shared/components/Skeleton";
 
 type QuickLink = { parent: string; child: string; label: string; hint: string; icon: LucideIcon };
 
@@ -34,11 +36,15 @@ export function AdminOverview({
   const [overview, setOverview] = useState<AdminOverviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The dashboard is the screen people return to between every other one, so
+  // it is the biggest single beneficiary of not refetching.
+  const query = useCachedQuery("/admin/overview", getAdminOverview);
   useEffect(() => {
-    getAdminOverview()
-      .then(setOverview)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+    if (query.data) setOverview(query.data);
+  }, [query.data]);
+  useEffect(() => {
+    if (query.error) setError(query.error);
+  }, [query.error]);
 
   return (
     <div className="space-y-6">
@@ -74,9 +80,8 @@ export function AdminOverview({
           {error}
         </div>
       ) : !overview ? (
-        <div className="rounded-[28px] border border-border/70 bg-card/90 p-6 text-sm text-muted-foreground">
-          Loading overview…
-        </div>
+        // ExecutiveOverview renders six equal panels in a two-column grid.
+        <SkeletonPanels count={6} className="grid gap-6 lg:grid-cols-2" />
       ) : (
         <ExecutiveOverview data={overview} />
       )}

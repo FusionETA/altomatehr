@@ -23,25 +23,6 @@ services:
     expose:
       - "6379"                     # internal only — reachable as host "redis" from the api container
 
-  web:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_URL: /api         # same-origin; Caddy proxies /api -> api:8080
-    restart: unless-stopped
-    depends_on:
-      - api
-    environment:
-      DOMAIN: ${DOMAIN}            # e.g. app.yourdomain.com  (Caddy auto-provisions TLS)
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - caddy_data:/data           # persist the TLS certificates
-      - caddy_config:/config
-
 volumes:
   api_storage:
   redis_data:
-  caddy_data:
-  caddy_config:

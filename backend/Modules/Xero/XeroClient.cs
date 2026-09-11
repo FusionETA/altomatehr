@@ -475,8 +475,11 @@ public class XeroClient : IXeroClient
         if (response.IsSuccessStatusCode) return;
 
         var body = await response.Content.ReadAsStringAsync();
+        // Carry the status: the service needs it to tell a dead refresh token
+        // (400/401 — reconnect) from a transient Xero fault (429/5xx — retry).
         throw new XeroConnectionException(
-            $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}");
+            $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}",
+            (int)response.StatusCode);
     }
 
 

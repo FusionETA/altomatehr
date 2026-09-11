@@ -13,6 +13,10 @@ public class XeroStatusDto
     public DateTime? ConnectedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? AccessTokenExpiresAt { get; set; }
+
+    // Connected, but the stored tokens are unusable — only fresh consent fixes
+    // it. Lets the UI say "reconnect" instead of waiting for a sync to fail.
+    public bool NeedsReconnect { get; set; }
 }
 
 public class XeroSyncAccountsResultDto

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, LoaderCircle, RefreshCw, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { getTeamToday, type TeamAttendanceMember } from "../api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonCards } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 type Presence = "ON_SHIFT" | "DONE" | "NOT_STARTED";
@@ -26,7 +28,6 @@ export function TeamPresence() {
   const [members, setMembers] = useState<TeamAttendanceMember[]>([]);
   // Empty until the first load names a project — there is no "all" option.
   const [projectId, setProjectId] = useState<string>("");
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,13 +39,21 @@ export function TeamPresence() {
         setError(null);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => {
-        setLoading(false);
-        setRefreshing(false);
-      });
+      .finally(() => setRefreshing(false));
   }
 
-  useEffect(load, []);
+  // Today's presence is cached like anything else, but with a short life: it is
+  // the one screen where a stale answer is actively misleading ("is my crew on
+  // site right now?"), so the refresh button stays and drives load() directly.
+  const presenceQuery = useCachedQuery("/attendance/team/today", getTeamToday);
+  const loading = presenceQuery.loading;
+  useEffect(() => {
+    if (presenceQuery.data) setMembers(presenceQuery.data);
+  }, [presenceQuery.data]);
+  useEffect(() => {
+    if (presenceQuery.error) setError(presenceQuery.error);
+  }, [presenceQuery.error]);
+
 
   // One tab per project the supervisor has a team in.
   const tabs = useMemo(() => {
@@ -142,9 +151,7 @@ export function TeamPresence() {
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
-        <section className={`${CARD} p-8 text-center`}>
-          <LoaderCircle className="mx-auto h-5 w-5 animate-spin text-primary" />
-        </section>
+        <SkeletonCards />
       ) : visible.length === 0 ? (
         <section className={`${CARD} border-dashed bg-surface-low p-8 text-center`}>
           <Users className="mx-auto h-6 w-6 text-primary" />
