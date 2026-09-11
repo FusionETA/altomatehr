@@ -329,6 +329,27 @@ public class XeroService : IXeroService
         return await _client.CreateSpendAsync(accessToken, connection.TenantId, spend);
     }
 
+    public async Task<XeroManualJournalResponse> CreateManualJournalAsync(
+        XeroManualJournalRequest journal)
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected)
+            throw new XeroConnectionException("This organization isn't connected to Xero.");
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        return await _client.CreateManualJournalAsync(accessToken, connection.TenantId, journal);
+    }
+
+    public async Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync()
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected)
+            throw new XeroConnectionException("This organization isn't connected to Xero.");
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        return await _client.GetTrackingCategoriesAsync(accessToken, connection.TenantId);
+    }
+
     public async Task<bool> IsConnectedAsync()
     {
         var connection = await GetCurrentConnectionAsync();

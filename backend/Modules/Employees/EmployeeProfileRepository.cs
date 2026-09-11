@@ -14,6 +14,20 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
     public Task<EmployeeProfile?> GetByUserAsync(string userId) =>
         _db.EmployeeProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
 
+    public Task<List<EmployeeProfile>> GetUnarchivedPastLeaversAsync(DateTime before, int max) =>
+        _db.EmployeeProfiles
+            // The sweep has no current org, so the filter would be a no-op
+            // anyway — saying so explicitly stops a future reader assuming
+            // this is scoped when it is not.
+            .IgnoreQueryFilters()
+            .Where(p => !p.IsArchived && p.LeaveDate != null && p.LeaveDate < before)
+            .OrderBy(p => p.LeaveDate)
+            .Take(max)
+            .ToListAsync();
+
+    public Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync() =>
+        _db.EmployeeProfiles.ToListAsync();
+
     public async Task<EmployeeProfile> AddAsync(EmployeeProfile profile)
     {
         var now = DateTime.UtcNow;

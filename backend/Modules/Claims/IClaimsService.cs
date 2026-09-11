@@ -76,6 +76,15 @@ public interface IClaimsService
     // PAYROLL, one row per employee. `month` is "yyyy-MM"; null means the run
     // that the org's cutoff day says is current.
     Task<TabularExportResult> ExportPayrollReimbursementsAsync(TabularFormat format, string? month);
+
+    // Every claim eligible to be reimbursed through payroll: APPROVED,
+    // PERSONAL-paid and routed to PAYROLL settlement. Unwindowed — the caller
+    // applies whatever period it cares about.
+    //
+    // Payroll's attach surface reads this rather than querying the Claims
+    // table itself, so what counts as reimbursable is defined once, here, and
+    // the export and the attach list cannot drift apart.
+    Task<IReadOnlyList<Claim>> GetPayrollReimbursableAsync();
 }
 
 // Mirrors the attendance bulk contract: per-id success/failure, so the response

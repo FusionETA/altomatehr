@@ -27,6 +27,17 @@ public interface IXeroClient
     // Records money that already left a company bank account (Xero: a SPEND
     // bank transaction). The company-paid counterpart to CreateBillAsync.
     Task<XeroSpendResponse> CreateSpendAsync(string accessToken, string tenantId, XeroSpendRequest spend);
+
+    // Post a payroll run as a manual journal. Gated behind a different Xero
+    // permission from invoices — the same token that posts bills can be
+    // refused here, so the client re-packs that 401 with the actual fix.
+    Task<XeroManualJournalResponse> CreateManualJournalAsync(
+        string accessToken, string tenantId, XeroManualJournalRequest journal);
+
+    // The org's tracking categories and their options, so payroll can map its
+    // project dimension onto every journal line.
+    Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(
+        string accessToken, string tenantId);
 }
 
 public sealed record XeroFileContent(byte[] Content, string ContentType, string FileName);

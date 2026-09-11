@@ -67,6 +67,18 @@ public interface ILeaveService
     Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year);
 
     Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to);
+
+    // Approved UNPAID leave days per employee that fall inside [from, to],
+    // org-wide in one pass. Keyed by user id; employees with none are absent.
+    //
+    // Deliberately NOT GetApprovedDaysInRangeAsync's shape. That one sums the
+    // whole application whenever it merely OVERLAPS the range, which is fine
+    // for a "was this person away" question and wrong for pay: a 28 Jan – 6 Feb
+    // absence would be docked in full from January AND again from February.
+    // Here the range is CLIPPED first and the days recounted against the same
+    // working-day calendar, so each day is paid for — or not — exactly once.
+    Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
+        DateTime from, DateTime to);
     Task<LeaveOverviewDto> GetOverviewAsync(int year);
 
     // The yearly summary tables for one employee (JSON), and the same

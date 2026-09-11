@@ -8,12 +8,12 @@ import { OrganizationSettings } from "@/features/settings/components/Organizatio
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
-import { EmptyModule } from "@/features/employee-portal/components/EmptyModule";
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
 import { AdminAttendance } from "./AdminAttendance";
+import { AdminPayroll } from "@/features/payroll/components/AdminPayroll";
 import { ActivityLog } from "./ActivityLog";
 import { AdminClaims } from "./AdminClaims";
 import { AdminLeave } from "./AdminLeave";
@@ -307,14 +307,12 @@ function AdminContent({
     case "claims":
       return <AdminClaims />;
 
-    // Not yet rebuilt — faithful placeholders that mirror the real modules.
+    // Payroll runs, the payslips behind them, and the org's payroll rules.
+    // `onOpen` lets its overview hand off to Manage Employee rather than
+    // standing up a second place to manage people.
     case "payroll":
-      return (
-        <EmptyModule
-          title="Payroll"
-          body="Payroll runs, annual tax forms and loans will live here. Payroll is being rebuilt last."
-        />
-      );
+      return <AdminPayroll onOpen={onOpen} />;
+
     case "leave":
       return <AdminLeave />;
     case "audit":

@@ -1029,7 +1029,14 @@ public class LeaveServiceTests
         public Task<XeroBillResponse> CreateBillAsync(XeroBillRequest b) => throw new NotImplementedException();
         public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest s) => throw new NotImplementedException();
         public Task<bool> IsConnectedAsync() => Task.FromResult(false);
-    }
+    
+    // Payroll posts through these; nothing in this file's scenarios does.
+    public Task<XeroManualJournalResponse> CreateManualJournalAsync(XeroManualJournalRequest journal) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync() =>
+        Task.FromResult<IReadOnlyList<XeroTrackingCategoryResponse>>([]);
+}
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser
     {
@@ -1054,6 +1061,10 @@ public class LeaveServiceTests
             GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
             Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
                 employeeIds.Distinct().ToDictionary(id => id, _ => _entitlements));
+        public Task<IReadOnlyDictionary<string, EmployeePolicy>>
+            GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, EmployeePolicy>>(
+                new Dictionary<string, EmployeePolicy>());
         public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(true);
         public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) =>
             Task.FromResult<EmployeePolicy?>(null);

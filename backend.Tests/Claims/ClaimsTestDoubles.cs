@@ -349,4 +349,11 @@ internal sealed class FakeXeroBillService : IXeroService
     public Task DisconnectAsync() => throw new NotImplementedException();
     public Task<XeroSyncAccountsResultDto> SyncAccountsAsync() => throw new NotImplementedException();
     public Task<XeroSyncProjectsResultDto> SyncProjectsAsync() => throw new NotImplementedException();
+
+    // Payroll posts through these; nothing in this file's scenarios does.
+    public Task<XeroManualJournalResponse> CreateManualJournalAsync(XeroManualJournalRequest journal) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync() =>
+        Task.FromResult<IReadOnlyList<XeroTrackingCategoryResponse>>([]);
 }

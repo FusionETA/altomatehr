@@ -89,6 +89,19 @@ public class EmployeeProfileDto
     public SalaryType SalaryType { get; set; } = SalaryType.MONTHLY;
     public decimal? MonthlySalary { get; set; }
     public decimal? HourlyRate { get; set; }
+
+    // ---- Salary-change trail ----
+    //
+    // Supplied alongside a salary edit. A change row is written only when the
+    // salary actually moved, so sending these on an unrelated edit is
+    // harmless. The before/after figures are taken from the profile itself,
+    // never from the client, so the trail cannot disagree with what was saved.
+    //
+    // Null effective date means today. Recording a typo CORRECTION is not
+    // what this is for — see SalaryChange.
+    public DateTime? SalaryChangeEffectiveDate { get; set; }
+    public Payroll.Entities.SalaryChangeReason? SalaryChangeReason { get; set; }
+    public string? SalaryChangeNotes { get; set; }
     public string? FixedAllowancesJson { get; set; }
 
     // ---- Payroll config ----

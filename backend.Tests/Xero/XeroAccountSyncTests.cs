@@ -201,4 +201,13 @@ internal sealed class FakeXeroAccountsClient : IXeroClient
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
     public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b) => throw new NotImplementedException();
     public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotImplementedException();
+
+    // Payroll posts through these; nothing in this file's scenarios does.
+    public Task<XeroManualJournalResponse> CreateManualJournalAsync(
+        string accessToken, string tenantId, XeroManualJournalRequest journal) =>
+        throw new NotSupportedException();
+
+    public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(
+        string accessToken, string tenantId) =>
+        Task.FromResult(new List<XeroTrackingCategoryResponse>());
 }

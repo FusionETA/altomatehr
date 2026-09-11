@@ -698,6 +698,60 @@ public class LeaveService : ILeaveService
             .Sum(a => a.TotalDays);
     }
 
+    public async Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
+        DateTime from, DateTime to)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        if (end < start) return new Dictionary<string, double>(StringComparer.Ordinal);
+
+        var unpaidTypeIds = (await _types.GetAllAsync())
+            .Where(t => !t.Paid)
+            .Select(t => t.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (unpaidTypeIds.Count == 0) return new Dictionary<string, double>(StringComparer.Ordinal);
+
+        var overlapping = (await _apps.GetAllAsync())
+            .Where(a => a.Status == LeaveStatus.APPROVED
+                     && unpaidTypeIds.Contains(a.LeaveTypeId)
+                     && a.StartDate.Date <= end
+                     && a.EndDate.Date >= start)
+            .ToList();
+
+        if (overlapping.Count == 0) return new Dictionary<string, double>(StringComparer.Ordinal);
+
+        // A period can straddle two years (December → January never does here,
+        // but a caller is free to ask), so resolve each year's calendar once.
+        var calendars = new Dictionary<int, (IReadOnlySet<int> WorkingDays, IReadOnlySet<DateTime> Holidays)>();
+        foreach (var year in overlapping.Select(a => a.StartDate.Year)
+                     .Concat(overlapping.Select(a => a.EndDate.Year))
+                     .Distinct())
+        {
+            calendars[year] = await ResolveCalendarAsync(year);
+        }
+
+        var totals = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var app in overlapping)
+        {
+            // Clip to the window, then recount against the same calendar the
+            // application was costed with — so a weekend or public holiday
+            // inside the absence is not docked, exactly as it was not charged.
+            var clippedStart = app.StartDate.Date < start ? start : app.StartDate.Date;
+            var clippedEnd = app.EndDate.Date > end ? end : app.EndDate.Date;
+
+            var (workingDays, holidays) = calendars[clippedStart.Year];
+            var days = LeaveAccrualMath.ComputeTotalDays(
+                clippedStart, clippedEnd, app.Duration, workingDays, holidays);
+
+            if (days <= 0) continue;
+
+            totals[app.EmployeeId] = totals.GetValueOrDefault(app.EmployeeId) + days;
+        }
+
+        return totals;
+    }
+
     // Org dashboard: status totals, days used per type, who's out, and the
     // most recent requests.
     public async Task<LeaveOverviewDto> GetOverviewAsync(int year)

@@ -89,3 +89,58 @@ public sealed record XeroSpendRequest(
     IReadOnlyList<XeroBillLine> Lines);
 
 public sealed record XeroSpendResponse(string TransactionId);
+
+
+// ---- Manual journals (payroll) ----
+
+// A payroll run posts to Xero as ONE manual journal: the expense side debited,
+// the liabilities to EPF / SOCSO / EIS / LHDN and the net owed to staff
+// credited. A bill would imply a supplier invoice, which payroll is not.
+//
+// Xero gates manual journals behind a different permission from invoices — the
+// same token that posts bills happily can be refused here. See XeroClient's
+// 401 handling.
+public sealed record XeroManualJournalRequest(
+    // What appears as the journal's description in Xero. The period belongs in
+    // here — an accountant scanning the journal list identifies a run by it.
+    string Narration,
+    DateTime Date,
+    IReadOnlyList<XeroManualJournalLine> Lines,
+    // Sent as Xero's Idempotency-Key. Derived from the run id, so a retry
+    // after a timeout re-posts the SAME key and Xero returns the original
+    // journal instead of creating a duplicate.
+    string IdempotencyKey);
+
+// One side of one line. A positive amount debits, a negative one credits —
+// Xero's own convention, and the journal is rejected unless they net to zero.
+public sealed record XeroManualJournalLine(
+    decimal Amount,
+    string Description,
+    // The chart-of-account CODE, as on a bill line.
+    string? AccountCode,
+    // At most two, which is Xero's hard limit per line. Anything beyond that
+    // is dropped by the client rather than failing the whole run.
+    IReadOnlyList<XeroTrackingRef>? Tracking = null);
+
+// Xero identifies a tracking selection by the category NAME and the option
+// NAME, not by id, on a journal line.
+public sealed record XeroTrackingRef(string Name, string Option);
+
+public sealed record XeroManualJournalResponse(string ManualJournalId, string? Narration);
+
+
+// ---- Tracking categories ----
+
+// Xero's "second dimension" on a transaction — an org typically uses one for
+// department or project. Payroll reads them so an admin can map the project
+// dimension onto every payroll journal line.
+public sealed record XeroTrackingCategoryResponse(
+    string TrackingCategoryId,
+    string Name,
+    string Status,
+    IReadOnlyList<XeroTrackingOptionResponse> Options);
+
+public sealed record XeroTrackingOptionResponse(
+    string TrackingOptionId,
+    string Name,
+    string Status);

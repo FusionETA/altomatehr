@@ -10,11 +10,16 @@ namespace AltomateHR.Api.Modules.Employees;
 public class DirectoryService : IDirectoryService
 {
     private readonly IOrganizationMembershipRepository _memberships;
+    private readonly IEmployeeProfileRepository _profiles;
     private readonly IUserRepository _users;
 
-    public DirectoryService(IOrganizationMembershipRepository memberships, IUserRepository users)
+    public DirectoryService(
+        IOrganizationMembershipRepository memberships,
+        IEmployeeProfileRepository profiles,
+        IUserRepository users)
     {
         _memberships = memberships;
+        _profiles = profiles;
         _users = users;
     }
 
@@ -32,6 +37,9 @@ public class DirectoryService : IDirectoryService
 
     public Task<int> CountMembershipsByShiftAsync(string shiftId) =>
         _memberships.CountByShiftIdAsync(shiftId);
+
+    public Task<List<EmployeeProfile>> GetProfilesForCurrentOrgAsync() =>
+        _profiles.GetAllForCurrentOrgAsync();
 
     public Task<User?> GetUserAsync(string id) => _users.GetByIdAsync(id);
 

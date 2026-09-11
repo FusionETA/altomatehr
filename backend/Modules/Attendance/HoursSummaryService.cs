@@ -91,6 +91,25 @@ public class HoursSummaryService : IHoursSummaryService
         return new HoursSummaryDto { Totals = Sum(employees.Select(e => e.Buckets)), Employees = employees };
     }
 
+    public async Task<IReadOnlyDictionary<string, HoursBucketsDto>> GetHoursForEmployeesAsync(
+        IEnumerable<string> employeeIds, DateTime from, DateTime to)
+    {
+        var ids = employeeIds.Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return new Dictionary<string, HoursBucketsDto>(StringComparer.Ordinal);
+
+        // The shared context (shifts, holidays, org hours) is built once for
+        // the whole set, as the org-wide read does.
+        var ctx = await BuildContextAsync();
+
+        var result = new Dictionary<string, HoursBucketsDto>(StringComparer.Ordinal);
+        foreach (var id in ids)
+        {
+            result[id] = await ComputeAsync(id, from, to, ctx);
+        }
+
+        return result;
+    }
+
     public async Task<HoursBucketsDto?> GetEmployeeHoursSummaryAsync(
         string employeeId, DateTime from, DateTime to, string requestingUserId, string? requestingRole)
     {

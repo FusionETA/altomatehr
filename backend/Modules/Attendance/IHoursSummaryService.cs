@@ -11,6 +11,16 @@ public interface IHoursSummaryService
     // excluded), optionally narrowed to one team's members.
     Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId);
 
+    // Totals for an EXPLICIT set of employees, keyed by user id.
+    //
+    // Separate from GetOrgHoursSummaryAsync because that one is a reporting
+    // view: it decides its own roster and drops Admin/Owner accounts. Payroll
+    // pays whoever has an employment record, role included, so it has to name
+    // the roster itself — silently returning no hours for an admin who is also
+    // on the payroll would understate an hourly employee's pay.
+    Task<IReadOnlyDictionary<string, HoursBucketsDto>> GetHoursForEmployeesAsync(
+        IEnumerable<string> employeeIds, DateTime from, DateTime to);
+
     // One employee's totals, for an admin/supervisor reviewing them. Null means
     // "not authorized" (self or their approver only) — caller maps to 403.
     Task<HoursBucketsDto?> GetEmployeeHoursSummaryAsync(

@@ -12,6 +12,7 @@ using AltomateHR.Api.Modules.Notifications.Entities;
 using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Partners.Entities;
+using AltomateHR.Api.Modules.Payroll.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts.Entities;
@@ -61,6 +62,16 @@ public class AppDbContext : DbContext
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
+    public DbSet<EmployeeLoan> EmployeeLoans => Set<EmployeeLoan>();
+    public DbSet<SalaryChange> SalaryChanges => Set<SalaryChange>();
+    public DbSet<PayrollPortalCredential> PayrollPortalCredentials => Set<PayrollPortalCredential>();
+    public DbSet<PayrollSettings> PayrollSettings => Set<PayrollSettings>();
+    public DbSet<PayrollCompanyInfo> PayrollCompanyInfos => Set<PayrollCompanyInfo>();
+    public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<Payslip> Payslips => Set<Payslip>();
+    public DbSet<PayslipLineItem> PayslipLineItems => Set<PayslipLineItem>();
+    public DbSet<PayrollRunAdjustment> PayrollRunAdjustments => Set<PayrollRunAdjustment>();
+    public DbSet<PayrollRunClaim> PayrollRunClaims => Set<PayrollRunClaim>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
 
@@ -213,6 +224,77 @@ public class AppDbContext : DbContext
         profile.Property(p => p.MaritalStatus).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SocsoScheme).HasConversion<string>().HasMaxLength(40);
         profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
+
+        // Payroll config — exactly one row per org, so the tenant column is the
+        // unique key rather than merely an index.
+        // One run can only ever be the journal it posted.
+        modelBuilder.Entity<PayrollRun>()
+            .HasIndex(r => r.XeroManualJournalId)
+            .IsUnique();
+        modelBuilder.Entity<PayrollRun>()
+            .Property(r => r.XeroSyncStatus).HasConversion<string>().HasMaxLength(20);
+
+        // One saved login per portal per org.
+        var portalCredential = modelBuilder.Entity<PayrollPortalCredential>();
+        portalCredential.HasIndex(c => new { c.OrganizationId, c.Portal }).IsUnique();
+        portalCredential.Property(c => c.Portal).HasConversion<string>().HasMaxLength(20);
+
+        var salaryChange = modelBuilder.Entity<SalaryChange>();
+        salaryChange.HasIndex(c => new { c.EmployeeProfileId, c.EffectiveDate });
+        salaryChange.HasIndex(c => new { c.OrganizationId, c.EffectiveDate });
+        salaryChange.Property(c => c.Reason).HasConversion<string>().HasMaxLength(20);
+        salaryChange.Property(c => c.PreviousSalaryType).HasConversion<string>().HasMaxLength(20);
+        salaryChange.Property(c => c.NewSalaryType).HasConversion<string>().HasMaxLength(20);
+
+        var loan = modelBuilder.Entity<EmployeeLoan>();
+        loan.HasIndex(l => new { l.OrganizationId, l.Status });
+        loan.HasIndex(l => l.EmployeeProfileId);
+        loan.Property(l => l.Mode).HasConversion<string>().HasMaxLength(20);
+        loan.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
+
+        var payrollSettings = modelBuilder.Entity<PayrollSettings>();
+        payrollSettings.HasIndex(s => s.OrganizationId).IsUnique();
+        payrollSettings.Property(s => s.WorkingDaysRule).HasConversion<string>().HasMaxLength(20);
+
+        var companyInfo = modelBuilder.Entity<PayrollCompanyInfo>();
+        companyInfo.HasIndex(c => c.OrganizationId).IsUnique();
+        companyInfo.Property(c => c.DeclarantIdType).HasConversion<string>().HasMaxLength(20);
+
+        // Payroll runs — one per (org, period), which is what makes "the January
+        // run" unambiguous for every statutory filing downstream.
+        var payrollRun = modelBuilder.Entity<PayrollRun>();
+        payrollRun.HasIndex(r => new { r.OrganizationId, r.PeriodYear, r.PeriodMonth }).IsUnique();
+        payrollRun.HasIndex(r => new { r.OrganizationId, r.Status });
+        payrollRun.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+        payrollRun.Property(r => r.Source).HasConversion<string>().HasMaxLength(20);
+
+        // One payslip per (run, employee). The unique index is what stops a
+        // half-failed regeneration from leaving two payslips for one person.
+        var payslip = modelBuilder.Entity<Payslip>();
+        payslip.HasIndex(p => new { p.PayrollRunId, p.EmployeeProfileId }).IsUnique();
+        // The YTD read walks the year's payslips per employee, so this is the
+        // index it needs; the run's own detail page uses the unique one above.
+        payslip.HasIndex(p => new { p.OrganizationId, p.EmployeeProfileId });
+        payslip.Property(p => p.SnapshotSalaryType).HasConversion<string>().HasMaxLength(20);
+
+        var lineItem = modelBuilder.Entity<PayslipLineItem>();
+        lineItem.HasIndex(li => li.PayslipId);
+
+        // One adjustment per (run, employee). The unique index is the whole
+        // contract: an admin's typed-in overtime has exactly one home, so two
+        // concurrent saves collide rather than quietly producing two rows that
+        // generation would then apply twice.
+        var adjustment = modelBuilder.Entity<PayrollRunAdjustment>();
+        adjustment.HasIndex(a => new { a.PayrollRunId, a.EmployeeProfileId }).IsUnique();
+
+        // A claim can sit on at most ONE run, ever — reimbursing it twice is
+        // paying it twice. Unique on the claim alone rather than per run, and
+        // deliberately not scoped to the org: a claim belongs to one org, so a
+        // second org attaching it would be a bug worth failing loudly on.
+        var runClaim = modelBuilder.Entity<PayrollRunClaim>();
+        runClaim.HasIndex(c => c.ClaimId).IsUnique();
+        runClaim.HasIndex(c => c.PayrollRunId);
+        lineItem.Property(li => li.Kind).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
         var notification = modelBuilder.Entity<Notification>();
@@ -282,6 +364,29 @@ public class AppDbContext : DbContext
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollSettings>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<EmployeeLoan>().HasQueryFilter(
+            l => _currentUser.OrganizationId == null || l.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<SalaryChange>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollPortalCredential>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollCompanyInfo>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollRun>().HasQueryFilter(
+            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+        // Payslip and PayslipLineItem carry their own OrganizationId rather than
+        // inheriting the run's. The reference schema keys them off the employee
+        // profile alone, which would leave both tables outside this filter.
+        modelBuilder.Entity<Payslip>().HasQueryFilter(
+            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayslipLineItem>().HasQueryFilter(
+            li => _currentUser.OrganizationId == null || li.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollRunAdjustment>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollRunClaim>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
     }

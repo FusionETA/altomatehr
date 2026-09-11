@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 
 namespace AltomateHR.Api.Tests.Common;
 
@@ -10,8 +11,13 @@ namespace AltomateHR.Api.Tests.Common;
 public static class TestDirectory
 {
     public static IDirectoryService Over(
-        IOrganizationMembershipRepository memberships, IUserRepository? users = null) =>
-        new DirectoryService(memberships, users ?? new EmptyUserRepository());
+        IOrganizationMembershipRepository memberships,
+        IUserRepository? users = null,
+        IEmployeeProfileRepository? profiles = null) =>
+        new DirectoryService(
+            memberships,
+            profiles ?? new EmptyProfileRepository(),
+            users ?? new EmptyUserRepository());
 
     // For the many services that never touch users — a directory still needs one.
     private sealed class EmptyUserRepository : IUserRepository
@@ -23,4 +29,23 @@ public static class TestDirectory
         public Task UpdateAsync(User user) => Task.CompletedTask;
         public Task<bool> AnyAsync() => Task.FromResult(false);
     }
+
+    // Likewise for the modules that never look at an employment record.
+    private sealed class EmptyProfileRepository : IEmployeeProfileRepository
+    {
+        public Task<EmployeeProfile?> GetByUserAsync(string userId) =>
+            Task.FromResult<EmployeeProfile?>(null);
+
+        public Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync() =>
+            Task.FromResult(new List<EmployeeProfile>());
+
+        public Task<EmployeeProfile> AddAsync(EmployeeProfile profile) =>
+            Task.FromResult(profile);
+
+        public Task UpdateAsync(EmployeeProfile profile) => Task.CompletedTask;
+    
+    // The archive sweep does not run through this stand-in.
+    public Task<List<EmployeeProfile>> GetUnarchivedPastLeaversAsync(DateTime before, int max) =>
+        Task.FromResult(new List<EmployeeProfile>());
+}
 }

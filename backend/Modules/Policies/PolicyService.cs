@@ -100,6 +100,36 @@ public class PolicyService : IPolicyService
         return policy ?? await _policies.GetDefaultAsync();
     }
 
+    public async Task<IReadOnlyDictionary<string, EmployeePolicy>>
+        GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds)
+    {
+        var ids = employeeIds.Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return new Dictionary<string, EmployeePolicy>(StringComparer.Ordinal);
+
+        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
+        var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId, StringComparer.Ordinal);
+
+        // The org's policies are a handful of rows, so one read beats a lookup
+        // per distinct id and keeps the default resolution in the same pass.
+        var all = await _policies.GetAllAsync();
+        var byId = all.ToDictionary(p => p.Id, StringComparer.Ordinal);
+        // Mirrors GetDefaultAsync: an archived policy is never the fallback,
+        // though an explicitly ASSIGNED one still resolves (same as
+        // GetEffectivePolicyAsync, which looks the assignment up by id).
+        var fallback = all.FirstOrDefault(p => p.IsDefault && !p.IsArchived);
+
+        var result = new Dictionary<string, EmployeePolicy>(StringComparer.Ordinal);
+        foreach (var id in ids)
+        {
+            var assigned = policyByUser.GetValueOrDefault(id);
+            var policy = assigned is not null ? byId.GetValueOrDefault(assigned) : null;
+            policy ??= fallback;
+            if (policy is not null) result[id] = policy;
+        }
+
+        return result;
+    }
+
     public async Task<bool> RequiresGeofenceAsync(string employeeId) =>
         (await GetEffectivePolicyAsync(employeeId))?.RequireGeofence ?? true;
 

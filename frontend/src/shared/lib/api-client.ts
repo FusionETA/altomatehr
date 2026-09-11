@@ -7,6 +7,47 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
+// The access token lives fifteen minutes; the refresh cookie lives far
+// longer. Without this, a tab left open over lunch answers the next click
+// with a bare "failed: 401" — which reads as a broken page, not an expired
+// session. So one 401 buys one silent refresh and one retry.
+//
+// Single-flight: a screen that fires six requests at once must not fire six
+// refreshes, because each rotates the cookie and the losers would be left
+// holding a revoked one.
+let refreshing: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  refreshing ??= (async () => {
+    try {
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) return false;
+
+      const data = (await res.json()) as { token?: string };
+      if (!data.token) return false;
+
+      authToken = data.token;
+      return true;
+    } catch {
+      // Offline, or the refresh cookie is gone. Either way the original 401
+      // stands and the caller sees it.
+      return false;
+    } finally {
+      refreshing = null;
+    }
+  })();
+
+  return refreshing;
+}
+
+// `/auth/*` is exempt: retrying a failed login or a failed refresh through
+// the refresh path is how you get an infinite loop.
+const isAuthPath = (path: string) => path.startsWith("/auth/");
+
 // Thrown on any non-2xx response. Carries the parsed body so callers can branch
 // on a server `code` (e.g. the off-site attendance case) — not just the message.
 export class ApiError extends Error {
@@ -39,22 +80,39 @@ function getErrorMessage(data: unknown, fallback: string) {
   const body = data as Record<string, unknown>;
 
   if (typeof body.message === "string") return body.message;
+  // `error` is the other shape the API uses for a refusal the caller can act
+  // on — a payroll run that is stale, a claim already synced. Without it those
+  // land here as "failed: 409" and the written reason is thrown away.
+  if (typeof body.error === "string") return body.error;
   if (typeof body.detail === "string") return body.detail;
   if (typeof body.title === "string") return body.title;
 
   return fallback;
 }
 
+// Sends, and on a 401 refreshes once and sends again. `send` is a thunk so
+// the retry rebuilds its headers with the NEW token rather than replaying
+// the expired one.
+async function withRefresh(path: string, send: () => Promise<Response>): Promise<Response> {
+  const res = await send();
+  if (res.status !== 401 || isAuthPath(path)) return res;
+
+  return (await refreshAccessToken()) ? send() : res;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    credentials: "include", // send/receive cookies (the refresh cookie) cross-origin
-    headers: {
-      "Content-Type": "application/json",
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const send = () =>
+    fetch(`${API_URL}${path}`, {
+      method,
+      credentials: "include", // send/receive cookies (the refresh cookie) cross-origin
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+  const res = await withRefresh(path, send);
 
   if (!res.ok) {
     let data: unknown;
@@ -73,14 +131,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 async function requestForm<T>(method: string, path: string, body: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    credentials: "include",
-    headers: {
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    },
-    body,
-  });
+  const res = await withRefresh(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method,
+      credentials: "include",
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body,
+    }),
+  );
 
   if (!res.ok) {
     let data: unknown;
@@ -98,13 +158,15 @@ async function requestForm<T>(method: string, path: string, body: FormData): Pro
 }
 
 async function requestBlob(path: string): Promise<Blob> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    },
-  });
+  const res = await withRefresh(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    }),
+  );
 
   if (!res.ok) {
     let msg = `GET ${path} failed: ${res.status}`;
@@ -126,13 +188,15 @@ async function requestBlob(path: string): Promise<Blob> {
 export type ApiFile = { blob: Blob; fileName: string };
 
 async function requestFile(path: string, fallbackName: string): Promise<ApiFile> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    },
-  });
+  const res = await withRefresh(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    }),
+  );
 
   if (!res.ok) {
     let data: unknown;

@@ -17,12 +17,16 @@ public class EmployeeProfileService : IEmployeeProfileService
     public EmployeeProfileService(
         IEmployeeProfileRepository profiles,
         IOrganizationMembershipRepository memberships,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        Payroll.ISalaryChangeService salaryChanges)
     {
         _profiles = profiles;
         _memberships = memberships;
         _directory = directory;
+        _salaryChanges = salaryChanges;
     }
+
+    private readonly Payroll.ISalaryChangeService _salaryChanges;
 
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
     {
@@ -52,13 +56,36 @@ public class EmployeeProfileService : IEmployeeProfileService
         }
         else
         {
+            // The salary as it stood BEFORE this edit. Captured as a copy
+            // because Apply mutates the tracked entity in place — reading it
+            // afterwards would compare the new values with themselves.
+            var before = SalarySnapshot(profile);
+
             Apply(dto, profile);
             await _profiles.UpdateAsync(profile);
+
+            // Only writes a row when the salary actually moved. A no-op
+            // change would fill the history an IR dispute reads with noise.
+            await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
+            {
+                EffectiveDate = dto.SalaryChangeEffectiveDate?.Date ?? DateTime.UtcNow.Date,
+                Reason = dto.SalaryChangeReason ?? Payroll.Entities.SalaryChangeReason.RAISE,
+                Notes = dto.SalaryChangeNotes,
+            });
         }
 
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
     }
+
+    // Just the three salary fields, detached from the tracked entity.
+    private static EmployeeProfile SalarySnapshot(EmployeeProfile profile) => new()
+    {
+        Id = profile.Id,
+        SalaryType = profile.SalaryType,
+        MonthlySalary = profile.MonthlySalary,
+        HourlyRate = profile.HourlyRate,
+    };
 
     // Copy the editable fields dto → entity. Context fields (Id/Email/Name) are
     // ignored — they come from the route + User, never from the client.

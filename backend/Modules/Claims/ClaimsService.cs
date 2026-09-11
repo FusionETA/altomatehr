@@ -1070,18 +1070,25 @@ public class ClaimsService : IClaimsService
     }
 
 
+    // PAYROLL settlement is the deliberate route out of Xero: SettleAsync
+    // early-returns for it, so these claims are waiting on pay day and nothing
+    // else. APPROVED is terminal in this app (there is no separate REVIEWED
+    // state), so it is the only status that means "cleared its chain".
+    public async Task<IReadOnlyList<Claim>> GetPayrollReimbursableAsync() =>
+        (await _repo.GetAllAsync())
+            .Where(c => c.Settlement == ClaimSettlement.PAYROLL
+                     && c.Status == ClaimStatus.APPROVED
+                     && c.PaymentType == PaymentType.PERSONAL)
+            .ToList();
+
     public async Task<TabularExportResult> ExportPayrollReimbursementsAsync(
         TabularFormat format, string? month)
     {
         var cutoffDay = (await GetSettingsAsync()).ClaimRunCutoffDay;
         var run = ClaimRunWindow.For(month, cutoffDay, DateTime.UtcNow);
 
-        var claims = (await _repo.GetAllAsync())
-            .Where(c => c.Settlement == ClaimSettlement.PAYROLL
-                     && c.Status == ClaimStatus.APPROVED
-                     && c.PaymentType == PaymentType.PERSONAL
-                     && c.SubmittedAt >= run.From
-                     && c.SubmittedAt < run.To)
+        var claims = (await GetPayrollReimbursableAsync())
+            .Where(c => c.SubmittedAt >= run.From && c.SubmittedAt < run.To)
             .ToList();
 
         var employees = await _employees.GetSnapshotAsync();

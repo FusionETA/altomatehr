@@ -21,6 +21,8 @@ public class XeroClient : IXeroClient
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
     private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
     private const string BankTransactionsUrl = "https://api.xero.com/api.xro/2.0/BankTransactions";
+    private const string ManualJournalsUrl = "https://api.xero.com/api.xro/2.0/ManualJournals";
+    private const string TrackingCategoriesUrl = "https://api.xero.com/api.xro/2.0/TrackingCategories";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -364,6 +366,110 @@ public class XeroClient : IXeroClient
         }
     }
 
+    // ---- Manual journals ----
+
+    public async Task<XeroManualJournalResponse> CreateManualJournalAsync(
+        string accessToken, string tenantId, XeroManualJournalRequest journal)
+    {
+        var payload = new
+        {
+            ManualJournals = new[]
+            {
+                new
+                {
+                    journal.Narration,
+                    // Same reason as a bill: an ISO instant makes Xero guess a
+                    // date, and it guesses in its own timezone.
+                    Date = journal.Date.ToString("yyyy-MM-dd"),
+                    Status = "POSTED",
+                    // Payroll figures are already net of tax; letting Xero
+                    // apply a tax treatment would restate them.
+                    LineAmountTypes = "NoTax",
+                    JournalLines = journal.Lines.Select(line => new
+                    {
+                        LineAmount = line.Amount,
+                        line.AccountCode,
+                        line.Description,
+                        // Xero accepts at most two tracking refs per line and
+                        // rejects the whole journal for a third. Dropping the
+                        // extras costs a reporting dimension; failing the post
+                        // costs the month.
+                        Tracking = (line.Tracking ?? [])
+                            .Take(2)
+                            .Select(t => new { t.Name, t.Option })
+                            .ToArray(),
+                    }).ToArray(),
+                },
+            },
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, ManualJournalsUrl)
+        {
+            Content = JsonContent.Create(payload),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        // A retry after a timeout re-sends this key, and Xero returns the
+        // journal it already created rather than posting the month twice.
+        request.Headers.Add("Idempotency-Key", journal.IdempotencyKey);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+
+        // Xero answers 401 AuthorizationUnsuccessful when the connected user
+        // lacks the Xero role for journals — even though the same token posts
+        // bills without complaint. Without this the admin goes hunting through
+        // OAuth scopes, which are not the problem.
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            throw new XeroConnectionException(
+                "Xero rejected the payroll journal (401). Manual journals need the connected Xero "
+                + "user to hold the 'Adviser' role (or 'Standard + reports') on a plan that supports "
+                + "journals — Cashbook and Ledger plans do not. Fix the role in Xero → Settings → "
+                + "Users, then disconnect and reconnect Xero here.");
+        }
+
+        await EnsureSuccessAsync(response, "Xero payroll journal failed.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroManualJournalsPayload>(JsonOptions);
+        var created = result?.ManualJournals?.FirstOrDefault();
+
+        // A 200 with nothing back means Xero accepted the call and created
+        // nothing. Treated as a failure so the run is never marked SYNCED
+        // against a journal that does not exist.
+        if (created is null || string.IsNullOrWhiteSpace(created.ManualJournalID))
+            throw new XeroConnectionException("Xero accepted the payroll journal but returned no journal.");
+
+        return new XeroManualJournalResponse(created.ManualJournalID, created.Narration);
+    }
+
+    // ---- Tracking categories ----
+
+    public async Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(
+        string accessToken, string tenantId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, TrackingCategoriesUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Could not read the tracking categories from Xero.");
+
+        var result = await response.Content.ReadFromJsonAsync<XeroTrackingCategoriesPayload>(JsonOptions);
+
+        return [.. (result?.TrackingCategories ?? [])
+            .Where(c => !string.IsNullOrWhiteSpace(c.TrackingCategoryID))
+            .Select(c => new XeroTrackingCategoryResponse(
+                c.TrackingCategoryID!,
+                c.Name ?? string.Empty,
+                c.Status ?? "ACTIVE",
+                [.. (c.Options ?? [])
+                    .Where(o => !string.IsNullOrWhiteSpace(o.TrackingOptionID))
+                    .Select(o => new XeroTrackingOptionResponse(
+                        o.TrackingOptionID!, o.Name ?? string.Empty, o.Status ?? "ACTIVE"))]))];
+    }
+
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, string message)
     {
         if (response.IsSuccessStatusCode) return;
@@ -373,6 +479,54 @@ public class XeroClient : IXeroClient
             $"{message} {XeroErrorSummary.Describe(body, (int)response.StatusCode)}");
     }
 
+
+    private sealed class XeroManualJournalsPayload
+    {
+        [JsonPropertyName("ManualJournals")]
+        public List<XeroManualJournalPayload>? ManualJournals { get; set; }
+    }
+
+    private sealed class XeroManualJournalPayload
+    {
+        [JsonPropertyName("ManualJournalID")]
+        public string? ManualJournalID { get; set; }
+
+        [JsonPropertyName("Narration")]
+        public string? Narration { get; set; }
+    }
+
+    private sealed class XeroTrackingCategoriesPayload
+    {
+        [JsonPropertyName("TrackingCategories")]
+        public List<XeroTrackingCategoryPayload>? TrackingCategories { get; set; }
+    }
+
+    private sealed class XeroTrackingCategoryPayload
+    {
+        [JsonPropertyName("TrackingCategoryID")]
+        public string? TrackingCategoryID { get; set; }
+
+        [JsonPropertyName("Name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("Status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("Options")]
+        public List<XeroTrackingOptionPayload>? Options { get; set; }
+    }
+
+    private sealed class XeroTrackingOptionPayload
+    {
+        [JsonPropertyName("TrackingOptionID")]
+        public string? TrackingOptionID { get; set; }
+
+        [JsonPropertyName("Name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("Status")]
+        public string? Status { get; set; }
+    }
 
     private sealed class XeroCurrenciesPayload
     {

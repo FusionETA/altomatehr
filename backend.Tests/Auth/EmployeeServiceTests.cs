@@ -168,6 +168,9 @@ public class EmployeeServiceTests
         public Task<LeaveEntitlementResult> ResetEntitlementAsync(string e, string t, int y) => throw new NotImplementedException();
         public Task<int> SeedEntitlementsAsync(string e, int y) => throw new NotImplementedException();
         public Task<double> GetApprovedDaysInRangeAsync(string e, DateTime f, DateTime t) => throw new NotImplementedException();
+        public Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
+            DateTime from, DateTime to) =>
+            Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
         public Task<LeaveOverviewDto> GetOverviewAsync(int y) => throw new NotImplementedException();
         public Task<LeaveSummaryReportResult> GetSummaryReportAsync(string e, int y) => throw new NotImplementedException();
         public Task<LeaveExportResult> ExportSummaryPdfAsync(string e, int y) => throw new NotImplementedException();

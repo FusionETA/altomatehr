@@ -13,6 +13,57 @@ public static class AuditActions
     public const string SettingsOrgUpdate = "settings.org.update";
     public const string SettingsClaimsUpdate = "settings.claims.update";
 
+    // Payroll configuration — what these decide ends up on a statutory filing,
+    // so every change is recorded.
+    public const string PayrollSettingsUpdate = "payroll.settings.update";
+    public const string PayrollCompanyInfoUpdate = "payroll.company-info.update";
+    public const string PayrollRunXeroSync = "payroll.run.xero-sync";
+
+    // Staff loans. What an employee repays each month comes off their pay, so
+    // who recorded the loan and on what terms is an audit question.
+    public const string PayrollLoanCreate = "payroll.loan.create";
+    public const string PayrollLoanUpdate = "payroll.loan.update";
+    public const string PayrollLoanDelete = "payroll.loan.delete";
+
+    // A salary change is read back by LHDN, by an IR dispute, and by a
+    // retrenchment payout turning on "last drawn salary".
+    public const string PayrollSalaryChange = "payroll.salary-change";
+
+    // Saved statutory-portal logins. Reading one discloses a password, so
+    // the READ is audited here as well as the writes — that is the whole
+    // reason this vocabulary has a "reveal".
+    public const string PayrollPortalCredentialSave = "payroll.portal-credential.save";
+    public const string PayrollPortalCredentialReveal = "payroll.portal-credential.reveal";
+    public const string PayrollPortalCredentialDelete = "payroll.portal-credential.delete";
+
+    // Seeding a year of history writes SUBMITTED payslips that every later
+    // month's PCB reads from. Worth recording who did it and when.
+    public const string PayrollYtdImport = "payroll.ytd-import";
+    public const string PayrollEmployeeImport = "payroll.employee-import";
+
+    // Payroll runs. Generation is destructive — it replaces the run's
+    // payslips — so the log is the only record that an earlier set existed.
+    public const string PayrollRunCreate = "payroll.run.create";
+    public const string PayrollRunGenerate = "payroll.run.generate";
+
+    // Per-run inputs that SURVIVE a generation — the hand-entered overtime,
+    // one-off pay and attached reimbursements. Generation rebuilds payslips
+    // from these, so a figure nobody can explain is traced back through here
+    // rather than through the payslip it landed on.
+    public const string PayrollRunAdjustmentSave = "payroll.run.adjustment.save";
+    public const string PayrollRunAdjustmentClear = "payroll.run.adjustment.clear";
+    public const string PayrollRunClaimAttach = "payroll.run.claim.attach";
+    public const string PayrollRunClaimDetach = "payroll.run.claim.detach";
+
+    // The status machine. SUBMITTED is what every later run's year-to-date
+    // reads from, so who moved a run in or out of it — and when — is the
+    // question an audit of a filing actually asks.
+    public const string PayrollRunSubmitForApproval = "payroll.run.submit-for-approval";
+    public const string PayrollRunApprove = "payroll.run.approve";
+    public const string PayrollRunRejectApproval = "payroll.run.reject-approval";
+    public const string PayrollRunRevertToDraft = "payroll.run.revert-to-draft";
+    public const string PayrollRunDelete = "payroll.run.delete";
+
     // Chart of accounts
     public const string AccountCreate = "coa.create";
     public const string AccountUpdate = "coa.update";

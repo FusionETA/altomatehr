@@ -29,5 +29,12 @@ public interface IXeroService
 
     // Whether the current org could sync at all, so a UI can say "connect Xero"
     // instead of offering a button that can only fail.
+    // Post a payroll run's journal. See IXeroClient for the permission Xero
+    // requires here that a bill does not.
+    Task<XeroManualJournalResponse> CreateManualJournalAsync(XeroManualJournalRequest journal);
+
+    // The org's tracking categories, for mapping the payroll project dimension.
+    Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync();
+
     Task<bool> IsConnectedAsync();
 }

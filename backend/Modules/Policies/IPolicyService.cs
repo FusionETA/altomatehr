@@ -15,6 +15,14 @@ public interface IPolicyService
     // --- Resolution for other modules ---
     // The employee's assigned policy, or the org default when unassigned.
     Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId);
+
+    // Same, for MANY employees at once — one read of the org's policies rather
+    // than two queries per head. Payroll generation needs every employee's OT
+    // multipliers in one pass; resolving them one at a time made a 200-person
+    // run 400 queries for a handful of distinct policies. Employees with no
+    // policy and no org default are absent from the result.
+    Task<IReadOnlyDictionary<string, EmployeePolicy>>
+        GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds);
     // Whether attendance geofence enforcement applies to this employee.
     Task<bool> RequiresGeofenceAsync(string employeeId);
     // Per-leave-type entitlement overrides for the employee's policy.

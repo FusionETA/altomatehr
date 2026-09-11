@@ -668,6 +668,10 @@ public class AttendanceApprovalRegressionTests
         public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
         public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
         public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) => Task.FromResult<EmployeePolicy?>(null);
+        public Task<IReadOnlyDictionary<string, EmployeePolicy>>
+            GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, EmployeePolicy>>(
+                new Dictionary<string, EmployeePolicy>());
         public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(false);
         public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
             Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());

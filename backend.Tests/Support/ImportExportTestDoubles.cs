@@ -67,6 +67,10 @@ internal sealed class FakeHoursSummaryService : IHoursSummaryService
 
     public Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId) =>
         Task.FromResult(OrgSummary);
+    public Task<IReadOnlyDictionary<string, HoursBucketsDto>> GetHoursForEmployeesAsync(
+        IEnumerable<string> employeeIds, DateTime from, DateTime to) =>
+        Task.FromResult<IReadOnlyDictionary<string, HoursBucketsDto>>(
+            new Dictionary<string, HoursBucketsDto>());
 
     public Task<HoursBucketsDto?> GetEmployeeHoursSummaryAsync(
         string employeeId, DateTime from, DateTime to, string requestingUserId, string? requestingRole) =>

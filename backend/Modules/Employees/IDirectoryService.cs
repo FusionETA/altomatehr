@@ -38,6 +38,11 @@ public interface IDirectoryService
     // with it.
     Task<int> CountMembershipsByShiftAsync(string shiftId);
 
+    // Every employment record in the current org. Payroll reads the roster
+    // through here for the same reason every other module does: the profile
+    // is Employees' data, and its repository stays private.
+    Task<List<EmployeeProfile>> GetProfilesForCurrentOrgAsync();
+
     Task<User?> GetUserAsync(string id);
 
     Task<List<User>> GetUsersAsync();
