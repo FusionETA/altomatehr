@@ -46,7 +46,7 @@ public static class FormECp8dPdf
                 page.MarginVertical(30);
                 page.MarginHorizontal(30);
                 page.DefaultTextStyle(t => t
-                    .FontFamily("Helvetica").FontSize(8).FontColor(PayrollPdfShared.Ink));
+                    .FontFamily(PdfFont.Family).FontSize(8).FontColor(PayrollPdfShared.Ink));
 
                 page.Header().Element(c => Title(c, "CP8D",
                     $"EMPLOYEES' PARTICULARS · YEAR {payload.Year}"));

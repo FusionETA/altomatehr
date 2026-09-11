@@ -25,7 +25,7 @@ public static class PayrollSummaryPdf
             page.MarginVertical(30);
             page.MarginHorizontal(30);
             page.DefaultTextStyle(t => t
-                .FontFamily("Helvetica").FontSize(8).FontColor(PayrollPdfShared.Ink));
+                .FontFamily(PdfFont.Family).FontSize(8).FontColor(PayrollPdfShared.Ink));
 
             page.Header().Element(c => Header(c, model));
             page.Content().Element(c => Body(c, model));

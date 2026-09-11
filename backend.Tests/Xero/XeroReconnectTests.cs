@@ -213,6 +213,8 @@ internal sealed class FakeRefreshFailureClient : IXeroClient
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
     public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b) => throw new NotImplementedException();
     public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotImplementedException();
+    public Task<XeroManualJournalResponse> CreateManualJournalAsync(string a, string t, XeroManualJournalRequest j) => throw new NotImplementedException();
+    public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) => throw new NotImplementedException();
 }
 
 // Refreshes successfully, so the healthy path can be asserted too.
@@ -232,4 +234,6 @@ internal sealed class FakeWorkingRefreshClient : IXeroClient
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
     public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b) => throw new NotImplementedException();
     public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotImplementedException();
+    public Task<XeroManualJournalResponse> CreateManualJournalAsync(string a, string t, XeroManualJournalRequest j) => throw new NotImplementedException();
+    public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) => throw new NotImplementedException();
 }

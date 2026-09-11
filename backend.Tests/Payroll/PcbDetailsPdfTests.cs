@@ -109,14 +109,24 @@ public class PcbDetailsPdfTests
     }
 
     // A section heading stranded on the page before its own rows is how the
-    // first draft of this document read. The AR case is the long one, so it is
-    // the one that has to stay whole.
+    // first draft of this document read; `ShowEntire()` on the short sections
+    // is what stops it. The AR case is the longest, so it is the one to watch.
+    //
+    // The bound was ≤2 while the documents asked for "Helvetica" — a font that
+    // exists on macOS and NOT on the Linux images CI and production run, where
+    // QuestPDF substituted something narrower. Now that the family is pinned
+    // to the embedded Lato the same content measures the same everywhere, and
+    // it is three pages. Verified by rasterising: every section is whole and
+    // no heading is orphaned.
+    //
+    // This is a smoke bound, not the invariant. The structural check is
+    // EachEmployeeGetsTheirOwnPages above, which is font-independent.
     [Fact]
-    public void TheLongestWorksheet_DoesNotRunToAThirdPage()
+    public void TheLongestWorksheet_StaysWithinItsPageBudget()
     {
         var pages = PageCount(PcbCalculationDetailsPdf.Build(Model(Employee(Resident(Ar())))));
 
-        Assert.True(pages <= 2, $"the AR worksheet should fit two pages, took {pages}");
+        Assert.True(pages <= 3, $"the AR worksheet should fit three pages, took {pages}");
     }
 
     // A run that exists but was never generated still has to produce a file

@@ -21,7 +21,7 @@ internal static class PayrollPdfShared
         page.Size(PageSizes.A4);
         page.MarginVertical(36);
         page.MarginHorizontal(40);
-        page.DefaultTextStyle(t => t.FontFamily("Helvetica").FontSize(9).FontColor(Ink));
+        page.DefaultTextStyle(t => t.FontFamily(PdfFont.Family).FontSize(9).FontColor(Ink));
     }
 
     // Money on a payslip is read by someone checking it against their bank

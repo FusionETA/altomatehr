@@ -2,6 +2,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 
+using AltomateHR.Api.Modules.Payroll.Pdf;
 namespace AltomateHR.Api.Modules.LhdnForms.Pdf;
 
 // Shared layout building blocks for the 5 LHDN form PDFs — one clean-statement
@@ -41,7 +42,7 @@ internal static class LhdnPdfShared
         page.Size(PageSizes.A4);
         page.MarginVertical(36);
         page.MarginHorizontal(40);
-        page.DefaultTextStyle(t => t.FontFamily("Helvetica").FontSize(9).FontColor(Ink));
+        page.DefaultTextStyle(t => t.FontFamily(PdfFont.Family).FontSize(9).FontColor(Ink));
     }
 
     public static string FmtRm(decimal? v) =>
