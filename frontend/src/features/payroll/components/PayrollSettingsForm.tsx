@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import {
   getPayrollCompanyInfo,
   getPortalCredentials,
@@ -207,16 +207,6 @@ export function PayrollSettingsForm() {
           Malaysian statutory defaults — review them and save to make them yours.
         </section>
       ) : null}
-
-      {/* ── How payroll runs ─────────────────────────────────────────── */}
-      {/* Two navigation rows stacked with nothing between them read as one
-          confused control. This says which row is which. */}
-      <header className="space-y-0.5">
-        <h2 className="text-xl font-semibold text-foreground">Payroll Settings</h2>
-        <p className="text-xs text-muted-foreground">
-          Operational rules + Form E employer particulars
-        </p>
-      </header>
 
       <SectionPicker
         value={section}
@@ -887,14 +877,6 @@ function SectionPicker({
             ? "Completed"
             : "Required fields missing";
 
-        const dotTone = active
-          ? "bg-primary-foreground/70"
-          : blocking
-            ? "bg-destructive"
-            : state.complete
-              ? "bg-emerald-500"
-              : "bg-muted-foreground/40";
-
         return (
           <button
             key={entry.id}
@@ -910,12 +892,36 @@ function SectionPicker({
               active
                 ? "border-primary bg-primary text-primary-foreground"
                 : blocking
-                  ? "border-destructive/50 bg-card text-destructive hover:border-destructive"
+                  ? // A required section with something still missing turns the
+                    // WHOLE pill red — the point is that "you must fill this in"
+                    // can't be scrolled past or mistaken for an optional tab.
+                    "border-destructive bg-destructive/10 text-destructive hover:bg-destructive/15"
                   : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
             ].join(" ")}
           >
-            <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${dotTone}`} />
+            {blocking ? (
+              <CircleAlert
+                aria-hidden
+                className={`size-3.5 shrink-0 ${active ? "text-primary-foreground" : "text-destructive"}`}
+              />
+            ) : (
+              <span
+                aria-hidden
+                className={`size-1.5 shrink-0 rounded-full ${
+                  active
+                    ? "bg-primary-foreground/70"
+                    : state.complete
+                      ? "bg-emerald-500"
+                      : "bg-muted-foreground/40"
+                }`}
+              />
+            )}
             {entry.label}
+            {blocking ? (
+              <span className={active ? "text-primary-foreground/80" : "text-destructive/80"}>
+                · Required
+              </span>
+            ) : null}
             <span className="sr-only"> — {statusLabel}</span>
           </button>
         );
