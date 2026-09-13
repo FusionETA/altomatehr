@@ -16,10 +16,10 @@ import {
   HINT,
   INPUT,
   LABEL,
-  NOTE_PANEL,
   TEXTAREA,
   WARN_PANEL,
 } from "../../lib/ui";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 // The logins for the three statutory portals.
 //
@@ -58,7 +58,14 @@ export function PortalCredentialsSection({
     void load();
   }, [load]);
 
-  if (loading) return <p className={NOTE_PANEL}>Loading…</p>;
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <SkeletonPanel />
+        <SkeletonPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

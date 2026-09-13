@@ -8,7 +8,8 @@ import {
   type XeroTrackingCategory,
 } from "../../api";
 import { getAccounts, type ChartOfAccount } from "@/features/settings/api";
-import { CARD, HINT, LABEL, NOTE_PANEL, WARN_PANEL } from "../../lib/ui";
+import { CARD, HINT, LABEL, WARN_PANEL } from "../../lib/ui";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { PayrollSelect } from "../PayrollSelect";
 
 // How an approved run lands in Xero as one manual journal.
@@ -56,7 +57,14 @@ export function XeroSyncSection({
   const setAccount = (slot: string, value: string | null) =>
     onChange({ ...mapping, accounts: { ...mapping.accounts, [slot]: value } });
 
-  if (loading) return <p className={NOTE_PANEL}>Loading your Xero chart of accounts…</p>;
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <SkeletonPanel />
+        <SkeletonPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
