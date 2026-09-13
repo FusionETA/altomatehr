@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight, LoaderCircle, Plus, TriangleAlert } from "lucide-react";
 import { createPayrollRun, type PayrollRun } from "../api";
 import { PayrollSelect } from "./PayrollSelect";
+import { YtdImportPanel } from "./YtdImportPanel";
 import {
   MONTHS,
   rm,
@@ -121,6 +122,11 @@ export function PayrollRunsList({
           ) : null}
         </form>
       </section>
+
+      {/* Importing prior-year history is part of STARTING payroll (a mid-year
+          migration seeds the months before this system took over), so it lives
+          beside "Start a payroll run" — not on the annual-forms tab. */}
+      <YtdImportPanel year={year} onImported={onCreated} />
 
       {error ? (
         <section className={ERROR_PANEL}>Error: {error}</section>

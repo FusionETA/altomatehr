@@ -23,7 +23,6 @@ import {
   TH_NUM,
   WARN_PANEL,
 } from "../lib/ui";
-import { YtdImportPanel } from "./YtdImportPanel";
 
 // The year-end filings.
 //
@@ -226,8 +225,6 @@ export function PayrollAnnualTab() {
           ) : null}
         </section>
       ) : null}
-
-      <YtdImportPanel year={year} onImported={() => void load()} />
     </div>
   );
 }

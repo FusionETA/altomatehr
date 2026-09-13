@@ -577,6 +577,12 @@ public class PayrollRunService : IPayrollRunService
         // again would contradict a filed Form E.
         if (profile.ReportedToLhdn) return "Final payroll already reported to LHDN";
 
+        // A profile missing what the calc needs — salary, join date, statutory
+        // numbers, or the PCB personal details — is left out rather than paid an
+        // all-zero payslip. It surfaces under "Needs attention" so the admin
+        // completes the profile, then re-runs. Same gate the run picker uses.
+        if (!PayrollProfileReadiness.IsComplete(profile)) return "Incomplete payroll profile";
+
         var calendarDays = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
         var workedDays = PayPeriod.EffectiveWorkedDays(
             run.PeriodYear, run.PeriodMonth, profile.JoinDate, profile.LeaveDate, calendarDays);

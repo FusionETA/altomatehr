@@ -14,7 +14,7 @@ import {
 import { statusLabels, statusTone, dateTime } from "../lib/payroll-format";
 import {
   BADGE,
-  BUTTON_GHOST,
+  BUTTON_GHOST_SM,
   CARD,
   ERROR_PANEL,
   HINT,
@@ -99,25 +99,32 @@ export function PayrollRunDetailView({
 
   return (
     <div className="space-y-6">
-      <button type="button" className={BUTTON_GHOST} onClick={onBack}>
-        <ArrowLeft className="size-4" aria-hidden />
-        All runs
-      </button>
-
       {/* ── Header ───────────────────────────────────────────────────── */}
       {/* No totals card. Gross, net and cost were shown here AND in the
           table's footer AND in its summary panel — three copies of the same
           three numbers, which is three places for them to disagree. The
           table is the single source; the reference dropped this card for
           exactly that reason. */}
+      {/* Back sits inline with the period title, not stacked above it — a
+          standalone row here just pushed the whole review down the page. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{run.periodLabel}</h1>
-          <p className={HINT}>
-            {run.employeeCount} payroll result{run.employeeCount === 1 ? "" : "s"} on file
-            {generated ? ` · generated ${dateTime(run.generatedAt)}` : ""}
-            {run.submittedAt ? ` · approved ${dateTime(run.submittedAt)}` : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className={`${BUTTON_GHOST_SM} shrink-0`}
+            onClick={onBack}
+          >
+            <ArrowLeft className="size-4" aria-hidden />
+            All runs
+          </button>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">{run.periodLabel}</h1>
+            <p className={HINT}>
+              {run.employeeCount} payroll result{run.employeeCount === 1 ? "" : "s"} on file
+              {generated ? ` · generated ${dateTime(run.generatedAt)}` : ""}
+              {run.submittedAt ? ` · approved ${dateTime(run.submittedAt)}` : ""}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
