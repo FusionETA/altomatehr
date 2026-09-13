@@ -75,6 +75,7 @@ public static class DbSeeder
         await SeedShiftsAsync(shifts, demoProject.Id);
         await SeedDemoTeamAsync(users, memberships);
         await SeedAttendanceAsync(attendance, approvalRequests, demoProject.Id);
+        await CloseStaleDemoOpenDaysAsync(attendance);
         await SeedTodayAsync(attendance, approvalRequests, demoProject.Id);
         await SeedSplitShiftsAsync(attendance, attendanceSessions, demoProject.Id);
         await BackfillLatenessAsync(attendance, organizations);
@@ -378,6 +379,49 @@ public static class DbSeeder
     {
         foreach (var (id, email, name, jobTitle) in DemoTeam)
             await EnsureUserAsync(users, memberships, id, email, "Employee", name, jobTitle);
+    }
+
+    // Close out demo clock-ins left open on a PAST day.
+    //
+    // SeedTodayAsync seeds "still working" rows (aisyah, arjun) and "late, still
+    // in" rows (farid, syafiq) so the board has those states to render. Nothing
+    // ever closed them: it skips a day that already has a record, so yesterday's
+    // open row simply stayed open, and the next day added four more. They pile
+    // up at four a day, and each one is a real problem, not just log noise --
+    // GetOpenRecordsAsync has no date bound, so every stale row keeps firing the
+    // still-clocked-in warning forever, and GetOpenForEmployeeAsync deliberately
+    // ignores the day, so a shift left open yesterday blocks that demo employee
+    // from ever clocking in again.
+    //
+    // Same safety envelope as the seeders around it: only `usr-demo-` accounts,
+    // and only days strictly before today, so it can never touch a real clock-in
+    // or the row someone is testing against right now.
+    private static async Task CloseStaleDemoOpenDaysAsync(IAttendanceRepository attendance)
+    {
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+        var demoIds = DemoTeam.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var record in await attendance.GetOpenRecordsAsync())
+        {
+            if (!demoIds.Contains(record.EmployeeId)) continue;
+            if (record.Date >= today) continue;              // never today's board
+            if (record.TimeIn is null) continue;             // ON_LEAVE / absent rows
+
+            // 18:00 local on that record's own day -- the end of the shift it
+            // belonged to, not "now", so the duration stays plausible instead of
+            // billing the employee for every night since.
+            var closedAt = LocalToUtc(record.Date, 18, 0);
+            if (closedAt <= record.TimeIn.Value) closedAt = record.TimeIn.Value.AddHours(8);
+
+            record.TimeOut = closedAt;
+            record.DurationMin = (int)Math.Round((closedAt - record.TimeIn.Value).TotalMinutes);
+            record.Status = AttendanceStatus.CLOCKED_OUT;
+            record.Notes = string.IsNullOrEmpty(record.Notes)
+                ? "Auto-closed by seeder (demo row left open on a past day)."
+                : record.Notes + " | Auto-closed by seeder.";
+            record.UpdatedAt = DateTime.UtcNow;
+            await attendance.UpdateAsync(record);
+        }
     }
 
     // Today's board.
