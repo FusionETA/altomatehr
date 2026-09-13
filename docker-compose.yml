@@ -11,8 +11,8 @@ services:
       - redis
     volumes:
       - api_storage:/app/storage   # persist uploaded receipts/photos across redeploys
-    expose:
-      - "8080"                     # internal only — never published to the host
+    ports:
+      - "127.0.0.1:8080:8080"      # loopback only — nginx on the host proxies /api/ here
 
   redis:
     image: redis:7-alpine
