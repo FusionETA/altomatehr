@@ -62,6 +62,7 @@ public class PayrollRunServiceTests : IDisposable
             directory,
             _adjustments,
             _runClaims,
+            new PayrollRunMemberRepository(_db),
             // The real policy service over the same in-memory context, so the
             // OT gate (OtEnabled / CASH vs TIME_BANK) is exercised for real
             // rather than through a stand-in that always says yes.

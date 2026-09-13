@@ -257,8 +257,38 @@ export const getPayrollRuns = () => apiGet<PayrollRun[]>("/payroll/runs");
 export const getPayrollRun = (id: string) =>
   apiGet<PayrollRunDetail>(`/payroll/runs/${id}`);
 
-export const createPayrollRun = (periodYear: number, periodMonth: number) =>
-  apiPost<PayrollRun>("/payroll/runs", { periodYear, periodMonth });
+// The "Start a payroll run" picker: policies and the payable employees under
+// each, so the admin can scope a draft before creating it.
+export type PayrollPickerMember = {
+  employeeProfileId: string;
+  name: string;
+  employeeId: string;
+  jobTitle: string;
+};
+
+export type PayrollPickerPolicy = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  members: PayrollPickerMember[];
+};
+
+export type PayrollRunPicker = { policies: PayrollPickerPolicy[] };
+
+export const getPayrollRunPicker = () =>
+  apiGet<PayrollRunPicker>("/payroll/runs/picker");
+
+export type CreatePayrollRunInput = {
+  periodYear: number;
+  periodMonth: number;
+  // The ticked policies and the individually-unticked employees. Omitted by
+  // callers with no scope, which the backend reads as "the whole roster".
+  policyIds?: string[];
+  excludedEmployeeProfileIds?: string[];
+};
+
+export const createPayrollRun = (input: CreatePayrollRunInput) =>
+  apiPost<PayrollRun>("/payroll/runs", input);
 
 export const generatePayrollRun = (id: string) =>
   apiPost<GenerateResult>(`/payroll/runs/${id}/generate`);

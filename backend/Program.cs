@@ -294,6 +294,7 @@ builder.Services.AddScoped<IPayrollRunService, PayrollRunService>();
 builder.Services.AddScoped<IPayrollRunAdjustmentRepository, PayrollRunAdjustmentRepository>();
 builder.Services.AddScoped<IPayrollRunAdjustmentService, PayrollRunAdjustmentService>();
 builder.Services.AddScoped<IPayrollRunClaimRepository, PayrollRunClaimRepository>();
+builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();

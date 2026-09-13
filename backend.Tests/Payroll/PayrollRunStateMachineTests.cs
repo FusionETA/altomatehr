@@ -69,6 +69,7 @@ public class PayrollRunStateMachineTests : IDisposable
             directory,
             _adjustments,
             _runClaims,
+            new PayrollRunMemberRepository(_db),
             new PolicyService(
                 new EmployeePolicyRepository(_db),
                 new PolicyLeaveEntitlementRepository(_db),

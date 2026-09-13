@@ -16,6 +16,10 @@ public interface IPayrollRunService
     // The run and its payslips. Null → no such run in this org.
     Task<PayrollRunDetailDto?> GetAsync(string id);
 
+    // The "Start a payroll run" picker — policies and their payable employees,
+    // so the admin can scope a new draft before creating it.
+    Task<PayrollRunPickerDto> GetPickerAsync();
+
     // Start a run for a period. There can only be one per period, so a second
     // attempt is a conflict rather than a second run.
     Task<PayrollRunSaveResult> CreateAsync(CreatePayrollRunDto dto);

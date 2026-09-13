@@ -72,6 +72,7 @@ public class AppDbContext : DbContext
     public DbSet<PayslipLineItem> PayslipLineItems => Set<PayslipLineItem>();
     public DbSet<PayrollRunAdjustment> PayrollRunAdjustments => Set<PayrollRunAdjustment>();
     public DbSet<PayrollRunClaim> PayrollRunClaims => Set<PayrollRunClaim>();
+    public DbSet<PayrollRunMember> PayrollRunMembers => Set<PayrollRunMember>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
 
@@ -294,6 +295,11 @@ public class AppDbContext : DbContext
         var runClaim = modelBuilder.Entity<PayrollRunClaim>();
         runClaim.HasIndex(c => c.ClaimId).IsUnique();
         runClaim.HasIndex(c => c.PayrollRunId);
+
+        // The admin's chosen roster for a run. One row per (run, employee) — the
+        // unique index stops a double-insert leaving someone on the run twice.
+        var runMember = modelBuilder.Entity<PayrollRunMember>();
+        runMember.HasIndex(m => new { m.PayrollRunId, m.EmployeeProfileId }).IsUnique();
         lineItem.Property(li => li.Kind).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
@@ -387,6 +393,8 @@ public class AppDbContext : DbContext
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PayrollRunClaim>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PayrollRunMember>().HasQueryFilter(
+            m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
     }

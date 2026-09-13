@@ -30,6 +30,7 @@ public class PayrollRunService : IPayrollRunService
     private readonly IDirectoryService _directory;
     private readonly IPayrollRunAdjustmentRepository _adjustments;
     private readonly IPayrollRunClaimRepository _runClaims;
+    private readonly IPayrollRunMemberRepository _runMembers;
     private readonly IPolicyService _policies;
     private readonly IStatutoryFileService _statutory;
     private readonly IHoursSummaryService _hours;
@@ -46,6 +47,7 @@ public class PayrollRunService : IPayrollRunService
         IDirectoryService directory,
         IPayrollRunAdjustmentRepository adjustments,
         IPayrollRunClaimRepository runClaims,
+        IPayrollRunMemberRepository runMembers,
         IPolicyService policies,
         IStatutoryFileService statutory,
         IHoursSummaryService hours,
@@ -65,6 +67,7 @@ public class PayrollRunService : IPayrollRunService
         _directory = directory;
         _adjustments = adjustments;
         _runClaims = runClaims;
+        _runMembers = runMembers;
         _policies = policies;
         _audit = audit;
         _xeroSync = xeroSync;
@@ -117,14 +120,112 @@ public class PayrollRunService : IPayrollRunService
             Source = PayrollRunSource.COMPUTED,
         });
 
+        // Freeze the admin's chosen roster (policies − unticked employees).
+        // Generation reads this back; a run with no rows means "everyone".
+        var members = await ResolveScopeAsync(dto.PolicyIds, dto.ExcludedEmployeeProfileIds);
+        if (members.Count > 0)
+            await _runMembers.ReplaceForRunAsync(run.Id, members);
+
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunCreate,
             $"Started the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
-            Metadata: new { run.PeriodYear, run.PeriodMonth }));
+            Metadata: new { run.PeriodYear, run.PeriodMonth, MemberCount = members.Count }));
 
         return new PayrollRunSaveResult(true, ToDto(run), null);
+    }
+
+    // The "Start a payroll run" picker: every non-archived policy the admin can
+    // scope a run to, each carrying the payable (complete, non-archived)
+    // employees under it. Employees with no effective policy are omitted — a run
+    // is scoped through a policy, so they cannot be selected.
+    public async Task<PayrollRunPickerDto> GetPickerAsync()
+    {
+        var eligible = (await _directory.GetProfilesForCurrentOrgAsync())
+            .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
+            .ToList();
+
+        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .ToDictionary(m => m.UserId, StringComparer.Ordinal);
+        var users = (await _directory.GetUsersAsync())
+            .ToDictionary(u => u.Id, StringComparer.Ordinal);
+        var policyByUser = await _policies.GetEffectivePoliciesForEmployeesAsync(
+            eligible.Select(p => p.UserId));
+        var policies = (await _policies.GetAllAsync()).Where(p => !p.IsArchived).ToList();
+
+        var membersByPolicy = new Dictionary<string, List<PayrollPickerMemberDto>>(StringComparer.Ordinal);
+        foreach (var profile in eligible)
+        {
+            if (!policyByUser.TryGetValue(profile.UserId, out var policy)) continue;
+
+            memberships.TryGetValue(profile.UserId, out var membership);
+            if (!membersByPolicy.TryGetValue(policy.Id, out var list))
+                membersByPolicy[policy.Id] = list = [];
+
+            list.Add(new PayrollPickerMemberDto
+            {
+                EmployeeProfileId = profile.Id,
+                Name = users.TryGetValue(profile.UserId, out var user) ? user.Name : string.Empty,
+                EmployeeId = membership?.EmployeeNumber ?? string.Empty,
+                JobTitle = membership?.JobTitle ?? string.Empty,
+            });
+        }
+
+        var dto = new PayrollRunPickerDto();
+        foreach (var policy in policies
+            .OrderByDescending(p => p.IsDefault)
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            dto.Policies.Add(new PayrollPickerPolicyDto
+            {
+                Id = policy.Id,
+                Name = policy.Name,
+                IsDefault = policy.IsDefault,
+                Members = membersByPolicy.TryGetValue(policy.Id, out var list)
+                    ? list.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList()
+                    : [],
+            });
+        }
+
+        return dto;
+    }
+
+    // Included = payable employees under the selected policies, minus the ones
+    // the admin unticked. A null/empty policy list means "every policy".
+    private async Task<List<string>> ResolveScopeAsync(
+        List<string>? policyIds, List<string>? excludedProfileIds)
+    {
+        var eligible = (await _directory.GetProfilesForCurrentOrgAsync())
+            .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
+            .ToList();
+
+        var policyByUser = await _policies.GetEffectivePoliciesForEmployeesAsync(
+            eligible.Select(p => p.UserId));
+
+        var selected = policyIds is null || policyIds.Count == 0
+            ? null
+            : new HashSet<string>(policyIds, StringComparer.Ordinal);
+        var excluded = new HashSet<string>(
+            excludedProfileIds ?? [], StringComparer.Ordinal);
+
+        var included = new List<string>();
+        foreach (var profile in eligible)
+        {
+            if (excluded.Contains(profile.Id)) continue;
+
+            if (selected is not null)
+            {
+                var policyId = policyByUser.TryGetValue(profile.UserId, out var policy)
+                    ? policy.Id
+                    : null;
+                if (policyId is null || !selected.Contains(policyId)) continue;
+            }
+
+            included.Add(profile.Id);
+        }
+
+        return included;
     }
 
     public async Task<PayrollRunGenerateResult> GenerateAsync(string id)
@@ -143,6 +244,17 @@ public class PayrollRunService : IPayrollRunService
         var settings = await _settings.GetEffectiveAsync();
 
         var profiles = await _directory.GetProfilesForCurrentOrgAsync();
+
+        // Honour the roster the admin chose when the draft was created. A run
+        // with no member rows predates the picker (or is an import), so it keeps
+        // the old behaviour of pulling everyone; SkipReasonFor is still the
+        // final gate either way.
+        var memberIds = (await _runMembers.GetForRunAsync(run.Id))
+            .Select(m => m.EmployeeProfileId)
+            .ToHashSet(StringComparer.Ordinal);
+        if (memberIds.Count > 0)
+            profiles = profiles.Where(p => memberIds.Contains(p.Id)).ToList();
+
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
             .ToDictionary(m => m.UserId, StringComparer.Ordinal);
         var users = (await _directory.GetUsersAsync())
@@ -577,11 +689,12 @@ public class PayrollRunService : IPayrollRunService
         // again would contradict a filed Form E.
         if (profile.ReportedToLhdn) return "Final payroll already reported to LHDN";
 
-        // A profile missing what the calc needs — salary, join date, statutory
-        // numbers, or the PCB personal details — is left out rather than paid an
-        // all-zero payslip. It surfaces under "Needs attention" so the admin
-        // completes the profile, then re-runs. Same gate the run picker uses.
-        if (!PayrollProfileReadiness.IsComplete(profile)) return "Incomplete payroll profile";
+        // NOTE: incomplete profiles are excluded at SELECTION, not here — the
+        // "Start a payroll run" picker only lists payable (complete) employees,
+        // so an incomplete profile never enters a run's member scope in the
+        // first place (see PayrollProfileReadiness + GetPickerAsync). Gating it
+        // again at generation would also drop everyone from a legacy run that
+        // has no member scope, which is not what this method is for.
 
         var calendarDays = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
         var workedDays = PayPeriod.EffectiveWorkedDays(

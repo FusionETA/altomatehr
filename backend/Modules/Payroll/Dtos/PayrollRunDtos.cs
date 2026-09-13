@@ -13,6 +13,13 @@ public class CreatePayrollRunDto
 
     [Range(1, 12)]
     public int PeriodMonth { get; set; }
+
+    // The policies the admin ticked in the picker. Null (an API caller that
+    // doesn't send a scope) means "every policy" — the whole eligible roster.
+    public List<string>? PolicyIds { get; set; }
+
+    // Individual employees the admin unticked within a selected policy.
+    public List<string>? ExcludedEmployeeProfileIds { get; set; }
 }
 
 // A run in the list. Totals only — the payslips come with the detail.

@@ -40,6 +40,11 @@ public class PayrollRunsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _runs.GetAllAsync());
 
+    // Policies + their payable employees, for the "Start a payroll run" picker.
+    // Literal segment, so it wins over the {id} route below.
+    [HttpGet("picker")]
+    public async Task<IActionResult> GetPicker() => Ok(await _runs.GetPickerAsync());
+
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
     {
