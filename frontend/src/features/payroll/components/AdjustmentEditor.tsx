@@ -11,6 +11,7 @@ import {
   type SavePayrollRunAdjustment,
 } from "../api";
 import { rm } from "../lib/payroll-format";
+import { SkeletonPanel } from "@/shared/components/Skeleton";
 import {
   BUTTON,
   BUTTON_DANGER,
@@ -23,7 +24,6 @@ import {
   INPUT_SM,
   LABEL,
   TEXTAREA,
-  NOTE_PANEL,
   WARN_PANEL,
 } from "../lib/ui";
 import { CategoryPicker, StatutoryStrip } from "./AdjustmentCategoryPicker";
@@ -236,7 +236,10 @@ export function AdjustmentEditor({
         </header>
 
         {loading ? (
-          <p className={NOTE_PANEL}>Loading…</p>
+          <div className="space-y-6">
+            <SkeletonPanel />
+            <SkeletonPanel />
+          </div>
         ) : !context ? (
           <p className={ERROR_PANEL}>{error ?? "Could not load this employee."}</p>
         ) : (

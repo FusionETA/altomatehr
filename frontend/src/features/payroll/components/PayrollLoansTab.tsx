@@ -32,6 +32,7 @@ import {
 } from "../lib/ui";
 import { LoanForm } from "./LoanForm";
 import { TableSkeleton } from "./TableSkeleton";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 // Staff loans and salary advances, and how far through each one is.
 //
@@ -109,11 +110,13 @@ export function PayrollLoansTab() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-foreground">Loans and advances</h2>
-            <p className={HINT}>
-              {loading
-                ? "Loading…"
-                : `${loans.length} on record · RM ${rm(outstanding)} still outstanding`}
-            </p>
+            {loading ? (
+              <Skeleton className="mt-1.5 h-3 w-56" />
+            ) : (
+              <p className={HINT}>
+                {loans.length} on record · RM {rm(outstanding)} still outstanding
+              </p>
+            )}
           </div>
 
           <button type="button" className={BUTTON} onClick={() => setAdding(true)}>

@@ -16,6 +16,7 @@ import {
 import { CheckBox } from "./PayrollCheckbox";
 import { PayrollBulkFillPanel } from "./PayrollBulkFillPanel";
 import { TableSkeleton } from "./TableSkeleton";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 // Who gets paid, and whether their details are complete enough to file.
 //
@@ -88,11 +89,13 @@ export function PayrollEmployeesTab() {
         <header className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:px-6">
           <div>
             <h2 className="text-base font-semibold text-foreground">Payroll details</h2>
-            <p className={HINT}>
-              {loading
-                ? "Loading…"
-                : `${rows.length} employee(s). Read-only — edited on each profile or in bulk below.`}
-            </p>
+            {loading ? (
+              <Skeleton className="mt-1.5 h-3 w-64" />
+            ) : (
+              <p className={HINT}>
+                {rows.length} employee(s). Read-only — edited on each profile or in bulk below.
+              </p>
+            )}
           </div>
 
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
