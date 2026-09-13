@@ -140,7 +140,7 @@ export function PayrollAnnualTab() {
       ) : rows.length === 0 ? (
         <section className={NOTE_PANEL}>
           No approved payroll runs in {year}, so there is nothing to file. If the org ran
-          payroll elsewhere that year, import it below first.
+          payroll elsewhere that year, import it from the <strong>Payroll runs</strong> tab first.
         </section>
       ) : (
         <section className={`${CARD} overflow-x-auto p-0 sm:p-0`}>

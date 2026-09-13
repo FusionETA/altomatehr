@@ -847,7 +847,8 @@ function SectionPicker({
 }) {
   return (
     <nav
-      className="flex flex-wrap gap-3 border-y border-border/60 py-5"
+      role="tablist"
+      className="flex flex-wrap gap-2"
       aria-label="Payroll settings sections"
     >
       {SECTIONS.filter((entry) => entry.id !== "xero" || xeroConnected).map((entry) => {
@@ -858,7 +859,11 @@ function SectionPicker({
         // downstream depends on them.
         const blocking = !state.complete && !state.optional;
 
-        const subtitle = state.optional
+        // The status now rides on a dot + the accessible name rather than a
+        // second line of text, so the control is the same compact pill the run
+        // detail's tabs use. Red still means "this is blocking a statutory
+        // document"; a quiet green means done; grey means optional-and-untouched.
+        const statusLabel = state.optional
           ? state.complete
             ? (state.savedLabel ?? "Saved")
             : "Optional"
@@ -866,44 +871,36 @@ function SectionPicker({
             ? "Completed"
             : "Required fields missing";
 
+        const dotTone = active
+          ? "bg-primary-foreground/70"
+          : blocking
+            ? "bg-destructive"
+            : state.complete
+              ? "bg-emerald-500"
+              : "bg-muted-foreground/40";
+
         return (
           <button
             key={entry.id}
             type="button"
+            role="tab"
+            aria-selected={active}
             aria-current={active ? "page" : undefined}
+            title={statusLabel}
             onClick={() => onChange(entry.id)}
             className={[
-              "relative min-w-36 rounded-full border px-6 py-2.5 text-left transition active:scale-[0.98]",
+              "flex shrink-0 items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold transition active:scale-[0.98]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background",
               active
-                ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                : "border-border/70 bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
-              blocking && !active ? "border-destructive/60 ring-1 ring-destructive/30" : "",
-              blocking && active ? "ring-2 ring-destructive/50" : "",
+                ? "border-primary bg-primary text-primary-foreground"
+                : blocking
+                  ? "border-destructive/50 bg-card text-destructive hover:border-destructive"
+                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
             ].join(" ")}
           >
-            {/* A dot rather than a word, so the pill stays one line of label
-                and one of subtitle however long the section is called. */}
-            {blocking ? (
-              <span
-                aria-hidden
-                className="absolute right-2.5 top-2.5 size-2 rounded-full bg-destructive"
-              />
-            ) : null}
-
-            <span className="block text-sm font-semibold leading-tight">{entry.label}</span>
-            <span
-              className={[
-                "mt-0.5 block text-[11px] font-medium leading-tight",
-                blocking
-                  ? "text-destructive"
-                  : active
-                    ? "text-primary-foreground/75"
-                    : "text-muted-foreground",
-              ].join(" ")}
-            >
-              {subtitle}
-            </span>
+            <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${dotTone}`} />
+            {entry.label}
+            <span className="sr-only"> — {statusLabel}</span>
           </button>
         );
       })}

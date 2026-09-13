@@ -80,11 +80,6 @@ export function PayrollRunsList({
         </header>
       </section>
 
-      {/* Importing prior-year history is part of STARTING payroll (a mid-year
-          migration seeds the months before this system took over), so it lives
-          beside "Start a payroll run" — not on the annual-forms tab. */}
-      <YtdImportPanel year={new Date().getFullYear()} onImported={onCreated} />
-
       {error ? (
         <section className={ERROR_PANEL}>Error: {error}</section>
       ) : loading ? (
@@ -165,6 +160,12 @@ export function PayrollRunsList({
           </table>
         </section>
       )}
+
+      {/* Importing prior-year history is part of STARTING payroll (a mid-year
+          migration seeds the months before this system took over), so it lives
+          on this screen — but at the FOOT, below the runs, since day-to-day it
+          is the rarest action here. */}
+      <YtdImportPanel year={new Date().getFullYear()} onImported={onCreated} />
 
       {pickerOpen ? (
         <NewRunPicker
