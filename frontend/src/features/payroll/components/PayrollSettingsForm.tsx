@@ -24,6 +24,7 @@ import {
   NOTE_PANEL,
 } from "../lib/ui";
 import { getXeroStatus } from "@/features/settings/api";
+import { Skeleton, SkeletonPanels } from "@/shared/components/Skeleton";
 import { CheckBox } from "./PayrollCheckbox";
 import { PayrollSelect } from "./PayrollSelect";
 import { PortalCredentialsSection } from "./settings/PortalCredentialsSection";
@@ -179,7 +180,22 @@ export function PayrollSettingsForm() {
       : { complete: false, optional: true },
   };
 
-  if (loading) return <section className={NOTE_PANEL}>Loading payroll settings…</section>;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-3 w-64" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-8 w-28 rounded-full" />
+          ))}
+        </div>
+        <SkeletonPanels count={2} />
+      </div>
+    );
+  }
   if (error && !settings) return <section className={ERROR_PANEL}>Error: {error}</section>;
   if (!settings || !info) return null;
 

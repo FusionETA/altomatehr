@@ -11,6 +11,7 @@ import {
   type SalaryChangeHint,
   type SkippedEmployee,
 } from "../api";
+import { Skeleton, SkeletonRows } from "@/shared/components/Skeleton";
 import { statusLabels, statusTone, dateTime } from "../lib/payroll-format";
 import {
   BADGE,
@@ -18,7 +19,6 @@ import {
   CARD,
   ERROR_PANEL,
   HINT,
-  NOTE_PANEL,
   WARN_PANEL,
 } from "../lib/ui";
 import { PayrollRunActions } from "./PayrollRunActions";
@@ -83,7 +83,27 @@ export function PayrollRunDetailView({
     void load();
   }, [load]);
 
-  if (loading && !detail) return <section className={NOTE_PANEL}>Loading the run…</section>;
+  // First open of a run only — a re-open keeps the detail we already had.
+  if (loading && !detail) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-24 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-3 w-56" />
+          </div>
+        </div>
+        <section className={`${CARD} overflow-x-auto p-0 sm:p-0`}>
+          <table className="w-full min-w-[720px] border-collapse">
+            <tbody>
+              <SkeletonRows rows={4} widths={["w-40", "w-16", "w-16", "w-16", "w-16", "w-20"]} />
+            </tbody>
+          </table>
+        </section>
+      </div>
+    );
+  }
   if (error) return <section className={ERROR_PANEL}>Error: {error}</section>;
   if (!detail) return null;
 

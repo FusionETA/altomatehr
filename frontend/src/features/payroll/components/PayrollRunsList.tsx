@@ -14,6 +14,7 @@ import {
   type PayrollPickerPolicy,
   type PayrollRun,
 } from "../api";
+import { SkeletonRows } from "@/shared/components/Skeleton";
 import { CheckBox } from "./PayrollCheckbox";
 import { ModalPortal } from "./ModalPortal";
 import { PayrollSelect } from "./PayrollSelect";
@@ -35,7 +36,6 @@ import {
   HINT,
   INPUT,
   LABEL,
-  NOTE_PANEL,
   TD,
   TD_NUM,
   TH,
@@ -82,12 +82,6 @@ export function PayrollRunsList({
 
       {error ? (
         <section className={ERROR_PANEL}>Error: {error}</section>
-      ) : loading ? (
-        <section className={NOTE_PANEL}>Loading payroll runs…</section>
-      ) : runs.length === 0 ? (
-        <section className={NOTE_PANEL}>
-          No payroll runs yet. Create one above to get started.
-        </section>
       ) : (
         <section className={`${CARD} overflow-x-auto p-0 sm:p-0`}>
           <table className="w-full min-w-[860px] border-collapse">
@@ -104,7 +98,23 @@ export function PayrollRunsList({
               </tr>
             </thead>
             <tbody>
-              {runs.map((run) => (
+              {loading ? (
+                // First visit only — a revisit renders the cached rows at once.
+                <SkeletonRows
+                  rows={4}
+                  widths={["w-28", "w-20", "w-6", "w-16", "w-16", "w-24", "w-20", "w-4"]}
+                />
+              ) : runs.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-3 py-10 text-center text-sm text-muted-foreground"
+                  >
+                    No payroll runs yet. Create one above to get started.
+                  </td>
+                </tr>
+              ) : (
+                runs.map((run) => (
                 <tr
                   key={run.id}
                   className="cursor-pointer border-b border-border/40 transition last:border-0 hover:bg-muted/40"
@@ -155,7 +165,8 @@ export function PayrollRunsList({
                     />
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </section>

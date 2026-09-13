@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { BUTTON_GHOST } from "../lib/ui";
-import { getPayrollRuns, type PayrollRun } from "../api";
+import { getPayrollRuns } from "../api";
 import { PayrollOverview } from "./PayrollOverview";
 import { PayrollRunsList } from "./PayrollRunsList";
 import { PayrollRunDetailView } from "./PayrollRunDetail";
@@ -37,24 +38,16 @@ export function AdminPayroll({
   onOpen?: (parentId: string, childId: string) => void;
 }) {
   const [tab, setTab] = useState<PayrollTab>("overview");
-  const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-
-    return getPayrollRuns()
-      .then(setRuns)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Cached read: coming back to the runs list shows last time's rows at once
+  // and refreshes behind them, instead of a spinner over data we just had. A
+  // create/submit/delete invalidates "/payroll/runs" in the api client, and
+  // refresh() forces the re-read where we know something changed.
+  const { data: runs = [], loading, error, refresh } = useCachedQuery(
+    "/payroll/runs",
+    getPayrollRuns,
+  );
 
   // A draft awaiting nothing is not news; a run sitting in PENDING_APPROVAL
   // is someone waiting on this admin, so the tab carries that count.
@@ -113,7 +106,7 @@ export function AdminPayroll({
           onBack={() => {
             setOpenRunId(null);
             // The run's status or totals may have moved while it was open.
-            void load();
+            refresh();
           }}
         />
       ) : (
@@ -122,7 +115,7 @@ export function AdminPayroll({
           loading={loading}
           error={error}
           onOpen={setOpenRunId}
-          onCreated={() => void load()}
+          onCreated={refresh}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ArrowRight,
   ClipboardCheck,
@@ -15,6 +15,8 @@ import {
   type PayrollEmployee,
   type PayrollRun,
 } from "../api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
 import { rm, statusLabels, statusTone } from "../lib/payroll-format";
 import { BADGE, CARD, ERROR_PANEL, HINT, LINK_BUTTON } from "../lib/ui";
 import { CardHead, EmptyState } from "@/features/admin/components/DashboardCard";
@@ -36,6 +38,12 @@ const TONES = {
   },
 } as const;
 
+// Shared empty arrays so a loading query hands back the SAME reference each
+// render, keeping the memoised derivations below stable.
+const NO_RUNS: PayrollRun[] = [];
+const NO_EMPLOYEES: PayrollEmployee[] = [];
+const NO_LOANS: EmployeeLoan[] = [];
+
 export function PayrollOverview({
   onGo,
   onOpen,
@@ -43,29 +51,22 @@ export function PayrollOverview({
   onGo: (key: string) => void;
   onOpen?: (parentId: string, childId: string) => void;
 }) {
-  const [runs, setRuns] = useState<PayrollRun[]>([]);
-  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
-  const [loans, setLoans] = useState<EmployeeLoan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Three cached reads: the dashboard is the way in and out of every other tab,
+  // so returning to it should show what it showed a moment ago, not a spinner.
+  const runsQ = useCachedQuery<PayrollRun[]>("/payroll/runs", getPayrollRuns);
+  const employeesQ = useCachedQuery<PayrollEmployee[]>(
+    "/payroll/employees",
+    () => getPayrollEmployees(),
+  );
+  const loansQ = useCachedQuery<EmployeeLoan[]>("/payroll/loans", () => getEmployeeLoans());
 
-  useEffect(() => {
-    let live = true;
-
-    Promise.all([getPayrollRuns(), getPayrollEmployees(), getEmployeeLoans()])
-      .then(([nextRuns, nextEmployees, nextLoans]) => {
-        if (!live) return;
-        setRuns(nextRuns);
-        setEmployees(nextEmployees);
-        setLoans(nextLoans);
-      })
-      .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => live && setLoading(false));
-
-    return () => {
-      live = false;
-    };
-  }, []);
+  // Stable empty fallbacks — a fresh `[]` each render would make the byPeriod
+  // useMemo below recompute every time (and re-render its consumers).
+  const runs = runsQ.data ?? NO_RUNS;
+  const employees = employeesQ.data ?? NO_EMPLOYEES;
+  const loans = loansQ.data ?? NO_LOANS;
+  const loading = runsQ.loading || employeesQ.loading || loansQ.loading;
+  const error = runsQ.error ?? employeesQ.error ?? loansQ.error;
 
   const awaiting = runs.filter((run) => run.status === "PENDING_APPROVAL");
   const stale = runs.filter((run) => run.isStale && run.status !== "SUBMITTED");
@@ -112,7 +113,15 @@ export function PayrollOverview({
     .reduce((total, loan) => total + loan.remainingAmount, 0);
 
   if (error) return <section className={ERROR_PANEL}>Error: {error}</section>;
-  if (loading) return <section className={CARD}>Loading payroll…</section>;
+  // First visit only — a return to the dashboard renders the cached figures.
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonStats count={3} className="grid gap-3 sm:grid-cols-3" />
+        <SkeletonPanels count={2} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

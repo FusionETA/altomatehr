@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Download, LoaderCircle } from "lucide-react";
 import {
   downloadAnnualReport,
   getAnnualReportKinds,
   getPayrollAnnual,
-  type PayrollAnnualPayload,
   type PayrollAnnualReportMeta,
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { SkeletonRows } from "@/shared/components/Skeleton";
 import { rm } from "../lib/payroll-format";
 import {
   BUTTON_GHOST,
@@ -35,29 +36,19 @@ export function PayrollAnnualTab() {
   // so the year being filed is almost always the last one.
   const [year, setYear] = useState(now.getFullYear() - 1);
 
-  const [payload, setPayload] = useState<PayrollAnnualPayload | null>(null);
-  const [kinds, setKinds] = useState<PayrollAnnualReportMeta[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-
-    return Promise.all([getPayrollAnnual(year), getAnnualReportKinds()])
-      .then(([nextPayload, nextKinds]) => {
-        setPayload(nextPayload);
-        setKinds(nextKinds);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, [year]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Cached, keyed by year: flicking between filing years shows the one you
+  // looked at a moment ago at once, and only a year never opened waits.
+  const { data: payload = null, loading, error } = useCachedQuery(
+    `/payroll/annual/${year}`,
+    () => getPayrollAnnual(year),
+  );
+  const { data: kinds = [] } = useCachedQuery<PayrollAnnualReportMeta[]>(
+    "/payroll/annual/reports",
+    getAnnualReportKinds,
+  );
 
   async function get(meta: PayrollAnnualReportMeta) {
     setBusy(meta.kind);
@@ -88,29 +79,27 @@ export function PayrollAnnualTab() {
   return (
     <div className="space-y-6">
       <section className={CARD}>
-        <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-6">
           <div>
             <label className={LABEL} htmlFor="annualYear">
               Filing year
             </label>
             <div className="mt-1 w-36">
-            <input
-              id="annualYear"
-              type="number"
-              min={2000}
-              max={2100}
-              className={INPUT}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            />
+              <input
+                id="annualYear"
+                type="number"
+                min={2000}
+                max={2100}
+                className={INPUT}
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+              />
             </div>
-            <p className={HINT}>
-              Summed across this year's <strong>approved</strong> runs only. A draft is not
-              remuneration that was paid, so a return built on one would be false.
-            </p>
           </div>
 
-          {payload ? (
+          {/* The totals only mean something once there's an approved run to
+              sum — a row of zeros for an empty year just read as broken. */}
+          {rows.length > 0 ? (
             <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-right sm:grid-cols-4">
               <Total label="Employees" value={rows.length} plain />
               <Total label="Income" value={totals.income} />
@@ -119,6 +108,11 @@ export function PayrollAnnualTab() {
             </dl>
           ) : null}
         </div>
+
+        <p className={`${HINT} mt-4`}>
+          Summed across this year's <strong>approved</strong> runs only. A draft is not
+          remuneration that was paid, so a return built on one would be false.
+        </p>
       </section>
 
       {error ? <section className={ERROR_PANEL}>Error: {error}</section> : null}
@@ -136,7 +130,16 @@ export function PayrollAnnualTab() {
       ) : null}
 
       {loading ? (
-        <section className={NOTE_PANEL}>Loading {year}…</section>
+        <section className={`${CARD} overflow-x-auto p-0 sm:p-0`}>
+          <table className="w-full min-w-[1000px] border-collapse">
+            <tbody>
+              <SkeletonRows
+                rows={4}
+                widths={["w-40", "w-24", "w-20", "w-20", "w-20", "w-20"]}
+              />
+            </tbody>
+          </table>
+        </section>
       ) : rows.length === 0 ? (
         <section className={NOTE_PANEL}>
           No approved payroll runs in {year}, so there is nothing to file. If the org ran
