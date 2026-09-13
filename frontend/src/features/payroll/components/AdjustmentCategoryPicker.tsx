@@ -3,6 +3,7 @@ import type {
   AdjustmentCategoryGroup,
   PayslipLineKind,
 } from "../api";
+import { rm } from "../lib/payroll-format";
 import { PayrollSelect } from "./PayrollSelect";
 
 // The category dropdown, grouped the way the catalogue is declared.
@@ -108,7 +109,7 @@ export function StatutoryStrip({
     category.addsToCp38Field && "Filed in CP39's CP38 column",
     category.offsetsPcb && "Offsets PCB ringgit for ringgit",
     category.taxExemptLimit !== null &&
-      `Tax exempt up to RM ${category.taxExemptLimit.toLocaleString("en-MY")} a year`,
+      `Tax exempt up to RM ${rm(category.taxExemptLimit)} a year`,
   ].filter(Boolean) as string[];
 
   return (

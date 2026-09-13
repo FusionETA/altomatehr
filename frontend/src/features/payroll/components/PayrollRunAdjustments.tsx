@@ -8,7 +8,7 @@ import {
   type PayrollRunAdjustment,
 } from "../api";
 import { rm } from "../lib/payroll-format";
-import { BADGE, BUTTON_GHOST, CARD, ERROR_PANEL, HINT, TD, TH } from "../lib/ui";
+import { BADGE, BUTTON_GHOST_SM, CARD, ERROR_PANEL, HINT, TD, TH } from "../lib/ui";
 import { AdjustmentEditor } from "./AdjustmentEditor";
 import { TableSkeleton } from "./TableSkeleton";
 
@@ -142,7 +142,7 @@ export function PayrollRunAdjustments({
                       <td className={`${TD} text-right`}>
                         <button
                           type="button"
-                          className={`${BUTTON_GHOST} h-8 rounded-xl px-3 text-xs`}
+                          className={BUTTON_GHOST_SM}
                           onClick={() => setOpen(employee.employeeProfileId)}
                         >
                           <SlidersHorizontal className="size-3.5" aria-hidden />

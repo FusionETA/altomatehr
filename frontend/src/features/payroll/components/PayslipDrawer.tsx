@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import type { Payslip } from "../api";
 import { rm, warningLabel } from "../lib/payroll-format";
-import { HINT, TD, TD_NUM, TH, TH_NUM } from "../lib/ui";
+import { HINT, ICON_BUTTON, TD, TD_NUM, TH, TH_NUM } from "../lib/ui";
 import { DrawerPortal } from "./DrawerPortal";
 
 // One payslip in full: what made up the gross, what came out, and what the
@@ -56,7 +56,7 @@ export function PayslipDrawer({
           <button
             type="button"
             aria-label="Close"
-            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            className={ICON_BUTTON}
             onClick={onClose}
           >
             <X className="size-5" aria-hidden />

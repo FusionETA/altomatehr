@@ -17,6 +17,8 @@ import {
   BUTTON_GHOST,
   ERROR_PANEL,
   HINT,
+  ICON_BUTTON,
+  ICON_BUTTON_DANGER,
   INPUT,
   INPUT_SM,
   LABEL,
@@ -226,7 +228,7 @@ export function AdjustmentEditor({
           <button
             type="button"
             aria-label="Close"
-            className="rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+            className={ICON_BUTTON}
             onClick={onClose}
           >
             <X className="size-4" aria-hidden />
@@ -411,7 +413,7 @@ export function AdjustmentEditor({
                             type="button"
                             aria-label={`Reset ${row.name || row.category}`}
                             title="Back to the profile amount"
-                            className="rounded-full p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+                            className={ICON_BUTTON}
                             onClick={() =>
                               setOverrides((current) => {
                                 const next = { ...current };
@@ -748,7 +750,7 @@ function LineRow({
           <button
             type="button"
             aria-label="Remove this line"
-            className="mb-1 rounded-full p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+            className={`${ICON_BUTTON_DANGER} mb-1`}
             onClick={onRemove}
           >
             <Trash2 className="size-4" aria-hidden />

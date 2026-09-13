@@ -10,10 +10,11 @@ import {
 } from "../api";
 import { rm, shortDate } from "../lib/payroll-format";
 import {
-  BUTTON_GHOST,
+  BUTTON_GHOST_SM,
   CARD,
   ERROR_PANEL,
   HINT,
+  ICON_BUTTON_DANGER,
   TD,
   TD_NUM,
   TH,
@@ -135,7 +136,7 @@ export function PayrollRunClaims({
                           <button
                             type="button"
                             aria-label={`Remove ${claim.label} from this run`}
-                            className="rounded-full p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+                            className={ICON_BUTTON_DANGER}
                             disabled={busy !== null}
                             onClick={() =>
                               void act(`detach-${claim.claimId}`, () =>
@@ -192,7 +193,7 @@ export function PayrollRunClaims({
                     </span>
                     <button
                       type="button"
-                      className={`${BUTTON_GHOST} h-9 rounded-xl px-3 text-xs`}
+                      className={BUTTON_GHOST_SM}
                       disabled={busy !== null}
                       onClick={() =>
                         void act(`attach-${claim.claimId}`, () =>

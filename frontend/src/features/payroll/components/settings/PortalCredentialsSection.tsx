@@ -9,7 +9,7 @@ import {
 } from "../../api";
 import {
   BUTTON,
-  BUTTON_DANGER,
+  BUTTON_DANGER_SM,
   BUTTON_GHOST,
   CARD,
   ERROR_PANEL,
@@ -132,7 +132,7 @@ function PortalCard({
         {credential.isConfigured ? (
           <button
             type="button"
-            className={`${BUTTON_DANGER} h-9 rounded-xl px-3 text-xs`}
+            className={BUTTON_DANGER_SM}
             disabled={busy !== null}
             onClick={() =>
               void act("delete", () => deletePortalCredential(credential.portal)).then(onChanged)

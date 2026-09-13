@@ -12,7 +12,16 @@ import {
   type PayrollRun,
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
-import { BUTTON, BUTTON_GHOST, CARD, HINT, INPUT_SM, LABEL } from "../lib/ui";
+import {
+  BUTTON,
+  BUTTON_GHOST,
+  BUTTON_GHOST_SM,
+  CARD,
+  HINT,
+  ICON_BUTTON,
+  INPUT_SM,
+  LABEL,
+} from "../lib/ui";
 import { CheckBox } from "./PayrollCheckbox";
 import { ModalPortal } from "./ModalPortal";
 
@@ -252,7 +261,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
         <button
           type="button"
           aria-label="Close"
-          className="rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+          className={ICON_BUTTON}
           onClick={onClose}
         >
           <X className="size-4" aria-hidden />
@@ -344,7 +353,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
                     <button
                       type="button"
-                      className={`${BUTTON_GHOST} h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs`}
+                      className={`${BUTTON_GHOST_SM} shrink-0`}
                       disabled={busy !== null}
                       onClick={() => void get(item)}
                     >

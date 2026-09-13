@@ -16,7 +16,7 @@ import {
   type PayrollRun,
 } from "../api";
 import { rm, statusLabels, statusTone } from "../lib/payroll-format";
-import { BADGE, CARD, ERROR_PANEL, HINT } from "../lib/ui";
+import { BADGE, CARD, ERROR_PANEL, HINT, LINK_BUTTON } from "../lib/ui";
 import { CardHead, EmptyState } from "@/features/admin/components/DashboardCard";
 
 // The payroll dashboard.
@@ -344,7 +344,7 @@ function Link({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-lg text-sm font-semibold text-primary transition hover:gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
+      className={`${LINK_BUTTON} hover:gap-2.5`}
     >
       {label}
       <ArrowRight className="size-4" aria-hidden />

@@ -18,10 +18,11 @@ import {
 import {
   BADGE,
   BUTTON,
-  BUTTON_DANGER,
-  BUTTON_GHOST,
+  BUTTON_DANGER_SM,
+  BUTTON_GHOST_SM,
   CARD,
   ERROR_PANEL,
+  FOCUS_RING,
   HINT,
   NOTE_PANEL,
   TD,
@@ -192,15 +193,13 @@ function Row({
   const spinner = (key: string) =>
     busy === key ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null;
 
-  const small = "rounded-xl px-3 text-xs h-8";
-
   return (
     <>
       <tr className="border-b border-border/40 last:border-0">
         <td className={TD}>
           <button
             type="button"
-            className="flex items-center gap-1.5 font-medium text-foreground"
+            className={`flex items-center gap-1.5 rounded-md font-medium text-foreground transition ${FOCUS_RING}`}
             onClick={onToggle}
             aria-expanded={expanded}
           >
@@ -268,12 +267,12 @@ function Row({
           <div className="flex justify-end gap-2">
             {loan.status === "ACTIVE" ? (
               <>
-                <button type="button" className={`${BUTTON_GHOST} ${small}`} onClick={onEdit}>
+                <button type="button" className={BUTTON_GHOST_SM} onClick={onEdit}>
                   Edit
                 </button>
                 <button
                   type="button"
-                  className={`${BUTTON_DANGER} ${small}`}
+                  className={BUTTON_DANGER_SM}
                   disabled={busy !== null}
                   onClick={onCancel}
                 >
@@ -287,7 +286,7 @@ function Row({
               <>
                 <button
                   type="button"
-                  className={`${BUTTON_GHOST} ${small}`}
+                  className={BUTTON_GHOST_SM}
                   disabled={busy !== null}
                   onClick={onReactivate}
                 >
@@ -301,7 +300,7 @@ function Row({
                 {!loan.hasStarted ? (
                   <button
                     type="button"
-                    className={`${BUTTON_DANGER} ${small}`}
+                    className={BUTTON_DANGER_SM}
                     disabled={busy !== null}
                     onClick={onDelete}
                   >
