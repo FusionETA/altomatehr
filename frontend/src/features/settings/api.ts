@@ -32,13 +32,22 @@ export type Project = {
   location: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** Comma-separated IPs employees must clock in from when their policy has
+   *  "Require IP allowlist" on. Null / empty means the check is skipped. */
+  allowedIps: string | null;
+  /** Origin markers when the project was synced from Xero (read-only). */
+  xeroProjectId: string | null;
+  xeroStatus: string | null;
+  xeroSyncedAt: string | null;
   isArchived: boolean;
   createdAt: string;
 };
 export type SaveProject = {
   name: string;
+  location?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  allowedIps?: string | null;
 };
 
 export type ChartOfAccount = {
@@ -137,3 +146,10 @@ export type XeroSyncAccountsResult = { imported: number; updated: number; skippe
 
 export const syncXeroAccounts = () =>
   apiPost<XeroSyncAccountsResult>("/xero/sync-accounts");
+
+// Pulls projects in from the connected Xero org (its projects / tracking
+// options). Creates new rows and updates existing ones by their Xero id.
+export type XeroSyncProjectsResult = { imported: number; updated: number; skipped: number };
+
+export const syncXeroProjects = () =>
+  apiPost<XeroSyncProjectsResult>("/xero/sync-projects");

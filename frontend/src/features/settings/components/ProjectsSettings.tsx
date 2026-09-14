@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Crosshair, LoaderCircle, MapPin, Plus } from "lucide-react";
+import { Crosshair, LoaderCircle, MapPin, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   archiveProject,
   createProject,
   getProjects,
+  getXeroStatus,
   restoreProject,
+  syncXeroProjects,
   updateProject,
   type Project,
 } from "../api";
@@ -28,13 +30,20 @@ export function ProjectsSettings() {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Per-row geofence-location editor.
+  // Per-row editor: geofence location + IP allowlist.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [ips, setIps] = useState("");
   const [savingLoc, setSavingLoc] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
+
+  // Xero sync — the button only shows when a connection exists, so we never
+  // offer a sync that can only fail.
+  const [xeroConnected, setXeroConnected] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const query = useCachedQuery("/projects", getProjects);
   const loading = query.loading;
@@ -44,6 +53,29 @@ export function ProjectsSettings() {
   useEffect(() => {
     if (query.error) setError(query.error);
   }, [query.error]);
+  useEffect(() => {
+    getXeroStatus()
+      .then((s) => setXeroConnected(s.connected))
+      .catch(() => setXeroConnected(false));
+  }, []);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMsg(null);
+    setError(null);
+    try {
+      const r = await syncXeroProjects();
+      setSyncMsg(
+        `Synced from Xero — ${r.imported} added, ${r.updated} updated` +
+          (r.skipped ? `, ${r.skipped} unchanged.` : "."),
+      );
+      await query.refresh();
+    } catch (err) {
+      setError(message(err, "Could not sync projects from Xero."));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -81,6 +113,7 @@ export function ProjectsSettings() {
     setEditingId(project.id);
     setLat(project.latitude != null ? String(project.latitude) : "");
     setLng(project.longitude != null ? String(project.longitude) : "");
+    setIps(project.allowedIps ?? "");
     setLocError(null);
   }
 
@@ -123,11 +156,12 @@ export function ProjectsSettings() {
         name: project.name,
         latitude: latNum,
         longitude: lngNum,
+        allowedIps: ips.trim() === "" ? null : ips.trim(),
       });
       setProjects((current) => current.map((p) => (p.id === updated.id ? updated : p)));
       setEditingId(null);
     } catch (err) {
-      setLocError(message(err, "Could not save the location."));
+      setLocError(message(err, "Could not save the project."));
     } finally {
       setSavingLoc(false);
     }
@@ -135,13 +169,28 @@ export function ProjectsSettings() {
 
   return (
     <div className={`${CARD} space-y-5`}>
-      <div>
-        <h2 className="text-lg font-black text-foreground">Projects</h2>
-        <p className="text-sm text-muted-foreground">
-          Projects that claims (and later attendance/leave) are filed against. Give a project a
-          location to geofence attendance clock-ins against it.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-foreground">Projects</h2>
+          <p className="text-sm text-muted-foreground">
+            Projects that claims (and later attendance/leave) are filed against. Give a project a
+            location to geofence clock-ins, or an IP allowlist to restrict where staff clock in
+            from.
+          </p>
+        </div>
+        {xeroConnected ? (
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
+          >
+            {syncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Sync from Xero
+          </button>
+        ) : null}
       </div>
+      {syncMsg ? <p className="text-sm font-medium text-primary">{syncMsg}</p> : null}
 
       <form onSubmit={handleAdd} className="flex gap-2">
         <input
@@ -181,17 +230,27 @@ export function ProjectsSettings() {
                     >
                       {project.name}
                     </p>
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs ${
-                        geofenced ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      <MapPin className="h-3 w-3" />
-                      {geofenced
-                        ? `${project.latitude!.toFixed(5)}, ${project.longitude!.toFixed(5)}`
-                        : "No geofence"}
-                      {project.isArchived ? " · Archived" : ""}
-                    </span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <span
+                        className={`inline-flex items-center gap-1 ${
+                          geofenced ? "text-primary" : "text-muted-foreground"
+                        }`}
+                      >
+                        <MapPin className="h-3 w-3" />
+                        {geofenced
+                          ? `${project.latitude!.toFixed(5)}, ${project.longitude!.toFixed(5)}`
+                          : "No geofence"}
+                      </span>
+                      {project.allowedIps ? (
+                        <span className="inline-flex items-center gap-1 text-primary">
+                          <ShieldCheck className="h-3 w-3" /> IP allowlist
+                        </span>
+                      ) : null}
+                      {project.xeroProjectId ? (
+                        <span className="text-muted-foreground">From Xero</span>
+                      ) : null}
+                      {project.isArchived ? <span className="text-muted-foreground">Archived</span> : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <button
@@ -199,7 +258,7 @@ export function ProjectsSettings() {
                       onClick={() => (editingId === project.id ? setEditingId(null) : openEditor(project))}
                       className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
                     >
-                      {editingId === project.id ? "Close" : "Location"}
+                      {editingId === project.id ? "Close" : "Edit"}
                     </button>
                     <button
                       type="button"
@@ -232,6 +291,21 @@ export function ProjectsSettings() {
                         placeholder="Longitude (e.g. 101.7123)"
                       />
                     </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground">IP allowlist</label>
+                      <input
+                        className={`${INPUT} mt-1`}
+                        value={ips}
+                        onChange={(e) => setIps(e.target.value)}
+                        placeholder="e.g. 203.106.51.10, 118.100.0.0/16"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Comma-separated IPs or CIDR ranges. Only enforced for employees whose policy
+                        requires it; leave blank for none.
+                      </p>
+                    </div>
+
                     {locError ? <p className="text-xs font-medium text-destructive">{locError}</p> : null}
                     <div className="flex flex-wrap items-center gap-2">
                       <button
@@ -254,9 +328,9 @@ export function ProjectsSettings() {
                         className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
                       >
                         {savingLoc ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                        Save location
+                        Save
                       </button>
-                      <span className="text-xs text-muted-foreground">Clear both to remove the geofence.</span>
+                      <span className="text-xs text-muted-foreground">Clear both coordinates to remove the geofence.</span>
                     </div>
                   </div>
                 ) : null}
