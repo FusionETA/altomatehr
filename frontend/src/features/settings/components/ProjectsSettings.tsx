@@ -3,6 +3,7 @@ import { Crosshair, LoaderCircle, MapPin, Plus, RefreshCw, ShieldCheck } from "l
 import {
   archiveProject,
   createProject,
+  getMyIp,
   getProjects,
   getXeroStatus,
   restoreProject,
@@ -56,6 +57,7 @@ export function ProjectsSettings() {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [ips, setIps] = useState("");
+  const [ipLoading, setIpLoading] = useState(false);
   const [whStart, setWhStart] = useState("");
   const [whEnd, setWhEnd] = useState("");
   const [workDays, setWorkDays] = useState<Set<number>>(new Set());
@@ -157,6 +159,26 @@ export function ProjectsSettings() {
       setLocError(message(err, "Couldn't get your location."));
     } finally {
       setLocating(false);
+    }
+  }
+
+  async function useMyIp() {
+    setIpLoading(true);
+    setLocError(null);
+    try {
+      const { ip } = await getMyIp();
+      if (!ip) {
+        setLocError("Couldn't determine your IP address.");
+        return;
+      }
+      setIps((current) => {
+        const parts = current.split(",").map((p) => p.trim()).filter(Boolean);
+        return parts.includes(ip) ? current : [...parts, ip].join(", ");
+      });
+    } catch (err) {
+      setLocError(message(err, "Couldn't determine your IP address."));
+    } finally {
+      setIpLoading(false);
     }
   }
 
@@ -331,7 +353,22 @@ export function ProjectsSettings() {
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground">IP allowlist</label>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-muted-foreground">IP allowlist</label>
+                        <button
+                          type="button"
+                          onClick={useMyIp}
+                          disabled={ipLoading}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
+                        >
+                          {ipLoading ? (
+                            <LoaderCircle className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Crosshair className="h-3 w-3" />
+                          )}
+                          Use my IP
+                        </button>
+                      </div>
                       <input
                         className={`${INPUT} mt-1`}
                         value={ips}
@@ -404,8 +441,8 @@ export function ProjectsSettings() {
                         })}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Regular hours for this site — used to work out expected daily working
-                        minutes. Leave blank for no fixed schedule.
+                        Overrides the organisation's default schedule for this site. Leave the
+                        times blank to fall back to the org-wide schedule.
                       </p>
                     </div>
 

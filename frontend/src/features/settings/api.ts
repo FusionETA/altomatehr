@@ -12,6 +12,7 @@ export type Organization = {
   workingHoursStart: string | null;   // "HH:mm", 24h
   workingHoursEnd: string | null;     // "HH:mm", 24h
   workingDays: string | null;         // CSV ISO weekdays, "1,2,3,4,5"; null = Mon-Fri
+  lunchBreakMinutes: number;
   plan: string;
   tier: string | null;
   addons: string[];
@@ -23,6 +24,11 @@ export type UpdateOrganization = {
   defaultMileageRate: number;
   mileageUnit: "KM" | "MILE";
   geofenceRadiusMeters: number;
+  // Org-wide default work schedule (a project's own schedule overrides it).
+  workingHoursStart: string;   // "HH:mm"
+  workingHoursEnd: string;     // "HH:mm"
+  workingDays: string | null;  // CSV ISO weekdays; null/blank = Mon-Fri
+  lunchBreakMinutes: number;
 };
 
 export type Project = {
@@ -99,6 +105,9 @@ export const getMyProjects = () => apiGet<Project[]>("/projects/mine");
 export const createProject = (body: SaveProject) => apiPost<Project>("/projects", body);
 export const updateProject = (id: string, body: SaveProject) =>
   apiPut<Project>(`/projects/${id}`, body);
+// The IP the server currently sees for this admin — for the "Use my IP" button
+// on the allowlist editor. Same value the clock-in IP check compares against.
+export const getMyIp = () => apiGet<{ ip: string | null }>("/projects/my-ip");
 export const archiveProject = (id: string) => apiPost<Project>(`/projects/${id}/archive`);
 export const restoreProject = (id: string) => apiPost<Project>(`/projects/${id}/restore`);
 

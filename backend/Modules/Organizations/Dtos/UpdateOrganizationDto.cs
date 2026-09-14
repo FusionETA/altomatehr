@@ -30,4 +30,7 @@ public class UpdateOrganizationDto
 
     [Required, RegularExpression(@"^([01]\d|2[0-3]):[0-5]\d$", ErrorMessage = "Use HH:MM (24-hour) format")]
     public string WorkingHoursEnd { get; set; } = "18:00";
+
+    [Range(0, 480)]
+    public int LunchBreakMinutes { get; set; } = 60;
 }

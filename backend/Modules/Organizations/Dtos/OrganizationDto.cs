@@ -16,6 +16,7 @@ public class OrganizationDto
     public string? WorkingDays { get; set; }
     public string WorkingHoursStart { get; set; } = string.Empty;
     public string WorkingHoursEnd { get; set; } = string.Empty;
+    public int LunchBreakMinutes { get; set; }
 
     // Claim settings. Read here so any settings surface can show them; written
     // through the claims settings endpoint.

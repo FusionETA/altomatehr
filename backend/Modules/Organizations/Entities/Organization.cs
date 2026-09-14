@@ -76,5 +76,10 @@ public class Organization
     [MaxLength(20)]
     public string? WorkingDays { get; set; }
 
+    // Org-wide default lunch minutes, deducted from the (end − start) span when
+    // working out expected daily minutes. A project's own schedule overrides
+    // this whole block when it sets one.
+    public int LunchBreakMinutes { get; set; } = 60;
+
     public DateTime CreatedAt { get; set; }
 }

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Teams;
 using System.Security.Claims;
 using AltomateHR.Api.Modules.Projects.Dtos;
@@ -16,11 +17,23 @@ public class ProjectsController : ControllerBase
 
     private readonly ITeamService _teams;
 
-    public ProjectsController(IProjectService projects, ITeamService teams)
+    private readonly ICurrentUser _currentUser;
+
+    public ProjectsController(IProjectService projects, ITeamService teams, ICurrentUser currentUser)
     {
         _projects = projects;
         _teams = teams;
+        _currentUser = currentUser;
     }
+
+    // GET /projects/my-ip — the IP the server currently sees for this caller.
+    // Lets an admin drop "the machine I'm on right now" into a project's
+    // allowlist without having to look it up, and it's the SAME value the
+    // clock-in IP check compares against, so it will actually match.
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpGet("my-ip")]
+    public IActionResult MyIp() =>
+        Ok(new { ip = _currentUser.IpAddress ?? HttpContext.Connection.RemoteIpAddress?.ToString() });
 
     // GET /projects — any authenticated user (employees pick a project when filing claims).
     [RequireScope("projects:read")]

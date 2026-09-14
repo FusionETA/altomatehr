@@ -21,6 +21,29 @@ const LABEL = "block text-sm font-semibold text-foreground";
 const titleCase = (s: string) =>
   s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
+// ISO weekday numbers, 1 = Monday … 7 = Sunday — the stored CSV format.
+const DAYS = [
+  { n: 1, label: "Mon" },
+  { n: 2, label: "Tue" },
+  { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" },
+  { n: 5, label: "Fri" },
+  { n: 6, label: "Sat" },
+  { n: 7, label: "Sun" },
+] as const;
+
+// A null/blank workingDays means the org default of Mon–Fri, so that is what
+// the toggles show until the admin picks their own set.
+function parseDays(csv: string | null): Set<number> {
+  if (!csv || csv.trim() === "") return new Set([1, 2, 3, 4, 5]);
+  const out = new Set<number>();
+  for (const p of csv.split(",")) {
+    const n = Number(p.trim());
+    if (n >= 1 && n <= 7) out.add(n);
+  }
+  return out;
+}
+
 export function OrganizationSettings() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,6 +81,10 @@ export function OrganizationSettings() {
         defaultMileageRate: org.defaultMileageRate,
         mileageUnit: org.mileageUnit,
         geofenceRadiusMeters: org.geofenceRadiusMeters,
+        workingHoursStart: org.workingHoursStart ?? "09:00",
+        workingHoursEnd: org.workingHoursEnd ?? "18:00",
+        workingDays: org.workingDays,
+        lunchBreakMinutes: org.lunchBreakMinutes,
       });
       setOrg(updated);
       setSaved(true);
@@ -225,6 +252,72 @@ export function OrganizationSettings() {
           <p className="text-xs text-muted-foreground">
             How close to a project's pin still counts as on-site. Default 200.
           </p>
+        </div>
+
+        <div className="space-y-3 sm:col-span-2">
+          <div>
+            <label className={LABEL}>Default work schedule</label>
+            <p className="text-xs text-muted-foreground">
+              The org-wide default hours, used to work out expected daily working minutes. A
+              project with its own schedule overrides this.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <span className="text-xs text-muted-foreground">Start</span>
+              <input
+                type="time"
+                className={`${INPUT} mt-1`}
+                value={org.workingHoursStart ?? ""}
+                onChange={(e) => setOrg({ ...org, workingHoursStart: e.target.value })}
+              />
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">End</span>
+              <input
+                type="time"
+                className={`${INPUT} mt-1`}
+                value={org.workingHoursEnd ?? ""}
+                onChange={(e) => setOrg({ ...org, workingHoursEnd: e.target.value })}
+              />
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Lunch (min)</span>
+              <input
+                type="number"
+                min="0"
+                max="480"
+                className={`${INPUT} mt-1`}
+                value={org.lunchBreakMinutes}
+                onChange={(e) => setOrg({ ...org, lunchBreakMinutes: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {DAYS.map((d) => {
+              const selected = parseDays(org.workingDays);
+              const on = selected.has(d.n);
+              return (
+                <button
+                  key={d.n}
+                  type="button"
+                  onClick={() => {
+                    const next = parseDays(org.workingDays);
+                    if (next.has(d.n)) next.delete(d.n);
+                    else next.add(d.n);
+                    setOrg({ ...org, workingDays: [...next].sort((a, b) => a - b).join(",") });
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    on
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -75,6 +75,7 @@ public class OrganizationService : IOrganizationService
         org.WorkingDays = string.IsNullOrWhiteSpace(dto.WorkingDays) ? null : dto.WorkingDays.Trim();
         org.WorkingHoursStart = dto.WorkingHoursStart;
         org.WorkingHoursEnd = dto.WorkingHoursEnd;
+        org.LunchBreakMinutes = dto.LunchBreakMinutes;
         await _repo.UpdateAsync(org);
 
         await _audit.WriteAsync(new AuditEvent(
@@ -206,6 +207,7 @@ public class OrganizationService : IOrganizationService
         WorkingDays = o.WorkingDays,
         WorkingHoursStart = o.WorkingHoursStart,
         WorkingHoursEnd = o.WorkingHoursEnd,
+        LunchBreakMinutes = o.LunchBreakMinutes,
         ClaimRunCutoffDay = o.ClaimRunCutoffDay,
         ClaimSettlementRoute = o.ClaimSettlementRoute.ToString(),
         XeroBillStage = o.XeroBillStage.ToString(),
