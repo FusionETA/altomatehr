@@ -637,39 +637,23 @@ export function AdminAttendance() {
             onChange={setFilter}
             projects={projects}
             teams={teams}
-          />
-          {/* Today reads one day by definition, so a range would be a control
-              that changes nothing. Shifts are standing definitions, so neither
-              a range nor an employee search applies to them at all. */}
-          {showDateRange ? (
-            <DateRangeBar
-              from={from}
-              to={to}
-              onChange={(nextFrom, nextTo) => {
-                setFrom(nextFrom);
-                setTo(nextTo);
-              }}
-            />
-          ) : null}
-
-          {/* Tab-specific summary/filter lives WITH the filters, not in the
-              content card's header — the count reflects the filters, and the OT
-              status is just another filter. */}
-          {section === "employees" && !openEmployee ? (
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {employeeRows.length} {employeeRows.length === 1 ? "person" : "people"}
-            </p>
-          ) : section === "overtime" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                Showing{" "}
-                {otStatus === "ALL"
-                  ? overtimeRows.length
-                  : overtimeRows.filter((r) => r.status === otStatus).length}{" "}
-                of {overtimeRows.length} submissions
-              </p>
+            activeExtra={section === "overtime" && otStatus !== "ALL" ? 1 : 0}
+          >
+            {/* Today reads one day by definition, so a range would be a control
+                that changes nothing; shifts have no filter card at all. */}
+            {showDateRange ? (
+              <DateRangeBar
+                from={from}
+                to={to}
+                onChange={(nextFrom, nextTo) => {
+                  setFrom(nextFrom);
+                  setTo(nextTo);
+                }}
+              />
+            ) : null}
+            {section === "overtime" ? (
               <Select value={otStatus} onValueChange={(v) => setOtStatus(v as OtStatusFilter)}>
-                <SelectTrigger className="sm:w-48" aria-label="Status">
+                <SelectTrigger className="h-11 sm:w-48" aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -680,7 +664,22 @@ export function AdminAttendance() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            ) : null}
+          </AttendanceFilterBar>
+
+          {/* The result count stays visible — it is the answer, not a filter. */}
+          {section === "employees" && !openEmployee ? (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {employeeRows.length} {employeeRows.length === 1 ? "person" : "people"}
+            </p>
+          ) : section === "overtime" ? (
+            <p className="text-xs text-muted-foreground">
+              Showing{" "}
+              {otStatus === "ALL"
+                ? overtimeRows.length
+                : overtimeRows.filter((r) => r.status === otStatus).length}{" "}
+              of {overtimeRows.length} submissions
+            </p>
           ) : null}
         </section>
       ) : null}
