@@ -14,7 +14,6 @@ import {
   exportEmployeeAttendancePdf,
   getAttendanceHistory,
   getOrgHoursSummary,
-  getSelfieStorage,
   getSupervisorPerformance,
   type AdminAttendanceFilter,
   type ApprovalAuditEntry,
@@ -22,7 +21,6 @@ import {
   type AttendanceRecord,
   type OrgHoursSummary,
   type HoursBuckets,
-  type SelfieStorage,
   type SupervisorPerformance,
 } from "@/features/attendance/api";
 import { AttendanceStatusBadge } from "@/features/attendance/components/AttendanceStatusBadge";
@@ -53,7 +51,6 @@ import { usePaged } from "@/shared/lib/use-paged";
 import { CARD_BARE } from "../lib/dashboard-styles";
 import {
   ALL_FILTER,
-  formatBytes,
   formatMinutes,
   formatWorkingDays,
 } from "../lib/attendance-format";
@@ -252,7 +249,6 @@ export function AdminAttendance() {
   const [hours, setHours] = useState<OrgHoursSummary | null>(null);
   const [performance, setPerformance] = useState<SupervisorPerformance[]>([]);
   const [audit, setAudit] = useState<ApprovalAuditEntry[]>([]);
-  const [selfies, setSelfies] = useState<SelfieStorage | null>(null);
   const [overtime, setOvertime] = useState<OvertimeRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [org, setOrg] = useState<Organization | null>(null);
@@ -331,12 +327,7 @@ export function AdminAttendance() {
 
       if (tab === "analytics") setHours(await getOrgHoursSummary(from, to, filter.teamId));
       if (tab === "performance") {
-        const [perf, selfie] = await Promise.all([
-          getSupervisorPerformance(from, to, filter),
-          getSelfieStorage().catch(() => null),
-        ]);
-        setPerformance(perf);
-        setSelfies(selfie);
+        setPerformance(await getSupervisorPerformance(from, to, filter));
       }
       if (tab === "history") setAudit(await getApprovalAudit(from, to, filter));
     } catch (e) {
@@ -709,7 +700,7 @@ export function AdminAttendance() {
       ) : tab === "analytics" ? (
         <AnalyticsTab summary={hours} records={records} name={name} from={from} to={to} />
       ) : tab === "performance" ? (
-        <PerformanceTab rows={performance} selfies={selfies} />
+        <PerformanceTab rows={performance} />
       ) : (
         <HistoryTab
           rows={historyRows}
@@ -1130,69 +1121,8 @@ function AnalyticsTab({
     );
   }
 
-  const t = summary.totals;
-
   return (
     <div className="space-y-4 sm:space-y-6">
-      <section className={`${CARD_BARE} space-y-5 p-5 sm:p-6`}>
-        <header>
-          <h3 className="text-base font-black text-foreground">Working hours summary</h3>
-          {/* This rule is not guessable from the column headings, and getting it
-              wrong is how a 143h row next to 56h expected reads as someone
-              over-delivering rather than as unapproved overtime. */}
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Worked is clocked time less breaks. Only{" "}
-            <strong className="font-semibold text-foreground">normal</strong> hours count toward{" "}
-            <strong className="font-semibold text-foreground">expected</strong> — a normal day caps at the shift
-            length, so beyond-shift, rest-day and holiday time sit outside it.
-          </p>
-        </header>
-
-        {/* One flat strip, following production, rather than eight individually
-            bordered tiles: the boxes were taking more vertical room than the
-            table they introduce. Hours above, counts below — minutes say how
-            much was worked, counts say how often something went wrong. */}
-        <div className="rounded-2xl border border-border/60 bg-surface-low px-5 py-4">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-            <Metric label="Worked" value={formatMinutes(t.totalMin)} />
-            <Metric
-              label="Normal / expected"
-              value={`${formatMinutes(t.normalMin)} / ${formatMinutes(t.expectedMin)}`}
-            />
-            {/* Beyond-shift is separated from approved OT on purpose: hours past
-                the shift that nobody approved are a liability, not overtime. */}
-            <Metric
-              label="Beyond shift"
-              value={formatMinutes(t.beyondShiftMin)}
-              tone={t.beyondShiftMin > t.otApprovedMin ? "text-tertiary" : undefined}
-            />
-            <Metric label="OT approved" value={formatMinutes(t.otApprovedMin)} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border/50 pt-4 sm:grid-cols-4">
-            <Metric label="Records" value={String(counts.records)} />
-            {/* Coloured only when there is something there. Production tints
-                these unconditionally, which paints a red "0 Missing" — an
-                alarm about nothing. */}
-            <Metric
-              label="Late instances"
-              value={String(counts.late)}
-              tone={counts.late > 0 ? "text-tertiary" : undefined}
-            />
-            <Metric
-              label="Missing"
-              value={String(counts.missing)}
-              tone={counts.missing > 0 ? "text-destructive" : undefined}
-            />
-            <Metric
-              label="Leave days"
-              value={String(counts.leave)}
-              tone={counts.leave > 0 ? "text-primary" : undefined}
-            />
-          </div>
-        </div>
-      </section>
-
       <section className={CARD_BARE}>
         {summary.employees.length === 0 ? (
           <EmptyRow>No hours recorded in this range.</EmptyRow>
@@ -1303,10 +1233,8 @@ function AnalyticsTab({
 
 function PerformanceTab({
   rows,
-  selfies,
 }: {
   rows: SupervisorPerformance[];
-  selfies: SelfieStorage | null;
 }) {
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -1376,30 +1304,6 @@ function PerformanceTab({
         )}
       </section>
 
-      <section className={`${CARD_BARE} space-y-4 p-5 sm:p-6`}>
-        <header>
-          <h3 className="text-base font-black text-foreground">Clock-in photo storage</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            What the clock-in selfies are costing, and whether any have gone missing since they
-            were taken.
-          </p>
-        </header>
-        {/* The same flat strip the Analytics summary uses, rather than three
-            bordered tiles — three metrics do not need three boxes. */}
-        <div className="rounded-2xl border border-border/60 bg-surface-low px-5 py-4">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
-            <Metric label="Photos held" value={selfies ? String(selfies.photoCount) : "—"} />
-            <Metric label="Storage used" value={selfies ? formatBytes(selfies.totalBytes) : "—"} />
-            {/* Missing is worth its own figure: a pruned file is fine, but a
-                rising count is what a broken upload path looks like. */}
-            <Metric
-              label="Missing files"
-              value={selfies ? String(selfies.missingCount) : "—"}
-              tone={selfies && selfies.missingCount > 0 ? "text-destructive" : undefined}
-            />
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
