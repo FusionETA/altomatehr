@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Email;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Organizations;
 using BC = BCrypt.Net.BCrypt;
 
 using AltomateHR.Api.Modules.Audit;
@@ -22,6 +23,7 @@ public class AuthService : IAuthService
     private readonly ILogger<AuthService> _logger;
     private readonly int _refreshDays;
     private readonly IAuditService _audit;
+    private readonly IOrganizationRepository _organizations;
 
     public AuthService(
         ITokenService tokens,
@@ -32,7 +34,8 @@ public class AuthService : IAuthService
         IEmailSender email,
         ILogger<AuthService> logger,
         IConfiguration config,
-        IAuditService audit)
+        IAuditService audit,
+        IOrganizationRepository organizations)
     {
         _tokens = tokens;
         _refreshRepo = refreshRepo;
@@ -43,6 +46,7 @@ public class AuthService : IAuthService
         _logger = logger;
         _refreshDays = int.Parse(config["Jwt:RefreshTokenDays"] ?? "7");
         _audit = audit;
+        _organizations = organizations;
     }
 
     public async Task<AuthResult?> LoginAsync(string email, string password)
@@ -121,10 +125,21 @@ public class AuthService : IAuthService
         return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId);
     }
 
-    public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId) =>
-        (await _directory.GetMembershipsByUserAsync(userId))
-            .Select(m => new UserOrgDto(m.OrganizationId, m.Role))
-            .ToList();
+    public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId)
+    {
+        // Resolve each membership's org name so the switcher can list companies
+        // by name. Organizations are the tenant root (no org query filter), so a
+        // cross-tenant GetByIdAsync is fine here even though the memberships came
+        // from a filter-ignoring lookup.
+        var memberships = await _directory.GetMembershipsByUserAsync(userId);
+        var orgs = new List<UserOrgDto>(memberships.Count);
+        foreach (var m in memberships)
+        {
+            var org = await _organizations.GetByIdAsync(m.OrganizationId);
+            orgs.Add(new UserOrgDto(m.OrganizationId, org?.Name ?? m.OrganizationId, m.Role));
+        }
+        return orgs;
+    }
 
     public async Task<AuthResult?> RefreshAsync(string refreshToken)
     {

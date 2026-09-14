@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, ExternalLink, LogOut, MoreVertical } from "lucide-react";
-import { CreateCompanyDialog } from "@/features/settings/components/CreateCompanyDialog";
+import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
@@ -15,6 +14,7 @@ import { buildInitials, buildName } from "@/features/employee-portal/lib/employe
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
+import { OrgSwitcher } from "./OrgSwitcher";
 import { AdminAttendance } from "./AdminAttendance";
 import { AdminPayroll } from "@/features/payroll/components/AdminPayroll";
 import { ActivityLog } from "./ActivityLog";
@@ -32,7 +32,6 @@ export function AdminShell({
   const [activeParent, setActiveParent] = useState("overview");
   const [activeChild, setActiveChild] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [creatingCompany, setCreatingCompany] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeItem = findNavItem(activeParent);
@@ -150,10 +149,11 @@ export function AdminShell({
               <h1 className="truncate text-2xl font-black tracking-tight text-foreground">
                 {activeItem.label}
               </h1>
-              <p className="mt-1 hidden text-sm text-muted-foreground sm:block">AltomateHR</p>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              <OrgSwitcher />
+
               <div className="hidden sm:block">
                 <NotificationBell onNavigate={navigateFromNotification} />
               </div>
@@ -203,18 +203,6 @@ export function AdminShell({
                     >
                       <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
                       Launch Appraisify
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        setCreatingCompany(true);
-                      }}
-                      className="mt-1 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
-                    >
-                      <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
-                      New company
                     </button>
 
                     <button
@@ -289,10 +277,6 @@ export function AdminShell({
           </div>
         </main>
       </div>
-
-      {creatingCompany ? (
-        <CreateCompanyDialog onClose={() => setCreatingCompany(false)} />
-      ) : null}
     </div>
   );
 }

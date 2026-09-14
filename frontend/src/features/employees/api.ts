@@ -84,6 +84,9 @@ export type CreateEmployee = {
   joinDate?: string | null;
   role: string;
   policyId?: string | null;
+  // Per-admin module grant, set at creation. null/omitted = full access (within
+  // the org's plan). Only meaningful for Admin accounts.
+  modules?: string[] | null;
 };
 
 export const createEmployee = (body: CreateEmployee) => apiPost<Employee>("/employees", body);

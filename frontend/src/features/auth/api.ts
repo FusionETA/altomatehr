@@ -1,4 +1,4 @@
-import { apiPost } from "@/shared/lib/api-client";
+import { apiGet, apiPost } from "@/shared/lib/api-client";
 import type { SignedInUser } from "@/shared/types/session";
 
 export type LoginRequest = { email: string; password: string };
@@ -8,6 +8,19 @@ export const login = (body: LoginRequest) => apiPost<AuthResponse>("/auth/login"
 
 // Uses the httpOnly refresh cookie (sent automatically) to get a new access token.
 export const refresh = () => apiPost<AuthResponse>("/auth/refresh");
+
+// One company the signed-in account can act in. `role` is the account's role in
+// THAT org (an Owner here may be a plain Employee elsewhere).
+export type UserOrg = { organizationId: string; name: string; role: string };
+
+// The companies this account belongs to — drives the org switcher.
+export const getOrgs = () => apiGet<UserOrg[]>("/auth/orgs");
+
+// Re-mint the session for another company. The server also rotates the httpOnly
+// refresh cookie to the new org, so a full reload afterwards lands there with
+// every screen re-fetching against it.
+export const switchOrg = (organizationId: string) =>
+  apiPost<AuthResponse>(`/auth/switch-org/${organizationId}`);
 
 // Revokes the refresh token server-side + clears the cookie.
 export const logout = () => apiPost<void>("/auth/logout");

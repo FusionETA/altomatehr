@@ -13,5 +13,6 @@ public record AuthResult(
     DateTime RefreshTokenExpiresAt);
 
 // An org the signed-in account can act in (drives the org switcher). Role is the
-// account's role IN THAT org — Employee here, Supervisor there, etc.
-public record UserOrgDto(string OrganizationId, string Role);
+// account's role IN THAT org — Employee here, Supervisor there, etc. Name is the
+// company name, so the switcher can list them by name rather than by opaque id.
+public record UserOrgDto(string OrganizationId, string Name, string Role);

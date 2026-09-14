@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Building2, Check, LoaderCircle, X } from "lucide-react";
+import { ArrowLeftRight, Building2, Check, LoaderCircle, X } from "lucide-react";
 import { createOrganization } from "../api";
+import { switchOrg } from "@/features/auth/api";
 
 // Create a new company. The caller becomes its Owner (server-side), so it's a
-// company they can run — reachable once org-switching lands / after signing in
-// again against it. Kept deliberately minimal: only the name is required.
+// company they can run and switch straight into. Kept deliberately minimal: only
+// the name is required.
 export function CreateCompanyDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdName, setCreatedName] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   async function submit() {
     const trimmed = name.trim();
@@ -19,11 +21,24 @@ export function CreateCompanyDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const org = await createOrganization(trimmed);
-      setCreatedName(org.name);
+      setCreated({ id: org.id, name: org.name });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the company.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function switchNow() {
+    if (!created) return;
+    setSwitching(true);
+    setError(null);
+    try {
+      await switchOrg(created.id);
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not switch to the new company.");
+      setSwitching(false);
     }
   }
 
@@ -53,22 +68,37 @@ export function CreateCompanyDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {createdName ? (
+        {created ? (
           <div className="mt-4 space-y-4">
             <div className="flex items-start gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300">
               <Check className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                <strong>{createdName}</strong> was created and you're its Owner. Switch to it from
-                the company switcher (or sign in again) to start setting it up.
+                <strong>{created.name}</strong> was created and you're its Owner. Switch to it now to
+                start setting it up, or stay in your current company.
               </p>
             </div>
-            <div className="flex justify-end">
+            {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+                disabled={switching}
+                className="rounded-2xl bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
               >
-                Done
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => void switchNow()}
+                disabled={switching}
+                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              >
+                {switching ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="h-4 w-4" />
+                )}
+                Switch now
               </button>
             </div>
           </div>

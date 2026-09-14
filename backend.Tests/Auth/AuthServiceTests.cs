@@ -4,6 +4,8 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Email;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Organizations.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.RegularExpressions;
@@ -203,7 +205,8 @@ public class AuthServiceTests
                     ["Jwt:RefreshTokenDays"] = "7",
                 })
                 .Build(),
-            audit: new FakeAuditService());
+            audit: new FakeAuditService(),
+            organizations: new FakeOrganizationRepository());
 
         return new ResetHarness(service, userRepo, otps, email, refreshTokens);
     }
@@ -397,7 +400,8 @@ public class AuthServiceTests
                     ["Jwt:RefreshTokenDays"] = "7",
                 })
                 .Build(),
-            audit: new FakeAuditService());
+            audit: new FakeAuditService(),
+            organizations: new FakeOrganizationRepository());
     }
 
     private static User CreateUser(string password) => new()
@@ -472,6 +476,18 @@ public class AuthServiceTests
             Task.FromResult(_m.Count(x => x.ShiftId == shiftId));
         public Task AddAsync(OrganizationMembership m) { _m.Add(m); return Task.CompletedTask; }
         public Task UpdateAsync(OrganizationMembership m) => Task.CompletedTask;
+    }
+
+    // Only GetByIdAsync is exercised (by GetOrgsAsync, to name each org); the
+    // rest exist so AuthService can be constructed.
+    private sealed class FakeOrganizationRepository : IOrganizationRepository
+    {
+        public Task<Organization?> GetByIdAsync(string id) =>
+            Task.FromResult<Organization?>(new Organization { Id = id, Name = id });
+        public Task<Organization?> GetFirstAsync() => Task.FromResult<Organization?>(null);
+        public Task AddAsync(Organization organization) => Task.CompletedTask;
+        public Task UpdateAsync(Organization organization) => Task.CompletedTask;
+        public Task<bool> AnyAsync() => Task.FromResult(true);
     }
 
     // Password-reset codes aren't exercised by the tests here yet; these exist so
