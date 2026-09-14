@@ -50,6 +50,13 @@ import { TablePager } from "@/shared/components/TablePager";
 import { usePaged } from "@/shared/lib/use-paged";
 import { CARD_BARE } from "../lib/dashboard-styles";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import {
   ALL_FILTER,
   formatMinutes,
   formatWorkingDays,
@@ -233,6 +240,9 @@ export function AdminAttendance() {
   const [filter, setFilter] = useState<AdminAttendanceFilter>({});
   const [from, setFrom] = useState(startOfMonth);
   const [to, setTo] = useState(() => isoDay(new Date()));
+  // Lifted so the OT tab's status filter can live in the filter card rather
+  // than the submissions card's header.
+  const [otStatus, setOtStatus] = useState<OtStatusFilter>("ALL");
 
   const [projects, setProjects] = useState<FilterOption[]>([]);
   const [teams, setTeams] = useState<FilterOption[]>([]);
@@ -641,6 +651,37 @@ export function AdminAttendance() {
               }}
             />
           ) : null}
+
+          {/* Tab-specific summary/filter lives WITH the filters, not in the
+              content card's header — the count reflects the filters, and the OT
+              status is just another filter. */}
+          {section === "employees" && !openEmployee ? (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {employeeRows.length} {employeeRows.length === 1 ? "person" : "people"}
+            </p>
+          ) : section === "overtime" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Showing{" "}
+                {otStatus === "ALL"
+                  ? overtimeRows.length
+                  : overtimeRows.filter((r) => r.status === otStatus).length}{" "}
+                of {overtimeRows.length} submissions
+              </p>
+              <Select value={otStatus} onValueChange={(v) => setOtStatus(v as OtStatusFilter)}>
+                <SelectTrigger className="sm:w-48" aria-label="Status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OT_STATUSES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value === "ALL" ? "All statuses" : overtimeStatusLabels[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -678,7 +719,7 @@ export function AdminAttendance() {
           <EmployeesTab rows={employeeRows} onOpen={setOpenEmployeeId} />
         )
       ) : section === "overtime" ? (
-        <OvertimeTab rows={overtimeRows} name={name} projectNames={projectNames} />
+        <OvertimeTab rows={overtimeRows} name={name} projectNames={projectNames} status={otStatus} />
       ) : section === "shifts" ? (
         <ShiftsTab
           rows={shifts}
@@ -739,17 +780,11 @@ function TodayTab({
 
   return (
     <section className={`${CARD_BARE} overflow-hidden`}>
-      <header className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
-        <h3 className="text-lg font-bold text-foreground">Daily activity</h3>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {dateLabel(date)}
-        </span>
-      </header>
-
       {/* Counters double as filters, so a reader who spots "Late · 6" can see
-          which six without rebuilding the thought in the search box. */}
-      <nav className="nice-scrollbar overflow-x-auto px-5 py-4 sm:px-6">
-        <div className="flex gap-2">
+          which six without rebuilding the thought in the search box. The date
+          rides on the same row rather than in a heading of its own. */}
+      <div className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+        <nav className="nice-scrollbar flex gap-2 overflow-x-auto">
           {TODAY_CHIPS.map((item) => {
             const count = counts[item.key];
             const active = chip === item.key;
@@ -772,8 +807,11 @@ function TodayTab({
               </button>
             );
           })}
-        </div>
-      </nav>
+        </nav>
+        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {dateLabel(date)}
+        </span>
+      </div>
 
       {shown.length === 0 ? (
         <EmptyRow>
@@ -1623,13 +1661,9 @@ function EmployeesTab({
 
   return (
     <div className="space-y-4">
-      {/* No "Employees" heading: the active tab directly above already says
-          it. Only the count is kept — that is the part the tab cannot tell
-          you, and it reflects the filters rather than the roster. */}
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {rows.length} {rows.length === 1 ? "person" : "people"}
-      </p>
-
+      {/* No heading or count here: the tab above names the view, and the count
+          now rides inside the filter card (it reflects the filters, so it
+          belongs with them). */}
       <section className={`${CARD_BARE} divide-y divide-border/60`}>
         {rows.map(({ employee, projects, buckets, record }) => (
           <button
@@ -2471,12 +2505,15 @@ function OvertimeTab({
   rows,
   name,
   projectNames,
+  status,
 }: {
   rows: OvertimeRequest[];
   name: (id: string) => string;
   projectNames: Map<string, string>;
+  // Lifted to the filter card, alongside the "Showing X of Y" count — both
+  // belong with the other filters rather than in this card's header.
+  status: OtStatusFilter;
 }) {
-  const [status, setStatus] = useState<OtStatusFilter>("ALL");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const shown = useMemo(
@@ -2486,33 +2523,9 @@ function OvertimeTab({
 
   return (
     <section className={`${CARD_BARE} overflow-hidden`}>
-      <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6 sm:pt-6">
-        <div>
-          <h4 className="text-lg font-bold text-foreground">OT submissions</h4>
-          <p className="text-xs text-muted-foreground">
-            All overtime requests across the organisation.
-          </p>
-        </div>
-
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value as OtStatusFilter)}
-          aria-label="Status"
-          className="h-11 rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          {OT_STATUSES.map((value) => (
-            <option key={value} value={value}>
-              {value === "ALL" ? "All statuses" : overtimeStatusLabels[value]}
-            </option>
-          ))}
-        </select>
+      <header className="px-5 pt-5 sm:px-6 sm:pt-6">
+        <h4 className="text-lg font-bold text-foreground">OT submissions</h4>
       </header>
-
-      {/* Two numbers, because "showing 4" alone hides how much was filtered
-          away — the gap between them is the point. */}
-      <p className="px-5 pt-3 text-xs text-muted-foreground sm:px-6">
-        Showing {shown.length} of {rows.length} submissions
-      </p>
 
       {shown.length === 0 ? (
         <EmptyRow>
@@ -2677,16 +2690,6 @@ function ShiftsTab({
 
   return (
     <div className="space-y-4">
-      {/* No "Shifts" heading — the active tab above says it. The explanation
-          stays: how the default interacts with a per-employee assignment, and
-          that late detection reads from it, is not guessable from the table. */}
-      <p className="max-w-3xl text-sm text-muted-foreground">
-        One project can have several named shifts (Day 8am–5pm, Night 10pm–7am).
-        Mark one as the project default; an employee can still be assigned a
-        different one. Late detection and expected daily hours both read from
-        whichever shift applies to the employee.
-      </p>
-
       <section className={`${CARD_BARE} flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:p-6`}>
         <div className="min-w-0 flex-1 space-y-1.5">
           <label
@@ -2695,17 +2698,19 @@ function ShiftsTab({
           >
             Project
           </label>
-          <select
-            id="shifts-project"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            className="h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <option value={ALL_FILTER}>All projects</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger id="shifts-project" aria-label="Project">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent searchPlaceholder="Search projects…">
+              <SelectItem value={ALL_FILTER}>All projects</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <button
