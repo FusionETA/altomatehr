@@ -15,7 +15,7 @@ import {
 // `built: false` items render a "Coming next" placeholder for now —
 // the structure matches the real system so the shape is faithful even
 // before every admin surface is rebuilt.
-export type AdminChild = { id: string; label: string };
+export type AdminChild = { id: string; label: string; ownerOnly?: boolean };
 
 export type AdminNavItem = {
   id: string;
@@ -52,6 +52,8 @@ export const adminNav: AdminNavItem[] = [
       { id: "settings-accounts", label: "Accounts" },
       { id: "settings-projects", label: "Projects" },
       { id: "settings-policies", label: "Policies" },
+      // Owner-only: an Admin cannot edit their own or a peer's access.
+      { id: "settings-admins", label: "Admins", ownerOnly: true },
     ],
   },
 ];

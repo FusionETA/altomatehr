@@ -28,6 +28,41 @@ public class OrganizationsController : ControllerBase
         return org is null ? NotFound() : Ok(org);
     }
 
+    // GET /organizations/modules — the caller's effective enabled modules (the
+    // org plan ceiling ∩ their per-admin grant) plus every grantable key. Drives
+    // nav visibility and the Owner's access picker. Any authenticated user reads
+    // their own access.
+    [HttpGet("modules")]
+    public async Task<IActionResult> GetModules([FromServices] IModuleAccessService access) =>
+        Ok(new ModuleAccessDto
+        {
+            All = OrgModules.AllModules,
+            Enabled = await access.GetEnabledModulesAsync(),
+        });
+
+    // GET /organizations/admins — the org's admins with their module grant.
+    // Owners only: controlling who sees what is the Owner's call, not an admin's.
+    [Authorize(Roles = "Owner")]
+    [HttpGet("admins")]
+    public async Task<IActionResult> ListAdmins() => Ok(await _organizations.ListAdminsAsync());
+
+    // PUT /organizations/admins/{userId}/access — set one admin's module grant
+    // (null = full access). Owners only.
+    [Authorize(Roles = "Owner")]
+    [HttpPut("admins/{userId}/access")]
+    public async Task<IActionResult> SetAdminAccess(string userId, SetAdminAccessDto dto)
+    {
+        try
+        {
+            var result = await _organizations.SetAdminModulesAsync(userId, dto.Modules);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     // PUT /organizations/current — update org settings (Admins only).
     [Authorize(Roles = "Admin,Owner")]
     [HttpPut("current")]
@@ -63,9 +98,10 @@ public class OrganizationsController : ControllerBase
         }
     }
 
-    // POST /organizations — create a new company. Owners only. The creator becomes
-    // the Owner of the new org, so it appears in their org switcher (GET /auth/orgs).
-    [Authorize(Roles = "Owner")]
+    // POST /organizations — create a new company. Admins and Owners can; the
+    // creator becomes the Owner of the new org, so it appears in their org
+    // switcher (GET /auth/orgs).
+    [Authorize(Roles = "Admin,Owner")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateOrganizationDto dto)
     {

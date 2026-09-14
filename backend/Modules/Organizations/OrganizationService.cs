@@ -19,25 +19,89 @@ public class OrganizationService : IOrganizationService
     private readonly IAuditService _audit;
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly ILeaveTypeService _leaveTypes;
+    private readonly IDirectoryService _directory;
 
     public OrganizationService(
         IOrganizationRepository repo,
         IOrganizationMembershipRepository memberships,
         IAuditService audit,
         IXeroService xero,
-        ILeaveTypeService leaveTypes)
+        ILeaveTypeService leaveTypes,
+        IDirectoryService directory)
     {
         _repo = repo;
         _memberships = memberships;
         _audit = audit;
         _xero = xero;
         _leaveTypes = leaveTypes;
+        _directory = directory;
     }
 
     public async Task<OrganizationDto?> GetByIdAsync(string organizationId)
     {
         var org = await _repo.GetByIdAsync(organizationId);
         return org is null ? null : ToDto(org);
+    }
+
+    public async Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync()
+    {
+        var memberships = await _memberships.GetForCurrentOrgAsync();
+        var users = (await _directory.GetUsersAsync())
+            .ToDictionary(u => u.Id, StringComparer.Ordinal);
+
+        return memberships
+            .Where(m => string.Equals(m.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            .Select(m =>
+            {
+                users.TryGetValue(m.UserId, out var user);
+                return new AdminAccessDto
+                {
+                    UserId = m.UserId,
+                    Name = user?.Name ?? string.Empty,
+                    Email = user?.Email ?? string.Empty,
+                    Role = m.Role,
+                    Modules = m.Modules is null ? null : OrgModules.Split(m.Modules).ToList(),
+                };
+            })
+            .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null
+            || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (modules is not null)
+        {
+            var unknown = modules.FirstOrDefault(m => !OrgModules.IsKnownModule(m));
+            if (unknown is not null) throw new ArgumentException($"Unknown module '{unknown}'.");
+        }
+
+        // null → full access (store null); a list → CSV (an empty list stores ""
+        // which Split reads as "no modules" — deliberately locked out).
+        membership.Modules = modules is null ? null : string.Join(",", modules);
+        await _memberships.UpdateAsync(membership);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            "Updated an admin's module access",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId, membership.Modules }));
+
+        var users = (await _directory.GetUsersAsync()).ToDictionary(u => u.Id, StringComparer.Ordinal);
+        users.TryGetValue(userId, out var u);
+        return new AdminAccessDto
+        {
+            UserId = userId,
+            Name = u?.Name ?? string.Empty,
+            Email = u?.Email ?? string.Empty,
+            Role = membership.Role,
+            Modules = membership.Modules is null ? null : OrgModules.Split(membership.Modules).ToList(),
+        };
     }
 
     public async Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto)

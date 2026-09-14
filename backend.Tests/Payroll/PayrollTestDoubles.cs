@@ -131,6 +131,11 @@ internal sealed class StubPayrollLeave : ILeaveService
 // as the fallback when Company Info carries no employer name.
 internal sealed class StubPayrollOrganizations : IOrganizationService
 {
+    public Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync() =>
+        Task.FromResult<IReadOnlyList<AdminAccessDto>>(Array.Empty<AdminAccessDto>());
+    public Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules) =>
+        Task.FromResult<AdminAccessDto?>(null);
+
     public string Name { get; set; } = "Globe Engineering Sdn Bhd";
 
     public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>

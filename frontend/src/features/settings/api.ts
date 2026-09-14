@@ -95,6 +95,28 @@ export const getOrganization = () => apiGet<Organization>("/organizations/curren
 export const updateOrganization = (body: UpdateOrganization) =>
   apiPut<Organization>("/organizations/current", body);
 
+// Create a new company; the caller becomes its Owner. Admins and Owners can.
+export const createOrganization = (name: string) =>
+  apiPost<Organization>("/organizations", { name });
+
+// --- Admin access control (Owner only) ---
+export type AdminAccess = {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  // null = full access (everything the plan enables); a list narrows the admin
+  // to those modules; an empty list locks them out.
+  modules: string[] | null;
+};
+export const getAdmins = () => apiGet<AdminAccess[]>("/organizations/admins");
+export const setAdminAccess = (userId: string, modules: string[] | null) =>
+  apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, { modules });
+
+// Every grantable module key, plus the caller's own effective enabled set.
+export type ModuleAccess = { all: string[]; enabled: string[] };
+export const getModuleAccess = () => apiGet<ModuleAccess>("/organizations/modules");
+
 // --- Projects ---
 export const getProjects = () => apiGet<Project[]>("/projects");
 

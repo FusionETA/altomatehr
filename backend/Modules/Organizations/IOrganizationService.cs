@@ -11,6 +11,15 @@ public interface IOrganizationService
     // Create a new company and make `ownerUserId` its Owner (so they can access it).
     Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId);
 
+    // --- Admin access control (Owner only) ---
+    // The org's admins with their current module grant, for the Owner's
+    // "Manage access" surface.
+    Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync();
+
+    // Set an admin's module grant (null = full access). Returns null if the user
+    // is not an Admin in this org; throws ArgumentException on an unknown module.
+    Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules);
+
     Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto);
 
     // Sets the org's claim settings: the day of month that closes the claims run

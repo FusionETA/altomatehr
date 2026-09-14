@@ -168,6 +168,11 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
 
 internal sealed class FakeOrganizationService : IOrganizationService
 {
+    public Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync() =>
+        Task.FromResult<IReadOnlyList<AdminAccessDto>>(Array.Empty<AdminAccessDto>());
+    public Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules) =>
+        Task.FromResult<AdminAccessDto?>(null);
+
     // Claims settings read through here now, so this one actually works rather
     // than throwing: ClaimsService.GetSettingsAsync calls GetByIdAsync.
     public Task<OrganizationDto?> SetClaimSettingsAsync(

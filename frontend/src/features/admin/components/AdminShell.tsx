@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
+import { Building2, ExternalLink, LogOut, MoreVertical } from "lucide-react";
+import { CreateCompanyDialog } from "@/features/settings/components/CreateCompanyDialog";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
@@ -7,6 +8,7 @@ import { AccountsSettings } from "@/features/settings/components/AccountsSetting
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
+import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
@@ -30,6 +32,7 @@ export function AdminShell({
   const [activeParent, setActiveParent] = useState("overview");
   const [activeChild, setActiveChild] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [creatingCompany, setCreatingCompany] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeItem = findNavItem(activeParent);
@@ -110,7 +113,9 @@ export function AdminShell({
 
                 {item.children && active ? (
                   <div className="ml-5 mt-1 space-y-0.5 border-l border-border/60 pl-4">
-                    {item.children.map((child) => {
+                    {item.children
+                      .filter((child) => !child.ownerOnly || user.role === "Owner")
+                      .map((child) => {
                       const childActive = child.id === activeChild;
                       return (
                         <button
@@ -204,6 +209,18 @@ export function AdminShell({
                       type="button"
                       onClick={() => {
                         setAccountMenuOpen(false);
+                        setCreatingCompany(true);
+                      }}
+                      className="mt-1 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    >
+                      <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      New company
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
                         onLogout();
                       }}
                       className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
@@ -244,7 +261,9 @@ export function AdminShell({
         {/* Mobile sub-nav for the active module. */}
         {activeItem.children ? (
           <HorizontalScrollArea className="px-4 pb-3 lg:hidden" contentClassName="gap-2">
-            {activeItem.children.map((child) => {
+            {activeItem.children
+              .filter((child) => !child.ownerOnly || user.role === "Owner")
+              .map((child) => {
               const childActive = child.id === activeChild;
               return (
                 <button
@@ -270,6 +289,10 @@ export function AdminShell({
           </div>
         </main>
       </div>
+
+      {creatingCompany ? (
+        <CreateCompanyDialog onClose={() => setCreatingCompany(false)} />
+      ) : null}
     </div>
   );
 }
@@ -302,6 +325,8 @@ function AdminContent({
       return <ProjectsSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
+    case "settings-admins":
+      return <AdminsSettings />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.

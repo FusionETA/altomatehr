@@ -1002,6 +1002,11 @@ public class LeaveServiceTests
 
     private sealed class FakeOrganizationService : IOrganizationService
     {
+        public Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync() =>
+            Task.FromResult<IReadOnlyList<AdminAccessDto>>(Array.Empty<AdminAccessDto>());
+        public Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules) =>
+            Task.FromResult<AdminAccessDto?>(null);
+
         public Task<OrganizationDto?> SetClaimSettingsAsync(
             string organizationId, int cutoffDay, ClaimSettlement settlementRoute,
             XeroBillStatus xeroBillStage) =>
