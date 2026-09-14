@@ -24,10 +24,24 @@ const empty: SavePolicy = {
   requireGeofence: true,
   requireSelfie: false,
   requireClockOutSelfie: false,
+  requireIpWhitelist: false,
+  geolocationEnabled: true,
+  captureLocationOnClockIn: true,
+  captureLocationOnClockOut: true,
+  captureLocationOnBreakStart: true,
+  captureLocationOnBreakEnd: true,
+  autoClockOutEnabled: false,
+  autoClockOutAfterMinutes: null,
   salaryType: "MONTHLY",
   otEnabled: true,
   otDailyThresholdMinutes: 480,
   otMethod: "CASH",
+  otRateNormalDay: 1.5,
+  otRatePublicHoliday: 3,
+  otRateRestDay: 2,
+  otRatePublicHolidayInShift: 2,
+  otRateRestDayInShift: 1,
+  otSalaryThreshold: null,
   temporary: false,
   leaveEntitlements: [],
 };
@@ -55,6 +69,32 @@ function Check({
         {label}
         {hint ? <span className="block text-xs font-normal text-muted-foreground">{hint}</span> : null}
       </span>
+    </label>
+  );
+}
+
+// A labelled OT multiplier input (× the hourly rate).
+function Rate({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-white/40 px-4 py-2">
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <input
+        type="number"
+        min="0"
+        max="99.99"
+        step="0.05"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-10 w-24 rounded-2xl border border-border bg-white/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      />
     </label>
   );
 }
@@ -167,12 +207,58 @@ export function PolicyEditorModal({
                   checked={form.requireGeofence}
                   onChange={(v) => set("requireGeofence", v)}
                 />
+                <Check
+                  label="Require IP allowlist"
+                  hint="Must clock in from an IP in the project's allowlist"
+                  checked={form.requireIpWhitelist}
+                  onChange={(v) => set("requireIpWhitelist", v)}
+                />
                 <Check label="Require selfie (clock-in)" checked={form.requireSelfie} onChange={(v) => set("requireSelfie", v)} />
                 <Check
                   label="Require selfie (clock-out)"
                   checked={form.requireClockOutSelfie}
                   onChange={(v) => set("requireClockOutSelfie", v)}
                 />
+              </div>
+
+              <div className="space-y-2.5 rounded-2xl border border-border/60 bg-white/40 p-3">
+                <Check
+                  label="Capture GPS location"
+                  hint="Master switch — off means coordinates are never recorded, and geofence can't apply"
+                  checked={form.geolocationEnabled}
+                  onChange={(v) => set("geolocationEnabled", v)}
+                />
+                {form.geolocationEnabled ? (
+                  <div className="grid gap-2.5 pl-6 sm:grid-cols-2">
+                    <Check label="On clock-in" checked={form.captureLocationOnClockIn} onChange={(v) => set("captureLocationOnClockIn", v)} />
+                    <Check label="On clock-out" checked={form.captureLocationOnClockOut} onChange={(v) => set("captureLocationOnClockOut", v)} />
+                    <Check label="On break start" checked={form.captureLocationOnBreakStart} onChange={(v) => set("captureLocationOnBreakStart", v)} />
+                    <Check label="On break end" checked={form.captureLocationOnBreakEnd} onChange={(v) => set("captureLocationOnBreakEnd", v)} />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2.5 rounded-2xl border border-border/60 bg-white/40 p-3">
+                <Check
+                  label="Auto clock-out"
+                  hint="A background sweep closes sessions left open after the set minutes"
+                  checked={form.autoClockOutEnabled}
+                  onChange={(v) => set("autoClockOutEnabled", v)}
+                />
+                {form.autoClockOutEnabled ? (
+                  <label className="block space-y-1.5 pl-6">
+                    <span className="text-sm font-medium text-foreground">After (net working minutes)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      className={`${INPUT} max-w-[12rem]`}
+                      value={form.autoClockOutAfterMinutes ?? ""}
+                      onChange={(e) =>
+                        set("autoClockOutAfterMinutes", e.target.value === "" ? null : Number(e.target.value))
+                      }
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
 
@@ -191,7 +277,27 @@ export function PolicyEditorModal({
                     </SelectContent>
                   </Select>
                 </div>
-                {form.otEnabled ? (
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-foreground">Overtime method</span>
+                  <Select value={form.otMethod} onValueChange={(v) => set("otMethod", v as SavePolicy["otMethod"])}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash (paid out)</SelectItem>
+                      <SelectItem value="TIME_BANK">Time bank (banked 1:1)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-2.5 pt-1 sm:grid-cols-2">
+                <Check label="Overtime enabled" checked={form.otEnabled} onChange={(v) => set("otEnabled", v)} />
+                <Check label="Temporary (probation / fixed-term)" checked={form.temporary} onChange={(v) => set("temporary", v)} />
+              </div>
+
+              {form.otEnabled ? (
+                <div className="grid gap-4 pt-1 sm:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="text-sm font-semibold text-foreground">OT threshold (min/day)</span>
                     <input
@@ -203,12 +309,44 @@ export function PolicyEditorModal({
                       onChange={(e) => set("otDailyThresholdMinutes", Number(e.target.value))}
                     />
                   </label>
-                ) : null}
-              </div>
-              <div className="grid gap-2.5 pt-1 sm:grid-cols-2">
-                <Check label="Overtime enabled" checked={form.otEnabled} onChange={(v) => set("otEnabled", v)} />
-                <Check label="Temporary (probation / fixed-term)" checked={form.temporary} onChange={(v) => set("temporary", v)} />
-              </div>
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      OT salary cap <span className="font-normal text-muted-foreground">(optional)</span>
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="No cap"
+                      className={INPUT}
+                      value={form.otSalaryThreshold ?? ""}
+                      onChange={(e) =>
+                        set("otSalaryThreshold", e.target.value === "" ? null : Number(e.target.value))
+                      }
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              {/* Multipliers only apply to CASH OT — TIME_BANK banks 1:1. */}
+              {form.otEnabled && form.otMethod === "CASH" ? (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    OT rate multipliers (× the hourly rate), applied when overtime is paid as cash.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Rate label="Normal day" value={form.otRateNormalDay} onChange={(v) => set("otRateNormalDay", v)} />
+                    <Rate label="Rest day" value={form.otRateRestDay} onChange={(v) => set("otRateRestDay", v)} />
+                    <Rate label="Public holiday" value={form.otRatePublicHoliday} onChange={(v) => set("otRatePublicHoliday", v)} />
+                    <Rate label="Rest day (in shift)" value={form.otRateRestDayInShift} onChange={(v) => set("otRateRestDayInShift", v)} />
+                    <Rate
+                      label="Public holiday (in shift)"
+                      value={form.otRatePublicHolidayInShift}
+                      onChange={(v) => set("otRatePublicHolidayInShift", v)}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2">

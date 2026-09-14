@@ -22,6 +22,20 @@ export type Policy = {
   otDailyThresholdMinutes: number;
   otMethod: OtMethod;
   temporary: boolean;
+  requireIpWhitelist: boolean;
+  geolocationEnabled: boolean;
+  captureLocationOnClockIn: boolean;
+  captureLocationOnClockOut: boolean;
+  captureLocationOnBreakStart: boolean;
+  captureLocationOnBreakEnd: boolean;
+  autoClockOutEnabled: boolean;
+  autoClockOutAfterMinutes: number | null;
+  otRateNormalDay: number;
+  otRatePublicHoliday: number;
+  otRateRestDay: number;
+  otRatePublicHolidayInShift: number;
+  otRateRestDayInShift: number;
+  otSalaryThreshold: number | null;
   leaveEntitlements: PolicyLeaveEntitlement[];
 };
 
@@ -39,6 +53,20 @@ export type SavePolicy = {
   otDailyThresholdMinutes: number;
   otMethod: OtMethod;
   temporary: boolean;
+  requireIpWhitelist: boolean;
+  geolocationEnabled: boolean;
+  captureLocationOnClockIn: boolean;
+  captureLocationOnClockOut: boolean;
+  captureLocationOnBreakStart: boolean;
+  captureLocationOnBreakEnd: boolean;
+  autoClockOutEnabled: boolean;
+  autoClockOutAfterMinutes: number | null;
+  otRateNormalDay: number;
+  otRatePublicHoliday: number;
+  otRateRestDay: number;
+  otRatePublicHolidayInShift: number;
+  otRateRestDayInShift: number;
+  otSalaryThreshold: number | null;
   leaveEntitlements: PolicyLeaveEntitlement[];
 };
 
