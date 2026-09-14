@@ -159,12 +159,9 @@ export function CompanyStructure() {
 
   return (
     <div className="space-y-4">
-      {/* Title only. The two lines of prose that used to sit here explained the
-          approval model to someone reading it once and cost every visit after
-          that the vertical space — but with nothing at all the panes floated
-          under the portal header with no anchor. */}
-      <h2 className="text-2xl font-black text-foreground">Company Structure</h2>
-
+      {/* No page title here: the admin shell header already renders "Company
+          Structure", so repeating it is the one thing that made this tab look
+          different from every other view. The shell header is the anchor. */}
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
@@ -251,7 +248,7 @@ export function CompanyStructure() {
                   setCreating(true);
                 }}
                 disabled={!selectedProjectId}
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                className="inline-flex shrink-0 items-center gap-1 rounded-2xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 <Plus className="h-3.5 w-3.5" /> New
               </button>
