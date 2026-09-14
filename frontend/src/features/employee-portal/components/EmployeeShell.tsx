@@ -342,23 +342,31 @@ export function EmployeeShell({
 
         <main className="flex-1 pb-28 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl px-6 py-6 sm:px-7 lg:px-8 lg:py-8">
-            {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
-            {activeView === "claims" ? (
-              <ClaimsPage sub={sub ?? "claims-mine"} onDecided={refreshBadges} />
-            ) : null}
-            {activeView === "attendance" ? (
-              <AttendanceView
-                sub={sub ?? "att-dashboard"}
-                onViewHistory={() => selectChild("attendance", "att-history")}
-              />
-            ) : null}
-            {activeView === "leave" ? <LeavePage sub={sub ?? "leave-mine"} /> : null}
-            {activeView === "payslips" ? (
-              <EmptyModule
-                title="Payslips"
-                body="This area will hold employee payslip history and payroll document downloads."
-              />
-            ) : null}
+            {/* Keyed on the active view so it remounts per tab, easing the
+                content in instead of popping; min-h reserves the viewport so a
+                shorter tab doesn't collapse the page and jump the scroll. */}
+            <div
+              key={activeView}
+              className="min-h-[60vh] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out"
+            >
+              {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
+              {activeView === "claims" ? (
+                <ClaimsPage sub={sub ?? "claims-mine"} onDecided={refreshBadges} />
+              ) : null}
+              {activeView === "attendance" ? (
+                <AttendanceView
+                  sub={sub ?? "att-dashboard"}
+                  onViewHistory={() => selectChild("attendance", "att-history")}
+                />
+              ) : null}
+              {activeView === "leave" ? <LeavePage sub={sub ?? "leave-mine"} /> : null}
+              {activeView === "payslips" ? (
+                <EmptyModule
+                  title="Payslips"
+                  body="This area will hold employee payslip history and payroll document downloads."
+                />
+              ) : null}
+            </div>
           </div>
         </main>
 

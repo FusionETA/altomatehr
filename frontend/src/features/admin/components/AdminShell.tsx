@@ -274,7 +274,16 @@ export function AdminShell({
 
         <main className="flex-1 pb-16 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-            <AdminContent activeChild={activeChild} user={user} onOpen={open} />
+            {/* Keyed on the active view so it remounts per tab, letting the
+                enter animation re-fire — the content eases in instead of
+                popping. min-h reserves the viewport so switching between a tall
+                and a short tab doesn't collapse the page and jump the scroll. */}
+            <div
+              key={activeChild}
+              className="min-h-[60vh] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out"
+            >
+              <AdminContent activeChild={activeChild} user={user} onOpen={open} />
+            </div>
           </div>
         </main>
       </div>
