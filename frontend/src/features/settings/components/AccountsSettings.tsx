@@ -22,6 +22,7 @@ import {
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
+import { OrgMileageDefaultsCard } from "./OrgFieldCards";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -452,6 +453,10 @@ export function AccountsSettings() {
           </div>
         ) : null}
       </div>
+
+      {/* Org-wide mileage rate + unit — kept below the accounts it applies to so
+          it doesn't push the main list down. A per-account rate overrides it. */}
+      <OrgMileageDefaultsCard />
     </div>
   );
 }

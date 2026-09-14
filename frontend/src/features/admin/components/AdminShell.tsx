@@ -9,6 +9,7 @@ import { OrganizationSettings } from "@/features/settings/components/Organizatio
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
+import { WorkScheduleSettings } from "@/features/settings/components/WorkScheduleSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
@@ -307,6 +308,8 @@ function AdminContent({
       return <AccountsSettings />;
     case "settings-projects":
       return <ProjectsSettings />;
+    case "settings-work-schedule":
+      return <WorkScheduleSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
     case "settings-admins":

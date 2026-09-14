@@ -51,6 +51,7 @@ export const adminNav: AdminNavItem[] = [
       { id: "settings-organization", label: "Organization" },
       { id: "settings-accounts", label: "Accounts" },
       { id: "settings-projects", label: "Projects" },
+      { id: "settings-work-schedule", label: "Work Schedule" },
       { id: "settings-policies", label: "Policies" },
       // Owner-only: an Admin cannot edit their own or a peer's access.
       { id: "settings-admins", label: "Admins", ownerOnly: true },

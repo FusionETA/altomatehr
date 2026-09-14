@@ -14,6 +14,7 @@ import {
 import { requestGeolocation } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
+import { OrgGeofenceCard } from "./OrgFieldCards";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -222,17 +223,21 @@ export function ProjectsSettings() {
     }
   }
 
+  // When Xero drives projects, they're pulled from Xero and manual creation is
+  // off — matching the monolith, which hides manual projects (not deletes them)
+  // once Xero takes over. So the settings list shows only Xero-sourced projects
+  // then, and the manual "add" box disappears.
+  const visibleProjects = xeroConnected
+    ? projects.filter((p) => p.xeroProjectId != null)
+    : projects;
+
   return (
-    <div className={`${CARD} space-y-5`}>
+    <div className="space-y-5">
+      <OrgGeofenceCard />
+
+      <div className={`${CARD} space-y-5`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-black text-foreground">Projects</h2>
-          <p className="text-sm text-muted-foreground">
-            Projects that claims (and later attendance/leave) are filed against. Give a project a
-            location to geofence clock-ins, or an IP allowlist to restrict where staff clock in
-            from.
-          </p>
-        </div>
+        <h2 className="text-lg font-black text-foreground">Projects</h2>
         {xeroConnected ? (
           <button
             type="button"
@@ -245,34 +250,46 @@ export function ProjectsSettings() {
           </button>
         ) : null}
       </div>
+      {xeroConnected ? (
+        <p className="text-sm text-muted-foreground">
+          Projects are pulled from Xero. Use <span className="font-semibold">Sync from Xero</span> to
+          refresh the list; add or rename projects in Xero.
+        </p>
+      ) : null}
       {syncMsg ? <p className="text-sm font-medium text-primary">{syncMsg}</p> : null}
 
-      <form onSubmit={handleAdd} className="flex gap-2">
-        <input
-          className={INPUT}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="New project name"
-        />
-        <button
-          type="submit"
-          disabled={adding || !name.trim()}
-          className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
-          {adding ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Add
-        </button>
-      </form>
+      {!xeroConnected ? (
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <input
+            className={INPUT}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New project name"
+          />
+          <button
+            type="submit"
+            disabled={adding || !name.trim()}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+          >
+            {adding ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add
+          </button>
+        </form>
+      ) : null}
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
       {loading ? (
         <SkeletonPanel />
-      ) : projects.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects yet.</p>
+      ) : visibleProjects.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {xeroConnected
+            ? "No projects synced yet. Click “Sync from Xero” to pull them in."
+            : "No projects yet."}
+        </p>
       ) : (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
-          {projects.map((project) => {
+          {visibleProjects.map((project) => {
             const geofenced = project.latitude != null && project.longitude != null;
             return (
               <li key={project.id} className="px-4 py-3">
@@ -479,6 +496,7 @@ export function ProjectsSettings() {
           })}
         </ul>
       )}
+      </div>
     </div>
   );
 }

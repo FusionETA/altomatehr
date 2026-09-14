@@ -19,6 +19,7 @@ import {
 import { AdminClaimsAttention } from "./AdminClaimsAttention";
 import { AdminClaimsTable } from "./AdminClaimsTable";
 import { ClaimSettings } from "./ClaimSettings";
+import { OrgCurrencyCard } from "@/features/settings/components/OrgFieldCards";
 import { ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
@@ -138,7 +139,10 @@ export function AdminClaims() {
       </div>
 
       {tab === "settings" ? (
-        <ClaimSettings />
+        <div className="space-y-5">
+          <OrgCurrencyCard />
+          <ClaimSettings />
+        </div>
       ) : tab === "overview" ? (
         error ? (
           <section className="rounded-[28px] border border-destructive/20 bg-destructive/5 p-6 text-sm font-medium text-destructive">

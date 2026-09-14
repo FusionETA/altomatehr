@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from "@/shared/lib/api-client";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/shared/lib/api-client";
 
 export type Organization = {
   id: string;
@@ -95,6 +95,27 @@ export const getOrganization = () => apiGet<Organization>("/organizations/curren
 export const updateOrganization = (body: UpdateOrganization) =>
   apiPut<Organization>("/organizations/current", body);
 
+// The org's fields are edited across several screens (currency on Claims,
+// mileage on Accounts, geofence on Projects, schedule on Work Schedule), but the
+// endpoint is a full replace. So every screen loads the whole org and writes it
+// back with only its slice changed — this turns the loaded org into that payload
+// so a save can't reset a field another screen owns.
+export const orgToUpdate = (
+  org: Organization,
+  overrides: Partial<UpdateOrganization> = {},
+): UpdateOrganization => ({
+  name: org.name,
+  defaultCurrency: org.defaultCurrency,
+  defaultMileageRate: org.defaultMileageRate,
+  mileageUnit: org.mileageUnit,
+  geofenceRadiusMeters: org.geofenceRadiusMeters,
+  workingHoursStart: org.workingHoursStart ?? "09:00",
+  workingHoursEnd: org.workingHoursEnd ?? "18:00",
+  workingDays: org.workingDays,
+  lunchBreakMinutes: org.lunchBreakMinutes,
+  ...overrides,
+});
+
 // Create a new company; the caller becomes its Owner. Admins and Owners can.
 export const createOrganization = (name: string) =>
   apiPost<Organization>("/organizations", { name });
@@ -116,6 +137,22 @@ export const setAdminAccess = (userId: string, modules: string[] | null) =>
 // Every grantable module key, plus the caller's own effective enabled set.
 export type ModuleAccess = { all: string[]; enabled: string[] };
 export const getModuleAccess = () => apiGet<ModuleAccess>("/organizations/modules");
+
+// --- Public holidays ---
+//
+// Days that don't count as working days for leave/attendance. A holiday with a
+// projectId is observed only by that project; projectId === null is org-wide.
+// The Work Schedule settings screen manages the org-wide ones.
+export type Holiday = {
+  id: string;
+  projectId: string | null;
+  date: string; // yyyy-MM-dd
+  name: string;
+};
+export const getHolidays = () => apiGet<Holiday[]>("/holidays");
+export const createHoliday = (body: { date: string; name: string; projectId?: string | null }) =>
+  apiPost<Holiday>("/holidays", body);
+export const deleteHoliday = (id: string) => apiDelete<void>(`/holidays/${id}`);
 
 // --- Projects ---
 export const getProjects = () => apiGet<Project[]>("/projects");
