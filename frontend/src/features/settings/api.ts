@@ -39,6 +39,12 @@ export type Project = {
   xeroProjectId: string | null;
   xeroStatus: string | null;
   xeroSyncedAt: string | null;
+  /** Work schedule. Times are local "HH:mm"; workingDays is a CSV of ISO
+   *  weekday numbers (1 = Monday … 7 = Sunday), e.g. "1,2,3,4,5". */
+  workingHoursStart: string | null;
+  workingHoursEnd: string | null;
+  workingDays: string | null;
+  lunchBreakMinutes: number;
   isArchived: boolean;
   createdAt: string;
 };
@@ -48,6 +54,10 @@ export type SaveProject = {
   latitude?: number | null;
   longitude?: number | null;
   allowedIps?: string | null;
+  workingHoursStart?: string | null;
+  workingHoursEnd?: string | null;
+  workingDays?: string | null;
+  lunchBreakMinutes?: number;
 };
 
 export type ChartOfAccount = {

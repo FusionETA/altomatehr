@@ -11,6 +11,10 @@ public class ProjectDto
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public string? AllowedIps { get; set; }
+    public string? WorkingHoursStart { get; set; }
+    public string? WorkingHoursEnd { get; set; }
+    public string? WorkingDays { get; set; }
+    public int LunchBreakMinutes { get; set; }
     public bool IsArchived { get; set; }
     public DateTime CreatedAt { get; set; }
 }

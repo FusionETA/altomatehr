@@ -41,6 +41,17 @@ public class Project : ITenantScoped
     [MaxLength(1000)]
     public string? AllowedIps { get; set; }
 
+    // ---- Work schedule ----
+    // The site's regular hours, used to work out expected daily working minutes
+    // (and, later, to flag OT past the end of the day). Times are local "HH:mm"
+    // strings; WorkingDays is a CSV of ISO weekday numbers (1 = Monday … 7 =
+    // Sunday), e.g. "1,2,3,4,5" for Mon–Fri. All null/empty → no schedule set.
+    [MaxLength(5)] public string? WorkingHoursStart { get; set; }   // "09:00"
+    [MaxLength(5)] public string? WorkingHoursEnd { get; set; }     // "18:00"
+    [MaxLength(20)] public string? WorkingDays { get; set; }        // "1,2,3,4,5"
+    // Lunch deducted from the (end − start) span when computing expected minutes.
+    public int LunchBreakMinutes { get; set; } = 60;
+
     public bool IsArchived { get; set; }
 
     public DateTime CreatedAt { get; set; }

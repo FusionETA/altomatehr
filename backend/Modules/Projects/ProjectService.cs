@@ -33,6 +33,10 @@ public class ProjectService : IProjectService
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             AllowedIps = dto.AllowedIps,
+            WorkingHoursStart = dto.WorkingHoursStart,
+            WorkingHoursEnd = dto.WorkingHoursEnd,
+            WorkingDays = dto.WorkingDays,
+            LunchBreakMinutes = dto.LunchBreakMinutes,
             CreatedAt = DateTime.UtcNow,
             // OrganizationId is auto-stamped by AppDbContext on save.
         };
@@ -58,6 +62,10 @@ public class ProjectService : IProjectService
         project.Latitude = dto.Latitude;
         project.Longitude = dto.Longitude;
         project.AllowedIps = dto.AllowedIps;
+        project.WorkingHoursStart = dto.WorkingHoursStart;
+        project.WorkingHoursEnd = dto.WorkingHoursEnd;
+        project.WorkingDays = dto.WorkingDays;
+        project.LunchBreakMinutes = dto.LunchBreakMinutes;
         await _repo.UpdateAsync(project);
 
         // The geofence centre and the IP allowlist both decide whether an
@@ -101,6 +109,10 @@ public class ProjectService : IProjectService
         Latitude = p.Latitude,
         Longitude = p.Longitude,
         AllowedIps = p.AllowedIps,
+        WorkingHoursStart = p.WorkingHoursStart,
+        WorkingHoursEnd = p.WorkingHoursEnd,
+        WorkingDays = p.WorkingDays,
+        LunchBreakMinutes = p.LunchBreakMinutes,
         IsArchived = p.IsArchived,
         CreatedAt = p.CreatedAt,
     };

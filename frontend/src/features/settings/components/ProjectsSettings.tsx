@@ -23,6 +23,27 @@ function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
 
+// ISO weekday numbers, 1 = Monday … 7 = Sunday — the format the schedule is
+// stored in (a CSV like "1,2,3,4,5").
+const DAYS = [
+  { n: 1, label: "Mon" },
+  { n: 2, label: "Tue" },
+  { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" },
+  { n: 5, label: "Fri" },
+  { n: 6, label: "Sat" },
+  { n: 7, label: "Sun" },
+] as const;
+
+function parseDays(csv: string | null | undefined): Set<number> {
+  const out = new Set<number>();
+  for (const part of (csv ?? "").split(",")) {
+    const n = Number(part.trim());
+    if (n >= 1 && n <= 7) out.add(n);
+  }
+  return out;
+}
+
 export function ProjectsSettings() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +56,10 @@ export function ProjectsSettings() {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [ips, setIps] = useState("");
+  const [whStart, setWhStart] = useState("");
+  const [whEnd, setWhEnd] = useState("");
+  const [workDays, setWorkDays] = useState<Set<number>>(new Set());
+  const [lunch, setLunch] = useState("60");
   const [savingLoc, setSavingLoc] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
@@ -114,6 +139,10 @@ export function ProjectsSettings() {
     setLat(project.latitude != null ? String(project.latitude) : "");
     setLng(project.longitude != null ? String(project.longitude) : "");
     setIps(project.allowedIps ?? "");
+    setWhStart(project.workingHoursStart ?? "");
+    setWhEnd(project.workingHoursEnd ?? "");
+    setWorkDays(parseDays(project.workingDays));
+    setLunch(String(project.lunchBreakMinutes ?? 60));
     setLocError(null);
   }
 
@@ -157,6 +186,10 @@ export function ProjectsSettings() {
         latitude: latNum,
         longitude: lngNum,
         allowedIps: ips.trim() === "" ? null : ips.trim(),
+        workingHoursStart: whStart.trim() === "" ? null : whStart.trim(),
+        workingHoursEnd: whEnd.trim() === "" ? null : whEnd.trim(),
+        workingDays: workDays.size > 0 ? [...workDays].sort((a, b) => a - b).join(",") : null,
+        lunchBreakMinutes: Number(lunch) || 0,
       });
       setProjects((current) => current.map((p) => (p.id === updated.id ? updated : p)));
       setEditingId(null);
@@ -246,6 +279,11 @@ export function ProjectsSettings() {
                           <ShieldCheck className="h-3 w-3" /> IP allowlist
                         </span>
                       ) : null}
+                      {project.workingHoursStart && project.workingHoursEnd ? (
+                        <span className="text-muted-foreground">
+                          {project.workingHoursStart}–{project.workingHoursEnd}
+                        </span>
+                      ) : null}
                       {project.xeroProjectId ? (
                         <span className="text-muted-foreground">From Xero</span>
                       ) : null}
@@ -303,6 +341,71 @@ export function ProjectsSettings() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         Comma-separated IPs or CIDR ranges. Only enforced for employees whose policy
                         requires it; leave blank for none.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground">Work schedule</label>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="text-xs text-muted-foreground">Start</span>
+                          <input
+                            type="time"
+                            className={`${INPUT} mt-1`}
+                            value={whStart}
+                            onChange={(e) => setWhStart(e.target.value)}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs text-muted-foreground">End</span>
+                          <input
+                            type="time"
+                            className={`${INPUT} mt-1`}
+                            value={whEnd}
+                            onChange={(e) => setWhEnd(e.target.value)}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs text-muted-foreground">Lunch (min)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="480"
+                            className={`${INPUT} mt-1`}
+                            value={lunch}
+                            onChange={(e) => setLunch(e.target.value)}
+                          />
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DAYS.map((d) => {
+                          const on = workDays.has(d.n);
+                          return (
+                            <button
+                              key={d.n}
+                              type="button"
+                              onClick={() =>
+                                setWorkDays((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(d.n)) next.delete(d.n);
+                                  else next.add(d.n);
+                                  return next;
+                                })
+                              }
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                on
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {d.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Regular hours for this site — used to work out expected daily working
+                        minutes. Leave blank for no fixed schedule.
                       </p>
                     </div>
 

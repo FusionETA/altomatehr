@@ -25,4 +25,11 @@ public class SaveProjectDto
     // enforced for employees whose policy has RequireIpWhitelist on.
     [MaxLength(1000)]
     public string? AllowedIps { get; set; }
+
+    // Work schedule. Times are local "HH:mm"; WorkingDays is a CSV of ISO
+    // weekday numbers (1 = Monday … 7 = Sunday). All null → no schedule.
+    [MaxLength(5)] public string? WorkingHoursStart { get; set; }
+    [MaxLength(5)] public string? WorkingHoursEnd { get; set; }
+    [MaxLength(20)] public string? WorkingDays { get; set; }
+    [Range(0, 480)] public int LunchBreakMinutes { get; set; } = 60;
 }
