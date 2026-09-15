@@ -440,12 +440,6 @@ function ClaimDetailsForm({
   const [amount, setAmount] = useState(
     editingClaim ? String(editingClaim.amount) : read?.total != null ? String(read.total) : "",
   );
-  // No setter: the currency is settled before this form opens — the server
-  // resolved it from the receipt, or fell back — and re-deriving it here from
-  // the org is how the two drift apart.
-  const [currency] = useState(
-    editingClaim?.currency ?? read?.resolvedCurrency ?? DEFAULT_CURRENCY,
-  );
   const [spentAt, setSpentAt] = useState(
     editingClaim?.spentAt
       ? editingClaim.spentAt.slice(0, 10)
@@ -471,11 +465,6 @@ function ClaimDetailsForm({
   // All three are reference data, so on a second open the dropdowns are
   // already populated and the form is usable immediately.
   //
-  // Currency is deliberately NOT re-read from the org here. The server already
-  // resolved it — the code off the receipt, or the fallback when it was
-  // unreadable — and setting it again from a second source is how the two
-  // drift. It also used to overwrite a currency Gemini had read correctly,
-  // because this ran after the initial state.
   // The employee's OWN projects, not the org's. A claim's project decides
   // which team approves it, so offering one they aren't on produces a claim
   // that routes through a fallback team and is costed to the wrong site — and
@@ -484,6 +473,26 @@ function ClaimDetailsForm({
   const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
   const accountsQuery = useCachedQuery("/accounts", getAccounts);
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+
+  // What the claim will actually be denominated in.
+  //
+  // This used to show the receipt's own currency, which is not what gets
+  // saved: the server stamps the org default and CreateClaimDto carries no
+  // currency at all. A USD receipt therefore displayed "USD · set in Claims →
+  // Settings" on an org whose setting said MYR, and the claim came back MYR.
+  //
+  // An existing claim keeps the code it was stamped with; a new one shows the
+  // org's current default. DEFAULT_CURRENCY is only the stand-in for the tick
+  // before the org loads.
+  const currency =
+    editingClaim?.currency ?? organization?.defaultCurrency ?? DEFAULT_CURRENCY;
+
+  // The receipt was priced in something else. The amount still has to be
+  // entered in the org's currency, so this is worth saying rather than leaving
+  // the employee to notice two different codes on one screen.
+  const receiptCurrency = read?.detectedCurrency?.toUpperCase() ?? null;
+  const foreignReceipt =
+    receiptCurrency !== null && receiptCurrency !== currency.toUpperCase();
 
   useEffect(() => {
     setProjects((projectsQuery.data ?? []).filter((p) => !p.isArchived));
@@ -632,8 +641,10 @@ function ClaimDetailsForm({
             <p className="mt-0.5 text-muted-foreground">
               Check every field before submitting &mdash; especially the amount.
               {read.currencyWasOverridden
-                ? ` The currency wasn't readable, so ${DEFAULT_CURRENCY} was used.`
-                : ""}
+                ? ` The currency wasn't readable, so ${currency.toUpperCase()} was used.`
+                : foreignReceipt
+                  ? ` The receipt is in ${receiptCurrency}, but claims are recorded in ${currency.toUpperCase()} — enter the amount in ${currency.toUpperCase()}.`
+                  : ""}
             </p>
           </div>
         </div>
