@@ -406,7 +406,15 @@ export function DashboardView({
                 type="button"
                 onClick={handleClock}
                 disabled={busy}
-                className="grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground shadow-panel transition hover:opacity-90 disabled:opacity-60 sm:h-24 sm:w-24"
+                // Red for clocking out, purple for in. The two taps sit in the
+                // same spot and look identical otherwise, and only one of them
+                // ends the shift — colour is what stops a glance from mistaking
+                // which one this is.
+                className={`grid h-20 w-20 place-items-center rounded-full shadow-panel transition hover:opacity-90 disabled:opacity-60 sm:h-24 sm:w-24 ${
+                  clockingOut
+                    ? "bg-destructive text-destructive-foreground"
+                    : "bg-primary text-primary-foreground"
+                }`}
                 aria-label={clockingOut ? "Clock out" : "Clock in"}
               >
                 {busy ? (
