@@ -18,6 +18,7 @@ public interface IXeroRepository
     Task<int> ArchiveManualProjectsAsync(string organizationId);
     Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId);
     Task<Project?> GetProjectByXeroIdAsync(string organizationId, string xeroProjectId);
+    Task<Project?> GetProjectByTrackingOptionAsync(string organizationId, string trackingOptionId);
     Task AddProjectAsync(Project project);
     Task UpdateProjectAsync(Project project);
 }

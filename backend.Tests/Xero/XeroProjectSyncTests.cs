@@ -128,8 +128,15 @@ public class XeroProjectSyncTests
 internal sealed class FakeXeroProjectsClient : IXeroClient
 {
     private readonly List<XeroProjectResponse> _projects;
+    private readonly List<XeroTrackingCategoryResponse> _categories;
 
-    public FakeXeroProjectsClient(List<XeroProjectResponse> projects) => _projects = projects;
+    public FakeXeroProjectsClient(
+        List<XeroProjectResponse> projects,
+        List<XeroTrackingCategoryResponse>? categories = null)
+    {
+        _projects = projects;
+        _categories = categories ?? [];
+    }
 
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) =>
         Task.FromResult(_projects);
@@ -148,7 +155,7 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
     public Task<XeroManualJournalResponse> CreateManualJournalAsync(
         string a, string t, XeroManualJournalRequest j) => throw new NotSupportedException();
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) =>
-        Task.FromResult(new List<XeroTrackingCategoryResponse>());
+        Task.FromResult(_categories);
 }
 
 // The frontend has no router, so the callback's redirect is the only thing that
@@ -184,4 +191,173 @@ public class XeroCallbackRedirectTests
         DataProtectionProvider.Create("AltomateHR.Tests"),
         Options.Create(new XeroOptions { FailureRedirectUrl = "http://localhost:5173/" }),
         new FakeAuditService());
+}
+
+// Most Xero orgs don't use the Projects product. They model projects as options
+// on a tracking category — which is what the previous system syncs, and what
+// the Projects API can never see. Syncing only the latter reported a truthful
+// "0 added, 0 updated" against a Xero that plainly had projects in it.
+public class XeroTrackingCategoryProjectSyncTests
+{
+    [Fact]
+    public async Task SyncProjectsAsync_ImportsEachOptionOfTheOnlyTrackingCategory()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [Category("cat-1", "Altomatehr", ("opt-1", "Office"), ("opt-2", "ZR"))]);
+
+        var result = await service.SyncProjectsAsync();
+
+        Assert.Equal(2, result.Imported);
+        Assert.Equal("Altomatehr", result.TrackingCategoryName);
+        Assert.Equal(["Office", "ZR"], repo.Projects.Select(p => p.Name));
+        Assert.All(repo.Projects, p => Assert.Equal("cat-1", p.XeroTrackingCategoryId));
+        // The Projects API is a different Xero product; these rows aren't from it.
+        Assert.All(repo.Projects, p => Assert.Null(p.XeroProjectId));
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_RenamesInPlaceRatherThanImportingTwice()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Projects.Add(new Project
+        {
+            OrganizationId = "org-1",
+            Name = "Office",
+            XeroTrackingOptionId = "opt-1",
+        });
+
+        var service = Create(repo, [Category("cat-1", "Altomatehr", ("opt-1", "Head Office"))]);
+        var result = await service.SyncProjectsAsync();
+
+        Assert.Equal(0, result.Imported);
+        Assert.Equal(1, result.Updated);
+        Assert.Equal("Head Office", repo.Projects.Single().Name);
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_AsksWhichCategory_WhenXeroOffersMoreThanOne()
+    {
+        // Picking for them would fill the project list with regions or cost
+        // centres. "0 added" with nothing to act on was the old answer.
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [
+            Category("cat-1", "Altomatehr", ("opt-1", "Office")),
+            Category("cat-2", "Region", ("opt-9", "North")),
+        ]);
+
+        var result = await service.SyncProjectsAsync();
+
+        Assert.True(result.NeedsTrackingCategoryChoice);
+        Assert.Empty(repo.Projects);
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_UsesTheChosenCategory_WhenOneIsPicked()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [
+            Category("cat-1", "Altomatehr", ("opt-1", "Office")),
+            Category("cat-2", "Region", ("opt-9", "North")),
+        ]);
+        repo.Connection!.ProjectTrackingCategoryId = "cat-2";
+
+        var result = await service.SyncProjectsAsync();
+
+        Assert.False(result.NeedsTrackingCategoryChoice);
+        Assert.Equal("North", repo.Projects.Single().Name);
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_ArchivesAnOptionXeroHasArchived()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [new XeroTrackingCategoryResponse(
+            "cat-1", "Altomatehr", "ACTIVE",
+            [new XeroTrackingOptionResponse("opt-1", "Old Site", "ARCHIVED")])]);
+
+        await service.SyncProjectsAsync();
+
+        Assert.True(repo.Projects.Single().IsArchived);
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_DoesNotTreatATrackingProjectAsHandCreated()
+    {
+        // These have no XeroProjectId either, so the archive-the-manual-ones
+        // rule would otherwise hide every project it had just imported.
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [Category("cat-1", "Altomatehr", ("opt-1", "Office"))]);
+
+        await service.SyncProjectsAsync();
+
+        Assert.False(repo.Projects.Single().IsArchived);
+    }
+
+    // ---- wiring ----
+
+    private static XeroTrackingCategoryResponse Category(
+        string id, string name, params (string Id, string Name)[] options) =>
+        new(id, name, "ACTIVE",
+            [.. options.Select(o => new XeroTrackingOptionResponse(o.Id, o.Name, "ACTIVE"))]);
+
+    private static XeroService Create(
+        FakeXeroRepository repo, List<XeroTrackingCategoryResponse> categories)
+    {
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        string Protect(string v) => provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect(v);
+
+        repo.Connection = new XeroConnection
+        {
+            OrganizationId = "org-1",
+            TenantId = "tenant-1",
+            AccessTokenProtected = Protect("token"),
+            RefreshTokenProtected = Protect("refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+        };
+
+        return new XeroService(
+            new FakeXeroCurrentUser(),
+            repo,
+            new FakeXeroProjectsClient([], categories),
+            provider,
+            Options.Create(new XeroOptions()),
+            new FakeAuditService());
+    }
+}
+
+// Xero Projects and tracking categories are different products, and an org that
+// really uses Projects almost certainly also has tracking categories for
+// regions or cost centres. Importing those as projects would be worse than the
+// gap the fallback closes.
+public class XeroTrackingFallbackOrderTests
+{
+    [Fact]
+    public async Task SyncProjectsAsync_IgnoresTrackingCategories_WhenXeroProjectsExist()
+    {
+        var repo = new FakeXeroRepository();
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        repo.Connection = new XeroConnection
+        {
+            OrganizationId = "org-1",
+            TenantId = "tenant-1",
+            AccessTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("token"),
+            RefreshTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+        };
+
+        var service = new XeroService(
+            new FakeXeroCurrentUser(),
+            repo,
+            new FakeXeroProjectsClient(
+                [new XeroProjectResponse("x-1", "Client Site A", "INPROGRESS")],
+                [new XeroTrackingCategoryResponse("cat-1", "Region", "ACTIVE",
+                    [new XeroTrackingOptionResponse("opt-1", "North", "ACTIVE")])]),
+            provider,
+            Options.Create(new XeroOptions()),
+            new FakeAuditService());
+
+        await service.SyncProjectsAsync();
+
+        Assert.Equal(["Client Site A"], repo.Projects.Select(p => p.Name));
+    }
 }

@@ -5,12 +5,22 @@ import {
   createProject,
   getMyIp,
   getProjects,
+  getXeroProjectTracking,
   getXeroStatus,
   restoreProject,
+  setXeroProjectTrackingCategory,
   syncXeroProjects,
   updateProject,
   type Project,
+  type XeroTrackingCategory,
 } from "../api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { requestGeolocation } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -73,6 +83,12 @@ export function ProjectsSettings() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
+  // Which Xero tracking category holds the projects. Only worth showing when
+  // Xero offers a choice — with one category the sync adopts it silently.
+  const [categories, setCategories] = useState<XeroTrackingCategory[]>([]);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
+
   const query = useCachedQuery("/projects", getProjects);
   const loading = query.loading;
   useEffect(() => {
@@ -83,9 +99,35 @@ export function ProjectsSettings() {
   }, [query.error]);
   useEffect(() => {
     getXeroStatus()
-      .then((s) => setXeroConnected(s.connected))
+      .then((s) => {
+        setXeroConnected(s.connected);
+        if (!s.connected) return;
+        // A failure here only costs the category picker, never the list.
+        return getXeroProjectTracking()
+          .then((t) => {
+            setCategories(t.categories);
+            setCategoryId(t.selectedCategoryId);
+          })
+          .catch(() => undefined);
+      })
       .catch(() => setXeroConnected(false));
   }, []);
+
+  async function handleCategory(id: string) {
+    const previous = categoryId;
+    setCategoryId(id);
+    setSavingCategory(true);
+    setError(null);
+    try {
+      await setXeroProjectTrackingCategory(id);
+      setSyncMsg(null);
+    } catch (err) {
+      setCategoryId(previous);
+      setError(message(err, "Could not save the tracking category."));
+    } finally {
+      setSavingCategory(false);
+    }
+  }
 
   async function handleSync() {
     setSyncing(true);
@@ -94,8 +136,11 @@ export function ProjectsSettings() {
     try {
       const r = await syncXeroProjects();
       setSyncMsg(
-        `Synced from Xero — ${r.imported} added, ${r.updated} updated` +
-          (r.skipped ? `, ${r.skipped} unchanged.` : "."),
+        r.needsTrackingCategoryChoice
+          ? "Xero has more than one tracking category. Choose the one that holds your projects, then sync again."
+          : `Synced from Xero — ${r.imported} added, ${r.updated} updated` +
+            (r.skipped ? `, ${r.skipped} unchanged` : "") +
+            (r.trackingCategoryName ? ` (from “${r.trackingCategoryName}”).` : "."),
       );
       await query.refresh();
     } catch (err) {
@@ -228,7 +273,7 @@ export function ProjectsSettings() {
   // once Xero takes over. So the settings list shows only Xero-sourced projects
   // then, and the manual "add" box disappears.
   const visibleProjects = xeroConnected
-    ? projects.filter((p) => p.xeroProjectId != null)
+    ? projects.filter((p) => p.xeroProjectId != null || p.xeroTrackingOptionId != null)
     : projects;
 
   return (
@@ -252,9 +297,38 @@ export function ProjectsSettings() {
       </div>
       {xeroConnected ? (
         <p className="text-sm text-muted-foreground">
-          Projects are pulled from Xero. Use <span className="font-semibold">Sync from Xero</span> to
-          refresh the list; add or rename projects in Xero.
+          Projects are pulled from Xero — either from its Projects product or from the options on a
+          tracking category. Use <span className="font-semibold">Sync from Xero</span> to refresh the
+          list; add or rename projects in Xero.
         </p>
+      ) : null}
+
+      {/* One category is not a choice worth asking about; the sync takes it. */}
+      {xeroConnected && categories.length > 1 ? (
+        <div className="sm:max-w-sm">
+          <label className="block text-sm font-semibold text-foreground">
+            Tracking category holding your projects
+          </label>
+          <Select
+            value={categoryId ?? ""}
+            onValueChange={handleCategory}
+            disabled={savingCategory || syncing}
+          >
+            <SelectTrigger className="mt-1.5 bg-card">
+              <SelectValue placeholder="Choose a category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name} — {c.optionCount} option{c.optionCount === 1 ? "" : "s"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Each option in this category becomes a project.
+          </p>
+        </div>
       ) : null}
       {syncMsg ? <p className="text-sm font-medium text-primary">{syncMsg}</p> : null}
 

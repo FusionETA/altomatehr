@@ -44,6 +44,16 @@ public class XeroConnection : ITenantScoped
     // (XeroRepository.UpsertConnectionAsync) and on any refresh that succeeds.
     public DateTime? ReconnectRequiredAt { get; set; }
 
+    // Which tracking category holds this org's projects. A Xero org can have
+    // two, so the admin picks — except when there is exactly one, which the
+    // sync adopts on its own rather than asking a question with one answer.
+    // The name is cached so settings can show it without calling Xero.
+    [MaxLength(80)]
+    public string? ProjectTrackingCategoryId { get; set; }
+
+    [MaxLength(160)]
+    public string? ProjectTrackingCategoryName { get; set; }
+
     [NotMapped]
     public bool IsConnected => DisconnectedAt is null;
 

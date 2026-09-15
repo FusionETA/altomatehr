@@ -83,13 +83,15 @@ public class XeroRepository : IXeroRepository
     // org explicitly and filter on it rather than leaning on the global filter —
     // the callback has no signed-in user, which makes that filter a no-op.
 
-    // A project with no XeroProjectId was typed in by hand. Already-archived
-    // rows are left alone: the flag has to mean "Xero hid this", or the restore
-    // on disconnect would un-archive things the admin archived deliberately.
+    // A project with neither a Xero project id nor a tracking option id was
+    // typed in by hand. Already-archived rows are left alone: the flag has to
+    // mean "Xero hid this", or the restore on disconnect would un-archive
+    // things the admin archived deliberately.
     public Task<int> ArchiveManualProjectsAsync(string organizationId) =>
         _db.Projects
             .Where(p => p.OrganizationId == organizationId
                 && p.XeroProjectId == null
+                && p.XeroTrackingOptionId == null
                 && !p.IsArchived)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(p => p.IsArchived, true)
@@ -105,6 +107,10 @@ public class XeroRepository : IXeroRepository
     public Task<Project?> GetProjectByXeroIdAsync(string organizationId, string xeroProjectId) =>
         _db.Projects.FirstOrDefaultAsync(p =>
             p.OrganizationId == organizationId && p.XeroProjectId == xeroProjectId);
+
+    public Task<Project?> GetProjectByTrackingOptionAsync(string organizationId, string trackingOptionId) =>
+        _db.Projects.FirstOrDefaultAsync(p =>
+            p.OrganizationId == organizationId && p.XeroTrackingOptionId == trackingOptionId);
 
     public async Task AddProjectAsync(Project project)
     {

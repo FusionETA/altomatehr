@@ -311,19 +311,171 @@ public class XeroService : IXeroService
             result.Updated++;
         }
 
+        // Most Xero orgs don't use the Projects product at all — they model
+        // projects as options on a tracking category, which is what the
+        // previous system syncs and what the loop above can never see. Without
+        // this the sync reports a truthful "0 added, 0 updated" against a Xero
+        // that plainly has projects in it.
+        //
+        // A fallback, not a second pass: an org that DOES use Xero Projects
+        // very likely also has tracking categories for regions or cost
+        // centres, and importing those as projects would be worse than the
+        // problem this solves.
+        if (result.Imported + result.Updated == 0)
+            await SyncTrackingOptionProjectsAsync(orgId, connection, accessToken, now, result);
+
         // Orgs that connected Xero before the archive-on-connect rule existed
         // never had their hand-typed projects hidden, and an admin who connects
         // and only syncs later gets here with them still showing. Either way,
         // once Xero has actually supplied projects it owns the list.
         //
         // Guarded on the sync having produced something: a Xero org with no
-        // projects (or a tracking-category setup this sync can't see) would
-        // otherwise leave the org with nothing selectable at all, and nobody
-        // able to clock in.
+        // projects would otherwise leave the org with nothing selectable at
+        // all, and nobody able to clock in.
         if (result.Imported + result.Updated > 0)
             await _repo.ArchiveManualProjectsAsync(orgId);
 
         return result;
+    }
+
+    // Each ACTIVE option on the org's project tracking category becomes a
+    // project, keyed on the option id so a rename in Xero renames it here
+    // rather than creating a second one.
+    private async Task SyncTrackingOptionProjectsAsync(
+        string orgId,
+        XeroConnection connection,
+        string accessToken,
+        DateTime now,
+        XeroSyncProjectsResultDto result)
+    {
+        List<XeroTrackingCategoryResponse> categories;
+        try
+        {
+            categories = await _client.GetTrackingCategoriesAsync(accessToken, connection.TenantId);
+        }
+        catch (XeroConnectionException)
+        {
+            // An org without the accounting.settings scope, or a Xero fault.
+            // The Projects-API half of this sync already succeeded; failing the
+            // whole call now would throw that away.
+            return;
+        }
+
+        var active = categories
+            .Where(c => string.Equals(c.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (active.Count == 0) return;
+
+        var category = active.FirstOrDefault(c =>
+            string.Equals(c.TrackingCategoryId, connection.ProjectTrackingCategoryId, StringComparison.Ordinal));
+
+        if (category is null)
+        {
+            // One category is not a choice worth asking about; two is.
+            if (active.Count > 1)
+            {
+                result.NeedsTrackingCategoryChoice = true;
+                return;
+            }
+
+            category = active[0];
+            connection.ProjectTrackingCategoryId = category.TrackingCategoryId;
+            connection.ProjectTrackingCategoryName = category.Name;
+            await _repo.UpdateConnectionAsync(connection);
+        }
+        else if (!string.Equals(connection.ProjectTrackingCategoryName, category.Name, StringComparison.Ordinal))
+        {
+            connection.ProjectTrackingCategoryName = category.Name;
+            await _repo.UpdateConnectionAsync(connection);
+        }
+
+        result.TrackingCategoryName = category.Name;
+
+        foreach (var option in category.Options)
+        {
+            if (string.IsNullOrWhiteSpace(option.Name))
+            {
+                result.Skipped++;
+                continue;
+            }
+
+            var existing = await _repo.GetProjectByTrackingOptionAsync(orgId, option.TrackingOptionId);
+            var archived = !string.Equals(option.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
+
+            if (existing is null)
+            {
+                await _repo.AddProjectAsync(new Project
+                {
+                    OrganizationId = orgId,
+                    Name = option.Name,
+                    XeroTrackingOptionId = option.TrackingOptionId,
+                    XeroTrackingCategoryId = category.TrackingCategoryId,
+                    XeroStatus = option.Status,
+                    XeroSyncedAt = now,
+                    IsArchived = archived,
+                    CreatedAt = now,
+                });
+                result.Imported++;
+                continue;
+            }
+
+            existing.Name = option.Name;
+            existing.XeroTrackingCategoryId = category.TrackingCategoryId;
+            existing.XeroStatus = option.Status;
+            existing.XeroSyncedAt = now;
+            existing.IsArchived = archived;
+            await _repo.UpdateProjectAsync(existing);
+            result.Updated++;
+        }
+    }
+
+    public async Task<XeroProjectTrackingDto> GetProjectTrackingAsync()
+    {
+        var connection = await GetCurrentConnectionAsync();
+        if (connection is null || !connection.IsConnected) return new XeroProjectTrackingDto();
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        var categories = await _client.GetTrackingCategoriesAsync(accessToken, connection.TenantId);
+
+        return new XeroProjectTrackingDto
+        {
+            SelectedCategoryId = connection.ProjectTrackingCategoryId,
+            Categories =
+            [
+                .. categories
+                    .Where(c => string.Equals(c.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                    .Select(c => new XeroTrackingCategoryDto
+                    {
+                        Id = c.TrackingCategoryId,
+                        Name = c.Name,
+                        OptionCount = c.Options.Count,
+                    })
+            ],
+        };
+    }
+
+    public async Task SetProjectTrackingCategoryAsync(string? categoryId)
+    {
+        var connection = await GetCurrentConnectionAsync()
+            ?? throw new XeroConnectionException("Connect Xero before choosing a tracking category.");
+
+        if (string.IsNullOrWhiteSpace(categoryId))
+        {
+            connection.ProjectTrackingCategoryId = null;
+            connection.ProjectTrackingCategoryName = null;
+            await _repo.UpdateConnectionAsync(connection);
+            return;
+        }
+
+        var accessToken = await GetValidAccessTokenAsync(connection);
+        var categories = await _client.GetTrackingCategoriesAsync(accessToken, connection.TenantId);
+        var category = categories.FirstOrDefault(c =>
+            string.Equals(c.TrackingCategoryId, categoryId, StringComparison.Ordinal))
+            ?? throw new XeroConnectionException("That tracking category no longer exists in Xero.");
+
+        connection.ProjectTrackingCategoryId = category.TrackingCategoryId;
+        connection.ProjectTrackingCategoryName = category.Name;
+        await _repo.UpdateConnectionAsync(connection);
     }
 
     private async Task<string> GetValidAccessTokenAsync(XeroConnection connection)

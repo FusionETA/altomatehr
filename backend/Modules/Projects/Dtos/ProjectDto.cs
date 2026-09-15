@@ -5,6 +5,11 @@ public class ProjectDto
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? XeroProjectId { get; set; }
+
+    // Set instead of XeroProjectId when the project is a Xero tracking-category
+    // option. Either one means Xero owns the row, which is what the settings
+    // list keys "read-only" off.
+    public string? XeroTrackingOptionId { get; set; }
     public string? XeroStatus { get; set; }
     public DateTime? XeroSyncedAt { get; set; }
     public string? Location { get; set; }

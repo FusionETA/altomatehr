@@ -41,8 +41,11 @@ export type Project = {
   /** Comma-separated IPs employees must clock in from when their policy has
    *  "Require IP allowlist" on. Null / empty means the check is skipped. */
   allowedIps: string | null;
-  /** Origin markers when the project was synced from Xero (read-only). */
+  /** Origin markers when the project was synced from Xero (read-only). One or
+   *  the other is set, never both: xeroProjectId for Xero's Projects product,
+   *  xeroTrackingOptionId for an option on a tracking category. */
   xeroProjectId: string | null;
+  xeroTrackingOptionId: string | null;
   xeroStatus: string | null;
   xeroSyncedAt: string | null;
   /** Work schedule. Times are local "HH:mm"; workingDays is a CSV of ISO
@@ -227,7 +230,30 @@ export const syncXeroAccounts = () =>
 
 // Pulls projects in from the connected Xero org (its projects / tracking
 // options). Creates new rows and updates existing ones by their Xero id.
-export type XeroSyncProjectsResult = { imported: number; updated: number; skipped: number };
+export type XeroSyncProjectsResult = {
+  imported: number;
+  updated: number;
+  skipped: number;
+  /** Which tracking category the projects came from, when they came from one. */
+  trackingCategoryName: string | null;
+  /** Xero has more than one tracking category and nobody has said which holds
+   *  the projects, so the sync deliberately imported nothing. */
+  needsTrackingCategoryChoice: boolean;
+};
 
 export const syncXeroProjects = () =>
   apiPost<XeroSyncProjectsResult>("/xero/sync-projects");
+
+// Most Xero orgs model projects as options on a tracking category rather than
+// with Xero's Projects product. This says which category to read.
+export type XeroTrackingCategory = { id: string; name: string; optionCount: number };
+export type XeroProjectTracking = {
+  categories: XeroTrackingCategory[];
+  selectedCategoryId: string | null;
+};
+
+export const getXeroProjectTracking = () =>
+  apiGet<XeroProjectTracking>("/xero/project-tracking");
+
+export const setXeroProjectTrackingCategory = (categoryId: string | null) =>
+  apiPut<void>("/xero/project-tracking", { categoryId });

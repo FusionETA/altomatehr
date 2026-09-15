@@ -185,6 +185,9 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task<Project?> GetProjectByXeroIdAsync(string o, string x) =>
         Task.FromResult(Projects.FirstOrDefault(p => p.XeroProjectId == x));
 
+    public Task<Project?> GetProjectByTrackingOptionAsync(string o, string optionId) =>
+        Task.FromResult(Projects.FirstOrDefault(p => p.XeroTrackingOptionId == optionId));
+
     public Task AddProjectAsync(Project p)
     {
         Projects.Add(p);
@@ -198,7 +201,7 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task<int> ArchiveManualProjectsAsync(string organizationId)
     {
         var hit = Projects
-            .Where(p => p.XeroProjectId is null && !p.IsArchived)
+            .Where(p => p.XeroProjectId is null && p.XeroTrackingOptionId is null && !p.IsArchived)
             .ToList();
         foreach (var p in hit)
         {

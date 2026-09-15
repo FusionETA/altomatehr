@@ -106,6 +106,7 @@ public class ProjectService : IProjectService
         Id = p.Id,
         Name = p.Name,
         XeroProjectId = p.XeroProjectId,
+        XeroTrackingOptionId = p.XeroTrackingOptionId,
         XeroStatus = p.XeroStatus,
         XeroSyncedAt = p.XeroSyncedAt,
         Location = p.Location,

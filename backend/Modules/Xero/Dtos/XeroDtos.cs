@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace AltomateHR.Api.Modules.Xero.Dtos;
 
 public class XeroConnectUrlDto
@@ -31,6 +33,35 @@ public class XeroSyncProjectsResultDto
     public int Imported { get; set; }
     public int Updated { get; set; }
     public int Skipped { get; set; }
+
+    // Which tracking category the projects came from, when they came from one.
+    public string? TrackingCategoryName { get; set; }
+
+    // The org has more than one tracking category and has not said which holds
+    // its projects. Without this the sync reports a truthful but baffling
+    // "0 added, 0 updated" and the admin has nothing to act on.
+    public bool NeedsTrackingCategoryChoice { get; set; }
+}
+
+public class XeroTrackingCategoryDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int OptionCount { get; set; }
+}
+
+public class XeroProjectTrackingDto
+{
+    public List<XeroTrackingCategoryDto> Categories { get; set; } = [];
+    public string? SelectedCategoryId { get; set; }
+}
+
+public class XeroSetProjectTrackingDto
+{
+    // Null or empty clears the pick, which puts a single-category org back on
+    // "adopt whatever Xero has".
+    [MaxLength(80)]
+    public string? CategoryId { get; set; }
 }
 
 

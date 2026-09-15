@@ -1041,6 +1041,9 @@ public class LeaveServiceTests
 
     public Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync() =>
         Task.FromResult<IReadOnlyList<XeroTrackingCategoryResponse>>([]);
+    public Task<XeroProjectTrackingDto> GetProjectTrackingAsync() => throw new NotSupportedException();
+    public Task SetProjectTrackingCategoryAsync(string? categoryId) => throw new NotSupportedException();
+
 }
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser

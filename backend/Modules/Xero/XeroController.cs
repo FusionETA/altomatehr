@@ -69,4 +69,20 @@ public class XeroController : ControllerBase
     [HttpPost("sync-projects")]
     public async Task<ActionResult<XeroSyncProjectsResultDto>> SyncProjects() =>
         Ok(await _xero.SyncProjectsAsync());
+
+    // Which tracking category holds this org's projects, and what it could be.
+    // Only asked when Xero offers more than one — with a single category the
+    // sync adopts it itself.
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpGet("project-tracking")]
+    public async Task<ActionResult<XeroProjectTrackingDto>> ProjectTracking() =>
+        Ok(await _xero.GetProjectTrackingAsync());
+
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpPut("project-tracking")]
+    public async Task<IActionResult> SetProjectTracking([FromBody] XeroSetProjectTrackingDto dto)
+    {
+        await _xero.SetProjectTrackingCategoryAsync(dto.CategoryId);
+        return NoContent();
+    }
 }

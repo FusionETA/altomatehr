@@ -425,6 +425,10 @@ public class PayrollXeroSyncServiceTests : IDisposable
             throw new NotSupportedException();
         public Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend) =>
             throw new NotSupportedException();
+        public Task<XeroProjectTrackingDto> GetProjectTrackingAsync() =>
+            throw new NotSupportedException();
+        public Task SetProjectTrackingCategoryAsync(string? categoryId) =>
+            throw new NotSupportedException();
     }
 
 }

@@ -35,6 +35,8 @@ public interface IXeroService
 
     // The org's tracking categories, for mapping the payroll project dimension.
     Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync();
+    Task<XeroProjectTrackingDto> GetProjectTrackingAsync();
+    Task SetProjectTrackingCategoryAsync(string? categoryId);
 
     Task<bool> IsConnectedAsync();
 }

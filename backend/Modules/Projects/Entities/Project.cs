@@ -15,8 +15,19 @@ public class Project : ITenantScoped
     [MaxLength(160)]
     public string Name { get; set; } = string.Empty;
 
+    // Set when the project came from Xero's Projects API.
     [MaxLength(80)]
     public string? XeroProjectId { get; set; }
+
+    // Set instead when it came from an option on a Xero tracking category —
+    // how most orgs actually model "project", and the only model the previous
+    // system still syncs. A project has one or the other, never both; either
+    // one means Xero owns this row.
+    [MaxLength(80)]
+    public string? XeroTrackingOptionId { get; set; }
+
+    [MaxLength(80)]
+    public string? XeroTrackingCategoryId { get; set; }
 
     [MaxLength(40)]
     public string? XeroStatus { get; set; }
