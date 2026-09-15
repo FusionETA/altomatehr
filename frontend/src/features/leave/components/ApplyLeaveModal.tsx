@@ -1,6 +1,12 @@
-import { type FormEvent, useMemo, useState } from "react";
-import { LoaderCircle, X } from "lucide-react";
-import { applyLeave, type LeaveApplication, type LeaveBalance, type LeaveType } from "../api";
+import { type FormEvent, useMemo, useRef, useState } from "react";
+import { LoaderCircle, Paperclip, X } from "lucide-react";
+import {
+  applyLeave,
+  uploadLeaveAttachment,
+  type LeaveApplication,
+  type LeaveBalance,
+  type LeaveType,
+} from "../api";
 import {
   Select,
   SelectContent,
@@ -43,6 +49,10 @@ export function ApplyLeaveModal({
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // An MC or hospital slip. Optional — most leave needs no evidence, and
+  // requiring one would block annual leave on a document that doesn't exist.
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const attachmentInput = useRef<HTMLInputElement | null>(null);
 
   const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
 
@@ -68,11 +78,17 @@ export function ApplyLeaveModal({
     setSaving(true);
     setError(null);
     try {
+      // Uploaded first and separately: a file the server refuses (wrong type,
+      // too big) then costs a retry rather than a half-written application.
+      const uploaded = attachment ? await uploadLeaveAttachment(attachment) : null;
+
       const app = await applyLeave({
         leaveTypeId,
         startDate,
         endDate,
         reason: reason.trim() || undefined,
+        attachmentUrl: uploaded?.attachmentUrl,
+        attachmentName: uploaded?.attachmentName,
       });
       onCreated(app);
       onClose();
@@ -197,6 +213,51 @@ export function ApplyLeaveModal({
                 className="min-h-[88px] w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </label>
+
+            <div className="space-y-2">
+              <span className="text-sm font-semibold text-foreground">
+                Attachment <span className="font-normal text-muted-foreground">(optional)</span>
+              </span>
+              <input
+                ref={attachmentInput}
+                id="leaveAttachment"
+                type="file"
+                className="sr-only"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+              />
+              {attachment ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
+                  <Paperclip className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                    {attachment.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachment(null);
+                      // Clearing the input too, or re-picking the same file
+                      // fires no change event and the chip never comes back.
+                      if (attachmentInput.current) attachmentInput.current.value = "";
+                    }}
+                    className="shrink-0 text-xs font-semibold text-muted-foreground transition hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <label
+                  htmlFor="leaveAttachment"
+                  className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-border bg-white/60 px-4 py-3 text-sm text-muted-foreground shadow-sm transition hover:border-primary/50"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0" />
+                  Attach an MC or supporting document
+                </label>
+              )}
+              <p className="text-xs text-muted-foreground">
+                JPG, PNG, WEBP, HEIC, HEIF or PDF, up to 8 MB.
+              </p>
+            </div>
           </div>
 
           {error ? (

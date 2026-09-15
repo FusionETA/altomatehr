@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { History, Users, X } from "lucide-react";
+import { History, Paperclip, Users, X } from "lucide-react";
 import {
   getLeaveAudit,
   getOnLeaveToday,
+  openLeaveAttachment,
   type LeaveApplication,
   type LeaveApprovalEntry,
   type OnLeaveToday,
@@ -160,6 +161,27 @@ export function LeaveDetailsModal({
           <section className="mt-4 rounded-[22px] border border-border/70 bg-card/70 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Reason</p>
             <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{application.reason}</p>
+          </section>
+        ) : null}
+
+        {/* The evidence the decision rests on. An approver asked to judge sick
+            leave needs to see the MC, not just be told there is one. */}
+        {application.attachmentUrl ? (
+          <section className="mt-4 rounded-[22px] border border-border/70 bg-card/70 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Attachment
+            </p>
+            <button
+              type="button"
+              onClick={() => void openLeaveAttachment(application.attachmentUrl!)}
+              className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background px-4 py-3 text-left transition hover:border-primary/50"
+            >
+              <Paperclip className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                {application.attachmentName ?? "Supporting document"}
+              </span>
+              <span className="shrink-0 text-xs font-semibold text-primary">Open</span>
+            </button>
           </section>
         ) : null}
 

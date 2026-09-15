@@ -16,13 +16,18 @@ public class LeaveController : ControllerBase
 {
     private readonly ILeaveService _leave;
     private readonly ILeaveCronService _cron;
+    private readonly ILeaveAttachmentStorage _attachments;
     private readonly ILogger<LeaveController> _logger;
 
     public LeaveController(
-        ILeaveService leave, ILeaveCronService cron, ILogger<LeaveController> logger)
+        ILeaveService leave,
+        ILeaveCronService cron,
+        ILeaveAttachmentStorage attachments,
+        ILogger<LeaveController> logger)
     {
         _leave = leave;
         _cron = cron;
+        _attachments = attachments;
         _logger = logger;
     }
 
@@ -330,6 +335,46 @@ public class LeaveController : ControllerBase
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    // POST /leave/attachments — store a supporting document (MC, hospital slip)
+    // and hand back the url to send with the application. Separate from the
+    // apply call so a failed upload costs the form nothing but a retry, and so
+    // the application itself stays plain JSON.
+    [HttpPost("attachments")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> UploadAttachment(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Pick a file to attach." });
+
+        await using var stream = file.OpenReadStream();
+        try
+        {
+            var result = await _attachments.StoreAsync(new LeaveAttachmentUpload(
+                file.FileName, file.ContentType ?? string.Empty, file.Length, stream));
+
+            return Ok(new { attachmentUrl = result.AttachmentUrl, attachmentName = file.FileName });
+        }
+        catch (ArgumentException ex)
+        {
+            // Wrong type or too big — the employee can fix both, so say which.
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    // GET /leave/attachments/{fileName} — serve a locally stored one. Behind
+    // auth like every other attachment route; the storage layer refuses any
+    // name that isn't a bare file in its own folder.
+    [RequireScope("leave:read")]
+    [HttpGet("attachments/{fileName}")]
+    public async Task<IActionResult> GetAttachment(string fileName)
+    {
+        var file = await _attachments.GetAsync(fileName);
+        if (file is null) return NotFound(new { message = "Not found." });
+
+        Response.Headers.CacheControl = "no-store";
+        return PhysicalFile(file.Path, file.ContentType, file.DownloadName);
     }
 
     // POST /leave — apply.

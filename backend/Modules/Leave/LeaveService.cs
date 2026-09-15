@@ -992,6 +992,7 @@ public class LeaveService : ILeaveService
             Reason = dto.Reason,
             XeroFileId = dto.XeroFileId,
             AttachmentName = dto.AttachmentName,
+            AttachmentUrl = dto.AttachmentUrl,
             Status = LeaveStatus.PENDING,
             CurrentStep = 0,
             CreatedAt = now,
@@ -1119,6 +1120,13 @@ public class LeaveService : ILeaveService
         app.Duration = dto.Duration;
         app.TotalDays = totalDays;
         app.Reason = dto.Reason;
+        // Only replaced when the edit carries a new one — an edit that just
+        // moves the dates must not drop the MC that was already attached.
+        if (!string.IsNullOrWhiteSpace(dto.AttachmentUrl))
+        {
+            app.AttachmentUrl = dto.AttachmentUrl;
+            app.AttachmentName = dto.AttachmentName;
+        }
         app.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(app);
 
@@ -1602,5 +1610,7 @@ public class LeaveService : ILeaveService
         ReviewNotes = a.ReviewNotes,
         DecidedAt = Iso(a.DecidedAt),
         CreatedAt = Iso(a.CreatedAt) ?? string.Empty,
+        AttachmentName = a.AttachmentName,
+        AttachmentUrl = a.AttachmentUrl,
     };
 }

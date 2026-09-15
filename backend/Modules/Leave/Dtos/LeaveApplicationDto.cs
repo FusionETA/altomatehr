@@ -20,6 +20,11 @@ public class LeaveApplicationDto
     public string? ReviewNotes { get; set; }
     public string? DecidedAt { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
+
+    // The supporting document, when there is one — the approver needs to see
+    // the MC, not just be told a reason.
+    public string? AttachmentName { get; set; }
+    public string? AttachmentUrl { get; set; }
 }
 
 public class CreateLeaveApplicationDto
@@ -44,6 +49,10 @@ public class CreateLeaveApplicationDto
 
     [MaxLength(260)]
     public string? AttachmentName { get; set; }
+
+    // Returned by POST /leave/attachments. Optional — most leave has none.
+    [MaxLength(400)]
+    public string? AttachmentUrl { get; set; }
 
     [MaxLength(1000)]
     public string? Reason { get; set; }

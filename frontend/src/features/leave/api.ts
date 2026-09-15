@@ -42,12 +42,18 @@ export type LeaveApplication = {
   reviewNotes: string | null;
   decidedAt: string | null;
   createdAt: string;
+  /** Supporting document (MC, hospital slip) when one was attached. */
+  attachmentName: string | null;
+  attachmentUrl: string | null;
 };
 export type CreateLeaveApplication = {
   leaveTypeId: string;
   startDate: string;
   endDate: string;
   reason?: string;
+  /** From uploadLeaveAttachment. Optional — most leave has no document. */
+  attachmentUrl?: string;
+  attachmentName?: string;
 };
 
 export type LeaveBalance = {
@@ -163,6 +169,25 @@ export const getTeamLeave = () => apiGet<LeaveApplication[]>("/leave/team");
 export const getLeaveBalances = () => apiGet<LeaveBalance[]>("/leave/balances");
 export const applyLeave = (body: CreateLeaveApplication) =>
   apiPost<LeaveApplication>("/leave", body);
+
+// Uploaded before the application is submitted, so a rejected file (wrong type,
+// too big) costs nothing but a retry and never a half-written application.
+export type LeaveAttachmentUpload = { attachmentUrl: string; attachmentName: string };
+
+export function uploadLeaveAttachment(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPostForm<LeaveAttachmentUpload>("/leave/attachments", formData);
+}
+
+// Served from an authenticated route, so it can't be a plain link — fetch the
+// blob and hand the browser an object URL. Same shape as the claim receipts.
+export async function openLeaveAttachment(attachmentUrl: string) {
+  const blob = await apiGetBlob(attachmentUrl);
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
 export const approveLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/approve`);
 
 // Per-id success/failure, so the response is a report rather than one pass/fail

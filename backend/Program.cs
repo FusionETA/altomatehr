@@ -353,6 +353,7 @@ builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IEmployeeRowResolver, EmployeeRowResolver>();
 builder.Services.AddScoped<IClaimsRepository, ClaimsRepository>();
 builder.Services.AddScoped<IClaimReceiptStorage, ClaimReceiptStorage>();
+builder.Services.AddScoped<ILeaveAttachmentStorage, LeaveAttachmentStorage>();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();

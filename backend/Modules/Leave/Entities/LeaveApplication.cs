@@ -46,6 +46,13 @@ public class LeaveApplication : ITenantScoped
     [MaxLength(260)]
     public string? AttachmentName { get; set; }
 
+    // Where the UI fetches the attachment. Our own /leave/attachments path for
+    // a locally stored file — applying for leave has to work in an org that
+    // never connected Xero — or the Xero Files proxy when XeroFileId is set.
+    // Null = nothing attached.
+    [MaxLength(400)]
+    public string? AttachmentUrl { get; set; }
+
     // Set when an ADMIN filed on the employee's behalf, so the audit trail
     // doesn't claim the employee did it themselves.
     [MaxLength(40)]
