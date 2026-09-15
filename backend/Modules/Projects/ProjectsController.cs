@@ -1,5 +1,4 @@
 using AltomateHR.Api.Common;
-using AltomateHR.Api.Modules.Teams;
 using System.Security.Claims;
 using AltomateHR.Api.Modules.Projects.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -15,14 +14,11 @@ public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projects;
 
-    private readonly ITeamService _teams;
-
     private readonly ICurrentUser _currentUser;
 
-    public ProjectsController(IProjectService projects, ITeamService teams, ICurrentUser currentUser)
+    public ProjectsController(IProjectService projects, ICurrentUser currentUser)
     {
         _projects = projects;
-        _teams = teams;
         _currentUser = currentUser;
     }
 
@@ -46,13 +42,9 @@ public class ProjectsController : ControllerBase
     // rejection.
     [RequireScope("projects:read")]
     [HttpGet("mine")]
-    public async Task<IActionResult> GetMine()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
-        var mine = (await _teams.GetProjectIdsForMemberAsync(userId)).ToHashSet();
-        var all = await _projects.GetAllAsync();
-        return Ok(all.Where(p => mine.Contains(p.Id)));
-    }
+    public async Task<IActionResult> GetMine() =>
+        Ok(await _projects.GetForMemberAsync(
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty));
 
     // POST /projects — Admins only.
     [Authorize(Roles = "Admin,Owner")]

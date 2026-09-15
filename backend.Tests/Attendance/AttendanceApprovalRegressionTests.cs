@@ -652,6 +652,8 @@ public class AttendanceApprovalRegressionTests
     // Never reached — the record has no project, so the geofence check short-circuits.
     private sealed class FakeProjectService : IProjectService
     {
+        public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
+            throw new NotSupportedException();
         public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult(Enumerable.Empty<ProjectDto>());
         public Task<ProjectDto?> GetByIdAsync(string id) => Task.FromResult<ProjectDto?>(null);
         public Task<ProjectDto> CreateAsync(SaveProjectDto dto) => throw new NotImplementedException();

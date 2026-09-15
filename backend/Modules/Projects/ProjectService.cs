@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Projects.Dtos;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Projects.Entities;
+using AltomateHR.Api.Modules.Teams;
 
 namespace AltomateHR.Api.Modules.Projects;
 
@@ -8,15 +9,31 @@ public class ProjectService : IProjectService
 {
     private readonly IProjectRepository _repo;
     private readonly IAuditService _audit;
+    private readonly ITeamService _teams;
 
-    public ProjectService(IProjectRepository repo, IAuditService audit)
+    public ProjectService(IProjectRepository repo, IAuditService audit, ITeamService teams)
     {
         _repo = repo;
         _audit = audit;
+        _teams = teams;
     }
 
+    // Everything, archived included — the admin screens need to see and restore
+    // what has been retired.
     public async Task<IEnumerable<ProjectDto>> GetAllAsync() =>
         (await _repo.GetAllAsync()).Select(ToDto);
+
+    // What the clock-in and claim pickers should offer. Archived is excluded
+    // for the same reason another team's project is: the server refuses both,
+    // so listing them only invites the rejection. Connecting Xero archives the
+    // hand-created projects, and those kept showing up here afterwards.
+    public async Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId)
+    {
+        var mine = (await _teams.GetProjectIdsForMemberAsync(userId)).ToHashSet();
+        return (await _repo.GetAllAsync())
+            .Where(p => !p.IsArchived && mine.Contains(p.Id))
+            .Select(ToDto);
+    }
 
     public async Task<ProjectDto?> GetByIdAsync(string id)
     {

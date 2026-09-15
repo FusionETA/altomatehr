@@ -993,6 +993,8 @@ public class LeaveServiceTests
 
     private sealed class FakeProjectService : IProjectService
     {
+        public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
+            throw new NotSupportedException();
         public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult<IEnumerable<ProjectDto>>([]);
         public Task<ProjectDto?> GetByIdAsync(string id) => Task.FromResult<ProjectDto?>(null);
         public Task<ProjectDto> CreateAsync(SaveProjectDto dto) => throw new NotImplementedException();

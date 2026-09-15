@@ -83,6 +83,8 @@ internal sealed class FakeProjectServiceForExport : IProjectService
 
     public FakeProjectServiceForExport(params ProjectDto[] projects) => _projects = projects.ToList();
 
+    public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
+        throw new NotSupportedException();
     public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult(_projects.AsEnumerable());
 
     public Task<ProjectDto?> GetByIdAsync(string id) =>
