@@ -1221,6 +1221,21 @@ public class ClaimsService : IClaimsService
                 throw new ClaimValidationException("Enter the merchant / vendor name from the receipt.", nameof(dto.SpendingAt));
         }
 
+        // A claim's project decides which team approves it and which site it is
+        // costed to, so it can't be a project the claimant isn't on. Attendance
+        // refuses a clock-in for the same reason; without this, the rule held
+        // only for people using our own form.
+        //
+        // The project stays optional — this rejects a wrong one, not a missing one.
+        if (!string.IsNullOrWhiteSpace(dto.ProjectId))
+        {
+            var mine = await _teams.GetProjectIdsForMemberAsync(employeeId);
+            if (!mine.Contains(dto.ProjectId))
+                throw new ClaimValidationException(
+                    "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.",
+                    nameof(dto.ProjectId));
+        }
+
         var account = await _accounts.GetByIdAsync(dto.ChartOfAccountId);
         if (account is null || account.IsArchived)
             throw new ClaimValidationException("Please choose one of the enabled chart of account options.", nameof(dto.ChartOfAccountId));

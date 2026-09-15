@@ -293,13 +293,20 @@ internal sealed class FakeApprovalRouter : IApprovalRouter
 // Minimal ITeamService double. `reportsOf` maps a supervisor id to the flat
 // list of employee ids GetReportEmployeeIdsAsync should return for them —
 // enough for the "team view" visibility tests, without a real Team/layer
-// model behind it.
+// model behind it. `projectsOf` does the same for project membership: employee
+// id → the project ids they're on.
 internal sealed class FakeTeamService : ITeamService
 {
     private readonly Dictionary<string, List<string>> _reportsOf;
+    private readonly Dictionary<string, List<string>> _projectsOf;
 
-    public FakeTeamService(Dictionary<string, List<string>>? reportsOf = null) =>
+    public FakeTeamService(
+        Dictionary<string, List<string>>? reportsOf = null,
+        Dictionary<string, List<string>>? projectsOf = null)
+    {
         _reportsOf = reportsOf ?? new();
+        _projectsOf = projectsOf ?? new();
+    }
 
     public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
     public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotSupportedException();
@@ -319,7 +326,7 @@ internal sealed class FakeTeamService : ITeamService
     public Task<IReadOnlyList<string>> GetReportEmployeeIdsAsync(string supervisorId) =>
         Task.FromResult<IReadOnlyList<string>>(_reportsOf.GetValueOrDefault(supervisorId, []));
     public Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId) =>
-        Task.FromResult<IReadOnlyList<string>>([]);
+        Task.FromResult<IReadOnlyList<string>>(_projectsOf.GetValueOrDefault(employeeId, []));
     public Task<IReadOnlyList<LayerApproverOptionsDto>?> GetApproverOptionsAsync(string teamId, string employeeId) =>
         Task.FromResult<IReadOnlyList<LayerApproverOptionsDto>?>(null);
     public Task<ApproverOverrideResult> SetApproverOverrideAsync(

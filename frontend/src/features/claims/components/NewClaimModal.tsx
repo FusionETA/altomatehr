@@ -25,7 +25,7 @@ import {
 import {
   getAccounts,
   getOrganization,
-  getProjects,
+  getMyProjects,
   type ChartOfAccount,
   type Organization,
   type Project,
@@ -475,7 +475,12 @@ function ClaimDetailsForm({
   // unreadable — and setting it again from a second source is how the two
   // drift. It also used to overwrite a currency Gemini had read correctly,
   // because this ran after the initial state.
-  const projectsQuery = useCachedQuery("/projects", getProjects);
+  // The employee's OWN projects, not the org's. A claim's project decides
+  // which team approves it, so offering one they aren't on produces a claim
+  // that routes through a fallback team and is costed to the wrong site — and
+  // it shows everyone the names of every project the company runs. Attendance
+  // already refuses a clock-in on someone else's project; this is the same rule.
+  const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
   const accountsQuery = useCachedQuery("/accounts", getAccounts);
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
 
@@ -652,14 +657,18 @@ function ClaimDetailsForm({
           }
         />
 
-        <SelectField
-          label="Project"
-          placeholder="No project"
-          value={projectId}
-          onValueChange={setProjectId}
-          options={projects.map((project) => ({ value: project.id, label: project.name }))}
-          optional
-        />
+        {/* Hidden entirely when they're on no project — an empty dropdown asks
+            a question with no answers. Matches the previous system. */}
+        {projects.length > 0 ? (
+          <SelectField
+            label="Project"
+            placeholder="No project"
+            value={projectId}
+            onValueChange={setProjectId}
+            options={projects.map((project) => ({ value: project.id, label: project.name }))}
+            optional
+          />
+        ) : null}
 
         {claimType === "EXPENSE" ? (
           <>
