@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createShift, setDefaultShift } from "@/features/shifts/api";
+import { createShift, setDefaultShift, updateShift, type Shift } from "@/features/shifts/api";
 import type { FilterOption } from "./AttendanceFilterBar";
 
 const WEEKDAYS = [
@@ -16,29 +16,43 @@ const FIELD =
   "h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 
-// Create a shift on a project.
+// Create a shift on a project, or edit an existing one when `shift` is given.
 //
-// Project is chosen here and only here: the backend treats a shift's project as
-// immutable after creation, so offering it as an editable field later would be
-// a control that silently fails.
+// Project is chosen at create time and only then: the backend treats a shift's
+// project as immutable afterwards, so the field is shown read-only while
+// editing rather than as a control that would silently fail.
 export function ShiftEditor({
   projects,
   defaultProjectId,
+  shift,
   onClose,
   onCreated,
 }: {
   projects: FilterOption[];
   defaultProjectId?: string;
+  // Absent = create. Present = edit that shift.
+  shift?: Shift;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [projectId, setProjectId] = useState(defaultProjectId ?? projects[0]?.id ?? "");
-  const [name, setName] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("18:00");
-  const [days, setDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
-  const [lunchBreakMinutes, setLunchBreakMinutes] = useState(60);
-  const [isDefault, setIsDefault] = useState(false);
+  const editing = shift !== undefined;
+  const [projectId, setProjectId] = useState(
+    shift?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "",
+  );
+  const [name, setName] = useState(shift?.name ?? "");
+  const [startTime, setStartTime] = useState(shift?.startTime ?? "09:00");
+  const [endTime, setEndTime] = useState(shift?.endTime ?? "18:00");
+  // A null `workingDays` means Mon-Fri (see the Shift type), so the fallback
+  // here has to match that rather than being an empty set.
+  const [days, setDays] = useState<Set<number>>(
+    new Set(
+      shift?.workingDays
+        ? shift.workingDays.split(",").map(Number).filter((n) => n >= 1 && n <= 7)
+        : [1, 2, 3, 4, 5],
+    ),
+  );
+  const [lunchBreakMinutes, setLunchBreakMinutes] = useState(shift?.lunchBreakMinutes ?? 60);
+  const [isDefault, setIsDefault] = useState(shift?.isDefault ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,24 +78,34 @@ export function ShiftEditor({
 
     setSaving(true);
     setError(null);
+    const fields = {
+      name: name.trim(),
+      startTime,
+      endTime,
+      workingDays: [...days].sort((a, b) => a - b).join(","),
+      lunchBreakMinutes,
+    };
     try {
-      const shift = await createShift({
-        projectId,
-        name: name.trim(),
-        startTime,
-        endTime,
-        workingDays: [...days].sort((a, b) => a - b).join(","),
-        lunchBreakMinutes,
-      });
-
-      // The server decides the default on create — the first shift for a
-      // project gets it — and ignores any flag sent with the body. Claiming it
-      // for a later shift is a second, deliberate call. Without this the
+      // Either way the default is claimed by its own call, never by a flag on
+      // the body: the server owns that rule (a project's first shift gets it)
+      // and ignores any `isDefault` sent here, so without the second call the
       // checkbox would look like it worked and change nothing.
-      if (isDefault && !shift.isDefault) await setDefaultShift(shift.id);
+      //
+      // Only ever set, never cleared — a project must always have exactly one
+      // default, so unticking the box has nothing to promote in its place.
+      // That is why the box is disabled once it is on.
+      const saved = editing
+        ? await updateShift(shift.id, fields)
+        : await createShift({ projectId, ...fields });
+
+      if (isDefault && !saved.isDefault) await setDefaultShift(saved.id);
       onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create that shift.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : `Could not ${editing ? "save" : "create"} that shift.`,
+      );
     } finally {
       setSaving(false);
     }
@@ -97,22 +121,34 @@ export function ShiftEditor({
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Attendance
           </p>
-          <h3 className="mt-1 text-xl font-black text-foreground">Add shift</h3>
+          <h3 className="mt-1 text-xl font-black text-foreground">
+            {editing ? "Edit shift" : "Add shift"}
+          </h3>
         </div>
 
         <div className="space-y-1.5">
-          <label className={LABEL} htmlFor="shift-project">Project</label>
-          <select
-            id="shift-project"
-            className={FIELD}
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            {projects.length === 0 ? <option value="">No projects yet</option> : null}
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
+          <span className={LABEL}>Project</span>
+          {editing ? (
+            // Read-only text, not a disabled <select>: the project cannot move,
+            // and a greyed-out dropdown reads as "temporarily unavailable"
+            // rather than "fixed for the life of this shift".
+            <p className={`${FIELD} flex items-center text-muted-foreground`}>
+              {projects.find((p) => p.id === projectId)?.name ?? "—"}
+            </p>
+          ) : (
+            <select
+              id="shift-project"
+              aria-label="Project"
+              className={FIELD}
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              {projects.length === 0 ? <option value="">No projects yet</option> : null}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -180,8 +216,11 @@ export function ShiftEditor({
           <input
             type="checkbox"
             checked={isDefault}
+            // Already the default: there is nothing to promote in its place, so
+            // the only way off is to promote a different shift.
+            disabled={shift?.isDefault === true}
             onChange={(e) => setIsDefault(e.target.checked)}
-            className="mt-0.5"
+            className="mt-0.5 disabled:opacity-60"
           />
           <span>
             <span className="font-semibold text-foreground">Default for this project.</span>{" "}
@@ -210,7 +249,7 @@ export function ShiftEditor({
             disabled={saving}
             className="rounded-2xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
           >
-            {saving ? "Adding…" : "Add shift"}
+            {saving ? (editing ? "Saving…" : "Adding…") : editing ? "Save changes" : "Add shift"}
           </button>
         </div>
       </form>

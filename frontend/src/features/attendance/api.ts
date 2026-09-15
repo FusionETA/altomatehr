@@ -1,4 +1,4 @@
-import { apiGet, apiGetBlob, apiPost, apiPostForm } from "@/shared/lib/api-client";
+import { apiGet, apiGetBlob, apiGetFile, apiPost, apiPostForm } from "@/shared/lib/api-client";
 
 // Mirrors the backend AttendanceStatus enum.
 export type AttendanceStatus =
@@ -184,10 +184,15 @@ function reportQuery(from: string, to: string, filter: AdminAttendanceFilter = {
 export type EmployeeHoursRow = { employeeId: string; email: string | null; buckets: HoursBuckets };
 export type OrgHoursSummary = { totals: HoursBuckets; employees: EmployeeHoursRow[] };
 
-export const getOrgHoursSummary = (from: string, to: string, teamId?: string) =>
-  apiGet<OrgHoursSummary>(
-    `/attendance/hours-summary/org?from=${from}&to=${to}${teamId ? `&teamId=${teamId}` : ""}`,
-  );
+// Takes the whole filter, not just a team: the Analytics table and its totals
+// row are both built from this one response, so narrowing has to happen
+// server-side — filtering the rows on the client would leave the totals
+// describing a different population than the table under them.
+export const getOrgHoursSummary = (
+  from: string,
+  to: string,
+  filter: AdminAttendanceFilter = {},
+) => apiGet<OrgHoursSummary>(`/attendance/hours-summary/org?${reportQuery(from, to, filter)}`);
 
 export type SupervisorPerformance = {
   reviewerId: string;
@@ -369,4 +374,23 @@ async function openAttendanceFile(path: string) {
 export const exportEmployeeAttendancePdf = (employeeId: string, from: string, to: string) =>
   openAttendanceFile(
     `/attendance/export/summary?employeeId=${employeeId}&from=${from}&to=${to}&format=pdf`,
+  );
+
+// Declared here rather than imported from the claims feature: features don't
+// import from each other (see CLAUDE.md), and leave/api.ts already spells the
+// same union out locally. Worth hoisting into shared/ if a fourth turns up.
+export type ExportFormat = "csv" | "xlsx" | "pdf";
+
+// The approval trail as a file. Goes through the same reportQuery as the
+// on-screen report, so the export mirrors exactly what the admin is looking at
+// rather than everything.
+export const exportApprovalAudit = (
+  format: ExportFormat,
+  from: string,
+  to: string,
+  filter: AdminAttendanceFilter = {},
+) =>
+  apiGetFile(
+    `/attendance/export/approval-audit?${reportQuery(from, to, filter)}&format=${format}`,
+    `approval-trail.${format}`,
   );

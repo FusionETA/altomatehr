@@ -6,8 +6,13 @@ import {
   ChevronUp,
   Download,
   FileText,
+  Archive,
+  ArchiveRestore,
   MapPin,
+  Pencil,
   Plus,
+  Star,
+  Trash2,
 } from "lucide-react";
 import {
   getApprovalAudit,
@@ -42,7 +47,14 @@ import {
   type OvertimeRequest,
 } from "@/features/overtime/api";
 import { overtimeStatusLabels } from "@/features/overtime/lib/overtime-status";
-import { getShifts, type Shift } from "@/features/shifts/api";
+import {
+  archiveShift,
+  deleteShift,
+  getShifts,
+  restoreShift,
+  setDefaultShift,
+  type Shift,
+} from "@/features/shifts/api";
 import { getOrganization, type Organization } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
@@ -61,6 +73,7 @@ import {
   formatMinutes,
   formatWorkingDays,
 } from "../lib/attendance-format";
+import { ApprovalTrailExport } from "./ApprovalTrailExport";
 import { ShiftEditor } from "./ShiftEditor";
 import {
   AttendanceFilterBar,
@@ -163,6 +176,11 @@ function matchesChip(row: TodayRow, chip: TodayChip): boolean {
 
 const TH =
   "h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground first:pl-6 last:pr-6";
+
+// Icon-only row buttons. Each carries its own title + aria-label, since the
+// icon alone is the whole control.
+const ROW_ACTION =
+  "inline-flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
 
 function isoDay(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -332,10 +350,15 @@ export function AdminAttendance() {
       // Employees shows each person's hours against the same range, so it reads
       // the same report Analytics does rather than a second source that could
       // total differently.
-      if (section === "employees") setHours(await getOrgHoursSummary(from, to, filter.teamId));
+      // Project/team only, deliberately no `q`: this tab searches the roster
+      // client-side over a wider field set (job title, employee number), so a
+      // server-side `q` would drop the hours for rows the table still shows.
+      if (section === "employees") {
+        setHours(await getOrgHoursSummary(from, to, { projectId: filter.projectId, teamId: filter.teamId }));
+      }
       if (section !== "overview") return;
 
-      if (tab === "analytics") setHours(await getOrgHoursSummary(from, to, filter.teamId));
+      if (tab === "analytics") setHours(await getOrgHoursSummary(from, to, filter));
       if (tab === "performance") {
         setPerformance(await getSupervisorPerformance(from, to, filter));
       }
@@ -610,24 +633,40 @@ export function AdminAttendance() {
       {/* The reports inside Overview. Pills rather than a second tab bar, so
           the two levels stay visually distinct. */}
       {section === "overview" ? (
-        <nav className="nice-scrollbar -mx-1 overflow-x-auto px-1">
-          <div className="flex gap-2 pb-0.5">
-            {REPORT_TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-bold transition-colors ${
-                  tab === t.key
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </nav>
+        <div className="flex items-center gap-3">
+          <nav className="nice-scrollbar -mx-1 min-w-0 flex-1 overflow-x-auto px-1">
+            <div className="flex gap-2 pb-0.5">
+              {REPORT_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-bold transition-colors ${
+                    tab === t.key
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          {/* Beside the tabs, matching AdminClaims. Only on History: the other
+              three reports have no export behind them, and a button that
+              downloads nothing is worse than no button. */}
+          {tab === "history" ? (
+            <div className="shrink-0">
+              <ApprovalTrailExport
+                from={from}
+                to={to}
+                filter={filter}
+                rowCount={audit.length}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {showFilters ? (
@@ -724,11 +763,11 @@ export function AdminAttendance() {
           rows={shifts}
           projects={projects}
           projectNames={projectNames}
-          // Refetch rather than append. Claiming the default clears it from
-          // whichever shift held it before, and a local append cannot know
+          // Refetch rather than patch locally. Claiming the default clears it
+          // from whichever shift held it before, and a local edit cannot know
           // that — it left two rows both badged DEFAULT, which the server
           // would never return.
-          onCreated={() => void getShifts().then(setShifts).catch(() => {})}
+          onChanged={() => void getShifts().then(setShifts).catch(() => {})}
         />
       ) : tab === "today" ? (
         <TodayTab
@@ -2670,22 +2709,79 @@ function ShiftsTab({
   rows,
   projects,
   projectNames,
-  onCreated,
+  onChanged,
 }: {
   rows: Shift[];
   projects: FilterOption[];
   projectNames: Map<string, string>;
-  onCreated: () => void;
+  onChanged: () => void;
 }) {
   // Scoped here rather than in the shared bar above: that one searches
   // employees and filters by team, and neither applies to a standing pattern.
   const [projectId, setProjectId] = useState<string>(ALL_FILTER);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Shift | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  // Which row is mid-request, so its buttons can't be double-fired.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const shown = useMemo(
+  const promote = async (shift: Shift) => {
+    setBusyId(shift.id);
+    setError(null);
+    try {
+      await setDefaultShift(shift.id);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not set that default.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleArchive = async (shift: Shift) => {
+    setBusyId(shift.id);
+    setError(null);
+    try {
+      await (shift.isArchived ? restoreShift(shift.id) : archiveShift(shift.id));
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update that shift.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (shift: Shift) => {
+    // Permanent, unlike Archive right next to it — so the prompt names the
+    // reversible alternative rather than just warning. The server refuses while
+    // anyone is still assigned and its message names how many, surfaced as-is.
+    if (
+      !window.confirm(
+        `Delete shift "${shift.name}" permanently? This cannot be undone — archive it instead to keep its history.`,
+      )
+    )
+      return;
+    setBusyId(shift.id);
+    setError(null);
+    try {
+      await deleteShift(shift.id);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete that shift.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const ofProject = useMemo(
     () => (projectId === ALL_FILTER ? rows : rows.filter((s) => s.projectId === projectId)),
     [rows, projectId],
   );
+  // Archived shifts are hidden by default but stay one click away — the count
+  // on the toggle is what tells you there is anything to look at.
+  const archivedCount = ofProject.filter((s) => s.isArchived).length;
+  const shown = showArchived ? ofProject : ofProject.filter((s) => !s.isArchived);
 
   return (
     <div className="space-y-4">
@@ -2722,12 +2818,33 @@ function ShiftsTab({
         </button>
       </section>
 
+      {error ? (
+        <p className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3 text-sm font-medium text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {archivedCount > 0 ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-pressed={showArchived}
+            className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+          >
+            {showArchived ? "Hide" : "Show"} {archivedCount} archived
+          </button>
+        </div>
+      ) : null}
+
       {shown.length === 0 ? (
         <section className={CARD_BARE}>
           <EmptyRow>
             {rows.length === 0
               ? "No shifts defined yet. Until one exists, attendance has no expected hours to compare against."
-              : "No shifts match this filter."}
+              : archivedCount > 0 && !showArchived
+                ? "No active shifts here — the ones on this project are archived."
+                : "No shifts match this filter."}
           </EmptyRow>
         </section>
       ) : (
@@ -2739,13 +2856,29 @@ function ShiftsTab({
                   {["Shift", "Project", "Hours", "Working days", "Unpaid break"].map((h) => (
                     <th key={h} className={TH}>{h}</th>
                   ))}
+                  <th className={`${TH} text-right`}>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((shift) => (
                   <tr key={shift.id} className="border-b border-border/60 last:border-0">
                     <td className="p-4 pl-6">
-                      <span className="font-semibold text-foreground">{shift.name}</span>
+                      <span
+                        className={`font-semibold ${
+                          shift.isArchived
+                            ? "text-muted-foreground line-through"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {shift.name}
+                      </span>
+                      {shift.isArchived ? (
+                        <span className="ml-2 inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                          Archived
+                        </span>
+                      ) : null}
                       {shift.isDefault ? (
                         <span className="ml-2 inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-secondary-foreground">
                           Default
@@ -2761,8 +2894,63 @@ function ShiftsTab({
                     <td className="p-4 text-muted-foreground">
                       {formatWorkingDays(shift.workingDays)}
                     </td>
-                    <td className="p-4 pr-6 tabular-nums">
+                    <td className="p-4 tabular-nums">
                       {formatMinutes(shift.lunchBreakMinutes)}
+                    </td>
+                    <td className="p-4 pr-6">
+                      <div className="flex items-center justify-end gap-1">
+                        {/* The default can be moved but never simply removed —
+                            a project has to keep exactly one — so the button
+                            only ever appears on the shifts that don't hold it. */}
+                        {/* An archived shift can't be promoted — the server
+                            refuses it — so the button isn't offered either. */}
+                        {shift.isDefault || shift.isArchived ? null : (
+                          <button
+                            type="button"
+                            onClick={() => void promote(shift)}
+                            disabled={busyId === shift.id}
+                            title="Make default for this project"
+                            aria-label={`Make "${shift.name}" the default shift`}
+                            className={ROW_ACTION}
+                          >
+                            <Star className="h-4 w-4" aria-hidden />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setEditing(shift)}
+                          disabled={busyId === shift.id}
+                          title="Edit shift"
+                          aria-label={`Edit "${shift.name}"`}
+                          className={ROW_ACTION}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleArchive(shift)}
+                          disabled={busyId === shift.id}
+                          title={shift.isArchived ? "Restore shift" : "Archive shift"}
+                          aria-label={`${shift.isArchived ? "Restore" : "Archive"} "${shift.name}"`}
+                          className={ROW_ACTION}
+                        >
+                          {shift.isArchived ? (
+                            <ArchiveRestore className="h-4 w-4" aria-hidden />
+                          ) : (
+                            <Archive className="h-4 w-4" aria-hidden />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void remove(shift)}
+                          disabled={busyId === shift.id}
+                          title="Delete shift"
+                          aria-label={`Delete "${shift.name}"`}
+                          className={`${ROW_ACTION} hover:text-destructive`}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -2772,14 +2960,22 @@ function ShiftsTab({
         </section>
       )}
 
-      {adding ? (
+      {adding || editing ? (
         <ShiftEditor
+          // Keyed so switching straight from one row's editor to another's
+          // rebuilds the form state instead of keeping the first shift's values.
+          key={editing?.id ?? "new"}
           projects={projects}
           defaultProjectId={projectId === ALL_FILTER ? undefined : projectId}
-          onClose={() => setAdding(false)}
+          shift={editing ?? undefined}
+          onClose={() => {
+            setAdding(false);
+            setEditing(null);
+          }}
           onCreated={() => {
             setAdding(false);
-            onCreated();
+            setEditing(null);
+            onChanged();
           }}
         />
       ) : null}

@@ -12,6 +12,11 @@ public interface IShiftService
     Task<ShiftDeleteResult> DeleteAsync(string id);
     Task<ShiftSaveResult> SetDefaultAsync(string id);
 
+    // Soft-archive / restore. Archiving also clears IsDefault — an archived
+    // shift can't be a project's fallback — so a project left with no default
+    // resolves to the org working hours until another shift is promoted.
+    Task<ShiftSaveResult> SetArchivedAsync(string id, bool archived);
+
     // The shift governing this employee: their explicitly assigned one, else
     // their project's default. Null when neither exists (callers fall back to
     // the org's working hours).

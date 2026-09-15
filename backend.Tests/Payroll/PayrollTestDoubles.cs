@@ -43,7 +43,8 @@ internal sealed class StubPayrollHours : IHoursSummaryService
 
     public Task<HoursBucketsDto> GetMyHoursSummaryAsync(string employeeId, DateTime from, DateTime to) =>
         throw new NotSupportedException();
-    public Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId) =>
+    public Task<HoursSummaryDto> GetOrgHoursSummaryAsync(
+        DateTime from, DateTime to, string? teamId, string? projectId = null, string? q = null) =>
         throw new NotSupportedException();
     public Task<HoursBucketsDto?> GetEmployeeHoursSummaryAsync(
         string employeeId, DateTime from, DateTime to, string requestingUserId, string? requestingRole) =>

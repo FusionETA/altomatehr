@@ -9,7 +9,10 @@ public interface IHoursSummaryService
 
     // Org-wide, one row per Employee/Supervisor membership (Admin/Owner accounts
     // excluded), optionally narrowed to one team's members.
-    Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId);
+    // projectId/q default to null so the export path (which has no filter bar)
+    // can keep calling this with a team alone.
+    Task<HoursSummaryDto> GetOrgHoursSummaryAsync(
+        DateTime from, DateTime to, string? teamId, string? projectId = null, string? q = null);
 
     // Totals for an EXPLICIT set of employees, keyed by user id.
     //

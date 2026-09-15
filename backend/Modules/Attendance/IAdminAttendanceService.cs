@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 
 namespace AltomateHR.Api.Modules.Attendance;
@@ -19,6 +20,11 @@ public interface IAdminAttendanceService
     // touched sits alongside the slow decisions rather than being invisible.
     Task<IReadOnlyList<ApprovalAuditEntryDto>> GetApprovalAuditAsync(
         DateTime from, DateTime to, string? projectId, string? teamId, string? q);
+
+    // The same approval trail as a downloadable file, narrowed by the same
+    // filters — the export mirrors what the admin is looking at.
+    Task<TabularExportResult> ExportApprovalAuditAsync(
+        DateTime from, DateTime to, string? projectId, string? teamId, string? q, TabularFormat format);
 
     // What the clock-in selfies are costing in storage.
     Task<SelfieStorageDto> GetSelfieStorageAsync();

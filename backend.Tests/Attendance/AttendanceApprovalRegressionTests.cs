@@ -523,6 +523,7 @@ public class AttendanceApprovalRegressionTests
         public Task<ShiftSaveResult> UpdateAsync(string id, UpdateShiftDto dto) => throw new NotSupportedException();
         public Task<ShiftDeleteResult> DeleteAsync(string id) => throw new NotSupportedException();
         public Task<ShiftSaveResult> SetDefaultAsync(string id) => throw new NotSupportedException();
+        public Task<ShiftSaveResult> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
     }
 
     private sealed class FakeAttendanceRepository : IAttendanceRepository

@@ -23,8 +23,10 @@ public class ShiftRepository : IShiftRepository
     public Task<Shift?> GetByNameAsync(string projectId, string name) =>
         _db.Shifts.FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Name == name);
 
+    // Archived excluded, mirroring PolicyRepositories.GetDefaultAsync: an
+    // archived shift must never be handed out as a project's fallback.
     public Task<Shift?> GetDefaultForProjectAsync(string projectId) =>
-        _db.Shifts.FirstOrDefaultAsync(s => s.ProjectId == projectId && s.IsDefault);
+        _db.Shifts.FirstOrDefaultAsync(s => s.ProjectId == projectId && s.IsDefault && !s.IsArchived);
 
     public async Task<Shift> AddAsync(Shift shift)
     {

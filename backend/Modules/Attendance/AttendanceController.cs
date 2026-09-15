@@ -105,13 +105,18 @@ public class AttendanceController : ControllerBase
         Ok(await _hoursSummary.GetMyHoursSummaryAsync(GetUserId(), from, to));
 
     // GET /attendance/hours-summary/org — org-wide totals, one row per Employee/
-    // Supervisor, optionally narrowed to one team. Admin/Owner only.
+    // Supervisor, narrowed by the same project / team / search trio as the
+    // admin reports below. Admin/Owner only.
     [RequireScope("attendance:read")]
     [HttpGet("hours-summary/org")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetOrgHoursSummary(
-        [FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string? teamId) =>
-        Ok(await _hoursSummary.GetOrgHoursSummaryAsync(from, to, teamId));
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string? teamId,
+        [FromQuery] string? projectId,
+        [FromQuery] string? q) =>
+        Ok(await _hoursSummary.GetOrgHoursSummaryAsync(from, to, teamId, projectId, q));
 
     // GET /attendance/hours-summary/employees/{employeeId} — one employee's totals,
     // for the employee themself or their approver (supervisor/admin/owner).
@@ -155,6 +160,28 @@ public class AttendanceController : ControllerBase
         [FromQuery] string? teamId,
         [FromQuery] string? q) =>
         Ok(await _adminAttendance.GetApprovalAuditAsync(from, to, projectId, teamId, q));
+
+    // GET /attendance/export/approval-audit?from=&to=&projectId=&teamId=&q=&format=csv|xlsx|pdf
+    // The approval trail as a file, under the same filters as the screen.
+    [RequireScope("attendance:read")]
+    [HttpGet("export/approval-audit")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportApprovalAudit(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string? projectId,
+        [FromQuery] string? teamId,
+        [FromQuery] string? q,
+        [FromQuery] string? format)
+    {
+        if (from > to) return BadRequest(new { message = "'from' must not be after 'to'." });
+
+        var result = await _adminAttendance.ExportApprovalAuditAsync(
+            from, to, projectId, teamId, q, TabularFormats.Parse(format));
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
 
     // GET /attendance/selfie-storage — what the clock-in photos are costing.
     [RequireScope("attendance:read")]

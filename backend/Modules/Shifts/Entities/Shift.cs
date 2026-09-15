@@ -36,6 +36,12 @@ public class Shift : ITenantScoped
 
     public bool IsDefault { get; set; }
 
+    // Soft-archived, mirroring EmployeePolicy: the shift stops being offered for
+    // new assignments and can never be the project's default, but anyone already
+    // assigned to it keeps resolving to it. Shifts are referenced by historical
+    // attendance, so they are retired rather than deleted.
+    public bool IsArchived { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
