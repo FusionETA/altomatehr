@@ -1,7 +1,12 @@
 namespace AltomateHR.Api.Modules.Partners;
 
 // What a launch ticket carries while it waits (120 s) to be redeemed.
-public record PartnerTicketData(string ClientId, string UserId, string OrganizationId);
+// Destination is an optional in-app path the partner should land the user on
+// after redemption (e.g. "/employee/appraisals/123") instead of its default
+// home page — already validated as a safe relative path by the time it gets
+// here (see SsoController.Launch), and re-validated independently by the
+// partner app before it's ever used in a redirect.
+public record PartnerTicketData(string ClientId, string UserId, string OrganizationId, string? Destination = null);
 
 // What an access/refresh token resolves to. Scopes + Audience come from the
 // ApiClient row at issue time and are frozen into the token's lifetime.

@@ -98,5 +98,22 @@ public static class EmailTemplate
     public static string Paragraph(string html, bool muted = false) =>
         $"""<p style="margin:0 0 12px;font-family:{Font};font-size:15px;line-height:1.6;color:{(muted ? Muted : Ink)};">{html}</p>""";
 
+    // A single call to action. Table + padded <a>, not an <img> button (dies to
+    // blocked remote images) or a <button> (unsupported in email clients) — the
+    // standard cross-client-safe pattern. Outlook's Word rendering engine
+    // ignores border-radius (renders square) same as every other rounded
+    // element in this template; not worth a VML fallback for one corner style.
+    public static string Button(string text, string url) => $"""
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;">
+          <tr>
+            <td style="border-radius:10px;background:{Primary};">
+              <a href="{Escape(url)}" style="display:inline-block;padding:12px 28px;font-family:{Font};font-size:15px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">
+                {Escape(text)}
+              </a>
+            </td>
+          </tr>
+        </table>
+        """;
+
     private static string Escape(string value) => System.Net.WebUtility.HtmlEncode(value);
 }

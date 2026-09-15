@@ -22,6 +22,12 @@ public class PartnerTokenResponseDto
     public int ExpiresIn { get; set; }                 // seconds
     public PartnerUserDto User { get; set; } = new();
     public PartnerOrgDto Organization { get; set; } = new();
+
+    // Optional in-app path the partner should land the user on instead of its
+    // default home (e.g. "/employee/appraisals/123") — set only when the
+    // launch ticket carried one. The partner must independently validate this
+    // as a safe relative path before ever using it in a redirect.
+    public string? Destination { get; set; }
 }
 
 public class PartnerUserDto
@@ -53,6 +59,11 @@ public class SendPartnerNotificationDto
     // Deep link back into the partner app (e.g. AppraisifyAlt's own appraisal
     // page) — opaque to AltomateHR, stored as the notification's Url.
     public string? Link { get; set; }
+
+    // Text for the email's call-to-action button (e.g. "Start Self-Assessment").
+    // Optional — a partner that omits it still gets a button (falls back to a
+    // generic label), just a less specific one. Ignored if Link isn't set.
+    public string? ActionLabel { get; set; }
 }
 
 public enum NotificationChannel
