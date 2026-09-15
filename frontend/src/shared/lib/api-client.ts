@@ -202,20 +202,30 @@ async function requestBlob(path: string): Promise<Blob> {
 // Content-Disposition header knows it.
 export type ApiFile = { blob: Blob; fileName: string };
 
-async function requestFile(path: string, fallbackName: string): Promise<ApiFile> {
+// `body` turns this into a POST: some downloads are built from input too large
+// or too structured for a query string (the CP8D converter posts a whole table
+// of hand-entered rows), and they still come back as a file, not JSON.
+async function requestFile(
+  path: string,
+  fallbackName: string,
+  body?: unknown,
+): Promise<ApiFile> {
+  const method = body === undefined ? "GET" : "POST";
   const res = await withRefresh(path, () =>
     fetch(`${API_URL}${path}`, {
-      method: "GET",
+      method,
       credentials: "include",
       headers: {
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
   );
 
   if (!res.ok) {
     let data: unknown;
-    let msg = `GET ${path} failed: ${res.status}`;
+    let msg = `${method} ${path} failed: ${res.status}`;
     try {
       data = await res.json();
       msg = getErrorMessage(data, msg);
@@ -306,6 +316,9 @@ export const apiPostForm = <T>(path: string, body: FormData) =>
     return r;
   });
 export const apiGetBlob = (path: string) => requestBlob(path);
+export const apiPostFile = (path: string, fallbackName: string, body: unknown) =>
+  requestFile(path, fallbackName, body);
+
 export const apiGetFile = (path: string, fallbackName: string) =>
   requestFile(path, fallbackName);
 export const apiPut = <T>(path: string, body?: unknown) =>

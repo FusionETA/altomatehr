@@ -12,6 +12,7 @@ public class ShiftDto
     public string? WorkingDays { get; set; }
     public int LunchBreakMinutes { get; set; }
     public bool IsDefault { get; set; }
+    public bool IsArchived { get; set; }
 }
 
 // Create a shift. ProjectId is set once here and is immutable afterwards

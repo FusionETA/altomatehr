@@ -7,7 +7,10 @@ public interface IPartnerAuthService
     // Phase A step 1: a signed-in user launches into {app}. Mints a single-use
     // ticket for the caller's org and returns the full redirect URL (the app's
     // registered redirectUrl + ?t=<ticket>). Null if the app is unknown/inactive.
-    Task<string?> MintLaunchTicketAsync(string appName, string userId, string organizationId);
+    // `dest` is an optional in-app path to land on after redemption instead of
+    // the app's default home — invalid values are silently dropped, never
+    // surfaced as an error (see PartnerAuthService.IsSafeRelativePath).
+    Task<string?> MintLaunchTicketAsync(string appName, string userId, string organizationId, string? dest = null);
 
     // Phase A step 3: client secret + ticket → scoped access (+ refresh) token.
     // Null on any failure (bad secret, unknown/expired/foreign ticket) — the caller

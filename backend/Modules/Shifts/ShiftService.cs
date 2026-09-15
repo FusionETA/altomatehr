@@ -32,8 +32,8 @@ public class ShiftService : IShiftService
             return new ShiftSaveResult(false, null, "Project not found.");
 
         var name = dto.Name.Trim();
-        if (await _shifts.GetByNameAsync(dto.ProjectId, name) is not null)
-            return new ShiftSaveResult(false, null, $"A shift named \"{name}\" already exists for this project.");
+        if (await _shifts.GetByNameAsync(dto.ProjectId, name) is { } taken)
+            return new ShiftSaveResult(false, null, NameTakenError(name, taken));
 
         // No StartTime < EndTime check here (unlike org working hours) — a night
         // shift crossing midnight (e.g. 22:00-06:00) is a valid, real-world shift.
@@ -64,7 +64,7 @@ public class ShiftService : IShiftService
         var name = dto.Name.Trim();
         var clash = await _shifts.GetByNameAsync(shift.ProjectId, name);
         if (clash is not null && clash.Id != id)
-            return new ShiftSaveResult(false, null, $"A shift named \"{name}\" already exists for this project.");
+            return new ShiftSaveResult(false, null, NameTakenError(name, clash));
 
         shift.Name = name;
         shift.StartTime = dto.StartTime;
@@ -97,6 +97,12 @@ public class ShiftService : IShiftService
         var shift = await _shifts.GetByIdAsync(id);
         if (shift is null) return new ShiftSaveResult(false, null, null);   // → 404
 
+        // Mirrors PolicyService.SetDefaultAsync: restore it first, otherwise the
+        // project would hold a default that GetDefaultForProjectAsync refuses to
+        // return, leaving everyone on it silently falling back to org hours.
+        if (shift.IsArchived)
+            return new ShiftSaveResult(false, null, "Restore this shift before making it the default.");
+
         shift.IsDefault = true;
         shift.UpdatedAt = DateTime.UtcNow;
         await _shifts.UpdateAsync(shift);
@@ -104,6 +110,30 @@ public class ShiftService : IShiftService
 
         return new ShiftSaveResult(true, ToDto(shift));
     }
+
+    public async Task<ShiftSaveResult> SetArchivedAsync(string id, bool archived)
+    {
+        var shift = await _shifts.GetByIdAsync(id);
+        if (shift is null) return new ShiftSaveResult(false, null, null);   // → 404
+
+        shift.IsArchived = archived;
+        // An archived shift can't be the default (same rule as EmployeePolicy).
+        // Nothing is promoted in its place: picking the successor is a judgement
+        // call, and silently moving the default would change what everyone else
+        // on the project is measured against.
+        if (archived) shift.IsDefault = false;
+        shift.UpdatedAt = DateTime.UtcNow;
+        await _shifts.UpdateAsync(shift);
+
+        return new ShiftSaveResult(true, ToDto(shift));
+    }
+
+    // An archived clash is still a clash — the name is taken by a row the admin
+    // can't see in the default list, so the message has to say why.
+    private static string NameTakenError(string name, Shift clash) =>
+        clash.IsArchived
+            ? $"An archived shift named \"{name}\" already exists for this project. Restore or rename it."
+            : $"A shift named \"{name}\" already exists for this project.";
 
     public async Task<Shift?> GetEffectiveShiftAsync(string employeeId)
     {
@@ -132,6 +162,7 @@ public class ShiftService : IShiftService
         WorkingDays = s.WorkingDays,
         LunchBreakMinutes = s.LunchBreakMinutes,
         IsDefault = s.IsDefault,
+        IsArchived = s.IsArchived,
     };
 
     public Task<Shift?> GetByIdAsync(string id) => _shifts.GetByIdAsync(id);

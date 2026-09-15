@@ -10,6 +10,7 @@ import {
   type ClaimSettlement,
   type XeroBillStage,
 } from "@/features/claims/api";
+import { getXeroStatus } from "@/features/settings/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 
@@ -19,7 +20,6 @@ const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50";
 const LABEL = "block text-sm font-semibold text-foreground";
 
-const ROUTES: ClaimSettlement[] = ["XERO_BILL", "PAYROLL"];
 const STAGES: XeroBillStage[] = ["AwaitingPayment", "Draft"];
 
 // The org-level rules the claims module runs on: where approved money goes, and
@@ -38,7 +38,21 @@ export function ClaimSettings() {
   const [saved, setSaved] = useState(false);
 
   const query = useCachedQuery("/claims/settings", getClaimSettings);
+  const xeroQuery = useCachedQuery("/xero/status", getXeroStatus);
   const loading = query.loading;
+
+  // Undefined while it loads, and left as "assume yes" if the status call
+  // fails: a transient error must not remove a route the org may already be
+  // running on. Only a definite `connected: false` hides it.
+  const xeroConnected = xeroQuery.error ? true : xeroQuery.data?.connected !== false;
+
+  // Xero is only an option once there is a Xero to send to — except when the
+  // org is ALREADY on that route. Hiding it then would show "Add to payroll"
+  // selected when the saved setting says otherwise, and the next save would
+  // silently re-route every future claim.
+  const stranded = !xeroConnected && route === "XERO_BILL";
+  const routes: ClaimSettlement[] =
+    xeroConnected || stranded ? ["XERO_BILL", "PAYROLL"] : ["PAYROLL"];
   useEffect(() => {
     const settings = query.data;
     if (!settings) return;
@@ -96,7 +110,7 @@ export function ClaimSettings() {
         </div>
 
         <div role="radiogroup" aria-label="How approved claims are paid" className="space-y-2">
-          {ROUTES.map((option) => {
+          {routes.map((option) => {
             const active = route === option;
             // The Xero option owns the stage choice, so it is a container with a
             // label inside rather than a label itself — nesting a second radio
@@ -119,7 +133,7 @@ export function ClaimSettings() {
                     name="claim-settlement-route"
                     value={option}
                     checked={active}
-                    disabled={saving}
+                    disabled={saving || (option === "XERO_BILL" && !xeroConnected)}
                     onChange={() => {
                       setSaved(false);
                       setRoute(option);
@@ -142,7 +156,21 @@ export function ClaimSettings() {
                     chosen. It used to sit below BOTH routes as a sibling, which
                     read as though the stage applied to payroll too — it does not;
                     nothing reaches Xero on that route. */}
-                {option === "XERO_BILL" && active ? (
+                {/* Shown only because the org is already set to this route —
+                    see `stranded`. Says so rather than letting a dead option
+                    look merely greyed out. */}
+                {option === "XERO_BILL" && !xeroConnected ? (
+                  <div className="border-t border-border/60 bg-muted/30 px-3.5 py-2.5">
+                    <p className="text-xs leading-snug text-muted-foreground">
+                      Xero isn&apos;t connected, so nothing can be pushed to it right now. This is
+                      still the saved route — connect Xero under{" "}
+                      <span className="font-semibold text-foreground">System Settings → Xero</span>,
+                      or switch to payroll below.
+                    </p>
+                  </div>
+                ) : null}
+
+                {option === "XERO_BILL" && active && xeroConnected ? (
                   <div className="border-t border-primary/20 px-3.5 pb-3.5 pt-3">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                       Which stage in Xero
@@ -201,6 +229,17 @@ export function ClaimSettings() {
             paragraph that used to open the card — it explains a consequence of
             changing the setting, which is not what you need before reading the
             options themselves. */}
+        {/* Absence needs explaining too: one lonely radio button reads as a
+            half-built screen unless it says why the other one isn't there. */}
+        {!xeroConnected && !stranded ? (
+          <p className="rounded-2xl border border-border/60 bg-muted/30 p-3 text-xs leading-snug text-muted-foreground">
+            Connect Xero under{" "}
+            <span className="font-semibold text-foreground">System Settings → Xero</span> to also
+            push approved claims there — a bill for out-of-pocket claims, a spend-money transaction
+            for company-paid ones.
+          </p>
+        ) : null}
+
         <p className="text-xs leading-snug text-muted-foreground">
           Each claim keeps the route it was created under, so changing this never re-routes existing
           claims — including any already billed to Xero, which would otherwise be paid twice.

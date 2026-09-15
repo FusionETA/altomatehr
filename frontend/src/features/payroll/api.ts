@@ -3,6 +3,7 @@ import {
   apiDelete,
   apiGet,
   apiGetFile,
+  apiPostFile,
   apiPost,
   apiPostForm,
   apiPut,
@@ -1089,3 +1090,36 @@ export type XeroTrackingCategory = {
 
 export const getXeroTrackingCategories = () =>
   apiGet<XeroTrackingCategory[]>("/payroll/runs/xero/tracking-categories");
+
+// ─── CP8D converter ───────────────────────────────────────────────────
+//
+// Hand-entered rows rather than a year of runs: for a mid-year cutover, a
+// one-off correction, or a dry run against LHDN's portal before the first real
+// Jan–Dec cycle. The server renders them through the same Cp8dTxt the real
+// downloads use, so a converted file and a generated one cannot drift apart —
+// which is why this posts the rows instead of building the TXT in the browser.
+
+export type Cp8dConvertRow = {
+  name: string;
+  taxRef: string;
+  newIc: string;
+  // "1" single · "2" married, sole earner · "3" both working / other.
+  category: "1" | "2" | "3";
+  taxBorneByEmployer: boolean;
+  children: number;
+  childRelief: number;
+  annualGross: number;
+  epf: number;
+  pcb: number;
+};
+
+export type Cp8dConvertRequest = {
+  employerNo: string;
+  employerName: string;
+  year: number;
+  employees: Cp8dConvertRow[];
+};
+
+// Returns the zipped M + P pair, named by the server.
+export const convertCp8d = (body: Cp8dConvertRequest) =>
+  apiPostFile("/payroll/annual/cp8d/convert", `CP8D_${body.year}.zip`, body);

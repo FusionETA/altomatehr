@@ -44,6 +44,21 @@ public class ShiftsController : ControllerBase
         return BadRequest(new { message = result.Error, code = result.Code, assignedCount = result.AssignedCount });
     }
 
+    // POST /shifts/{id}/archive — soft-archive; also drops the default flag.
+    // POST /shifts/{id}/restore — bring it back (it does NOT regain the default).
+    [HttpPost("{id}/archive")]
+    public async Task<IActionResult> Archive(string id) => await SetArchived(id, true);
+
+    [HttpPost("{id}/restore")]
+    public async Task<IActionResult> Restore(string id) => await SetArchived(id, false);
+
+    private async Task<IActionResult> SetArchived(string id, bool archived)
+    {
+        var result = await _shifts.SetArchivedAsync(id, archived);
+        if (!result.Ok && result.Error is null) return NotFound();
+        return result.Ok ? Ok(result.Shift) : BadRequest(new { message = result.Error });
+    }
+
     [HttpPost("{id}/default")]
     public async Task<IActionResult> SetDefault(string id)
     {

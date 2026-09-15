@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915070741_AddShiftIsArchived")]
+    partial class AddShiftIsArchived
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1249,10 +1252,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("AttachmentName")
                         .HasMaxLength(260)
                         .HasColumnType("varchar(260)");
-
-                    b.Property<string>("AttachmentUrl")
-                        .HasMaxLength(400)
-                        .HasColumnType("varchar(400)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -2931,9 +2930,6 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
-                    b.Property<bool>("ArchivedByXeroConnect")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -2985,14 +2981,6 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<DateTime?>("XeroSyncedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<string>("XeroTrackingCategoryId")
-                        .HasMaxLength(80)
-                        .HasColumnType("varchar(80)");
-
-                    b.Property<string>("XeroTrackingOptionId")
-                        .HasMaxLength(80)
-                        .HasColumnType("varchar(80)");
 
                     b.HasKey("Id");
 
@@ -3211,14 +3199,6 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
-
-                    b.Property<string>("ProjectTrackingCategoryId")
-                        .HasMaxLength(80)
-                        .HasColumnType("varchar(80)");
-
-                    b.Property<string>("ProjectTrackingCategoryName")
-                        .HasMaxLength(160)
-                        .HasColumnType("varchar(160)");
 
                     b.Property<DateTime?>("ReconnectRequiredAt")
                         .HasColumnType("datetime(6)");

@@ -249,6 +249,14 @@ function NewRunPicker({
     );
   }
 
+  // Resolved up front rather than inside the map: a map that returns null for
+  // every row leaves an empty bordered box with nothing in it and no height,
+  // which reads as a broken dialog rather than an empty one.
+  const visible = (policies ?? [])
+    .filter((policy) => policy.members.length > 0)
+    .map((policy) => ({ policy, matching: policy.members.filter(matches) }))
+    .filter(({ matching }) => !trimmed || matching.length > 0);
+
   function toggle(set: Set<string>, id: string, update: (next: Set<string>) => void) {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
@@ -305,7 +313,7 @@ function NewRunPicker({
         </p>
       </header>
 
-      <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5 pl-1">
+      <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LABEL} htmlFor="runMonth">
@@ -363,16 +371,31 @@ function NewRunPicker({
               Loading employees…
             </div>
           ) : (
-            <div className="max-h-[45vh] overflow-y-auto rounded-2xl border border-border/60 bg-card">
+            <div className="max-h-[45vh] min-h-[7rem] overflow-y-auto rounded-2xl border border-border/60 bg-card">
+              {visible.length === 0 ? (
+                // Three different nothings, and an admin can only act on the
+                // one they're actually in — so each says what to do next
+                // instead of leaving a blank panel to interpret.
+                <div className="flex h-28 flex-col items-center justify-center gap-1 px-6 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    {trimmed
+                      ? "No one matches that search"
+                      : policies.length === 0
+                        ? "No policies yet"
+                        : "No employees are ready to be paid"}
+                  </p>
+                  <p className={HINT}>
+                    {trimmed
+                      ? "Clear the search to see every policy again."
+                      : policies.length === 0
+                        ? "Add a policy under System Settings → Policies, then start the run."
+                        : "A profile needs its personal, employment and statutory details before payroll can include it — the Employees tab flags who is missing what."}
+                  </p>
+                </div>
+              ) : (
               <div className="divide-y divide-border/60">
-                {policies.map((policy) => {
-                  // Hide policies with no payable members — they contribute
-                  // nothing and only clutter the list.
-                  if (policy.members.length === 0) return null;
-                  const matching = policy.members.filter(matches);
-                  // During a search, hide rows with no matches and force-expand
-                  // the ones that do.
-                  if (trimmed && matching.length === 0) return null;
+                {visible.map(({ policy, matching }) => {
+                  // During a search the matching rows are force-expanded.
                   const isOpen = trimmed ? matching.length > 0 : expanded.has(policy.id);
                   const isSelected = selected.has(policy.id);
                   const excludedInPolicy = policy.members.filter((m) =>
@@ -403,10 +426,14 @@ function NewRunPicker({
                   );
                 })}
               </div>
+              )}
             </div>
           )}
 
-          {policies !== null && !loadError ? (
+          {/* Only a prompt when there is something to act on: "Pick at least one
+              policy" above an empty list is an instruction that can't be
+              followed, and the panel already explains itself. */}
+          {policies !== null && !loadError && visible.length > 0 ? (
             noneSelected ? (
               <p className="text-xs text-destructive">Pick at least one policy.</p>
             ) : includedCount === 0 ? (

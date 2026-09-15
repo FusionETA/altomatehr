@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, LoaderCircle } from "lucide-react";
+import { Calculator, Download, LoaderCircle } from "lucide-react";
 import {
   downloadAnnualReport,
   getAnnualReportKinds,
@@ -9,6 +9,7 @@ import {
 import { saveFile } from "@/shared/lib/api-client";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
+import { Cp8dConverterModal } from "./Cp8dConverterModal";
 import { rm } from "../lib/payroll-format";
 import {
   BUTTON_GHOST,
@@ -35,6 +36,7 @@ export function PayrollAnnualTab() {
   // Year-end work is done in the FOLLOWING year — Form E is due 31 March —
   // so the year being filed is almost always the last one.
   const [year, setYear] = useState(now.getFullYear() - 1);
+  const [converterOpen, setConverterOpen] = useState(false);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -223,10 +225,40 @@ export function PayrollAnnualTab() {
             onPick={get}
           />
 
+          {/* Sits under the generated pair rather than beside it: this builds
+              the same two files from rows typed by hand, which is what you
+              want only when there is no payroll here to build them from. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">No payroll here for that year?</p>
+              <p className="text-xs text-muted-foreground">
+                Type the rows by hand instead — for a mid-year cutover, a one-off correction, or a
+                dry run against the portal.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConverterOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 py-2 text-sm font-bold text-foreground hover:bg-muted"
+            >
+              <Calculator className="size-4" aria-hidden />
+              CP8D converter
+            </button>
+          </div>
+
           {downloadError ? (
             <p className="text-sm font-medium text-destructive">{downloadError}</p>
           ) : null}
         </section>
+      ) : null}
+
+      {converterOpen ? (
+        <Cp8dConverterModal
+          defaultEmployerNo={payload?.employerNo}
+          defaultEmployerName={payload?.organizationName}
+          defaultYear={year}
+          onClose={() => setConverterOpen(false)}
+        />
       ) : null}
     </div>
   );

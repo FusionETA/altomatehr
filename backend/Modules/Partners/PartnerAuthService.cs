@@ -42,17 +42,30 @@ public class PartnerAuthService : IPartnerAuthService
         _email = email;
     }
 
-    public async Task<string?> MintLaunchTicketAsync(string appName, string userId, string organizationId)
+    public async Task<string?> MintLaunchTicketAsync(string appName, string userId, string organizationId, string? dest = null)
     {
         var client = await _clients.GetByNameAsync(appName);
         if (client is null || !client.Active) return null;
 
+        var safeDest = IsSafeRelativePath(dest) ? dest : null;
         var ticket = await _store.MintTicketAsync(
-            new PartnerTicketData(client.Id, userId, organizationId), TicketTtl);
+            new PartnerTicketData(client.Id, userId, organizationId, safeDest), TicketTtl);
 
         var sep = client.RedirectUrl.Contains('?') ? '&' : '?';
         return $"{client.RedirectUrl}{sep}t={Uri.EscapeDataString(ticket)}";
     }
+
+    // Guards the `dest` query param on /sso/launch/{app} from becoming an open
+    // redirect: must be a single in-app-relative path, never an absolute URL or
+    // a protocol-relative one (a leading "//" is browser-navigable to another
+    // host). The partner app independently re-checks this same rule before
+    // ever acting on the value — this check alone isn't the only line of
+    // defense, just the first one.
+    private static bool IsSafeRelativePath(string? path) =>
+        !string.IsNullOrEmpty(path)
+        && path.StartsWith('/')
+        && !path.StartsWith("//")
+        && !path.Contains("://");
 
     public async Task<PartnerTokenResponseDto?> RedeemTicketAsync(string clientSecret, string ticket)
     {
@@ -62,7 +75,7 @@ public class PartnerAuthService : IPartnerAuthService
         var data = await _store.RedeemTicketAsync(ticket);
         if (data is null || data.ClientId != client.Id) return null;   // expired, or another app's ticket
 
-        return await IssueAsync(client, data.UserId, data.OrganizationId);
+        return await IssueAsync(client, data.UserId, data.OrganizationId, data.Destination);
     }
 
     public async Task<PartnerTokenResponseDto?> RefreshAsync(string clientSecret, string refreshToken)
@@ -122,13 +135,14 @@ public class PartnerAuthService : IPartnerAuthService
     }
 
     // Generic on purpose — this endpoint serves every registered partner app
-    // (see PartnerAuthController), not just Appraisify.
+    // (see PartnerAuthController), not just Appraisify. Same branded shell as
+    // every other AltomateHR email (see EmailTemplate.Wrap).
     private static string BuildEmailBody(SendPartnerNotificationDto dto)
     {
-        var body = $"<p>{System.Net.WebUtility.HtmlEncode(dto.Message)}</p>";
+        var body = EmailTemplate.Paragraph(System.Net.WebUtility.HtmlEncode(dto.Message));
         if (!string.IsNullOrEmpty(dto.Link))
-            body += $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(dto.Link)}\">View details</a></p>";
-        return body;
+            body += EmailTemplate.Button(dto.ActionLabel ?? "View Details", dto.Link);
+        return EmailTemplate.Wrap(dto.Title, body, preheader: dto.Message);
     }
 
     // Hash the presented secret and look the app up. Vague on failure by design.
@@ -140,8 +154,10 @@ public class PartnerAuthService : IPartnerAuthService
     }
 
     // Mint a fresh access + refresh pair bound to the ticket's org and the app's
-    // granted scopes, and return the identity the partner needs.
-    private async Task<PartnerTokenResponseDto> IssueAsync(ApiClient client, string userId, string orgId)
+    // granted scopes, and return the identity the partner needs. `destination`
+    // only ever comes from a launch ticket (RedeemTicketAsync) — a token
+    // refresh (RefreshAsync) has no destination to carry, hence the default.
+    private async Task<PartnerTokenResponseDto> IssueAsync(ApiClient client, string userId, string orgId, string? destination = null)
     {
         var tokenData = new PartnerTokenData(client.Id, userId, orgId, client.Scopes, client.Audience);
 
@@ -172,6 +188,7 @@ public class PartnerAuthService : IPartnerAuthService
                 Id = orgId,
                 Name = org?.Name ?? string.Empty,
             },
+            Destination = destination,
         };
     }
 }

@@ -250,6 +250,7 @@ builder.Services.AddScoped<IAttendanceBreakRepository, AttendanceBreakRepository
 builder.Services.AddScoped<IAttendanceApprovalRequestRepository, AttendanceApprovalRequestRepository>();
 builder.Services.AddScoped<IAttendancePhotoStorage, AttendancePhotoStorage>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
+builder.Services.AddScoped<IAttendanceScopeService, AttendanceScopeService>();
 builder.Services.AddScoped<IHoursSummaryService, HoursSummaryService>();
 builder.Services.AddHostedService<LeaveRolloverBackgroundService>();
 builder.Services.AddHostedService<LeaveAccrualBackgroundService>();

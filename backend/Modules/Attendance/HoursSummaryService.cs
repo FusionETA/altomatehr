@@ -14,8 +14,7 @@ namespace AltomateHR.Api.Modules.Attendance;
 // Worked-minutes reporting: buckets clocked time into Normal/Rest-day and
 // separately totals approved/pending/rejected OT (submission-driven, never
 // derived from clock duration — see HoursBucketsDto). Reduced scope vs. the
-// reference app: no public-holiday bucket (no PH model here), no free-text
-// employee search filter on the org view.
+// reference app: no public-holiday bucket (no PH model here).
 public class HoursSummaryService : IHoursSummaryService
 {
     private static readonly int[] DefaultWorkingDays = [1, 2, 3, 4, 5];
@@ -31,6 +30,7 @@ public class HoursSummaryService : IHoursSummaryService
     private readonly IOtRateService _otRates;
     private readonly IAttendanceBreakRepository _breaks;
     private readonly ISupervisionService _supervision;
+    private readonly IAttendanceScopeService _scope;
     private readonly ICurrentUser _currentUser;
 
     public HoursSummaryService(
@@ -43,6 +43,7 @@ public class HoursSummaryService : IHoursSummaryService
         IOtRateService otRates,
         IAttendanceBreakRepository breaks,
         ISupervisionService supervision,
+        IAttendanceScopeService scope,
         ICurrentUser currentUser)
     {
         _attendance = attendance;
@@ -54,6 +55,7 @@ public class HoursSummaryService : IHoursSummaryService
         _otRates = otRates;
         _breaks = breaks;
         _supervision = supervision;
+        _scope = scope;
         _currentUser = currentUser;
     }
 
@@ -63,16 +65,19 @@ public class HoursSummaryService : IHoursSummaryService
         return await ComputeAsync(employeeId, from, to, ctx);
     }
 
-    public async Task<HoursSummaryDto> GetOrgHoursSummaryAsync(DateTime from, DateTime to, string? teamId)
+    public async Task<HoursSummaryDto> GetOrgHoursSummaryAsync(
+        DateTime from, DateTime to, string? teamId, string? projectId = null, string? q = null)
     {
         var members = await _directory.GetMembershipsForCurrentOrgAsync();
         var staff = members.Where(m => m.Role is "Employee" or "Supervisor").ToList();
 
-        if (!string.IsNullOrEmpty(teamId))
-        {
-            var teamEmployeeIds = (await _teams.GetMemberEmployeeIdsAsync(teamId)).ToHashSet();
-            staff = staff.Where(m => teamEmployeeIds.Contains(m.UserId)).ToList();
-        }
+        // Narrowed through the same resolver the other admin reports use, so a
+        // filter means the same people here as it does on Today or Performance.
+        // A null scope is "no filter"; an empty one matched nobody and must
+        // yield no rows rather than falling back to the whole org — hence the
+        // `is not null` rather than a truthiness check.
+        var scope = await _scope.ResolveAsync(projectId, teamId, q);
+        if (scope is not null) staff = staff.Where(m => scope.Contains(m.UserId)).ToList();
 
         var ctx = await BuildContextAsync();
         var emails = await _supervision.GetEmailsAsync(staff.Select(m => m.UserId));

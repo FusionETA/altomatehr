@@ -1,4 +1,5 @@
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Employees;
@@ -19,6 +20,7 @@ public class AdminAttendanceService : IAdminAttendanceService
     private readonly IEmployeeRowResolver _employees;
     private readonly ITeamService _teams;
     private readonly IOrganizationService _organizations;
+    private readonly IAttendanceScopeService _scope;
     private readonly ICurrentUser _currentUser;
 
     public AdminAttendanceService(
@@ -28,6 +30,7 @@ public class AdminAttendanceService : IAdminAttendanceService
         IEmployeeRowResolver employees,
         ITeamService teams,
         IOrganizationService organizations,
+        IAttendanceScopeService scope,
         ICurrentUser currentUser)
     {
         _approvals = approvals;
@@ -36,13 +39,14 @@ public class AdminAttendanceService : IAdminAttendanceService
         _employees = employees;
         _teams = teams;
         _organizations = organizations;
+        _scope = scope;
         _currentUser = currentUser;
     }
 
     public async Task<IReadOnlyList<SupervisorPerformanceDto>> GetSupervisorPerformanceAsync(
         DateTime from, DateTime to, string? projectId, string? teamId, string? q)
     {
-        var scope = await ScopeAsync(projectId, teamId, q);
+        var scope = await _scope.ResolveAsync(projectId, teamId, q);
         if (scope is { Count: 0 }) return [];
 
         var slaMinutes = await SlaMinutesAsync();
@@ -92,7 +96,7 @@ public class AdminAttendanceService : IAdminAttendanceService
     public async Task<IReadOnlyList<ApprovalAuditEntryDto>> GetApprovalAuditAsync(
         DateTime from, DateTime to, string? projectId, string? teamId, string? q)
     {
-        var scope = await ScopeAsync(projectId, teamId, q);
+        var scope = await _scope.ResolveAsync(projectId, teamId, q);
         if (scope is { Count: 0 }) return [];
 
         var directory = await _employees.GetSnapshotAsync();
@@ -168,47 +172,32 @@ public class AdminAttendanceService : IAdminAttendanceService
         };
     }
 
-    // The employee ids a filter narrows to, or null for "everyone".
-    //
-    // Null and empty mean different things and callers must not conflate them:
-    // null is no filter at all, empty is a filter that matched nobody — which
-    // has to return no rows rather than the whole org.
-    private async Task<HashSet<string>?> ScopeAsync(string? projectId, string? teamId, string? q)
+    public async Task<TabularExportResult> ExportApprovalAuditAsync(
+        DateTime from, DateTime to, string? projectId, string? teamId, string? q, TabularFormat format)
     {
-        HashSet<string>? scope = null;
+        // Straight through the read path, so the file can never show a different
+        // set of rows than the screen it was exported from.
+        var rows = await GetApprovalAuditAsync(from, to, projectId, teamId, q);
 
-        if (!string.IsNullOrWhiteSpace(teamId))
+        var caption = $"{from:dd MMM yyyy} – {to:dd MMM yyyy}  ·  {rows.Count} request(s)";
+        var sheets = new List<TabularSheet>
         {
-            scope = (await _teams.GetMemberEmployeeIdsAsync(teamId)).ToHashSet(StringComparer.Ordinal);
-        }
+            format == TabularFormat.Pdf
+                ? ApprovalAuditSheet.BuildPrintable(rows, caption)
+                : ApprovalAuditSheet.Build(rows, caption),
+        };
 
-        if (!string.IsNullOrWhiteSpace(projectId))
-        {
-            // Employees reach a project through their teams, so "on this
-            // project" is the union of the rosters of every team on it.
-            var onProject = (await _teams.GetAllAsync())
-                .Where(t => t.ProjectId == projectId)
-                .SelectMany(t => t.Members.Select(m => m.EmployeeId))
-                .ToHashSet(StringComparer.Ordinal);
+        var fileName = $"approval-trail-{from:yyyy-MM-dd}-to-{to:yyyy-MM-dd}";
+        if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);
 
-            scope = scope is null ? onProject : scope.Intersect(onProject).ToHashSet(StringComparer.Ordinal);
-        }
+        var organizationId = _currentUser.OrganizationId;
+        var organizationName = string.IsNullOrEmpty(organizationId)
+            ? "Organization"
+            : (await _organizations.GetByIdAsync(organizationId))?.Name ?? "Organization";
 
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            var term = q.Trim();
-            var directory = await _employees.GetSnapshotAsync();
-            var matched = directory.Members
-                .Where(m =>
-                    (m.Name ?? string.Empty).Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    (m.Email ?? string.Empty).Contains(term, StringComparison.OrdinalIgnoreCase))
-                .Select(m => m.Id)
-                .ToHashSet(StringComparer.Ordinal);
-
-            scope = scope is null ? matched : scope.Intersect(matched).ToHashSet(StringComparer.Ordinal);
-        }
-
-        return scope;
+        return TabularExportResult.From(
+            sheets, format, fileName,
+            new TabularPdfHeader(organizationName, "Approval Trail"));
     }
 
     private async Task<int> SlaMinutesAsync()
