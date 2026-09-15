@@ -54,5 +54,11 @@ public class Project : ITenantScoped
 
     public bool IsArchived { get; set; }
 
+    // Set alongside IsArchived when connecting Xero hides a hand-created
+    // project, because Xero becomes the source of truth for what projects
+    // exist. Kept separate from IsArchived so disconnecting restores exactly
+    // these and leaves anything the admin archived on purpose archived.
+    public bool ArchivedByXeroConnect { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }

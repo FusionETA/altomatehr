@@ -176,9 +176,44 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task UpdateStateAsync(XeroOAuthState state) => throw new NotImplementedException();
     public Task<XeroConnection> UpsertConnectionAsync(XeroConnection c) => throw new NotImplementedException();
     public Task UpdateConnectionAsync(XeroConnection c) => Task.CompletedTask;
-    public Task<Project?> GetProjectByXeroIdAsync(string o, string x) => throw new NotImplementedException();
-    public Task AddProjectAsync(Project p) => throw new NotImplementedException();
-    public Task UpdateProjectAsync(Project p) => throw new NotImplementedException();
+    public List<Project> Projects { get; } = [];
+
+    public Task<Project?> GetProjectByXeroIdAsync(string o, string x) =>
+        Task.FromResult(Projects.FirstOrDefault(p => p.XeroProjectId == x));
+
+    public Task AddProjectAsync(Project p)
+    {
+        Projects.Add(p);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateProjectAsync(Project p) => Task.CompletedTask;
+
+    // Mirrors the SQL in the real repository: hand-created (no XeroProjectId)
+    // and not already archived by someone.
+    public Task<int> ArchiveManualProjectsAsync(string organizationId)
+    {
+        var hit = Projects
+            .Where(p => p.XeroProjectId is null && !p.IsArchived)
+            .ToList();
+        foreach (var p in hit)
+        {
+            p.IsArchived = true;
+            p.ArchivedByXeroConnect = true;
+        }
+        return Task.FromResult(hit.Count);
+    }
+
+    public Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId)
+    {
+        var hit = Projects.Where(p => p.ArchivedByXeroConnect).ToList();
+        foreach (var p in hit)
+        {
+            p.IsArchived = false;
+            p.ArchivedByXeroConnect = false;
+        }
+        return Task.FromResult(hit.Count);
+    }
 }
 
 internal sealed class FakeXeroAccountsClient : IXeroClient

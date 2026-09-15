@@ -79,6 +79,29 @@ public class XeroRepository : IXeroRepository
         await _db.SaveChangesAsync();
     }
 
+    // Both of these run from the OAuth callback / disconnect, so they take the
+    // org explicitly and filter on it rather than leaning on the global filter —
+    // the callback has no signed-in user, which makes that filter a no-op.
+
+    // A project with no XeroProjectId was typed in by hand. Already-archived
+    // rows are left alone: the flag has to mean "Xero hid this", or the restore
+    // on disconnect would un-archive things the admin archived deliberately.
+    public Task<int> ArchiveManualProjectsAsync(string organizationId) =>
+        _db.Projects
+            .Where(p => p.OrganizationId == organizationId
+                && p.XeroProjectId == null
+                && !p.IsArchived)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.IsArchived, true)
+                .SetProperty(p => p.ArchivedByXeroConnect, true));
+
+    public Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId) =>
+        _db.Projects
+            .Where(p => p.OrganizationId == organizationId && p.ArchivedByXeroConnect)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.IsArchived, false)
+                .SetProperty(p => p.ArchivedByXeroConnect, false));
+
     public Task<Project?> GetProjectByXeroIdAsync(string organizationId, string xeroProjectId) =>
         _db.Projects.FirstOrDefaultAsync(p =>
             p.OrganizationId == organizationId && p.XeroProjectId == xeroProjectId);

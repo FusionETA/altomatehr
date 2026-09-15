@@ -70,6 +70,14 @@ public class XeroService : IXeroService
             ?? throw new XeroConnectionException("No Xero organization was returned for this connection.");
 
         var now = DateTime.UtcNow;
+
+        // Read before the upsert, because the upsert is what clears
+        // DisconnectedAt. An org that was already connected is re-authorising,
+        // not connecting — and must not have its projects re-archived, since an
+        // admin may have deliberately restored one in between.
+        var previous = await _repo.GetConnectionAsync(storedState.OrganizationId);
+        var firstConnect = previous is null || !previous.IsConnected;
+
         await _repo.UpsertConnectionAsync(new XeroConnection
         {
             OrganizationId = storedState.OrganizationId,
@@ -85,6 +93,14 @@ public class XeroService : IXeroService
             ConnectedAt = now,
             UpdatedAt = now,
         });
+
+        // Xero is now the source of truth for which projects exist, so the ones
+        // typed in by hand before it was connected drop out of every picker —
+        // otherwise attendance and company structure keep offering projects no
+        // claim, bill or timesheet can ever be costed against. Reversed on
+        // disconnect.
+        if (firstConnect)
+            await _repo.ArchiveManualProjectsAsync(storedState.OrganizationId);
 
         storedState.UsedAt = now;
         await _repo.UpdateStateAsync(storedState);
@@ -134,6 +150,10 @@ public class XeroService : IXeroService
         connection.DisconnectedAt = DateTime.UtcNow;
         connection.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateConnectionAsync(connection);
+
+        // Hand-created projects come back — without Xero there is nothing else
+        // to pick, and an org with no selectable project can't clock in at all.
+        await _repo.RestoreProjectsArchivedByXeroConnectAsync(connection.OrganizationId);
 
         // Disconnecting stops every approved claim reaching the accounting
         // system. Worth a name and a timestamp.
@@ -281,6 +301,18 @@ public class XeroService : IXeroService
             await _repo.UpdateProjectAsync(existing);
             result.Updated++;
         }
+
+        // Orgs that connected Xero before the archive-on-connect rule existed
+        // never had their hand-typed projects hidden, and an admin who connects
+        // and only syncs later gets here with them still showing. Either way,
+        // once Xero has actually supplied projects it owns the list.
+        //
+        // Guarded on the sync having produced something: a Xero org with no
+        // projects (or a tracking-category setup this sync can't see) would
+        // otherwise leave the org with nothing selectable at all, and nobody
+        // able to clock in.
+        if (result.Imported + result.Updated > 0)
+            await _repo.ArchiveManualProjectsAsync(orgId);
 
         return result;
     }

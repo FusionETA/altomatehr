@@ -87,6 +87,9 @@ public class ProjectService : IProjectService
         if (project is null) return null;
 
         project.IsArchived = archived;
+        // Whatever the admin decides here, they now own this row: clearing the
+        // flag stops a later disconnect from silently reversing their choice.
+        project.ArchivedByXeroConnect = false;
         await _repo.UpdateAsync(project);
 
         await _audit.WriteAsync(new AuditEvent(
