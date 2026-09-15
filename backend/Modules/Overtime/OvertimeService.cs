@@ -21,19 +21,22 @@ public class OvertimeService : IOvertimeService
     private readonly ISupervisionService _supervision;
     private readonly IApprovalRouter _router;
     private readonly INotificationService _notifications;
+    private readonly ITeamService _teams;
 
     public OvertimeService(
         IOvertimeRepository requests,
         IOvertimePhotoStorage photos,
         ISupervisionService supervision,
         IApprovalRouter router,
-        INotificationService notifications)
+        INotificationService notifications,
+        ITeamService teams)
     {
         _requests = requests;
         _photos = photos;
         _supervision = supervision;
         _router = router;
         _notifications = notifications;
+        _teams = teams;
     }
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetMineAsync(string userId) =>
@@ -118,11 +121,33 @@ public class OvertimeService : IOvertimeService
         if (requestedMinutes <= 0)
             return new OvertimeSubmitResult(false, null, "Overtime duration must be greater than zero.");
 
+        // The project decides which team approves this request — the router
+        // looks the chain up by (employee, project) — and which site the hours
+        // are costed to. Picking one the employee isn't on falls back to a team
+        // they ARE on: plausible approvers, wrong costing. Claims and
+        // attendance already refuse this; overtime was the last one that didn't.
+        //
+        // Required for anyone who HAS a project, and only for them: an employee
+        // on no team has nothing to pick, and demanding one would lock them out
+        // of claiming overtime entirely.
+        var projectId = Clean(dto.ProjectId);
+        var mine = await _teams.GetProjectIdsForMemberAsync(employeeId);
+        if (projectId is null)
+        {
+            if (mine.Count > 0)
+                return new OvertimeSubmitResult(false, null, "Pick the project this overtime is for.");
+        }
+        else if (!mine.Contains(projectId))
+        {
+            return new OvertimeSubmitResult(false, null,
+                "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.");
+        }
+
         var now = DateTime.UtcNow;
         var request = new OvertimeRequest
         {
             EmployeeId = employeeId,
-            ProjectId = Clean(dto.ProjectId),
+            ProjectId = projectId,
             WorkDate = dto.WorkDate.Value.Date,
             StartAt = startAt,
             EndAt = endAt,

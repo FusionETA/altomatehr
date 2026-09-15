@@ -128,7 +128,8 @@ public class OvertimeBulkApproveTests
             new UnusedPhotoStorage(),
             new FakeSupervisionService(),
             router,
-            new FakeNotificationService());
+            new FakeNotificationService(),
+            new AltomateHR.Api.Tests.Claims.FakeTeamService());
 
     private static OvertimeRequest NewRequest(
         string id,

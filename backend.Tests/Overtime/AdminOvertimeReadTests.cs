@@ -174,7 +174,8 @@ public class AdminOvertimeReadTests
             new UnusedPhotoStorage(),
             new FakeSupervisionService(emails: emails),
             router,
-            new FakeNotificationService());
+            new FakeNotificationService(),
+            new AltomateHR.Api.Tests.Claims.FakeTeamService());
 
     private static OvertimeRequest NewRequest(
         string id,

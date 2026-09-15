@@ -18,7 +18,7 @@ import {
   visibleOvertimeStatuses,
   type OvertimeStatusFilter,
 } from "../lib/overtime-status";
-import { getProjects, type Project } from "@/features/settings/api";
+import { getMyProjects, getProjects, type Project } from "@/features/settings/api";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
 import {
@@ -71,7 +71,17 @@ export function OvertimeView() {
   // handler below), so this only needs to load once per visit — and on a
   // revisit it doesn't need to load at all.
   const requestsQuery = useCachedQuery("/overtime", getMyOvertime);
-  const projectsQuery = useCachedQuery("/projects", getProjects);
+  // The PICKER offers only the employee's own projects. The project decides
+  // which team approves the request and which site the hours are costed to, so
+  // offering one they aren't on produces overtime that routes through a
+  // fallback team. The server refuses it too. Same rule as claims and
+  // attendance.
+  const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
+
+  // Names for the HISTORY rows, which is a different question: a request filed
+  // before the employee left that team still has to render its project name
+  // rather than a dash. Lookup only — never rendered as a list of choices.
+  const allProjectsQuery = useCachedQuery("/projects", getProjects);
   const loading = requestsQuery.loading || projectsQuery.loading;
 
   useEffect(() => {
@@ -88,7 +98,10 @@ export function OvertimeView() {
     if (requestsQuery.error) setError(requestsQuery.error);
   }, [requestsQuery.error]);
 
-  const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const projectNames = useMemo(
+    () => new Map((allProjectsQuery.data ?? []).map((project) => [project.id, project.name])),
+    [allProjectsQuery.data],
+  );
   const filteredRequests = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return requests.filter((request) => {
@@ -317,8 +330,17 @@ function NewOvertimeModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Hidden entirely when they're on no project — an empty dropdown asks a
+  // question with no answers, and requiring one would lock an unassigned
+  // employee out of claiming overtime. Required for everyone else.
+  const projectRequired = projects.length > 0;
+
   async function submit() {
     if (!workDate || !startTime || !endTime || !reason.trim() || !beforePhoto) return;
+    if (projectRequired && projectId === NO_PROJECT) {
+      setError("Pick the project this overtime is for.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -360,22 +382,23 @@ function NewOvertimeModal({
         </div>
 
         <div className="mt-5 grid gap-4">
-          <label className="grid gap-1.5">
-            <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Project</span>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger>
-                <SelectValue placeholder="No project" />
-              </SelectTrigger>
-              <SelectContent searchPlaceholder="Search projects...">
-                <SelectItem value={NO_PROJECT}>No project</SelectItem>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+          {projectRequired ? (
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Project</span>
+              <Select value={projectId} onValueChange={setProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent searchPlaceholder="Search projects...">
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="grid gap-1.5">
