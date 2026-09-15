@@ -278,8 +278,8 @@ export function ProjectsSettings() {
 
   return (
     <div className="space-y-5">
-      <OrgGeofenceCard />
-
+      {/* Projects lead: the radius is a default that only means anything once
+          there are projects to apply it to. */}
       <div className={`${CARD} space-y-5`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-lg font-black text-foreground">Projects</h2>
@@ -571,6 +571,8 @@ export function ProjectsSettings() {
         </ul>
       )}
       </div>
+
+      <OrgGeofenceCard />
     </div>
   );
 }
