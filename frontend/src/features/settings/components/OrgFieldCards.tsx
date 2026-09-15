@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import {
   getOrganization,
   getXeroCurrencies,
@@ -8,6 +8,13 @@ import {
   type Organization,
   type XeroCurrency,
 } from "../api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 
@@ -100,18 +107,34 @@ export function OrgCurrencyCard() {
   const currenciesQuery = useCachedQuery("/xero/currencies", getXeroCurrencies);
   const currencies: XeroCurrency[] = currenciesQuery.data ?? [];
 
+  // /xero/currencies asks Xero live, so "sync" is just this read again — it's
+  // the client's 30s cache that would otherwise hide a currency added in Xero
+  // a minute ago.
+  const syncing = currenciesQuery.loading;
+
   return (
     <OrgSliceCard
       save={(org) => updateOrganization(orgToUpdate(org, { defaultCurrency: org.defaultCurrency }))}
     >
       {(org, setOrg, disabled) => (
         <>
-          <div>
-            <h2 className="text-lg font-black text-foreground">Default currency</h2>
-            <p className="text-sm text-muted-foreground">
-              The currency claims are submitted in. Xero refuses a bill in a currency the
-              organisation isn't subscribed to.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-foreground">Default currency</h2>
+              <p className="text-sm text-muted-foreground">
+                The currency claims are submitted in. Xero refuses a bill in a currency the
+                organisation isn't subscribed to.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void currenciesQuery.refresh()}
+              disabled={syncing}
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:border-primary/40 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync from Xero"}
+            </button>
           </div>
           <div className="sm:max-w-sm">
             <label htmlFor="claim-currency" className={LABEL}>
@@ -119,24 +142,33 @@ export function OrgCurrencyCard() {
             </label>
             {currencies.length > 0 ? (
               <>
-                <select
-                  id="claim-currency"
-                  className={`${INPUT} mt-1.5`}
-                  disabled={disabled}
+                <Select
                   value={org.defaultCurrency}
-                  onChange={(e) => setOrg({ ...org, defaultCurrency: e.target.value })}
+                  onValueChange={(code) => setOrg({ ...org, defaultCurrency: code })}
+                  disabled={disabled}
                 >
-                  {currencies.some((c) => c.code === org.defaultCurrency) ? null : (
-                    <option value={org.defaultCurrency}>{org.defaultCurrency} — not in Xero</option>
-                  )}
-                  {currencies.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code} — {c.description}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="claim-currency" className="mt-1.5 bg-card">
+                    <SelectValue placeholder="Pick a currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* A currency saved before Xero was connected (or since removed
+                        there) still has to show, or the field would silently read
+                        as something the org isn't actually using. */}
+                    {currencies.some((c) => c.code === org.defaultCurrency) ||
+                    !org.defaultCurrency ? null : (
+                      <SelectItem value={org.defaultCurrency}>
+                        {org.defaultCurrency} — not in Xero
+                      </SelectItem>
+                    )}
+                    {currencies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.code} — {c.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  From your Xero organisation. Add one there to see it here.
+                  From your Xero organisation. Added one there? Sync to pull it in.
                 </p>
               </>
             ) : (
@@ -155,6 +187,9 @@ export function OrgCurrencyCard() {
                 </p>
               </>
             )}
+            {currenciesQuery.error ? (
+              <p className="mt-1 text-xs text-destructive">{currenciesQuery.error}</p>
+            ) : null}
           </div>
         </>
       )}
