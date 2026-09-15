@@ -38,7 +38,13 @@ import {
 } from "@/features/attendance/api";
 import { getTeamClaims } from "@/features/claims/api";
 import { NewClaimModal } from "@/features/claims/components/NewClaimModal";
-import { getLeaveTypes, getTeamLeave, type LeaveType } from "@/features/leave/api";
+import {
+  getLeaveBalances,
+  getLeaveTypes,
+  getTeamLeave,
+  type LeaveBalance,
+  type LeaveType,
+} from "@/features/leave/api";
 import { ApplyLeaveModal } from "@/features/leave/components/ApplyLeaveModal";
 import { getMyProjects, type Project } from "@/features/settings/api";
 import { ApiError } from "@/shared/lib/api-client";
@@ -113,6 +119,7 @@ export function DashboardView({
   const [leaveCount, setLeaveCount] = useState(0);
   const [attendanceCount, setAttendanceCount] = useState(0);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
   const [clockOutOpen, setClockOutOpen] = useState(false);
@@ -136,6 +143,9 @@ export function DashboardView({
   // worse than a moment's wait.
   const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
   const leaveTypesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  // Applying from the dashboard needs the same balances the Leave screen shows,
+  // or the quick action is the one place that asks people to guess.
+  const leaveBalancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
 
   useEffect(() => {
     Promise.all([getTodayAttendance().catch(() => null), getOpenSession().catch(() => null)]).then(
@@ -151,6 +161,9 @@ export function DashboardView({
   useEffect(() => {
     setLeaveTypes((leaveTypesQuery.data ?? []).filter((x) => !x.isArchived));
   }, [leaveTypesQuery.data]);
+  useEffect(() => {
+    setLeaveBalances(leaveBalancesQuery.data ?? []);
+  }, [leaveBalancesQuery.data]);
 
   // Follows whichever record the card is acting on. Reading only `today` left
   // the picker empty while a stale shift was open — today has no record yet, so
@@ -590,6 +603,7 @@ export function DashboardView({
       {applyLeaveOpen ? (
         <ApplyLeaveModal
           types={leaveTypes}
+          balances={leaveBalances}
           onClose={() => setApplyLeaveOpen(false)}
           onCreated={() => setApplyLeaveOpen(false)}
         />

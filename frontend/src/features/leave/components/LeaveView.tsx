@@ -377,6 +377,7 @@ export function LeaveView() {
       {applyOpen ? (
         <ApplyLeaveModal
           types={activeTypes}
+          balances={balances}
           onClose={() => setApplyOpen(false)}
           onCreated={async (app) => {
             setMine((cur) => [app, ...cur]);

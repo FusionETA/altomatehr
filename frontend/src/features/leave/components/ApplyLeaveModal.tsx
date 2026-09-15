@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
-import { applyLeave, type LeaveApplication, type LeaveType } from "../api";
+import { applyLeave, type LeaveApplication, type LeaveBalance, type LeaveType } from "../api";
 import {
   Select,
   SelectContent,
@@ -21,12 +21,19 @@ function daysBetween(start: string, end: string): number | null {
   return Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1;
 }
 
+// Days read better as "12" than "12.0", but a half day has to survive.
+const formatDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
 export function ApplyLeaveModal({
   types,
+  balances,
   onClose,
   onCreated,
 }: {
   types: LeaveType[];
+  /** The caller already holds these; without them this form asks people to
+   *  guess how many days they have left. */
+  balances: LeaveBalance[];
   onClose: () => void;
   onCreated: (app: LeaveApplication) => void;
 }) {
@@ -38,6 +45,22 @@ export function ApplyLeaveModal({
   const [error, setError] = useState<string | null>(null);
 
   const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
+
+  const balanceByType = useMemo(
+    () => new Map(balances.map((b) => [b.leaveTypeId, b])),
+    [balances],
+  );
+  const selectedBalance = balanceByType.get(leaveTypeId) ?? null;
+
+  // The server refuses an application that exceeds the balance. Saying so here
+  // means the refusal isn't the first time somebody learns it — but it stays a
+  // warning, not a block: the balance shown is today's, and the server decides
+  // against the start date, which can differ on a pro-rated type.
+  const overBalance =
+    selectedBalance !== null &&
+    selectedBalance.paid &&
+    days !== null &&
+    days > selectedBalance.remainingDays;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,14 +110,44 @@ export function ApplyLeaveModal({
                   <SelectValue placeholder="Select a type" />
                 </SelectTrigger>
                 <SelectContent searchPlaceholder="Search types…">
-                  {types.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                      {t.paid ? "" : " (unpaid)"}
-                    </SelectItem>
-                  ))}
+                  {types.map((t) => {
+                    const b = balanceByType.get(t.id);
+                    return (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                        {!t.paid
+                          ? " (unpaid)"
+                          : b
+                            ? ` · ${formatDays(b.remainingDays)} left`
+                            : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+
+              {/* The number people actually open this form wondering about. */}
+              {selectedBalance ? (
+                selectedBalance.paid ? (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">
+                      {formatDays(selectedBalance.remainingDays)} day
+                      {selectedBalance.remainingDays === 1 ? "" : "s"} left
+                    </span>{" "}
+                    of {formatDays(selectedBalance.entitlementDays)} · {formatDays(selectedBalance.takenDays)}{" "}
+                    taken
+                    {selectedBalance.pendingDays > 0
+                      ? ` · ${formatDays(selectedBalance.pendingDays)} awaiting approval`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Unpaid — no balance to draw down.{" "}
+                    {formatDays(selectedBalance.takenDays)} day
+                    {selectedBalance.takenDays === 1 ? "" : "s"} taken so far.
+                  </p>
+                )
+              ) : null}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -124,6 +177,13 @@ export function ApplyLeaveModal({
             {days != null ? (
               <p className="text-sm text-muted-foreground">
                 Duration: <span className="font-semibold text-foreground">{days} day{days === 1 ? "" : "s"}</span>
+              </p>
+            ) : null}
+
+            {overBalance && selectedBalance ? (
+              <p className="rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                That's {formatDays(days!)} day{days === 1 ? "" : "s"} against{" "}
+                {formatDays(selectedBalance.remainingDays)} left — the server will refuse this.
               </p>
             ) : null}
 
