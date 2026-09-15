@@ -11,6 +11,7 @@ import {
 import {
   getAttendanceHistory,
   getMyHoursSummary,
+  hoursSummaryPath,
   getTodayAttendance,
   type HoursBuckets,
   type AttendanceRecord,
@@ -23,6 +24,7 @@ import { OvertimeView } from "@/features/overtime/components/OvertimeView";
 import { getOrganization, getProjects, type Project } from "@/features/settings/api";
 import { formatDistance } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import * as cache from "@/shared/lib/api-cache";
 import { SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const TZ = "Asia/Kuala_Lumpur";
@@ -302,7 +304,6 @@ export function AttendanceView({
   sub?: string;
   onViewHistory?: () => void;
 }) {
-  const [today, setToday] = useState<AttendanceRecord | null>(null);
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [radius, setRadius] = useState(200);
@@ -312,11 +313,7 @@ export function AttendanceView({
   // approximate for anyone shifted. Wiring the shift needs /shifts, which has
   // no frontend yet.
   const [orgHours, setOrgHours] = useState<{ start?: string | null; end?: string | null }>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [now] = useState(() => new Date());
-  const [weekHours, setWeekHours] = useState<HoursBuckets | null>(null);
-  const [monthHours, setMonthHours] = useState<HoursBuckets | null>(null);
 
   // The displayed week runs Mon-Fri and reaches back into the previous month,
   // so it needs its own range rather than a slice of the month's.
@@ -332,22 +329,24 @@ export function AttendanceView({
     return { from: dateKey(start), to: dateKey(now), start, end: now };
   }, [now]);
 
-  // Today's record is read fresh every time. This screen's first job is
-  // telling someone whether they are currently clocked in, and a cached answer
-  // to that could have them clock in twice or think they already clocked out.
-  useEffect(() => {
-    getTodayAttendance()
-      .then(setToday)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  // History, projects and the org's geofence/working hours are all cached — a
-  // clock-in or clock-out invalidates /attendance*, so history can't go stale
-  // behind a change the user just made.
+  // Everything on this screen is cached, so coming back to it paints the last
+  // answer immediately and refreshes behind that.
+  //
+  // Today's record included: it used to be read fresh on every mount for fear
+  // of someone clocking in twice off a stale card, which meant the whole screen
+  // sat on a skeleton on every visit. The server is what actually prevents the
+  // double clock-in — it refuses one while a session is open — and a clock-in
+  // or clock-out invalidates /attendance*, which drops this key with it. So the
+  // cached card can be at most one background refresh behind, and can't author
+  // a state the server would accept.
+  const todayQuery = useCachedQuery("/attendance/today", getTodayAttendance);
   const historyQuery = useCachedQuery("/attendance", getAttendanceHistory);
   const projectsQuery = useCachedQuery("/projects", getProjects);
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+
+  const today = todayQuery.data ?? null;
+  const loading = todayQuery.loading;
+  const error = todayQuery.error;
 
   useEffect(() => {
     if (historyQuery.data) setHistory(historyQuery.data);
@@ -362,22 +361,20 @@ export function AttendanceView({
     setOrgHours({ start: org.workingHoursStart, end: org.workingHoursEnd });
   }, [orgQuery.data]);
 
-  // Totals are computed server-side so they match what payroll reads. A failure
-  // here leaves the cards showing a dash rather than a wrong number.
-  useEffect(() => {
-    Promise.all([
-      getMyHoursSummary(weekRange.from, weekRange.to),
-      getMyHoursSummary(monthRange.from, monthRange.to),
-    ])
-      .then(([week, month]) => {
-        setWeekHours(week);
-        setMonthHours(month);
-      })
-      .catch(() => {
-        setWeekHours(null);
-        setMonthHours(null);
-      });
-  }, [weekRange, monthRange]);
+  // Totals are computed server-side so they match what payroll reads. Cached on
+  // their exact date range, so returning to the screen on the same day shows the
+  // same two numbers instantly instead of counting up from nothing. A failure
+  // leaves the cards showing a dash rather than a wrong number.
+  const weekHoursQuery = useCachedQuery(
+    hoursSummaryPath(weekRange.from, weekRange.to),
+    () => getMyHoursSummary(weekRange.from, weekRange.to),
+  );
+  const monthHoursQuery = useCachedQuery(
+    hoursSummaryPath(monthRange.from, monthRange.to),
+    () => getMyHoursSummary(monthRange.from, monthRange.to),
+  );
+  const weekHours = weekHoursQuery.data ?? null;
+  const monthHours = monthHoursQuery.data ?? null;
 
   const clockedIn = today?.timeIn != null && today?.timeOut == null;
   const clockedOut = today?.timeOut != null;
@@ -1159,6 +1156,17 @@ function HistoryView({
       .map(([month, items]) => ({ month, sample: items[0]?.date }))
       .filter((m): m is { month: string; sample: string } => Boolean(m.sample));
     if (wanted.length === 0) return;
+
+    // Paint whatever these months totalled last time before the round trips
+    // start, so paging back through history doesn't blank every total first.
+    const cached = wanted
+      .map(({ month, sample }) => {
+        const { from, to } = monthRange(sample);
+        const hit = cache.peek<HoursBuckets>(hoursSummaryPath(from, to));
+        return hit ? ([month, hit.data] as const) : null;
+      })
+      .filter(Boolean) as Array<readonly [string, HoursBuckets]>;
+    if (cached.length > 0) setMonthHours(Object.fromEntries(cached));
 
     let active = true;
     Promise.all(

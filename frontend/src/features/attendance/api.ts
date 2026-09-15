@@ -158,8 +158,12 @@ export type HoursBuckets = {
 };
 
 // from/to are inclusive plain YYYY-MM-DD days.
+// Exported so callers can use the SAME string as a cache key — a hand-built
+// key that drifts from the real path is a cache that never hits.
+export const hoursSummaryPath = (from: string, to: string) =>
+  `/attendance/hours-summary/me?from=${from}&to=${to}`;
 export const getMyHoursSummary = (from: string, to: string) =>
-  apiGet<HoursBuckets>(`/attendance/hours-summary/me?from=${from}&to=${to}`);
+  apiGet<HoursBuckets>(hoursSummaryPath(from, to));
 
 // ---- Admin reports ----
 //
