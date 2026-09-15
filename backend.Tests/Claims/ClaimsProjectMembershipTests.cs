@@ -48,9 +48,23 @@ public class ClaimsProjectMembershipTests
     }
 
     [Fact]
-    public async Task CreateAsync_Allows_NoProjectAtAll()
+    public async Task CreateAsync_Requires_AProject_WhenTheEmployeeHasOne()
     {
-        // The project stays optional — the guard rejects a wrong one, not a missing one.
+        // The project decides the approval route and the costing, so anyone
+        // with one to pick has to pick it.
+        var service = CreateService([], teams: TeamsWithProjects("prj-mine"));
+
+        var error = await Assert.ThrowsAsync<ClaimValidationException>(
+            () => service.CreateAsync(DtoForProject(null), "usr-emp"));
+
+        Assert.Equal(nameof(CreateClaimDto.ProjectId), error.Field);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Allows_NoProject_WhenTheEmployeeIsOnNone()
+    {
+        // Nothing to pick. Requiring one here would lock an unassigned employee
+        // out of claiming altogether, so the form hides the field for them.
         var service = CreateService([], teams: TeamsWithProjects());
 
         var claim = await service.CreateAsync(DtoForProject(null), "usr-emp");

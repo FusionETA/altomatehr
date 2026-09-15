@@ -537,6 +537,15 @@ function ClaimDetailsForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    // The project decides which team approves the claim and what it's costed
+    // against, so it can't be left blank by anyone who has one to pick. The
+    // server enforces the same rule; this just says so before the round trip.
+    if (projects.length > 0 && !projectId) {
+      setError("Pick the project this claim belongs to.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -657,16 +666,17 @@ function ClaimDetailsForm({
           }
         />
 
-        {/* Hidden entirely when they're on no project — an empty dropdown asks
-            a question with no answers. Matches the previous system. */}
+        {/* Required when they're on a project, hidden entirely when they're
+            not — an empty dropdown asks a question with no answers, and
+            requiring one would lock an unassigned employee out of claiming
+            altogether. Matches the previous system. */}
         {projects.length > 0 ? (
           <SelectField
             label="Project"
-            placeholder="No project"
+            placeholder="Select project"
             value={projectId}
             onValueChange={setProjectId}
             options={projects.map((project) => ({ value: project.id, label: project.name }))}
-            optional
           />
         ) : null}
 
@@ -750,7 +760,7 @@ function ClaimDetailsForm({
           <span className={LABEL}>Currency</span>
           <p className={`${INPUT} flex items-center text-muted-foreground`}>
             {currency.toUpperCase()}
-            <span className="ml-2 text-xs">· set in System Settings → Organization</span>
+            <span className="ml-2 text-xs">· set in Claims → Settings</span>
           </p>
         </label>
 

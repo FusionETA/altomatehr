@@ -1222,18 +1222,27 @@ public class ClaimsService : IClaimsService
         }
 
         // A claim's project decides which team approves it and which site it is
-        // costed to, so it can't be a project the claimant isn't on. Attendance
+        // costed to, so it has to be one of the claimant's own. Attendance
         // refuses a clock-in for the same reason; without this, the rule held
         // only for people using our own form.
         //
-        // The project stays optional — this rejects a wrong one, not a missing one.
-        if (!string.IsNullOrWhiteSpace(dto.ProjectId))
+        // Required for anyone who HAS a project, and only for them: an employee
+        // on no team has nothing to pick, and demanding one would lock them out
+        // of claiming entirely. The form hides the field for exactly those
+        // people. Same rule as the previous system.
+        var mine = await _teams.GetProjectIdsForMemberAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.ProjectId))
         {
-            var mine = await _teams.GetProjectIdsForMemberAsync(employeeId);
-            if (!mine.Contains(dto.ProjectId))
+            if (mine.Count > 0)
                 throw new ClaimValidationException(
-                    "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.",
+                    "Pick the project this claim belongs to.",
                     nameof(dto.ProjectId));
+        }
+        else if (!mine.Contains(dto.ProjectId))
+        {
+            throw new ClaimValidationException(
+                "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.",
+                nameof(dto.ProjectId));
         }
 
         var account = await _accounts.GetByIdAsync(dto.ChartOfAccountId);
