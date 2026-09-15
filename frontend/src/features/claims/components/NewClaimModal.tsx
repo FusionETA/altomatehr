@@ -17,6 +17,7 @@ import {
   createClaim,
   updateClaim,
   analyzeClaimReceipt,
+  loadClaimReceiptObjectUrl,
   uploadClaimReceipt,
   type AnalyzeReceiptResponse,
   type Claim,
@@ -830,6 +831,11 @@ function ClaimDetailsForm({
         </InfoBox>
       ) : null}
 
+      <MainReceiptPreview
+        file={receiptFile}
+        storedUrl={scan?.receiptUrl ?? editingClaim?.receiptUrl ?? null}
+      />
+
       {!isEditing ? (
         <SupportingDocumentsField
           label="Supporting documents"
@@ -1012,6 +1018,98 @@ function ChoiceCard({
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
     </button>
+  );
+}
+
+// The receipt the claim is being written from, kept on screen while the form is
+// filled in. Without it the details step asks for a supplier and an amount with
+// the thing they're copied off two taps away, behind Back.
+//
+// Read-only on purpose: the file is chosen on the previous step, and a second
+// picker here would be a second way to disagree about which receipt this is.
+function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl: string | null }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [broken, setBroken] = useState(false);
+
+  // A local File needs no round trip; a stored one is behind auth and has to be
+  // fetched as a blob. Either way the object URL is ours to revoke.
+  useEffect(() => {
+    setBroken(false);
+
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        setPreviewUrl(null);
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+
+    if (!storedUrl) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    let url: string | null = null;
+    let live = true;
+    void loadClaimReceiptObjectUrl(storedUrl)
+      .then((loaded) => {
+        // Unmounted while it was in flight — revoke rather than leak.
+        if (!live) {
+          URL.revokeObjectURL(loaded.objectUrl);
+          return;
+        }
+        if (!loaded.contentType.startsWith("image/")) {
+          URL.revokeObjectURL(loaded.objectUrl);
+          setPreviewUrl(null);
+          return;
+        }
+        url = loaded.objectUrl;
+        setPreviewUrl(loaded.objectUrl);
+      })
+      // A receipt that won't load is not a reason to block the claim.
+      .catch(() => setBroken(true));
+
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file, storedUrl]);
+
+  if (!file && !storedUrl) return null;
+
+  const name = file?.name ?? "Attached receipt";
+
+  return (
+    <div className="space-y-3">
+      <span className={LABEL}>Main receipt</span>
+      {previewUrl && !broken ? (
+        <div className="rounded-[28px] border border-border/70 bg-surface-low/50 p-4 text-center">
+          <img
+            src={previewUrl}
+            alt={`Main receipt: ${name}`}
+            onError={() => setBroken(true)}
+            // Capped for the same reason as the upload step's preview: a
+            // portrait phone photo would otherwise push Submit off the screen.
+            className="mx-auto max-h-64 w-auto max-w-full rounded-2xl border border-border/60 bg-background object-contain shadow-sm"
+          />
+          <p className="mt-3 max-w-full truncate text-xs font-medium text-muted-foreground">{name}</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-[28px] border border-border/70 bg-surface-low/50 px-4 py-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <FileText className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+            <p className="text-xs text-muted-foreground">
+              {broken ? "Attached — preview unavailable." : "Attached. PDFs can't be previewed here."}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

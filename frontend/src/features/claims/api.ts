@@ -183,6 +183,15 @@ export function uploadClaimReceipt(file: File) {
   return apiPostForm<UploadReceiptResponse>("/claims/receipts", formData);
 }
 
+// A stored receipt is served from an authenticated endpoint, so it can't go
+// straight into an <img src> — the browser's own request would carry no token
+// and come back 401. Fetch it as a blob and hand back an object URL instead.
+// The caller owns that URL and must revoke it.
+export async function loadClaimReceiptObjectUrl(receiptUrl: string) {
+  const blob = await apiGetBlob(getApiPath(receiptUrl));
+  return { objectUrl: URL.createObjectURL(blob), contentType: blob.type };
+}
+
 export async function openClaimReceipt(receiptUrl: string) {
   const path = getApiPath(receiptUrl);
   const blob = await apiGetBlob(path);
