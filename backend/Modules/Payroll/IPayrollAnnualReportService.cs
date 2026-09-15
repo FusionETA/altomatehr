@@ -17,4 +17,9 @@ public interface IPayrollAnnualReportService
     // The aggregated year, exposed so the annual page can show the figures
     // before anyone downloads anything.
     Task<PayrollAnnualPayload> LoadAsync(int year);
+
+    // The CP8D converter: hand-entered rows rather than a year of runs, zipped
+    // as the M + P pair. Renders through the same Cp8dTxt the real downloads
+    // use, so a converted file and a generated one can't drift apart.
+    StatutoryFileResult ConvertCp8d(Dtos.Cp8dConvertRequestDto request);
 }

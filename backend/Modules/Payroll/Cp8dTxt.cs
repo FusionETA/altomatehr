@@ -80,8 +80,9 @@ public static class Cp8dTxt
                 employee.EmployeeName.ToUpperInvariant(),
                 PayrollAnnualReports.NormaliseTaxRef(employee.IncomeTaxNumber),
                 PayrollAnnualReports.NormaliseNewIc(employee.IdNumber, employee.IdType),
-                PayrollAnnualReports.TaxCategory(
-                    employee.MaritalStatus, employee.SpouseWorking, employee.QualifyingChildren),
+                employee.Cp8dCategoryOverride
+                    ?? PayrollAnnualReports.TaxCategory(
+                        employee.MaritalStatus, employee.SpouseWorking, employee.QualifyingChildren),
                 employee.PcbBorneByEmployer ? "1" : "2",
                 employee.QualifyingChildren.ToString(CultureInfo.InvariantCulture),
                 Ringgit(employee.AnnualChildRelief),

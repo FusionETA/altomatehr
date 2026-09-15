@@ -1,9 +1,11 @@
+using System.IO.Compression;
 using System.Text.Json;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Payroll.Entities;
+using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Pdf;
 
 namespace AltomateHR.Api.Modules.Payroll;
@@ -278,4 +280,66 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
         return new FormECp8dPdf.PartA(Math.Max(0, employedAtYearEnd), subjectToMtd, newThisYear);
     }
+
+    public StatutoryFileResult ConvertCp8d(Cp8dConvertRequestDto request)
+    {
+        var employerNo = PayrollAnnualReports.EmployerNumber(request.EmployerNo);
+        if (string.IsNullOrEmpty(employerNo))
+            return StatutoryFileResult.Refused("The employer's LHDN E-number must contain digits.");
+
+        // Built by hand rather than loaded: there is no year of runs behind
+        // these rows, which is the entire reason the converter exists.
+        var payload = new PayrollAnnualPayload
+        {
+            Year = request.Year,
+            OrganizationName = request.EmployerName.Trim(),
+            EmployerNo = employerNo,
+            Employees = request.Employees.Select((row, index) => new AnnualEmployeeRow
+            {
+                // No profile behind a typed row, so the id only has to be
+                // unique within this request — nothing reads it back.
+                EmployeeProfileId = $"cp8d-manual-{index + 1}",
+                EmployeeName = row.Name.Trim(),
+                IncomeTaxNumber = row.TaxRef,
+                IdNumber = row.NewIc,
+                IdType = IdType.NRIC,
+                Cp8dCategoryOverride = row.Category,
+                PcbBorneByEmployer = row.TaxBorneByEmployer,
+                QualifyingChildren = row.Children,
+                AnnualChildRelief = row.ChildRelief,
+                // TotalIncome is salary + additional remuneration + BIK, so the
+                // single figure the admin typed goes in as salary and the other
+                // two stay zero — the sum is what CP8D column 8 reports.
+                GrossSalary = row.AnnualGross,
+                TotalEpfEmployee = row.Epf,
+                TotalPcb = row.Pcb,
+            }).ToList(),
+        };
+
+        var employer = Cp8dTxt.RenderEmployer(payload);
+        if (!employer.Ok) return employer;
+
+        var employees = Cp8dTxt.RenderEmployees(payload);
+        if (!employees.Ok) return employees;
+
+        // Both files in one download: LHDN takes them as a pair, and handing
+        // over one at a time is how you end up uploading last year's P beside
+        // this year's M.
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            Add(archive, employer.FileName!, employer.Content!);
+            Add(archive, employees.FileName!, employees.Content!);
+        }
+
+        return new StatutoryFileResult(
+            true, $"CP8D_{employerNo}_{request.Year}.zip", buffer.ToArray(), "application/zip", null);
+
+        static void Add(ZipArchive archive, string name, byte[] content)
+        {
+            using var stream = archive.CreateEntry(name, CompressionLevel.Optimal).Open();
+            stream.Write(content);
+        }
+    }
+
 }

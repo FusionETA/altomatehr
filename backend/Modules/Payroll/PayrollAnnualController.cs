@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,6 +26,20 @@ public class PayrollAnnualController : ControllerBase
     // The aggregated year — what the forms will say, before downloading them.
     [HttpGet("{year:int}")]
     public async Task<IActionResult> Get(int year) => Ok(await _annual.LoadAsync(year));
+
+    // POST /payroll/annual/cp8d/convert — hand-entered rows in, the zipped
+    // M + P pair out. Nothing is read from or written to payroll: this is for
+    // the years the system did not run.
+    [HttpPost("cp8d/convert")]
+    public IActionResult ConvertCp8d(Cp8dConvertRequestDto request)
+    {
+        var result = _annual.ConvertCp8d(request);
+        if (!result.Ok)
+            return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content!, result.ContentType!, result.FileName);
+    }
 
     [HttpGet("{year:int}/reports/{kind}")]
     public async Task<IActionResult> Download(int year, PayrollAnnualReportKind kind)

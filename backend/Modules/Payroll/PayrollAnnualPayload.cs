@@ -51,6 +51,12 @@ public sealed record AnnualEmployeeRow
     // Drives the CP8D tax category (1 / 2 / 3).
     public bool? SpouseWorking { get; init; }
 
+    // Set only by the CP8D converter, where the admin types the category
+    // straight in because there is no employee profile behind the row to
+    // derive it from. Null everywhere else, so a real payload keeps deriving
+    // it from marital status and children — one rule, not two.
+    public string? Cp8dCategoryOverride { get; init; }
+
     // Children whose relief share is FULL or HALF. A child recorded with NONE
     // is tracked on the profile but not claimed, so it is not "qualifying".
     public int QualifyingChildren { get; init; }
