@@ -58,11 +58,11 @@ public class XeroService : IXeroService
     public async Task<string> CompleteCallbackAsync(string code, string state)
     {
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
-            return _options.FailureRedirectUrl;
+            return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var storedState = await _repo.GetStateAsync(state);
         if (storedState is null || storedState.UsedAt is not null || storedState.ExpiresAt < DateTime.UtcNow)
-            return _options.FailureRedirectUrl;
+            return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var token = await _client.ExchangeCodeAsync(code);
         var tenants = await _client.GetTenantsAsync(token.AccessToken);
@@ -117,8 +117,17 @@ public class XeroService : IXeroService
             Metadata: new { tenant.TenantName, tenant.TenantType },
             OrganizationId: storedState.OrganizationId));
 
-        return storedState.ReturnUrl ?? _options.SuccessRedirectUrl;
+        // The frontend has no router, so the return URL is only ever the app
+        // root — the marker is what actually gets the admin back to the Xero
+        // card, and tells them it worked. Without it a successful connect just
+        // drops them on the dashboard with nothing said.
+        return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "connected");
     }
+
+    // Appends ?xero=connected / ?xero=failed, respecting whatever query the
+    // configured URL already carries.
+    private static string WithOutcome(string url, string outcome) =>
+        url.Contains('?') ? $"{url}&xero={outcome}" : $"{url}?xero={outcome}";
 
     public async Task<XeroStatusDto> GetStatusAsync()
     {

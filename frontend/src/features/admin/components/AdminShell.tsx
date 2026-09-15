@@ -15,6 +15,7 @@ import { buildInitials, buildName } from "@/features/employee-portal/lib/employe
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
+import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { AdminAttendance } from "./AdminAttendance";
 import { AdminPayroll } from "@/features/payroll/components/AdminPayroll";
@@ -34,6 +35,16 @@ export function AdminShell({
   const [activeChild, setActiveChild] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Coming back from Xero's consent screen. The app has no router, so the
+  // return URL is only ever the app root — without this a successful connect
+  // dropped the admin on the dashboard with nothing said, and they had to find
+  // their own way back to the card to see whether it had worked.
+  useEffect(() => {
+    if (xeroCallbackOutcome === null) return;
+    setActiveParent("settings");
+    setActiveChild("settings-organization");
+  }, []);
 
   const activeItem = findNavItem(activeParent);
   const initials = useMemo(() => buildInitials(user.email), [user.email]);

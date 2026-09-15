@@ -150,3 +150,38 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) =>
         Task.FromResult(new List<XeroTrackingCategoryResponse>());
 }
+
+// The frontend has no router, so the callback's redirect is the only thing that
+// can get the admin back to the Xero card and tell them what happened. The
+// marker is that signal — XeroConnectionCard reads it and draws the banner.
+public class XeroCallbackRedirectTests
+{
+    [Theory]
+    [InlineData("", "state-1")]
+    [InlineData("code-1", "")]
+    public async Task CompleteCallbackAsync_MarksTheRedirectFailed_WhenXeroSentNothingUsable(
+        string code, string state)
+    {
+        var url = await Create().CompleteCallbackAsync(code, state);
+
+        Assert.EndsWith("?xero=failed", url);
+    }
+
+    [Fact]
+    public async Task CompleteCallbackAsync_MarksTheRedirectFailed_WhenTheStateIsUnknown()
+    {
+        // An expired, replayed or forged state — nothing to exchange, and the
+        // admin still has to be told rather than silently dropped somewhere.
+        var url = await Create().CompleteCallbackAsync("code-1", "state-nobody-issued");
+
+        Assert.EndsWith("?xero=failed", url);
+    }
+
+    private static XeroService Create() => new(
+        new FakeXeroCurrentUser(),
+        new FakeXeroRepository(),
+        new FakeXeroProjectsClient([]),
+        DataProtectionProvider.Create("AltomateHR.Tests"),
+        Options.Create(new XeroOptions { FailureRedirectUrl = "http://localhost:5173/" }),
+        new FakeAuditService());
+}

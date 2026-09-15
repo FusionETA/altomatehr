@@ -172,7 +172,11 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task UpdateAccountAsync(ChartOfAccount account) => Task.CompletedTask;
 
     public Task<XeroOAuthState> AddStateAsync(XeroOAuthState state) => throw new NotImplementedException();
-    public Task<XeroOAuthState?> GetStateAsync(string state) => throw new NotImplementedException();
+    // No state was ever issued unless a test adds one — which is exactly the
+    // "unknown state" the callback has to reject.
+    public List<XeroOAuthState> States { get; } = [];
+    public Task<XeroOAuthState?> GetStateAsync(string state) =>
+        Task.FromResult(States.FirstOrDefault(s => s.State == state));
     public Task UpdateStateAsync(XeroOAuthState state) => throw new NotImplementedException();
     public Task<XeroConnection> UpsertConnectionAsync(XeroConnection c) => throw new NotImplementedException();
     public Task UpdateConnectionAsync(XeroConnection c) => Task.CompletedTask;

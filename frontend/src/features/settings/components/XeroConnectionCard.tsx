@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Building2, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
+import { Building2, CircleCheck, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -11,6 +12,7 @@ const CARD =
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
+
 
 // Connect, reconnect and disconnect Xero, and say which org is connected.
 //
@@ -29,6 +31,8 @@ export function XeroConnectionCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Captured at app boot, before this ever rendered — see xero-callback.ts.
+  const callback = xeroCallbackOutcome;
 
   const statusQuery = useCachedQuery("/xero/status", getXeroStatus);
   useEffect(() => {
@@ -101,6 +105,31 @@ export function XeroConnectionCard() {
           </button>
         ) : null}
       </div>
+
+      {callback === "connected" && connected ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-success/40 bg-success/10 p-4 text-sm">
+          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <div>
+            <p className="font-semibold text-foreground">Connected to Xero</p>
+            <p className="mt-1 text-muted-foreground">
+              Sync accounts and projects to pull them in — Xero owns both lists from now on.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {callback === "failed" ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div>
+            <p className="font-semibold text-foreground">Xero didn't finish connecting</p>
+            <p className="mt-1 text-muted-foreground">
+              The sign-in was cancelled, or took long enough that the request expired. Nothing
+              changed — press Connect to try again.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {needsReconnect ? (
         <div className="mt-4 flex gap-3 rounded-2xl border border-amber-300/50 bg-amber-50/70 p-4 text-sm dark:bg-amber-500/10">
