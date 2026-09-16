@@ -59,6 +59,7 @@ import {
 import type { SignedInUser } from "@/shared/types/session";
 import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
+import { getTeamOvertime } from "@/features/overtime/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Skeleton } from "@/shared/components/Skeleton";
 
@@ -190,14 +191,21 @@ export function DashboardView({
       // screen it opens shows both together.
       getTeamAttendanceApprovals().catch(() => []),
       getTeamBreakApprovals().catch(() => []),
-    ]).then(([claims, leave, days, breaks]) => {
+      // Overtime is reviewed on the Attendance screen too, so it belongs in
+      // this count — otherwise the card and the nav badge disagree about how
+      // much is waiting behind the same tab.
+      getTeamOvertime().catch(() => []),
+    ]).then(([claims, leave, days, breaks, overtime]) => {
       setClaimCount(claims.filter((c) => c.status === "PENDING").length);
       setLeaveCount(leave.filter((l) => l.status === "PENDING").length);
       // Counting decisions, not days: one shift can have a clock-in AND a
       // clock-out waiting, which is two things to review. Breaks already arrive
       // as one request each.
       setAttendanceCount(
-        days.reduce((n, day) => n + pendingApprovalIds(day).length, 0) + breaks.length,
+        days.reduce((n, day) => n + pendingApprovalIds(day).length, 0) +
+          breaks.filter((b) => b.approvalStatus === "PENDING").length +
+          // /overtime/team carries decided rows too — the queue shows history.
+          overtime.filter((o) => o.status === "PENDING").length,
       );
     });
   }, [isSupervisor]);

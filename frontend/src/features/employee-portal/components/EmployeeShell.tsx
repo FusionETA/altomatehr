@@ -6,6 +6,12 @@ import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
+import {
+  getTeamAttendanceApprovals,
+  getTeamBreakApprovals,
+  pendingApprovalIds,
+} from "@/features/attendance/api";
+import { getTeamOvertime } from "@/features/overtime/api";
 import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
 import { getLeaveTypes } from "@/features/leave/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
@@ -47,8 +53,7 @@ export function EmployeeShell({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  // No org-wide attendance-approval endpoint yet, so this stays 0 (hidden).
-  const attendanceBadge = 0;
+  const [attendanceBadge, setAttendanceBadge] = useState(0);
 
   const activeItem = findNavItem(activeView);
   const initials = useMemo(() => buildInitials(user.email), [user.email]);
@@ -82,15 +87,30 @@ export function EmployeeShell({
   // kept claiming work was waiting after the approver had already cleared it.
   const refreshBadges = useCallback(() => {
     if (!isSupervisor) return;
-    Promise.all([getTeamClaims().catch(() => []), getTeamLeave().catch(() => [])]).then(
-      ([claims, leave]) => {
-        // canAct, not status. The team view now includes the whole team's
-        // claims, so counting every pending one would advertise work that
-        // belongs to a different step's approver.
-        setClaimBadge(claims.filter((c) => c.canAct).length);
-        setLeaveBadge(leave.filter((l) => l.status === "PENDING").length);
-      },
-    );
+    Promise.all([
+      getTeamClaims().catch(() => []),
+      getTeamLeave().catch(() => []),
+      // The Attendance tab holds three queues, so its badge is their sum —
+      // a "2" that turns out to be one clock-out and one overtime request is
+      // still the honest count of what is waiting behind that tab.
+      getTeamAttendanceApprovals().catch(() => []),
+      getTeamBreakApprovals().catch(() => []),
+      getTeamOvertime().catch(() => []),
+    ]).then(([claims, leave, days, breaks, overtime]) => {
+      // canAct, not status. The team view now includes the whole team's
+      // claims, so counting every pending one would advertise work that
+      // belongs to a different step's approver.
+      setClaimBadge(claims.filter((c) => c.canAct).length);
+      setLeaveBadge(leave.filter((l) => l.status === "PENDING").length);
+      setAttendanceBadge(
+        // Decisions, not days: one shift can have a clock-in AND a clock-out
+        // waiting, which is two things to review.
+        days.reduce((n, day) => n + pendingApprovalIds(day).length, 0) +
+          breaks.filter((b) => b.approvalStatus === "PENDING").length +
+          // /overtime/team carries decided rows too — the queue shows history.
+          overtime.filter((o) => o.status === "PENDING").length,
+      );
+    });
   }, [isSupervisor]);
 
   useEffect(() => {
