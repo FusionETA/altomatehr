@@ -82,9 +82,7 @@ function offSite(distance: number | null, radius: number) {
   return distance != null && distance > radius;
 }
 
-function locationText(record: AttendanceRecord, type: "in" | "out") {
-  const lat = type === "in" ? record.clockInLat : record.clockOutLat;
-  const lng = type === "in" ? record.clockInLng : record.clockOutLng;
+function coordsText(lat: number | null | undefined, lng: number | null | undefined) {
   if (lat == null || lng == null) return "-";
   return `${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
@@ -181,6 +179,7 @@ type PendingEvent = {
   lateByMin: number | null;
   distance: number | null;
   photoUrl: string | null;
+  location: string;
 };
 
 function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
@@ -209,6 +208,9 @@ function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
         photoUrl: isIn
           ? session?.clockInPhotoUrl ?? record.clockInPhotoUrl ?? null
           : session?.clockOutPhotoUrl ?? record.clockOutPhotoUrl ?? null,
+        location: isIn
+          ? coordsText(session?.clockInLat ?? record.clockInLat, session?.clockInLng ?? record.clockInLng)
+          : coordsText(session?.clockOutLat ?? record.clockOutLat, session?.clockOutLng ?? record.clockOutLng),
       };
     })
     .sort((a, b) => a.time.localeCompare(b.time));
@@ -1364,7 +1366,7 @@ function ExpandedGroup({
                 distance={event.distance}
                 radius={radius}
                 projectName={record.projectId ? projectNames.get(record.projectId) : null}
-                location={locationText(record, event.kind === "CLOCK_IN" ? "in" : "out")}
+                location={event.location}
                 photoUrl={event.photoUrl}
                 approvalId={event.approvalId}
                 busyKey={busyKey}

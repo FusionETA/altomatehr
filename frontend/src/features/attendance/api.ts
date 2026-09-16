@@ -28,6 +28,12 @@ export type AttendanceSession = {
   clockOutDistanceMeters: number | null;
   clockInPhotoUrl: string | null;
   clockOutPhotoUrl: string | null;
+  /** Where THIS shift's two ends happened; the record only carries the day's
+   *  first clock-in and last clock-out. */
+  clockInLat: number | null;
+  clockInLng: number | null;
+  clockOutLat: number | null;
+  clockOutLng: number | null;
 };
 
 export type AttendanceApprovalRequest = {

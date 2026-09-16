@@ -1780,6 +1780,10 @@ public class AttendanceService : IAttendanceService
         ClockOutDistanceMeters = s.ClockOutDistanceMeters,
         ClockInPhotoUrl = s.ClockInPhotoUrl,
         ClockOutPhotoUrl = s.ClockOutPhotoUrl,
+        ClockInLat = s.ClockInLat,
+        ClockInLng = s.ClockInLng,
+        ClockOutLat = s.ClockOutLat,
+        ClockOutLng = s.ClockOutLng,
     };
 
     private static AttendanceRecordDto ToDto(

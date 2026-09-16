@@ -68,4 +68,13 @@ public class AttendanceSessionDto
     public double? ClockOutDistanceMeters { get; set; }
     public string? ClockInPhotoUrl { get; set; }
     public string? ClockOutPhotoUrl { get; set; }
+
+    // Where each end of THIS shift happened. The record carries one pair for
+    // the whole day — first clock-in, last clock-out — so on a split day an
+    // approver reading the record saw the same coordinates against events that
+    // happened in different places.
+    public double? ClockInLat { get; set; }
+    public double? ClockInLng { get; set; }
+    public double? ClockOutLat { get; set; }
+    public double? ClockOutLng { get; set; }
 }
