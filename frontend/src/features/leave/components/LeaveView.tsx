@@ -3,6 +3,7 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import type { KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
+import { FloatingActionButton } from "@/shared/components/FloatingActionButton";
 import {
   cancelLeave,
   getLeaveBalances,
@@ -370,15 +371,9 @@ export function LeaveView() {
         </>
       ) : null}
 
-      <button
-        type="button"
-        aria-label="Apply for leave"
-        onClick={() => setApplyOpen(true)}
-        disabled={activeTypes.length === 0}
-        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-panel transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 lg:bottom-8 lg:right-8"
-      >
+      <FloatingActionButton label="Apply for leave" onClick={() => setApplyOpen(true)} disabled={activeTypes.length === 0}>
         <Plus className="h-6 w-6" />
-      </button>
+      </FloatingActionButton>
 
       {applyOpen ? (
         <ApplyLeaveModal

@@ -362,10 +362,18 @@ export function EmployeeShell({
           <div className="mx-auto w-full max-w-6xl px-6 py-6 sm:px-7 lg:px-8 lg:py-8">
             {/* Keyed on the active view so it remounts per tab, easing the
                 content in instead of popping; min-h reserves the viewport so a
-                shorter tab doesn't collapse the page and jump the scroll. */}
+                shorter tab doesn't collapse the page and jump the scroll.
+
+                Fade only — the slide is gone on purpose. slide-in-from-bottom
+                animates translate3d, and a transformed element becomes the
+                containing block for every position:fixed DESCENDANT. For the
+                200ms it ran, the floating "+" resolved bottom-32 right-5
+                against this div instead of the viewport, so it appeared over
+                the content and snapped to the corner when the animation
+                finished. Opacity creates no containing block. */}
             <div
               key={activeView}
-              className="min-h-[60vh] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out"
+              className="min-h-[60vh] animate-in fade-in-0 duration-200 ease-out"
             >
               {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
               {activeView === "claims" ? (

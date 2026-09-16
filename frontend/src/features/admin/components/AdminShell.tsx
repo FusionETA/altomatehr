@@ -288,10 +288,16 @@ export function AdminShell({
             {/* Keyed on the active view so it remounts per tab, letting the
                 enter animation re-fire — the content eases in instead of
                 popping. min-h reserves the viewport so switching between a tall
-                and a short tab doesn't collapse the page and jump the scroll. */}
+                and a short tab doesn't collapse the page and jump the scroll.
+
+                Fade only, same as the employee shell: slide-in-from-bottom
+                animates translate3d, and a transformed element becomes the
+                containing block for every position:fixed descendant — which
+                mispositions floating buttons and modal overlays for as long as
+                it runs. */}
             <div
               key={activeChild}
-              className="min-h-[60vh] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out"
+              className="min-h-[60vh] animate-in fade-in-0 duration-200 ease-out"
             >
               <AdminContent activeChild={activeChild} user={user} onOpen={open} />
             </div>

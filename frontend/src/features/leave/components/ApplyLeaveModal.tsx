@@ -1,4 +1,5 @@
 import { type FormEvent, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LoaderCircle, Paperclip, X } from "lucide-react";
 import {
   applyLeave,
@@ -99,7 +100,7 @@ export function ApplyLeaveModal({
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
       <div className="w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
         <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
@@ -285,6 +286,7 @@ export function ApplyLeaveModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

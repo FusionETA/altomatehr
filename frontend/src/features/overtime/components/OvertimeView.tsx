@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { FloatingActionButton } from "@/shared/components/FloatingActionButton";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { CalendarClock, Camera, FileImage, Plus, Upload, X } from "lucide-react";
 import {
@@ -181,14 +183,9 @@ export function OvertimeView() {
         ) : null}
       </div>
 
-      <button
-        type="button"
-        aria-label="Submit overtime"
-        onClick={() => setModalOpen(true)}
-        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-panel transition-transform hover:scale-105 active:scale-95 lg:bottom-8 lg:right-8"
-      >
+      <FloatingActionButton label="Submit overtime" onClick={() => setModalOpen(true)}>
         <Plus className="h-6 w-6" />
-      </button>
+      </FloatingActionButton>
 
       {modalOpen ? (
         <NewOvertimeModal
@@ -371,7 +368,7 @@ function NewOvertimeModal({
 
   const canSubmit = Boolean(workDate && startTime && endTime && reason.trim() && beforePhoto && !busy);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 py-5 backdrop-blur-sm sm:items-center">
       <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-xl overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
@@ -491,6 +488,7 @@ function NewOvertimeModal({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
