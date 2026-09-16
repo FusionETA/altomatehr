@@ -7,7 +7,6 @@ import {
   getPayrollEmployees,
   reactivateEmployeeLoan,
   type EmployeeLoan,
-  type PayrollEmployee,
 } from "../api";
 import {
   loanStatusLabels,
@@ -33,6 +32,7 @@ import {
 import { LoanForm } from "./LoanForm";
 import { TableSkeleton } from "./TableSkeleton";
 import { Skeleton } from "@/shared/components/Skeleton";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
 // Staff loans and salary advances, and how far through each one is.
 //
@@ -41,31 +41,33 @@ import { Skeleton } from "@/shared/components/Skeleton";
 // deducted, and it means reverting a month un-pays its installment with no
 // separate bookkeeping to get wrong.
 export function PayrollLoansTab() {
-  const [loans, setLoans] = useState<EmployeeLoan[]>([]);
-  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmployeeLoan | null>(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  // Cached. These were read fresh on every mount with `loading` starting true,
+  // so the tab emptied itself to a skeleton on every visit and filled back in a
+  // round trip later — the same rows, redrawn, which reads as a blink.
+  const loansQuery = useCachedQuery("/payroll/loans", () => getEmployeeLoans());
+  const employeesQuery = useCachedQuery("/payroll/employees", () => getPayrollEmployees());
 
-    return Promise.all([getEmployeeLoans(), getPayrollEmployees()])
-      .then(([nextLoans, nextEmployees]) => {
-        setLoans(nextLoans);
-        setEmployees(nextEmployees);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+  const loans = loansQuery.data ?? [];
+  const employees = employeesQuery.data ?? [];
+  const loading = loansQuery.loading || employeesQuery.loading;
+
+  // Writes invalidate /payroll*, so both reads come back on their own; this is
+  // what the action handlers await.
+  const load = useCallback(
+    () => Promise.all([loansQuery.refresh(), employeesQuery.refresh()]),
+    [loansQuery.refresh, employeesQuery.refresh],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const first = loansQuery.error ?? employeesQuery.error;
+    if (first) setError(first);
+  }, [loansQuery.error, employeesQuery.error]);
 
   async function act(key: string, action: () => Promise<unknown>) {
     setBusy(key);

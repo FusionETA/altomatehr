@@ -16,10 +16,6 @@ const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50";
 const LABEL = "block text-sm font-semibold text-foreground";
 
-// "expense_claim" → "Expense Claim", "attendance" → "Attendance"
-const titleCase = (s: string) =>
-  s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-
 export function OrganizationSettings() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [saving, setSaving] = useState(false);
@@ -72,43 +68,6 @@ export function OrganizationSettings() {
       {/* Integrations sit with the company, not with the accounts they happen to
           own — and the claims screen sends admins to System Settings to connect. */}
       <XeroConnectionCard />
-
-      <section className={`${CARD} space-y-4`}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-black text-foreground">Subscription</h2>
-            <p className="text-sm text-muted-foreground">The package this company is on.</p>
-          </div>
-          <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
-            {org.plan}
-            {org.tier ? ` · ${org.tier}` : ""}
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-foreground">Enabled modules</p>
-          <div className="flex flex-wrap gap-2">
-            {org.enabledModules.map((m) => (
-              <span
-                key={m}
-                className="inline-flex items-center rounded-full border border-border/70 bg-muted px-3 py-1 text-xs font-semibold text-foreground"
-              >
-                {titleCase(m)}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {org.addons.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Add-ons: {org.addons.map(titleCase).join(", ")}
-          </p>
-        ) : null}
-
-        <p className="text-xs text-muted-foreground">
-          Packages are provisioned by AltomateHR — contact support to change your plan.
-        </p>
-      </section>
 
       <form onSubmit={handleSubmit} className={`${CARD} space-y-5`}>
         <div>

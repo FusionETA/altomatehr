@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Eye, EyeOff, LoaderCircle, Trash2 } from "lucide-react";
 import {
   deletePortalCredential,
@@ -37,26 +38,22 @@ export function PortalCredentialsSection({
 }: {
   onChanged?: () => void;
 }) {
-  const [rows, setRows] = useState<PortalCredential[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  // Cached, so reopening the section shows the rows it showed last time
+  // instead of a skeleton and then the same rows.
+  const credentialsQuery = useCachedQuery("/payroll/portal-credentials", getPortalCredentials);
+  const rows = credentialsQuery.data ?? [];
+  const loading = credentialsQuery.loading;
 
-    return getPortalCredentials()
-      .then((next) => {
-        setRows(next);
-        onChanged?.();
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, [onChanged]);
+  const load = useCallback(
+    () => credentialsQuery.refresh().then(() => onChanged?.()),
+    [credentialsQuery.refresh, onChanged],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setError(credentialsQuery.error);
+  }, [credentialsQuery.error]);
 
   if (loading) {
     return (

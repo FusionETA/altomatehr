@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import * as cache from "@/shared/lib/api-cache";
 import {
   getPayrollCompanyInfo,
   getPortalCredentials,
@@ -51,55 +53,73 @@ const ID_TYPE_LABELS: Record<IdType, string> = {
 
 export function PayrollSettingsForm() {
   const [section, setSection] = useState<SettingsSection>("general");
-  const [settings, setSettings] = useState<PayrollSettings | null>(null);
-  const [info, setInfo] = useState<PayrollCompanyInfo | null>(null);
+  // Seeded straight from the cache so a revisit renders the form on the first
+  // frame. These are a WORKING COPY — patchSettings/patchInfo edit them and
+  // save posts them — so they are deliberately not bound to the query: a
+  // background revalidate landing mid-edit must not overwrite what is being
+  // typed. cache.peek is a plain read, safe in an initializer.
+  const [settings, setSettings] = useState<PayrollSettings | null>(
+    () => cache.peek<PayrollSettings>("/payroll/settings")?.data ?? null,
+  );
+  const [info, setInfo] = useState<PayrollCompanyInfo | null>(
+    () => cache.peek<PayrollCompanyInfo>("/payroll/company-info")?.data ?? null,
+  );
   // Held decoded. The backend stores it as a JSON blob on the settings row,
   // so it is parsed on load and re-serialised on save rather than being
   // edited as text.
-  const [xeroMapping, setXeroMapping] = useState<PayrollXeroMapping>(emptyXeroMapping);
-  const [loading, setLoading] = useState(true);
+  const [xeroMapping, setXeroMapping] = useState<PayrollXeroMapping>(() => {
+    const cached = cache.peek<PayrollSettings>("/payroll/settings")?.data;
+    return cached ? parseMapping(cached.xeroMappingJson) : emptyXeroMapping();
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  // How many portals have a password on file. Only the pill's subtitle needs
-  // it, so it is counted here rather than lifted out of the section — which
-  // owns the actual editing.
-  const [credentialCount, setCredentialCount] = useState(0);
-  // The reference hides the Xero pieces entirely until Xero is connected,
-  // rather than offering a mapping that could never post.
-  const [xeroConnected, setXeroConnected] = useState(false);
+  // How many portals have a password on file — only the pill's subtitle needs
+  // it. Read through the SAME cache key the credentials section uses, so the
+  // count and the section it summarises can't disagree and the page doesn't
+  // fetch the list twice.
+  const credentialsQuery = useCachedQuery("/payroll/portal-credentials", getPortalCredentials);
+  const credentialCount = (credentialsQuery.data ?? []).filter((row) => row.hasPassword).length;
+  const countCredentials = credentialsQuery.refresh;
 
-  const countCredentials = useCallback(
-    () =>
-      getPortalCredentials()
-        .then((rows) => setCredentialCount(rows.filter((row) => row.hasPassword).length))
-        // The pill subtitle is not worth failing the page over.
-        .catch(() => setCredentialCount(0)),
-    [],
-  );
+  // The reference hides the Xero pieces entirely until Xero is connected,
+  // rather than offering a mapping that could never post. Cached on the key
+  // the connection card already uses.
+  const xeroStatusQuery = useCachedQuery("/xero/status", getXeroStatus);
+  const xeroConnected = xeroStatusQuery.data?.connected ?? false;
+
+  // The whole page used to blank itself to a skeleton on every visit, because
+  // `loading` started true and nothing was cached. Both reads go through the
+  // cache now; the working copy above is already populated on a revisit, and
+  // this only fills it on the first ever load.
+  const settingsQuery = useCachedQuery("/payroll/settings", getPayrollSettings);
+  const infoQuery = useCachedQuery("/payroll/company-info", getPayrollCompanyInfo);
+  const loading = (settingsQuery.loading || infoQuery.loading) && (!settings || !info);
+
+  const seeded = useRef(settings !== null && info !== null);
+  useEffect(() => {
+    if (seeded.current) return;
+    const nextSettings = settingsQuery.data;
+    const nextInfo = infoQuery.data;
+    if (!nextSettings || !nextInfo) return;
+    seeded.current = true;
+    setSettings(nextSettings);
+    setInfo(nextInfo);
+    setXeroMapping(parseMapping(nextSettings.xeroMappingJson));
+  }, [settingsQuery.data, infoQuery.data]);
 
   useEffect(() => {
-    Promise.all([getPayrollSettings(), getPayrollCompanyInfo()])
-      .then(([nextSettings, nextInfo]) => {
-        setSettings(nextSettings);
-        setInfo(nextInfo);
-        setXeroMapping(parseMapping(nextSettings.xeroMappingJson));
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+    const first = settingsQuery.error ?? infoQuery.error;
+    if (first) setError(first);
+  }, [settingsQuery.error, infoQuery.error]);
 
-    void countCredentials();
-
-    // Not connected is the normal case, and it must not fail the page.
-    void getXeroStatus()
-      .then((status) => {
-        setXeroConnected(status.connected);
-        // Its pill is about to disappear, so do not strand the admin on a
-        // section that no longer has one.
-        if (!status.connected) setSection((current) => (current === "xero" ? "general" : current));
-      })
-      .catch(() => setXeroConnected(false));
-  }, [countCredentials]);
+  // The Xero pill is about to disappear, so don't strand the admin on a
+  // section that no longer has one.
+  useEffect(() => {
+    if (xeroStatusQuery.data && !xeroStatusQuery.data.connected) {
+      setSection((current) => (current === "xero" ? "general" : current));
+    }
+  }, [xeroStatusQuery.data]);
 
   function patchSettings(patch: Partial<PayrollSettings>) {
     setSettings((current) => (current ? { ...current, ...patch } : current));

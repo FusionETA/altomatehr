@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   getXeroTrackingCategories,
   XERO_ACCRUAL_SLOTS,
@@ -28,31 +28,22 @@ export function XeroSyncSection({
   mapping: PayrollXeroMapping;
   onChange: (next: PayrollXeroMapping) => void;
 }) {
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
-  const [categories, setCategories] = useState<XeroTrackingCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Cached. Both degrade to empty rather than taking the section down: the
+  // chart of accounts is local, the categories need Xero reachable, and an
+  // admin should still be able to set the aggregation mode either way.
+  //
+  // Read fresh on every mount, this section replaced itself with a skeleton
+  // each time the settings page was opened — the same dropdowns, redrawn.
+  const accountsQuery = useCachedQuery("/accounts", () =>
+    getAccounts().catch(() => [] as ChartOfAccount[]),
+  );
+  const categoriesQuery = useCachedQuery("/payroll/runs/xero/tracking-categories", () =>
+    getXeroTrackingCategories().catch(() => [] as XeroTrackingCategory[]),
+  );
 
-  useEffect(() => {
-    let live = true;
-
-    // Both degrade to empty rather than taking the section down: the chart
-    // of accounts is local, the categories need Xero reachable, and an admin
-    // should still be able to set the aggregation mode either way.
-    Promise.all([
-      getAccounts().catch(() => [] as ChartOfAccount[]),
-      getXeroTrackingCategories().catch(() => [] as XeroTrackingCategory[]),
-    ])
-      .then(([nextAccounts, nextCategories]) => {
-        if (!live) return;
-        setAccounts(nextAccounts);
-        setCategories(nextCategories);
-      })
-      .finally(() => live && setLoading(false));
-
-    return () => {
-      live = false;
-    };
-  }, []);
+  const accounts = accountsQuery.data ?? [];
+  const categories = categoriesQuery.data ?? [];
+  const loading = accountsQuery.loading || categoriesQuery.loading;
 
   const setAccount = (slot: string, value: string | null) =>
     onChange({ ...mapping, accounts: { ...mapping.accounts, [slot]: value } });
