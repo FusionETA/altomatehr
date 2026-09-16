@@ -51,7 +51,6 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   const [rejectingClaim, setRejectingClaim] = useState<Claim | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
-  const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<ClaimsBulkResult | null>(null);
 
@@ -77,13 +76,14 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   // waiting for a manual refresh or a page reload.
   useRealtimeEvent(["CLAIMS"], loadClaims);
 
-  useEffect(() => {
-    getAccounts()
-      .then((accounts) => setAccountLabels(new Map(accounts.map((a) => [a.id, `${a.code} · ${a.name}`]))))
-      .catch(() => {
-        /* labels stay empty */
-      });
-  }, []);
+  // Cached: a bare fetch here re-requested the account list on every mount of
+  // the queue, so the account column on each row filled in a round trip after
+  // the rows themselves.
+  const accountsQuery = useCachedQuery("/accounts", getAccounts);
+  const accountLabels = useMemo(
+    () => new Map((accountsQuery.data ?? []).map((a) => [a.id, `${a.code} · ${a.name}`])),
+    [accountsQuery.data],
+  );
 
   const employeeName = (c: Claim) => (c.employeeEmail ? buildName(c.employeeEmail) : "—");
   const accountLabel = (c: Claim) =>

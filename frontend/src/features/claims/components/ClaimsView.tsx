@@ -32,8 +32,6 @@ export function ClaimsView() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [editingClaim, setEditingClaim] = useState<Claim | null>(null);
-  const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
-  const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
 
   // Cached: coming back from a claim's detail, or from another tab, shows the
   // list that was already there instead of refetching it into a blank screen.
@@ -48,16 +46,21 @@ export function ClaimsView() {
 
   // Claims carry project/account *ids*; resolve them to names from the org's
   // settings. Best-effort — if it fails, ids just don't render as labels.
-  useEffect(() => {
-    Promise.all([getProjects(), getAccounts()])
-      .then(([projects, accounts]) => {
-        setProjectNames(new Map(projects.map((p) => [p.id, p.name])));
-        setAccountLabels(new Map(accounts.map((a) => [a.id, `${a.code} ${a.name}`])));
-      })
-      .catch(() => {
-        /* labels stay empty */
-      });
-  }, []);
+  //
+  // Through the cache, not a bare fetch in an effect. The effect ran on every
+  // mount, so both lists were re-requested on every visit to this screen and
+  // the account label on each row appeared a round trip after the row did.
+  const projectsQuery = useCachedQuery("/projects", getProjects);
+  const accountsQuery = useCachedQuery("/accounts", getAccounts);
+
+  const projectNames = useMemo(
+    () => new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
+    [projectsQuery.data],
+  );
+  const accountLabels = useMemo(
+    () => new Map((accountsQuery.data ?? []).map((a) => [a.id, `${a.code} ${a.name}`])),
+    [accountsQuery.data],
+  );
 
   const claimMeta = (claim: Claim) => {
     const proj = claim.projectId ? projectNames.get(claim.projectId) : undefined;

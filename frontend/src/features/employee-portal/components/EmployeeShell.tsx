@@ -6,7 +6,8 @@ import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getTeamClaims } from "@/features/claims/api";
 import { getTeamLeave } from "@/features/leave/api";
-import { getOrganization } from "@/features/settings/api";
+import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
+import { getLeaveTypes } from "@/features/leave/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
@@ -56,6 +57,23 @@ export function EmployeeShell({
   // The org name never changes during a session, so once is enough — it was
   // being refetched on every mount of the shell.
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+
+  // Warm the reference data the forms need, here rather than when a form
+  // opens.
+  //
+  // The claim and overtime modals read these through useCachedQuery too, so on
+  // a cold cache they were fetching at the moment they rendered — the account
+  // and project rows arrived a round trip after the form did, and the fields
+  // grew into a layout that had already settled. Nothing about that is a
+  // skeleton problem; the data simply wasn't asked for early enough.
+  //
+  // Requested once per session, shared by key with every reader, and small:
+  // one org, one account list, one project list. The employee's own projects,
+  // not the org's, because that is the key the forms use — /projects would
+  // warm a different entry and leave them cold.
+  useCachedQuery("/accounts", getAccounts);
+  useCachedQuery("/projects/mine", getMyProjects);
+  useCachedQuery("/leave-types", getLeaveTypes);
   useEffect(() => {
     setOrganizationName(orgQuery.data?.name ?? null);
   }, [orgQuery.data]);

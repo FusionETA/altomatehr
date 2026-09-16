@@ -193,6 +193,7 @@ export function OvertimeView() {
       {modalOpen ? (
         <NewOvertimeModal
           projects={projects}
+          projectsLoading={projectsQuery.loading}
           onClose={() => setModalOpen(false)}
           onCreated={(request) => {
             setRequests((current) => [request, ...current]);
@@ -314,10 +315,13 @@ function OvertimeCard({
 
 function NewOvertimeModal({
   projects,
+  projectsLoading,
   onClose,
   onCreated,
 }: {
   projects: Project[];
+  /** Still arriving, so an empty list isn't yet "on no project". */
+  projectsLoading: boolean;
   onClose: () => void;
   onCreated: (request: OvertimeRequest) => void;
 }) {
@@ -333,11 +337,15 @@ function NewOvertimeModal({
   // Hidden entirely when they're on no project — an empty dropdown asks a
   // question with no answers, and requiring one would lock an unassigned
   // employee out of claiming overtime. Required for everyone else.
-  const projectRequired = projects.length > 0;
+  //
+  // "Still loading" is not "on no project": treating them the same made the
+  // field appear into the middle of an already-drawn form. The shell warms
+  // /projects/mine so this is normally false on the first render.
+  const projectRequired = projectsLoading || projects.length > 0;
 
   async function submit() {
     if (!workDate || !startTime || !endTime || !reason.trim() || !beforePhoto) return;
-    if (projectRequired && projectId === NO_PROJECT) {
+    if (projects.length > 0 && projectId === NO_PROJECT) {
       setError("Pick the project this overtime is for.");
       return;
     }
@@ -385,9 +393,9 @@ function NewOvertimeModal({
           {projectRequired ? (
             <label className="grid gap-1.5">
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Project</span>
-              <Select value={projectId} onValueChange={setProjectId}>
+              <Select value={projectId} onValueChange={setProjectId} disabled={projectsLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
+                  <SelectValue placeholder={projectsLoading ? "Loading projects…" : "Select project"} />
                 </SelectTrigger>
                 <SelectContent searchPlaceholder="Search projects...">
                   {projects.map((project) => (

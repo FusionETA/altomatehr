@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 type FlowStep = "payment" | "type" | "receipt" | "form";
 type ClaimType = "EXPENSE" | "MILEAGE";
@@ -676,19 +677,23 @@ function ClaimDetailsForm({
               ? "No mileage account enabled yet."
               : "No selectable claim account enabled yet."
           }
+          loading={accountsQuery.loading}
         />
 
         {/* Required when they're on a project, hidden entirely when they're
             not — an empty dropdown asks a question with no answers, and
             requiring one would lock an unassigned employee out of claiming
-            altogether. Matches the previous system. */}
-        {projects.length > 0 ? (
+            altogether. Matches the previous system.
+            While the list is still loading neither is known yet, so the row is
+            held rather than appearing into the middle of the form. */}
+        {projectsQuery.loading || projects.length > 0 ? (
           <SelectField
             label="Project"
             placeholder="Select project"
             value={projectId}
             onValueChange={setProjectId}
             options={projects.map((project) => ({ value: project.id, label: project.name }))}
+            loading={projectsQuery.loading}
           />
         ) : null}
 
@@ -787,6 +792,7 @@ function ClaimDetailsForm({
               label: `${account.code} - ${account.name}`,
             }))}
             emptyMessage="No company bank account enabled yet."
+            loading={accountsQuery.loading}
           />
         ) : null}
 
@@ -1132,6 +1138,7 @@ function SelectField({
   options,
   optional = false,
   emptyMessage,
+  loading = false,
 }: {
   label: string;
   placeholder: string;
@@ -1140,7 +1147,23 @@ function SelectField({
   options: Array<{ value: string; label: string }>;
   optional?: boolean;
   emptyMessage?: string;
+  /** The options haven't arrived yet, so "none" isn't an answer — it's a wait. */
+  loading?: boolean;
 }) {
+  // Not-loaded-yet and genuinely-empty look identical from an options array,
+  // and treating them the same put an amber "No selectable claim account
+  // enabled yet." on screen for every claim, then swapped it for a dropdown a
+  // round trip later. The two are different heights, so the whole form jumped
+  // with it.
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <span className={LABEL}>{label}</span>
+        <Skeleton className="h-12 w-full rounded-2xl" />
+      </div>
+    );
+  }
+
   if (options.length === 0) {
     return (
       <div className="space-y-3">
