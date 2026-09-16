@@ -886,6 +886,21 @@ public class AttendanceService : IAttendanceService
         if (originalAt.Value == requestedAt)
             return (false, "The requested time matches the current record — nothing to change.", null);
 
+        // A correction now carries a DATE as well as a time — a shift left open
+        // overnight is closed the next day, so the employee has to be able to
+        // say which day they actually stopped. That also makes it possible to
+        // pick the wrong one, and a clock-out before its own clock-in would
+        // compute negative hours all the way through to payroll.
+        if (kind == AttendanceApprovalKind.CLOCK_OUT
+            && record.TimeIn is not null
+            && requestedAt <= record.TimeIn.Value)
+            return (false, "The corrected clock-out must be after the clock-in.", null);
+
+        if (kind == AttendanceApprovalKind.CLOCK_IN
+            && record.TimeOut is not null
+            && requestedAt >= record.TimeOut.Value)
+            return (false, "The corrected clock-in must be before the clock-out.", null);
+
         var now = DateTime.UtcNow;
 
         // Reuse an existing PENDING adjustment of the same kind so a re-submission

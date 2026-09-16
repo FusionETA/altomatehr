@@ -614,6 +614,131 @@ public class AttendanceApprovalRegressionTests
             Task.FromResult(new List<AttendanceBreak>());
     }
 
+    // ---- Adjustment dates ----
+    //
+    // A correction carries a DATE as well as a time, because a shift left open
+    // overnight is closed the next day and the employee has to be able to say
+    // which day they actually stopped. That also makes it possible to pick the
+    // wrong day, and a clock-out before its own clock-in would compute negative
+    // hours all the way through to payroll.
+
+    [Fact]
+    public async Task SubmitTimeAdjustment_AcceptsACorrectionOnTheDayBefore()
+    {
+        // Clocked in 08:00 yesterday, forgot to clock out, closing it this
+        // morning. The real end was 18:00 YESTERDAY.
+        var now = new DateTime(2026, 9, 16, 9, 0, 0, DateTimeKind.Utc);
+        var (service, approvals) = AdjustmentService(
+            timeIn: now.AddDays(-1).Date.AddHours(8), timeOut: now);
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = "rec-1",
+            RequestedTimeOut = now.AddDays(-1).Date.AddHours(18),
+            Reason = "Forgot to clock out before leaving site.",
+        });
+
+        Assert.True(result.Ok);
+        var filed = Assert.Single(approvals.Requests);
+        Assert.Equal(now.AddDays(-1).Date.AddHours(18), filed.EventAt);
+    }
+
+    [Fact]
+    public async Task SubmitTimeAdjustment_RefusesAClockOutBeforeItsOwnClockIn()
+    {
+        // The wrong day picked: 18:00 two days ago, against a clock-in
+        // yesterday. Hours would come out negative.
+        var now = new DateTime(2026, 9, 16, 9, 0, 0, DateTimeKind.Utc);
+        var (service, _) = AdjustmentService(
+            timeIn: now.AddDays(-1).Date.AddHours(8), timeOut: now);
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = "rec-1",
+            RequestedTimeOut = now.AddDays(-2).Date.AddHours(18),
+            Reason = "Wrong day picked by mistake.",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("after the clock-in", result.Error);
+    }
+
+    [Fact]
+    public async Task SubmitTimeAdjustment_RefusesAClockOutEqualToTheClockIn()
+    {
+        var now = new DateTime(2026, 9, 16, 9, 0, 0, DateTimeKind.Utc);
+        var timeIn = now.AddDays(-1).Date.AddHours(8);
+        var (service, _) = AdjustmentService(timeIn: timeIn, timeOut: now);
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = "rec-1",
+            RequestedTimeOut = timeIn,
+            Reason = "Zero-length shift.",
+        });
+
+        Assert.False(result.Ok);
+    }
+
+    [Fact]
+    public async Task SubmitTimeAdjustment_RefusesAClockInAfterTheClockOut()
+    {
+        // The mirror case, on a record that is already closed.
+        var now = new DateTime(2026, 9, 16, 9, 0, 0, DateTimeKind.Utc);
+        var (service, _) = AdjustmentService(timeIn: now.AddHours(-8), timeOut: now.AddHours(-1));
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = "rec-1",
+            RequestedTimeIn = now,
+            Reason = "Started later than recorded.",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("before the clock-out", result.Error);
+    }
+
+    private static (AttendanceService Service, FakeAttendanceApprovalRequestRepository Approvals)
+        AdjustmentService(DateTime timeIn, DateTime timeOut)
+    {
+        var record = new AttendanceRecord
+        {
+            Id = "rec-1",
+            EmployeeId = "emp-1",
+            Date = timeIn.Date,
+            TimeIn = timeIn,
+            TimeOut = timeOut,
+            ProjectId = null,
+            Status = AttendanceStatus.CLOCKED_OUT,
+            CreatedAt = timeIn,
+            UpdatedAt = timeOut,
+        };
+
+        var approvals = new FakeAttendanceApprovalRequestRepository([]);
+
+        var service = new AttendanceService(
+            repo: new FakeAttendanceRepository([record]),
+            sessions: new FakeAttendanceSessionRepository([]),
+            breaks: new FakeAttendanceBreakRepository(),
+            approvalRequests: approvals,
+            projects: new FakeProjectService(),
+            organizations: new FakeOrganizationService(),
+            shifts: new FakeShiftService(),
+            currentUser: new FakeCurrentUser(),
+            photos: new FakeAttendancePhotoStorage(),
+            policies: new FakePolicyService(),
+            supervision: new FakeSupervisionService(),
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }),
+            directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
+            realtime: new FakeRealtimeService(),
+            notifications: new FakeNotificationService(),
+            employees: new FakeEmployeeDirectory(),
+            hours: new FakeHoursSummaryService(),
+            teams: new FakeTeamService());
+
+        return (service, approvals);
+    }
+
     // The star of the test: an in-memory approval-request store whose contents
     // the assertions read back. `Requests` exposes the live list.
     private sealed class FakeAttendanceApprovalRequestRepository : IAttendanceApprovalRequestRepository

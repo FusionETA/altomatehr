@@ -30,6 +30,11 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
   useBodyScrollLock();
 
   const [tab, setTab] = useState<"summary" | "adjust">("summary");
+  // Date as well as time. The record's own day is the right default — that is
+  // the shift being closed — but it can't be the only option: a shift left
+  // open overnight is closed the next day, and one that genuinely ran past
+  // midnight ended on a different date from the one it started on.
+  const [date, setDate] = useState(() => today.date);
   const [time, setTime] = useState(() => toHhMm(new Date()));
   const [reason, setReason] = useState("");
 
@@ -37,11 +42,18 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
     ? Math.max(0, Math.round((Date.now() - new Date(today.timeIn).getTime()) / 60000))
     : 0;
 
-  // Anchored to the record's own day, not today's. A shift left open overnight
-  // is closed from the next day, and a correction of "18:00" filed against
-  // today's date would move the clock-out to the wrong day entirely.
-  const requestedIso = hhMmToIso(time, today.date);
-  const canAdjust = requestedIso !== null && reason.trim().length > 0 && !busy;
+  const requestedIso = hhMmToIso(time, date);
+
+  // A clock-out before its own clock-in computes negative hours all the way
+  // through to payroll. The server refuses it too; this says so before the
+  // round trip, and names the actual clock-in so the fix is obvious.
+  const beforeClockIn =
+    requestedIso !== null &&
+    today.timeIn !== null &&
+    new Date(requestedIso) <= new Date(today.timeIn);
+
+  const canAdjust =
+    requestedIso !== null && !beforeClockIn && reason.trim().length > 0 && !busy;
 
   // No onClick on the backdrop, deliberately: a stray tap while typing a
   // remark or picking a photo would discard the whole thing. Closing is the
@@ -123,17 +135,37 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
               Your supervisor decides whether to apply the corrected time below.
             </p>
 
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                Corrected clock-out time
-              </span>
-              <input
-                type="time"
-                value={time}
-                onChange={(event) => setTime(event.target.value)}
-                className="h-12 rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              />
-            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  Corrected date
+                </span>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                  className="h-12 rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  Corrected time
+                </span>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
+                  className="h-12 rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </label>
+            </div>
+
+            {today.timeIn ? (
+              <p className="text-xs text-muted-foreground">
+                Clocked in {fullStamp(today.timeIn)}.
+              </p>
+            ) : null}
 
             <label className="grid gap-1.5">
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
@@ -148,7 +180,11 @@ export function ClockOutDialog({ today, busy, error, onConfirm, onClose }: Props
               />
             </label>
 
-            {requestedIso !== null && reason.trim().length === 0 ? (
+            {beforeClockIn ? (
+              <p className="text-xs font-medium text-destructive">
+                That&rsquo;s at or before the clock-in &mdash; check the date.
+              </p>
+            ) : requestedIso !== null && reason.trim().length === 0 ? (
               <p className="text-xs text-muted-foreground">Add a reason to submit.</p>
             ) : null}
 
@@ -229,9 +265,29 @@ function hhMmToIso(hhMm: string, anchorDate?: string): string | null {
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
-  const at = anchorDate ? new Date(anchorDate) : new Date();
+
+  // Built field by field rather than through new Date("2026-09-15"), which the
+  // spec parses as UTC midnight — west of Greenwich that is the previous day
+  // locally, and setHours would then anchor the correction to the wrong date.
+  const day = anchorDate ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(anchorDate.trim()) : null;
+  if (anchorDate && day === null) return null;
+
+  const at = day
+    ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))
+    : new Date();
   at.setHours(hours, minutes, 0, 0);
   return at.toISOString();
+}
+
+// Day and time together, for saying which clock-in the correction sits against.
+function fullStamp(iso: string) {
+  return new Date(iso).toLocaleString("en-US", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function toDisplay(hhMm: string, anchorDate?: string) {
