@@ -287,12 +287,28 @@ export function DashboardView({
       // cleared, today's otherwise. Reading it off `refreshed` would file the
       // correction against the wrong day, or against nothing at all.
       const adjusted = stale?.id ?? refreshed?.id;
-      if (choice?.adjustment && adjusted) {
-        await submitTimeAdjustment({
-          recordId: adjusted,
-          requestedTimeOut: choice.adjustment.requestedTimeOut,
-          reason: choice.adjustment.reason,
-        });
+      if (choice?.adjustment) {
+        // Caught separately from the clock-out above, which has already
+        // succeeded by this point. Letting this fall into the outer handler
+        // reported "Could not update your clock. Try again." for a clock that
+        // had updated perfectly well — so the correction looked like it had
+        // been swallowed, and a retry would have double-clocked.
+        try {
+          if (!adjusted) throw new Error("The shift this correction belongs to could not be found.");
+          await submitTimeAdjustment({
+            recordId: adjusted,
+            requestedTimeOut: choice.adjustment.requestedTimeOut,
+            reason: choice.adjustment.reason,
+          });
+          void todayQuery.refresh();
+        } catch (adjustErr) {
+          setError(
+            `You're clocked out, but the correction wasn't filed: ${
+              adjustErr instanceof Error ? adjustErr.message : "please try again"
+            } You can ask for it again from the Attendance screen.`,
+          );
+          return;
+        }
       }
       setClockOutOpen(false);
     } catch (e) {

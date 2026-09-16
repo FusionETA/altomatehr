@@ -1024,6 +1024,22 @@ function ShiftRowChips({ record, radius }: { record: AttendanceRecord; radius: n
   );
 }
 
+// Corrections the employee has asked for and nobody has decided yet.
+//
+// A clock-out always records the REAL time; asking for it to be corrected files
+// a request on top, and the record keeps the original until a supervisor
+// approves. That is deliberate — nothing is lost if the request is refused —
+// but it left the row showing the wrong-looking time with no sign that anyone
+// had queried it, which reads as the request having vanished.
+//
+// Identified by originalEventAt: a plain clock-in/clock-out approval doesn't
+// carry one, only an adjustment does.
+function pendingAdjustments(record: AttendanceRecord) {
+  return (record.approvals ?? []).filter(
+    (a) => a.originalEventAt != null && a.approvalStatus === "PENDING",
+  );
+}
+
 // The worse of the two clock ends, or null when both were within the geofence.
 function offSiteDistance(record: AttendanceRecord, radius: number) {
   const distances = [record.clockInDistanceMeters, record.clockOutDistanceMeters]
@@ -1086,6 +1102,7 @@ function ShiftRow({
         {showBadges ? (
           <ShiftRowChips record={record} radius={radius} />
         ) : null}
+        <PendingAdjustmentNote record={record} />
       </div>
       {/* Time on the clock, not counted hours — the endpoint returns totals for a
           range, not per day, so a per-day counted figure would mean
@@ -1100,6 +1117,24 @@ function ShiftRow({
         ) : null}
       </span>
     </article>
+  );
+}
+
+// Shown on any row with a correction waiting on a supervisor, badges or not:
+// this is the answer to "I asked for that to be changed, where did it go?"
+function PendingAdjustmentNote({ record }: { record: AttendanceRecord }) {
+  const pending = pendingAdjustments(record);
+  if (pending.length === 0) return null;
+
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {pending.map((a) => (
+        <li key={a.id} className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+          {a.kind === "CLOCK_IN" ? "Clock-in" : "Clock-out"} correction to{" "}
+          <span className="font-bold">{fmtTime(a.eventAt)}</span> awaiting approval
+        </li>
+      ))}
+    </ul>
   );
 }
 
