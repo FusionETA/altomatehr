@@ -161,15 +161,57 @@ function groupRequestIds(group: ApprovalGroup) {
   return [...group.records.flatMap(pendingApprovalIds), ...group.breaks.map((b) => b.id)];
 }
 
-// The pending approval-request id for ONE event, so a clock-in can be decided
-// without touching the clock-out beside it. Returns null when that event has
-// already been decided — the panel still renders the row, it just gets no
-// buttons.
-function pendingApprovalIdFor(record: AttendanceRecord, kind: "CLOCK_IN" | "CLOCK_OUT") {
-  return (
-    (record.approvals ?? []).find((a) => a.kind === kind && a.approvalStatus === "PENDING")?.id ??
-    null
-  );
+// One row per pending clock event, built from the approval requests themselves
+// rather than from the record's timeIn/timeOut.
+//
+// A record summarises a day as first-in / last-out, so rendering from it showed
+// exactly two rows however many sessions the day held. A day with two shifts
+// has four pending events: the header counted all four and "Approve all"
+// decided all four, while only the first clock-in and the last clock-out were
+// ever on screen. Worse, the clock-out row displayed the LAST time but carried
+// the FIRST pending clock-out's id — so approving what read as 04:26 PM
+// actually decided the 03:42 PM event.
+//
+// Adjustments are excluded: those carry originalEventAt and get their own card
+// above (AdjustmentNotice), and counting them here would double them up.
+type PendingEvent = {
+  approvalId: string;
+  kind: "CLOCK_IN" | "CLOCK_OUT";
+  time: string;
+  lateByMin: number | null;
+  distance: number | null;
+  photoUrl: string | null;
+};
+
+function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
+  const sessions = record.sessions ?? [];
+
+  return (record.approvals ?? [])
+    .filter(
+      (a) =>
+        a.approvalStatus === "PENDING" &&
+        !a.originalEventAt &&
+        (a.kind === "CLOCK_IN" || a.kind === "CLOCK_OUT"),
+    )
+    .map((a) => {
+      // Per-session where the event belongs to one; the record's own figures
+      // are the fallback for rows filed before sessions existed.
+      const session = sessions.find((x) => x.id === a.attendanceSessionId);
+      const isIn = a.kind === "CLOCK_IN";
+      return {
+        approvalId: a.id,
+        kind: a.kind as "CLOCK_IN" | "CLOCK_OUT",
+        time: a.eventAt,
+        lateByMin: isIn ? session?.lateByMin ?? record.lateByMin ?? null : null,
+        distance: isIn
+          ? session?.clockInDistanceMeters ?? record.clockInDistanceMeters ?? null
+          : session?.clockOutDistanceMeters ?? record.clockOutDistanceMeters ?? null,
+        photoUrl: isIn
+          ? session?.clockInPhotoUrl ?? record.clockInPhotoUrl ?? null
+          : session?.clockOutPhotoUrl ?? record.clockOutPhotoUrl ?? null,
+      };
+    })
+    .sort((a, b) => a.time.localeCompare(b.time));
 }
 
 // Events actually AWAITING a decision — the same ids the approve and reject
@@ -1313,17 +1355,18 @@ function ExpandedGroup({
           <div key={record.id} className="space-y-2">
             <AdjustmentNotice record={record} />
             {breakRowsFor(group, record, "in", eventActions)}
-            {record.timeIn ? (
+            {pendingEventsFor(record).map((event) => (
               <EventRow
-                title="Clock in"
-                time={record.timeIn}
-                lateByMin={record.lateByMin}
-                distance={record.clockInDistanceMeters}
+                key={event.approvalId}
+                title={event.kind === "CLOCK_IN" ? "Clock in" : "Clock out"}
+                time={event.time}
+                lateByMin={event.lateByMin}
+                distance={event.distance}
                 radius={radius}
                 projectName={record.projectId ? projectNames.get(record.projectId) : null}
-                location={locationText(record, "in")}
-                photoUrl={record.clockInPhotoUrl}
-                approvalId={pendingApprovalIdFor(record, "CLOCK_IN")}
+                location={locationText(record, event.kind === "CLOCK_IN" ? "in" : "out")}
+                photoUrl={event.photoUrl}
+                approvalId={event.approvalId}
                 busyKey={busyKey}
                 selectMode={selectMode}
                 isSelected={isSelected}
@@ -1331,27 +1374,8 @@ function ExpandedGroup({
                 onApprove={onApproveEvent}
                 onReject={onRejectEvent}
               />
-            ) : null}
+            ))}
             {breakRowsFor(group, record, "mid", eventActions)}
-            {record.timeOut ? (
-              <EventRow
-                title="Clock out"
-                time={record.timeOut}
-                lateByMin={null}
-                distance={record.clockOutDistanceMeters}
-                radius={radius}
-                projectName={record.projectId ? projectNames.get(record.projectId) : null}
-                location={locationText(record, "out")}
-                photoUrl={record.clockOutPhotoUrl}
-                approvalId={pendingApprovalIdFor(record, "CLOCK_OUT")}
-                busyKey={busyKey}
-                selectMode={selectMode}
-                isSelected={isSelected}
-                onToggleSelect={onToggleSelect}
-                onApprove={onApproveEvent}
-                onReject={onRejectEvent}
-              />
-            ) : null}
           </div>
         ))}
       </div>
