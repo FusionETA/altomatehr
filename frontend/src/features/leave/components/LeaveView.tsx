@@ -159,7 +159,13 @@ export function LeaveView() {
 
       {tab === "balances" ? (
         <>
-          {quotaBalances.length > 0 ? (
+          {/* Guarded: without this, "No leave balances yet." was rendered on
+              every cold load and replaced by the cards a round trip later —
+              telling someone they have no entitlement when they have fourteen
+              days. */}
+          {loading ? (
+            <SkeletonCards />
+          ) : quotaBalances.length > 0 ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {quotaBalances.map((b) => (
                 <div key={b.leaveTypeId} className={`${CARD} p-5`}>

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Coffee, LoaderCircle, Play } from "lucide-react";
-import { endBreak, getBreaks, startBreak, type AttendanceBreak } from "../api";
+import { endBreak, getBreaks, startBreak } from "../api";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 type Props = {
   /** Today's record. Breaks hang off it, so there is nothing to show without one. */
@@ -18,18 +20,20 @@ type Props = {
 // back to the shift's unpaid break, which is a guess. Recording real breaks
 // replaces the guess.
 export function BreakControl({ recordId, clockedIn, onChange }: Props) {
-  const [breaks, setBreaks] = useState<AttendanceBreak[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    if (!recordId) return;
-    getBreaks(recordId)
-      .then(setBreaks)
-      .catch(() => setBreaks([]));
-  }, [recordId]);
-
-  useEffect(load, [load]);
+  // Cached, and the button waits for it. Starting from an empty list meant
+  // "Start break" was rendered on every visit and flipped to "End break" a
+  // round trip later for anyone actually on a break — a button that briefly
+  // offered the opposite of what tapping it would do.
+  const breaksQuery = useCachedQuery(
+    recordId ? `/attendance/${recordId}/breaks` : null,
+    () => getBreaks(recordId!),
+  );
+  const breaks = breaksQuery.data ?? [];
+  const known = recordId !== null && !breaksQuery.loading;
+  const load = breaksQuery.refresh;
 
   const open = breaks.find((b) => !b.endedAt) ?? null;
   const finished = breaks.filter((b) => b.endedAt);
@@ -63,10 +67,17 @@ export function BreakControl({ recordId, clockedIn, onChange }: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Break
           </p>
-          <p className="mt-0.5 truncate text-sm font-bold text-foreground">
-            {open ? `Since ${clockTime(open.startedAt)}` : totalLabel(totalMin)}
-          </p>
+          {known ? (
+            <p className="mt-0.5 truncate text-sm font-bold text-foreground">
+              {open ? `Since ${clockTime(open.startedAt)}` : totalLabel(totalMin)}
+            </p>
+          ) : (
+            <Skeleton className="mt-1 h-4 w-24" />
+          )}
         </div>
+        {!known ? (
+          <Skeleton className="h-8 w-28 shrink-0 rounded-full" />
+        ) : (
         <button
           type="button"
           onClick={toggle}
@@ -86,6 +97,7 @@ export function BreakControl({ recordId, clockedIn, onChange }: Props) {
           )}
           {open ? "End break" : "Start break"}
         </button>
+        )}
       </div>
 
       {finished.length > 0 ? (

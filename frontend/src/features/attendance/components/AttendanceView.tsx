@@ -25,7 +25,7 @@ import { getOrganization, getProjects, type Project } from "@/features/settings/
 import { formatDistance } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import * as cache from "@/shared/lib/api-cache";
-import { SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
+import { Skeleton, SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const TZ = "Asia/Kuala_Lumpur";
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -436,13 +436,20 @@ export function AttendanceView({
               the working-hours heading into wrapping mid-range ("09:00 AM -" /
               "06:00 PM"). Status leads; lateness qualifies it. */}
           <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <span
-              className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
-                clockedIn ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {clockedIn ? "On the clock" : clockedOut ? "Completed" : "Not started"}
-            </span>
+            {/* Until the record is known, every option is a claim about
+                whether this person is working right now, and "Not started" is
+                the one that would be rendered by default. */}
+            {loading ? (
+              <Skeleton className="h-[26px] w-28 rounded-full" />
+            ) : (
+              <span
+                className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
+                  clockedIn ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {clockedIn ? "On the clock" : clockedOut ? "Completed" : "Not started"}
+              </span>
+            )}
             {today?.lateByMin != null ? (
               <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
                 Late {formatLateness(today.lateByMin)}
@@ -451,7 +458,14 @@ export function AttendanceView({
           </div>
         </div>
 
-        <TodayEvents today={today} radius={radius} />
+        {loading ? (
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-12 w-full rounded-2xl" />
+          </div>
+        ) : (
+          <TodayEvents today={today} radius={radius} />
+        )}
       </section>
 
       <HoursProgress

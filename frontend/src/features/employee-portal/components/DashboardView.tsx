@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -60,6 +60,7 @@ import type { SignedInUser } from "@/shared/types/session";
 import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { Skeleton } from "@/shared/components/Skeleton";
 
 // The still-open session only matters here when it started on an EARLIER day —
 // today's open record is just a normal shift in progress.
@@ -74,12 +75,6 @@ function staleFrom(open: AttendanceRecord | null): AttendanceRecord | null {
   return sameDay ? null : open;
 }
 
-// The refused clock-in carries the open record in its body so we can name the day.
-function recordFrom(body: unknown): AttendanceRecord | null {
-  if (!body || typeof body !== "object" || !("record" in body)) return null;
-  const record = (body as { record?: unknown }).record;
-  return record && typeof record === "object" ? (record as AttendanceRecord) : null;
-}
 
 function fmtDay(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -109,7 +104,7 @@ export function DashboardView({
 }) {
   const isSupervisor = user.role === "Supervisor";
 
-  const [today, setToday] = useState<AttendanceRecord | null>(null);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [now, setNow] = useState(() => new Date());
@@ -129,7 +124,7 @@ export function DashboardView({
   // A shift from an earlier day that was never clocked out. While one exists the
   // server refuses a new clock-in, so the card stops offering one and asks for
   // that shift to be closed instead.
-  const [stale, setStale] = useState<AttendanceRecord | null>(null);
+
 
   // Live clock — the "RIGHT NOW" readout ticks every second.
   useEffect(() => {
@@ -137,24 +132,34 @@ export function DashboardView({
     return () => clearInterval(id);
   }, []);
 
-  // Projects and leave types are reference data and cached. Today's attendance
-  // and any open session are NOT: this screen's whole job is telling someone
-  // whether they are clocked in right now, and a remembered answer to that is
-  // worse than a moment's wait.
+  // Today's attendance and any open session are cached like everything else.
+  //
+  // They used to be read fresh on every mount, for fear that a remembered
+  // answer to "am I clocked in?" was worse than a moment's wait. It was worse
+  // than that: with no loading state, both started null, so the card painted a
+  // purple "Tap to Clock In" on every single visit and flipped to a red "Tap
+  // to Clock Out" a round trip later. The wrong answer, stated confidently,
+  // beat the wait to the screen.
+  //
+  // Caching is safe here for the same reason it is on the attendance screen:
+  // the server is what refuses a second clock-in while a session is open, and
+  // a clock-in or clock-out invalidates /attendance*, which drops both keys.
+  const todayQuery = useCachedQuery("/attendance/today", getTodayAttendance);
+  const openSessionQuery = useCachedQuery("/attendance/open-session", getOpenSession);
   const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
   const leaveTypesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   // Applying from the dashboard needs the same balances the Leave screen shows,
   // or the quick action is the one place that asks people to guess.
   const leaveBalancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
 
-  useEffect(() => {
-    Promise.all([getTodayAttendance().catch(() => null), getOpenSession().catch(() => null)]).then(
-      ([t, open]) => {
-        setToday(t);
-        setStale(staleFrom(open));
-      },
-    );
-  }, []);
+  const today = todayQuery.data ?? null;
+  const stale = staleFrom(openSessionQuery.data ?? null);
+
+  // Whether this person is on the clock is not yet known — nothing cached and
+  // the first read still in flight. The card renders a skeleton rather than
+  // guessing, because both guesses are a button that does the wrong thing.
+  const statusKnown = !todayQuery.loading && !openSessionQuery.loading;
+
   useEffect(() => {
     setProjects(projectsQuery.data ?? []);
   }, [projectsQuery.data]);
@@ -223,11 +228,8 @@ export function DashboardView({
   const firstName = buildName(user.email).split(" ")[0];
 
   // Ending a break changes today's totals, so the card re-reads the record.
-  const refreshToday = useCallback(() => {
-    getTodayAttendance()
-      .then(setToday)
-      .catch(() => undefined);
-  }, []);
+  // Through the query, which writes the cache every other reader shares.
+  const refreshToday = todayQuery.refresh;
 
   function handleClock() {
     // Clocking in is unambiguous; clocking out is the one that may need
@@ -269,12 +271,14 @@ export function DashboardView({
         });
       }
       setOffSite(null);
+      // Read back rather than trusting the response: the clock POST already
+      // invalidated /attendance*, and these refresh the cache both queries
+      // above are reading, so the card updates without a second render path.
       const [refreshed, open] = await Promise.all([
         getTodayAttendance().catch(() => null),
         getOpenSession().catch(() => null),
       ]);
-      setToday(refreshed);
-      setStale(staleFrom(open));
+      void open;
 
       // The clock-out landed first, deliberately: if this fails the day still
       // has a real clock-out, and the employee can ask again from the
@@ -304,11 +308,12 @@ export function DashboardView({
         return;
       }
 
-      // A shift was left open on an earlier day. The refusal carries that
-      // record, so switch the card over to closing it rather than just showing
-      // an error the employee can't act on.
+      // A shift was left open on an earlier day. The refusal proves the
+      // cached open-session read was stale, so re-read it — that switches the
+      // card over to closing that shift rather than leaving an error the
+      // employee can't act on.
       if (e instanceof ApiError && e.code === OPEN_SESSION_CODE) {
-        setStale(staleFrom(recordFrom(e.body)));
+        void openSessionQuery.refresh();
       }
       setError(e instanceof Error ? e.message : "Could not update your clock. Try again.");
     } finally {
@@ -401,6 +406,17 @@ export function DashboardView({
           </div>
 
           <div className="mt-4 rounded-[24px] border border-border/60 bg-surface-low/50 p-5 sm:p-6">
+            {/* Shaped like the real thing — circle, label, sub-label — so
+                nothing moves when the answer lands. A guessed button would be
+                worse than a wait: half the time it says the opposite of what
+                tapping it does. */}
+            {!statusKnown ? (
+              <div className="flex flex-col items-center gap-3">
+                <Skeleton className="h-20 w-20 rounded-full sm:h-24 sm:w-24" />
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+            ) : (
             <div className="flex flex-col items-center gap-3">
               <button
                 type="button"
@@ -442,6 +458,7 @@ export function DashboardView({
                     : "Pending supervisor approval after tap"}
               </p>
             </div>
+            )}
           </div>
 
           {doneShifts.length > 0 ? (
