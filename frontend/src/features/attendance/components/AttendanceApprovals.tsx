@@ -245,7 +245,6 @@ export function AttendanceApprovals() {
   const [approvalType, setApprovalType] = useState<ApprovalType>("ATTENDANCE");
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [radius, setRadius] = useState(200);
   const [filter, setFilter] = useState<DateFilter>("ALL");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -277,12 +276,13 @@ export function AttendanceApprovals() {
 
   const projectsQuery = useCachedQuery("/projects", getProjects);
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
+  // Derived: an effect would set it a frame after the rows had already been
+  // drawn against the 200m fallback, which decides whether each one reads as
+  // on-site.
+  const radius = orgQuery.data?.geofenceRadiusMeters ?? 200;
   useEffect(() => {
     setProjects((projectsQuery.data ?? []).filter((project) => !project.isArchived));
   }, [projectsQuery.data]);
-  useEffect(() => {
-    if (orgQuery.data) setRadius(orgQuery.data.geofenceRadiusMeters);
-  }, [orgQuery.data]);
 
   // A clock-in/out or break decided elsewhere refreshes this tab live. There's
   // no realtime scope for overtime yet, so that tab (below) stays reload-only.

@@ -30,6 +30,10 @@ import * as cache from "@/shared/lib/api-cache";
 import { Skeleton, SkeletonCards, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const TZ = "Asia/Kuala_Lumpur";
+// The server's own default, repeated here only for the frame before the org
+// loads. A stable reference so the memos below don't re-run on every render.
+const DEFAULT_GEOFENCE_RADIUS_M = 200;
+const EMPTY_RECORDS: AttendanceRecord[] = [];
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
 // Which local calendar day an instant falls on, as yyyy-MM-dd. Compared as a
@@ -326,15 +330,13 @@ export function AttendanceView({
   sub?: string;
   onViewHistory?: () => void;
 }) {
-  const [history, setHistory] = useState<AttendanceRecord[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [radius, setRadius] = useState(200);
+
   // Org working hours. An employee with an assigned Shift is really measured
   // against that shift's times — the backend resolves shift first and only
   // falls back to these — so this header is right for anyone unshifted and
   // approximate for anyone shifted. Wiring the shift needs /shifts, which has
   // no frontend yet.
-  const [orgHours, setOrgHours] = useState<{ start?: string | null; end?: string | null }>({});
+
   const [now] = useState(() => new Date());
 
   // The displayed week runs Mon-Fri and reaches back into the previous month,
@@ -370,18 +372,27 @@ export function AttendanceView({
   const loading = todayQuery.loading;
   const error = todayQuery.error;
 
-  useEffect(() => {
-    if (historyQuery.data) setHistory(historyQuery.data);
-  }, [historyQuery.data]);
-  useEffect(() => {
-    setProjects((projectsQuery.data ?? []).filter((x) => !x.isArchived));
-  }, [projectsQuery.data]);
-  useEffect(() => {
-    const org = orgQuery.data;
-    if (!org) return;
-    setRadius(org.geofenceRadiusMeters);
-    setOrgHours({ start: org.workingHoursStart, end: org.workingHoursEnd });
-  }, [orgQuery.data]);
+  // Derived, not copied into state by an effect.
+  //
+  // useCachedQuery already holds the cached answer during the first render,
+  // but an effect only runs after the paint — so a revisit rendered one frame
+  // built from the empty defaults (no history, no projects, a 200m fallback
+  // radius) and the real thing a frame later. Nothing here mutates any of
+  // them, so there was never a reason for them to be a second copy.
+  const history = historyQuery.data ?? EMPTY_RECORDS;
+  const projects = useMemo(
+    () => (projectsQuery.data ?? []).filter((x) => !x.isArchived),
+    [projectsQuery.data],
+  );
+  const radius = orgQuery.data?.geofenceRadiusMeters ?? DEFAULT_GEOFENCE_RADIUS_M;
+  // An employee with an assigned Shift is really measured against that shift's
+  // times — the backend resolves shift first and only falls back to these — so
+  // this header is right for anyone unshifted and approximate for anyone
+  // shifted. Wiring the shift needs /shifts, which has no frontend yet.
+  const orgHours = {
+    start: orgQuery.data?.workingHoursStart,
+    end: orgQuery.data?.workingHoursEnd,
+  };
 
   // Totals are computed server-side so they match what payroll reads. Cached on
   // their exact date range, so returning to the screen on the same day shows the
