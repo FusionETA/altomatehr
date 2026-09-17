@@ -273,8 +273,8 @@ export function AdminAttendance() {
   // of which resolve to names before they reach a row.
   const [projectSites, setProjectSites] = useState<Map<string, string | null>>(new Map());
 
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [hours, setHours] = useState<OrgHoursSummary | null>(null);
+
   const [performance, setPerformance] = useState<SupervisorPerformance[]>([]);
   const [audit, setAudit] = useState<ApprovalAuditEntry[]>([]);
   const [overtime, setOvertime] = useState<OvertimeRequest[]>([]);
@@ -289,14 +289,14 @@ export function AdminAttendance() {
   // records are the page. Only the records gate `loading` or raise an error —
   // a missing label list degrades to ids rather than failing the board.
   const recordsQuery = useCachedQuery("/attendance", getAttendanceHistory);
+  // Derived: nothing mutates the record list, so it needn't be a copy an
+  // effect fills a frame after the table has been drawn empty.
+  const records = recordsQuery.data ?? [];
   const employeesQuery = useCachedQuery("/employees", getEmployees);
   const projectsQuery = useCachedQuery("/projects", getProjects);
   const teamsQuery = useCachedQuery("/teams", getTeams);
   const loading = recordsQuery.loading;
 
-  useEffect(() => {
-    if (recordsQuery.data) setRecords(recordsQuery.data);
-  }, [recordsQuery.data]);
   useEffect(() => {
     const employees = employeesQuery.data ?? [];
     setEmails(new Map(employees.map((e) => [e.id, e.email])));

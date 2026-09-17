@@ -83,9 +83,6 @@ function message(err: unknown, fallback: string) {
 export function AdminLeave() {
   const [tab, setTab] = useState<AdminLeaveTab>("overview");
   const [year, setYear] = useState(CURRENT_YEAR);
-  const [overview, setOverview] = useState<LeaveOverview | null>(null);
-  const [balancesRows, setBalancesRows] = useState<EmployeeLeaveBalances[]>([]);
-  const [types, setTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
@@ -116,15 +113,19 @@ export function AdminLeave() {
   const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   const loading = overviewQuery.loading || balancesQuery.loading || typesQuery.loading;
 
-  useEffect(() => {
-    if (overviewQuery.data) setOverview(overviewQuery.data);
-  }, [overviewQuery.data]);
+  // Overview and types are derived — nothing mutates them. balancesRows is
+  // still state because adjusting an entitlement patches one row in place, so
+  // it is seeded from the cache instead, with the effect below keeping it in
+  // step with a background refresh.
+  const overview = overviewQuery.data ?? null;
+  const types = typesQuery.data ?? [];
+  const [balancesRows, setBalancesRows] = useState<EmployeeLeaveBalances[]>(
+    () => balancesQuery.data?.data ?? [],
+  );
+
   useEffect(() => {
     if (balancesQuery.data) setBalancesRows(balancesQuery.data.data);
   }, [balancesQuery.data]);
-  useEffect(() => {
-    if (typesQuery.data) setTypes(typesQuery.data);
-  }, [typesQuery.data]);
   useEffect(() => {
     setError(overviewQuery.error ?? balancesQuery.error ?? typesQuery.error);
   }, [overviewQuery.error, balancesQuery.error, typesQuery.error]);

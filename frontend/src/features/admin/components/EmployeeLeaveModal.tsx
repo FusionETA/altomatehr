@@ -12,7 +12,6 @@ import {
   type LeaveAccrualMethod,
   type LeaveApplication,
   type LeaveBalance,
-  type LeaveSummaryReport,
   type LeaveType,
 } from "@/features/leave/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
@@ -48,7 +47,6 @@ export function EmployeeLeaveModal({
   onBalancesUpdated: (employeeId: string, balances: LeaveBalance[]) => void;
 }) {
   const [balances, setBalances] = useState<LeaveBalance[]>(employee.balances);
-  const [report, setReport] = useState<LeaveSummaryReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyTypeId, setBusyTypeId] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -63,9 +61,10 @@ export function EmployeeLeaveModal({
     () => getLeaveSummaryReport(employee.userId, year),
   );
   const loadingReport = reportQuery.loading;
-  useEffect(() => {
-    if (reportQuery.data) setReport(reportQuery.data);
-  }, [reportQuery.data]);
+  // Derived: nothing mutates it, so it needn't be a copy that an effect fills
+  // in a frame after the screen has already been drawn from the default.
+  const report = reportQuery.data ?? null;
+
   useEffect(() => {
     if (reportQuery.error) setError(reportQuery.error);
   }, [reportQuery.error]);

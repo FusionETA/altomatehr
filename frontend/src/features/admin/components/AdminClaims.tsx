@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getAllClaims,
-  type Claim,
   type ClaimsExportFilters,
 } from "@/features/claims/api";
 import { isStaleClaim } from "@/features/claims/lib/claim-insights";
 import { getEmployees } from "@/features/employees/api";
 import { getAccounts, getProjects } from "@/features/settings/api";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
-import { getAdminOverview, type AdminOverview } from "../api";
+import { getAdminOverview } from "../api";
 import type { ClaimDrilldown } from "../lib/claims-drilldown";
 import {
   describeFilters,
@@ -34,8 +33,6 @@ import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
 type ClaimsTab = "overview" | "all" | "settings";
 
 export function AdminClaims() {
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
   const [employeeEmails, setEmployeeEmails] = useState<Map<string, string>>(new Map());
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
@@ -51,6 +48,11 @@ export function AdminClaims() {
   const claimsQuery = useCachedQuery("/claims/all", getAllClaims);
   const overviewQuery = useCachedQuery("/admin/overview", getAdminOverview);
   const projectsQuery = useCachedQuery("/projects", getProjects);
+  // Derived: nothing mutates these, so they needn't be copies that an effect
+  // fills in a frame after the screen has been drawn from the defaults.
+  const claims = claimsQuery.data ?? [];
+  const overview = overviewQuery.data ?? null;
+
   const employeesQuery = useCachedQuery("/employees", getEmployees);
   const accountsQuery = useCachedQuery("/accounts", getAccounts);
   const loading = claimsQuery.loading;
@@ -59,12 +61,6 @@ export function AdminClaims() {
   // unaffected by approving a claim, so it only re-reads the claims.
   const load = useCallback(() => claimsQuery.refresh(), [claimsQuery.refresh]);
 
-  useEffect(() => {
-    if (claimsQuery.data) setClaims(claimsQuery.data);
-  }, [claimsQuery.data]);
-  useEffect(() => {
-    setOverview(overviewQuery.data ?? null);
-  }, [overviewQuery.data]);
   useEffect(() => {
     const projects = projectsQuery.data ?? [];
     setProjectNames(new Map(projects.map((project) => [project.id, project.name])));

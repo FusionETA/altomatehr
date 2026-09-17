@@ -26,7 +26,6 @@ function presenceOf(member: TeamAttendanceMember): Presence {
 // a tab, because "nobody turned up today" is the answer a supervisor most needs
 // and it can't be shown by a tab that isn't there.
 export function TeamPresence() {
-  const [members, setMembers] = useState<TeamAttendanceMember[]>([]);
   // Empty until the first load names a project — there is no "all" option.
   const [projectId, setProjectId] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
@@ -67,6 +66,13 @@ export function TeamPresence() {
   // site right now?"), so the refresh button stays and drives load() directly.
   const presenceQuery = useCachedQuery("/attendance/team/today", getTeamToday);
   const loading = presenceQuery.loading;
+  // Seeded from the cache so the first frame of a revisit is the real thing
+  // rather than the empty default; the effect below keeps it in step with a
+  // background refresh.
+  const [members, setMembers] = useState<TeamAttendanceMember[]>(
+    () => presenceQuery.data ?? [],
+  );
+
   useEffect(() => {
     if (presenceQuery.data) setMembers(presenceQuery.data);
   }, [presenceQuery.data]);
