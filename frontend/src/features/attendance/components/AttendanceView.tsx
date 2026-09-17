@@ -1243,7 +1243,7 @@ function HistoryView({
 
   // Counted hours per visible month, straight from the server so the shift cap,
   // break deduction and overtime split are the same ones payroll would read.
-  const [monthHours, setMonthHours] = useState<Record<string, HoursBuckets>>({});
+  const [fetchedMonthHours, setFetchedMonthHours] = useState<Record<string, HoursBuckets>>({});
 
   const monthTotals = useMemo(() => {
     const grouped = new Map<string, AttendanceRecord[]>();
@@ -1254,23 +1254,34 @@ function HistoryView({
     return grouped;
   }, [filtered]);
 
+  // The cached totals, read DURING RENDER rather than in the effect below.
+  //
+  // These months aren't known until the records are grouped, so they can't be
+  // useCachedQuery calls — the seeding was done in the effect instead, which
+  // runs after the paint. That left the first frame showing a dash where
+  // "71h 49m" belonged and filling it in a moment later, which is the blink:
+  // the number was already in the cache the whole time, just read too late.
+  //
+  // cache.peek is a plain read, so doing it here is safe.
+  const monthHours = useMemo(() => {
+    const fromCache: Record<string, HoursBuckets> = {};
+    for (const [month, items] of historyByMonth) {
+      const sample = items[0]?.date;
+      if (!sample) continue;
+      const { from, to } = monthRange(sample);
+      const hit = cache.peek<HoursBuckets>(hoursSummaryPath(from, to));
+      if (hit) fromCache[month] = hit.data;
+    }
+    // Anything this mount has fetched wins over what was cached at first paint.
+    return { ...fromCache, ...fetchedMonthHours };
+  }, [historyByMonth, fetchedMonthHours]);
+
   const visibleMonths = historyByMonth.map(([month]) => month).join("|");
   useEffect(() => {
     const wanted = historyByMonth
       .map(([month, items]) => ({ month, sample: items[0]?.date }))
       .filter((m): m is { month: string; sample: string } => Boolean(m.sample));
     if (wanted.length === 0) return;
-
-    // Paint whatever these months totalled last time before the round trips
-    // start, so paging back through history doesn't blank every total first.
-    const cached = wanted
-      .map(({ month, sample }) => {
-        const { from, to } = monthRange(sample);
-        const hit = cache.peek<HoursBuckets>(hoursSummaryPath(from, to));
-        return hit ? ([month, hit.data] as const) : null;
-      })
-      .filter(Boolean) as Array<readonly [string, HoursBuckets]>;
-    if (cached.length > 0) setMonthHours(Object.fromEntries(cached));
 
     let active = true;
     Promise.all(
@@ -1282,7 +1293,9 @@ function HistoryView({
       }),
     ).then((results) => {
       if (!active) return;
-      setMonthHours(Object.fromEntries(results.filter(Boolean) as Array<readonly [string, HoursBuckets]>));
+      setFetchedMonthHours(
+        Object.fromEntries(results.filter(Boolean) as Array<readonly [string, HoursBuckets]>),
+      );
     });
 
     return () => {
@@ -1394,6 +1407,9 @@ function HistoryView({
                   <SummaryMetric
                     label="Counted"
                     value={hours ? formatHours(hours.normalMin) : "—"}
+                    // The other three are counted from records already on
+                    // screen; only this one waits on the server.
+                    loading={!hours}
                   />
                   <SummaryMetric label="On time" value={String(sum.onTime)} tone="text-success" />
                   <SummaryMetric label="Late" value={String(sum.late)} tone="text-tertiary" />
@@ -1465,14 +1481,25 @@ function SummaryMetric({
   label,
   value,
   tone = "text-foreground",
+  loading = false,
 }: {
   label: string;
   value: string;
   tone?: string;
+  /** The figure isn't known yet, as opposed to being zero or unavailable. */
+  loading?: boolean;
 }) {
   return (
     <div>
-      <p className={`text-2xl font-extrabold tabular-nums ${tone}`}>{value}</p>
+      {/* A placeholder rather than a dash. "—" is an answer — it says there is
+          nothing to report — so showing it while the number is still in flight
+          states something false and then corrects itself. Sized like the value
+          it replaces, so nothing moves when it lands. */}
+      {loading ? (
+        <Skeleton className="h-8 w-24" />
+      ) : (
+        <p className={`text-2xl font-extrabold tabular-nums ${tone}`}>{value}</p>
+      )}
       <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>
   );
