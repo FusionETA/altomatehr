@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Plus, Users } from "lucide-react";
+import { ChevronRight, CircleAlert, Plus, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
+import { getPayrollEmployees } from "@/features/payroll/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
@@ -63,6 +64,54 @@ export function EmployeesSettings() {
     () => employees.filter((e) => e.role === "Employee" || e.role === "Supervisor"),
     [employees],
   );
+  // Which profiles are short of what payroll needs to include them. Read from
+  // the payroll roster rather than recomputed here: that endpoint already runs
+  // the same PayrollProfileReadiness check a run uses, so this badge and the
+  // one inside the profile cannot disagree.
+  //
+  // A failure degrades to no badges rather than an error — an admin managing
+  // roles should not be blocked by the payroll roster being unavailable.
+  // includeArchived, so that being ABSENT from this roster means exactly one
+  // thing: no payroll profile exists yet. Without it an archived profile would
+  // look identical to a missing one.
+  const payrollQuery = useCachedQuery("/payroll/employees?all", () =>
+    getPayrollEmployees(true),
+  );
+
+  const readiness = useMemo(() => {
+    const byUser = new Map<string, { archived: boolean; sections: string[] }>();
+    for (const row of payrollQuery.data ?? []) {
+      byUser.set(row.userId, {
+        archived: row.isArchived,
+        sections: row.profileIncompleteSections,
+      });
+    }
+    return byUser;
+  }, [payrollQuery.data]);
+
+  // What to warn about for one person, or null when there is nothing to say.
+  //
+  // Someone with NO payroll profile is the strongest case, not the absent one:
+  // they cannot be paid at all, and before this they showed no icon simply by
+  // virtue of missing from the roster — which read as "fine".
+  //
+  // Archived is deliberately not a warning. They are not being paid, but that
+  // is a decision rather than an omission, and the profile shows "Archived"
+  // rather than "Needs setup" for exactly the same reason.
+  const setupGap = (userId: string): string | null => {
+    // Until the roster lands, say nothing rather than flag everyone.
+    if (payrollQuery.data === undefined) return null;
+
+    const row = readiness.get(userId);
+    if (!row) return "No payroll profile yet";
+    if (row.archived) return null;
+    return row.sections.length > 0 ? `${row.sections.join(", ")} incomplete` : null;
+  };
+
+  // Counted over the whole roster, not the filtered page: "3 need setup" must
+  // not change because someone typed in the search box.
+  const needsSetupCount = staff.filter((e) => setupGap(e.id) !== null).length;
+
   const policyName = (id: string | null) =>
     id ? (policies.find((p) => p.id === id)?.name ?? "—") : "Default";
 
@@ -132,6 +181,15 @@ export function EmployeesSettings() {
                 {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
               </span>
             )}
+
+            {/* The total, so "is anyone unpayable?" is answerable without
+                scanning every row — the per-row icon then says who. */}
+            {!loading && needsSetupCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
+                <CircleAlert className="h-3 w-3" />
+                {needsSetupCount} need setup
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -199,9 +257,12 @@ export function EmployeesSettings() {
                   >
                     <td className="px-3 py-3">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">
-                          {emp.name?.trim() || buildName(emp.email)}
-                        </p>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className="truncate font-semibold text-foreground">
+                            {emp.name?.trim() || buildName(emp.email)}
+                          </p>
+                          <PayrollSetupFlag gap={setupGap(emp.id)} />
+                        </div>
                         <p className="truncate text-xs text-muted-foreground">
                           {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") ||
                             emp.email}
@@ -254,5 +315,28 @@ export function EmployeesSettings() {
         />
       ) : null}
     </div>
+  );
+}
+
+// The one-glance answer to "will payroll actually include this person?".
+//
+// Icon-only in the row: the list is scanned, not read, and a full "Needs setup"
+// pill on every incomplete row drowns out the names. The tooltip names the
+// sections so the admin knows which tab to open — which is the whole point of
+// not having to open the profile to find out.
+function PayrollSetupFlag({ gap }: { gap: string | null }) {
+  if (!gap) return null;
+
+  const label = `Not ready for payroll — ${gap}`;
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      role="img"
+      className="inline-flex shrink-0 items-center rounded-full bg-warning/15 p-1 text-warning-foreground"
+    >
+      <CircleAlert className="h-3.5 w-3.5 text-warning-foreground" aria-hidden />
+    </span>
   );
 }

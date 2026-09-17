@@ -15,8 +15,26 @@ namespace AltomateHR.Api.Modules.Payroll;
 // pay, not to CALCULATE it, so a missing account never blocks a run.
 public static class PayrollProfileReadiness
 {
-    public static bool IsComplete(EmployeeProfile p) =>
-        IsPersonalComplete(p) && IsEmploymentComplete(p) && IsStatutoryComplete(p);
+    public static bool IsComplete(EmployeeProfile p) => IncompleteSections(p).Count == 0;
+
+    // The same verdict, but saying WHICH of the three sections is short.
+    //
+    // Exposed so a roster can flag an incomplete profile without the admin
+    // opening each one to find out — and derived from the very same three
+    // predicates as IsComplete, so a list badge and a run's inclusion rule
+    // cannot disagree about who is ready.
+    //
+    // Section names, not field names, on purpose: the per-field labels live in
+    // the frontend's own section map, and restating them here would be a second
+    // list to keep in step.
+    public static IReadOnlyList<string> IncompleteSections(EmployeeProfile p)
+    {
+        var sections = new List<string>(3);
+        if (!IsPersonalComplete(p)) sections.Add("Personal");
+        if (!IsEmploymentComplete(p)) sections.Add("Employment");
+        if (!IsStatutoryComplete(p)) sections.Add("Statutory");
+        return sections;
+    }
 
     // Identity + demographics the PCB branch needs. Spouse-working is required
     // when married because it drives the spouse-relief path (S = RM 4,000 with

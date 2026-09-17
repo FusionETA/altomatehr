@@ -513,6 +513,12 @@ export type PayrollEmployee = {
   // The same gaps the run readiness check reports, computed off the live
   // profile — so they can be cleared before a run exists.
   missing: string[];
+
+  // Which profile sections ("Personal" / "Employment" / "Statutory") are short
+  // of what a run needs to INCLUDE this person. Distinct from `missing`, which
+  // is what the statutory files need before a run can be SUBMITTED — someone
+  // can be fine on one and not the other. Empty means ready for payroll.
+  profileIncompleteSections: string[];
 };
 
 export const getPayrollEmployees = (includeArchived = false) =>

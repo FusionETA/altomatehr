@@ -56,4 +56,10 @@ public class PayrollEmployeeRowDto
     // the live profile so they can be fixed BEFORE a run is created rather
     // than after it refuses to submit.
     public IReadOnlyList<string> Missing { get; set; } = [];
+
+    // Which profile sections are short of what a run needs to INCLUDE this
+    // person at all — a different question from Missing above, which is what
+    // the statutory FILES need before a run can be submitted. Someone can be
+    // fine on one and not the other, so the roster carries both.
+    public IReadOnlyList<string> ProfileIncompleteSections { get; set; } = [];
 }
