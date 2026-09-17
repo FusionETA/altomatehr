@@ -62,6 +62,27 @@ public sealed class TabularSheet
         return this;
     }
 
+    // Data rows whose cells from a given column onward are IGNORED on re-import.
+    //
+    // Purely cosmetic and XLSX-only: CSV has nowhere to put it and the PDF is
+    // not re-imported. It exists because a template that hands someone an empty,
+    // editable cell it intends to discard is inviting them to fill it in — which
+    // is exactly what happened with the YTD sheet's employee rows.
+    //
+    // Keyed by the row's index within Rows, so it survives the header offset the
+    // writers apply.
+    private readonly Dictionary<int, int> _mutedFrom = [];
+
+    public IReadOnlyDictionary<int, int> MutedFrom => _mutedFrom;
+
+    // Mutes the row most recently added — the natural call site, since rows are
+    // built in order and the caller knows what it just wrote.
+    public TabularSheet MuteLastRowFrom(int firstColumnIndex)
+    {
+        if (_rows.Count > 0) _mutedFrom[_rows.Count - 1] = firstColumnIndex;
+        return this;
+    }
+
     public TabularSheet SetTotals(params string?[] cells)
     {
         TotalsRow = cells.Select(c => c ?? string.Empty).ToList();

@@ -73,10 +73,24 @@ public static class TabularWriter
             worksheet.SheetView.FreezeRows(1);   // header stays put while HR scrolls
 
             var r = 2;
-            foreach (var row in sheet.Rows)
+            for (var rowIndex = 0; rowIndex < sheet.Rows.Count; rowIndex++)
             {
+                var row = sheet.Rows[rowIndex];
+                var mutedFrom = sheet.MutedFrom.TryGetValue(rowIndex, out var from) ? from : int.MaxValue;
+
                 for (var c = 0; c < row.Count; c++)
                 {
+                    // Greyed rather than locked: locking only bites on a
+                    // protected sheet, and protecting this one would stop the
+                    // admin editing the rows they ARE meant to fill. The intent
+                    // is to make the cell look wrong to type in, not to prevent it.
+                    if (c >= mutedFrom)
+                    {
+                        var muted = worksheet.Cell(r, c + 1);
+                        muted.Style.Fill.BackgroundColor = XLColor.FromArgb(0xEE, 0xEE, 0xEE);
+                        muted.Style.Font.FontColor = XLColor.FromArgb(0x99, 0x99, 0x99);
+                    }
+
                     // Written as text on purpose. These cells already carry the
                     // canonical formatting (see TabularSheet's formatters), and
                     // letting Excel re-interpret them turns "2026-01-05" into

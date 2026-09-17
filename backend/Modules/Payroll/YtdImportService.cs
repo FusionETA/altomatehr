@@ -49,6 +49,10 @@ public class YtdImportService : IYtdImportService
 
         var columnCount = YtdImportParser.TemplateHeaders().Count;
 
+        // Columns 0 and 1 are Employee Name and Personal ID, both of which the
+        // parser DOES read off an employee row. Everything after is money.
+        const int FirstAmountColumn = 2;
+
         static string[] Row(string first, string second, int width)
         {
             var cells = new string[width];
@@ -64,10 +68,16 @@ public class YtdImportService : IYtdImportService
 
             // The employee's own row opens their block; the twelve month rows
             // sit under it for the admin to fill.
+            //
+            // Its amount columns are greyed, because the parser ignores them —
+            // they exist for the admin's eye. Handing over an empty, editable
+            // cell that is going to be discarded is how a whole year of figures
+            // got typed onto the wrong row and imported as nothing at all.
             sheet.AddRow(Row(
                 user?.Name ?? user?.Email ?? profile.Id,
                 profile.IdNumber ?? string.Empty,
                 columnCount));
+            sheet.MuteLastRowFrom(FirstAmountColumn);
 
             foreach (var month in YtdImportParser.MonthLabels())
             {
