@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
 import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
@@ -14,7 +15,13 @@ import { CompanyStructure } from "@/features/settings/components/CompanyStructur
 import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
-import { adminNav, defaultChildOf, findNavItem } from "../lib/nav";
+import {
+  adminNav,
+  defaultChildOf,
+  findNavItem,
+  NAV_FALLBACK,
+  normaliseAdminNav,
+} from "../lib/nav";
 import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { AdminAttendance } from "./AdminAttendance";
@@ -31,8 +38,23 @@ export function AdminShell({
   user: SignedInUser;
   onLogout: () => void;
 }) {
-  const [activeParent, setActiveParent] = useState("overview");
-  const [activeChild, setActiveChild] = useState("overview");
+  // The view lives in the URL so Back steps through the app rather than out of
+  // it. The shell still owns the state; the hook only keeps the two in step.
+  //
+  // Normalising here rather than in the hook because only this file knows the
+  // nav tree: an unknown parent falls back to Overview, and a child that does
+  // not belong to its parent is replaced by that parent's default rather than
+  // rendering a sidebar and a panel that disagree.
+  // Bound to the signed-in role, so an ownerOnly view cannot be reached by
+  // typing its id into the address bar. Captured once, which is fine: a role
+  // does not change for the life of a mounted shell.
+  const normalise = useCallback(
+    (candidate: UrlNav) => normaliseAdminNav(candidate, user.role === "Owner"),
+    [user.role],
+  );
+  const [nav, go] = useUrlNav(NAV_FALLBACK, normalise);
+  const activeParent = nav.parent;
+  const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -42,8 +64,11 @@ export function AdminShell({
   // their own way back to the card to see whether it had worked.
   useEffect(() => {
     if (xeroCallbackOutcome === null) return;
-    setActiveParent("settings");
-    setActiveChild("settings-organization");
+    go({ parent: "settings", child: "settings-organization" });
+    // Once, on mount, and only for the value captured at module load. `go` is
+    // stable for the life of the shell, so listing it would only re-run this
+    // on a re-render and re-navigate the admin away from wherever they went.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeItem = findNavItem(activeParent);
@@ -72,14 +97,11 @@ export function AdminShell({
   }, [accountMenuOpen]);
 
   function selectParent(id: string) {
-    const item = findNavItem(id);
-    setActiveParent(id);
-    setActiveChild(defaultChildOf(item));
+    go({ parent: id, child: defaultChildOf(findNavItem(id)) });
   }
 
   function open(parentId: string, childId: string) {
-    setActiveParent(parentId);
-    setActiveChild(childId);
+    go({ parent: parentId, child: childId });
   }
 
   // A notification's url is a bare frontend path (e.g. "/claims") — this app
@@ -132,7 +154,7 @@ export function AdminShell({
                         <button
                           key={child.id}
                           type="button"
-                          onClick={() => setActiveChild(child.id)}
+                          onClick={() => open(activeParent, child.id)}
                           className={`block w-full rounded-lg px-3 py-1.5 text-left text-xs font-semibold transition-colors ${
                             childActive
                               ? "bg-primary/10 text-primary"
@@ -269,7 +291,7 @@ export function AdminShell({
                 <button
                   key={child.id}
                   type="button"
-                  onClick={() => setActiveChild(child.id)}
+                  onClick={() => open(activeParent, child.id)}
                   className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                     childActive
                       ? "border-primary/40 bg-primary/10 text-primary"

@@ -1,3 +1,4 @@
+import type { UrlNav } from "@/shared/lib/use-url-nav";
 import {
   Banknote,
   CalendarClock,
@@ -67,4 +68,33 @@ export function defaultChildOf(item: AdminNavItem): string {
 
 export function findNavItem(id: string): AdminNavItem {
   return adminNav.find((item) => item.id === id) ?? adminNav[0];
+}
+
+// ─── URL navigation ───────────────────────────────────────────────────
+
+// What the shell opens to, and what an unreadable `?v=` falls back to.
+export const NAV_FALLBACK: UrlNav = { parent: "overview", child: "overview" };
+
+// The URL is user-editable, so nothing from it is trusted:
+//
+//   · an unknown parent becomes Overview;
+//   · a child that does not belong to its parent becomes that parent's default,
+//     or a crafted `?v=overview/settings-admins` would light up one sidebar
+//     entry while rendering another's panel;
+//   · an ownerOnly child is refused to anyone who is not the Owner. The sidebar
+//     already filters those out, so before the URL drove navigation there was
+//     no way to ask for one. Now there is, and only this check stands between a
+//     typed URL and a panel that was never offered. (The endpoints behind it are
+//     `[Authorize(Roles = "Owner")]`, so nothing could be CHANGED either way —
+//     but rendering it would still show a list they were not meant to see, and
+//     then 403 on everything.)
+export function normaliseAdminNav({ parent, child }: UrlNav, isOwner: boolean): UrlNav {
+  const item = adminNav.find((entry) => entry.id === parent);
+  if (!item) return NAV_FALLBACK;
+
+  const children = (item.children ?? []).filter((c) => !c.ownerOnly || isOwner);
+  if (children.length === 0) return { parent: item.id, child: item.id };
+
+  const match = children.find((c) => c.id === child);
+  return { parent: item.id, child: match?.id ?? children[0].id };
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUrlNav } from "@/shared/lib/use-url-nav";
 import { Building2, ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { launchAppraisify } from "@/features/appraisify/api";
@@ -19,7 +20,13 @@ import { PushToggleMenuItem } from "@/features/notifications/components/PushTogg
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, buildName } from "../lib/employee-formatters";
-import { defaultSubOf, employeeNav, findNavItem } from "../lib/nav";
+import {
+  defaultSubOf,
+  employeeNav,
+  findNavItem,
+  NAV_FALLBACK,
+  normaliseEmployeeNav,
+} from "../lib/nav";
 import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
 import { EmptyModule } from "./EmptyModule";
@@ -45,8 +52,11 @@ export function EmployeeShell({
   onLogout: () => void;
 }) {
   const isSupervisor = user.role === "Supervisor";
-  const [activeView, setActiveView] = useState<EmployeeView>("dashboard");
-  const [sub, setSub] = useState<string | null>(null);
+  // Mirrors the admin shell: the view lives in the URL so Back steps through
+  // the portal rather than out of it. See shared/lib/use-url-nav.
+  const [nav, go] = useUrlNav(NAV_FALLBACK, normaliseEmployeeNav);
+  const activeView = nav.parent as EmployeeView;
+  const sub = nav.child;
   const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [claimBadge, setClaimBadge] = useState(0);
   const [leaveBadge, setLeaveBadge] = useState(0);
@@ -153,13 +163,11 @@ export function EmployeeShell({
   }
 
   function selectParent(id: EmployeeView) {
-    setActiveView(id);
-    setSub(defaultSubOf(findNavItem(id)));
+    go({ parent: id, child: defaultSubOf(findNavItem(id)) });
   }
 
   function selectChild(parentId: EmployeeView, childId: string) {
-    setActiveView(parentId);
-    setSub(childId);
+    go({ parent: parentId, child: childId });
   }
 
   // A notification's url is a bare frontend path (e.g. "/leave") — this app

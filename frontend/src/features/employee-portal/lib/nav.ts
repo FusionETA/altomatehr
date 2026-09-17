@@ -1,3 +1,4 @@
+import type { UrlNav } from "@/shared/lib/use-url-nav";
 import { CalendarClock, CalendarDays, FileText, Home, Receipt } from "lucide-react";
 import type { EmployeeNavItem, EmployeeView } from "./types";
 
@@ -46,4 +47,23 @@ export function findNavItem(id: EmployeeView): EmployeeNavItem {
 // The sub-page a tab opens to: its first child, or null when it has none.
 export function defaultSubOf(item: EmployeeNavItem): string | null {
   return item.children?.[0]?.id ?? null;
+}
+
+// ─── URL navigation ───────────────────────────────────────────────────
+
+export const NAV_FALLBACK: UrlNav = { parent: "dashboard", child: null };
+
+// Same contract as the admin side: nothing from the URL is trusted. An unknown
+// tab becomes the dashboard, and a sub-page that does not belong to its tab is
+// replaced by that tab's default — a mismatch would highlight one nav item
+// while rendering another's pane.
+export function normaliseEmployeeNav({ parent, child }: UrlNav): UrlNav {
+  const item = employeeNav.find((entry) => entry.id === parent);
+  if (!item) return NAV_FALLBACK;
+
+  const children = item.children ?? [];
+  if (children.length === 0) return { parent: item.id, child: null };
+
+  const match = children.find((c) => c.id === child);
+  return { parent: item.id, child: match?.id ?? defaultSubOf(item) };
 }
