@@ -377,17 +377,21 @@ export function EmployeesSettings() {
               different job, and giving the backlog its own walls is what
               makes "how much is left?" answerable at a glance. It comes
               first because it is what the admin came to clear. */}
+          {/* `--warning` is ALREADY a pale amber (93% lightness), so the /5 and
+              /10 this box started at were a tint of a tint and it read as
+              white. The strip is the token at full strength — the same pairing
+              as the warning chips — and the body a light wash of it. */}
           {needsSetup.length > 0 ? (
-            <section className={`${BOX} border border-warning/50 bg-warning/5`}>
-              {/* The strip carries the tint, not the rows: a whole table washed
-                  amber is harder to read and says nothing the header does not. */}
-              <header className={`${BOX_HEADER} bg-warning/10`}>
-                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+            <section
+              className={`${BOX} border border-warning-foreground/30 bg-warning/30`}
+            >
+              <header className={`${BOX_HEADER} bg-warning`}>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-warning-foreground">
                   <CircleAlert className="size-4" aria-hidden />
                   {needsSetup.length}{" "}
                   {needsSetup.length === 1 ? "person needs" : "people need"} payroll setup
                 </h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-0.5 text-xs text-warning-foreground/80">
                   Missing statutory or compensation details. Open anyone to complete their profile,
                   or fill everyone in at once with the panel above.
                 </p>
@@ -528,8 +532,11 @@ function EmployeeRows({
                   {/* The row's own answer to "can this person be paid?", in
                       words rather than an icon — it is the column an admin is
                       scanning, so it should not need a hover to read. */}
+                  {/* The warning chip is bordered like the Ready one beside
+                      it: its row sits on an amber wash, so a fill alone no
+                      longer separates it from its background. */}
                   {gap ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-foreground/25 bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
                       <CircleAlert className="size-3" aria-hidden />
                       {gap}
                     </span>
