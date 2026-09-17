@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, CircleAlert, Plus, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
-import { getPolicies, type Policy } from "@/features/policies/api";
+import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
@@ -31,8 +31,6 @@ const ROLE_PILL: Record<string, string> = {
 
 
 export function EmployeesSettings() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [policies, setPolicies] = useState<Policy[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
   const [page, setPage] = useState(1);
@@ -46,14 +44,17 @@ export function EmployeesSettings() {
   const employeesQuery = useCachedQuery("/employees", getEmployees);
   const policiesQuery = useCachedQuery("/policies", getPolicies);
   const loading = employeesQuery.loading || policiesQuery.loading;
+  // Seeded from the cache so the first frame of a revisit is the real thing
+  // rather than the empty default; the effect below keeps it in step with a
+  // background refresh.
+  const [employees, setEmployees] = useState<Employee[]>(() => employeesQuery.data ?? []);
+  const policies = policiesQuery.data ?? [];
+
   const loadError = employeesQuery.error ?? policiesQuery.error;
 
   useEffect(() => {
     if (employeesQuery.data) setEmployees(employeesQuery.data);
   }, [employeesQuery.data]);
-  useEffect(() => {
-    if (policiesQuery.data) setPolicies(policiesQuery.data);
-  }, [policiesQuery.data]);
 
   // Employees and supervisors only — an admin is not an employee. They hold no
   // place in an approval chain, carry no payroll profile, and their access is

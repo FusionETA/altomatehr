@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Star } from "lucide-react";
 import {
   archivePolicy,
@@ -7,7 +7,7 @@ import {
   setDefaultPolicy,
   type Policy,
 } from "@/features/policies/api";
-import { getLeaveTypes, type LeaveType } from "@/features/leave/api";
+import { getLeaveTypes } from "@/features/leave/api";
 import { PolicyEditorModal } from "./PolicyEditorModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -20,8 +20,6 @@ function message(err: unknown, fallback: string) {
 }
 
 export function PoliciesSettings() {
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Policy | null>(null);
@@ -30,12 +28,20 @@ export function PoliciesSettings() {
   const policiesQuery = useCachedQuery("/policies", getPolicies);
   const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   const loading = policiesQuery.loading || typesQuery.loading;
+  // Seeded from the cache so the first frame of a revisit is the real thing
+  // rather than the empty default; the effect below keeps it in step with a
+  // background refresh.
+  const [policies, setPolicies] = useState<Policy[]>(() => policiesQuery.data ?? []);
+  // Same filter the effect applied — a derivation that dropped it would show
+  // archived types for a frame, then remove them.
+  const leaveTypes = useMemo(
+    () => (typesQuery.data ?? []).filter((x) => !x.isArchived),
+    [typesQuery.data],
+  );
+
   useEffect(() => {
     if (policiesQuery.data) setPolicies(policiesQuery.data);
   }, [policiesQuery.data]);
-  useEffect(() => {
-    if (typesQuery.data) setLeaveTypes(typesQuery.data.filter((x) => !x.isArchived));
-  }, [typesQuery.data]);
   useEffect(() => {
     const first = policiesQuery.error ?? typesQuery.error;
     if (first) setError(first);
