@@ -96,6 +96,20 @@ function fmtClock(iso?: string | null) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+// A shift left open overnight ends on a later date, and "03:45 PM – 04:26 PM"
+// next to "24h 42m" reads as a bug — the two times look 41 minutes apart.
+// Naming the day is what reconciles them.
+function fmtShiftEnd(startIso: string, endIso?: string | null) {
+  if (!endIso) return "now";
+  const end = fmtClock(endIso);
+  const sameDay = new Date(startIso).toDateString() === new Date(endIso).toDateString();
+  if (sameDay) return end;
+  return `${end} (${new Date(endIso).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+  })})`;
+}
+
 export function DashboardView({
   user,
   onNavigate,
@@ -496,7 +510,7 @@ export function DashboardView({
                     <span className="text-muted-foreground">
                       <span className="font-semibold text-foreground">{index + 1}.</span>{" "}
                       {fmtClock(shift.startedAt)} &ndash;{" "}
-                      {shift.endedAt ? fmtClock(shift.endedAt) : "now"}
+                      {fmtShiftEnd(shift.startedAt, shift.endedAt)}
                     </span>
                     <span className="font-semibold tabular-nums text-foreground">
                       {shift.durationMin != null ? fmtDuration(shift.durationMin) : "running"}

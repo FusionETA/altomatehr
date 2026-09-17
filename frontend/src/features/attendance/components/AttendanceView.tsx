@@ -30,6 +30,26 @@ import { Skeleton, SkeletonCards, SkeletonPanel } from "@/shared/components/Skel
 const TZ = "Asia/Kuala_Lumpur";
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 
+// Which local calendar day an instant falls on, as yyyy-MM-dd. Compared as a
+// string so the TZ above is the only thing deciding where a day ends.
+function localDay(iso: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(iso));
+}
+
+// A shift that ran past midnight ends on a different date from the one it
+// started on, and "03:45 PM – 04:26 PM" beside "24h 42m" reads as a bug —
+// the times look 41 minutes apart. Naming the day is what reconciles them.
+function fmtShiftEnd(startIso: string, endIso: string | null) {
+  if (!endIso) return "now";
+  const end = fmtTime(endIso);
+  if (localDay(startIso) === localDay(endIso)) return end;
+  return `${end} (${new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: TZ,
+  }).format(new Date(endIso))})`;
+}
+
 function fmtTime(iso: string | null) {
   if (!iso) return "-";
   return new Intl.DateTimeFormat("en-US", {
@@ -1069,7 +1089,7 @@ function ShiftRow({
   const timeLabel = split
     ? `${shifts.length} shifts`
     : record.timeIn && record.timeOut
-      ? `${fmtTime(record.timeIn)} - ${fmtTime(record.timeOut)}`
+      ? `${fmtTime(record.timeIn)} - ${fmtShiftEnd(record.timeIn, record.timeOut)}`
       : record.timeIn
         ? fmtTime(record.timeIn)
         : "-";
@@ -1092,8 +1112,7 @@ function ShiftRow({
             {shifts.map((shift, index) => (
               <li key={shift.id} className="text-[11px] text-muted-foreground">
                 <span className="font-semibold text-foreground">{index + 1}.</span>{" "}
-                {fmtTime(shift.startedAt)} &ndash;{" "}
-                {shift.endedAt ? fmtTime(shift.endedAt) : "now"}
+                {fmtTime(shift.startedAt)} &ndash; {fmtShiftEnd(shift.startedAt, shift.endedAt)}
                 {shift.durationMin != null ? ` · ${fmtDuration(shift.durationMin)}` : ""}
               </li>
             ))}
