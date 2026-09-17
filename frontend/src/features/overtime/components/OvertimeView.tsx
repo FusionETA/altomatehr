@@ -62,8 +62,6 @@ function fmtDuration(minutes: number) {
 }
 
 export function OvertimeView() {
-  const [requests, setRequests] = useState<OvertimeRequest[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [status, setStatus] = useState<OvertimeStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -86,14 +84,28 @@ export function OvertimeView() {
   const allProjectsQuery = useCachedQuery("/projects", getProjects);
   const loading = requestsQuery.loading || projectsQuery.loading;
 
+  // Seeded from the query on the FIRST render, not copied in by an effect.
+  //
+  // useCachedQuery already has the cached answer during that render, but an
+  // effect only runs after the paint — so a revisit rendered one frame of the
+  // empty state ("No overtime requests") before the list appeared. That frame
+  // is the blink.
+  //
+  // Still state rather than derived, because approving and submitting update
+  // the list in place; the effect below keeps it in step with a background
+  // refresh.
+  const [requests, setRequests] = useState<OvertimeRequest[]>(() => requestsQuery.data ?? []);
+
   useEffect(() => {
     if (requestsQuery.data) setRequests(requestsQuery.data);
   }, [requestsQuery.data]);
-  useEffect(() => {
-    if (projectsQuery.data) {
-      setProjects(projectsQuery.data.filter((project) => !project.isArchived));
-    }
-  }, [projectsQuery.data]);
+
+  // Derived outright — nothing here mutates the project list, so there is no
+  // reason for it to be a second copy that can lag.
+  const projects = useMemo(
+    () => (projectsQuery.data ?? []).filter((project) => !project.isArchived),
+    [projectsQuery.data],
+  );
   useEffect(() => {
     // A missing project list only costs labels, so it isn't worth an error
     // banner over the requests themselves.
