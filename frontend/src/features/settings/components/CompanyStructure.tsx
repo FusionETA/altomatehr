@@ -62,7 +62,6 @@ function message(err: unknown, fallback: string) {
 export function CompanyStructure() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -76,6 +75,9 @@ export function CompanyStructure() {
   const teamsQuery = useCachedQuery("/teams", getTeams);
   const projectsQuery = useCachedQuery("/projects", getProjects);
   const employeesQuery = useCachedQuery("/employees", getEmployees);
+  // Derived: nothing mutates it, so it needn't be a copy an effect fills a
+  // frame after the screen has been drawn from the default.
+  const employees = employeesQuery.data ?? [];
   const loading = teamsQuery.loading || projectsQuery.loading || employeesQuery.loading;
 
   useEffect(() => {
@@ -92,9 +94,6 @@ export function CompanyStructure() {
     setSelectedProjectId((cur) => cur ?? withTeams?.id ?? active[0]?.id ?? null);
   }, [teamsQuery.data, projectsQuery.data]);
 
-  useEffect(() => {
-    if (employeesQuery.data) setEmployees(employeesQuery.data);
-  }, [employeesQuery.data]);
 
   useEffect(() => {
     const first = teamsQuery.error ?? projectsQuery.error ?? employeesQuery.error;

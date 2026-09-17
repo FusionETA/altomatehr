@@ -40,7 +40,7 @@ import {
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
-import { getProjects, type Project } from "@/features/settings/api";
+import { getProjects } from "@/features/settings/api";
 import {
   addTeamMember,
   clearApproverOverride,
@@ -180,8 +180,6 @@ export function EmployeeDetail({
 
   // Team/approval-chain assignment — its own API surface (Teams feature),
   // edited immediately rather than riding along on the profile Save/Discard.
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [savingAssignment, setSavingAssignment] = useState(false);
   // The add-flow narrows in the order the previous system uses: pick a project,
@@ -264,14 +262,18 @@ export function EmployeeDetail({
   // its load seeds a SOCSO recommendation and the dirty-check baseline.
   const teamsQuery = useCachedQuery("/teams", getTeams);
   const projectsQuery = useCachedQuery("/projects", getProjects);
+  // Seeded from the cache so the first frame of a revisit is the real thing;
+  // still state because editing a team patches one in place. The effect
+  // below keeps it in step with a background refresh.
+  const [teams, setTeams] = useState<Team[]>(() => teamsQuery.data ?? []);
+  // Derived: nothing mutates it, so it needn't be a copy an effect fills a
+  // frame after the screen has been drawn from the default.
+  const projects = projectsQuery.data ?? [];
   const teamsLoading = teamsQuery.loading || projectsQuery.loading;
 
   useEffect(() => {
     if (teamsQuery.data) setTeams(teamsQuery.data);
   }, [teamsQuery.data]);
-  useEffect(() => {
-    if (projectsQuery.data) setProjects(projectsQuery.data);
-  }, [projectsQuery.data]);
   useEffect(() => {
     setTeamsError(teamsQuery.error ?? projectsQuery.error);
   }, [teamsQuery.error, projectsQuery.error]);

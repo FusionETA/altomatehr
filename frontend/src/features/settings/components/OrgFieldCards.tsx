@@ -47,13 +47,18 @@ function OrgSliceCard({
   ) => React.ReactNode;
 }) {
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
-  const [org, setOrg] = useState<Organization | null>(null);
+  // A WORKING COPY, seeded from the cache so a revisit renders the form on
+  // the first frame instead of a blank one. Deliberately not re-bound to the
+  // query afterwards: a background refresh landing mid-edit would replace
+  // what is being typed. The effect below only fills it on a cold load,
+  // where there was nothing to type over.
+  const [org, setOrg] = useState<Organization | null>(() => orgQuery.data ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (orgQuery.data) setOrg(orgQuery.data);
+    if (orgQuery.data) setOrg((current) => current ?? orgQuery.data!);
   }, [orgQuery.data]);
 
   async function handleSubmit(e: React.FormEvent) {
