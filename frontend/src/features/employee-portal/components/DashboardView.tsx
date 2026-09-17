@@ -135,7 +135,13 @@ export function DashboardView({
   const [clockOutOpen, setClockOutOpen] = useState(false);
   // Set when the server refuses a clock for being off-site; holds the distance
   // it reported so the dialog can show how far out we are.
-  const [offSite, setOffSite] = useState<{ action: "in" | "out"; distance?: number } | null>(null);
+  // `choice` rides along because an off-site clock-out is a RETRY, and the
+  // correction the employee asked for on the first attempt has to survive it.
+  // Without it the retry called runClock(undefined, proof): the clock-out
+  // landed, the adjustment was silently dropped, and nothing said so.
+  const [offSite, setOffSite] = useState<
+    { action: "in" | "out"; distance?: number; choice?: ClockOutChoice } | null
+  >(null);
   // A shift from an earlier day that was never clocked out. While one exists the
   // server refuses a new clock-in, so the card stops offering one and asks for
   // that shift to be closed instead.
@@ -342,7 +348,7 @@ export function DashboardView({
       // Collect the proof here and retry instead.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
         setClockOutOpen(false);
-        setOffSite({ action: clockingOut ? "out" : "in", distance: e.distanceMeters });
+        setOffSite({ action: clockingOut ? "out" : "in", distance: e.distanceMeters, choice });
         return;
       }
 
@@ -538,7 +544,7 @@ export function DashboardView({
               distanceMeters={offSite.distance}
               busy={busy}
               error={error}
-              onSubmit={(proof) => void runClock(undefined, proof)}
+              onSubmit={(proof) => void runClock(offSite.choice, proof)}
               onClose={() => setOffSite(null)}
             />
           ) : null}

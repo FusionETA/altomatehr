@@ -644,6 +644,34 @@ public class AttendanceApprovalRegressionTests
     }
 
     [Fact]
+    public async Task SubmitTimeAdjustment_AcceptsPullingAnOvernightShiftBackToTheSameEvening()
+    {
+        // The reported case, in UTC as the wire carries it: clocked in 15 Sept
+        // 06:04, forgot to clock out, closed it 16 Sept 08:26 — and asked for
+        // the end to be 15 Sept 10:00 (6 PM local) instead. The correction is
+        // earlier than the recorded clock-out and on an earlier day than it,
+        // which is exactly what the date field exists to express.
+        var timeIn = new DateTime(2026, 9, 15, 6, 4, 37, DateTimeKind.Utc);
+        var timeOut = new DateTime(2026, 9, 16, 8, 26, 56, DateTimeKind.Utc);
+        var (service, approvals) = AdjustmentService(timeIn: timeIn, timeOut: timeOut);
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = "rec-1",
+            RequestedTimeOut = new DateTime(2026, 9, 15, 10, 0, 0, DateTimeKind.Utc),
+            Reason = "Left site at 6pm; forgot to clock out.",
+        });
+
+        Assert.True(result.Ok);
+        var filed = Assert.Single(approvals.Requests);
+        Assert.Equal(AttendanceApprovalKind.CLOCK_OUT, filed.Kind);
+        Assert.Equal(new DateTime(2026, 9, 15, 10, 0, 0, DateTimeKind.Utc), filed.EventAt);
+        // The original is kept so an approver can see what is being changed.
+        Assert.Equal(timeOut, filed.OriginalEventAt);
+        Assert.Equal(AttendanceApprovalStatus.PENDING, filed.ApprovalStatus);
+    }
+
+    [Fact]
     public async Task SubmitTimeAdjustment_RefusesAClockOutBeforeItsOwnClockIn()
     {
         // The wrong day picked: 18:00 two days ago, against a clock-in
