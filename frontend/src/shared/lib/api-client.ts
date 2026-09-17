@@ -100,9 +100,32 @@ function getErrorMessage(data: unknown, fallback: string) {
   // land here as "failed: 409" and the written reason is thrown away.
   if (typeof body.error === "string") return body.error;
   if (typeof body.detail === "string") return body.detail;
+
+  // ASP.NET's ValidationProblemDetails: `title` is always the same sentence
+  // ("One or more validation errors occurred.") and the reason is in `errors`,
+  // keyed by field. Reading title first threw away the only part that said
+  // what was actually wrong — a bad query value looked identical to every
+  // other rejected request.
+  const fieldErrors = validationMessages(body.errors);
+  if (fieldErrors.length > 0) return fieldErrors.join(" ");
+
   if (typeof body.title === "string") return body.title;
 
   return fallback;
+}
+
+// { field: ["message", …] } → ["field: message", …]. Named because a message
+// that doesn't say which field it is about is barely better than the title.
+function validationMessages(errors: unknown): string[] {
+  if (!errors || typeof errors !== "object") return [];
+
+  return Object.entries(errors as Record<string, unknown>).flatMap(([field, messages]) =>
+    Array.isArray(messages)
+      ? messages
+          .filter((m): m is string => typeof m === "string")
+          .map((m) => (field.startsWith("$") ? m : `${field}: ${m}`))
+      : [],
+  );
 }
 
 // Sends, and on a 401 refreshes once and sends again. `send` is a thunk so

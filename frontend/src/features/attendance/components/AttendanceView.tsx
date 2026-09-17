@@ -1311,16 +1311,39 @@ function HistoryView({
 
   return (
     <div className="space-y-6">
+      {/* Two rows, because these are two kinds of control. The period and the
+          export belong together — the button exports whatever period is
+          selected, and sitting them on one line is what says so. The filter
+          below narrows what's listed and changes nothing about the file, so
+          it had no business sharing a row and a pill shape with an action. */}
       <div className="space-y-3">
-        <StatusFilterTabs<HistoryPeriod>
-          value={period}
-          onChange={setPeriod}
-          statuses={historyPeriods}
-          labels={historyPeriodLabels}
-          allValue="THIS_MONTH"
-          allLabel="This month"
-          ariaLabel="History period"
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <StatusFilterTabs<HistoryPeriod>
+            value={period}
+            onChange={setPeriod}
+            statuses={historyPeriods}
+            labels={historyPeriodLabels}
+            allValue="THIS_MONTH"
+            allLabel="This month"
+            ariaLabel="History period"
+          />
+
+          {/* Your own hours as a document — the reason most people open this
+              screen at all: a landlord, a visa application, a dispute. */}
+          <button
+            type="button"
+            onClick={() => void exportPdf()}
+            disabled={exporting}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
+          >
+            {exporting ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {exporting ? "Preparing…" : "Download PDF"}
+          </button>
+        </div>
 
         {/* Only offered when there's something to filter down to — a toggle that
             always yields an empty list is worse than no toggle. */}
@@ -1341,26 +1364,10 @@ function HistoryView({
           </button>
         ) : null}
 
-        {/* Your own hours as a document — the reason most people want this
-            screen at all: a landlord, a visa application, a dispute. */}
-        <button
-          type="button"
-          onClick={() => void exportPdf()}
-          disabled={exporting}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-        >
-          {exporting ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Download className="h-3.5 w-3.5" />
-          )}
-          Download PDF
-        </button>
+        {exportError ? (
+          <p className="text-xs font-medium text-destructive">{exportError}</p>
+        ) : null}
       </div>
-
-      {exportError ? (
-        <p className="text-xs font-medium text-destructive">{exportError}</p>
-      ) : null}
 
       {historyByMonth.map(([month, items]) => {
         const all = monthTotals.get(month) ?? items;
