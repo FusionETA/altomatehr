@@ -3,8 +3,6 @@ import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import {
   getLeaveTypes,
   getTeamLeaveBalances,
-  type EmployeeLeaveBalances,
-  type LeaveType,
 } from "../api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
@@ -26,8 +24,6 @@ const DIRECT_GROUP = "__direct__";
 // reports" group for anyone reached only through the flat supervisor model.
 export function TeamBalancesView() {
   const [year, setYear] = useState(CURRENT_YEAR);
-  const [rows, setRows] = useState<EmployeeLeaveBalances[]>([]);
-  const [types, setTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Empty until the first load names a group — there is no "all" option.
   const [groupId, setGroupId] = useState("");
@@ -41,12 +37,12 @@ export function TeamBalancesView() {
   const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   const loading = balancesQuery.loading || typesQuery.loading;
 
-  useEffect(() => {
-    if (balancesQuery.data) setRows(balancesQuery.data.data);
-  }, [balancesQuery.data]);
-  useEffect(() => {
-    if (typesQuery.data) setTypes(typesQuery.data);
-  }, [typesQuery.data]);
+  // Read straight off the queries. Copying them into state through an effect
+  // meant the first frame of a revisit was built from empty arrays even though
+  // the answer was already cached — and nothing here mutates either list.
+  const rows = balancesQuery.data?.data ?? [];
+  const types = typesQuery.data ?? [];
+
   useEffect(() => {
     setError(balancesQuery.error ?? typesQuery.error);
   }, [balancesQuery.error, typesQuery.error]);

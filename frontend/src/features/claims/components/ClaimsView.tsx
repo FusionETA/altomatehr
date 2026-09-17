@@ -25,7 +25,6 @@ import { getAccounts, getProjects } from "@/features/settings/api";
 import { SearchInput } from "@/shared/components/SearchInput";
 
 export function ClaimsView() {
-  const [claims, setClaims] = useState<Claim[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,6 +37,12 @@ export function ClaimsView() {
   // list that was already there instead of refetching it into a blank screen.
   const claimsQuery = useCachedQuery("/claims", getMyClaims);
   const loading = claimsQuery.loading;
+  // Seeded from the cache in the initializer, not left empty for an effect to
+  // fill after the paint — that one frame, built from [], is the flash of an
+  // empty list on a revisit. The effect below still runs, and is what keeps
+  // this in step with a background refresh.
+  const [claims, setClaims] = useState<Claim[]>(() => claimsQuery.data ?? []);
+
   useEffect(() => {
     if (claimsQuery.data) setClaims(claimsQuery.data);
   }, [claimsQuery.data]);

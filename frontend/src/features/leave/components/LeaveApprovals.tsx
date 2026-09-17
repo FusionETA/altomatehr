@@ -36,8 +36,6 @@ const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient b
 // current approver — there's no history to filter through, so this is a
 // live queue (search + bulk actions), not a status-tabbed list like Claims.
 export function LeaveApprovals() {
-  const [team, setTeam] = useState<LeaveApplication[]>([]);
-  const [types, setTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -63,6 +61,13 @@ export function LeaveApprovals() {
   const teamQuery = useCachedQuery("/leave/team", getTeamLeave);
   const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   const loading = teamQuery.loading || typesQuery.loading;
+  // Seeded from the cache in the initializer, not left empty for an effect to
+  // fill after the paint — that one frame, built from [], is the flash of an
+  // empty list on a revisit. The effects below still run, and are what keep
+  // these in step with a background refresh.
+  const [team, setTeam] = useState<LeaveApplication[]>(() => teamQuery.data ?? []);
+  const [types, setTypes] = useState<LeaveType[]>(() => typesQuery.data ?? []);
+
   useEffect(() => {
     if (teamQuery.data) setTeam(teamQuery.data);
   }, [teamQuery.data]);

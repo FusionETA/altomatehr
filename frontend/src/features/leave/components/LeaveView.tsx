@@ -31,11 +31,14 @@ const MY_LEAVE_TABS = [
   { id: "history" as const, label: "History" },
 ];
 
+// Newest first. Declared once so the seed and the refresh cannot sort
+// differently.
+function newestFirst(rows: LeaveApplication[] | undefined) {
+  return [...(rows ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export function LeaveView() {
   const [tab, setTab] = useState<MyLeaveTab>("balances");
-  const [types, setTypes] = useState<LeaveType[]>([]);
-  const [balances, setBalances] = useState<LeaveBalance[]>([]);
-  const [mine, setMine] = useState<LeaveApplication[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -51,6 +54,16 @@ export function LeaveView() {
   const balancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
   const mineQuery = useCachedQuery("/leave", getMyLeave);
   const loading = typesQuery.loading || balancesQuery.loading || mineQuery.loading;
+  // Seeded from the cache in the initializer, not left empty for an effect to
+  // fill after the paint — that one frame, built from [], is the flash of an
+  // empty list on a revisit. The effects below still run, and are what keep
+  // these in step with a background refresh.
+  const [types, setTypes] = useState<LeaveType[]>(() => typesQuery.data ?? []);
+  const [balances, setBalances] = useState<LeaveBalance[]>(() => balancesQuery.data ?? []);
+  // Sorted in the seed exactly as the effect below sorts it — a seed that
+  // skipped it would paint the list in the wrong order and then re-order.
+  const [mine, setMine] = useState<LeaveApplication[]>(() => newestFirst(mineQuery.data));
+
 
   useEffect(() => {
     if (typesQuery.data) setTypes(typesQuery.data);
@@ -59,9 +72,7 @@ export function LeaveView() {
     if (balancesQuery.data) setBalances(balancesQuery.data);
   }, [balancesQuery.data]);
   useEffect(() => {
-    if (mineQuery.data) {
-      setMine([...mineQuery.data].sort((a, c) => c.createdAt.localeCompare(a.createdAt)));
-    }
+    if (mineQuery.data) setMine(newestFirst(mineQuery.data));
   }, [mineQuery.data]);
   useEffect(() => {
     const first = typesQuery.error ?? balancesQuery.error ?? mineQuery.error;

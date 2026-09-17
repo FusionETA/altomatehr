@@ -41,7 +41,6 @@ const CARD =
 // onDecided lets the shell refresh its sidebar badge — the count lives up
 // there and has no other way to learn a claim just left the queue.
 export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) {
-  const [claims, setClaims] = useState<Claim[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -65,6 +64,12 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
   // truth matters more than speed.
   const queueQuery = useCachedQuery("/claims/team", getTeamClaims);
   const loading = queueQuery.loading;
+  // Seeded from the cache in the initializer, not left empty for an effect to
+  // fill after the paint — that one frame, built from [], is the flash of an
+  // empty list on a revisit. The effects below still run, and are what keep
+  // these in step with a background refresh.
+  const [claims, setClaims] = useState<Claim[]>(() => queueQuery.data ?? []);
+
   useEffect(() => {
     if (queueQuery.data) setClaims(queueQuery.data);
   }, [queueQuery.data]);
