@@ -263,9 +263,26 @@ public static class YtdImportParser
         string? currentId = null;
         var months = new List<YtdMonthAmounts>();
 
+        // Where the current block's name row was, and whether the admin typed
+        // amounts on it. Both only exist to catch the mistake below.
+        var currentNameRow = 0;
+        var currentNameRowHadAmounts = false;
+
         void Flush()
         {
             if (currentName is null) return;
+
+            // The name row's amount columns are ignored by design (see above) —
+            // which, filled in with no month rows beneath, produced a file that
+            // imported cleanly and brought in nothing at all. Silence was the
+            // worst possible answer there, so it is now an error that says
+            // where the figures should have gone.
+            if (months.Count == 0 && currentNameRowHadAmounts)
+            {
+                errors.Add(
+                    $"Row {currentNameRow}: the amounts on the \"{currentName}\" row are ignored — "
+                    + "YTD figures belong on the month rows beneath it, not on the employee's own row.");
+            }
 
             employees.Add(new YtdEmployeeRows(currentName, currentId, [.. months]));
             months = [];
@@ -293,6 +310,8 @@ public static class YtdImportParser
                 Flush();
                 currentName = label;
                 currentId = idColumn >= 0 && idColumn < row.Count ? NullIfBlank(row[idColumn]) : null;
+                currentNameRow = r + 1;
+                currentNameRowHadAmounts = HasAnyAmount(row, columns);
                 continue;
             }
 
@@ -392,6 +411,17 @@ public static class YtdImportParser
 
         return decimal.TryParse(
             cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
+    }
+
+    // Any money column on this row carrying something. Used only to tell a
+    // plain grouping row ("Rachel") from one the admin filled in by mistake.
+    private static bool HasAnyAmount(IReadOnlyList<string> row, Dictionary<int, Column> columns)
+    {
+        foreach (var index in columns.Keys)
+        {
+            if (index < row.Count && TabularCell.Money(row[index]) is > 0m) return true;
+        }
+        return false;
     }
 
     // "January", "Jan", "1", "01" all read as month 1.
