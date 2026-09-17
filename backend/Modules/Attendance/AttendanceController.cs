@@ -208,34 +208,31 @@ public class AttendanceController : ControllerBase
         [FromQuery] string? teamId,
         [FromQuery] string? format,
         [FromQuery] string? employeeId,
-        [FromQuery] bool mine = false)
+        [FromQuery] bool mine = false,
+        [FromQuery] bool team = false)
     {
-        // `mine` rather than the client sending its own id: the server already
-        // knows who is asking, and a client that has to name itself is a
-        // client that can name someone else by mistake.
+        // `mine` and `team` rather than the client sending ids: the server
+        // already knows who is asking and who reports to them, and a client
+        // that has to name itself is a client that can name someone else by
+        // mistake.
         if (mine)
         {
             employeeId = GetUserId();
             teamId = null;
         }
 
-        // Own record, or admin. A supervisor pulling a report's file arrives
-        // with the team export; until then they are an ordinary caller here.
-        var isOwnReport = employeeId is not null
-            && string.Equals(employeeId, GetUserId(), StringComparison.Ordinal)
-            && teamId is null;
+        var scope = await _attendance.ResolveExportScopeAsync(
+            GetUserId(), User.IsAdministrative(), employeeId, teamId, mine, team);
 
-        if (!isOwnReport && !User.IsAdministrative())
-        {
-            return Forbid();
-        }
+        if (!scope.Allowed) return Forbid();
 
         var (start, end) = ResolveRange(from, to);
         if (start > end)
             return BadRequest(new { message = "'from' must not be after 'to'." });
 
         var result = await _attendance.ExportSummaryAsync(
-            start, end, teamId, TabularFormats.Parse(format), employeeId);
+            start, end, scope.TeamId, TabularFormats.Parse(format),
+            scope.EmployeeId, scope.EmployeeIds);
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
-import { getTeamToday, type TeamAttendanceMember } from "../api";
+import { ChevronLeft, ChevronRight, Download, LoaderCircle, RefreshCw, Users } from "lucide-react";
+import { exportTeamAttendancePdf, getTeamToday, type TeamAttendanceMember } from "../api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
@@ -30,6 +30,25 @@ export function TeamPresence() {
   const [projectId, setProjectId] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  // The current month, which is what a supervisor pulling a team report
+  // almost always wants; the admin screens are where an arbitrary range is
+  // worth the extra controls.
+  async function exportTeam() {
+    setExporting(true);
+    setError(null);
+    try {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      await exportTeamAttendancePdf(day(new Date(now.getFullYear(), now.getMonth(), 1)), day(now));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not build the team report.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
@@ -137,15 +156,32 @@ export function TeamPresence() {
         <span className="text-xs text-muted-foreground">
           {visible.length} {visible.length === 1 ? "person" : "people"} &middot; {onShift} on shift
         </span>
-        <button
-          type="button"
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-          aria-label="Refresh team"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* The whole team's month in one file, which is what the previous
+              system's team-report PDF was for. */}
+          <button
+            type="button"
+            onClick={() => void exportTeam()}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+          >
+            {exporting ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Team PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+            aria-label="Refresh team"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}

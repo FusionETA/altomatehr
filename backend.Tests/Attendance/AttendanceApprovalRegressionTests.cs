@@ -776,6 +776,113 @@ public class AttendanceApprovalRegressionTests
         return (service, approvals);
     }
 
+    // ---- Export scope ----
+    //
+    // Who may pull whose hours. The export used to be Admin/Owner only, so an
+    // employee could not get their own record out — the commonest reason
+    // anyone wants the file. Opening it up means the rule has to say precisely
+    // where "your own hours" stops, because the same endpoint still serves the
+    // whole org.
+
+    private const string Sup = "usr-sup";
+    private const string Report = "usr-report";
+    private const string Stranger = "usr-stranger";
+
+    private static AttendanceService ScopeService(params string[] reports) =>
+        BuildService([], teams: new FakeTeamService
+        {
+            ReportsOf = new() { [Sup] = [.. reports] },
+        });
+
+    [Fact]
+    public async Task ExportScope_Mine_ScopesToTheCallerWhoeverTheyAre()
+    {
+        var scope = await ScopeService().ResolveExportScopeAsync(
+            Sup, isAdmin: false, employeeId: null, teamId: null, mine: true, team: false);
+
+        Assert.True(scope.Allowed);
+        Assert.Equal(Sup, scope.EmployeeId);
+        // A team id smuggled alongside `mine` must not widen it.
+        Assert.Null(scope.TeamId);
+        Assert.Null(scope.EmployeeIds);
+    }
+
+    [Fact]
+    public async Task ExportScope_Employee_MayNotPullSomeoneElsesRecord()
+    {
+        var scope = await ScopeService().ResolveExportScopeAsync(
+            Stranger, isAdmin: false, employeeId: Report, teamId: null, mine: false, team: false);
+
+        Assert.False(scope.Allowed);
+    }
+
+    [Fact]
+    public async Task ExportScope_Employee_MayNotPullTheOrgByOmittingAnEmployee()
+    {
+        // No employeeId, no team — the unbounded request, and the one thing
+        // the admin-only attribute used to be the sole guard against.
+        var scope = await ScopeService().ResolveExportScopeAsync(
+            Stranger, isAdmin: false, employeeId: null, teamId: null, mine: false, team: false);
+
+        Assert.False(scope.Allowed);
+    }
+
+    [Fact]
+    public async Task ExportScope_Supervisor_MayPullOneOfTheirReports()
+    {
+        var scope = await ScopeService(Report).ResolveExportScopeAsync(
+            Sup, isAdmin: false, employeeId: Report, teamId: null, mine: false, team: false);
+
+        Assert.True(scope.Allowed);
+        Assert.Equal(Report, scope.EmployeeId);
+    }
+
+    [Fact]
+    public async Task ExportScope_Supervisor_MayNotPullSomeoneOutsideTheirTeam()
+    {
+        var scope = await ScopeService(Report).ResolveExportScopeAsync(
+            Sup, isAdmin: false, employeeId: Stranger, teamId: null, mine: false, team: false);
+
+        Assert.False(scope.Allowed);
+    }
+
+    [Fact]
+    public async Task ExportScope_Team_CoversTheSupervisorsReportsAndThemselves()
+    {
+        var scope = await ScopeService(Report).ResolveExportScopeAsync(
+            Sup, isAdmin: false, employeeId: null, teamId: null, mine: false, team: true);
+
+        Assert.True(scope.Allowed);
+        Assert.NotNull(scope.EmployeeIds);
+        // Themselves included: a supervisor's own hours belong in their team's
+        // report, as they did in the previous system's team PDF.
+        Assert.Equal([Sup, Report], scope.EmployeeIds!.ToArray());
+        Assert.Null(scope.EmployeeId);
+    }
+
+    [Fact]
+    public async Task ExportScope_Team_GivesAnAdminTheWholeOrg()
+    {
+        // Null EmployeeIds means "do not narrow".
+        var scope = await ScopeService().ResolveExportScopeAsync(
+            "usr-admin", isAdmin: true, employeeId: null, teamId: null, mine: false, team: true);
+
+        Assert.True(scope.Allowed);
+        Assert.Null(scope.EmployeeIds);
+        Assert.Null(scope.EmployeeId);
+    }
+
+    [Fact]
+    public async Task ExportScope_Supervisor_MayNotUseATeamIdToReachOutsideTheirReports()
+    {
+        // teamId is an admin filter: a supervisor cannot be checked against an
+        // arbitrary team, so naming one is refused rather than quietly dropped.
+        var scope = await ScopeService(Report).ResolveExportScopeAsync(
+            Sup, isAdmin: false, employeeId: Report, teamId: "team-other", mine: false, team: false);
+
+        Assert.False(scope.Allowed);
+    }
+
     // The star of the test: an in-memory approval-request store whose contents
     // the assertions read back. `Requests` exposes the live list.
     private sealed class FakeAttendanceApprovalRequestRepository : IAttendanceApprovalRequestRepository
@@ -896,8 +1003,12 @@ public class AttendanceApprovalRegressionTests
             Task.FromResult<IReadOnlyList<string>>([]);
         public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
             Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+        // Who reports to whom. Empty for every test that doesn't care, which
+        // is all of them except the export-scope ones.
+        public Dictionary<string, List<string>> ReportsOf { get; init; } = [];
+
         public Task<IReadOnlyList<string>> GetReportEmployeeIdsAsync(string supervisorId) =>
-            Task.FromResult<IReadOnlyList<string>>([]);
+            Task.FromResult<IReadOnlyList<string>>(ReportsOf.GetValueOrDefault(supervisorId, []));
 
         // These tests clock in without a project, so the membership check never
         // fires; ProjectsOf lets a test opt into one when it needs to.

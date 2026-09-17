@@ -385,6 +385,12 @@ async function openAttendanceFile(path: string) {
 export const exportMyAttendancePdf = (from: string, to: string) =>
   openAttendanceFile(`/attendance/export/summary?mine=1&from=${from}&to=${to}&format=pdf`);
 
+// The caller's whole team in one file: a supervisor gets their reports and
+// themselves, an admin gets the org. Same endpoint again — the server resolves
+// who reports to whom, so no ids cross the wire to be tampered with.
+export const exportTeamAttendancePdf = (from: string, to: string) =>
+  openAttendanceFile(`/attendance/export/summary?team=1&from=${from}&to=${to}&format=pdf`);
+
 // One person's worked-hours report over a range. Same endpoint as the org
 // export, narrowed server-side, so the figures cannot drift from the org one.
 export const exportEmployeeAttendancePdf = (employeeId: string, from: string, to: string) =>

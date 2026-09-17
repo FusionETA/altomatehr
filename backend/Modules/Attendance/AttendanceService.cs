@@ -1335,9 +1335,74 @@ public class AttendanceService : IAttendanceService
         };
     }
 
+    // The same narrowing for a set of people — a supervisor's reports.
+    //
+    // Totals are re-summed from the rows that survive rather than carried over
+    // from the org: a team report whose header says the org's hours is a
+    // report about the wrong thing.
+    public static HoursSummaryDto NarrowToEmployees(
+        HoursSummaryDto summary, IReadOnlyCollection<string> employeeIds)
+    {
+        var wanted = employeeIds.ToHashSet(StringComparer.Ordinal);
+        var rows = summary.Employees.Where(e => wanted.Contains(e.EmployeeId)).ToList();
+
+        return new HoursSummaryDto
+        {
+            Employees = rows,
+            Totals = new HoursBucketsDto
+            {
+                NormalMin = rows.Sum(r => r.Buckets.NormalMin),
+                RestDayMin = rows.Sum(r => r.Buckets.RestDayMin),
+                PublicHolidayMin = rows.Sum(r => r.Buckets.PublicHolidayMin),
+                BeyondShiftMin = rows.Sum(r => r.Buckets.BeyondShiftMin),
+                BreakMin = rows.Sum(r => r.Buckets.BreakMin),
+                TotalMin = rows.Sum(r => r.Buckets.TotalMin),
+                OtApprovedMin = rows.Sum(r => r.Buckets.OtApprovedMin),
+                OtPendingMin = rows.Sum(r => r.Buckets.OtPendingMin),
+                OtRejectedMin = rows.Sum(r => r.Buckets.OtRejectedMin),
+                ExpectedMin = rows.Sum(r => r.Buckets.ExpectedMin),
+            },
+        };
+    }
+
+    // Who a caller may pull an attendance report for.
+    //
+    // Mirrors the previous system's resolveEmployeeReportAccess: admin/owner
+    // get the org, a supervisor gets their reports and themselves, everyone
+    // else gets themselves. Lives here rather than in the controller because
+    // "whose hours may you read" is a rule about the domain, not about HTTP.
+    //
+    // Returns null for an admin — no restriction — which the export reads as
+    // "do not narrow".
+    public async Task<AttendanceExportScope> ResolveExportScopeAsync(
+        string callerId, bool isAdmin, string? employeeId, string? teamId, bool mine, bool team)
+    {
+        if (mine) return new(true, callerId, null, null);
+
+        // Themselves plus anyone reporting to them. Computed once and used
+        // both to scope a team export and to judge a single-employee one, so
+        // the two can't disagree about who this person may see.
+        IReadOnlyCollection<string>? permitted = isAdmin
+            ? null
+            : [callerId, .. await _teams.GetReportEmployeeIdsAsync(callerId)];
+
+        if (team) return new(true, null, permitted, null);
+
+        if (isAdmin) return new(true, employeeId, null, teamId);
+
+        // A non-admin naming someone: allowed only inside their own set, and
+        // only when they aren't also asking for a team they can't be checked
+        // against.
+        var named = employeeId is not null && teamId is null && permitted!.Contains(employeeId);
+        return named ? new(true, employeeId, null, null) : new(false, null, null, null);
+    }
+
     public async Task<TabularExportResult> ExportSummaryAsync(
         DateTime from, DateTime to, string? teamId, TabularFormat format,
-        string? employeeId = null)
+        string? employeeId = null,
+        // A supervisor's reports. Narrower than the org, wider than one
+        // person — so the calendar stays off and the record list carries it.
+        IReadOnlyCollection<string>? employeeIds = null)
     {
         var start = from.Date;
         var end = to.Date;
@@ -1347,6 +1412,8 @@ public class AttendanceService : IAttendanceService
 
         if (employeeId is not null)
             summary = NarrowToEmployee(summary, employeeId);
+        else if (employeeIds is not null)
+            summary = NarrowToEmployees(summary, employeeIds);
 
         // The daily rows behind the summary, same window. Filtered on the local-
         // day key (Date), not TimeIn, so a night shift lands on the day it was
@@ -1354,6 +1421,7 @@ public class AttendanceService : IAttendanceService
         var records = (await _repo.GetAllAsync())
             .Where(r => r.Date.Date >= start && r.Date.Date <= end)
             .Where(r => employeeId is null || r.EmployeeId == employeeId)
+            .Where(r => employeeIds is null || employeeIds.Contains(r.EmployeeId))
             .OrderBy(r => r.Date)
             .ThenBy(r => employees.NameOf(r.EmployeeId), StringComparer.OrdinalIgnoreCase)
             .ToList();

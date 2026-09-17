@@ -44,12 +44,19 @@ public interface IAttendanceService
 
     // ---- Import / export ----
 
-    // Worked-hours summary + the daily records behind it, as CSV or XLSX.
-    // employeeId narrows it to one person, for the per-employee report on the
-    // admin detail page. Null exports the whole org.
+    // Whose attendance this caller may export. See the implementation for the
+    // rule; `Allowed` false means refuse.
+    Task<AttendanceExportScope> ResolveExportScopeAsync(
+        string callerId, bool isAdmin, string? employeeId, string? teamId, bool mine, bool team);
+
+    // Worked-hours summary + the daily records behind it, as CSV, XLSX or PDF.
+    // employeeId narrows it to one person and adds the day-by-day calendar;
+    // employeeIds narrows it to a set (a supervisor's reports). Neither one
+    // exports the whole org.
     Task<TabularExportResult> ExportSummaryAsync(
         DateTime from, DateTime to, string? teamId, TabularFormat format,
-        string? employeeId = null);
+        string? employeeId = null,
+        IReadOnlyCollection<string>? employeeIds = null);
 
     TabularExportResult BuildImportTemplate(TabularFormat format);
 
