@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
+import { createPortal } from "react-dom";
 import type { KeyboardEvent } from "react";
-import { Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
+import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { FloatingActionButton } from "@/shared/components/FloatingActionButton";
 import {
   cancelLeave,
@@ -46,6 +48,10 @@ export function LeaveView() {
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<LeaveApplication | null>(null);
+  // The application awaiting a "yes, cancel it" — cancelling is not undoable
+  // (re-applying is a new request that has to be approved again), so the button
+  // opens this instead of acting.
+  const [confirming, setConfirming] = useState<LeaveApplication | null>(null);
 
   // Three independent reads rather than one Promise.all: leave types and
   // balances rarely change and stay cached across visits, so only the
@@ -124,6 +130,9 @@ export function LeaveView() {
       setError(e instanceof Error ? e.message : "Could not cancel.");
     } finally {
       setBusyId(null);
+      // Closed either way: on failure the message belongs on the page behind,
+      // not under a dialog the user has to dismiss to read it.
+      setConfirming(null);
     }
   }
 
@@ -136,7 +145,7 @@ export function LeaveView() {
         disabled={busyId === application.id}
         onClick={(event) => {
           event.stopPropagation();
-          cancelMine(application.id);
+          setConfirming(application);
         }}
         className={
           isDetail
@@ -406,6 +415,76 @@ export function LeaveView() {
           footer={cancelButton(selected, "detail")}
         />
       ) : null}
+
+      {confirming ? (
+        <CancelLeaveDialog
+          application={confirming}
+          typeName={typeName(confirming.leaveTypeId)}
+          busy={busyId === confirming.id}
+          onKeep={() => setConfirming(null)}
+          onConfirm={() => void cancelMine(confirming.id)}
+        />
+      ) : null}
     </>
+  );
+}
+
+// Same shape as the Xero disconnect confirmation: what is about to happen,
+// what it costs, then the destructive action on the left and the way out on
+// the right.
+function CancelLeaveDialog({
+  application,
+  typeName,
+  busy,
+  onKeep,
+  onConfirm,
+}: {
+  application: LeaveApplication;
+  typeName: string;
+  busy: boolean;
+  onKeep: () => void;
+  onConfirm: () => void;
+}) {
+  useBodyScrollLock();
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-5 backdrop-blur-md">
+      <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
+        <h2 className="text-xl font-black text-foreground">Cancel this leave request?</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          It will be withdrawn from your approver's queue. Applying again starts a new request that
+          has to be approved from scratch.
+        </p>
+
+        <div className="mt-4 rounded-2xl border border-border/60 bg-surface-low p-4">
+          <p className="text-base font-black text-foreground">{typeName}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {formatDateRange(application.startDate, application.endDate)} ·{" "}
+            {application.totalDays} {application.totalDays === 1 ? "day" : "days"}
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className="flex h-11 items-center justify-center gap-2 rounded-full bg-destructive text-sm font-bold text-destructive-foreground transition hover:opacity-90 disabled:opacity-60"
+          >
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            Cancel request
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onKeep}
+            className="h-11 rounded-full border border-border bg-card text-sm font-bold text-foreground transition hover:bg-secondary/50 disabled:opacity-60"
+          >
+            Keep it
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
