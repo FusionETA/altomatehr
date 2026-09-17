@@ -29,7 +29,7 @@ import {
 } from "../lib/nav";
 import type { EmployeeView } from "../lib/types";
 import { DashboardView } from "./DashboardView";
-import { EmptyModule } from "./EmptyModule";
+import { PayslipsView } from "@/features/payslips/components/PayslipsView";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 
@@ -414,12 +414,7 @@ export function EmployeeShell({
                 />
               ) : null}
               {activeView === "leave" ? <LeavePage sub={sub ?? "leave-mine"} /> : null}
-              {activeView === "payslips" ? (
-                <EmptyModule
-                  title="Payslips"
-                  body="This area will hold employee payslip history and payroll document downloads."
-                />
-              ) : null}
+              {activeView === "payslips" ? <PayslipsView /> : null}
             </div>
           </div>
         </main>

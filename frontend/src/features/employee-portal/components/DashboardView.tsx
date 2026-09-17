@@ -61,6 +61,8 @@ import { buildName } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 import { getTeamOvertime } from "@/features/overtime/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { getMyPayslips } from "@/features/payslips/api";
+import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
 import { Skeleton } from "@/shared/components/Skeleton";
 
 // The still-open session only matters here when it started on an EARLIER day —
@@ -168,11 +170,14 @@ export function DashboardView({
   const todayQuery = useCachedQuery("/attendance/today", getTodayAttendance);
   const openSessionQuery = useCachedQuery("/attendance/open-session", getOpenSession);
   const projectsQuery = useCachedQuery("/projects/mine", getMyProjects);
+  // Newest first from the server, so the head of the list is the latest.
+  const payslipsQuery = useCachedQuery("/payslips", getMyPayslips);
   const leaveTypesQuery = useCachedQuery("/leave-types", getLeaveTypes);
   // Applying from the dashboard needs the same balances the Leave screen shows,
   // or the quick action is the one place that asks people to guess.
   const leaveBalancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
 
+  const latestPayslip = (payslipsQuery.data ?? [])[0] ?? null;
   const today = todayQuery.data ?? null;
   const stale = staleFrom(openSessionQuery.data ?? null);
 
@@ -600,10 +605,27 @@ export function DashboardView({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Latest payslip
           </p>
-          <p className="text-sm font-bold text-foreground">No payslips yet</p>
-          <p className="text-xs text-muted-foreground">
-            They'll appear here once payroll finalises your first run.
-          </p>
+          {/* Was hardcoded to "No payslips yet" — it said that to everyone,
+              including anyone who had been paid for months. The list comes
+              back newest first, so the newest is the head of it. */}
+          {latestPayslip ? (
+            <>
+              <p className="text-sm font-bold text-foreground">
+                {rmWithUnit(latestPayslip.netPay)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {latestPayslip.periodLabel}
+                {latestPayslip.submittedAt ? ` · paid ${shortDate(latestPayslip.submittedAt)}` : ""}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-bold text-foreground">No payslips yet</p>
+              <p className="text-xs text-muted-foreground">
+                They&rsquo;ll appear here once payroll finalises your first run.
+              </p>
+            </>
+          )}
         </div>
         <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
       </button>
