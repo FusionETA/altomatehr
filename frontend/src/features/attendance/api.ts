@@ -379,6 +379,12 @@ async function openAttendanceFile(path: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
+// The caller's OWN report. Same endpoint and same narrowing as the admin one
+// below — the server resolves whose record it is from the token, so there is
+// no id to pass and nothing to get wrong by passing someone else's.
+export const exportMyAttendancePdf = (from: string, to: string) =>
+  openAttendanceFile(`/attendance/export/summary?mine=1&from=${from}&to=${to}&format=pdf`);
+
 // One person's worked-hours report over a range. Same endpoint as the org
 // export, narrowed server-side, so the figures cannot drift from the org one.
 export const exportEmployeeAttendancePdf = (employeeId: string, from: string, to: string) =>

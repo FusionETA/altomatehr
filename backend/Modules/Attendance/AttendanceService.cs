@@ -1,4 +1,6 @@
 using AltomateHR.Api.Modules.Shifts;
+using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Attendance.Dtos;
@@ -62,6 +64,9 @@ public class AttendanceService : IAttendanceService
     private readonly IEmployeeRowResolver _employees;
     private readonly IHoursSummaryService _hours;
     private readonly ITeamService _teams;
+    private readonly IHolidayService _holidays;
+    private readonly ILeaveService _leave;
+    private readonly ILeaveTypeService _leaveTypes;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -81,8 +86,14 @@ public class AttendanceService : IAttendanceService
         INotificationService notifications,
         IEmployeeRowResolver employees,
         IHoursSummaryService hours,
-        ITeamService teams)
+        ITeamService teams,
+        IHolidayService holidays,
+        ILeaveService leave,
+        ILeaveTypeService leaveTypes)
     {
+        _holidays = holidays;
+        _leave = leave;
+        _leaveTypes = leaveTypes;
         _repo = repo;
         _teams = teams;
         _sessions = sessions;
@@ -1363,6 +1374,17 @@ public class AttendanceService : IAttendanceService
         var caption =
             $"{start:dd MMM yyyy} – {end:dd MMM yyyy}  ·  {summary.Employees.Count} employee(s)  ·  {records.Count} day(s)";
 
+        // A calendar only reads as one for ONE person: interleaving several
+        // employees' holidays and rest days down a single date column is a
+        // table nobody can follow. The org-wide export keeps the record list.
+        var calendar = employeeId is null
+            ? null
+            : AttendanceCalendarSheet.Build(
+                await BuildCalendarAsync(start, end, records),
+                employees,
+                projects,
+                caption);
+
         // PDF gets narrower, printable versions of both tables — A4 landscape
         // can't carry the spreadsheet's full column set legibly.
         var sheets = format == TabularFormat.Pdf
@@ -1378,6 +1400,11 @@ public class AttendanceService : IAttendanceService
                 AttendanceSummarySheet.BuildRecords(records, approvalByRecord, employees, projects),
             };
 
+        // Leads for one person: the calendar is the report, and the record
+        // list behind it is the detail. Inserted rather than appended for the
+        // PDF, where the first sheet is the first page.
+        if (calendar is not null) sheets.Insert(1, calendar);
+
         var fileName = $"attendance-summary-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
         if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);
 
@@ -1389,6 +1416,99 @@ public class AttendanceService : IAttendanceService
         return TabularExportResult.From(
             sheets, format, fileName,
             new TabularPdfHeader(organizationName, "Attendance Report"));
+    }
+
+    // Every calendar day in the window, each labelled with what it was.
+    //
+    // Built here rather than in the sheet because it needs three sources the
+    // sheet has no business knowing about: the org's working week, the public
+    // holiday calendar, and approved leave. Precedence is holiday → rest day →
+    // leave → the record, because that is the order in which a reason stops
+    // being a question: nobody was expected on a public holiday whether or not
+    // they also had leave booked.
+    private async Task<List<AttendanceCalendarSheet.Day>> BuildCalendarAsync(
+        DateTime start, DateTime end, IReadOnlyCollection<AttendanceRecord> records)
+    {
+        var org = _currentUser.OrganizationId is { } orgId
+            ? await _organizations.GetByIdAsync(orgId)
+            : null;
+        var workingDays = LeaveAccrualMath.ParseWorkingDays(org?.WorkingDays);
+
+        // Org-wide rows only (ProjectId null), same rule leave applies — a
+        // project-scoped holiday isn't a fact about the whole calendar.
+        var holidays = (await _holidays.GetInRangeAsync(start, end))
+            .Where(h => h.ProjectId is null)
+            .GroupBy(h => DateTime.Parse(h.Date).Date)
+            .ToDictionary(g => g.Key, g => g.First().Name, EqualityComparer<DateTime>.Default);
+
+        var leaveByDate = await ApprovedLeaveByDateAsync(start, end, records);
+
+        var recordByDate = records
+            .GroupBy(r => r.Date.Date)
+            .ToDictionary(g => g.Key, g => g.First(), EqualityComparer<DateTime>.Default);
+
+        var days = new List<AttendanceCalendarSheet.Day>();
+        for (var day = start.Date; day <= end.Date; day = day.AddDays(1))
+        {
+            var record = recordByDate.GetValueOrDefault(day);
+
+            if (holidays.TryGetValue(day, out var holidayName))
+            {
+                days.Add(new(day, AttendanceCalendarSheet.DayKind.Holiday, record, holidayName));
+            }
+            else if (!workingDays.Contains(LeaveAccrualMath.IsoWeekday(day)))
+            {
+                days.Add(new(day, AttendanceCalendarSheet.DayKind.RestDay, record, null));
+            }
+            else if (leaveByDate.TryGetValue(day, out var leaveLabel))
+            {
+                days.Add(new(day, AttendanceCalendarSheet.DayKind.Leave, record, leaveLabel));
+            }
+            else
+            {
+                days.Add(new(
+                    day,
+                    record is null
+                        ? AttendanceCalendarSheet.DayKind.Missing
+                        : AttendanceCalendarSheet.DayKind.Worked,
+                    record,
+                    null));
+            }
+        }
+
+        return days;
+    }
+
+    // Approved leave overlapping the window, flattened to one label per day.
+    // Only the employees this export covers, so a whole-org read isn't paid
+    // for to describe one person's month.
+    private async Task<Dictionary<DateTime, string>> ApprovedLeaveByDateAsync(
+        DateTime start, DateTime end, IReadOnlyCollection<AttendanceRecord> records)
+    {
+        var subjects = records.Select(r => r.EmployeeId).ToHashSet(StringComparer.Ordinal);
+        var byDate = new Dictionary<DateTime, string>();
+        if (subjects.Count == 0) return byDate;
+
+        var types = (await _leaveTypes.GetAllAsync())
+            .ToDictionary(t => t.Id, t => t.Name, StringComparer.Ordinal);
+
+        var applications = (await _leave.GetAllForOrgAsync())
+            .Where(a => a.Status == Leave.Entities.LeaveStatus.APPROVED)
+            .Where(a => subjects.Contains(a.EmployeeId));
+
+        foreach (var app in applications)
+        {
+            if (!DateTime.TryParse(app.StartDate, out var appStart)) continue;
+            if (!DateTime.TryParse(app.EndDate, out var appEnd)) continue;
+
+            var from = appStart.Date < start.Date ? start.Date : appStart.Date;
+            var to = appEnd.Date > end.Date ? end.Date : appEnd.Date;
+
+            for (var day = from; day <= to; day = day.AddDays(1))
+                byDate[day] = types.GetValueOrDefault(app.LeaveTypeId, "Leave");
+        }
+
+        return byDate;
     }
 
     public TabularExportResult BuildImportTemplate(TabularFormat format) =>

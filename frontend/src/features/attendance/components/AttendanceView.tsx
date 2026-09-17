@@ -6,6 +6,8 @@ import {
   ChevronDown,
   CheckCircle2,
   Clock3,
+  Download,
+  LoaderCircle,
   MapPin,
 } from "lucide-react";
 import {
@@ -13,6 +15,7 @@ import {
   getMyHoursSummary,
   hoursSummaryPath,
   getTodayAttendance,
+  exportMyAttendancePdf,
   type HoursBuckets,
   type AttendanceRecord,
   type AttendanceSession,
@@ -1175,6 +1178,29 @@ function HistoryView({
   const [period, setPeriod] = useState<HistoryPeriod>("THIS_MONTH");
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [page, setPage] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // The range the export covers is the range on screen, so the file can't
+  // disagree with what was used to decide to download it. "All" is bounded at
+  // the earliest record rather than sent open-ended.
+  async function exportPdf() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const dates = history.map((r) => r.date).sort();
+      const from =
+        period === "ALL" && dates.length > 0
+          ? dates[0]
+          : dateKey(new Date(now.getFullYear(), now.getMonth(), 1));
+      const to = period === "ALL" && dates.length > 0 ? dates[dates.length - 1] : dateKey(now);
+      await exportMyAttendancePdf(from, to);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Could not build the report.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Changing a filter with a stale page number would land on an empty page.
   useEffect(() => setPage(0), [period, problemsOnly]);
@@ -1314,7 +1340,27 @@ function HistoryView({
             <span className="tabular-nums opacity-70">{problemCount}</span>
           </button>
         ) : null}
+
+        {/* Your own hours as a document — the reason most people want this
+            screen at all: a landlord, a visa application, a dispute. */}
+        <button
+          type="button"
+          onClick={() => void exportPdf()}
+          disabled={exporting}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+        >
+          {exporting ? (
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+          Download PDF
+        </button>
       </div>
+
+      {exportError ? (
+        <p className="text-xs font-medium text-destructive">{exportError}</p>
+      ) : null}
 
       {historyByMonth.map(([month, items]) => {
         const all = monthTotals.get(month) ?? items;

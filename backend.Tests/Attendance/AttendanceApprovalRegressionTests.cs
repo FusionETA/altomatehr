@@ -98,7 +98,10 @@ public class AttendanceApprovalRegressionTests
             notifications: new FakeNotificationService(),
             employees: new FakeEmployeeDirectory(),
             hours: new FakeHoursSummaryService(),
-            teams: new FakeTeamService());
+            teams: new FakeTeamService(),
+            holidays: new FakeHolidayService(),
+            leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
+            leaveTypes: new FakeLeaveTypeService());
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -509,7 +512,10 @@ public class AttendanceApprovalRegressionTests
             notifications: new FakeNotificationService(),
             employees: new FakeEmployeeDirectory(),
             hours: new FakeHoursSummaryService(),
-            teams: teams ?? new FakeTeamService());
+            teams: teams ?? new FakeTeamService(),
+            holidays: new FakeHolidayService(),
+            leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
+            leaveTypes: new FakeLeaveTypeService());
 
     private sealed class FakeShiftService : IShiftService
     {
@@ -762,7 +768,10 @@ public class AttendanceApprovalRegressionTests
             notifications: new FakeNotificationService(),
             employees: new FakeEmployeeDirectory(),
             hours: new FakeHoursSummaryService(),
-            teams: new FakeTeamService());
+            teams: new FakeTeamService(),
+            holidays: new FakeHolidayService(),
+            leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
+            leaveTypes: new FakeLeaveTypeService());
 
         return (service, approvals);
     }

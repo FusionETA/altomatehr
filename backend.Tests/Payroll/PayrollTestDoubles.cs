@@ -58,6 +58,11 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public void SetUnpaidDays(string userId, double days) => _unpaidByUser[userId] = days;
 
+    // Applications the org-wide read returns. Seeded by the attendance export
+    // tests, which overlay approved leave onto a day-by-day calendar; payroll's
+    // own tests leave it empty and never call the reader.
+    public List<LeaveApplicationDto> Applications { get; } = [];
+
     public Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
         DateTime from, DateTime to) =>
         Task.FromResult<IReadOnlyDictionary<string, double>>(_unpaidByUser);
@@ -67,7 +72,7 @@ internal sealed class StubPayrollLeave : ILeaveService
     public Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId) =>
         throw new NotSupportedException();
     public Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync() =>
-        throw new NotSupportedException();
+        Task.FromResult<IEnumerable<LeaveApplicationDto>>(Applications);
     public Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year) =>
         throw new NotSupportedException();
     public Task<LeaveBalancesResult> GetBalancesForEmployeeAsync(string employeeId, int year) =>

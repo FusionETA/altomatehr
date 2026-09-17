@@ -191,18 +191,45 @@ public class AttendanceController : ControllerBase
         Ok(await _adminAttendance.GetSelfieStorageAsync());
 
     // GET /attendance/export/summary?from=&to=&teamId=&employeeId=&format=csv|xlsx|pdf
-    // Worked-hours summary plus the daily records behind it. Admin/Owner only —
-    // it spans the org. Omitting from/to exports the current month.
+    //
+    // Worked-hours summary plus the daily records behind it, and for a single
+    // employee a day-by-day calendar of the whole range.
+    //
+    // No longer Admin/Owner only: an employee asking for their OWN hours —
+    // for a landlord, a visa, a dispute — is the commonest reason anyone
+    // wants this file, and the previous system let them. Anything WIDER than
+    // one's own record still needs an admin, which is what the check below
+    // draws the line on rather than the role alone.
     [RequireScope("attendance:read")]
     [HttpGet("export/summary")]
-    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ExportSummary(
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         [FromQuery] string? teamId,
         [FromQuery] string? format,
-        [FromQuery] string? employeeId)
+        [FromQuery] string? employeeId,
+        [FromQuery] bool mine = false)
     {
+        // `mine` rather than the client sending its own id: the server already
+        // knows who is asking, and a client that has to name itself is a
+        // client that can name someone else by mistake.
+        if (mine)
+        {
+            employeeId = GetUserId();
+            teamId = null;
+        }
+
+        // Own record, or admin. A supervisor pulling a report's file arrives
+        // with the team export; until then they are an ordinary caller here.
+        var isOwnReport = employeeId is not null
+            && string.Equals(employeeId, GetUserId(), StringComparison.Ordinal)
+            && teamId is null;
+
+        if (!isOwnReport && !User.IsAdministrative())
+        {
+            return Forbid();
+        }
+
         var (start, end) = ResolveRange(from, to);
         if (start > end)
             return BadRequest(new { message = "'from' must not be after 'to'." });
