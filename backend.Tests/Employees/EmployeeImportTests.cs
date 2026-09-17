@@ -236,6 +236,59 @@ public class EmployeeImportTests
         Assert.Empty(employees.Created);
     }
 
+    // ─── The export round-trips ─────────────────────────────────────────
+
+    // Export, edit, import back. If the two shapes drifted, an admin's first
+    // import would fail on a file this system produced.
+    [Fact]
+    public async Task TheExportImportsBackCleanly()
+    {
+        var (service, employees) = Make(
+            Member("usr-1", "aisyah@example.com"),
+            Member("usr-2", "chan@example.com", role: "Supervisor"));
+
+        var export = await service.ExportAsync(TabularFormat.Csv);
+        var result = await service.ImportAsync(export.Content, TabularFormat.Csv);
+
+        Assert.True(result.Ok, result.Message);
+        // Nobody new, and nobody's values moved.
+        Assert.Equal(0, result.Created);
+        Assert.Equal(2, result.Updated);
+        Assert.Empty(employees.Created);
+
+        var back = employees.Updated.Single(u => u.Id == "usr-2").Dto;
+        Assert.Equal("Supervisor", back.Role);
+        Assert.Equal("E-001", back.EmployeeNumber);
+        Assert.Equal("Site Engineer", back.JobTitle);
+    }
+
+    // Names, not ids — the import reads them back by name.
+    [Fact]
+    public async Task TheExportWritesPolicyAndShiftNamesNotIds()
+    {
+        var (service, _) = Make(Member("usr-1", "aisyah@example.com"));
+
+        var export = await service.ExportAsync(TabularFormat.Csv);
+        var text = Encoding.UTF8.GetString(export.Content);
+
+        Assert.Contains("Full-time", text);
+        Assert.Contains("Office Hours", text);
+        Assert.DoesNotContain("pol-full", text);
+        Assert.DoesNotContain("shift-office", text);
+    }
+
+    // A password is generated per created account and returned once. An export
+    // is a file that sits in Downloads; it must never carry one.
+    [Fact]
+    public async Task TheExportCarriesNoPasswordColumn()
+    {
+        var (service, _) = Make(Member("usr-1", "aisyah@example.com"));
+
+        var export = await service.ExportAsync(TabularFormat.Csv);
+
+        Assert.DoesNotContain("assword", Encoding.UTF8.GetString(export.Content));
+    }
+
     // ─── Doubles ────────────────────────────────────────────────────────
 
     private sealed class FakeEmployeeService : IEmployeeService

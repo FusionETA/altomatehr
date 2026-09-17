@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CircleAlert, CircleCheck, Copy, Download, LoaderCircle, Upload } from "lucide-react";
 import {
+  downloadEmployeeExport,
   downloadEmployeeImportTemplate,
   importEmployees,
   type EmployeeImportResult,
@@ -24,21 +25,28 @@ export function ImportEmployeesDialog({
   onImported: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<"template" | "current" | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<EmployeeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  async function download() {
-    setDownloading(true);
+  // Two starting points, because they answer different needs: a blank template
+  // for onboarding new hires, the current roster for filling a field in for
+  // people who are already here. Both re-import through the same columns.
+  async function download(which: "template" | "current") {
+    setDownloading(which);
     setError(null);
     try {
-      saveFile(await downloadEmployeeImportTemplate());
+      saveFile(
+        which === "template"
+          ? await downloadEmployeeImportTemplate()
+          : await downloadEmployeeExport(),
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not build the template.");
+      setError(e instanceof Error ? e.message : "Could not build that file.");
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   }
 
@@ -87,24 +95,41 @@ export function ImportEmployeesDialog({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <section className="space-y-2">
-            <h3 className={LABEL}>Step 1 — the template</h3>
-            <button
-              type="button"
-              onClick={() => void download()}
-              disabled={downloading}
-              className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground hover:bg-muted disabled:opacity-60"
-            >
-              {downloading ? (
-                <LoaderCircle className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Download className="size-4" aria-hidden />
-              )}
-              Download template
-            </button>
+            <h3 className={LABEL}>Step 1 — start from a file</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void download("template")}
+                disabled={downloading !== null}
+                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {downloading === "template" ? (
+                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Download className="size-4" aria-hidden />
+                )}
+                Blank template
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void download("current")}
+                disabled={downloading !== null}
+                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {downloading === "current" ? (
+                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Download className="size-4" aria-hidden />
+                )}
+                Export current
+              </button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Email is the only required column. Policy and Shift are matched by name, and a name
-              this organisation does not have fails that row rather than quietly leaving the person
-              on the default. A blank cell leaves an existing person's field alone.
+              <span className="font-semibold text-foreground">Blank template</span> for new hires;{" "}
+              <span className="font-semibold text-foreground">Export current</span> to fill a field
+              in for people already here. Email is the only required column, Policy and Shift are
+              matched by name, and a blank cell leaves an existing person's field alone.
             </p>
           </section>
 

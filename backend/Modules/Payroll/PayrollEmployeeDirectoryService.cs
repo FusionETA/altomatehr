@@ -19,27 +19,41 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
 
     public async Task<IReadOnlyList<PayrollEmployeeRowDto>> GetAllAsync(bool includeArchived = false)
     {
-        var profiles = await _directory.GetProfilesForCurrentOrgAsync();
         var users = (await _directory.GetUsersAsync())
             .ToDictionary(u => u.Id, u => u, StringComparer.Ordinal);
-        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
-            .ToDictionary(m => m.UserId, m => m, StringComparer.Ordinal);
+        var profiles = (await _directory.GetProfilesForCurrentOrgAsync())
+            .ToDictionary(p => p.UserId, p => p, StringComparer.Ordinal);
+
+        // Driven by MEMBERSHIPS, not profiles. A member with no EmployeeProfile
+        // row simply did not appear here before — which meant the screen whose
+        // whole job is "who is not ready to file" silently omitted the people
+        // furthest from ready, and an org of twelve showed four.
+        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
 
         return
         [
-            .. profiles
-                .Where(p => includeArchived || !p.IsArchived)
-                .Select(p => Map(p, users.GetValueOrDefault(p.UserId), memberships.GetValueOrDefault(p.UserId)))
+            .. memberships
+                .Select(m => (Membership: m, Profile: profiles.GetValueOrDefault(m.UserId)))
+                // Archived is a property of the profile, so someone without one
+                // can never be archived and is always listed.
+                .Where(x => includeArchived || x.Profile is null || !x.Profile.IsArchived)
+                .Select(x => Map(x.Profile, users.GetValueOrDefault(x.Membership.UserId), x.Membership))
                 // By name, because that is what the admin is scanning for.
                 .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
         ];
     }
 
+    // `profile` is null for a member who has no EmployeeProfile row yet. Rather
+    // than branch through every field, a blank profile stands in: every column
+    // then reads as unset, which is exactly what it is, and the readiness
+    // checks report all three sections short — also exactly right.
     private static PayrollEmployeeRowDto Map(
-        EmployeeProfile profile,
+        EmployeeProfile? existing,
         User? user,
         OrganizationMembership? membership)
     {
+        var profile = existing ?? new EmployeeProfile { UserId = membership?.UserId ?? string.Empty };
+
         // The same routing PERKESO and LHDN use, and the same one
         // StatutoryEmployeeRow derives: locals and PRs are keyed by IC.
         var isLocalOrPr = profile.HasPr
@@ -48,6 +62,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
         return new PayrollEmployeeRowDto
         {
             EmployeeProfileId = profile.Id,
+            HasPayrollProfile = existing is not null,
             UserId = profile.UserId,
             Name = user?.Name ?? string.Empty,
             Email = user?.Email ?? string.Empty,
@@ -83,11 +98,13 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
             // The period-dependent reasons (joined after, left before) are
             // deliberately not here — this list belongs to no month. Only the
             // two that hold whatever period is being run.
-            NotPayableReason = profile.IsArchived
-                ? "Archived"
-                : profile.ReportedToLhdn
-                    ? "Final payroll already reported to LHDN"
-                    : null,
+            NotPayableReason = existing is null
+                ? "No payroll details yet"
+                : profile.IsArchived
+                    ? "Archived"
+                    : profile.ReportedToLhdn
+                        ? "Final payroll already reported to LHDN"
+                        : null,
 
             Missing = PayrollRunReadiness.EmployeeGaps(
                 membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr),

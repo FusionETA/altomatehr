@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, CircleAlert, Plus, Upload, Users } from "lucide-react";
+import { ChevronRight, CircleAlert, CircleCheck, Plus, Upload, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -7,7 +7,14 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
-import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import { PayrollBulkFillPanel } from "@/features/payroll/components/PayrollBulkFillPanel";
 import {
   CLAIMS_PAGE_SIZE,
   PaginationControls,
@@ -18,7 +25,33 @@ import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
-const TH = "h-11 px-3 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground";
+
+// A card whose table runs edge to edge: the padding belongs to the header and
+// the pagination bar, not to the rows between them. Border and background are
+// left off deliberately — the two boxes set their own, and a colour declared
+// here would fight theirs (Tailwind resolves a conflict by stylesheet order,
+// not by which class was written last).
+const BOX = "overflow-hidden rounded-[28px] shadow-ambient backdrop-blur-sm";
+const BOX_HEADER = "px-5 pb-3 pt-5 sm:px-6";
+const BOX_FOOT =
+  "flex flex-col items-start justify-between gap-2 border-t border-border/60 px-5 py-3 sm:flex-row sm:items-center sm:px-6";
+// The rows run edge to edge so a hover covers the whole box, but their
+// CONTENT has to line up with the box's header and pagination bar — at a flat
+// px-3 the names sat 8px to the left of the heading above them. So the outer
+// two columns carry the box's own padding and the inner ones stay dense.
+//
+// Written as pl-/pr- beside a matching pr-/pl- rather than as `px-3 pl-6`: a
+// px and a pl on one element is a conflict Tailwind settles by stylesheet
+// order, and this file already has a note about losing that bet.
+const TH_BASE =
+  "h-11 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground";
+const TH = `${TH_BASE} px-3`;
+const TH_FIRST = `${TH_BASE} pl-5 pr-3 sm:pl-6`;
+const TH_LAST = `${TH_BASE} pl-3 pr-5 sm:pr-6`;
+
+const TD = "px-3 py-3";
+const TD_FIRST = "py-3 pl-5 pr-3 sm:pl-6";
+const TD_LAST = "py-3 pl-3 pr-5 text-right sm:pr-6";
 
 const ALL = "ALL";
 const ROLE_FILTERS = ["Employee", "Supervisor"] as const;
@@ -37,6 +70,7 @@ export function EmployeesSettings() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
   const [page, setPage] = useState(1);
+  const [readyPage, setReadyPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // Which employee's full record is open. Null = the list.
@@ -81,10 +115,11 @@ export function EmployeesSettings() {
   );
 
   const readiness = useMemo(() => {
-    const byUser = new Map<string, { archived: boolean; sections: string[] }>();
+    const byUser = new Map<string, { archived: boolean; hasProfile: boolean; sections: string[] }>();
     for (const row of payrollQuery.data ?? []) {
       byUser.set(row.userId, {
         archived: row.isArchived,
+        hasProfile: row.hasPayrollProfile,
         sections: row.profileIncompleteSections,
       });
     }
@@ -105,8 +140,11 @@ export function EmployeesSettings() {
     if (payrollQuery.data === undefined) return null;
 
     const row = readiness.get(userId);
-    if (!row) return "No payroll profile yet";
+    // Absent from the payroll roster at all should no longer happen — it lists
+    // every member now — but a stale cache could still miss someone.
+    if (!row) return "No payroll details yet";
     if (row.archived) return null;
+    if (!row.hasProfile) return "No payroll details yet";
     return row.sections.length > 0 ? `${row.sections.join(", ")} incomplete` : null;
   };
 
@@ -139,14 +177,49 @@ export function EmployeesSettings() {
     });
   }, [staff, policies, searchTerm, roleFilter]);
 
-  // Never leave the viewer stranded on a page that no longer exists after the
-  // visible set narrows.
-  useEffect(() => setPage(1), [searchTerm, roleFilter]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CLAIMS_PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paged = filtered.slice(
-    (currentPage - 1) * CLAIMS_PAGE_SIZE,
-    currentPage * CLAIMS_PAGE_SIZE,
+  // Two boxes, not two tabs: the people who cannot be paid yet are the whole
+  // reason an admin opens this screen, so they sit at the top of the same page
+  // as everyone else rather than behind a tab nobody clicks.
+  const needsSetup = useMemo(
+    () => filtered.filter((e) => setupGap(e.id) !== null),
+    // setupGap closes over the payroll roster; `filtered` and that are the
+    // only inputs that move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, readiness, payrollQuery.data],
+  );
+  const ready = useMemo(
+    () => filtered.filter((e) => setupGap(e.id) === null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, readiness, payrollQuery.data],
+  );
+
+  // Paged apart, so clearing the backlog at the top does not shuffle the
+  // list of people who are already fine.
+  useEffect(() => {
+    setPage(1);
+    setReadyPage(1);
+  }, [searchTerm, roleFilter]);
+
+  const setupPages = Math.max(1, Math.ceil(needsSetup.length / CLAIMS_PAGE_SIZE));
+  const setupCurrent = Math.min(page, setupPages);
+  const setupSlice = needsSetup.slice(
+    (setupCurrent - 1) * CLAIMS_PAGE_SIZE,
+    setupCurrent * CLAIMS_PAGE_SIZE,
+  );
+
+  const readyPages = Math.max(1, Math.ceil(ready.length / CLAIMS_PAGE_SIZE));
+  const readyCurrent = Math.min(readyPage, readyPages);
+  const readySlice = ready.slice(
+    (readyCurrent - 1) * CLAIMS_PAGE_SIZE,
+    readyCurrent * CLAIMS_PAGE_SIZE,
+  );
+
+  // Distinct from "needs setup": these pass every readiness check and would
+  // simply be paid nothing, which blocks a submission just as hard.
+  const noSalary = (payrollQuery.data ?? []).filter(
+    (row) =>
+      row.notPayableReason === null &&
+      (row.salaryType === "MONTHLY" ? row.monthlySalary : row.hourlyRate) === null,
   );
 
   const selected = employees.find((e) => e.id === selectedId) ?? null;
@@ -169,154 +242,203 @@ export function EmployeesSettings() {
   }
 
   return (
-    <div className={`${CARD} space-y-5`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-black text-foreground">Employees</h2>
-            {/* Hidden until the roster is in. A count of 0 next to a table of
-                skeleton rows reads as "this company has no employees", which is
-                a different and alarming statement. */}
-            {loading ? null : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-                <Users className="h-3 w-3" />
-                {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
-              </span>
-            )}
+    <div className="space-y-5">
+      {/* Who you are looking at: the roster's size, its backlog, and the two
+          controls that change it. Everything below is a consequence of this
+          card, which is why it carries no rows of its own. */}
+      <div className={`${CARD} space-y-5`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-black text-foreground">Employees</h2>
+              {/* Hidden until the roster is in. A count of 0 next to a table of
+                  skeleton rows reads as "this company has no employees", which is
+                  a different and alarming statement. */}
+              {loading ? null : (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                  <Users className="h-3 w-3" />
+                  {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
+                </span>
+              )}
 
-            {/* The total, so "is anyone unpayable?" is answerable without
-                scanning every row — the per-row icon then says who. */}
-            {!loading && needsSetupCount > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
-                <CircleAlert className="h-3 w-3" />
-                {needsSetupCount} need setup
-              </span>
-            ) : null}
+              {/* The total, so "is anyone unpayable?" is answerable without
+                  scanning every row — the box below then says who. */}
+              {!loading && needsSetupCount > 0 ? (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
+                  <CircleAlert className="h-3 w-3" />
+                  {needsSetupCount} need setup
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {/* Wraps rather than holding its width: three controls pinned in one
+              row pushed Add employee off the card's right edge on a phone, and
+              off the page entirely at 1024px. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search employees"
+              className="w-full sm:w-56"
+              inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+            />
+
+            {/* A filter, not a tab row. Three roles is not a navigation
+                decision — it sits with the search box because it does the same
+                job, and it leaves the card a row shorter. */}
+            <Select
+              value={roleFilter}
+              onValueChange={(next) => setRoleFilter(next as RoleFilter)}
+            >
+              <SelectTrigger
+                aria-label="Filter by role"
+                className="h-10 w-full rounded-xl border-border/70 bg-card/90 text-sm sm:w-40"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All roles</SelectItem>
+                {ROLE_FILTERS.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Beside Add employee, quieter than it: onboarding a batch is the
+                rarer act, and the single-add button is what most visits want.
+                "People", because the panel below imports payroll details and
+                two unqualified Imports on one screen is a coin toss. */}
+            <button
+              type="button"
+              onClick={() => setShowImport(true)}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+            >
+              <Upload className="h-4 w-4" />
+              Import people
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Add employee
+            </button>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search employees"
-            className="w-full sm:w-56"
-            inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
-          />
-          {/* Beside Add employee, quieter than it: onboarding a batch is the
-              rarer act, and the single-add button is what most visits want. */}
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
-          >
-            <Upload className="h-4 w-4" />
-            Import
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Add employee
-          </button>
-        </div>
+        {loadError ? <p className="text-sm font-medium text-destructive">{loadError}</p> : null}
+
+        {/* Passes every readiness check and would still be paid nothing — a
+            different problem from an incomplete profile, and one that blocks a
+            submission just as hard, so it is said separately. */}
+        {!loading && noSalary.length > 0 ? (
+          <p className="rounded-2xl border border-warning/30 bg-warning/10 p-3 text-xs leading-snug text-foreground">
+            <span className="font-bold">
+              {noSalary.length} {noSalary.length === 1 ? "person has" : "people have"} no salary on
+              file.
+            </span>{" "}
+            They generate a zero payslip, which blocks the run from being submitted:{" "}
+            {noSalary.map((r) => r.name).join(", ")}.
+          </p>
+        ) : null}
+
+        {/* The statutory round-trip, in the header card rather than a card of
+            its own: it is the fastest way to empty the box below, so it
+            belongs with the roster's other controls — and this page has
+            enough boxes already. */}
+        <PayrollBulkFillPanel onImported={() => void payrollQuery.refresh()} />
       </div>
 
-      <StatusFilterTabs<RoleFilter>
-        value={roleFilter}
-        onChange={setRoleFilter}
-        statuses={ROLE_FILTERS}
-        labels={{}}
-        allLabel="All roles"
-        ariaLabel="Role filters"
-      />
-
-      {loadError ? <p className="text-sm font-medium text-destructive">{loadError}</p> : null}
-
-      <>
+      {loading ? (
+        <div className={CARD}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
-              <thead>
-                <tr className="border-b border-border/60">
-                  <th className={TH}>Person</th>
-                  <th className={TH}>Role</th>
-                  <th className={TH}>Policy</th>
-                  <th className={TH} />
-                </tr>
-              </thead>
               <tbody>
-                {loading ? (
-                  // Same four columns, same row height: the real rows replace
-                  // these in place rather than pushing the page around.
-                  <SkeletonRows
-                    rows={5}
-                    widths={["w-44", "w-20", "w-24", "w-4"]}
-                  />
-                ) : null}
-                {paged.map((emp) => (
-                  <tr
-                    key={emp.id}
-                    tabIndex={0}
-                    onClick={() => setSelectedId(emp.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedId(emp.id);
-                      }
-                    }}
-                    className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
-                  >
-                    <td className="px-3 py-3">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <p className="truncate font-semibold text-foreground">
-                            {emp.name?.trim() || buildName(emp.email)}
-                          </p>
-                          <PayrollSetupFlag gap={setupGap(emp.id)} />
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") ||
-                            emp.email}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                          ROLE_PILL[emp.role] ?? "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {emp.role}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-muted-foreground">{policyName(emp.policyId)}</td>
-                    <td className="px-3 py-3 text-right">
-                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
-                    </td>
-                  </tr>
-                ))}
+                <SkeletonRows rows={5} widths={["w-44", "w-20", "w-24", "w-4"]} />
               </tbody>
             </table>
-            {!loading && filtered.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {staff.length === 0
-                  ? "No employees yet. Add the first one to get started."
-                  : "No employees match these filters."}
-              </p>
-            ) : null}
           </div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className={CARD}>
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {staff.length === 0
+              ? "No employees yet. Add the first one to get started."
+              : "No employees match these filters."}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Two boxes, not two tabs and not two sections of one card: the
+              people who cannot be paid yet are a different list with a
+              different job, and giving the backlog its own walls is what
+              makes "how much is left?" answerable at a glance. It comes
+              first because it is what the admin came to clear. */}
+          {needsSetup.length > 0 ? (
+            <section className={`${BOX} border border-warning/50 bg-warning/5`}>
+              {/* The strip carries the tint, not the rows: a whole table washed
+                  amber is harder to read and says nothing the header does not. */}
+              <header className={`${BOX_HEADER} bg-warning/10`}>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                  <CircleAlert className="size-4" aria-hidden />
+                  {needsSetup.length}{" "}
+                  {needsSetup.length === 1 ? "person needs" : "people need"} payroll setup
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Missing statutory or compensation details. Open anyone to complete their profile,
+                  or fill everyone in at once with the panel above.
+                </p>
+              </header>
+              <EmployeeRows
+                rows={setupSlice}
+                policyName={policyName}
+                setupGap={setupGap}
+                onOpen={setSelectedId}
+              />
+              <PaginationControls
+                className={BOX_FOOT}
+                currentPage={setupCurrent}
+                totalItems={needsSetup.length}
+                itemNoun="people"
+                onPageChange={setPage}
+              />
+            </section>
+          ) : null}
 
-          <PaginationControls
-            className="flex flex-col items-start justify-between gap-2 border-t border-border/60 pt-4 sm:flex-row sm:items-center"
-            currentPage={currentPage}
-            totalItems={filtered.length}
-            itemNoun="employees"
-            onPageChange={setPage}
-          />
-      </>
+          {ready.length > 0 ? (
+            <section className={`${BOX} border border-border/70 bg-card/90`}>
+              <header className={BOX_HEADER}>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                  <CircleCheck className="size-4 text-success" aria-hidden />
+                  {ready.length} ready for payroll
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Complete profiles — these are the people a run will include.
+                </p>
+              </header>
+              <EmployeeRows
+                rows={readySlice}
+                policyName={policyName}
+                setupGap={setupGap}
+                onOpen={setSelectedId}
+              />
+              <PaginationControls
+                className={BOX_FOOT}
+                currentPage={readyCurrent}
+                totalItems={ready.length}
+                itemNoun="people"
+                onPageChange={setReadyPage}
+              />
+            </section>
+          ) : null}
+        </>
+      )}
 
+      {/* Dialogs sit outside the list branch: their buttons live in the header
+          card, so neither can be open while the list is still loading. */}
       {showAdd ? (
         <AddEmployeeModal
           policies={policies}
@@ -327,7 +449,7 @@ export function EmployeesSettings() {
           }}
         />
       ) : null}
-    
+
       {showImport ? (
         <ImportEmployeesDialog
           onClose={() => setShowImport(false)}
@@ -336,29 +458,96 @@ export function EmployeesSettings() {
           onImported={() => void employeesQuery.refresh()}
         />
       ) : null}
-</div>
+    </div>
   );
 }
 
-// The one-glance answer to "will payroll actually include this person?".
-//
-// Icon-only in the row: the list is scanned, not read, and a full "Needs setup"
-// pill on every incomplete row drowns out the names. The tooltip names the
-// sections so the admin knows which tab to open — which is the whole point of
-// not having to open the profile to find out.
-function PayrollSetupFlag({ gap }: { gap: string | null }) {
-  if (!gap) return null;
-
-  const label = `Not ready for payroll — ${gap}`;
-
+// One table body, used by both sections so a row reads identically whichever
+// half it is in — only the Status cell differs, and it differs because the
+// person does.
+function EmployeeRows({
+  rows,
+  policyName,
+  setupGap,
+  onOpen,
+}: {
+  rows: Employee[];
+  policyName: (id: string | null) => string;
+  setupGap: (userId: string) => string | null;
+  onOpen: (id: string) => void;
+}) {
   return (
-    <span
-      title={label}
-      aria-label={label}
-      role="img"
-      className="inline-flex shrink-0 items-center rounded-full bg-warning/15 p-1 text-warning-foreground"
-    >
-      <CircleAlert className="h-3.5 w-3.5 text-warning-foreground" aria-hidden />
-    </span>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-y border-border/60">
+            <th className={TH_FIRST}>Person</th>
+            <th className={TH}>Role</th>
+            <th className={TH}>Policy</th>
+            <th className={TH}>Status</th>
+            <th className={TH_LAST} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((emp) => {
+            const gap = setupGap(emp.id);
+            return (
+              <tr
+                key={emp.id}
+                tabIndex={0}
+                onClick={() => onOpen(emp.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen(emp.id);
+                  }
+                }}
+                className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
+              >
+                <td className={TD_FIRST}>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">
+                      {emp.name?.trim() || buildName(emp.email)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") || emp.email}
+                    </p>
+                  </div>
+                </td>
+                <td className={TD}>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                      ROLE_PILL[emp.role] ?? "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {emp.role}
+                  </span>
+                </td>
+                <td className={`${TD} text-muted-foreground`}>{policyName(emp.policyId)}</td>
+                <td className={TD}>
+                  {/* The row's own answer to "can this person be paid?", in
+                      words rather than an icon — it is the column an admin is
+                      scanning, so it should not need a hover to read. */}
+                  {gap ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
+                      <CircleAlert className="size-3" aria-hidden />
+                      {gap}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-bold text-success">
+                      <CircleCheck className="size-3" aria-hidden />
+                      Ready
+                    </span>
+                  )}
+                </td>
+                <td className={TD_LAST}>
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

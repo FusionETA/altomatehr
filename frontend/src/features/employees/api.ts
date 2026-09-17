@@ -433,6 +433,11 @@ export type EmployeeImportResult = {
 export const downloadEmployeeImportTemplate = () =>
   apiGetFile("/employees/import/template", "employees-import-template.xlsx");
 
+// The current roster in the import's own column order, so filling in a field
+// for everyone is an edit rather than a retype.
+export const downloadEmployeeExport = () =>
+  apiGetFile("/employees/export", "employees.xlsx");
+
 export function importEmployees(file: File) {
   const form = new FormData();
   form.append("file", file);

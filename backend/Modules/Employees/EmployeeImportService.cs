@@ -30,6 +30,41 @@ public class EmployeeImportService : IEmployeeImportService
         TabularExportResult.From(
             EmployeeImportSheet.BuildTemplate(), format, "employees-import-template");
 
+    // The same columns the import reads, in the same order — a round trip that
+    // changed shape in the middle would not be one. No password column: a
+    // password is generated per created account and returned once, never
+    // exported.
+    public async Task<TabularExportResult> ExportAsync(TabularFormat format)
+    {
+        var sheet = new TabularSheet(
+            EmployeeImportSheet.SheetName,
+            [.. EmployeeImportSheet.Columns.Select(c => c.Label)]);
+
+        var policies = (await _policies.GetAllAsync())
+            .ToDictionary(p => p.Id, p => p.Name, StringComparer.Ordinal);
+        var shifts = (await _shifts.GetAllAsync())
+            .ToDictionary(s => s.Id, s => s.Name, StringComparer.Ordinal);
+
+        foreach (var employee in (await _employees.GetAllAsync())
+                     .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            sheet.AddRow(
+            [
+                employee.Email,
+                employee.Name,
+                employee.Role,
+                employee.EmployeeNumber ?? string.Empty,
+                employee.JobTitle ?? string.Empty,
+                employee.JoinDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                // Names, not ids, because that is what the import reads back.
+                employee.PolicyId is null ? string.Empty : policies.GetValueOrDefault(employee.PolicyId, string.Empty),
+                employee.ShiftId is null ? string.Empty : shifts.GetValueOrDefault(employee.ShiftId, string.Empty),
+            ]);
+        }
+
+        return TabularExportResult.From(sheet, format, "employees");
+    }
+
     public async Task<EmployeeImportResult> ImportAsync(byte[] content, TabularFormat format)
     {
         IReadOnlyList<IReadOnlyList<string>> rows;

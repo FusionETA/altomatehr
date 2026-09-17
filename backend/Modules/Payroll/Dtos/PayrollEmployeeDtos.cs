@@ -62,4 +62,9 @@ public class PayrollEmployeeRowDto
     // the statutory FILES need before a run can be submitted. Someone can be
     // fine on one and not the other, so the roster carries both.
     public IReadOnlyList<string> ProfileIncompleteSections { get; set; } = [];
+
+    // False for an org member with no EmployeeProfile row at all — nothing has
+    // been filled in for them yet, which is a different message from "these
+    // three sections are short".
+    public bool HasPayrollProfile { get; set; } = true;
 }

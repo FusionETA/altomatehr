@@ -277,6 +277,71 @@ public class PayrollEmployeeImportTests : IDisposable
         Assert.Empty(result.Errors);
     }
 
+    // ─── Readiness fields the sheet gained ──────────────────────────────
+
+    // Both of these gate payroll readiness, and until they were columns the
+    // round-trip could not finish a married employee or one on a SOCSO scheme.
+    [Fact]
+    public async Task ImportsSpouseWorkingAndSocsoScheme()
+    {
+        await Import(
+            "Employee Email,Spouse Working,SOCSO Scheme",
+            "aisyah@x.com,Yes,EMPLOYMENT_INJURY_ONLY");
+
+        Assert.True(Profile().SpouseWorking);
+        Assert.Equal(SocsoScheme.EMPLOYMENT_INJURY_ONLY, Profile().SocsoScheme);
+    }
+
+    // The subtle one. SpouseWorking is tri-state and readiness tests it for
+    // NULL, so a blank cell becoming "No" would mark a married employee
+    // complete when nobody has answered the question.
+    [Fact]
+    public async Task ABlankSpouseWorkingStaysNullRatherThanBecomingNo()
+    {
+        await Import(
+            "Employee Email,Spouse Working,Marital Status",
+            "aisyah@x.com,,MARRIED");
+
+        Assert.Null(Profile().SpouseWorking);
+    }
+
+    [Fact]
+    public async Task ABlankSpouseWorkingDoesNotClearAnAnswerAlreadyOnFile()
+    {
+        await Import("Employee Email,Spouse Working", "aisyah@x.com,No");
+        Assert.False(Profile().SpouseWorking);
+
+        await Import("Employee Email,Department", "aisyah@x.com,Operations");
+
+        Assert.False(Profile().SpouseWorking);
+    }
+
+    // ─── The export covers everyone ─────────────────────────────────────
+
+    // A member with no EmployeeProfile row is exactly who this sheet is for,
+    // and exporting only existing profiles left them out — so the roster listed
+    // them as unready with no bulk way to fix it.
+    [Fact]
+    public async Task TheExportIncludesMembersWithNoProfileYet()
+    {
+        var withoutProfile = new OrganizationMembership
+        {
+            OrganizationId = "org-1",
+            UserId = "usr-new",
+            Role = "Employee",
+            EmployeeNumber = "EMP-777",
+        };
+        _db.Users.Add(new User { Id = "usr-new", Email = "newbie@x.com", Name = "New Bie" });
+        _db.OrganizationMemberships.Add(withoutProfile);
+        await _db.SaveChangesAsync();
+
+        var text = Encoding.UTF8.GetString(
+            (await _service.ExportAsync(TabularFormat.Csv)).Content);
+
+        Assert.Contains("newbie@x.com", text);
+        Assert.Contains("New Bie", text);
+    }
+
     // ─── The export round-trips ─────────────────────────────────────────
 
     // Export, edit, import back. If the two shapes drifted, an admin's first

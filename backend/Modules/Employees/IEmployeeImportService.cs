@@ -6,6 +6,12 @@ public interface IEmployeeImportService
 {
     TabularExportResult BuildTemplate(TabularFormat format);
 
+    // The current roster in exactly the import's column order, so an admin
+    // edits what is there instead of retyping it. Without this the import can
+    // only CREATE people — filling in an employee number for thirty existing
+    // ones would mean typing thirty rows from scratch.
+    Task<TabularExportResult> ExportAsync(TabularFormat format);
+
     Task<EmployeeImportResult> ImportAsync(byte[] content, TabularFormat format);
 }
 

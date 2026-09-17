@@ -158,6 +158,15 @@ public class EmployeesController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [HttpGet("export")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> Export([FromQuery] TabularFormat format = TabularFormat.Xlsx)
+    {
+        var result = await _import.ExportAsync(format);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Import(IFormFile? file)
