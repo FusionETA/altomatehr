@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, CircleAlert, Plus, Users } from "lucide-react";
+import { ChevronRight, CircleAlert, Plus, Upload, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies, type Policy } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -13,6 +13,7 @@ import {
   PaginationControls,
 } from "@/features/claims/components/PaginationControls";
 import { AddEmployeeModal } from "./AddEmployeeModal";
+import { ImportEmployeesDialog } from "./ImportEmployeesDialog";
 import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
 
 const CARD =
@@ -37,6 +38,7 @@ export function EmployeesSettings() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   // Which employee's full record is open. Null = the list.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -200,6 +202,17 @@ export function EmployeesSettings() {
             className="w-full sm:w-56"
             inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
           />
+          {/* Beside Add employee, quieter than it: onboarding a batch is the
+              rarer act, and the single-add button is what most visits want. */}
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </button>
+
           <button
             type="button"
             onClick={() => setShowAdd(true)}
@@ -314,7 +327,16 @@ export function EmployeesSettings() {
           }}
         />
       ) : null}
-    </div>
+    
+      {showImport ? (
+        <ImportEmployeesDialog
+          onClose={() => setShowImport(false)}
+          // A bulk import can both create and update, so the list is
+          // refetched rather than patched from the response.
+          onImported={() => void employeesQuery.refresh()}
+        />
+      ) : null}
+</div>
   );
 }
 

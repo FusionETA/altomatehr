@@ -346,6 +346,7 @@ builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMember
 // IDirectoryService. Keeps the Employees/Auth repositories out of other modules.
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IEmployeeImportService, EmployeeImportService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();
 builder.Services.AddScoped<IEmployeeDocumentStorage, EmployeeDocumentStorage>();
