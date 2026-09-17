@@ -15,6 +15,10 @@ public class AttendanceCalendarExportTests
     private static readonly EmployeeRowIndex NoEmployees =
         AltomateHR.Api.Tests.Support.EmployeeDirectoryTestFactory.Snapshot([]);
     private static readonly Dictionary<string, string> NoProjects = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, AttendanceApprovalStatus> NoApprovals =
+        new(StringComparer.Ordinal);
+    private static readonly TimeZoneInfo Kl =
+        TimeZoneInfo.FindSystemTimeZoneById(AttendanceTime.DefaultTimeZone);
 
     [Fact]
     public void Build_EmitsARowForEveryDayInTheRange_NotJustTheWorkedOnes()
@@ -30,7 +34,7 @@ public class AttendanceCalendarExportTests
             Missing(new(2026, 9, 18)),
         };
 
-        var sheet = AttendanceCalendarSheet.Build(days, NoEmployees, NoProjects);
+        var sheet = AttendanceCalendarSheet.Build(days, NoEmployees, NoProjects, NoApprovals, Kl);
 
         Assert.Equal(5, sheet.Rows.Count);
     }
@@ -45,7 +49,7 @@ public class AttendanceCalendarExportTests
     {
         var day = new AttendanceCalendarSheet.Day(new(2026, 9, 14), kind, null, null);
 
-        var sheet = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects);
+        var sheet = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects, NoApprovals, Kl);
 
         // Type is the third column: Date, Day, Type.
         Assert.Equal(expected, sheet.Rows[0][2]);
@@ -60,7 +64,7 @@ public class AttendanceCalendarExportTests
             new(new(2026, 9, 17), AttendanceCalendarSheet.DayKind.Leave, null, "Annual Leave"),
         };
 
-        var sheet = AttendanceCalendarSheet.Build(days, NoEmployees, NoProjects);
+        var sheet = AttendanceCalendarSheet.Build(days, NoEmployees, NoProjects, NoApprovals, Kl);
 
         // Detail is last.
         Assert.Equal("Malaysia Day", sheet.Rows[0][^1]);
@@ -75,10 +79,35 @@ public class AttendanceCalendarExportTests
         var day = new AttendanceCalendarSheet.Day(
             new(2026, 9, 16), AttendanceCalendarSheet.DayKind.Holiday, null, "Malaysia Day");
 
-        var sheet = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects);
+        var sheet = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects, NoApprovals, Kl);
 
         // Date, Day, Type, Clock In, Clock Out, Worked Hours, Late By, Status
         Assert.Equal("", sheet.Rows[0][7]);
+    }
+
+    [Fact]
+    public void Build_PrintsLocalWallClockTime_NotUtc()
+    {
+        // Stored 00:51 UTC is 08:51 in Kuala Lumpur. The PDF said 00:51, which
+        // to the person holding it reads as arriving just before one in the
+        // morning.
+        var record = new AttendanceRecord
+        {
+            Id = "rec-1",
+            EmployeeId = "emp-1",
+            Date = new(2026, 9, 1),
+            TimeIn = new(2026, 9, 1, 0, 51, 0, DateTimeKind.Utc),
+            TimeOut = new(2026, 9, 1, 9, 45, 0, DateTimeKind.Utc),
+            Status = AttendanceStatus.ON_TIME,
+        };
+        var day = new AttendanceCalendarSheet.Day(
+            new(2026, 9, 1), AttendanceCalendarSheet.DayKind.Worked, record, null);
+
+        var sheet = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects, NoApprovals, Kl);
+
+        // Date, Day, Type, Clock In, Clock Out
+        Assert.Equal("08:51", sheet.Rows[0][3]);
+        Assert.Equal("17:45", sheet.Rows[0][4]);
     }
 
     [Fact]
@@ -86,9 +115,9 @@ public class AttendanceCalendarExportTests
     {
         var day = Worked(new(2026, 9, 14));
 
-        var single = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects);
+        var single = AttendanceCalendarSheet.Build([day], NoEmployees, NoProjects, NoApprovals, Kl);
         var many = AttendanceCalendarSheet.Build(
-            [day], NoEmployees, NoProjects, includeEmployee: true);
+            [day], NoEmployees, NoProjects, NoApprovals, Kl, includeEmployee: true);
 
         Assert.Equal("Date", single.Headers[0]);
         Assert.Equal("Employee", many.Headers[0]);

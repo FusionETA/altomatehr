@@ -105,6 +105,20 @@ public sealed class TabularSheet
             : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
                 .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
+    // Local wall-clock time, for a document a PERSON reads.
+    //
+    // Times are stored UTC and the machine-readable exports keep them that way
+    // — a re-import has to parse back exactly what we wrote. But a printed
+    // attendance report saying someone clocked in at 00:51 when they arrived
+    // at 08:51 is simply wrong to the only reader who matters, so the PDF
+    // shows the org's local time instead.
+    public static string LocalTime(DateTime? value, TimeZoneInfo zone) =>
+        value is null
+            ? string.Empty
+            : TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(value.Value, DateTimeKind.Utc), zone)
+                .ToString("HH:mm", CultureInfo.InvariantCulture);
+
     public static string Money(decimal value) =>
         value.ToString("0.00", CultureInfo.InvariantCulture);
 

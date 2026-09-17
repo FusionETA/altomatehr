@@ -1451,6 +1451,8 @@ public class AttendanceService : IAttendanceService
                 await BuildCalendarAsync(start, end, records),
                 employees,
                 projects,
+                approvalByRecord,
+                TimeZoneInfo.FindSystemTimeZoneById(AttendanceTime.DefaultTimeZone),
                 caption);
 
         // PDF gets narrower, printable versions of both tables — A4 landscape
@@ -1468,12 +1470,24 @@ public class AttendanceService : IAttendanceService
                 AttendanceSummarySheet.BuildRecords(records, approvalByRecord, employees, projects),
             };
 
-        // Leads for one person: the calendar is the report, and the record
-        // list behind it is the detail. Inserted rather than appended for the
-        // PDF, where the first sheet is the first page.
-        if (calendar is not null) sheets.Insert(1, calendar);
+        // For one person the calendar REPLACES the record list rather than
+        // joining it. It carries every row that list had plus the days it
+        // skipped, so printing both gave a three-page report whose last two
+        // pages said the same thing.
+        if (calendar is not null)
+        {
+            sheets.RemoveAt(1);
+            sheets.Add(calendar);
+        }
 
-        var fileName = $"attendance-summary-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
+        // Named after WHOSE hours these are, not just the endpoint. A folder of
+        // "attendance-summary-…" files from three different people is a folder
+        // you have to open one by one.
+        var subject = employeeId is not null
+            ? Slug(employees.NameOf(employeeId))
+            : employeeIds is not null ? "team" : "all";
+
+        var fileName = $"attendance-{subject}-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
         if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);
 
         var organizationId = _currentUser.OrganizationId;
@@ -1577,6 +1591,19 @@ public class AttendanceService : IAttendanceService
         }
 
         return byDate;
+    }
+
+    // "Evan Employee" → "evan-employee". Falls back rather than producing an
+    // empty segment when a row has no name on it.
+    private static string Slug(string? name)
+    {
+        var cleaned = new string((name ?? "")
+            .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
+            .ToArray())
+            .Trim('-');
+
+        while (cleaned.Contains("--")) cleaned = cleaned.Replace("--", "-");
+        return cleaned.Length == 0 ? "employee" : cleaned;
     }
 
     public TabularExportResult BuildImportTemplate(TabularFormat format) =>

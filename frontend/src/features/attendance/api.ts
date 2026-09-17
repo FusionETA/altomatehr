@@ -1,4 +1,11 @@
-import { apiGet, apiGetBlob, apiGetFile, apiPost, apiPostForm } from "@/shared/lib/api-client";
+import {
+  apiGet,
+  apiGetBlob,
+  apiGetFile,
+  apiPost,
+  apiPostForm,
+  saveFile,
+} from "@/shared/lib/api-client";
 
 // Mirrors the backend AttendanceStatus enum.
 export type AttendanceStatus =
@@ -372,30 +379,40 @@ function getApiPath(photoUrl: string) {
 // --- Exports ---
 
 // Opens the generated file in a new tab, the way leave and claims do.
-async function openAttendanceFile(path: string) {
-  const blob = await apiGetBlob(path);
-  const objectUrl = URL.createObjectURL(blob);
-  window.open(objectUrl, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+// Saved, not opened in a tab.
+//
+// window.open on an object URL hands the browser a blob: URL with no name, so
+// the file landed in Downloads called 73372216-d2a8-….pdf — the object URL's
+// own GUID. saveFile reads the server's Content-Disposition and puts that on
+// an <a download>, which is what the header was being sent for.
+async function saveAttendanceFile(path: string, fallbackName: string) {
+  saveFile(await apiGetFile(path, fallbackName));
 }
 
 // The caller's OWN report. Same endpoint and same narrowing as the admin one
 // below — the server resolves whose record it is from the token, so there is
 // no id to pass and nothing to get wrong by passing someone else's.
 export const exportMyAttendancePdf = (from: string, to: string) =>
-  openAttendanceFile(`/attendance/export/summary?mine=true&from=${from}&to=${to}&format=pdf`);
+  saveAttendanceFile(
+    `/attendance/export/summary?mine=true&from=${from}&to=${to}&format=pdf`,
+    `attendance-${from}-to-${to}.pdf`,
+  );
 
 // The caller's whole team in one file: a supervisor gets their reports and
 // themselves, an admin gets the org. Same endpoint again — the server resolves
 // who reports to whom, so no ids cross the wire to be tampered with.
 export const exportTeamAttendancePdf = (from: string, to: string) =>
-  openAttendanceFile(`/attendance/export/summary?team=true&from=${from}&to=${to}&format=pdf`);
+  saveAttendanceFile(
+    `/attendance/export/summary?team=true&from=${from}&to=${to}&format=pdf`,
+    `attendance-team-${from}-to-${to}.pdf`,
+  );
 
 // One person's worked-hours report over a range. Same endpoint as the org
 // export, narrowed server-side, so the figures cannot drift from the org one.
 export const exportEmployeeAttendancePdf = (employeeId: string, from: string, to: string) =>
-  openAttendanceFile(
+  saveAttendanceFile(
     `/attendance/export/summary?employeeId=${employeeId}&from=${from}&to=${to}&format=pdf`,
+    `attendance-${from}-to-${to}.pdf`,
   );
 
 // Declared here rather than imported from the claims feature: features don't
