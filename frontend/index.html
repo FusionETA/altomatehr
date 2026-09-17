@@ -2,11 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- The AltomateHR mark, from public/brand-icon.png. There is no vector of
-         it, so no SVG icon is declared: an SVG would outrank every PNG below in
-         Chrome and Firefox, which is how a leftover purple lightning bolt ended
-         up in the tab while the correct PNGs sat unused. .ico first for the
-         browser's automatic /favicon.ico request and for bookmark bars. -->
+    <!-- The AltomateHR mark, from public/brand-icon-white.png — the same source
+         the legacy app uses for its favicon. NOT brand-icon.png: that one is
+         the mark alone on transparency, filling 84% of the canvas, which at
+         16px reads as a clipped shape on whatever colour the tab happens to
+         be. This one is a white tile with the mark inset to 64%, which is what
+         a favicon needs and what the old system has always shown.
+
+         There is no vector of it, so no SVG icon is declared: an SVG would
+         outrank every PNG below in Chrome and Firefox, which is how a leftover
+         purple lightning bolt ended up in the tab while the correct PNGs sat
+         unused. .ico first for the browser's automatic /favicon.ico request
+         and for bookmark bars. -->
     <link rel="icon" href="/favicon.ico" sizes="48x48 32x32 16x16" />
     <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
