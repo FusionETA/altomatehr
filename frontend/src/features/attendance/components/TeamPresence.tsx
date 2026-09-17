@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, LoaderCircle, RefreshCw, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { exportTeamAttendancePdf, getTeamToday, type TeamAttendanceMember } from "../api";
+import { ExportButton } from "@/shared/components/ExportButton";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
@@ -159,19 +160,7 @@ export function TeamPresence() {
         <div className="flex items-center gap-2">
           {/* The whole team's month in one file, which is what the previous
               system's team-report PDF was for. */}
-          <button
-            type="button"
-            onClick={() => void exportTeam()}
-            disabled={exporting}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-          >
-            {exporting ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            Team PDF
-          </button>
+          <ExportButton label="Team PDF" busy={exporting} onClick={() => void exportTeam()} />
           <button
             type="button"
             onClick={() => load(true)}

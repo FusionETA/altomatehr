@@ -6,8 +6,6 @@ import {
   ChevronDown,
   CheckCircle2,
   Clock3,
-  Download,
-  LoaderCircle,
   MapPin,
 } from "lucide-react";
 import {
@@ -21,6 +19,7 @@ import {
   type AttendanceSession,
 } from "../api";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
+import { ExportButton } from "@/shared/components/ExportButton";
 import { AttendanceApprovals } from "./AttendanceApprovals";
 import { TeamPresence } from "./TeamPresence";
 import { OvertimeView } from "@/features/overtime/components/OvertimeView";
@@ -1311,58 +1310,50 @@ function HistoryView({
 
   return (
     <div className="space-y-6">
-      {/* Two rows, because these are two kinds of control. The period and the
-          export belong together — the button exports whatever period is
-          selected, and sitting them on one line is what says so. The filter
-          below narrows what's listed and changes nothing about the file, so
-          it had no business sharing a row and a pill shape with an action. */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <StatusFilterTabs<HistoryPeriod>
-            value={period}
-            onChange={setPeriod}
-            statuses={historyPeriods}
-            labels={historyPeriodLabels}
-            allValue="THIS_MONTH"
-            allLabel="This month"
-            ariaLabel="History period"
-          />
+        {/* The period tabs get the full width. Sharing a line with the export
+            squeezed the segmented control until "This month" wrapped onto two
+            lines, which is the kind of thing that only shows up on a narrow
+            screen — where this app mostly lives. */}
+        <StatusFilterTabs<HistoryPeriod>
+          value={period}
+          onChange={setPeriod}
+          statuses={historyPeriods}
+          labels={historyPeriodLabels}
+          allValue="THIS_MONTH"
+          allLabel="This month"
+          ariaLabel="History period"
+        />
+
+        {/* Filter on the left, action on the right. Position is what separates
+            them; they are the same quiet weight because neither is the point
+            of the screen — the history below is. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Only offered when there's something to filter down to — a toggle
+              that always yields an empty list is worse than no toggle. */}
+          {problemCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setProblemsOnly((current) => !current)}
+              aria-pressed={problemsOnly}
+              className={`inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold transition ${
+                problemsOnly
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  : "border border-border/70 bg-card text-muted-foreground shadow-sm hover:bg-muted"
+              }`}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Needs attention
+              <span className="tabular-nums opacity-70">{problemCount}</span>
+            </button>
+          ) : null}
 
           {/* Your own hours as a document — the reason most people open this
               screen at all: a landlord, a visa application, a dispute. */}
-          <button
-            type="button"
-            onClick={() => void exportPdf()}
-            disabled={exporting}
-            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
-          >
-            {exporting ? (
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {exporting ? "Preparing…" : "Download PDF"}
-          </button>
+          <div className="ml-auto">
+            <ExportButton label="Download PDF" busy={exporting} onClick={() => void exportPdf()} />
+          </div>
         </div>
-
-        {/* Only offered when there's something to filter down to — a toggle that
-            always yields an empty list is worse than no toggle. */}
-        {problemCount > 0 ? (
-          <button
-            type="button"
-            onClick={() => setProblemsOnly((current) => !current)}
-            aria-pressed={problemsOnly}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-              problemsOnly
-                ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                : "border border-border bg-card text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Needs attention
-            <span className="tabular-nums opacity-70">{problemCount}</span>
-          </button>
-        ) : null}
 
         {exportError ? (
           <p className="text-xs font-medium text-destructive">{exportError}</p>

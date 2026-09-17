@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Download,
   FileText,
   Archive,
   ArchiveRestore,
@@ -74,6 +73,7 @@ import {
   formatWorkingDays,
 } from "../lib/attendance-format";
 import { ApprovalTrailExport } from "./ApprovalTrailExport";
+import { ExportButton } from "@/shared/components/ExportButton";
 import { ShiftEditor } from "./ShiftEditor";
 import {
   AttendanceFilterBar,
@@ -2495,29 +2495,6 @@ function EmployeeDetail({
   );
 }
 
-function ExportButton({
-  label,
-  busy,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  busy: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-card px-3.5 py-2 text-xs font-bold text-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-60"
-    >
-      <Download className="h-3.5 w-3.5" aria-hidden />
-      {busy ? "Building…" : label}
-    </button>
-  );
-}
 
 // A labelled fact, dropped entirely when there is nothing to say — an empty
 // dash next to "Employee ID" tells the reader less than the absence does.
