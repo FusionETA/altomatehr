@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Upload } from "lucide-react";
 import {
   getPayrollEmployees,
   getRunAdjustments,
@@ -10,6 +10,7 @@ import {
 import { rm } from "../lib/payroll-format";
 import { BADGE, BUTTON_GHOST_SM, CARD, ERROR_PANEL, HINT, TD, TH } from "../lib/ui";
 import { AdjustmentEditor } from "./AdjustmentEditor";
+import { ImportAdjustmentsDialog } from "./ImportAdjustmentsDialog";
 import { TableSkeleton } from "./TableSkeleton";
 
 // Who has something set for this month, and a way in for everyone else.
@@ -24,9 +25,11 @@ export function PayrollRunAdjustments({
   openFor,
   onOpenHandled,
   onChanged,
+  periodLabel,
 }: {
   runId: string;
   editable: boolean;
+  periodLabel: string;
   categories: AdjustmentCategory[];
   // A payslip row's shortcut opens the editor here rather than mounting a
   // second copy of it beside the table.
@@ -37,6 +40,7 @@ export function PayrollRunAdjustments({
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [adjustments, setAdjustments] = useState<PayrollRunAdjustment[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,13 +75,28 @@ export function PayrollRunAdjustments({
 
   return (
     <section className={CARD}>
-      <header className="mb-4">
-        <h2 className="text-base font-semibold text-foreground">One-off adjustments</h2>
-        <p className={HINT}>
-          Overtime hours, a bonus, a deduction, or a change to someone's recurring
-          allowances — for this month only. These survive a regeneration; the payslip
-          lines they produce do not.
-        </p>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">One-off adjustments</h2>
+          <p className={HINT}>
+            Overtime hours, a bonus, a deduction, or a change to someone's recurring
+            allowances — for this month only. These survive a regeneration; the payslip
+            lines they produce do not.
+          </p>
+        </div>
+
+        {/* Only on a draft: the import writes through the same service the
+            editor does, and that refuses anything else. */}
+        {editable ? (
+          <button
+            type="button"
+            onClick={() => setImporting(true)}
+            className={`${BUTTON_GHOST_SM} shrink-0`}
+          >
+            <Upload className="size-3.5" aria-hidden />
+            Import adjustments
+          </button>
+        ) : null}
       </header>
 
       {error ? <p className={ERROR_PANEL}>Error: {error}</p> : null}
@@ -176,7 +195,19 @@ export function PayrollRunAdjustments({
           }}
         />
       ) : null}
-    </section>
+    
+      {importing ? (
+        <ImportAdjustmentsDialog
+          runId={runId}
+          periodLabel={periodLabel}
+          onClose={() => setImporting(false)}
+          onImported={() => {
+            void load();
+            onChanged();
+          }}
+        />
+      ) : null}
+</section>
   );
 }
 

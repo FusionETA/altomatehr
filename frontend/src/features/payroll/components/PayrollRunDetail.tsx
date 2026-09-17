@@ -216,6 +216,7 @@ export function PayrollRunDetailView({
         <PayrollRunAdjustments
           runId={run.id}
           editable={run.status === "DRAFT"}
+          periodLabel={run.periodLabel}
           categories={categories}
           openFor={adjusting}
           onOpenHandled={() => setAdjusting(null)}

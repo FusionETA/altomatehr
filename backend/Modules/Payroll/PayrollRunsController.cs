@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,7 @@ public class PayrollRunsController : ControllerBase
 {
     private readonly IPayrollRunService _runs;
     private readonly IPayrollRunAdjustmentService _adjustments;
+    private readonly IPayrollAdjustmentImportService _adjustmentImport;
     private readonly IPayrollRunClaimService _claims;
     private readonly IStatutoryFileService _statutory;
     private readonly IPayrollXeroSyncService _xero;
@@ -24,6 +26,7 @@ public class PayrollRunsController : ControllerBase
     public PayrollRunsController(
         IPayrollRunService runs,
         IPayrollRunAdjustmentService adjustments,
+        IPayrollAdjustmentImportService adjustmentImport,
         IPayrollRunClaimService claims,
         IStatutoryFileService statutory,
         IPayrollXeroSyncService xero,
@@ -32,6 +35,7 @@ public class PayrollRunsController : ControllerBase
         _salaryChanges = salaryChanges;
         _runs = runs;
         _adjustments = adjustments;
+        _adjustmentImport = adjustmentImport;
         _claims = claims;
         _statutory = statutory;
         _xero = xero;
@@ -268,6 +272,55 @@ public class PayrollRunsController : ControllerBase
     //
     // What an admin types for one employee on one run. These outlive a
     // generation; the payslip line items they produce do not.
+
+    // The bulk route. The per-employee editor below is right for one or two
+    // people; forty is a spreadsheet.
+    //
+    // GET the template pre-filled with the run's payable employees and the
+    // manual lines already on it — import REPLACES those lines, so anything
+    // left out of the file is deleted.
+    [HttpGet("{id}/adjustments/template")]
+    public async Task<IActionResult> AdjustmentTemplate(string id)
+    {
+        var result = await _adjustmentImport.BuildTemplateAsync(id);
+        if (result is null) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    [HttpPost("{id}/adjustments/import")]
+    public async Task<IActionResult> ImportAdjustments(string id, IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new { error = "No file was uploaded." });
+        }
+
+        var format = Path.GetExtension(file.FileName).ToLowerInvariant() switch
+        {
+            ".csv" => TabularFormat.Csv,
+            _ => TabularFormat.Xlsx,
+        };
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _adjustmentImport.ImportAsync(id, buffer.ToArray(), format);
+
+        if (!result.Found) return NotFound();
+
+        // Row errors are the file's problem (400); a locked run is a state
+        // conflict (409). Both leave the run exactly as it was.
+        if (!result.Ok)
+        {
+            return result.Errors.Count > 0
+                ? BadRequest(new { error = "The file has errors.", errors = result.Errors })
+                : Conflict(new { error = result.Message });
+        }
+
+        return Ok(result);
+    }
 
     [HttpGet("{id}/adjustments")]
     public async Task<IActionResult> GetAdjustments(string id)

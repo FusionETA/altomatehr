@@ -1129,3 +1129,42 @@ export type Cp8dConvertRequest = {
 // Returns the zipped M + P pair, named by the server.
 export const convertCp8d = (body: Cp8dConvertRequest) =>
   apiPostFile("/payroll/annual/cp8d/convert", `CP8D_${body.year}.zip`, body);
+
+// ─── Adjustment import ────────────────────────────────────────────────
+//
+// The bulk route into a draft run's manual adjustments. The per-employee
+// editor is right for one or two people; forty is a spreadsheet.
+
+export type AdjustmentImportResult = {
+  ok: boolean;
+  found: boolean;
+  // A whole-file problem: not a draft, unreadable, a missing column.
+  message: string | null;
+  errors: { row: number; message: string }[];
+
+  employeesAffected: number;
+  linesWritten: number;
+  // Employees the file said nothing about, whose existing manual lines were
+  // therefore removed — replace semantics, reported rather than discovered.
+  employeesCleared: number;
+
+  salaryChangesApplied: number;
+  salarySkippedNotMonthly: string[];
+};
+
+// Pre-filled with the run's payable employees and the manual lines already on
+// it, because importing REPLACES those lines.
+export const downloadAdjustmentTemplate = (runId: string) =>
+  download(
+    `/payroll/runs/${runId}/adjustments/template`,
+    "payroll-adjustments.xlsx",
+  );
+
+export function importAdjustments(runId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<AdjustmentImportResult>(
+    `/payroll/runs/${runId}/adjustments/import`,
+    form,
+  );
+}
