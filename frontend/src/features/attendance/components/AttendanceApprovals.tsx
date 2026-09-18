@@ -28,7 +28,7 @@ import {
   visibleOvertimeStatuses,
   type OvertimeStatusFilter,
 } from "@/features/overtime/lib/overtime-status";
-import { getOrganization, getProjects, type Project } from "@/features/settings/api";
+import { getOrganization, getProjects } from "@/features/settings/api";
 import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
@@ -381,50 +381,65 @@ function filterRecords(records: AttendanceRecord[], filter: DateFilter) {
 
 export function AttendanceApprovals() {
   const [approvalType, setApprovalType] = useState<ApprovalType>("ATTENDANCE");
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [filter, setFilter] = useState<DateFilter>("ALL");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<AttendanceBulkResult | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<RejectTarget | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
-  const [breaks, setBreaks] = useState<AttendanceApprovalRequest[]>([]);
 
-  // The queues themselves stay uncached and reload on the realtime signal
-  // below: this screen exists to be acted on, and a decision made elsewhere
-  // must not leave a decided row sitting here. Projects and the geofence
-  // radius are reference data and cached.
-  const loadAttendance = useCallback(() => {
-    Promise.all([getTeamAttendanceApprovals(), getTeamBreakApprovals().catch(() => [])])
-      .then(([nextRecords, nextBreaks]) => {
-        setRecords(nextRecords);
-        setBreaks(nextBreaks);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(loadAttendance, [loadAttendance]);
-
+  // The queues read through the cache like every other screen, so coming back
+  // to this tab paints the rows it had and refreshes behind them. It used to
+  // fetch from empty on every mount to keep a decided row from lingering —
+  // which cost a full skeleton, and a blink of the whole card list, every
+  // single visit. Nothing is actually served stale: any attendance write drops
+  // these paths from the cache outright (invalidateFor), the realtime signal
+  // below re-reads them, and the hook revalidates anything older than 30s.
+  const recordsQuery = useCachedQuery("/attendance/team", getTeamAttendanceApprovals);
+  const breaksQuery = useCachedQuery("/attendance/team/breaks", () =>
+    getTeamBreakApprovals().catch(() => []),
+  );
   const projectsQuery = useCachedQuery("/projects", getProjects);
   const orgQuery = useCachedQuery("/organizations/current", getOrganization);
-  // Derived: an effect would set it a frame after the rows had already been
-  // drawn against the 200m fallback, which decides whether each one reads as
-  // on-site.
+
+  // All derived. Copying a query into state through an effect is what makes the
+  // first frame of a revisit render from `[]` — the empty list is drawn, then
+  // replaced a frame later, which is the blink.
+  const records = useMemo(() => recordsQuery.data ?? [], [recordsQuery.data]);
+  const breaks = useMemo(() => breaksQuery.data ?? [], [breaksQuery.data]);
+  const projects = useMemo(
+    () => (projectsQuery.data ?? []).filter((project) => !project.isArchived),
+    [projectsQuery.data],
+  );
+  // The geofence radius decides whether each row reads as on-site, so it has to
+  // be right on the first paint rather than a frame after it.
   const radius = orgQuery.data?.geofenceRadiusMeters ?? 200;
+  // Only the records gate the skeleton: breaks are an extra on the same cards,
+  // and a day's card is worth drawing without them.
+  const loading = recordsQuery.loading;
+
+  // Re-read rather than dropping rows by hand. /attendance/team returns only what
+  // is still awaiting THIS approver, so it is the authority on what should remain
+  // — and once a single event can be decided on its own, filtering out its whole
+  // record would take the still-pending events on that day with it.
+  const refreshRecords = recordsQuery.refresh;
+  const refreshBreaks = breaksQuery.refresh;
+  const refreshQueue = useCallback(async () => {
+    await Promise.all([refreshRecords(), refreshBreaks()]);
+  }, [refreshRecords, refreshBreaks]);
+
   useEffect(() => {
-    setProjects((projectsQuery.data ?? []).filter((project) => !project.isArchived));
-  }, [projectsQuery.data]);
+    const first = recordsQuery.error ?? breaksQuery.error;
+    if (first) setError(first);
+  }, [recordsQuery.error, breaksQuery.error]);
 
   // A clock-in/out or break decided elsewhere refreshes this tab live. There's
   // no realtime scope for overtime yet, so that tab (below) stays reload-only.
-  useRealtimeEvent(["ATTENDANCE"], loadAttendance);
+  useRealtimeEvent(["ATTENDANCE"], refreshQueue);
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const groups = useMemo(() => {
@@ -494,19 +509,6 @@ export function AttendanceApprovals() {
     } finally {
       setBulkBusy(false);
     }
-  }
-
-  // Re-read rather than dropping rows by hand. /attendance/team returns only what
-  // is still awaiting THIS approver, so it is the authority on what should remain
-  // — and once a single event can be decided on its own, filtering out its whole
-  // record would take the still-pending events on that day with it.
-  async function refreshQueue() {
-    const [nextRecords, nextBreaks] = await Promise.all([
-      getTeamAttendanceApprovals(),
-      getTeamBreakApprovals().catch(() => []),
-    ]);
-    setRecords(nextRecords);
-    setBreaks(nextBreaks);
   }
 
   async function approveGroup(group: ApprovalGroup) {
@@ -827,10 +829,14 @@ function ApprovalTypeTabs({ value, onChange }: { value: ApprovalType; onChange: 
 }
 
 function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string> }) {
-  const [requests, setRequests] = useState<OvertimeRequest[]>([]);
+  const requestsQuery = useCachedQuery("/overtime/team", getTeamOvertime);
+  // Seeded from the cache in the initializer rather than left empty for an
+  // effect to fill after the paint — that one frame, built from [], is the
+  // blink. State and not a derivation because a decision patches its own row in
+  // place; the effect below keeps it in step with the background refresh.
+  const [requests, setRequests] = useState<OvertimeRequest[]>(() => requestsQuery.data ?? []);
   const [status, setStatus] = useState<OvertimeStatusFilter>("ALL");
   const [employeeSearch, setEmployeeSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<OvertimeRequest | null>(null);
@@ -840,14 +846,14 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<OvertimeBulkResult | null>(null);
 
-  // Same reasoning as the attendance queue: an approval queue is worked, not
-  // browsed, so it is read fresh.
+  const loading = requestsQuery.loading;
+
   useEffect(() => {
-    getTeamOvertime()
-      .then(setRequests)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    if (requestsQuery.data) setRequests(requestsQuery.data);
+  }, [requestsQuery.data]);
+  useEffect(() => {
+    if (requestsQuery.error) setError(requestsQuery.error);
+  }, [requestsQuery.error]);
 
   const filteredRequests = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
