@@ -4,9 +4,11 @@ import { login, type AuthResponse } from "../api";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 
 export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => void }) {
-  // Prefilled with the demo user so it's easy to test.
-  const [email, setEmail] = useState("employee@altomate.com");
-  const [password, setPassword] = useState("password123");
+  // Empty, not seeded with the demo account. A prefilled password is one
+  // Enter away from signing a real user in as someone else, and it shipped a
+  // working credential in the bundle.
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [forgot, setForgot] = useState(false);
@@ -66,6 +68,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
                 value={email}
                 placeholder="your@email.com"
                 autoComplete="email"
+                required
                 aria-invalid={Boolean(error)}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-12 w-full rounded-2xl border border-input bg-background/80 px-4 text-base text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
@@ -83,6 +86,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
                 value={password}
                 placeholder="Enter your password"
                 autoComplete="current-password"
+                required
                 aria-invalid={Boolean(error)}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-12 w-full rounded-2xl border border-input bg-background/80 px-4 text-base text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
