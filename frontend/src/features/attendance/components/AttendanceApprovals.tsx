@@ -10,7 +10,9 @@ import {
   type AttendanceApprovalRequest,
   type AttendanceBulkResult,
   type AttendanceRecord,
+  type AttendanceSession,
 } from "../api";
+import { dayOffsetLabel } from "../lib/attendance-time";
 import {
   approveOvertime,
   bulkApproveOvertime,
@@ -170,10 +172,12 @@ function groupRequestIds(group: ApprovalGroup) {
 // the FIRST pending clock-out's id — so approving what read as 04:26 PM
 // actually decided the 03:42 PM event.
 //
-// Adjustments are excluded: those carry originalEventAt and get their own card
-// above (AdjustmentNotice), and counting them here would double them up.
+// Adjustments are excluded: those carry originalEventAt and render as their own
+// card inside the shift they correct (AdjustmentNotice), and counting them here
+// would double them up.
 type PendingEvent = {
   approvalId: string;
+  sessionId: string | null;
   kind: "CLOCK_IN" | "CLOCK_OUT";
   time: string;
   lateByMin: number | null;
@@ -183,7 +187,9 @@ type PendingEvent = {
 };
 
 function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
-  const sessions = record.sessions ?? [];
+  const sessions = [...(record.sessions ?? [])].sort((a, b) =>
+    a.startedAt.localeCompare(b.startedAt),
+  );
 
   return (record.approvals ?? [])
     .filter(
@@ -195,13 +201,23 @@ function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
     .map((a) => {
       // Per-session where the event belongs to one; the record's own figures
       // are the fallback for rows filed before sessions existed.
-      const session = sessions.find((x) => x.id === a.attendanceSessionId);
+      const sessionId = sessionIdFor(a, sessions);
+      const session = sessions.find((x) => x.id === sessionId);
       const isIn = a.kind === "CLOCK_IN";
       return {
         approvalId: a.id,
+        sessionId,
         kind: a.kind as "CLOCK_IN" | "CLOCK_OUT",
         time: a.eventAt,
-        lateByMin: isIn ? session?.lateByMin ?? record.lateByMin ?? null : null,
+        // Lateness on the first shift only, same rule as SessionList: every
+        // clock-in is measured against the one scheduled start, so returning at
+        // 14:30 from an afternoon off is stamped "338 minutes late" — a number
+        // with no second shift start behind it. Two clock-ins both flagged
+        // LATE 338M is that bug on screen.
+        lateByMin:
+          isIn && (session ? sessions[0]?.id === session.id : true)
+            ? session?.lateByMin ?? record.lateByMin ?? null
+            : null,
         distance: isIn
           ? session?.clockInDistanceMeters ?? record.clockInDistanceMeters ?? null
           : session?.clockOutDistanceMeters ?? record.clockOutDistanceMeters ?? null,
@@ -214,6 +230,128 @@ function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
       };
     })
     .sort((a, b) => a.time.localeCompare(b.time));
+}
+
+// Which shift an approval belongs to.
+//
+// Normally the request carries the id. A CORRECTION usually doesn't: it is
+// stamped with the still-OPEN session, and by the time anyone files "I forgot
+// to clock out" that shift has already been closed, so the id is null. The
+// original time recovers it — that time IS the session's recorded end (or
+// start), so it names the shift exactly. Breaks fall back to the shift whose
+// window contains them.
+function sessionIdFor(
+  approval: AttendanceApprovalRequest,
+  sessions: AttendanceSession[],
+): string | null {
+  const stamped = approval.attendanceSessionId;
+  if (stamped && sessions.some((s) => s.id === stamped)) return stamped;
+
+  const at = new Date(approval.originalEventAt ?? approval.eventAt).getTime();
+  if (Number.isNaN(at)) return null;
+
+  if (approval.kind === "CLOCK_IN" || approval.kind === "CLOCK_OUT") {
+    const edgeOf = (s: AttendanceSession) =>
+      approval.kind === "CLOCK_IN" ? s.startedAt : s.endedAt;
+    const matched = sessions.find((s) => {
+      const edge = edgeOf(s);
+      return edge != null && new Date(edge).getTime() === at;
+    });
+    return matched?.id ?? null;
+  }
+
+  const within = sessions.find(
+    (s) =>
+      new Date(s.startedAt).getTime() <= at &&
+      (s.endedAt == null || at <= new Date(s.endedAt).getTime()),
+  );
+  return within?.id ?? null;
+}
+
+// One shift's worth of pending work: the correction asked for on it, its clock
+// events, and the breaks taken during it.
+//
+// Two shifts used to arrive as four clock rows in one flat list, with any
+// correction hoisted to a card above all of them — so the approver could see
+// that 09:06 AM should have been 06:00 PM without being able to tell WHICH
+// clock-out that was. Grouping puts each decision next to the shift it changes.
+type ShiftGroup = {
+  key: string;
+  // 1-based position among the day's shifts. Null when the events couldn't be
+  // tied to one — rows filed before sessions existed, which have no shift to
+  // be numbered against.
+  shiftNo: number | null;
+  session: AttendanceSession | null;
+  adjustments: AttendanceApprovalRequest[];
+  events: PendingEvent[];
+  breaks: AttendanceApprovalRequest[];
+};
+
+const UNASSIGNED_SHIFT = "__unassigned__";
+
+function shiftGroupsFor(
+  record: AttendanceRecord,
+  recordBreaks: AttendanceApprovalRequest[],
+): ShiftGroup[] {
+  const sessions = [...(record.sessions ?? [])].sort((a, b) =>
+    a.startedAt.localeCompare(b.startedAt),
+  );
+  const groups = new Map<string, ShiftGroup>();
+
+  function bucket(sessionId: string | null) {
+    const key = sessionId ?? UNASSIGNED_SHIFT;
+    const existing = groups.get(key);
+    if (existing) return existing;
+
+    const index = sessions.findIndex((s) => s.id === sessionId);
+    const created: ShiftGroup = {
+      key,
+      shiftNo: index >= 0 ? index + 1 : null,
+      session: index >= 0 ? sessions[index] : null,
+      adjustments: [],
+      events: [],
+      breaks: [],
+    };
+    groups.set(key, created);
+    return created;
+  }
+
+  for (const ask of record.approvals ?? []) {
+    if (ask.approvalStatus === "PENDING" && ask.originalEventAt)
+      bucket(sessionIdFor(ask, sessions)).adjustments.push(ask);
+  }
+  for (const event of pendingEventsFor(record)) bucket(event.sessionId).events.push(event);
+  for (const brk of recordBreaks) bucket(sessionIdFor(brk, sessions)).breaks.push(brk);
+
+  return [...groups.values()].sort((a, b) => shiftSortKey(a).localeCompare(shiftSortKey(b)));
+}
+
+// Shifts read in the order they were worked. A group with no session sorts by
+// its own earliest event rather than being pinned to the end — it is still part
+// of the same day's timeline.
+function shiftSortKey(shift: ShiftGroup) {
+  if (shift.session) return shift.session.startedAt;
+  return (
+    [
+      ...shift.adjustments.map((a) => a.originalEventAt ?? a.eventAt),
+      ...shift.events.map((e) => e.time),
+      ...shift.breaks.map((b) => b.eventAt),
+    ].sort()[0] ?? ""
+  );
+}
+
+// Clock events and breaks interleaved by time, so a shift reads
+// in -> break start -> break end -> out rather than listing the breaks after
+// the clock events.
+type ShiftRow =
+  | { kind: "event"; at: string; event: PendingEvent }
+  | { kind: "break"; at: string; request: AttendanceApprovalRequest };
+
+function shiftRows(shift: ShiftGroup): ShiftRow[] {
+  return [
+    ...shift.events.map((event) => ({ kind: "event" as const, at: event.time, event })),
+    ...shift.breaks.map((request) => ({ kind: "break" as const, at: request.eventAt, request })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
 }
 
 // Events actually AWAITING a decision — the same ids the approve and reject
@@ -1353,33 +1491,27 @@ function ExpandedGroup({
         Pending events
       </div>
       <div className="space-y-2">
-        {group.records.map((record) => (
-          <div key={record.id} className="space-y-2">
-            <AdjustmentNotice record={record} />
-            {breakRowsFor(group, record, "in", eventActions)}
-            {pendingEventsFor(record).map((event) => (
-              <EventRow
-                key={event.approvalId}
-                title={event.kind === "CLOCK_IN" ? "Clock in" : "Clock out"}
-                time={event.time}
-                lateByMin={event.lateByMin}
-                distance={event.distance}
-                radius={radius}
-                projectName={record.projectId ? projectNames.get(record.projectId) : null}
-                location={event.location}
-                photoUrl={event.photoUrl}
-                approvalId={event.approvalId}
-                busyKey={busyKey}
-                selectMode={selectMode}
-                isSelected={isSelected}
-                onToggleSelect={onToggleSelect}
-                onApprove={onApproveEvent}
-                onReject={onRejectEvent}
-              />
-            ))}
-            {breakRowsFor(group, record, "mid", eventActions)}
-          </div>
-        ))}
+        {group.records.map((record) => {
+          const recordBreaks = group.breaks.filter((b) => b.attendanceRecordId === record.id);
+          // Number and box the shifts only on a day that had more than one. On
+          // a single-shift day "Shift 1" and a frame around the only thing
+          // there is chrome that says nothing.
+          const showShifts = (record.sessions?.length ?? 0) > 1;
+          return (
+            <div key={record.id} className="space-y-2">
+              {shiftGroupsFor(record, recordBreaks).map((shift) => (
+                <ShiftBlock
+                  key={shift.key}
+                  shift={shift}
+                  showHeader={showShifts}
+                  projectName={record.projectId ? projectNames.get(record.projectId) : null}
+                  radius={radius}
+                  actions={eventActions}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       <div className={`mt-3 grid grid-cols-2 gap-2 ${selectMode ? "hidden" : ""}`}>
@@ -1405,16 +1537,107 @@ function ExpandedGroup({
   );
 }
 
-// A time-adjustment request on this record, if the employee asked for one.
+// One shift, headed by which shift it is and the window it covered.
+//
+// The header is what tells two otherwise identical stacks of clock rows apart:
+// with four pending events on one day, "Clock out 09:06 AM" alone doesn't say
+// whether it closed the morning or the evening.
+function ShiftBlock({
+  shift,
+  showHeader,
+  projectName,
+  radius,
+  actions,
+}: {
+  shift: ShiftGroup;
+  showHeader: boolean;
+  projectName: string | null | undefined;
+  radius: number;
+  actions: {
+    busyKey: string | null;
+    onApprove: (requestId: string) => void;
+    onReject: (requestId: string, label: string) => void;
+    selectMode: boolean;
+    isSelected: (requestId: string) => boolean;
+    onToggleSelect: (requestId: string) => void;
+  };
+}) {
+  const body = (
+    <div className="space-y-2">
+      <AdjustmentNotice asks={shift.adjustments} />
+      {shiftRows(shift).map((row) =>
+        row.kind === "event" ? (
+          <EventRow
+            key={row.event.approvalId}
+            title={row.event.kind === "CLOCK_IN" ? "Clock in" : "Clock out"}
+            time={row.event.time}
+            lateByMin={row.event.lateByMin}
+            distance={row.event.distance}
+            radius={radius}
+            projectName={projectName}
+            location={row.event.location}
+            photoUrl={row.event.photoUrl}
+            approvalId={row.event.approvalId}
+            busyKey={actions.busyKey}
+            selectMode={actions.selectMode}
+            isSelected={actions.isSelected}
+            onToggleSelect={actions.onToggleSelect}
+            onApprove={actions.onApprove}
+            onReject={actions.onReject}
+          />
+        ) : (
+          <BreakEventRow
+            key={row.request.id}
+            request={row.request}
+            busyKey={actions.busyKey}
+            selectMode={actions.selectMode}
+            selected={actions.isSelected(row.request.id)}
+            onToggleSelect={actions.onToggleSelect}
+            onApprove={actions.onApprove}
+            onReject={actions.onReject}
+          />
+        ),
+      )}
+    </div>
+  );
+
+  if (!showHeader) return body;
+
+  const session = shift.session;
+  const offset = session ? dayOffsetLabel(session.startedAt, session.endedAt) : "";
+
+  return (
+    <section className="rounded-[20px] border border-border/70 bg-surface-lowest/60 p-2">
+      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1.5 pt-0.5">
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
+          {shift.shiftNo ? `Shift ${shift.shiftNo}` : "Other events"}
+        </span>
+        {session ? (
+          <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+            {fmtTime(session.startedAt)} –{" "}
+            {session.endedAt ? fmtTime(session.endedAt) : "still in"}
+            {offset ? <span className="ml-1 font-bold text-tertiary">{offset}</span> : null}
+          </span>
+        ) : null}
+        {session?.durationMin != null ? (
+          <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+            · {fmtDuration(session.durationMin)}
+          </span>
+        ) : null}
+      </div>
+      {body}
+    </section>
+  );
+}
+
+// A time-adjustment request on this shift, if the employee asked for one.
 //
 // The clock recorded one time and the employee is asking for another; approving
-// the record applies the corrected time, rejecting keeps what the clock said.
-// That decision is the point of this card, so it leads rather than sits under
-// the event rows.
-function AdjustmentNotice({ record }: { record: AttendanceRecord }) {
-  const asks = (record.approvals ?? []).filter(
-    (a) => a.approvalStatus === "PENDING" && a.originalEventAt,
-  );
+// the shift applies the corrected time, rejecting keeps what the clock said.
+// It sits inside its own shift rather than above the whole day: on a two-shift
+// day, a card at the top left the approver guessing which clock-out the
+// crossed-out time belonged to.
+function AdjustmentNotice({ asks }: { asks: AttendanceApprovalRequest[] }) {
   if (asks.length === 0) return null;
 
   return (
@@ -1440,48 +1663,6 @@ function AdjustmentNotice({ record }: { record: AttendanceRecord }) {
       ))}
     </div>
   );
-}
-
-// A day reads clock in -> break start -> break end -> clock out, so the break
-// rows are placed by time rather than listed after the clock events.
-//
-// "in" renders anything before the clock-in (shouldn't happen, but a break with
-// no matching clock event would otherwise vanish); "mid" renders the rest.
-function breakRowsFor(
-  group: ApprovalGroup,
-  record: AttendanceRecord,
-  slot: "in" | "mid",
-  actions: {
-    busyKey: string | null;
-    onApprove: (requestId: string) => void;
-    onReject: (requestId: string, label: string) => void;
-    selectMode: boolean;
-    isSelected: (requestId: string) => boolean;
-    onToggleSelect: (requestId: string) => void;
-  },
-) {
-  const mine = group.breaks
-    .filter((b) => b.attendanceRecordId === record.id)
-    .sort((a, b) => a.eventAt.localeCompare(b.eventAt));
-
-  const rows = mine.filter((b) =>
-    slot === "in"
-      ? record.timeIn != null && b.eventAt < record.timeIn
-      : record.timeIn == null || b.eventAt >= record.timeIn,
-  );
-
-  return rows.map((brk) => (
-    <BreakEventRow
-      key={brk.id}
-      request={brk}
-      busyKey={actions.busyKey}
-      selectMode={actions.selectMode}
-      selected={actions.isSelected(brk.id)}
-      onToggleSelect={actions.onToggleSelect}
-      onApprove={actions.onApprove}
-      onReject={actions.onReject}
-    />
-  ));
 }
 
 // Deliberately quieter than a clock event: a break carries no geofence or

@@ -199,10 +199,18 @@ public class AttendanceService : IAttendanceService
             .GroupBy(a => a.AttendanceRecordId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
 
+        // The shifts behind those requests. Without them the approver's card
+        // can only say "clock out 09:06 AM" — on a two-shift day that doesn't
+        // identify which shift is being decided, and a correction filed against
+        // one of them has nowhere to sit.
+        var sessions = (await _sessions.GetByRecordIdsAsync(recordIds))
+            .GroupBy(x => x.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
+
         var emails = await _supervision.GetEmailsAsync(records.Select(r => r.EmployeeId).Distinct());
         var dtos = records
             .OrderByDescending(r => r.Date)
-            .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, [])))
+            .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])))
             .ToList();
         foreach (var dto in dtos) dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
         return dtos;
