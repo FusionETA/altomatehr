@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import {
   getLeaveTypes,
   getTeamLeaveBalances,
@@ -227,9 +227,16 @@ export function TeamBalancesView() {
 
 // One person, and what is left of each leave type they hold.
 //
-// A row per type rather than a grid of tiles: the codes line up down the left
-// and the numbers down the right, so two people side by side can be compared
-// the way the old table let you — without the table's width.
+// A row per type rather than a grid of tiles: the codes read down the left and
+// the numbers down the right, so two people side by side can be compared the
+// way the old table let you — without the table's width.
+//
+// Only the types this person actually holds are shown. A new org starts with
+// eight (annual, medical, compassionate, hospitalisation, marriage, maternity,
+// paternity, unpaid), and most people have an entitlement on two or three of
+// them: rendering all eight per tile is 200px of mostly "0/0" and turns a page
+// of eight people into a very long scroll. The rest fold behind a toggle, so
+// nothing is lost — it just isn't in the way.
 function EmployeeBalanceCard({
   name,
   email,
@@ -241,13 +248,33 @@ function EmployeeBalanceCard({
   balances: LeaveBalance[];
   types: LeaveType[];
 }) {
-  // Driven by the type list so every card shows the same types in the same
-  // order — a card built from its own balances alone would silently omit a
-  // type nobody on that person's policy has, and no two cards would line up.
-  const cells = types.map((type) => ({
-    type,
-    balance: balances.find((b) => b.leaveTypeId === type.id) ?? null,
-  }));
+  const [showAll, setShowAll] = useState(false);
+
+  // Driven by the type list, not by the person's own balances, so the types
+  // that do show keep the same order on every tile.
+  const cells = useMemo(
+    () =>
+      types.map((type) => {
+        const balance = balances.find((b) => b.leaveTypeId === type.id) ?? null;
+        return {
+          type,
+          balance,
+          // "Holds it" means there is something to look at: an entitlement, days
+          // already taken, or — the one an approver must never have hidden —
+          // days waiting on a decision.
+          held:
+            balance != null &&
+            (balance.entitlementDays > 0 || balance.takenDays > 0 || balance.pendingDays > 0),
+        };
+      }),
+    [types, balances],
+  );
+
+  const held = cells.filter((c) => c.held);
+  // Everything at zero is still worth drawing — an empty tile would read as a
+  // failed load rather than as someone with no entitlements.
+  const visible = showAll || held.length === 0 ? cells : held;
+  const hidden = cells.length - visible.length;
 
   return (
     <article className="rounded-2xl border border-border/60 bg-surface-low/50 p-3.5">
@@ -255,10 +282,22 @@ function EmployeeBalanceCard({
       <p className="truncate text-xs text-muted-foreground">{email}</p>
 
       <div className="mt-2.5 space-y-1.5">
-        {cells.map(({ type, balance }) => (
+        {visible.map(({ type, balance }) => (
           <BalanceRow key={type.id} code={type.code} balance={balance} />
         ))}
       </div>
+
+      {hidden > 0 || showAll ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          className="mt-2 inline-flex items-center gap-1 rounded-full text-[11px] font-bold text-muted-foreground transition hover:text-foreground"
+        >
+          {showAll ? "Show fewer" : `${hidden} more with no balance`}
+          <ChevronDown className={`h-3 w-3 transition ${showAll ? "rotate-180" : ""}`} />
+        </button>
+      ) : null}
     </article>
   );
 }
