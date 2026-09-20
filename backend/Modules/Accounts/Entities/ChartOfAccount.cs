@@ -30,6 +30,13 @@ public class ChartOfAccount : ITenantScoped
 
     public DateTime? XeroSyncedAt { get; set; }
 
+    // Hand-made here rather than pulled from Xero. Provenance only — it changes
+    // no behaviour, because the Xero sync matches on XeroAccountId and so never
+    // touches a row that has none. Kept because the distinction is otherwise
+    // only inferable, and "XeroAccountId is null" stops being a reliable proxy
+    // the moment an account is created locally and later linked to Xero.
+    public bool IsCustom { get; set; }
+
     public bool IsSelectable { get; set; } = true;               // employees can file claims against it
 
     [Precision(12, 2)]
