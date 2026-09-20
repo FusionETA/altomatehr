@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectManager> ProjectManagers => Set<ProjectManager>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
@@ -203,6 +204,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamApprovalOverride>()
             .HasIndex(o => new { o.TeamId, o.EmployeeId, o.Layer }).IsUnique();
 
+        // Mirrors the legacy unique(projectId, userId) — one row per manager per
+        // project, so a re-run of the migration can't duplicate an assignment.
+        modelBuilder.Entity<ProjectManager>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
+        modelBuilder.Entity<ProjectManager>().HasIndex(m => m.UserId);
+
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
         modelBuilder.Entity<XeroOAuthState>().HasIndex(s => s.State).IsUnique();
@@ -359,6 +365,8 @@ public class AppDbContext : DbContext
             m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<TeamApprovalOverride>().HasQueryFilter(
             o => _currentUser.OrganizationId == null || o.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<ProjectManager>().HasQueryFilter(
+            m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroConnection>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroOAuthState>().HasQueryFilter(

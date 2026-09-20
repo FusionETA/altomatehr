@@ -432,6 +432,17 @@ app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 
+// `dotnet run -- dump-chains <path>` writes every COMPUTED approval chain and
+// exits without serving. Deliberately ahead of the boot block below: a
+// verification dump must neither migrate the schema nor seed demo rows into
+// whatever database it happens to be pointed at.
+if (args.Contains("dump-chains"))
+{
+    var outPath = args.SkipWhile(a => a != "dump-chains").Skip(1).FirstOrDefault() ?? "chains.json";
+    await AltomateHR.Api.Tools.ChainDump.RunAsync(app.Services, outPath);
+    return;
+}
+
 // On boot: ensure the schema exists, then (dev only) seed demo data.
 using (var scope = app.Services.CreateScope())
 {
