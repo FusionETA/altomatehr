@@ -42,4 +42,38 @@ public class ProjectRepository : IProjectRepository
     // "does ANY entry cover this address", so the order carries no meaning.
     public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
         _db.ProjectAllowedIps.Where(a => a.ProjectId == projectId).ToListAsync();
+
+    // Delete-then-insert rather than diffing by id: the lists are a handful of
+    // rows an admin retypes freely, and reconciling them by id would mostly be
+    // a way to get the SortOrder subtly wrong. SaveChangesAsync runs both
+    // halves in one transaction.
+    public async Task ReplaceGeofencePointsAsync(
+        string projectId, IReadOnlyList<ProjectGeofencePoint> points)
+    {
+        _db.ProjectGeofencePoints.RemoveRange(
+            await _db.ProjectGeofencePoints.Where(g => g.ProjectId == projectId).ToListAsync());
+        _db.ProjectGeofencePoints.AddRange(points);
+        await _db.SaveChangesAsync();   // OrganizationId auto-stamped here
+    }
+
+    public Task<Dictionary<string, int>> GetGeofencePointCountsAsync() =>
+        _db.ProjectGeofencePoints
+            .GroupBy(g => g.ProjectId)
+            .Select(g => new { ProjectId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ProjectId, x => x.Count);
+
+    public Task<Dictionary<string, int>> GetAllowedIpCountsAsync() =>
+        _db.ProjectAllowedIps
+            .GroupBy(a => a.ProjectId)
+            .Select(g => new { ProjectId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ProjectId, x => x.Count);
+
+    public async Task ReplaceAllowedIpsAsync(
+        string projectId, IReadOnlyList<ProjectAllowedIp> entries)
+    {
+        _db.ProjectAllowedIps.RemoveRange(
+            await _db.ProjectAllowedIps.Where(a => a.ProjectId == projectId).ToListAsync());
+        _db.ProjectAllowedIps.AddRange(entries);
+        await _db.SaveChangesAsync();
+    }
 }

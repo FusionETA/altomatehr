@@ -344,6 +344,16 @@ public class ApprovalRoutingTests
             Task.FromResult(new List<ProjectGeofencePoint>());
         public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
             Task.FromResult(new List<ProjectAllowedIp>());
+        public Task ReplaceGeofencePointsAsync(string projectId, IReadOnlyList<ProjectGeofencePoint> points) =>
+            Task.CompletedTask;
+        public Task ReplaceAllowedIpsAsync(string projectId, IReadOnlyList<ProjectAllowedIp> entries) =>
+            Task.CompletedTask;
+        public Task<Dictionary<string, int>> GetGeofencePointCountsAsync() =>
+            Task.FromResult(new Dictionary<string, int>());
+        public Task<Dictionary<string, int>> GetAllowedIpCountsAsync() =>
+            Task.FromResult(new Dictionary<string, int>());
+
+
     }
 
     private sealed class StubTeamMemberships(List<TeamMembership> rows) : ITeamMembershipRepository

@@ -1,4 +1,4 @@
-namespace AltomateHR.Api.Modules.Attendance;
+namespace AltomateHR.Api.Common;
 
 // IPv4 allowlist matching, ported from the monolith's lib/ip-whitelist.ts.
 //

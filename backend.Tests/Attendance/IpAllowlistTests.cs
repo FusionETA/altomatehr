@@ -1,4 +1,4 @@
-using AltomateHR.Api.Modules.Attendance;
+using AltomateHR.Api.Common;
 
 namespace AltomateHR.Api.Tests.Attendance;
 

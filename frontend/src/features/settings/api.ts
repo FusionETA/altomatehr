@@ -41,6 +41,18 @@ export type Project = {
   /** Comma-separated IPs employees must clock in from when their policy has
    *  "Require IP allowlist" on. Null / empty means the check is skipped. */
   allowedIps: string | null;
+  /** The geofenced sites. Order is behaviour, not presentation: the check
+   *  walks them in order and the first one inside the radius wins. Empty
+   *  means the single latitude/longitude above is used instead. */
+  geofencePoints: GeofencePoint[];
+  /** Labelled allowlist entries, each an IPv4 address or CIDR range. Order
+   *  carries no meaning — matching asks whether ANY entry covers the address.
+   *  Empty means the legacy allowedIps string above is used instead. */
+  allowedIpEntries: AllowedIpEntry[];
+  /** Counts for the settings grid. The list endpoint returns these instead of
+   *  the rows above, which it leaves empty. */
+  geofenceSiteCount: number;
+  allowedIpCount: number;
   /** Origin markers when the project was synced from Xero (read-only). One or
    *  the other is set, never both: xeroProjectId for Xero's Projects product,
    *  xeroTrackingOptionId for an option on a tracking category. */
@@ -57,6 +69,20 @@ export type Project = {
   isArchived: boolean;
   createdAt: string;
 };
+export type GeofencePoint = {
+  id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type AllowedIpEntry = {
+  id: string;
+  label: string;
+  /** An IPv4 address (treated as /32) or an IPv4 CIDR range. */
+  cidr: string;
+};
+
 export type SaveProject = {
   name: string;
   location?: string | null;
@@ -67,6 +93,10 @@ export type SaveProject = {
   workingHoursEnd?: string | null;
   workingDays?: string | null;
   lunchBreakMinutes?: number;
+  /** Replace-all, both of them: what is sent IS the list afterwards, and an
+   *  empty array clears it. */
+  geofencePoints?: { label: string; latitude: number; longitude: number }[];
+  allowedIpEntries?: { label: string; cidr: string }[];
 };
 
 export type ChartOfAccount = {
@@ -159,6 +189,11 @@ export const deleteHoliday = (id: string) => apiDelete<void>(`/holidays/${id}`);
 
 // --- Projects ---
 export const getProjects = () => apiGet<Project[]>("/projects");
+
+// One project, WITH its geofence sites and allowlist entries — the list above
+// omits both, since the grid shows names and would otherwise pay a query per
+// project for rows it never draws.
+export const getProject = (id: string) => apiGet<Project>(`/projects/${id}`);
 
 // Only the projects the caller is on, via their team memberships. Use this for
 // the clock-in picker — clocking into a project you're not on is refused, so

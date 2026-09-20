@@ -36,6 +36,17 @@ public class ProjectsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _projects.GetAllAsync());
 
+    // GET /projects/{id} — one project, WITH its geofence sites and allowlist
+    // entries. The list endpoint above omits both: it renders a grid of names,
+    // and loading every project's child rows to draw that would be a query per
+    // project for data the screen never shows.
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(string id)
+    {
+        var project = await _projects.GetByIdAsync(id);
+        return project is null ? NotFound() : Ok(project);
+    }
+
     // GET /projects/mine — the caller's own projects, via their team
     // memberships. What the clock-in picker should offer: clocking into a
     // project you're not on is refused, so listing them all only invites the
@@ -57,8 +68,20 @@ public class ProjectsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveProjectDto dto)
     {
-        var project = await _projects.UpdateAsync(id, dto);
-        return project is null ? NotFound() : Ok(project);
+        try
+        {
+            var project = await _projects.UpdateAsync(id, dto);
+            return project is null ? NotFound() : Ok(project);
+        }
+        catch (ArgumentException ex)
+        {
+            // A malformed allowlist entry is the admin's typo, not a fault:
+            // 400 with the offending value, not the global handler's 500.
+            // ValidationProblem so the message lands in `errors`, which is
+            // where the client reads the real reason from.
+            return ValidationProblem(new ValidationProblemDetails(
+                new Dictionary<string, string[]> { ["allowedIpEntries"] = [ex.Message] }));
+        }
     }
 
     // POST /projects/{id}/archive — soft-archive (Admins only).

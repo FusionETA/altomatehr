@@ -14,4 +14,14 @@ public interface IProjectRepository
 
     // A project's IP allowlist entries.
     Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId);
+
+    // Replace-all. One transaction each, so a save cannot leave a project half
+    // geofenced or half allowlisted.
+    Task ReplaceGeofencePointsAsync(string projectId, IReadOnlyList<ProjectGeofencePoint> points);
+    Task ReplaceAllowedIpsAsync(string projectId, IReadOnlyList<ProjectAllowedIp> entries);
+
+    // How many sites / allowlist entries each project has, for the settings
+    // grid. One query each rather than loading the rows per project.
+    Task<Dictionary<string, int>> GetGeofencePointCountsAsync();
+    Task<Dictionary<string, int>> GetAllowedIpCountsAsync();
 }

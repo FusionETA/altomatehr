@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Crosshair, LoaderCircle, MapPin, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { LoaderCircle, MapPin, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   archiveProject,
   createProject,
-  getMyIp,
+  getProject,
   getProjects,
   getXeroProjectTracking,
   getXeroStatus,
@@ -21,10 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { requestGeolocation } from "@/shared/lib/geolocation";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { OrgGeofenceCard } from "./OrgFieldCards";
+import {
+  AllowedIpsEditor,
+  GeofenceSitesEditor,
+  type IpDraft,
+  type SiteDraft,
+} from "./ProjectAccessEditors";
+import { isValidIpOrCidr } from "../lib/ip-allowlist";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { TablePager } from "@/shared/components/TablePager";
 import { usePaged } from "@/shared/lib/use-paged";
@@ -64,6 +70,27 @@ function parseDays(csv: string | null | undefined): Set<number> {
   return out;
 }
 
+// A project saved before sites existed carries a single lat/lng pair and a
+// comma-separated allowlist. Both are shown as one-entry lists so the editor
+// never looks empty for a project that IS configured, and so the first save
+// moves it onto the new shape.
+function legacySites(project: Project): SiteDraft[] {
+  if (project.latitude == null || project.longitude == null) return [];
+  return [{
+    label: project.name,
+    latitude: String(project.latitude),
+    longitude: String(project.longitude),
+  }];
+}
+
+function legacyIps(project: Project): IpDraft[] {
+  return (project.allowedIps ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((cidr) => ({ label: "", cidr }));
+}
+
 export function ProjectsSettings() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,16 +101,16 @@ export function ProjectsSettings() {
 
   // Per-row editor: geofence location + IP allowlist.
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  const [ips, setIps] = useState("");
-  const [ipLoading, setIpLoading] = useState(false);
+  const [sites, setSites] = useState<SiteDraft[]>([]);
+  const [ipEntries, setIpEntries] = useState<IpDraft[]>([]);
+  // The grid's projects come from the list endpoint, which omits both lists —
+  // so opening the editor fetches the project on its own.
+  const [loadingEditor, setLoadingEditor] = useState(false);
   const [whStart, setWhStart] = useState("");
   const [whEnd, setWhEnd] = useState("");
   const [workDays, setWorkDays] = useState<Set<number>>(new Set());
   const [lunch, setLunch] = useState("60");
   const [savingLoc, setSavingLoc] = useState(false);
-  const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
 
   // Xero sync — the button only shows when a connection exists, so we never
@@ -191,67 +218,68 @@ export function ProjectsSettings() {
     }
   }
 
-  function openEditor(project: Project) {
+  async function openEditor(project: Project) {
     setEditingId(project.id);
-    setLat(project.latitude != null ? String(project.latitude) : "");
-    setLng(project.longitude != null ? String(project.longitude) : "");
-    setIps(project.allowedIps ?? "");
+    setLocError(null);
+    setLoadingEditor(true);
+    // Seed from the legacy single values first, so the editor shows something
+    // real while the fetch is in flight and a project that still only has the
+    // old scalar pair is migrated to a site on its next save.
+    setSites(legacySites(project));
+    setIpEntries(legacyIps(project));
     setWhStart(project.workingHoursStart ?? "");
     setWhEnd(project.workingHoursEnd ?? "");
     setWorkDays(parseDays(project.workingDays));
     setLunch(String(project.lunchBreakMinutes ?? 60));
-    setLocError(null);
-  }
-
-  async function useMyLocation() {
-    setLocating(true);
-    setLocError(null);
     try {
-      const coords = await requestGeolocation();
-      setLat(coords.lat.toFixed(6));
-      setLng(coords.lng.toFixed(6));
-    } catch (err) {
-      setLocError(message(err, "Couldn't get your location."));
-    } finally {
-      setLocating(false);
-    }
-  }
-
-  async function useMyIp() {
-    setIpLoading(true);
-    setLocError(null);
-    try {
-      const { ip } = await getMyIp();
-      if (!ip) {
-        setLocError("Couldn't determine your IP address.");
-        return;
+      const full = await getProject(project.id);
+      if (full.geofencePoints.length > 0) {
+        setSites(full.geofencePoints.map((g) => ({
+          label: g.label,
+          latitude: String(g.latitude),
+          longitude: String(g.longitude),
+        })));
       }
-      setIps((current) => {
-        const parts = current.split(",").map((p) => p.trim()).filter(Boolean);
-        return parts.includes(ip) ? current : [...parts, ip].join(", ");
-      });
+      if (full.allowedIpEntries.length > 0) {
+        setIpEntries(full.allowedIpEntries.map((e) => ({ label: e.label, cidr: e.cidr })));
+      }
     } catch (err) {
-      setLocError(message(err, "Couldn't determine your IP address."));
+      setLocError(message(err, "Could not load this project's sites."));
     } finally {
-      setIpLoading(false);
+      setLoadingEditor(false);
     }
   }
 
   async function saveLocation(project: Project) {
-    const latEmpty = lat.trim() === "";
-    const lngEmpty = lng.trim() === "";
-    if (latEmpty !== lngEmpty) {
-      setLocError("Enter both latitude and longitude, or clear both to remove the geofence.");
+    // Every site needs a name and a usable pair of coordinates. Saving a
+    // half-filled row would produce a site at 0,0 — in the Gulf of Guinea —
+    // that quietly fails every geofence check.
+    const cleanSites = sites.map((site) => ({
+      label: site.label.trim(),
+      latitude: Number(site.latitude),
+      longitude: Number(site.longitude),
+    }));
+    const badSite = cleanSites.find(
+      (site, i) =>
+        site.label === "" ||
+        sites[i].latitude.trim() === "" ||
+        sites[i].longitude.trim() === "" ||
+        Number.isNaN(site.latitude) ||
+        Number.isNaN(site.longitude) ||
+        site.latitude < -90 || site.latitude > 90 ||
+        site.longitude < -180 || site.longitude > 180,
+    );
+    if (badSite) {
+      setLocError(
+        "Every site needs a name, a latitude between −90 and 90, and a longitude between −180 and 180.",
+      );
       return;
     }
-    const latNum = latEmpty ? null : Number(lat);
-    const lngNum = lngEmpty ? null : Number(lng);
-    if (
-      latNum !== null &&
-      (Number.isNaN(latNum) || Number.isNaN(lngNum!) ||
-        latNum < -90 || latNum > 90 || lngNum! < -180 || lngNum! > 180)
-    ) {
-      setLocError("Latitude must be −90…90 and longitude −180…180.");
+
+    const cleanIps = ipEntries.map((e) => ({ label: e.label.trim(), cidr: e.cidr.trim() }));
+    const badIp = cleanIps.find((e) => e.label === "" || !isValidIpOrCidr(e.cidr));
+    if (badIp) {
+      setLocError("Every allowlist entry needs a name and a valid IPv4 address or range.");
       return;
     }
 
@@ -260,9 +288,14 @@ export function ProjectsSettings() {
     try {
       const updated = await updateProject(project.id, {
         name: project.name,
-        latitude: latNum,
-        longitude: lngNum,
-        allowedIps: ips.trim() === "" ? null : ips.trim(),
+        // The single pair and the comma-separated string are superseded by the
+        // lists; clearing them keeps one source of truth rather than leaving a
+        // stale centre behind the sites.
+        latitude: null,
+        longitude: null,
+        allowedIps: null,
+        geofencePoints: cleanSites,
+        allowedIpEntries: cleanIps,
         workingHoursStart: whStart.trim() === "" ? null : whStart.trim(),
         workingHoursEnd: whEnd.trim() === "" ? null : whEnd.trim(),
         workingDays: workDays.size > 0 ? [...workDays].sort((a, b) => a - b).join(",") : null,
@@ -393,7 +426,21 @@ export function ProjectsSettings() {
               editable in the panel below anyway. Cards use the width instead. */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {paged.pageItems.map((project) => {
-              const geofenced = project.latitude != null && project.longitude != null;
+              // Sites first, the legacy single pair as the fallback — reading
+              // latitude alone would call a project with three sites
+              // "no geofence", since saving sites clears that pair.
+              const siteCount =
+                project.geofenceSiteCount > 0
+                  ? project.geofenceSiteCount
+                  : project.latitude != null && project.longitude != null
+                    ? 1
+                    : 0;
+              const ipCount =
+                project.allowedIpCount > 0
+                  ? project.allowedIpCount
+                  : project.allowedIps?.trim()
+                    ? project.allowedIps.split(",").filter((p) => p.trim()).length
+                    : 0;
               const open = editingId === project.id;
               return (
                 <div
@@ -415,15 +462,20 @@ export function ProjectsSettings() {
                           the editor, where they can actually be changed. */}
                       <span
                         className={`inline-flex items-center gap-1 ${
-                          geofenced ? "text-primary" : "text-muted-foreground"
+                          siteCount > 0 ? "text-primary" : "text-muted-foreground"
                         }`}
                       >
                         <MapPin className="h-3 w-3" />
-                        {geofenced ? "Geofenced" : "No geofence"}
+                        {siteCount === 0
+                          ? "No geofence"
+                          : siteCount === 1
+                            ? "Geofenced"
+                            : `${siteCount} sites`}
                       </span>
-                      {project.allowedIps ? (
+                      {ipCount > 0 ? (
                         <span className="inline-flex items-center gap-1 text-primary">
-                          <ShieldCheck className="h-3 w-3" /> IP allowlist
+                          <ShieldCheck className="h-3 w-3" />
+                          {ipCount === 1 ? "IP allowlist" : `${ipCount} IP entries`}
                         </span>
                       ) : null}
                       {project.workingHoursStart && project.workingHoursEnd ? (
@@ -467,53 +519,12 @@ export function ProjectsSettings() {
                 Editing {editingProject.name}
               </p>
             <div className="mt-3 space-y-3 rounded-2xl border border-border/60 bg-background/60 p-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  className={INPUT}
-                  type="number"
-                  step="any"
-                  value={lat}
-                  onChange={(e) => setLat(e.target.value)}
-                  placeholder="Latitude (e.g. 3.1578)"
-                />
-                <input
-                  className={INPUT}
-                  type="number"
-                  step="any"
-                  value={lng}
-                  onChange={(e) => setLng(e.target.value)}
-                  placeholder="Longitude (e.g. 101.7123)"
-                />
-              </div>
+              {loadingEditor ? (
+                <p className="text-xs text-muted-foreground">Loading this project's sites…</p>
+              ) : null}
 
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-semibold text-muted-foreground">IP allowlist</label>
-                  <button
-                    type="button"
-                    onClick={useMyIp}
-                    disabled={ipLoading}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
-                  >
-                    {ipLoading ? (
-                      <LoaderCircle className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Crosshair className="h-3 w-3" />
-                    )}
-                    Use my IP
-                  </button>
-                </div>
-                <input
-                  className={`${INPUT} mt-1`}
-                  value={ips}
-                  onChange={(e) => setIps(e.target.value)}
-                  placeholder="e.g. 203.106.51.10, 118.100.0.0/16"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Comma-separated IPs or CIDR ranges. Only enforced for employees whose policy
-                  requires it; leave blank for none.
-                </p>
-              </div>
+              <GeofenceSitesEditor sites={sites} onChange={setSites} />
+              <AllowedIpsEditor entries={ipEntries} onChange={setIpEntries} />
 
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground">Work schedule</label>
@@ -582,19 +593,6 @@ export function ProjectsSettings() {
 
               {locError ? <p className="text-xs font-medium text-destructive">{locError}</p> : null}
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={useMyLocation}
-                  disabled={locating}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
-                >
-                  {locating ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Crosshair className="h-4 w-4" />
-                  )}
-                  Use my location
-                </button>
                 <button
                   type="button"
                   onClick={() => saveLocation(editingProject)}
