@@ -16,6 +16,7 @@ import { getTeamOvertime } from "@/features/overtime/api";
 import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
 import { getLeaveTypes } from "@/features/leave/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { OrgSwitcher } from "@/features/admin/components/OrgSwitcher";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
@@ -261,6 +262,12 @@ export function EmployeeShell({
             </div>
 
             <div className="flex shrink-0 items-center gap-3">
+              {/* Renders only for someone who belongs to more than one company,
+                  and without "New company" — that is an admin action. Without
+                  it a multi-company employee is stuck in whichever membership
+                  login happened to pick first, with no way to reach the rest. */}
+              <OrgSwitcher allowCreate={false} hideWhenSingle />
+
               <NotificationBell onNavigate={navigateFromNotification} />
 
               <div

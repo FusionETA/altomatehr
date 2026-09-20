@@ -9,7 +9,22 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 // account belongs to — picking one re-mints the session for it and reloads so
 // every screen re-fetches against the new org. "New company" also lives here
 // (the account is made its Owner), mirroring the monolith's switch-company menu.
-export function OrgSwitcher() {
+//
+// The employee portal needs this too, not just the admin shell: the legacy
+// system gave a person a SEPARATE LOGIN per company, so switching meant signing
+// in as someone else. v2 merges those into one account, which makes this the
+// only route to a second company — and 11 people, all non-admins, belong to
+// more than one.
+export function OrgSwitcher({
+  // Employees shouldn't be able to spin up a company from their own portal;
+  // that is an admin action and the button sits one stray tap away from the
+  // list they came here for.
+  allowCreate = true,
+  // Render nothing for someone who belongs to exactly one company, so the
+  // single-company majority gain no control that only ever reloads them onto
+  // the org they are already in.
+  hideWhenSingle = false,
+}: { allowCreate?: boolean; hideWhenSingle?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -19,7 +34,10 @@ export function OrgSwitcher() {
   const currentQuery = useCachedQuery("/organizations/current", getOrganization);
   // Only fetched once the menu is opened — the list isn't needed to render the
   // trigger, and most sessions never open it.
-  const orgsQuery = useCachedQuery("/auth/orgs", getOrgs, { enabled: open });
+  // Normally fetched only once the menu is opened. When the caller wants it
+  // hidden for single-company accounts, the count has to be known before the
+  // first paint, so fetch eagerly in that case.
+  const orgsQuery = useCachedQuery("/auth/orgs", getOrgs, { enabled: open || hideWhenSingle });
 
   const currentId = currentQuery.data?.id ?? null;
   const currentName = currentQuery.data?.name ?? "Company";
@@ -58,6 +76,10 @@ export function OrgSwitcher() {
       setSwitchingId(null);
     }
   }
+
+  // After every hook, never before — an early return above them would change
+  // the hook order between renders.
+  if (hideWhenSingle && orgs.length <= 1) return null;
 
   return (
     <div ref={ref} className="relative">
@@ -119,7 +141,7 @@ export function OrgSwitcher() {
 
           {error ? <p className="px-3 py-1 text-xs font-medium text-destructive">{error}</p> : null}
 
-          <div className="mt-1 border-t border-border/60 pt-1">
+          <div className={`mt-1 border-t border-border/60 pt-1 ${allowCreate ? "" : "hidden"}`}>
             <button
               type="button"
               onClick={() => {
