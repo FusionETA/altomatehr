@@ -93,6 +93,12 @@ export type AttendanceRecord = {
   decidedAt: string | null;
   approvals?: AttendanceApprovalRequest[];
   /** The day's clock-in/out stints, oldest first. A day can have several. */
+  /** What the IP check saw on the first clock-in of the day. `ipAllowed` is
+   *  tri-state: true matched the project's allowlist, false means the check
+   *  ran and it didn't (the employee clocked in via the remark-and-photo
+   *  override), null means no check ran. */
+  clockInIpAddress?: string | null;
+  clockInIpAllowed?: boolean | null;
   sessions?: AttendanceSession[];
   createdAt: string;
   updatedAt: string;

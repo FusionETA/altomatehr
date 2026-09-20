@@ -371,8 +371,13 @@ public class AttendanceService : IAttendanceService
 
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
 
+        // Off-network is an override, not a wall — same shape as off-geofence.
+        // Someone on mobile data at a site with no wifi still has to be able to
+        // start their shift; what matters is that they say why and it lands in
+        // the approver's queue with the address recorded against it.
         var ipCheck = await IpAllowedAsync(employeeId, effectiveProjectId, policy);
-        if (!ipCheck.Allowed) return IpNotAllowed();
+        if (!ipCheck.Allowed && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
+            return IpNotAllowed();
 
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
@@ -482,7 +487,8 @@ public class AttendanceService : IAttendanceService
 
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
 
-        if (!(await IpAllowedAsync(employeeId, record.ProjectId, policy)).Allowed)
+        if (!(await IpAllowedAsync(employeeId, record.ProjectId, policy)).Allowed
+            && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return IpNotAllowed();
 
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
@@ -1261,10 +1267,12 @@ public class AttendanceService : IAttendanceService
         if (allowlist.Count == 0) return new(true, null, null);
 
         var ip = _currentUser.IpAddress;
-        // Enforced but the address is unknown: blocked. The legacy system
-        // skipped the check here; v2 does not, because "we could not tell"
-        // resolving to "allowed" makes the control optional for anyone who can
-        // strip a header.
+        // Enforced but the address is unknown. The legacy system skipped the
+        // check entirely here, which makes the control optional for anyone who
+        // can strip a header. v2 treats it as not-allowed instead — but that
+        // now means the remark-and-photo override, not a wall, so a client
+        // behind a proxy that strips the header can still start their shift
+        // and the failure is visible to an approver rather than silent.
         if (string.IsNullOrEmpty(ip)) return new(false, null, false);
 
         var matched = IpAllowlist.Matches(ip, allowlist);
@@ -2024,7 +2032,8 @@ public class AttendanceService : IAttendanceService
     private static AttendanceActionResult IpNotAllowed() => new(
         false,
         null,
-        "You're not on an approved network for this project. Connect to the site network and try again.",
+        "You're not on an approved network for this project. Connect to the site network, "
+            + "or add a remark and a photo to clock in from here.",
         IpNotAllowedCode);
 
     // Stored instants are UTC; MySQL drops the Kind, so re-stamp it before
@@ -2081,6 +2090,8 @@ public class AttendanceService : IAttendanceService
             ClockOutDistanceMeters = r.ClockOutDistanceMeters,
             ClockInPhotoUrl = r.ClockInPhotoUrl,
             ClockOutPhotoUrl = r.ClockOutPhotoUrl,
+            ClockInIpAddress = r.ClockInIpAddress,
+            ClockInIpAllowed = r.ClockInIpAllowed,
             Status = r.Status,
             ApprovalStatus = latest?.ApprovalStatus ?? AttendanceApprovalStatus.PENDING,
             CurrentStep = latest?.CurrentStep ?? 0,

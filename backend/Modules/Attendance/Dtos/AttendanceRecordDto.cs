@@ -24,6 +24,13 @@ public class AttendanceRecordDto
     public double? ClockOutDistanceMeters { get; set; }
     public string? ClockInPhotoUrl { get; set; }
     public string? ClockOutPhotoUrl { get; set; }
+
+    // What the IP check saw. Exposed so an approver can tell an off-network
+    // clock-in from an ordinary one: with the remark-and-photo override in
+    // place, both arrive in the queue looking the same otherwise.
+    // ClockInIpAllowed is tri-state — null means no check ran.
+    public string? ClockInIpAddress { get; set; }
+    public bool? ClockInIpAllowed { get; set; }
     public AttendanceStatus Status { get; set; }
 
     // "Latest" rollup — the most-recently-submitted approval request tied to

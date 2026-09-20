@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, TriangleAlert, X } from "lucide-react";
+import { CalendarClock, CheckSquare, Coffee, ChevronDown, FileImage, LoaderCircle, MapPin, Pencil, PencilLine, ShieldAlert, TriangleAlert, X } from "lucide-react";
 import {
   bulkApproveAttendance,
   getTeamAttendanceApprovals,
@@ -178,6 +178,9 @@ function groupRequestIds(group: ApprovalGroup) {
 type PendingEvent = {
   approvalId: string;
   sessionId: string | null;
+  // Only meaningful on a clock-in: the record carries one IP verdict for the
+  // day, captured at the first one.
+  ipAllowed: boolean | null;
   kind: "CLOCK_IN" | "CLOCK_OUT";
   time: string;
   lateByMin: number | null;
@@ -207,6 +210,7 @@ function pendingEventsFor(record: AttendanceRecord): PendingEvent[] {
       return {
         approvalId: a.id,
         sessionId,
+        ipAllowed: isIn ? record.clockInIpAllowed ?? null : null,
         kind: a.kind as "CLOCK_IN" | "CLOCK_OUT",
         time: a.eventAt,
         // Lateness on the first shift only, same rule as SessionList: every
@@ -1580,6 +1584,7 @@ function ShiftBlock({
             lateByMin={row.event.lateByMin}
             distance={row.event.distance}
             radius={radius}
+            ipAllowed={row.event.ipAllowed}
             projectName={projectName}
             location={row.event.location}
             photoUrl={row.event.photoUrl}
@@ -1754,6 +1759,7 @@ function EventRow({
   lateByMin,
   distance,
   radius,
+  ipAllowed,
   projectName,
   location,
   photoUrl,
@@ -1770,6 +1776,9 @@ function EventRow({
   lateByMin: number | null;
   distance: number | null;
   radius: number;
+  // false = the IP check ran and failed; this clock-in came through the
+  // remark-and-photo override. null = no check ran, so nothing to say.
+  ipAllowed: boolean | null;
   projectName: string | null | undefined;
   location: string;
   photoUrl: string | null;
@@ -1818,6 +1827,16 @@ function EventRow({
                   {isOffSite ? "Off-site" : "On-site"}
                   {distance != null ? ` ${formatDistance(distance)}` : ""}
                 </span>
+                {/* Only the failure is worth a badge. A clock-in that passed
+                    the check looks like any other, and an org that never
+                    turned the check on would otherwise get a badge on every
+                    single row saying nothing. */}
+                {ipAllowed === false ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
+                    <ShieldAlert className="h-3 w-3" />
+                    Off-network
+                  </span>
+                ) : null}
               </div>
             </div>
             <button
