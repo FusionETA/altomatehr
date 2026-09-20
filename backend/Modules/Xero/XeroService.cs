@@ -600,11 +600,17 @@ public class XeroService : IXeroService
             .TrimEnd('=');
     }
 
-    // Xero types a claim can be coded to. A chart of accounts also holds
-    // revenue, receivables, equity and liabilities — none of which an employee
-    // can spend against, and all of which would otherwise land in the claim
-    // form's account picker.
-    private static readonly string[] ClaimableTypes = ["EXPENSE", "DIRECTCOSTS", "OVERHEADS"];
+    // Xero types a claim can be coded to — the four Xero groups under
+    // "Expenses" in its own account-type picker: Depreciation, Direct Costs,
+    // Expense, Overhead. DEPRECIATN is Xero's code for the first, and its
+    // absence here meant a chart that files anything under Depreciation lost
+    // those accounts on every sync.
+    //
+    // A chart of accounts also holds revenue, receivables, equity and
+    // liabilities — none of which an employee can spend against, and all of
+    // which would otherwise land in the claim form's account picker.
+    private static readonly string[] ClaimableTypes =
+        ["EXPENSE", "DIRECTCOSTS", "OVERHEADS", "DEPRECIATN"];
 
     // BANK is imported but NOT claimable: it is the account company-paid claims
     // are spent FROM (Claim.PayViaAccountId), never the account they are coded

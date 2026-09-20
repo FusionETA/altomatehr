@@ -24,6 +24,9 @@ public class XeroAccountSyncTests
             Account("x-1", "6100", "Travel", "EXPENSE"),
             Account("x-2", "6200", "Cost of goods", "DIRECTCOSTS"),
             Account("x-3", "6300", "Rent", "OVERHEADS"),
+            // Xero's fourth expense-family type. It was missing from the
+            // filter, so a chart using it silently lost those accounts.
+            Account("x-10", "6400", "Depreciation", "DEPRECIATN"),
             Account("x-4", "1000", "Business account", "BANK"),
             // None of these belong in a claim's account picker.
             Account("x-5", "200", "Sales", "REVENUE"),
@@ -35,10 +38,10 @@ public class XeroAccountSyncTests
 
         var result = await service.SyncAccountsAsync();
 
-        Assert.Equal(4, result.Imported);
+        Assert.Equal(5, result.Imported);
         Assert.Equal(5, result.Skipped);
         Assert.Equal(
-            ["6100", "6200", "6300", "1000"],
+            ["6100", "6200", "6300", "6400", "1000"],
             repo.Accounts.Select(a => a.Code));
     }
 
