@@ -35,6 +35,9 @@ public class ProjectService : IProjectService
             .Select(ToDto);
     }
 
+    public async Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+        await _repo.GetGeofencePointsAsync(projectId);
+
     public async Task<ProjectDto?> GetByIdAsync(string id)
     {
         var project = await _repo.GetByIdAsync(id);

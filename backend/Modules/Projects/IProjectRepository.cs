@@ -8,4 +8,7 @@ public interface IProjectRepository
     Task<Project?> GetByIdAsync(string id);
     Task<Project> AddAsync(Project project);
     Task UpdateAsync(Project project);
+
+    // A project's geofenced sites, in the order the check must walk them.
+    Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId);
 }

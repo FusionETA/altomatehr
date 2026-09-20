@@ -1181,7 +1181,20 @@ public class AttendanceService : IAttendanceService
         if (string.IsNullOrEmpty(projectId)) return (false, null, false);
 
         var project = await _projects.GetByIdAsync(projectId);
-        if (project?.Latitude is null || project.Longitude is null) return (false, null, false);
+        if (project is null) return (false, null, false);
+
+        // A project may be geofenced at several sites — an office, a gate, a
+        // second entrance. The points are the truth when there are any; the
+        // single Latitude/Longitude pair is the fallback for a project that has
+        // none, which is how the legacy schema treated its scalar pair too.
+        var points = await _projects.GetGeofencePointsAsync(projectId);
+        var sites = points.Count > 0
+            ? points.Select(p => (p.Label, p.Latitude, p.Longitude)).ToList()
+            : project.Latitude is not null && project.Longitude is not null
+                ? [(project.Name, project.Latitude.Value, project.Longitude.Value)]
+                : new List<(string, double, double)>();
+
+        if (sites.Count == 0) return (false, null, false);   // not geofenced at all
 
         // Policy gate: an employee whose policy doesn't require the geofence
         // still has their distance captured, but is never flagged off-site.
@@ -1189,9 +1202,14 @@ public class AttendanceService : IAttendanceService
 
         if (lat is null || lng is null) return (true, null, enforce);   // no GPS → off-site only when enforced
 
-        var distance = Geo.HaversineMeters(lat.Value, lng.Value, project.Latitude.Value, project.Longitude.Value);
         var radius = await GetRadiusAsync();
-        return (true, distance, enforce && distance > radius);
+        // Inside ANY site is on-site. The distance reported is the matched
+        // site's when inside and the NEAREST site's when not — being told you
+        // are 40km from a site you have never worked at, because it happened to
+        // be listed first, is how a multi-site geofence reads if you take the
+        // first distance instead of the nearest.
+        var result = Geo.CheckSites(lat, lng, sites, radius);
+        return (true, result.Distance, enforce && !result.Inside);
     }
 
     // Per-event GPS capture gate. GeolocationEnabled is the master switch; the

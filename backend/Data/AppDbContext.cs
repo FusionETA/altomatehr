@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectManager> ProjectManagers => Set<ProjectManager>();
+    public DbSet<ProjectGeofencePoint> ProjectGeofencePoints => Set<ProjectGeofencePoint>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
@@ -208,6 +209,7 @@ public class AppDbContext : DbContext
         // project, so a re-run of the migration can't duplicate an assignment.
         modelBuilder.Entity<ProjectManager>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
         modelBuilder.Entity<ProjectManager>().HasIndex(m => m.UserId);
+        modelBuilder.Entity<ProjectGeofencePoint>().HasIndex(g => new { g.ProjectId, g.SortOrder });
 
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
@@ -367,6 +369,8 @@ public class AppDbContext : DbContext
             o => _currentUser.OrganizationId == null || o.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<ProjectManager>().HasQueryFilter(
             m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<ProjectGeofencePoint>().HasQueryFilter(
+            g => _currentUser.OrganizationId == null || g.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroConnection>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroOAuthState>().HasQueryFilter(

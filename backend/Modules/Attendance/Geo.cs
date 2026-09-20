@@ -18,6 +18,36 @@ public static class Geo
         return 2 * earthRadius * Math.Asin(Math.Sqrt(a));
     }
 
+    // The outcome of checking coords against a project's sites. `Distance` is
+    // the MATCHED site's distance when inside, and the NEAREST site's when not —
+    // the two differ, and the off-site figure is the one an employee is shown.
+    public readonly record struct MultiResult(bool Inside, double? Distance, string? Label);
+
+    // Ported from the monolith's checkGeofenceMulti. Walks the sites IN ORDER and
+    // stops at the first one inside the radius; that ordering is data (see
+    // ProjectGeofencePoint.SortOrder), so the caller must not re-sort. When none
+    // match, reports the nearest — not the last one tried, and not the first.
+    //
+    // No sites, or no coords, is not "inside": it is unknown, and the caller
+    // decides what that means (see AttendanceService.EvaluateGeofenceAsync).
+    public static MultiResult CheckSites(
+        double? lat, double? lng,
+        IReadOnlyList<(string Label, double Latitude, double Longitude)> sites,
+        int radiusMeters)
+    {
+        if (lat is null || lng is null || sites.Count == 0) return new(false, null, null);
+
+        MultiResult nearest = new(false, null, null);
+        foreach (var site in sites)
+        {
+            var distance = HaversineMeters(lat.Value, lng.Value, site.Latitude, site.Longitude);
+            if (distance <= radiusMeters) return new(true, distance, site.Label);
+            if (nearest.Distance is null || distance < nearest.Distance)
+                nearest = new(false, distance, site.Label);
+        }
+        return nearest;
+    }
+
     // Distance from the employee's coords to a project's geofence centre, or null
     // when either the employee coords or the project centre is missing.
     public static double? DistanceToProject(double? empLat, double? empLng, double? projLat, double? projLng)

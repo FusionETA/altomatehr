@@ -29,4 +29,12 @@ public class ProjectRepository : IProjectRepository
         _db.Projects.Update(project);
         await _db.SaveChangesAsync();
     }
+
+    // Ordered here, once, so no caller has to remember that the order decides
+    // which site a clock-in is matched against.
+    public Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+        _db.ProjectGeofencePoints
+            .Where(g => g.ProjectId == projectId)
+            .OrderBy(g => g.SortOrder)
+            .ToListAsync();
 }
