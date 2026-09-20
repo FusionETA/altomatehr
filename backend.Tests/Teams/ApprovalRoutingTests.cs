@@ -340,6 +340,10 @@ public class ApprovalRoutingTests
         public Task<Project?> GetByIdAsync(string id) => Task.FromResult(projects.FirstOrDefault(p => p.Id == id));
         public Task<Project> AddAsync(Project p) => Task.FromResult(p);
         public Task UpdateAsync(Project p) => Task.CompletedTask;
+        public Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+            Task.FromResult(new List<ProjectGeofencePoint>());
+        public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+            Task.FromResult(new List<ProjectAllowedIp>());
     }
 
     private sealed class StubTeamMemberships(List<TeamMembership> rows) : ITeamMembershipRepository

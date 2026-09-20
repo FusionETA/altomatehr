@@ -63,6 +63,11 @@ public class ProjectsForMemberTests
 
 internal sealed class FakeProjectRepository : IProjectRepository
 {
+        public Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+            Task.FromResult(new List<ProjectGeofencePoint>());
+        public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+            Task.FromResult(new List<ProjectAllowedIp>());
+
     private readonly List<Project> _projects;
 
     public FakeProjectRepository(List<Project> projects) => _projects = projects;

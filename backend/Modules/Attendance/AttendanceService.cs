@@ -371,8 +371,8 @@ public class AttendanceService : IAttendanceService
 
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
 
-        if (!await IpAllowedAsync(employeeId, effectiveProjectId, policy))
-            return IpNotAllowed();
+        var ipCheck = await IpAllowedAsync(employeeId, effectiveProjectId, policy);
+        if (!ipCheck.Allowed) return IpNotAllowed();
 
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
@@ -411,6 +411,18 @@ public class AttendanceService : IAttendanceService
             existing.UpdatedAt = now;
             await _repo.UpdateAsync(existing);
             record = existing;
+        }
+
+        // Record what the IP gate saw. Written only when the check actually
+        // ran, and only once per day: the first clock-in owns these, the same
+        // rule the rest of the ClockIn* roll-up follows, so a second stint
+        // can't overwrite the morning's evidence.
+        if (ipCheck.Matched is not null && record.ClockInIpAllowed is null)
+        {
+            record.ClockInIpAddress = ipCheck.Address;
+            record.ClockInIpAllowed = ipCheck.Matched;
+            record.UpdatedAt = now;
+            await _repo.UpdateAsync(record);
         }
 
         // This stint, with its own evidence and its own punctuality.
@@ -470,7 +482,7 @@ public class AttendanceService : IAttendanceService
 
         var policy = await _policies.GetEffectivePolicyAsync(employeeId);
 
-        if (!await IpAllowedAsync(employeeId, record.ProjectId, policy))
+        if (!(await IpAllowedAsync(employeeId, record.ProjectId, policy)).Allowed)
             return IpNotAllowed();
 
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
@@ -1227,19 +1239,36 @@ public class AttendanceService : IAttendanceService
     // the project actually has an allowlist configured — a project with no
     // allowlist is silently skipped so newly-created projects don't lock
     // everyone out before an admin populates it.
-    private async Task<bool> IpAllowedAsync(string employeeId, string? projectId, EmployeePolicy? policy)
-    {
-        if (policy is null || !policy.RequireIpWhitelist) return true;
-        if (string.IsNullOrEmpty(projectId)) return true;
+    // The result of the IP gate, carrying what to record as well as whether to
+    // allow. Allowed and Checked are different questions: a clock-in that was
+    // never checked is not the same as one that passed.
+    private readonly record struct IpCheck(bool Allowed, string? Address, bool? Matched);
 
-        var project = await _projects.GetByIdAsync(projectId);
-        var allowed = (project?.AllowedIps ?? string.Empty)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (allowed.Length == 0) return true;   // not configured → skip
+    private async Task<IpCheck> IpAllowedAsync(string employeeId, string? projectId, EmployeePolicy? policy)
+    {
+        if (policy is null || !policy.RequireIpWhitelist) return new(true, null, null);
+        if (string.IsNullOrEmpty(projectId)) return new(true, null, null);
+
+        // Rows first, the legacy comma-separated column as the fallback — the
+        // same arrangement as the geofence points and the scalar lat/lng.
+        var rows = await _projects.GetAllowedIpsAsync(projectId);
+        var allowlist = rows.Count > 0
+            ? IpAllowlist.Parse(rows.Select(r => r.Cidr))
+            : IpAllowlist.ParseCsv((await _projects.GetByIdAsync(projectId))?.AllowedIps);
+
+        // Not configured → skipped, so a newly created project doesn't lock out
+        // everyone on it before an admin fills the allowlist in.
+        if (allowlist.Count == 0) return new(true, null, null);
 
         var ip = _currentUser.IpAddress;
-        if (string.IsNullOrEmpty(ip)) return false;   // enforced but unverifiable → block
-        return allowed.Contains(ip, StringComparer.OrdinalIgnoreCase);
+        // Enforced but the address is unknown: blocked. The legacy system
+        // skipped the check here; v2 does not, because "we could not tell"
+        // resolving to "allowed" makes the control optional for anyone who can
+        // strip a header.
+        if (string.IsNullOrEmpty(ip)) return new(false, null, false);
+
+        var matched = IpAllowlist.Matches(ip, allowlist);
+        return new(matched, ip, matched);
     }
 
     private async Task<int> GetRadiusAsync()

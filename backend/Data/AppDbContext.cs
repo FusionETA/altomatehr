@@ -42,6 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectManager> ProjectManagers => Set<ProjectManager>();
     public DbSet<ProjectGeofencePoint> ProjectGeofencePoints => Set<ProjectGeofencePoint>();
+    public DbSet<ProjectAllowedIp> ProjectAllowedIps => Set<ProjectAllowedIp>();
     public DbSet<ChartOfAccount> ChartOfAccounts => Set<ChartOfAccount>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
@@ -210,6 +211,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProjectManager>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
         modelBuilder.Entity<ProjectManager>().HasIndex(m => m.UserId);
         modelBuilder.Entity<ProjectGeofencePoint>().HasIndex(g => new { g.ProjectId, g.SortOrder });
+        modelBuilder.Entity<ProjectAllowedIp>().HasIndex(a => a.ProjectId);
 
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
@@ -371,6 +373,8 @@ public class AppDbContext : DbContext
             m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<ProjectGeofencePoint>().HasQueryFilter(
             g => _currentUser.OrganizationId == null || g.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<ProjectAllowedIp>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroConnection>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<XeroOAuthState>().HasQueryFilter(

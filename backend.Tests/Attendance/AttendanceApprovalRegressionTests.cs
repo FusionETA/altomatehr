@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Shifts.Entities;
@@ -922,6 +923,12 @@ public class AttendanceApprovalRegressionTests
     // Never reached — the record has no project, so the geofence check short-circuits.
     private sealed class FakeProjectService : IProjectService
     {
+        // Read by the attendance clock-in gate; nothing under test here uses them.
+        public Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectGeofencePoint>>([]);
+        public Task<IReadOnlyList<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectAllowedIp>>([]);
+
         public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
             throw new NotSupportedException();
         public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult(Enumerable.Empty<ProjectDto>());

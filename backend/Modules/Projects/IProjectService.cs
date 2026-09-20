@@ -19,4 +19,7 @@ public interface IProjectService
     // Returned as the entity rather than a DTO: the only caller is the
     // attendance geofence evaluation, which needs the raw coordinates.
     Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId);
+
+    // A project's IP allowlist entries, for the attendance clock-in gate.
+    Task<IReadOnlyList<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId);
 }

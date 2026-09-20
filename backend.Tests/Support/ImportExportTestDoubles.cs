@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Employees;
@@ -80,6 +81,12 @@ internal sealed class FakeHoursSummaryService : IHoursSummaryService
 
 internal sealed class FakeProjectServiceForExport : IProjectService
 {
+        // Read by the attendance clock-in gate; nothing under test here uses them.
+        public Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectGeofencePoint>>([]);
+        public Task<IReadOnlyList<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectAllowedIp>>([]);
+
     private readonly List<ProjectDto> _projects;
 
     public FakeProjectServiceForExport(params ProjectDto[] projects) => _projects = projects.ToList();

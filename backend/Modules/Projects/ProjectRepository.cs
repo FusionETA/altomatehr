@@ -37,4 +37,9 @@ public class ProjectRepository : IProjectRepository
             .Where(g => g.ProjectId == projectId)
             .OrderBy(g => g.SortOrder)
             .ToListAsync();
+
+    // Unordered on purpose: unlike the geofence sites, matching an allowlist is
+    // "does ANY entry cover this address", so the order carries no meaning.
+    public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+        _db.ProjectAllowedIps.Where(a => a.ProjectId == projectId).ToListAsync();
 }

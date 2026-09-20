@@ -38,6 +38,9 @@ public class ProjectService : IProjectService
     public async Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
         await _repo.GetGeofencePointsAsync(projectId);
 
+    public async Task<IReadOnlyList<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+        await _repo.GetAllowedIpsAsync(projectId);
+
     public async Task<ProjectDto?> GetByIdAsync(string id)
     {
         var project = await _repo.GetByIdAsync(id);

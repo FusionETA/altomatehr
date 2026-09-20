@@ -49,6 +49,19 @@ public class AttendanceRecord : ITenantScoped
     public double? ClockOutLng { get; set; }
     public double? ClockOutDistanceMeters { get; set; }
 
+    // What the IP check saw, for audit and supervisor review. Only written when
+    // the employee's policy requires the check — a geofence-only org keeps
+    // these null rather than recording an address it never used.
+    [MaxLength(64)]
+    public string? ClockInIpAddress { get; set; }
+
+    // Tri-state on purpose, and the third state is the point: true = the
+    // address matched the project's allowlist, false = the check ran and it
+    // did not, null = no check happened (policy off, or the project has no
+    // allowlist). A plain bool would report "not allowed" for every clock-in
+    // in an org that never turned the feature on.
+    public bool? ClockInIpAllowed { get; set; }
+
     // Off-site proof photos (URL into the attendance photo storage). Required
     // alongside a remark when the employee clocks off-site.
     [MaxLength(1000)]

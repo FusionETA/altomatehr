@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Tests.Common;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Common.Tabular;
@@ -993,6 +994,12 @@ public class LeaveServiceTests
 
     private sealed class FakeProjectService : IProjectService
     {
+        // Read by the attendance clock-in gate; nothing under test here uses them.
+        public Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectGeofencePoint>>([]);
+        public Task<IReadOnlyList<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
+            Task.FromResult<IReadOnlyList<ProjectAllowedIp>>([]);
+
         public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
             throw new NotSupportedException();
         public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult<IEnumerable<ProjectDto>>([]);
