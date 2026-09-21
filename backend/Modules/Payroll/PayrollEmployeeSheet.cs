@@ -30,6 +30,11 @@ public static class PayrollEmployeeSheet
         new("nationality", "Nationality", false, "Malaysian"),
         new("gender", "Gender", false, "FEMALE"),
         new("maritalStatus", "Marital Status", false, "MARRIED", ["marital status"]),
+
+        // Required by payroll readiness once someone is MARRIED — it drives the
+        // PCB spouse-relief branch. Tri-state: blank must stay null, not No,
+        // because null is what the readiness check tests for.
+        new("spouseWorking", "Spouse Working", false, "", ["spouse working"]),
         new("dateOfBirth", "Date of Birth", false, "1990-01-01", ["dob", "birth date"]),
 
         // ---- Employment ----
@@ -47,6 +52,11 @@ public static class PayrollEmployeeSheet
         new("epfEmployeeRate", "EPF Employee Rate %", false, "11", ["epf rate"]),
         new("contributeToEpf", "Contribute to EPF", false, "Yes"),
         new("socsoNumber", "SOCSO No", false, "900101145567", ["perkeso", "socso"]),
+
+        // Which scheme decides whether the SOCSO number is required at all, so
+        // without it the roster can flag a missing number the sheet cannot fix.
+        new("socsoScheme", "SOCSO Scheme", false, "EMPLOYMENT_INJURY_INVALIDITY",
+            ["socso scheme", "perkeso scheme"]),
         new("contributeToEis", "Contribute to EIS", false, "Yes"),
         new("incomeTaxNumber", "Income Tax No", false, "SG12345678901",
             ["lhdn", "tax no", "pcb no"]),

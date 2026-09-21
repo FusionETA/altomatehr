@@ -519,6 +519,10 @@ export type PayrollEmployee = {
   // is what the statutory files need before a run can be SUBMITTED — someone
   // can be fine on one and not the other. Empty means ready for payroll.
   profileIncompleteSections: string[];
+
+  // False for an org member with no EmployeeProfile row at all. Distinct from
+  // "these sections are short": nothing has been filled in for them yet.
+  hasPayrollProfile: boolean;
 };
 
 export const getPayrollEmployees = (includeArchived = false) =>

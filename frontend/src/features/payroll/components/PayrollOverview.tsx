@@ -142,7 +142,9 @@ export function PayrollOverview({
           detail="A missing number or salary blocks the whole run"
           clearText="Everyone is ready"
           tone="destructive"
-          onClick={() => onGo("employees")}
+          // Employees live under Company/Employee now, not in a payroll tab —
+          // same jump the "Manage employees" link below already makes.
+          onClick={() => onOpen?.("company", "manage-employee")}
         />
         <Tile
           icon={TriangleAlert}

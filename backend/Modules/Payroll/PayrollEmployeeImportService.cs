@@ -38,13 +38,28 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         var sheet = new TabularSheet(
             "Payroll employees", [.. columns.Select(c => c.Label)]);
 
-        var profiles = await _directory.GetProfilesForCurrentOrgAsync();
         var users = (await _directory.GetUsersAsync())
             .ToDictionary(u => u.Id, u => u, StringComparer.Ordinal);
+        var byUser = (await _directory.GetProfilesForCurrentOrgAsync())
+            .ToDictionary(p => p.UserId, p => p, StringComparer.Ordinal);
 
-        foreach (var profile in profiles.OrderBy(p => p.Id, StringComparer.Ordinal))
+        // Driven by MEMBERSHIPS so a member with no EmployeeProfile row still
+        // gets a row to fill in. Exporting only existing profiles meant the
+        // people with nothing on file — the ones this sheet exists for — were
+        // the ones it left out, and the roster above listed them as unready
+        // with no way to fix them in bulk.
+        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
+
+        foreach (var membership in memberships
+                     .OrderBy(m => users.GetValueOrDefault(m.UserId)?.Name ?? string.Empty,
+                         StringComparer.OrdinalIgnoreCase))
         {
-            users.TryGetValue(profile.UserId, out var user);
+            users.TryGetValue(membership.UserId, out var user);
+
+            // A blank profile stands in for a missing one: every cell exports
+            // empty, which is what the admin has to fill.
+            var profile = byUser.GetValueOrDefault(membership.UserId)
+                ?? new EmployeeProfile { UserId = membership.UserId };
 
             sheet.AddRow(
             [
@@ -55,6 +70,7 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
                 profile.Nationality ?? string.Empty,
                 profile.Gender?.ToString() ?? string.Empty,
                 profile.MaritalStatus?.ToString() ?? string.Empty,
+                profile.SpouseWorking is null ? string.Empty : (profile.SpouseWorking.Value ? "Yes" : "No"),
                 Date(profile.DateOfBirth),
                 Date(profile.JoinDate),
                 Date(profile.LeaveDate),
@@ -66,6 +82,7 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
                 profile.EpfEmployeeRate.ToString("0.##"),
                 profile.ContributeToEpf ? "Yes" : "No",
                 profile.SocsoNumber ?? string.Empty,
+                profile.SocsoScheme?.ToString() ?? string.Empty,
                 profile.ContributeToEis ? "Yes" : "No",
                 profile.IncomeTaxNumber ?? string.Empty,
                 profile.BankName ?? string.Empty,
@@ -200,12 +217,18 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
             TabularCell.Enum<MaritalStatus>(map.Cell(row, "maritalStatus")) ?? profile.MaritalStatus;
         profile.SalaryType =
             TabularCell.Enum<SalaryType>(map.Cell(row, "salaryType")) ?? profile.SalaryType;
+        profile.SocsoScheme =
+            TabularCell.Enum<SocsoScheme>(map.Cell(row, "socsoScheme")) ?? profile.SocsoScheme;
 
         profile.DateOfBirth = TabularCell.Date(map.Cell(row, "dateOfBirth")) ?? profile.DateOfBirth;
         profile.JoinDate = TabularCell.Date(map.Cell(row, "joinDate")) ?? profile.JoinDate;
         profile.LeaveDate = TabularCell.Date(map.Cell(row, "leaveDate")) ?? profile.LeaveDate;
 
         profile.ContributeToEpf = Flag(map, row, "contributeToEpf") ?? profile.ContributeToEpf;
+        // Flag already returns null for a blank cell, which is what this field
+        // must keep: readiness tests SpouseWorking for null, so a blank must not
+        // become "No" and quietly mark a married employee complete.
+        profile.SpouseWorking = Flag(map, row, "spouseWorking") ?? profile.SpouseWorking;
         profile.ContributeToEis = Flag(map, row, "contributeToEis") ?? profile.ContributeToEis;
 
         // Money is the one thing that gets reported rather than shrugged off:
