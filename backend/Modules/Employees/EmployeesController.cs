@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Employees.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,17 +13,20 @@ namespace AltomateHR.Api.Modules.Employees;
 public class EmployeesController : ControllerBase
 {
     private readonly IEmployeeService _employees;
+    private readonly IEmployeeImportService _import;
     private readonly IEmployeeProfileService _profiles;
     private readonly IEmployeeDocumentService _documents;
     private readonly ILhdnFormsService _lhdnForms;
 
     public EmployeesController(
         IEmployeeService employees,
+        IEmployeeImportService import,
         IEmployeeProfileService profiles,
         IEmployeeDocumentService documents,
         ILhdnFormsService lhdnForms)
     {
         _employees = employees;
+        _import = import;
         _profiles = profiles;
         _documents = documents;
         _lhdnForms = lhdnForms;
@@ -140,4 +144,52 @@ public class EmployeesController : ControllerBase
         Response.Headers.CacheControl = "no-store";
         return File(result.Bytes!, "application/pdf", result.FileName);
     }
+    // ─── Bulk import ────────────────────────────────────────────────────
+    //
+    // Creating the account and the membership — the step BEFORE the payroll
+    // employees import, which fills in payroll fields for people who already
+    // exist and refuses a row it cannot match.
+    [HttpGet("import/template")]
+    [Authorize(Roles = "Admin,Owner")]
+    public IActionResult ImportTemplate([FromQuery] TabularFormat format = TabularFormat.Xlsx)
+    {
+        var result = _import.BuildTemplate(format);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    [HttpGet("export")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> Export([FromQuery] TabularFormat format = TabularFormat.Xlsx)
+    {
+        var result = await _import.ExportAsync(format);
+        Response.Headers.CacheControl = "no-store";
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> Import(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "No file was uploaded." });
+
+        var format = Path.GetExtension(file.FileName).ToLowerInvariant() switch
+        {
+            ".csv" => TabularFormat.Csv,
+            _ => TabularFormat.Xlsx,
+        };
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+
+        var result = await _import.ImportAsync(buffer.ToArray(), format);
+
+        // A whole-file problem is a 400; row errors come back 200 alongside
+        // whatever DID import, because the good rows were really applied and
+        // the response carries the passwords for the accounts just created.
+        // Answering 400 would invite a client that discards the body.
+        return result.Message is not null ? BadRequest(new { error = result.Message }) : Ok(result);
+    }
+
 }

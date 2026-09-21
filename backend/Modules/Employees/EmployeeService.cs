@@ -21,17 +21,20 @@ public class EmployeeService : IEmployeeService
     private static readonly string[] AllowedRoles = ["Employee", "Supervisor", "Admin", "Owner"];
 
     private readonly IOrganizationMembershipRepository _memberships;
+    private readonly IEmployeeProfileRepository _profiles;
     private readonly IUserRepository _users;
     private readonly IAuditService _audit;
     private readonly ILeaveService _leave;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
+        IEmployeeProfileRepository profiles,
         IUserRepository users,
         ILeaveService leave,
         IAuditService audit)
     {
         _memberships = memberships;
+        _profiles = profiles;
         _users = users;
         _leave = leave;
         _audit = audit;
@@ -95,6 +98,8 @@ public class EmployeeService : IEmployeeService
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
+
+        await SyncProfileJoinDateAsync(user.Id, dto.JoinDate);
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.EmployeeCreate,
@@ -201,6 +206,8 @@ public class EmployeeService : IEmployeeService
         var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
 
+        await SyncProfileJoinDateAsync(membership.UserId, dto.JoinDate);
+
         // The one field on this form that decides what this person can
         // approve.
         var roleChanged = !string.Equals(previousRole, membership.Role, StringComparison.Ordinal);
@@ -223,6 +230,41 @@ public class EmployeeService : IEmployeeService
 
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
+    }
+
+    // The join date is stored TWICE: on the membership, which pro-rates leave
+    // accrual, and on the EmployeeProfile, which is what payroll readiness
+    // gates on (PayrollProfileReadiness.IsEmploymentComplete). Writing only the
+    // membership left every employee added here reading "Employment
+    // incomplete" however carefully the admin filled the date in — the profile
+    // editor quietly reconciled the two on its first save, which is why this
+    // went unnoticed until employees arrived by the hundred through an import.
+    //
+    // Creates the profile row when there is none, the same way the payroll
+    // employees import does: a member without one is a roster waiting to be
+    // filled in, not an error.
+    private async Task SyncProfileJoinDateAsync(string userId, DateTime? joinDate)
+    {
+        // Null means "leave unchanged" here exactly as it does for the
+        // membership above — it must not clear a date the profile already has.
+        if (joinDate is null) return;
+
+        var profile = await _profiles.GetByUserAsync(userId);
+        if (profile is null)
+        {
+            await _profiles.AddAsync(new EmployeeProfile
+            {
+                UserId = userId,
+                JoinDate = joinDate.Value.Date,
+            });
+            return;
+        }
+
+        if (profile.JoinDate == joinDate.Value.Date) return;
+
+        profile.JoinDate = joinDate.Value.Date;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await _profiles.UpdateAsync(profile);
     }
 
     private static EmployeeDto ToDto(OrganizationMembership m, IReadOnlyDictionary<string, User> usersById) => new()

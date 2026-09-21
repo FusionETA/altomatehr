@@ -75,7 +75,63 @@ public class EmployeeServiceTests
 
     // --- helpers ---
 
-    private static EmployeeService MakeService(out List<OrganizationMembership> memberships)
+    // The join date is stored twice: on the membership, which pro-rates leave,
+    // and on the EmployeeProfile, which is what payroll readiness gates on.
+    // Writing only the membership left an employee reading "Employment
+    // incomplete" however carefully the date was filled in.
+    [Fact]
+    public async Task CreateAsync_WritesTheJoinDateToTheProfileAsWellAsTheMembership()
+    {
+        var service = MakeService(out var memberships, out var profiles);
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "new@altomate.com",
+            Name = "New Person",
+            Password = "irrelevant-but-required",
+            Role = "Employee",
+            JoinDate = new DateTime(2026, 3, 1),
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(new DateTime(2026, 3, 1), memberships.Single(m => m.UserId == result.Employee!.Id).JoinDate);
+        Assert.Equal(new DateTime(2026, 3, 1), Assert.Single(profiles).JoinDate);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WritesTheJoinDateThroughToAnExistingProfile()
+    {
+        var service = MakeService(out _, out var profiles);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", JoinDate = new DateTime(2020, 1, 1) });
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee",
+            JoinDate = new DateTime(2026, 3, 1),
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(new DateTime(2026, 3, 1), Assert.Single(profiles).JoinDate);
+    }
+
+    // Same patch semantics as the membership: omitting the date must not clear
+    // one the profile already has.
+    [Fact]
+    public async Task UpdateAsync_WithoutAJoinDateLeavesTheProfilesAlone()
+    {
+        var service = MakeService(out _, out var profiles);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", JoinDate = new DateTime(2020, 1, 1) });
+
+        await service.UpdateAsync("usr-emp", new UpdateEmployeeDto { Role = "Supervisor" });
+
+        Assert.Equal(new DateTime(2020, 1, 1), Assert.Single(profiles).JoinDate);
+    }
+
+    private static EmployeeService MakeService(out List<OrganizationMembership> memberships) =>
+        MakeService(out memberships, out _);
+
+    private static EmployeeService MakeService(
+        out List<OrganizationMembership> memberships, out List<EmployeeProfile> profiles)
     {
         var users = new List<User>
         {
@@ -89,8 +145,10 @@ public class EmployeeServiceTests
             Membership("usr-super", "Supervisor"),
             Membership("usr-emp", "Employee"),
         ];
+        profiles = [];
         return new EmployeeService(
             new FakeMembershipRepository(memberships),
+            new FakeProfileRepository(profiles),
             new FakeUserRepository(users),
             new FakeLeaveService(),
             new FakeAuditService());
@@ -186,4 +244,26 @@ public class EmployeeServiceTests
         public Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync() =>
             throw new NotImplementedException();
     }
+    private sealed class FakeProfileRepository : IEmployeeProfileRepository
+    {
+        private readonly List<EmployeeProfile> _p;
+        public FakeProfileRepository(List<EmployeeProfile> p) => _p = p;
+
+        public Task<EmployeeProfile?> GetByUserAsync(string userId) =>
+            Task.FromResult(_p.FirstOrDefault(x => x.UserId == userId));
+
+        public Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync() => Task.FromResult(_p);
+
+        public Task<List<EmployeeProfile>> GetUnarchivedPastLeaversAsync(DateTime before, int max) =>
+            throw new NotSupportedException();
+
+        public Task<EmployeeProfile> AddAsync(EmployeeProfile profile)
+        {
+            _p.Add(profile);
+            return Task.FromResult(profile);
+        }
+
+        public Task UpdateAsync(EmployeeProfile profile) => Task.CompletedTask;
+    }
+
 }

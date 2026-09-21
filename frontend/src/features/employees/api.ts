@@ -410,3 +410,36 @@ export const downloadLhdnForm = (id: string, kind: string, year: number | null) 
   const query = year !== null ? `?year=${year}` : "";
   return apiGetFile(`/employees/${id}/lhdn-forms/${kind}/download${query}`, `${kind}.pdf`);
 };
+
+// ─── Bulk import ──────────────────────────────────────────────────────
+//
+// Creating accounts and memberships — the step BEFORE the payroll employees
+// import, which fills in payroll fields for people who already exist and
+// refuses a row it cannot match.
+
+export type EmployeeImportResult = {
+  ok: boolean;
+  // A whole-file problem: unreadable, empty, a missing column.
+  message: string | null;
+  created: number;
+  updated: number;
+  errors: { row: number; message: string }[];
+
+  // Shown ONCE and stored nowhere. Existing people are absent: they already
+  // have a password and the import never touches it.
+  createdAccounts: { email: string; name: string; password: string }[];
+};
+
+export const downloadEmployeeImportTemplate = () =>
+  apiGetFile("/employees/import/template", "employees-import-template.xlsx");
+
+// The current roster in the import's own column order, so filling in a field
+// for everyone is an edit rather than a retype.
+export const downloadEmployeeExport = () =>
+  apiGetFile("/employees/export", "employees.xlsx");
+
+export function importEmployees(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<EmployeeImportResult>("/employees/import", form);
+}

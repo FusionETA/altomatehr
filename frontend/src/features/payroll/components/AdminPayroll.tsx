@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { BUTTON_GHOST } from "../lib/ui";
 import { getPayrollRuns } from "../api";
 import { PayrollOverview } from "./PayrollOverview";
 import { PayrollRunsList } from "./PayrollRunsList";
 import { PayrollRunDetailView } from "./PayrollRunDetail";
-import { PayrollEmployeesTab } from "./PayrollEmployeesTab";
 import { PayrollLoansTab } from "./PayrollLoansTab";
 import { PayrollAnnualTab } from "./PayrollAnnualTab";
 import { PayrollSettingsForm } from "./PayrollSettingsForm";
@@ -28,7 +25,10 @@ import { PayrollSettingsForm } from "./PayrollSettingsForm";
 // Opening a run replaces the list rather than pushing a route — the admin
 // shell is a single view switch, so the drill-down is local state and the
 // back button is explicit.
-type PayrollTab = "overview" | "runs" | "employees" | "loans" | "annual" | "settings";
+// No "employees" here any more: the statutory roster and its bulk-fill panel
+// moved under Company/Employee → Manage Employee → Payroll details, so an admin
+// has one place for employees instead of a roster in each module.
+type PayrollTab = "overview" | "runs" | "loans" | "annual" | "settings";
 
 export function AdminPayroll({
   // Handed down from the admin shell so the overview can send an admin to
@@ -79,21 +79,6 @@ export function AdminPayroll({
           onGo={(key) => setTab(key as PayrollTab)}
           onOpen={onOpen}
         />
-      ) : tab === "employees" ? (
-        // Reached from the overview's "Statutory readiness" card, not from
-        // the tab bar, so it needs its own way back — otherwise the only
-        // exit is a tab that does not describe where you are.
-        <div className="space-y-4">
-          <button
-            type="button"
-            className={BUTTON_GHOST}
-            onClick={() => setTab("overview")}
-          >
-            <ArrowLeft className="size-4" aria-hidden />
-            Back to overview
-          </button>
-          <PayrollEmployeesTab />
-        </div>
       ) : tab === "loans" ? (
         <PayrollLoansTab />
       ) : tab === "annual" ? (
