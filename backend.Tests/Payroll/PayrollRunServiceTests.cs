@@ -372,10 +372,12 @@ public class PayrollRunServiceTests : IDisposable
 
         var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
-        Assert.Equal(16, payslip.ProratedDays);       // 16–31 Jan inclusive
-        Assert.Equal(31, payslip.ProrationDaysInPeriod);
+        // This org is on TWENTY_SIX, so both sides of the fraction are Mon-Sat
+        // days: 14 of Jan 2026's 27, not 16 of 31.
+        Assert.Equal(14, payslip.ProratedDays);       // Mon-Sat, 16–31 Jan
+        Assert.Equal(27, payslip.ProrationDaysInPeriod);
         Assert.Equal(5000m, payslip.BasicPay);        // the salary is unchanged
-        Assert.Equal(2580.65m, payslip.ProratedPay);  // 5000 × 16/31
+        Assert.Equal(2592.59m, payslip.ProratedPay);  // 5000 × 14/27
     }
 
     // ─── Profile JSON ───────────────────────────────────────────────────

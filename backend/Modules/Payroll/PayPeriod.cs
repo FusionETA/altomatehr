@@ -22,6 +22,39 @@ public static class PayPeriod
     public static int WorkingDaysForPeriod(int year, int month, WorkingDaysRule rule) =>
         rule == WorkingDaysRule.TWENTY_SIX ? 26 : CalendarDaysInMonth(year, month);
 
+    // Mon-Sat days in the month (24-27). This is the six-day week the ÷26
+    // convention assumes: 6 days × 52 weeks ÷ 12 ≈ 26, an AVERAGE no individual
+    // month equals. Counting the real days keeps numerator and divisor on one
+    // basis, which is what makes "days worked ÷ days in month" agree with
+    // "salary − rate × days absent". A flat 26 makes them disagree: Jul 2026
+    // has 27 Mon-Sat days, so a joiner who missed one would be paid 26/26 — a
+    // full month; Feb 2026 has 24, so a joiner who missed nothing would be
+    // docked RM 230.77 on a RM 3,000 salary.
+    public static int SixDayWorkDaysInMonth(int year, int month)
+    {
+        var days = CalendarDaysInMonth(year, month);
+        var count = 0;
+        for (var day = 1; day <= days; day++)
+        {
+            if (new DateTime(year, month, day).DayOfWeek != DayOfWeek.Sunday) count++;
+        }
+        return count;
+    }
+
+    // Denominator for incomplete-month proration, per the org's rule.
+    //
+    //   CALENDAR   → calendar days in the month (EA s.18A as written)
+    //   TWENTY_SIX → that month's real Mon-Sat count (24-27)
+    //
+    // Distinct from WorkingDaysForPeriod above, which stays on the flat 26
+    // because it divides the HOURLY rate for overtime (EA s.60I). Two divisors,
+    // two statutes — collapsing them would let an admin change everyone's
+    // overtime rate by changing how joiners are prorated.
+    public static int ProrationDaysForPeriod(int year, int month, WorkingDaysRule rule) =>
+        rule == WorkingDaysRule.TWENTY_SIX
+            ? SixDayWorkDaysInMonth(year, month)
+            : CalendarDaysInMonth(year, month);
+
     // How many days of the period the employee is paid for, given their join and
     // leave dates.
     //
@@ -43,7 +76,13 @@ public static class PayPeriod
         int periodMonth,
         DateTime? joinDate,
         DateTime? leaveDate,
-        int daysInWagePeriod)
+        // Pass what ProrationDaysForPeriod returned for the same rule, never a
+        // flat 26 — numerator and denominator must share one basis.
+        int daysInWagePeriod,
+        // CALENDAR counts every day in the eligible window; TWENTY_SIX counts
+        // only Mon-Sat, matching the Mon-Sat denominator. Defaulted so existing
+        // callers keep the s.18A behaviour.
+        WorkingDaysRule rule = WorkingDaysRule.CALENDAR)
     {
         var periodStart = new DateTime(periodYear, periodMonth, 1);
         var periodEnd = new DateTime(
@@ -64,7 +103,9 @@ public static class PayPeriod
 
         // Inclusive of both endpoints — someone who joins and leaves on the same
         // day worked one day, not zero.
-        var days = (end - start).Days + 1;
+        var days = rule == WorkingDaysRule.TWENTY_SIX
+            ? SixDayWorkDaysBetween(start, end)
+            : (end - start).Days + 1;
 
         return Math.Clamp(days, 0, daysInWagePeriod);
     }
@@ -92,5 +133,18 @@ public static class PayPeriod
         // Rounded once, at the end — the daily rate stays exact through the
         // multiplication.
         return Money.Round2(monthlySalary.Value / workingDaysBasis * unpaidDays);
+    }
+
+    // Mon-Sat days between two dates, both ends inclusive. The window is at
+    // most one month, so a day-by-day walk is cheap and avoids weekday
+    // arithmetic that goes wrong across month boundaries.
+    private static int SixDayWorkDaysBetween(DateTime start, DateTime end)
+    {
+        var count = 0;
+        for (var day = start.Date; day <= end.Date; day = day.AddDays(1))
+        {
+            if (day.DayOfWeek != DayOfWeek.Sunday) count++;
+        }
+        return count;
     }
 }

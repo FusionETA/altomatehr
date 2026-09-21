@@ -39,12 +39,26 @@ public static class PerkesoContributionTxt
 
     public static StatutoryFileResult Render(StatutoryRunPayload payload)
     {
-        var employerCode = payload.CompanyInfo?.PerkesoEmployerCode?.Trim() ?? string.Empty;
+        // Normalised, because the code is padded verbatim into a fixed-width
+        // column: "A 3702 1815 43P" typed off the certificate would ship its
+        // spaces to PERKESO, which answers "Invalid employer code format".
+        var employerCode = StatutoryFileFields.NormaliseEmployerCode(
+            payload.CompanyInfo?.PerkesoEmployerCode);
         if (employerCode.Length == 0)
         {
             return StatutoryFileResult.Refused(
                 "PERKESO Employer Code is missing. Set it in Payroll Settings → Company Info "
                 + "before generating the SOCSO/EIS file.");
+        }
+
+        // The code is the first field of every row, so a placeholder fails the
+        // upload on line 1 with nothing to say which setting is at fault.
+        if (StatutoryFileFields.LooksLikePlaceholderId(employerCode))
+        {
+            return StatutoryFileResult.Refused(
+                $"PERKESO Employer Code \"{payload.CompanyInfo?.PerkesoEmployerCode}\" looks like a "
+                + "placeholder. Enter the real code from PERKESO in Payroll Settings → Company Info "
+                + "— it is the first field of every row, so the portal rejects the upload on line 1.");
         }
 
         var myCoId = payload.CompanyInfo?.RegistrationNo?.Trim() ?? string.Empty;

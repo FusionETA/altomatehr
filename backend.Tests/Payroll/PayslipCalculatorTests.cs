@@ -77,24 +77,62 @@ public class PayslipCalculatorTests
         Assert.Equal(5000m, r.BasicPay);
         Assert.Equal(5000m, r.ProratedPay);
         Assert.Equal(1m, r.ProratedFactor);
-        Assert.Equal(31, r.ProratedDays);
-        Assert.Equal(31, r.ProrationDaysInPeriod);
+        // The fixture is on TWENTY_SIX, so the basis is the month's real
+        // Mon-Sat count — 27 for Jan 2026, not 31 and not a flat 26. A full
+        // month is still a full month: 27/27.
+        Assert.Equal(27, r.ProratedDays);
+        Assert.Equal(27, r.ProrationDaysInPeriod);
     }
 
     // s.18A opens "Notwithstanding section 60I" precisely so the ÷26 basis does
     // NOT govern an incomplete month. The org rule still sets the s.60I basis
     // that drives the hourly rate, so the two figures deliberately disagree.
     [Fact]
-    public void Proration_UsesCalendarDays_EvenOnTheTwentySixRule()
+    public void Proration_FollowsTheOrgsRule_NotAlwaysCalendarDays()
     {
+        // Jan 2026 has 31 calendar days and 27 Mon-Sat days. Joining on the
+        // 2nd (a Friday) misses only the 1st, which is a Thursday — so 26 of
+        // the 27 working days, not 30 of 31.
         var r = PayslipCalculator.Calculate(Make(
             rule: WorkingDaysRule.TWENTY_SIX,
             joinDate: new DateTime(2026, 1, 2)));
 
-        Assert.Equal(26, r.TotalWorkingDays);        // s.60I, for the hourly rate
-        Assert.Equal(30, r.ProratedDays);            // s.18A, calendar days
+        // The hourly rate stays on the flat 26 (s.60I) — two divisors, two
+        // statutes. If these ever collapse into one, an admin changing how
+        // joiners are prorated would silently change everyone's overtime rate.
+        Assert.Equal(26, r.TotalWorkingDays);
+
+        Assert.Equal(26, r.ProratedDays);
+        Assert.Equal(27, r.ProrationDaysInPeriod);
+        Assert.Equal(Money.Round2(5000m * 26m / 27m), r.ProratedPay);
+    }
+
+    [Fact]
+    public void Proration_OnTheCalendarRule_StillUsesCalendarDays()
+    {
+        var r = PayslipCalculator.Calculate(Make(
+            rule: WorkingDaysRule.CALENDAR,
+            joinDate: new DateTime(2026, 1, 2)));
+
+        Assert.Equal(30, r.ProratedDays);
         Assert.Equal(31, r.ProrationDaysInPeriod);
         Assert.Equal(Money.Round2(5000m * 30m / 31m), r.ProratedPay);
+    }
+
+    // The flat 26 is an average no month equals, and using it literally breaks
+    // both ways: a joiner who missed one of Jul 2026's 27 working days would
+    // score 26/26 and take home a full month.
+    [Fact]
+    public void Proration_CountsTheMonthsRealWorkingDays_NotAFlatTwentySix()
+    {
+        var r = PayslipCalculator.Calculate(Make(
+            rule: WorkingDaysRule.TWENTY_SIX,
+            year: 2026,
+            month: 7,
+            joinDate: new DateTime(2026, 7, 2)));
+
+        Assert.Equal(27, r.ProrationDaysInPeriod);
+        Assert.True(r.ProratedPay < 5000m, "a joiner who missed a day must not be paid in full");
     }
 
     // Regression: the money must use the EXACT ratio, and the stored factor is
@@ -103,8 +141,12 @@ public class PayslipCalculatorTests
     [Fact]
     public void Proration_MultipliesByTheExactRatio_NotTheRoundedFactor()
     {
+        // Pinned to CALENDAR so the 10/28 figures stay fixed: this guards the
+        // exact-vs-rounded arithmetic, which is independent of which basis the
+        // org uses, and a moving denominator would obscure that.
         var r = PayslipCalculator.Calculate(Make(
             year: 2026, month: 2,
+            rule: WorkingDaysRule.CALENDAR,
             monthlySalary: 4999.99m,
             joinDate: new DateTime(2026, 2, 19)));
 

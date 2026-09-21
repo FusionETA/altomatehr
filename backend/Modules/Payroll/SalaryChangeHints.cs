@@ -215,7 +215,10 @@ public static class SalaryChangeHints
         int periodYear, int periodMonth, DateTime effectiveDate, WorkingDaysRule rule)
     {
         var calendarDays = PayPeriod.CalendarDaysInMonth(periodYear, periodMonth);
-        var totalDays = rule == WorkingDaysRule.TWENTY_SIX ? 26 : calendarDays;
+        // The month's REAL Mon-Sat count, not a flat 26. 26 is an average no
+        // month equals: Jul 2026 has 27 such days and Feb 2026 has 24, so a
+        // literal 26 over- or under-states the split either way.
+        var totalDays = PayPeriod.ProrationDaysForPeriod(periodYear, periodMonth, rule);
 
         var periodStart = new DateTime(periodYear, periodMonth, 1);
         var periodEnd = new DateTime(periodYear, periodMonth, calendarDays);

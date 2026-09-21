@@ -56,6 +56,45 @@ public static class StatutoryFileFields
             ? string.Empty
             : new string(value.Where(char.IsAsciiLetterOrDigit).ToArray());
 
+    // Normalise an employer identifier before it goes into a fixed-width
+    // statutory column: drop everything that isn't a letter or digit, and
+    // uppercase what's left.
+    //
+    // Admins type these with the separators printed on the certificate
+    // ("A 3702 1815 43P"), and the renderers pad the value verbatim into a
+    // column — so the spaces travel to PERKESO and come back as "Invalid
+    // employer code format".
+    public static string NormaliseEmployerCode(string? value) =>
+        new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    // True for an identifier that is plainly a stand-in rather than a real one:
+    // a single character repeated ("0000", "1111"), or a run of the counting
+    // sequence ("1234", "123456789", "0987654321").
+    //
+    // The renderers already refuse a MISSING number, but a seeded demo value
+    // passes that check and is caught only by the agency — LHDN rejected a
+    // whole PCB submission on "No E (HQ) 1234567890 not exist", and PERKESO
+    // rejected a SOCSO file on employer code "1234", in the same week.
+    //
+    // This cannot confirm a real identifier, only reject an obviously fake
+    // one, so it stays deliberately narrow: no length or format rules. Those
+    // differ per agency and would block legitimate older codes — PERKESO codes
+    // in the wild are both 12-char alphanumeric (A3702181543P) and 6-digit
+    // numeric (907968).
+    public static bool LooksLikePlaceholderId(string? value)
+    {
+        var v = (value ?? string.Empty).Trim().ToUpperInvariant();
+        if (v.Length < 3) return false;
+        if (v.All(c => c == v[0])) return true;
+        if (!v.All(char.IsDigit)) return false;
+        return "01234567890".Contains(v) || "09876543210".Contains(v);
+    }
+
+    // The 2-character country code LHDN wants beside a foreign employee's
+    // passport, derived from the nationality already on the profile.
+    public static string CountryCodeForNationality(string? nationality) =>
+        NationalityCountryCodes.ForNationality(nationality);
+
     // An LHDN tax reference with its SG / OG / C prefix and separators removed,
     // leaving the digits ready to pad.
     public static string NormaliseTaxRef(string? taxRef) => DigitsOnly(taxRef);

@@ -18,7 +18,10 @@ public class StatutoryFileTests
     {
         OrganizationId = "org-1",
         EmployerName = "Globe Engineering Sdn Bhd",
-        EmployerTin = "E1234567890",
+        // Not "E1234567890": that is the counting sequence, which the renderer
+        // now refuses as a placeholder — LHDN rejected a real submission on
+        // exactly that value.
+        EmployerTin = "E6034866703",
         RegistrationNo = "202001012345",
         PerkesoEmployerCode = "A1234567890",
     };
@@ -65,7 +68,8 @@ public class StatutoryFileTests
         string? nationality = "Malaysian",
         bool hasPr = false,
         Gender? gender = Gender.FEMALE,
-        MaritalStatus? maritalStatus = MaritalStatus.SINGLE) => new()
+        MaritalStatus? maritalStatus = MaritalStatus.SINGLE,
+        IdType? idType = null) => new()
     {
         Payslip = payslip ?? Payslip(name: name),
         EmployeeName = name,
@@ -76,6 +80,7 @@ public class StatutoryFileTests
         SsfwNumber = ssfwNumber,
         IncomeTaxNumber = incomeTaxNumber,
         Nationality = nationality,
+        IdType = idType,
         HasPr = hasPr,
         Gender = gender,
         MaritalStatus = maritalStatus,
@@ -279,8 +284,8 @@ public class StatutoryFileTests
 
         Assert.Equal(57, header.Length);
         Assert.Equal("H", header[0..1]);
-        Assert.Equal("1234567890", header[1..11]);    // 002-011 HQ number
-        Assert.Equal("1234567890", header[11..21]);   // 012-021 branch number
+        Assert.Equal("6034866703", header[1..11]);    // 002-011 HQ number
+        Assert.Equal("6034866703", header[11..21]);   // 012-021 branch number
         Assert.Equal("2026", header[21..25]);         // 022-025 year
         Assert.Equal("03", header[25..27]);           // 026-027 month
         Assert.Equal("0000036055", header[27..37]);   // 028-037 total PCB in sen
@@ -344,6 +349,102 @@ public class StatutoryFileTests
 
         Assert.Equal("1234567890", detail[1..11]);
         Assert.Equal("3", detail[11..12]);
+    }
+
+    // LHDN rejected the Aug 2026 submission with nine "Tax Identification
+    // Number ... does not exist" errors. Every one belonged to someone whose
+    // TIN begins with zero: stored 10 digits long, it kept all ten and had a
+    // wife code guessed from gender appended, shifting the whole number.
+    [Fact]
+    public void PcbTxt_RefusesATaxNumberThatIsNotExactlyElevenDigits()
+    {
+        var result = PcbCp39Txt.Render(Payload([Row(
+            name: "Siti",
+            incomeTaxNumber: "IG2661447020",       // 10 digits — a lost leading zero
+            gender: Gender.FEMALE,
+            maritalStatus: MaritalStatus.MARRIED)]));
+
+        Assert.False(result.Ok);
+        Assert.Contains("10-digit income tax number", result.Error);
+        Assert.Contains("Siti", result.Error);
+    }
+
+    [Fact]
+    public void PcbTxt_WritesAnElevenDigitTaxNumberThrough()
+    {
+        var detail = Lines(PcbCp39Txt.Render(Payload([Row(
+            incomeTaxNumber: "IG02661447020")])))[1];
+
+        // Positions 2-12 are one number — no split, nothing inferred.
+        Assert.Equal("02661447020", detail[1..12]);
+    }
+
+    // Record 101 of the rejected file carried "5712674" as an IC: a passport
+    // with its letter stripped, taking the local branch.
+    [Fact]
+    public void PcbTxt_RefusesAnIcThatIsNotTwelveDigits()
+    {
+        var result = PcbCp39Txt.Render(Payload([Row(name: "Ravi", idNumber: "5712674")]));
+
+        Assert.False(result.Ok);
+        Assert.Contains("7-digit IC number", result.Error);
+    }
+
+    // An explicit passport must beat a stale "Malaysian" nationality, or the
+    // passport's digits go out in the IC column.
+    [Fact]
+    public void PcbTxt_TreatsAPassportHolderAsForeignEvenWhenNationalitySaysMalaysian()
+    {
+        var detail = Lines(PcbCp39Txt.Render(Payload([Row(
+            idNumber: "A1234567",
+            nationality: "Malaysian",
+            idType: IdType.PASSPORT)])))[1];
+
+        // D(1) + TIN(11) + name(60) + oldIC(12) = 84, so the new-IC column is
+        // 84..96 and the passport 96..108.
+        Assert.Equal(new string(' ', 12), detail[84..96]);
+        Assert.Equal("A1234567    ", detail[96..108]);
+    }
+
+    // The country code sat hard-coded blank with a TODO.
+    [Fact]
+    public void PcbTxt_FillsTheCountryCodeFromTheNationality()
+    {
+        var detail = Lines(PcbCp39Txt.Render(Payload([Row(
+            idNumber: "A1234567",
+            nationality: "Indonesian",
+            idType: IdType.PASSPORT)])))[1];
+
+        Assert.Equal("ID", detail[108..110]);   // LHDN positions 109-110
+    }
+
+    // A seeded demo E-number passes the "is it missing" check and is caught
+    // only by LHDN — and it sits in the header, so it fails the whole file.
+    [Fact]
+    public void PcbTxt_RefusesAPlaceholderEmployerNumber()
+    {
+        var payload = Payload([Row()]);
+        payload.CompanyInfo!.EmployerTin = "E1234567890";
+
+        var result = PcbCp39Txt.Render(payload);
+
+        Assert.False(result.Ok);
+        Assert.Contains("looks like a placeholder", result.Error);
+    }
+
+    // Nine bad employees should cost one download, not nine.
+    [Fact]
+    public void PcbTxt_ReportsEveryUnfilableEmployeeAtOnce()
+    {
+        var result = PcbCp39Txt.Render(Payload([
+            Row(name: "Aisyah", employeeCode: "E-001", incomeTaxNumber: null),
+            Row(name: "Ravi", employeeCode: "E-002", idNumber: "5712674"),
+        ]));
+
+        Assert.False(result.Ok);
+        Assert.Contains("Aisyah", result.Error);
+        Assert.Contains("Ravi", result.Error);
+        Assert.Contains("2 employee(s)", result.Error);
     }
 
     // CP38 is a court-ordered arrears instalment, filed separately from PCB.

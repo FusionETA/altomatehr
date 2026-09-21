@@ -55,6 +55,17 @@ public static class PcbCp39Txt
                 + "before generating the PCB file.");
         }
 
+        // A seeded demo value passes the missing check and is caught only by
+        // LHDN, which failed a whole submission on "No E (HQ) 1234567890 not
+        // exist" — the header, so not one row but the file.
+        if (StatutoryFileFields.LooksLikePlaceholderId(employerNo))
+        {
+            return StatutoryFileResult.Refused(
+                $"Employer LHDN E-number \"{payload.CompanyInfo?.EmployerTin}\" looks like a "
+                + "placeholder. Enter the real E-number in Payroll Settings → Company Info — it "
+                + "goes in the file header, so LHDN rejects the whole submission rather than a row.");
+        }
+
         // No separate HQ field is captured yet. LHDN's guidance for a
         // single-branch employer is that branch and HQ are the same number.
         var hqNo = employerNo;
@@ -62,6 +73,10 @@ public static class PcbCp39Txt
         var details = new StringBuilder();
         long pcbTotalSen = 0, cp38TotalSen = 0;
         int pcbCount = 0, cp38Count = 0;
+
+        // Collected rather than thrown on the first bad row: an admin fixing
+        // nine employees should not need nine downloads to find them.
+        var problems = new List<string>();
 
         foreach (var row in payload.Rows)
         {
@@ -72,27 +87,38 @@ public static class PcbCp39Txt
             if (pcbSen <= 0 && cp38Sen <= 0) continue;
 
             var refusal = Validate(row, out var taxRef, out var newIc, out var passport);
-            if (refusal is not null) return StatutoryFileResult.Refused(refusal);
+            if (refusal is not null) { problems.Add(refusal); continue; }
 
             if (pcbSen > 0) { pcbTotalSen += pcbSen; pcbCount++; }
             if (cp38Sen > 0) { cp38TotalSen += cp38Sen; cp38Count++; }
 
             var detail = new StringBuilder(DetailWidth)
                 .Append('D')
-                .Append(StatutoryFileFields.PadZero(taxRef, 10))
-                .Append(StatutoryFileFields.PcbWifeCode(
-                    row.IncomeTaxNumber, row.Gender, row.MaritalStatus))
+                // Positions 2-12 are ONE 11-digit TIN. Splitting it into a
+                // 10-digit reference plus a separately-derived wife code is
+                // what invented digits: a number stored without its leading
+                // zero came out 10 long, kept all ten, and had a guessed code
+                // appended. Validate() now requires exactly 11.
+                .Append(taxRef)
                 .Append(StatutoryFileFields.PadRight(row.EmployeeName, 60))
                 .Append(StatutoryFileFields.PadRight(string.Empty, 12))   // Old IC — see above
                 .Append(StatutoryFileFields.PadRight(newIc, 12))
                 .Append(StatutoryFileFields.PadRight(passport, 12))
-                .Append(StatutoryFileFields.PadRight(string.Empty, 2))    // country code
+                .Append(StatutoryFileFields.PadRight(
+                    StatutoryFileFields.CountryCodeForNationality(row.Nationality), 2))
                 .Append(StatutoryFileFields.PadZero(pcbSen, 8))
                 .Append(StatutoryFileFields.PadZero(cp38Sen, 8))
                 .Append(StatutoryFileFields.PadRight(row.EmployeeCode.Trim(), 10));
 
             details.Append(Exactly(detail.ToString(), DetailWidth))
                    .Append(StatutoryFileFields.LineEnding);
+        }
+
+        if (problems.Count > 0)
+        {
+            return StatutoryFileResult.Refused(
+                $"{problems.Count} employee(s) cannot be filed:{StatutoryFileFields.LineEnding}"
+                + string.Join(StatutoryFileFields.LineEnding, problems.Select(p => $"• {p}")));
         }
 
         // The header carries the totals, so it can only be written once the
@@ -125,7 +151,7 @@ public static class PcbCp39Txt
     private static string? Validate(
         StatutoryEmployeeRow row, out string taxRef, out string newIc, out string passport)
     {
-        taxRef = StatutoryFileFields.TaxRefWithoutWifeCode(row.IncomeTaxNumber);
+        taxRef = StatutoryFileFields.NormaliseTaxRef(row.IncomeTaxNumber);
         newIc = row.IsLocalOrPr ? StatutoryFileFields.DigitsOnly(row.IdNumber) : string.Empty;
         passport = row.IsLocalOrPr
             ? string.Empty
@@ -136,7 +162,28 @@ public static class PcbCp39Txt
             : $"{row.EmployeeName} ({row.EmployeeCode.Trim()})";
 
         if (taxRef.Length == 0) return $"{who} has no income tax number.";
+
+        // Exactly 11 — LHDN reads positions 2-12 as one number, so there is
+        // nothing to infer and nothing to pad. A shorter value is a TIN saved
+        // without its leading zero, which used to be shifted left and topped
+        // up with a guessed digit; LHDN answered "Tax Identification Number
+        // ... does not exist" on every one.
+        if (taxRef.Length != 11)
+        {
+            return $"{who} has a {taxRef.Length}-digit income tax number ({row.IncomeTaxNumber}); "
+                 + "LHDN needs exactly 11 digits, including any leading zero.";
+        }
+
         if (row.IsLocalOrPr && newIc.Length == 0) return $"{who} has no IC number.";
+
+        // A new IC is always 12 digits. A shorter one here is a passport with
+        // its letter stripped, which is how a 7-digit "IC" reached LHDN.
+        if (row.IsLocalOrPr && newIc.Length != 12)
+        {
+            return $"{who} has a {newIc.Length}-digit IC number ({row.IdNumber}); a Malaysian IC "
+                 + "is 12 digits. If this is a passport, set the ID type to Passport.";
+        }
+
         if (!row.IsLocalOrPr && passport.Length == 0) return $"{who} has no passport number.";
         if (string.IsNullOrWhiteSpace(row.EmployeeCode))
         {

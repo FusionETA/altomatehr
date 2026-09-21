@@ -218,11 +218,12 @@ public class SalaryChangeServiceTests : IDisposable
         Assert.Equal("Aisyah Binti Rahman", hint.EmployeeName);
 
         // The org has no payroll settings saved, so the divisor is the
-        // TWENTY_SIX default rather than January's 31 calendar days:
-        // 1,000 × 14 ÷ 26 = 538.46. The 14-day SPLIT is still calendar.
+        // TWENTY_SIX default — January 2026's real Mon-Sat count, 27, rather
+        // than its 31 calendar days or a flat 26:
+        // 1,000 × 14 ÷ 27 = 518.52. The 14-day SPLIT is still calendar.
         Assert.Equal(WorkingDaysRule.TWENTY_SIX, hint.ProrationRule);
         Assert.Equal(14, hint.DaysAtOldRate);
-        Assert.Equal(538.46m, hint.Delta);
+        Assert.Equal(518.52m, hint.Delta);
     }
 
     // A change in a different month is not this run's problem.

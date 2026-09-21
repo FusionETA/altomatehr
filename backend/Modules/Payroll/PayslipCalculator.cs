@@ -248,15 +248,24 @@ public static class PayslipCalculator
             totalWorkingDays,
             input.DailyHours);
 
-        // 2. Proration. The EXACT ratio does the money; the rounded factor is
-        //    only a snapshot. Rounding before multiplying loses sen —
-        //    4999.99 × round(19/28) is not 4999.99 × 19/28.
-        var calendarDays = PayPeriod.CalendarDaysInMonth(input.PeriodYear, input.PeriodMonth);
+        // 2. Proration, on the basis the org chose. Until now this was always
+        //    calendar days and WorkingDaysRule was ignored, even though the
+        //    settings card said otherwise.
+        //
+        //    Both sides of the fraction come from the same basis, which is the
+        //    whole point: a calendar numerator over a working-day divisor is
+        //    what produces payouts above 100%.
+        var prorationDays = PayPeriod.ProrationDaysForPeriod(
+            input.PeriodYear, input.PeriodMonth, input.WorkingDaysRule);
 
+        //    The EXACT ratio does the money; the rounded factor is only a
+        //    snapshot. Rounding before multiplying loses sen — 4999.99 ×
+        //    round(19/28) is not 4999.99 × 19/28.
         var proratedDays = PayPeriod.EffectiveWorkedDays(
-            input.PeriodYear, input.PeriodMonth, input.JoinDate, input.LeaveDate, calendarDays) ?? 0;
+            input.PeriodYear, input.PeriodMonth, input.JoinDate, input.LeaveDate,
+            prorationDays, input.WorkingDaysRule) ?? 0;
 
-        var prorationRatio = calendarDays > 0 ? (decimal)proratedDays / calendarDays : 0m;
+        var prorationRatio = prorationDays > 0 ? (decimal)proratedDays / prorationDays : 0m;
         var proratedFactor = Math.Round(prorationRatio, 6, MidpointRounding.AwayFromZero);
 
         var basicPay = input.SalaryType == SalaryType.HOURLY
@@ -481,7 +490,7 @@ public static class PayslipCalculator
         {
             TotalWorkingDays = totalWorkingDays,
             ProratedDays = proratedDays,
-            ProrationDaysInPeriod = calendarDays,
+            ProrationDaysInPeriod = prorationDays,
             ProratedFactor = proratedFactor,
             WorkedHours = input.WorkedHours,
             ExpectedHours = input.ExpectedHours,

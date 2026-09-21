@@ -61,8 +61,15 @@ public sealed record StatutoryEmployeeRow
 
     // PERKESO and LHDN both route on this: locals and PRs are keyed by IC,
     // everyone else by their SOCSO/foreign-worker number or passport.
+    //
+    // An explicit PASSPORT id type WINS over the nationality string. A profile
+    // whose nationality still reads "Malaysian" while the id on file is a
+    // passport would otherwise take the local branch and be filed with the
+    // passport's digits in the IC column — LHDN rejected exactly that, a
+    // 7-digit "IC" that was a passport with its letter stripped.
     public bool IsLocalOrPr =>
-        HasPr || string.Equals(Nationality?.Trim(), "Malaysian", StringComparison.OrdinalIgnoreCase);
+        IdType != Employees.Entities.IdType.PASSPORT
+        && (HasPr || string.Equals(Nationality?.Trim(), "Malaysian", StringComparison.OrdinalIgnoreCase));
 }
 
 // A generated file, or the reason one could not be produced.

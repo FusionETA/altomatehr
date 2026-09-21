@@ -227,11 +227,14 @@ public class SalaryChangeHintsTests
         var hint = SalaryChangeHints.Compute(
             Input(rule: WorkingDaysRule.TWENTY_SIX, snapshot: 6000m))!;
 
-        Assert.Equal(26, hint.TotalDaysInPeriod);
-        // The split is unchanged: 14 calendar days before the 15th.
+        // The month's REAL Mon-Sat count, not a flat 26 — 26 is an average no
+        // month equals, and using it literally over- or under-states the split
+        // depending on the month (Jul 2026 has 27, Feb 2026 has 24).
+        Assert.Equal(27, hint.TotalDaysInPeriod);
+        // The split itself is unchanged: 14 calendar days before the 15th.
         Assert.Equal(14, hint.DaysAtOldRate);
-        // 1,000 × 14 ÷ 26 = 538.46.
-        Assert.Equal(538.46m, hint.Delta);
+        // 1,000 × 14 ÷ 27 = 518.52.
+        Assert.Equal(518.52m, hint.Delta);
     }
 
     [Theory]
