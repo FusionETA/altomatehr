@@ -304,6 +304,51 @@ public class BankFileFormatsTests
         Assert.Equal("900101145567", detail[106..126].TrimEnd());
     }
 
+    // CIMB's Beneficiary ID column takes an NRIC or a business registration
+    // number — its published guide says so, and the template offers no
+    // passport option. The codes for those kinds were invented, so an employee
+    // carrying one is named rather than sent under a value the bank may reject.
+    [Theory]
+    [InlineData(IdType.PASSPORT)]
+    [InlineData(IdType.POLICE_NO)]
+    [InlineData(IdType.ARMY_NO)]
+    public void Cimb_RefusesAnIdTheFormatCannotCarry(IdType idType)
+    {
+        var model = Model([
+            Row(),
+            Row(name: "Bala", idType: idType, idNumber: "A12345678"),
+        ]);
+
+        var result = Cimb(model);
+
+        Assert.False(result.Ok);
+        Assert.Contains("Bala", result.Error!);
+        Assert.Contains(idType.ToString(), result.Error!);
+    }
+
+    // Someone with no id on file is not the same problem: the column simply
+    // goes blank, exactly as the converter's own unfilled cells did.
+    [Fact]
+    public void Cimb_StillPaysAnEmployeeWithNoIdOnFile()
+    {
+        var result = Cimb(Model([Row(idNumber: null, idType: null)]));
+
+        Assert.True(result.Ok, result.Error);
+        var detail = Lines(result.Content!)[1];
+        Assert.Equal(" ", detail[126..127]);
+        Assert.Equal("", detail[106..126].Trim());
+    }
+
+    [Fact]
+    public void Cimb_MarksAnNricWithTheOneCorroboratedCode()
+    {
+        var detail = Lines(Cimb().Content!)[1];
+
+        Assert.Equal("2", detail[126..127]);
+        // "No special character & spacing", per the template's own note.
+        Assert.Equal("900101145567", detail[106..126].Trim());
+    }
+
     [Theory]
     [InlineData(null, "Organisation Code")]
     [InlineData("123456", "at most 5 digits")]

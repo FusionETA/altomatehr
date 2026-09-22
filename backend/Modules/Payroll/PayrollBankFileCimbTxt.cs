@@ -40,19 +40,26 @@ namespace AltomateHR.Api.Modules.Payroll;
 //
 // ── UNVERIFIED ──────────────────────────────────────────────────────────
 // The layout was reverse-engineered from a BizConverter-produced sample plus
-// the BizConverter template's column widths, because CIMB's published guide
-// covers the upload UI and not the file spec. Three positions could not be
-// pinned down from one sample and are emitted exactly as the sample had them:
+// the template's column widths. CIMB does not publish the fixed-width spec:
+// both documents they do publish — "CIMB BizConverter · Guideline for Bulk
+// Payments" and the "Bulk Payroll Payments Guide" — walk through the Excel
+// template and the upload screen and never state a field position. The layout
+// lives inside the BizConverter executable.
+//
+// Two positions are still taken on faith, emitted exactly as the sample had
+// them, and a real upload is the only way to confirm either:
 //
 //   • Header 56-71 — sixteen '0's in the sample.
 //   • Detail 21-25 — blank in the sample.
-//   • Detail 127   — '2' for all three sample rows, every one of which had a
-//     New NRIC. Modelled as an ID-type code on the usual Malaysian convention
-//     (1 = old IC, 2 = new IC, 3 = passport, 4 = other). Only '2' is
-//     corroborated.
 //
-// Verify against a real BizChannel upload before trusting this in production,
-// and re-check IdTypeCode if a non-NRIC employee is ever in a run.
+// A third, detail 127, is now CONSTRAINED rather than guessed. It was modelled
+// as an ID-type code on the usual Malaysian convention (1 = old IC, 2 = new
+// IC, 3 = passport, 4 = other), but only '2' was ever corroborated — and the
+// published guide settles why: the template's Beneficiary ID column takes a
+// "Recipient NRIC Number / Business Registration Number" and offers no
+// passport option at all. Values 3 and 4 were representing something the
+// format does not carry, so a non-NRIC employee is refused by name instead of
+// being sent under an invented code. See IdTypeCode.
 public static class PayrollBankFileCimbTxt
 {
     public const string ContentType = "text/plain";
@@ -93,6 +100,29 @@ public static class PayrollBankFileCimbTxt
         var (rows, refusal) = PayrollBankRows.Select(model);
         if (refusal is not null) return refusal;
 
+        // CIMB's Beneficiary ID column is an NRIC or a business registration
+        // number; the format has no passport. Sending one under an invented
+        // type code risks the bank failing that row's beneficiary check — and
+        // a row the bank drops is someone who is not paid, which is the exact
+        // failure every other refusal in this module exists to prevent.
+        var unrepresentable = rows
+            .Where(r => r.Source.IdType is not null
+                     && r.Source.IdType != IdType.NRIC
+                     && !string.IsNullOrWhiteSpace(r.Source.IdNumber))
+            .Select(r => $"{r.Source.EmployeeName} ({r.Source.IdType})")
+            .ToList();
+
+        if (unrepresentable.Count > 0)
+        {
+            return StatutoryFileResult.Refused(
+                "CIMB's bulk-payroll file identifies each employee by NRIC or business "
+                + "registration number, and has no field for any other kind of ID. These are "
+                + "on this run: " + string.Join("; ", unrepresentable)
+                + ". Pay them through BizChannel separately — the Payment Schedule PDF has "
+                + "their account and amount — or confirm the correct code with CIMB before "
+                + "including them.");
+        }
+
         var reference = PayrollBankRows.Reference(model);
 
         var lines = new List<string>
@@ -124,9 +154,9 @@ public static class PayrollBankFileCimbTxt
                 ZeroPad(sen, DetailAmount),
                 TextNoSeparators(reference, DetailReference),
                 // An NRIC goes in digits-only; a passport keeps its letters.
-                row.Source.IdType == IdType.NRIC
-                    ? DigitsPadded(idNumber, DetailBeneId)
-                    : TextNoSeparators(idNumber, DetailBeneId),
+                // "No special character & spacing", per the template's own
+                // note on this column.
+                DigitsPadded(idNumber, DetailBeneId),
                 IdTypeCode(row.Source.IdType, idNumber)));
         }
 
@@ -140,19 +170,15 @@ public static class PayrollBankFileCimbTxt
         return new StatutoryFileResult(true, fileName, content, ContentType, null);
     }
 
-    // Detail position 127. See UNVERIFIED above — only the NRIC value is
-    // corroborated by CIMB's own sample output.
-    private static string IdTypeCode(IdType? idType, string idNumber)
-    {
-        if (idNumber.Length == 0) return " ";
-        return idType switch
-        {
-            IdType.NRIC => "2",
-            IdType.PASSPORT => "3",
-            IdType.POLICE_NO or IdType.ARMY_NO => "4",
-            _ => "2",
-        };
-    }
+    // Detail position 127. Only "2" is corroborated — by CIMB's own sample
+    // output, whose three rows all carried a New NRIC.
+    //
+    // Nothing else can arrive here: a non-NRIC id is refused above, because
+    // the format has no field for one. An employee with NO id on file still
+    // reaches this, and leaves the position blank exactly as the sample's
+    // unfilled cells did.
+    private static string IdTypeCode(IdType? idType, string idNumber) =>
+        idNumber.Length == 0 ? " " : "2";
 
     // Plain fixed-width text. Anything outside printable ASCII is dropped —
     // the converter is a Windows/latin1 tool and non-ASCII round-trips badly.
