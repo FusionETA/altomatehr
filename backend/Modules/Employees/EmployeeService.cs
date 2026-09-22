@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
@@ -25,19 +26,22 @@ public class EmployeeService : IEmployeeService
     private readonly IUserRepository _users;
     private readonly IAuditService _audit;
     private readonly ILeaveService _leave;
+    private readonly ICurrentUser _currentUser;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
         IEmployeeProfileRepository profiles,
         IUserRepository users,
         ILeaveService leave,
-        IAuditService audit)
+        IAuditService audit,
+        ICurrentUser currentUser)
     {
         _memberships = memberships;
         _profiles = profiles;
         _users = users;
         _leave = leave;
         _audit = audit;
+        _currentUser = currentUser;
     }
 
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
@@ -295,5 +299,62 @@ public class EmployeeService : IEmployeeService
             return (false, $"Unknown module(s): {string.Join(", ", unknown)}.", null);
 
         return (true, null, OrgModules.Join(cleaned));
+    }
+
+    // Overwrite an employee's login password with one the admin types in.
+    //
+    // The self-service reset sends a code to the address on file, which is no
+    // help to someone who has lost access to that address — a returning
+    // employee, or one whose personal email is gone. This is the way back in.
+    //
+    // Role is gated at the controller (Admin/Owner). The rest of the
+    // guardrails live here, where they can see the data:
+    public async Task<SetPasswordResult> SetPasswordAsync(string userId, string newPassword)
+    {
+        // Matches the forgot-password policy, so the two routes can't disagree
+        // about what an acceptable password is.
+        if ((newPassword ?? string.Empty).Length < 8)
+            return new SetPasswordResult(false, "Password must be at least 8 characters.");
+
+        // Changing your own password here would replace the credential backing
+        // the session you are using, mid-request. Sign out and use the reset
+        // flow, which is built for it.
+        if (userId == _currentUser.UserId)
+        {
+            return new SetPasswordResult(false,
+                "You cannot change your own password here — sign out and use Forgot password.");
+        }
+
+        // Scoped by membership in the CALLER'S ACTIVE ORG, not the target's
+        // home org: someone who belongs to three companies must stay editable
+        // by an admin of any of them, and only for the one they are in.
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return new SetPasswordResult(false, null);   // → 404
+
+        // Owner accounts are the top of the trust chain. An admin resetting an
+        // owner's password could take the company; that belongs to a support
+        // flow with its own checks, not a per-employee button.
+        if (string.Equals(membership.Role, "Owner", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SetPasswordResult(false,
+                "Owner accounts cannot be changed from here. Contact support.");
+        }
+
+        var user = await _users.GetByIdAsync(userId);
+        if (user is null) return new SetPasswordResult(false, null);
+
+        user.PasswordHash = BC.HashPassword(newPassword);
+        await _users.UpdateAsync(user);
+
+        // The password itself is never recorded — only that it changed, and
+        // who to. An audit trail that leaks the credential is worse than none.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.UserPasswordAdminSet,
+            $"Set a new password for {user.Email}.",
+            TargetType: "User",
+            TargetId: user.Id,
+            Metadata: new { TargetEmail = user.Email, TargetRole = membership.Role }));
+
+        return new SetPasswordResult(true, null);
     }
 }

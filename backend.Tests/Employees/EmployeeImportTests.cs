@@ -293,6 +293,9 @@ public class EmployeeImportTests
 
     private sealed class FakeEmployeeService : IEmployeeService
     {
+        public Task<SetPasswordResult> SetPasswordAsync(string userId, string newPassword) =>
+            Task.FromResult(new SetPasswordResult(true, null));
+
         private readonly List<EmployeeDto> _existing;
 
         public FakeEmployeeService(IEnumerable<EmployeeDto> existing) => _existing = [.. existing];

@@ -149,6 +149,25 @@ public class EmployeesController : ControllerBase
     // Creating the account and the membership — the step BEFORE the payroll
     // employees import, which fills in payroll fields for people who already
     // exist and refuses a row it cannot match.
+    // POST /employees/{userId}/password — set someone's login password.
+    //
+    // For the employee who can no longer receive the reset code: a returning
+    // worker, or one whose personal address is gone. Admin/Owner only, and the
+    // service refuses the caller themselves and any Owner account.
+    [HttpPost("{userId}/password")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> SetPassword(string userId, SetEmployeePasswordDto dto)
+    {
+        var result = await _employees.SetPasswordAsync(userId, dto.NewPassword);
+        if (result.Ok) return NoContent();
+        // Error null means the target isn't in this org — 404, not 400, and
+        // deliberately not distinguished from "no such user": an admin of one
+        // company should not be able to probe for accounts in another.
+        return result.Error is null
+            ? NotFound()
+            : BadRequest(new { error = result.Error });
+    }
+
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
     public IActionResult ImportTemplate([FromQuery] TabularFormat format = TabularFormat.Xlsx)

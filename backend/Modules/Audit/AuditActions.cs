@@ -106,6 +106,11 @@ public static class AuditActions
     public const string AuthLoginFailed = "auth.login.failed";
     public const string AuthPasswordChange = "auth.password.change";
 
+    // An admin setting someone ELSE'S password, as opposed to the self-service
+    // change above. Worth its own action: the two answer different questions
+    // in an audit ("did they change their own?" vs "who let them back in?").
+    public const string UserPasswordAdminSet = "user.password.admin-set";
+
     // Approvals are deliberately NOT audited here. Claims, leave, attendance and
     // overtime each show their own decisions on their own tab, with more context
     // than a one-line audit row could carry — duplicating them into this feed
@@ -141,6 +146,7 @@ public static class AuditActions
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",
+        [UserPasswordAdminSet] = "Password set by an admin",
     };
 
     // Exact match first, then a generic prettifier — an action wired up without

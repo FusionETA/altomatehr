@@ -91,6 +91,17 @@ export type CreateEmployee = {
 
 export const createEmployee = (body: CreateEmployee) => apiPost<Employee>("/employees", body);
 
+/**
+ * Overwrite an employee's login password with one the admin types.
+ *
+ * For the person who can no longer receive the reset code — a returning
+ * employee, or one whose personal address is gone. The server refuses the
+ * caller themselves, any Owner account, and anyone outside the active company;
+ * `id` here is the employee's user id, which is what Employee.id already is.
+ */
+export const setEmployeePassword = (id: string, newPassword: string) =>
+  apiPost<void>(`/employees/${id}/password`, { newPassword });
+
 // ---- Full HR profile ----
 //
 // The backend has carried this since the module landed and nothing reached it:

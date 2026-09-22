@@ -127,13 +127,92 @@ public class EmployeeServiceTests
         Assert.Equal(new DateTime(2020, 1, 1), Assert.Single(profiles).JoinDate);
     }
 
+    // ─── An admin setting someone else's password ───────────────────────
+    //
+    // The self-service reset mails a code to the address on file, which is no
+    // use to a returning employee whose personal address is gone. Each guard
+    // below closes one way that door could be misused.
+
+    [Fact]
+    public async Task SetPassword_StoresAHashRatherThanThePassword()
+    {
+        var service = MakeService(out _, out _, out var users);
+
+        var result = await service.SetPasswordAsync("usr-emp", "a-good-password");
+
+        Assert.True(result.Ok);
+        var hash = users.Single(u => u.Id == "usr-emp").PasswordHash;
+        Assert.False(string.IsNullOrEmpty(hash));
+        Assert.NotEqual("a-good-password", hash);
+    }
+
+    // Replacing the credential behind your own live session, mid-request.
+    [Fact]
+    public async Task SetPassword_RefusesTheCallerThemselves()
+    {
+        var service = MakeService(out _, out _, out _);
+
+        // StubCurrentUser is usr-admin.
+        var result = await service.SetPasswordAsync("usr-admin", "a-good-password");
+
+        Assert.False(result.Ok);
+        Assert.Contains("your own password", result.Error);
+    }
+
+    // An owner's account is the top of the trust chain — resetting it could
+    // hand over the company.
+    [Fact]
+    public async Task SetPassword_RefusesAnOwnerAccount()
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(Membership("usr-owner", "Owner"));
+        users.Add(User("usr-owner", "owner@altomate.com"));
+
+        var result = await service.SetPasswordAsync("usr-owner", "a-good-password");
+
+        Assert.False(result.Ok);
+        Assert.Contains("Owner accounts", result.Error);
+    }
+
+    // Not-found rather than a distinct error: an admin of one company must not
+    // be able to probe for accounts in another.
+    [Fact]
+    public async Task SetPassword_TreatsSomeoneOutsideTheOrgAsNotFound()
+    {
+        var service = MakeService(out _, out _, out _);
+
+        var result = await service.SetPasswordAsync("usr-stranger", "a-good-password");
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task SetPassword_RefusesAPasswordShorterThanTheResetPolicyAllows()
+    {
+        var service = MakeService(out _, out _, out var users);
+
+        var result = await service.SetPasswordAsync("usr-emp", "short");
+
+        Assert.False(result.Ok);
+        Assert.Contains("at least 8", result.Error);
+        // Refused before anything was written.
+        Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
+    }
+
     private static EmployeeService MakeService(out List<OrganizationMembership> memberships) =>
         MakeService(out memberships, out _);
 
     private static EmployeeService MakeService(
-        out List<OrganizationMembership> memberships, out List<EmployeeProfile> profiles)
+        out List<OrganizationMembership> memberships, out List<EmployeeProfile> profiles) =>
+        MakeService(out memberships, out profiles, out _);
+
+    private static EmployeeService MakeService(
+        out List<OrganizationMembership> memberships,
+        out List<EmployeeProfile> profiles,
+        out List<User> users)
     {
-        var users = new List<User>
+        users = new List<User>
         {
             User("usr-admin", "admin@altomate.com"),
             User("usr-super", "supervisor@altomate.com"),
@@ -151,7 +230,8 @@ public class EmployeeServiceTests
             new FakeProfileRepository(profiles),
             new FakeUserRepository(users),
             new FakeLeaveService(),
-            new FakeAuditService());
+            new FakeAuditService(),
+            new StubCurrentUser());
     }
 
     private static User User(string id, string email) => new()
