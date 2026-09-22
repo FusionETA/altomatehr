@@ -28,10 +28,11 @@ const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 // still need a group to sit in — this is that group's id.
 const DIRECT_GROUP = "__direct__";
 
-// Eight people a page. The supervisor screen is a phone, and a card is taller
-// than a table row — a 30-person team as one list is a minute of scrolling
-// with no sense of where you are in it.
-const PAGE_SIZE = 8;
+// A page of people. Cards collapse to a two-line summary now, so this fits a
+// phone screen where the old expanded tile — seven bars each — did not. The
+// pager stays: a 30-person team as one list is still a long scroll with no
+// sense of where you are in it.
+const PAGE_SIZE = 12;
 
 // A supervisor's team balances, one team at a time — mirrors Attendance's
 // TeamPresence: a stepper over the caller's teams (no merged "everyone" tab,
@@ -225,18 +226,17 @@ export function TeamBalancesView() {
   );
 }
 
-// One person, and what is left of each leave type they hold.
+// One person, collapsed to what a supervisor is actually scanning for.
 //
-// A row per type rather than a grid of tiles: the codes read down the left and
-// the numbers down the right, so two people side by side can be compared the
-// way the old table let you — without the table's width.
+// This used to render every leave type the person holds, always. The comment
+// here assumed most people would hold two or three — but an org seeds an
+// entitlement for ALL of them, so every card drew the full set. Four people
+// came to twenty-eight rows, twenty-seven of them a full untouched bar, and
+// the one number that mattered (10/14) was buried among identical ones.
 //
-// Only the types this person actually holds are shown. A new org starts with
-// eight (annual, medical, compassionate, hospitalisation, marriage, maternity,
-// paternity, unpaid), and most people have an entitlement on two or three of
-// them: rendering all eight per tile is 200px of mostly "0/0" and turns a page
-// of eight people into a very long scroll. The rest fold behind a toggle, so
-// nothing is lost — it just isn't in the way.
+// So the default is now a SUMMARY: the types with activity on them, which is
+// the whole reason to open this screen. The per-type detail is still one click
+// away, unchanged — it just isn't the first thing on the page.
 function EmployeeBalanceCard({
   name,
   email,
@@ -248,6 +248,7 @@ function EmployeeBalanceCard({
   balances: LeaveBalance[];
   types: LeaveType[];
 }) {
+  const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
   // Driven by the type list, not by the person's own balances, so the types
@@ -270,6 +271,24 @@ function EmployeeBalanceCard({
     [types, balances],
   );
 
+  // What the collapsed card leads with: only types this person has actually
+  // moved. A full entitlement nobody has touched is the default state of every
+  // type for every person, so it carries no information at this zoom level.
+  const active = useMemo(
+    () =>
+      cells.filter(
+        ({ balance }) => balance != null && (balance.takenDays > 0 || balance.pendingDays > 0),
+      ),
+    [cells],
+  );
+
+  const pendingDays = active.reduce((n, c) => n + (c.balance?.pendingDays ?? 0), 0);
+  // Entitled but nothing left. Worth surfacing collapsed: it is the answer to
+  // "can they take this?" before anyone opens the card.
+  const spent = cells.filter(
+    ({ balance }) => balance != null && balance.entitlementDays > 0 && balance.remainingDays <= 0,
+  );
+
   const held = cells.filter((c) => c.held);
   // Everything at zero is still worth drawing — an empty tile would read as a
   // failed load rather than as someone with no entitlements.
@@ -277,26 +296,81 @@ function EmployeeBalanceCard({
   const hidden = cells.length - visible.length;
 
   return (
-    <article className="rounded-2xl border border-border/60 bg-surface-low/50 p-3.5">
-      <p className="font-bold text-foreground">{name}</p>
-      <p className="truncate text-xs text-muted-foreground">{email}</p>
+    <article className="rounded-2xl border border-border/60 bg-surface-low/50">
+      {/* The whole header toggles, not just the chevron — on a phone the
+          chevron alone is a target you have to aim at. */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 rounded-2xl p-3.5 text-left transition hover:bg-card/60"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-bold text-foreground">{name}</span>
+          <span className="block truncate text-xs text-muted-foreground">{email}</span>
 
-      <div className="mt-2.5 space-y-1.5">
-        {visible.map(({ type, balance }) => (
-          <BalanceRow key={type.id} code={type.code} balance={balance} />
-        ))}
-      </div>
+          <span className="mt-2 flex flex-wrap items-center gap-1.5">
+            {active.length === 0 ? (
+              <span className="text-[11px] font-semibold text-muted-foreground">
+                Nothing taken this year
+              </span>
+            ) : (
+              active.map(({ type, balance }) => (
+                <span
+                  key={type.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground"
+                >
+                  {type.code}
+                  <span className="tabular-nums text-foreground">
+                    {balance!.remainingDays}/{balance!.entitlementDays}
+                  </span>
+                </span>
+              ))
+            )}
 
-      {hidden > 0 || showAll ? (
-        <button
-          type="button"
-          onClick={() => setShowAll((v) => !v)}
-          aria-expanded={showAll}
-          className="mt-2 inline-flex items-center gap-1 rounded-full text-[11px] font-bold text-muted-foreground transition hover:text-foreground"
-        >
-          {showAll ? "Show fewer" : `${hidden} more with no balance`}
-          <ChevronDown className={`h-3 w-3 transition ${showAll ? "rotate-180" : ""}`} />
-        </button>
+            {/* An approver's own queue, on the card. remainingDays does not
+                subtract these, so approving what is already waiting can take
+                someone past the number beside it. */}
+            {pendingDays > 0 ? (
+              <span className="inline-flex items-center rounded-full bg-tertiary/15 px-2 py-0.5 text-[10px] font-bold text-tertiary">
+                {pendingDays} pending
+              </span>
+            ) : null}
+
+            {spent.length > 0 ? (
+              <span className="inline-flex items-center rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                {spent.length === 1 ? `${spent[0].type.code} used up` : `${spent.length} used up`}
+              </span>
+            ) : null}
+          </span>
+        </span>
+
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+      </button>
+
+      {open ? (
+        <div className="border-t border-border/60 px-3.5 pb-3.5 pt-3">
+          <div className="space-y-1.5">
+            {visible.map(({ type, balance }) => (
+              <BalanceRow key={type.id} code={type.code} balance={balance} />
+            ))}
+          </div>
+
+          {hidden > 0 || showAll ? (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              aria-expanded={showAll}
+              className="mt-2 inline-flex items-center gap-1 rounded-full text-[11px] font-bold text-muted-foreground transition hover:text-foreground"
+            >
+              {showAll ? "Show fewer" : `${hidden} more with no balance`}
+              <ChevronDown className={`h-3 w-3 transition ${showAll ? "rotate-180" : ""}`} />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </article>
   );
