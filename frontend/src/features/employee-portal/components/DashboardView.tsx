@@ -36,7 +36,8 @@ import {
   OPEN_SESSION_CODE,
   type AttendanceRecord,
 } from "@/features/attendance/api";
-import { getTeamClaims } from "@/features/claims/api";
+import { getMyClaims, getTeamClaims } from "@/features/claims/api";
+import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import { NewClaimModal } from "@/features/claims/components/NewClaimModal";
 import {
   getLeaveBalances,
@@ -57,7 +58,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import type { SignedInUser } from "@/shared/types/session";
-import { buildName } from "../lib/employee-formatters";
+import { buildName, summariseClaims } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 import { getTeamOvertime } from "@/features/overtime/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -176,6 +177,12 @@ export function DashboardView({
   // Applying from the dashboard needs the same balances the Leave screen shows,
   // or the quick action is the one place that asks people to guess.
   const leaveBalancesQuery = useCachedQuery("/leave/balances", getLeaveBalances);
+
+  // These four figures were hardcoded — RM 4,820.00 / 3 / 8 / 12 — so every
+  // employee saw the same invented numbers, including anyone who had never
+  // filed a claim.
+  const myClaimsQuery = useCachedQuery("/claims", getMyClaims);
+  const claimSummary = summariseClaims(myClaimsQuery.data);
 
   const latestPayslip = (payslipsQuery.data ?? [])[0] ?? null;
   const today = todayQuery.data ?? null;
@@ -642,16 +649,21 @@ export function DashboardView({
             </p>
           </div>
           <div className="grid gap-3 p-5 pt-0 sm:grid-cols-2 sm:gap-4 sm:p-8 sm:pt-0 xl:p-6 xl:pt-0">
-            {/* Total reimbursed — static preview, hidden on the smallest screens. */}
+            {/* Hidden on the smallest screens — the quick actions matter more
+                there than the figure does. */}
             <div className="hidden rounded-[24px] border border-border/70 bg-surface-low p-5 sm:block xl:p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Total reimbursed
               </p>
               <p className="mt-3 text-4xl font-black tracking-tight text-foreground xl:text-[2.5rem]">
-                RM 4,820.00
+                {claimSummary
+                  ? formatCurrency(claimSummary.approvedTotalYtd, claimSummary.currency)
+                  : "—"}
               </p>
               <p className="mt-2 text-sm text-muted-foreground xl:text-[0.95rem]">
-                YTD across approved and paid claims
+                {/* Approved only. There is no paid state on a claim, so saying
+                    "and paid" would describe something the data cannot know. */}
+                This year, across approved claims
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:gap-4 xl:content-start">
@@ -677,11 +689,31 @@ export function DashboardView({
           </div>
         </section>
 
-        {/* Claim metrics — static preview, desktop only. */}
+        {/* Claim counts, desktop only.
+            Deliberately NOT year-filtered, unlike the figure above: these are
+            the current state of this person's claims, and a claim stuck in
+            review since December is exactly the one they need to chase. */}
         <div className="hidden gap-4 xl:grid xl:grid-cols-1">
-          <MetricCard title="Awaiting review" value="3" icon={Clock3} detail="Open queue" />
-          <MetricCard title="Approved" value="8" icon={FileCheck2} detail="Ready for payout" />
-          <MetricCard title="Paid" value="12" icon={CircleDollarSign} detail="Completed" />
+          <MetricCard
+            title="Awaiting review"
+            value={claimSummary ? String(claimSummary.awaiting) : "—"}
+            icon={Clock3}
+            detail="Open queue"
+          />
+          <MetricCard
+            title="Approved"
+            value={claimSummary ? String(claimSummary.approved) : "—"}
+            icon={FileCheck2}
+            detail="Ready for payout"
+          />
+          {/* Was "Paid", which no claim ever is — the entity has no paid state.
+              Rejected is the one outcome an employee has to act on. */}
+          <MetricCard
+            title="Rejected"
+            value={claimSummary ? String(claimSummary.rejected) : "—"}
+            icon={CircleDollarSign}
+            detail="Not approved"
+          />
         </div>
       </div>
 
