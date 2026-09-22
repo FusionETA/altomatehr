@@ -38,6 +38,136 @@ public class YtdImportParserTests
 
     private const string NameRow = "Aisyah Binti Rahman,,,,,,,,,,,,,,,,";
 
+    // ─── The whole adjustment catalogue ─────────────────────────────────
+
+    // Parses one extra column appended to the standard sheet.
+    private static YtdImportParser.YtdMonthAmounts WithColumn(string header, string value) =>
+        YtdImportParser.Parse(
+            Csv($"{Header},{header}", $"{NameRow},", $"{Month("January")},{value}"),
+            TabularFormat.Csv).Employees[0].Months[0];
+
+    private static YtdImportParser.YtdMonthAmounts Baseline() =>
+        Parse(NameRow, Month("January")).Employees[0].Months[0];
+
+    // The importer knew eleven column headers, all of them earnings. Every
+    // other category — the entire deduction set, every benefit in kind — was
+    // reported as unrecognised and dropped on the floor.
+    [Theory]
+    [InlineData("Living Accommodation")]
+    [InlineData("Unpaid Leave deduction")]
+    [InlineData("Advance Deduction")]
+    [InlineData("Loan Repayment")]
+    [InlineData("Non-Annual Bonus")]
+    [InlineData("Childcare Allowance")]
+    [InlineData("Gratuity")]
+    public void AnyCategoryIsAcceptedUnderItsOwnLabel(string label)
+    {
+        var result = YtdImportParser.Parse(
+            Csv($"{Header},{label}", $"{NameRow},", $"{Month("January")},100"),
+            TabularFormat.Csv);
+
+        Assert.Empty(result.UnrecognisedColumns);
+        Assert.Contains(result.Employees[0].Months[0].CategoryAmounts, kv => kv.Value == 100m);
+    }
+
+    // A mistyped header must still be reported — accepting more labels is not
+    // the same as accepting anything.
+    [Fact]
+    public void AMistypedHeaderIsStillReported()
+    {
+        var result = YtdImportParser.Parse(
+            Csv($"{Header},Livng Accommodation", $"{NameRow},", $"{Month("January")},100"),
+            TabularFormat.Csv);
+
+        Assert.Contains("Livng Accommodation", result.UnrecognisedColumns);
+    }
+
+    // ─── The four buckets ───────────────────────────────────────────────
+
+    // A cash allowance is earnings: it makes gross, and net follows.
+    [Fact]
+    public void ACashAllowanceAddsToGrossAndNet()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("Childcare Allowance", "100");
+
+        Assert.Equal(baseline.Gross + 100m, month.Gross);
+        Assert.Equal(baseline.Net + 100m, month.Net);
+        Assert.Equal(100m, month.Allowances);
+    }
+
+    // A benefit in kind is taxable income but not money. It never reaches
+    // gross or net — only the BIK total, and PCB.
+    [Fact]
+    public void ABenefitInKindStaysOutOfGrossAndNet()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("Living Accommodation", "800");
+
+        Assert.Equal(baseline.Gross, month.Gross);
+        Assert.Equal(baseline.Net, month.Net);
+        Assert.Equal(800m, month.BenefitsInKind);
+        Assert.Equal(0m, month.Allowances);
+    }
+
+    // THE bug this rewrite is about. Gross used to add every category that was
+    // not a benefit in kind — so a deduction column PAID the employee the money
+    // that had been withheld from them, twice over once net followed gross.
+    [Fact]
+    public void AnUnpaidLeaveDeductionComesOffGrossRatherThanBeingAddedToIt()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("Unpaid Leave deduction", "250");
+
+        Assert.Equal(baseline.Gross - 250m, month.Gross);
+        Assert.Equal(baseline.Net - 250m, month.Net);
+        Assert.Equal(250m, month.GrossReducingDeductions);
+        // Absent from the deductions total on purpose: it already came off
+        // gross, and counting it twice docks one absence twice.
+        Assert.Equal(0m, month.NetOnlyDeductions);
+    }
+
+    // Withheld from the payout, but the earnings were still made.
+    [Fact]
+    public void AnAdvanceComesOffNetOnly()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("Advance Deduction", "300");
+
+        Assert.Equal(baseline.Gross, month.Gross);
+        Assert.Equal(baseline.Net - 300m, month.Net);
+        Assert.Equal(300m, month.NetOnlyDeductions);
+    }
+
+    // Cash-neutral rows lower PCB but take nothing from the payslip — the
+    // employee already paid the third party directly.
+    [Fact]
+    public void ACashNeutralReliefTakesNothingFromThePayslip()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("TP1 · Life Insurance", "200");
+
+        Assert.Equal(baseline.Gross, month.Gross);
+        Assert.Equal(baseline.Net, month.Net);
+        Assert.Equal(0m, month.NetOnlyDeductions);
+    }
+
+    // A code nothing recognises is written as a cash allowance by the import
+    // service, so the arithmetic here has to agree with it.
+    [Fact]
+    public void AnUnknownCategoryIsCountedAsACashAllowance()
+    {
+        var month = new YtdImportParser.YtdMonthAmounts
+        {
+            Month = 1,
+            BasicSalary = 5000m,
+            CategoryAmounts = new Dictionary<string, decimal> { ["NOT_A_REAL_CODE"] = 120m },
+        };
+
+        Assert.Equal(5120m, month.Gross);
+        Assert.Equal(120m, month.Allowances);
+    }
+
     // ─── SKBBK (Skim LINDUNG 24 Jam) ────────────────────────────────────
 
     // The scheme started 1 Jun 2026. A history load covering only earlier

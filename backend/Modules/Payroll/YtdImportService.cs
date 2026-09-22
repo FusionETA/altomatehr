@@ -45,7 +45,11 @@ public class YtdImportService : IYtdImportService
             YtdImportParser.TemplateHeaders(),
             $"Year-to-date payroll for {year}. Fill each employee's twelve month rows with what "
             + "was ACTUALLY PAID; leave a month blank if there was no payroll. Do not rename the "
-            + "columns — an unrecognised heading is reported, not guessed at.");
+            + "columns — an unrecognised heading is reported, not guessed at. You may ADD a "
+            + "column for any adjustment category, using its name exactly as the adjustment "
+            + "form shows it (for example \"Living Accommodation\" or \"Unpaid Leave "
+            + "deduction\") — benefits in kind stay out of gross, and deductions come off "
+            + "rather than being added. Employee SKBBK applies from June 2026 only.");
 
         var columnCount = YtdImportParser.TemplateHeaders().Count;
 
@@ -365,6 +369,18 @@ public class YtdImportService : IYtdImportService
             // the sheet gives the contribution, not the wage it was looked up
             // against, and nothing recomputes from it on an imported row.
             SkbbkEmployee = amounts.SkbbkEmployee,
+
+            // The summary fields, which were left at zero while the line items
+            // beneath them were written correctly. A payslip showed its
+            // adjustments but totalled none of them, and Form EA read a benefit
+            // in kind of nothing however many BIK rows the import carried.
+            TotalAllowances = amounts.Allowances,
+            TotalBenefitsInKind = amounts.BenefitsInKind,
+            TotalReimbursements = amounts.Reimbursements,
+            // Excludes the gross-reducing ones by construction — they already
+            // came off gross, and counting them here would dock the employee
+            // twice for one absence.
+            TotalDeductions = amounts.NetOnlyDeductions,
             Pcb = amounts.Pcb,
             Cp38 = amounts.Cp38,
             Zakat = amounts.Zakat,

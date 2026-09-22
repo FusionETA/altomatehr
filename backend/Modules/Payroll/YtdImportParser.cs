@@ -65,6 +65,21 @@ public static class YtdImportParser
             ["other allowance"] = PayrollAdjustmentCategories.AllowanceStandard,
         };
 
+    // Every adjustment category, addressable by its own label.
+    //
+    // The alias table above is the friendly spellings another payroll system
+    // is likely to use. This is the rest of the catalogue — 46 categories,
+    // including the whole deduction set and the benefits in kind, which the
+    // importer simply could not accept before: an "Unpaid Leave" or
+    // "Living Accommodation" column was reported as unrecognised and dropped.
+    //
+    // Built once. Aliases win on a clash, since they are the deliberate
+    // mapping and a label collision would otherwise silently reroute one.
+    private static readonly IReadOnlyDictionary<string, string> CategoryLabels =
+        PayrollAdjustmentCategories.All.Values
+            .GroupBy(m => Normalise(m.Label), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Code, StringComparer.Ordinal);
+
     // SKBBK (Skim LINDUNG 24 Jam), employee share.
     //
     // Not a category — it is a statutory contribution like EPF, and it has to
@@ -136,13 +151,63 @@ public static class YtdImportParser
         public IReadOnlyDictionary<string, decimal> CategoryAmounts { get; init; }
             = new Dictionary<string, decimal>();
 
-        // What the month paid in total, before deductions. The categories
-        // that are non-cash are excluded, exactly as a computed payslip
-        // excludes them.
+        // The categories, bucketed the way PayslipCalculator buckets a computed
+        // month — because an imported payslip sits beside computed ones in
+        // every report that reads these fields.
+        //
+        // Previously everything non-NonCash was simply added to gross. That was
+        // only ever right because the importer accepted earnings and nothing
+        // else; the moment it takes a deduction column, adding it to gross pays
+        // the employee MORE for money withheld from them.
+
+        // Cash earnings. These make gross.
+        public decimal Allowances => SumWhere(m => m.Kind == PayslipLineKind.ALLOWANCE && !m.NonCash);
+
+        // A benefit in kind is taxable income but not money: never in gross,
+        // never in net, still on Form EA.
+        public decimal BenefitsInKind => SumWhere(m => m.Kind == PayslipLineKind.ALLOWANCE && m.NonCash);
+
+        public decimal Reimbursements => SumWhere(m => m.Kind == PayslipLineKind.REIMBURSEMENT);
+
+        // Lost earnings — unpaid leave. Comes off GROSS and is deliberately
+        // absent from the deductions total: subtracting it in both places docks
+        // the employee twice for one absence.
+        public decimal GrossReducingDeductions =>
+            SumWhere(m => m.Kind == PayslipLineKind.DEDUCTION && m.ReducesGross);
+
+        // Withheld from the payout only. Cash-neutral rows are excluded — they
+        // lower PCB but take nothing from the payslip, because the employee
+        // already paid the third party directly.
+        public decimal NetOnlyDeductions =>
+            SumWhere(m => m.Kind == PayslipLineKind.DEDUCTION && !m.ReducesGross && !m.CashNeutral);
+
+        // An unknown code counts as a cash allowance, which is what the import
+        // service assumes when it writes the line item.
+        private decimal SumWhere(Func<PayrollAdjustmentCategoryMeta, bool> predicate) =>
+            CategoryAmounts.Sum(kv =>
+            {
+                var meta = PayrollAdjustmentCategories.Find(kv.Key);
+                if (meta is null)
+                    return predicate(UnknownAsAllowance) ? kv.Value : 0m;
+                return predicate(meta) ? kv.Value : 0m;
+            });
+
+        private static readonly PayrollAdjustmentCategoryMeta UnknownAsAllowance = new()
+        {
+            Code = "",
+            Label = "",
+            Kind = PayslipLineKind.ALLOWANCE,
+            SubjectToEpf = false,
+            SubjectToSocso = false,
+            SubjectToEis = false,
+            SubjectToPcb = true,
+            SubjectToHrdf = false,
+        };
+
+        // Matches PayslipCalculator: earnings plus reimbursements, less the
+        // deductions that represent earnings never made.
         public decimal Gross =>
-            BasicSalary + CategoryAmounts
-                .Where(kv => PayrollAdjustmentCategories.Find(kv.Key)?.NonCash != true)
-                .Sum(kv => kv.Value);
+            BasicSalary + Allowances + Reimbursements - GrossReducingDeductions;
 
         // Mirrors PayslipCalculator's own net: gross less the employee-side
         // statutory contributions, then PCB and the net-only deductions.
@@ -150,7 +215,7 @@ public static class YtdImportParser
         // payslip overstated take-home by the whole contribution.
         public decimal Net =>
             Gross - (EpfEmployee + SocsoEmployee + EisEmployee + SkbbkEmployee
-                     + Pcb + Cp38 + Zakat);
+                     + Pcb + Cp38 + Zakat + NetOnlyDeductions);
     }
 
     public static Result Parse(byte[] content, TabularFormat format)
@@ -270,6 +335,13 @@ public static class YtdImportParser
             if (OptionalColumns.TryGetValue(name, out var category))
             {
                 columns[i] = new Column(category, IsCategory: true);
+                continue;
+            }
+
+            // Any other category, by its own label.
+            if (CategoryLabels.TryGetValue(name, out var byLabel))
+            {
+                columns[i] = new Column(byLabel, IsCategory: true);
                 continue;
             }
 
