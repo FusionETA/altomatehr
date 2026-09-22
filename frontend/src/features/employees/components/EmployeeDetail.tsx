@@ -690,6 +690,29 @@ export function EmployeeDetail({
               </span>
             )
           ) : null}
+
+          {/* In the header, not inside a tab: this is the one action someone
+              arrives at this screen already meaning to take — usually with
+              the employee on the phone — and a control you have to go hunting
+              for is one an admin assumes isn't there.
+
+              Hidden for an Owner, whom the server refuses outright; showing
+              it would only produce an error they can't act on. NOT hidden on
+              your own record — this screen has no cheap way to know who you
+              are (SignedInUser carries email and role, no id, and isn't
+              threaded this far), and the server answers that case with a
+              specific message pointing at Forgot password. A clear refusal
+              beats plumbing a prop through three components for it. */}
+          {employee.role?.toLowerCase() !== "owner" ? (
+            <button
+              type="button"
+              onClick={() => setSettingPassword(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              {passwordSetFor === employee.id ? "Password updated" : "Set password"}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -831,34 +854,6 @@ export function EmployeeDetail({
                     onChange={(v) => set("isOku", v)}
                   />
                 </Group>
-
-                {/* Owners are refused by the server, so offering the button
-                    for one would only produce an error the admin can't act
-                    on. Everyone else can be let back in from here. */}
-                {employee.role?.toLowerCase() !== "owner" ? (
-                  <Group
-                    title="Sign-in"
-                    hint="The reset link goes to the address on file. When someone can no longer reach that address, set a password for them here instead."
-                  >
-                    <Field label="Password" span>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSettingPassword(true)}
-                          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground transition hover:bg-muted"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                          Set a new password
-                        </button>
-                        {passwordSetFor === employee.id ? (
-                          <span className="text-xs font-semibold text-primary">
-                            Password updated.
-                          </span>
-                        ) : null}
-                      </div>
-                    </Field>
-                  </Group>
-                ) : null}
 
                 <Group title="Address" columns={3}>
                   <Field label="Address line 1" span>
