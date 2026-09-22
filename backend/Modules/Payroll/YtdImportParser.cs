@@ -65,6 +65,23 @@ public static class YtdImportParser
             ["other allowance"] = PayrollAdjustmentCategories.AllowanceStandard,
         };
 
+    // SKBBK (Skim LINDUNG 24 Jam), employee share.
+    //
+    // Not a category — it is a statutory contribution like EPF, and it has to
+    // reach the payslip's own SkbbkEmployee field so it counts toward the
+    // RM 350 PERKESO relief. Folding it into a generic deduction column makes
+    // net pay right and the filing wrong.
+    //
+    // OPTIONAL because the scheme only started 1 Jun 2026: a history load
+    // covering earlier months has no such column, and a missing one reads as 0.
+    private static readonly IReadOnlySet<string> SkbbkColumns =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "employee skbbk",
+            "skbbk",
+            "skbbk employee",
+        };
+
     // HRDF and zakat are employer/statutory columns rather than categories,
     // so they land on their own payslip fields like the mandatory set.
     private const string HrdfHeader = "hrdf";
@@ -111,6 +128,10 @@ public static class YtdImportParser
         public decimal EisEmployer { get; init; }
         public decimal Hrdf { get; init; }
 
+        // Employee SKBBK. 0 for any month before June 2026, and for any sheet
+        // that simply doesn't carry the column.
+        public decimal SkbbkEmployee { get; init; }
+
         // Category code → amount, from the optional columns.
         public IReadOnlyDictionary<string, decimal> CategoryAmounts { get; init; }
             = new Dictionary<string, decimal>();
@@ -123,8 +144,13 @@ public static class YtdImportParser
                 .Where(kv => PayrollAdjustmentCategories.Find(kv.Key)?.NonCash != true)
                 .Sum(kv => kv.Value);
 
+        // Mirrors PayslipCalculator's own net: gross less the employee-side
+        // statutory contributions, then PCB and the net-only deductions.
+        // SKBBK belongs in that list — it was missing, so an imported June 2026
+        // payslip overstated take-home by the whole contribution.
         public decimal Net =>
-            Gross - (EpfEmployee + SocsoEmployee + EisEmployee + Pcb + Cp38 + Zakat);
+            Gross - (EpfEmployee + SocsoEmployee + EisEmployee + SkbbkEmployee
+                     + Pcb + Cp38 + Zakat);
     }
 
     public static Result Parse(byte[] content, TabularFormat format)
@@ -234,6 +260,12 @@ public static class YtdImportParser
             if (name == HrdfHeader) { columns[i] = new(nameof(YtdMonthAmounts.Hrdf), false); continue; }
             if (name == ZakatHeader) { columns[i] = new(nameof(YtdMonthAmounts.Zakat), false); continue; }
             if (name == Cp38Header) { columns[i] = new(nameof(YtdMonthAmounts.Cp38), false); continue; }
+
+            if (SkbbkColumns.Contains(name))
+            {
+                columns[i] = new(nameof(YtdMonthAmounts.SkbbkEmployee), false);
+                continue;
+            }
 
             if (OptionalColumns.TryGetValue(name, out var category))
             {
@@ -391,6 +423,7 @@ public static class YtdImportParser
             EisEmployee = Get(nameof(YtdMonthAmounts.EisEmployee)),
             EisEmployer = Get(nameof(YtdMonthAmounts.EisEmployer)),
             Hrdf = Get(nameof(YtdMonthAmounts.Hrdf)),
+            SkbbkEmployee = Get(nameof(YtdMonthAmounts.SkbbkEmployee)),
             CategoryAmounts = categories,
         };
     }
@@ -454,6 +487,9 @@ public static class YtdImportParser
         "Employee EPF", "Employer EPF",
         "Employee SOCSO", "Employer SOCSO",
         "Employee EIS", "Employer EIS",
+        // Blank for any month before June 2026 — the scheme did not exist, so
+        // an older payroll system has nothing to put here.
+        "Employee SKBBK",
         "HRDF",
         "Bonus", "Commission", "Overtime", "Other Allowance",
     ];

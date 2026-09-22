@@ -38,6 +38,77 @@ public class YtdImportParserTests
 
     private const string NameRow = "Aisyah Binti Rahman,,,,,,,,,,,,,,,,";
 
+    // ─── SKBBK (Skim LINDUNG 24 Jam) ────────────────────────────────────
+
+    // The scheme started 1 Jun 2026. A history load covering only earlier
+    // months has no such column, and it must import exactly as before.
+    [Fact]
+    public void SkbbkIsZeroWhenTheSheetHasNoColumnForIt()
+    {
+        var result = Parse(NameRow, Month("January"));
+
+        var month = Assert.Single(Assert.Single(result.Employees).Months);
+        Assert.Equal(0m, month.SkbbkEmployee);
+    }
+
+    [Theory]
+    [InlineData("Employee SKBBK")]
+    [InlineData("SKBBK")]
+    [InlineData("SKBBK Employee")]
+    [InlineData("employee  skbbk")]
+    public void SkbbkIsReadUnderAnyOfItsSpellings(string header)
+    {
+        var result = YtdImportParser.Parse(
+            Csv($"{Header},{header}", $"{NameRow},", $"{Month("June")},7.50"),
+            TabularFormat.Csv);
+
+        Assert.Empty(result.Errors);
+        var month = Assert.Single(Assert.Single(result.Employees).Months);
+        Assert.Equal(7.50m, month.SkbbkEmployee);
+    }
+
+    // THE point of the change. SKBBK was absent from the net formula, so an
+    // imported June 2026 payslip overstated take-home by the whole
+    // contribution — and the only way to land the figure was folding it into a
+    // generic deduction, which files a statutory contribution as something
+    // else and keeps it out of the RM 350 PERKESO relief.
+    [Fact]
+    public void SkbbkComesOffNetPay()
+    {
+        var withOut = Parse(NameRow, Month("June")).Employees[0].Months[0];
+        var with = YtdImportParser.Parse(
+            Csv($"{Header},Employee SKBBK", $"{NameRow},", $"{Month("June")},7.50"),
+            TabularFormat.Csv).Employees[0].Months[0];
+
+        Assert.Equal(withOut.Gross, with.Gross);          // never touches gross
+        Assert.Equal(withOut.Net - 7.50m, with.Net);
+    }
+
+    // It is a statutory contribution, not an adjustment: it has to reach the
+    // payslip's own field, which is what the PERKESO relief and the run total
+    // are read from.
+    [Fact]
+    public void SkbbkIsNotTreatedAsAnAdjustmentCategory()
+    {
+        var result = YtdImportParser.Parse(
+            Csv($"{Header},Employee SKBBK", $"{NameRow},", $"{Month("June")},7.50"),
+            TabularFormat.Csv);
+
+        var month = Assert.Single(Assert.Single(result.Employees).Months);
+        // Not routed through a category — the fixture's own bonus/commission
+        // columns are here at zero, but nothing carries the contribution.
+        Assert.DoesNotContain(month.CategoryAmounts, kv => kv.Value != 0m);
+        // And not reported as a column nobody knew: that warning is how a
+        // mistyped header surfaces, so a recognised one must not trip it.
+        Assert.Empty(result.UnrecognisedColumns);
+    }
+
+    [Fact]
+    public void TheTemplateOffersTheSkbbkColumn()
+    {
+        Assert.Contains("Employee SKBBK", YtdImportParser.TemplateHeaders());
+    }
+
     // ─── The shape ──────────────────────────────────────────────────────
 
     [Fact]

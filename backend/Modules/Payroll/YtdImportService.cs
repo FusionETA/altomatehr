@@ -359,6 +359,12 @@ public class YtdImportService : IYtdImportService
             SocsoEmployer = amounts.SocsoEmployer,
             EisEmployee = amounts.EisEmployee,
             EisEmployer = amounts.EisEmployer,
+
+            // Carried through so it lands on the payslip's own statutory field
+            // and counts toward the RM 350 PERKESO relief. SkbbkWage stays 0:
+            // the sheet gives the contribution, not the wage it was looked up
+            // against, and nothing recomputes from it on an imported row.
+            SkbbkEmployee = amounts.SkbbkEmployee,
             Pcb = amounts.Pcb,
             Cp38 = amounts.Cp38,
             Zakat = amounts.Zakat,
@@ -386,6 +392,7 @@ public class YtdImportService : IYtdImportService
         run.TotalEmployeeSocso = payslips.Sum(p => p.SocsoEmployee);
         run.TotalEmployerSocso = payslips.Sum(p => p.SocsoEmployer);
         run.TotalEmployeeEis = payslips.Sum(p => p.EisEmployee);
+        run.TotalEmployeeSkbbk = payslips.Sum(p => p.SkbbkEmployee);
         run.TotalEmployerEis = payslips.Sum(p => p.EisEmployer);
         run.TotalPcb = payslips.Sum(p => p.Pcb);
         run.TotalZakat = payslips.Sum(p => p.Zakat);
