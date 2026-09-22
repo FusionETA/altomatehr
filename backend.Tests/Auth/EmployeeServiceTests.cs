@@ -1,3 +1,7 @@
+using Microsoft.Extensions.Options;
+using AltomateHR.Api.Modules.Organizations.Entities;
+using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Email;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Leave;
@@ -231,7 +235,10 @@ public class EmployeeServiceTests
             new FakeUserRepository(users),
             new FakeLeaveService(),
             new FakeAuditService(),
-            new StubCurrentUser());
+            new StubCurrentUser(),
+            new CapturingEmailSender(),
+            new FakeOrgRepositoryForWelcome(),
+            Options.Create(new PortalOptions()));
     }
 
     private static User User(string id, string email) => new()
@@ -346,4 +353,30 @@ public class EmployeeServiceTests
         public Task UpdateAsync(EmployeeProfile profile) => Task.CompletedTask;
     }
 
+}
+
+// Records what would have been emailed, so a test can assert the welcome mail
+// went out without a mail server.
+internal sealed class CapturingEmailSender : IEmailSender
+{
+    public List<(string To, string Subject, string Html)> Sent { get; } = [];
+    public bool Deliver { get; set; } = true;
+
+    public Task<bool> SendAsync(
+        string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+    {
+        Sent.Add((toEmail, subject, htmlBody));
+        return Task.FromResult(Deliver);
+    }
+}
+
+internal sealed class FakeOrgRepositoryForWelcome : IOrganizationRepository
+{
+    public Task<Organization?> GetByIdAsync(string id) =>
+        Task.FromResult<Organization?>(new Organization { Id = id, Name = "Acme Sdn Bhd" });
+    public Task<Organization?> GetFirstAsync() => Task.FromResult<Organization?>(null);
+    public Task<List<Organization>> GetAllAsync() => Task.FromResult(new List<Organization>());
+    public Task AddAsync(Organization organization) => Task.CompletedTask;
+    public Task UpdateAsync(Organization organization) => Task.CompletedTask;
+    public Task<bool> AnyAsync() => Task.FromResult(true);
 }

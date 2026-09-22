@@ -1,4 +1,6 @@
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Modules.Email;
+using Microsoft.Extensions.Options;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
@@ -27,6 +29,9 @@ public class EmployeeService : IEmployeeService
     private readonly IAuditService _audit;
     private readonly ILeaveService _leave;
     private readonly ICurrentUser _currentUser;
+    private readonly IEmailSender _email;
+    private readonly IOrganizationRepository _organizations;
+    private readonly PortalOptions _portal;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
@@ -34,7 +39,10 @@ public class EmployeeService : IEmployeeService
         IUserRepository users,
         ILeaveService leave,
         IAuditService audit,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IEmailSender email,
+        IOrganizationRepository organizations,
+        IOptions<PortalOptions> portal)
     {
         _memberships = memberships;
         _profiles = profiles;
@@ -42,6 +50,9 @@ public class EmployeeService : IEmployeeService
         _leave = leave;
         _audit = audit;
         _currentUser = currentUser;
+        _email = email;
+        _organizations = organizations;
+        _portal = portal.Value;
     }
 
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
@@ -65,18 +76,41 @@ public class EmployeeService : IEmployeeService
         // the same identity gains a membership in another org); otherwise create a
         // fresh login account, which needs a password.
         var user = await _users.GetByEmailAsync(email);
+        var passwordMode = WelcomeEmail.PasswordMode.Existing;
+
         if (user is null)
         {
-            if (string.IsNullOrWhiteSpace(dto.Password))
-                return new EmployeeSaveResult(false, null, "A password is required to create a new account.");
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return new EmployeeSaveResult(false, null, "A name is required to create a new account.");
+
+            // The house convention — email + birthday as MMDD — unless the
+            // admin typed one. Derived rather than random so the welcome email
+            // can state the RULE and never the credential itself; that is the
+            // only thing making a guessable password a fair trade, so the two
+            // have to move together.
+            var password = dto.Password;
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                password = DefaultPassword.For(email, dto.DateOfBirth);
+                if (password is null)
+                {
+                    return new EmployeeSaveResult(false, null,
+                        "A date of birth is required to create a new account — the first password "
+                        + "is the email followed by the birthday as MMDD. Type a password instead "
+                        + "if you'd rather set one.");
+                }
+                passwordMode = WelcomeEmail.PasswordMode.Default;
+            }
+            else
+            {
+                passwordMode = WelcomeEmail.PasswordMode.Manual;
+            }
 
             user = new User
             {
                 Email = email,
                 Name = dto.Name.Trim(),
-                PasswordHash = BC.HashPassword(dto.Password),
+                PasswordHash = BC.HashPassword(password),
                 CreatedAt = DateTime.UtcNow,
             };
             await _users.AddAsync(user);
@@ -103,7 +137,7 @@ public class EmployeeService : IEmployeeService
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
-        await SyncProfileJoinDateAsync(user.Id, dto.JoinDate);
+        await SyncProfileDatesAsync(user.Id, dto.JoinDate, dto.DateOfBirth);
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.EmployeeCreate,
@@ -113,7 +147,40 @@ public class EmployeeService : IEmployeeService
             Metadata: new { dto.Email, membership.Role }));
 
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
-        return new EmployeeSaveResult(true, ToDto(membership, usersById), null);
+
+        // Best-effort, and deliberately last: someone who was added must not be
+        // reported as a failure because the mail server was down. The caller
+        // says "added, but the email didn't go out".
+        bool? welcomeSent = null;
+        if (dto.SendWelcomeEmail)
+        {
+            welcomeSent = await TrySendWelcomeAsync(user, passwordMode);
+        }
+
+        return new EmployeeSaveResult(true, ToDto(membership, usersById), null, welcomeSent);
+    }
+
+    private async Task<bool> TrySendWelcomeAsync(User user, WelcomeEmail.PasswordMode mode)
+    {
+        try
+        {
+            var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? "");
+            var html = WelcomeEmail.BuildHtml(
+                user.Name,
+                org?.Name ?? "AltomateHR",
+                user.Email,
+                _portal.LoginUrl,
+                mode);
+
+            return await _email.SendAsync(
+                user.Email, $"Welcome to {org?.Name ?? "AltomateHR"} — your AltomateHR account", html);
+        }
+        catch
+        {
+            // Never rethrow: the account exists either way, and an exception
+            // here would roll a successful create into a 500.
+            return false;
+        }
     }
 
     // Names the change rather than saying "updated": a feed of twenty identical
@@ -210,7 +277,9 @@ public class EmployeeService : IEmployeeService
         var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
 
-        await SyncProfileJoinDateAsync(membership.UserId, dto.JoinDate);
+        // Null birthday: the edit form doesn't carry one, and null means
+        // "leave unchanged" rather than clear it.
+        await SyncProfileDatesAsync(membership.UserId, dto.JoinDate, null);
 
         // The one field on this form that decides what this person can
         // approve.
@@ -247,11 +316,12 @@ public class EmployeeService : IEmployeeService
     // Creates the profile row when there is none, the same way the payroll
     // employees import does: a member without one is a roster waiting to be
     // filled in, not an error.
-    private async Task SyncProfileJoinDateAsync(string userId, DateTime? joinDate)
+    private async Task SyncProfileDatesAsync(
+        string userId, DateTime? joinDate, DateTime? dateOfBirth)
     {
-        // Null means "leave unchanged" here exactly as it does for the
-        // membership above — it must not clear a date the profile already has.
-        if (joinDate is null) return;
+        // Null means "leave unchanged" for both, exactly as it does for the
+        // membership above — neither must clear a date the profile already has.
+        if (joinDate is null && dateOfBirth is null) return;
 
         var profile = await _profiles.GetByUserAsync(userId);
         if (profile is null)
@@ -259,14 +329,28 @@ public class EmployeeService : IEmployeeService
             await _profiles.AddAsync(new EmployeeProfile
             {
                 UserId = userId,
-                JoinDate = joinDate.Value.Date,
+                JoinDate = joinDate?.Date,
+                // Kept because the first password is derived from it. Asking
+                // for a birthday to build a password and then discarding it
+                // would make the payroll import ask for the same date again.
+                DateOfBirth = dateOfBirth?.Date,
             });
             return;
         }
 
-        if (profile.JoinDate == joinDate.Value.Date) return;
+        var changed = false;
+        if (joinDate is not null && profile.JoinDate != joinDate.Value.Date)
+        {
+            profile.JoinDate = joinDate.Value.Date;
+            changed = true;
+        }
+        if (dateOfBirth is not null && profile.DateOfBirth != dateOfBirth.Value.Date)
+        {
+            profile.DateOfBirth = dateOfBirth.Value.Date;
+            changed = true;
+        }
+        if (!changed) return;
 
-        profile.JoinDate = joinDate.Value.Date;
         profile.UpdatedAt = DateTime.UtcNow;
         await _profiles.UpdateAsync(profile);
     }

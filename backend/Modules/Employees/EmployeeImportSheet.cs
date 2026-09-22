@@ -20,11 +20,15 @@ public static class EmployeeImportSheet
     public const string EmployeeNumberKey = "employeeNumber";
     public const string JobTitleKey = "jobTitle";
     public const string JoinDateKey = "joinDate";
+    public const string DateOfBirthKey = "dateOfBirth";
     public const string PolicyKey = "policy";
     public const string ShiftKey = "shift";
 
-    // Email is the only required column: it is the identity the row is matched
-    // on, and everything else has a sensible absence.
+    // Email identifies the row. Date of Birth is required too, but only for a
+    // row that creates a NEW account: the first password is derived from it
+    // (see DefaultPassword), so without it there is no password to set and no
+    // rule to tell the employee. A row matching someone who already exists
+    // keeps their password and does not need it.
     public static readonly IReadOnlyList<TabularColumn> Columns =
     [
         new(EmailKey, "Email", true, "aisyah@example.com", ["employee email"]),
@@ -33,6 +37,8 @@ public static class EmployeeImportSheet
         new(EmployeeNumberKey, "Employee No", false, "EMP-001", ["employee number", "staff id"]),
         new(JobTitleKey, "Job Title", false, "Site Engineer", ["position"]),
         new(JoinDateKey, "Join Date", false, "2026-01-15", ["start date"]),
+        new(DateOfBirthKey, "Date of Birth", false, "1990-11-23",
+            ["dob", "birth date", "birthday"]),
 
         // Matched by NAME, not id: an admin filling a spreadsheet knows
         // "Full-time", not a cuid. An unrecognised name fails the row rather

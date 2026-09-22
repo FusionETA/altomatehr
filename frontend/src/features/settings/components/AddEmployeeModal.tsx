@@ -36,6 +36,8 @@ export function AddEmployeeModal({
   const [joinDate, setJoinDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [sendWelcome, setSendWelcome] = useState(false);
   const [role, setRole] = useState<string>("Employee");
   const [policyId, setPolicyId] = useState<string>(NONE);
   const [saving, setSaving] = useState(false);
@@ -56,6 +58,8 @@ export function AddEmployeeModal({
         employeeNumber: employeeNumber.trim() || undefined,
         jobTitle: jobTitle.trim() || undefined,
         joinDate: joinDate || undefined,
+        dateOfBirth: dateOfBirth || undefined,
+        sendWelcomeEmail: sendWelcome,
         role,
         policyId: policyId === NONE ? null : policyId,
       });
@@ -203,10 +207,52 @@ export function AddEmployeeModal({
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Share this with the new hire so they can log in. Leave blank if they already have an
-                account.
+                Leave blank and their password is their{" "}
+                <strong className="text-foreground">email followed by their birthday as MMDD</strong>
+                {dateOfBirth ? (
+                  <>
+                    {" — "}
+                    <span className="font-mono text-foreground">
+                      {email.trim() || "email"}
+                      {dateOfBirth.slice(5, 7)}
+                      {dateOfBirth.slice(8, 10)}
+                    </span>
+                  </>
+                ) : null}
+                . Type one here to override it, or leave blank if they already have an account.
               </p>
             </div>
+
+            <div className="space-y-2">
+              <label htmlFor="add-dob" className={LABEL}>
+                Date of birth
+              </label>
+              <input
+                id="add-dob"
+                type="date"
+                className={INPUT}
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Needed for a brand-new account, because the first password is built from it. Not
+                needed if you typed a password above, or if they already have an account.
+              </p>
+            </div>
+
+            <label className="flex items-start gap-3 rounded-2xl border border-border/60 bg-surface-low p-3">
+              <input
+                type="checkbox"
+                checked={sendWelcome}
+                onChange={(e) => setSendWelcome(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+              />
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Send a welcome email</span> — where
+                to sign in and how their password is formed. It describes the rule rather than
+                printing the password, so the email on its own isn't a working login.
+              </span>
+            </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">

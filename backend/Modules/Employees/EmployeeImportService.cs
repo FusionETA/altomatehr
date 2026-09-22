@@ -56,6 +56,13 @@ public class EmployeeImportService : IEmployeeImportService
                 employee.EmployeeNumber ?? string.Empty,
                 employee.JobTitle ?? string.Empty,
                 employee.JoinDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                // Date of Birth is left BLANK on export, not filled in. It is
+                // only read when a row creates a new account, and a blank cell
+                // means "leave unchanged" for someone who already exists — so
+                // a round-trip cannot disturb it. Keeping a whole roster's
+                // birthdays out of a file that gets emailed around is the
+                // other half of the reason.
+                string.Empty,
                 // Names, not ids, because that is what the import reads back.
                 employee.PolicyId is null ? string.Empty : policies.GetValueOrDefault(employee.PolicyId, string.Empty),
                 employee.ShiftId is null ? string.Empty : shifts.GetValueOrDefault(employee.ShiftId, string.Empty),
@@ -120,6 +127,7 @@ public class EmployeeImportService : IEmployeeImportService
             var number = TabularCell.Text(map.Cell(row, EmployeeImportSheet.EmployeeNumberKey), 40);
             var jobTitle = TabularCell.Text(map.Cell(row, EmployeeImportSheet.JobTitleKey), 120);
             var joinDate = TabularCell.Date(map.Cell(row, EmployeeImportSheet.JoinDateKey));
+            var dateOfBirth = TabularCell.Date(map.Cell(row, EmployeeImportSheet.DateOfBirthKey));
 
             if (existing.TryGetValue(email, out var member))
             {
@@ -164,7 +172,20 @@ public class EmployeeImportService : IEmployeeImportService
                 continue;
             }
 
-            var password = EmployeeImportSheet.GeneratePassword();
+            // The house convention: email + birthday as MMDD. The welcome
+            // message tells the employee that rule rather than a specific
+            // secret, so nobody has to relay one — but it only works if the
+            // birthday is on the row.
+            var password = DefaultPassword.For(email, dateOfBirth);
+            if (password is null)
+            {
+                errors.Add(new TabularImportError(
+                    rowNumber,
+                    $"\"{email}\" is new, so the Date of Birth column is required — "
+                    + "the first password is the email followed by the birthday as MMDD."));
+                continue;
+            }
+
             var create = await _employees.CreateAsync(new CreateEmployeeDto
             {
                 Email = email,
@@ -174,6 +195,7 @@ public class EmployeeImportService : IEmployeeImportService
                 EmployeeNumber = number,
                 JobTitle = jobTitle,
                 JoinDate = joinDate,
+                DateOfBirth = dateOfBirth,
                 PolicyId = policyId.Id,
                 ShiftId = shiftId.Id,
             });

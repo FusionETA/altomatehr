@@ -29,10 +29,13 @@ public class EmployeeImportTests
         return Encoding.UTF8.GetBytes(header + "\r\n" + string.Join("\r\n", dataRows) + "\r\n");
     }
 
+    // A birthday by default: a row creating a NEW person needs one, because
+    // the first password is derived from it. Pass "" to exercise the refusal.
     private static string Row(
         string email, string name = "", string role = "", string number = "",
-        string jobTitle = "", string joinDate = "", string policy = "", string shift = "") =>
-        string.Join(",", email, name, role, number, jobTitle, joinDate, policy, shift);
+        string jobTitle = "", string joinDate = "", string dateOfBirth = "1990-11-23",
+        string policy = "", string shift = "") =>
+        string.Join(",", email, name, role, number, jobTitle, joinDate, dateOfBirth, policy, shift);
 
     private static (EmployeeImportService Service, FakeEmployeeService Employees) Make(
         params EmployeeDto[] existing)
@@ -68,7 +71,7 @@ public class EmployeeImportTests
         // by IsExampleRow, which is its own test below.
         var result = await service.ImportAsync(
             Csv(Row("chan@example.com", "Chan Mei Ling", "Employee", "EMP-042",
-                "QS Executive", "2026-01-15", "Full-time", "Office Hours")),
+                "QS Executive", "2026-01-15", policy: "Full-time", shift: "Office Hours")),
             TabularFormat.Csv);
 
         Assert.True(result.Ok, result.Message);
@@ -102,22 +105,45 @@ public class EmployeeImportTests
         Assert.All(result.CreatedAccounts, a => Assert.False(string.IsNullOrWhiteSpace(a.Password)));
     }
 
-    // The reference app derives this from the employee's email and date of
-    // birth, which makes every account guessable by anyone who knows them.
+    // The house convention: email + birthday as MMDD.
+    //
+    // This was random until the welcome email landed. A derived password is
+    // guessable by anyone holding a staff list and a birthday, which is only
+    // worth it because the welcome email can then state the RULE and never the
+    // credential — so the email is not itself a working login for whoever
+    // reads it. The two must stay together: make this random again and the
+    // email has to carry the secret; drop the email and this is a cost with no
+    // benefit.
     [Fact]
-    public async Task PasswordsAreRandomPerPersonRatherThanDerived()
+    public async Task PasswordsFollowTheEmailPlusBirthdayConvention()
     {
         var (service, _) = Make();
 
         var result = await service.ImportAsync(
-            Csv(Row("a@example.com", "Person A"), Row("b@example.com", "Person B")),
+            Csv(Row("a@example.com", "Person A", dateOfBirth: "1990-11-23"),
+                Row("b@example.com", "Person B", dateOfBirth: "1985-01-05")),
             TabularFormat.Csv);
 
         var passwords = result.CreatedAccounts.Select(a => a.Password).ToList();
-        Assert.Equal(2, passwords.Distinct().Count());
-        Assert.All(passwords, p => Assert.DoesNotContain("example.com", p));
-        // No 0/O/1/l/I — it gets read off a screen and typed by someone else.
-        Assert.All(passwords, p => Assert.DoesNotContain(p, c => "0O1lI".Contains(c)));
+        Assert.Equal(["a@example.com1123", "b@example.com0105"], passwords);
+    }
+
+    // Without a birthday there is no password to set and no rule to tell the
+    // employee, so the row fails rather than seeding something unusable.
+    [Fact]
+    public async Task ANewPersonWithoutABirthdayFailsTheirRowOnly()
+    {
+        var (service, employees) = Make();
+
+        var result = await service.ImportAsync(
+            Csv(Row("a@example.com", "Person A", dateOfBirth: ""),
+                Row("b@example.com", "Person B")),
+            TabularFormat.Csv);
+
+        Assert.Single(employees.Created);
+        Assert.Equal("b@example.com", employees.Created[0].Email);
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("Date of Birth", error.Message);
     }
 
     [Fact]

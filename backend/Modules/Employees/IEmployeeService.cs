@@ -13,7 +13,11 @@ public interface IEmployeeService
 }
 
 // Ok=false with Error → 400; Ok=false and Error null → the user wasn't found (404).
-public record EmployeeSaveResult(bool Ok, EmployeeDto? Employee, string? Error);
+// WelcomeEmailSent is null when none was asked for. False means the person WAS
+// created and the mail failed — the caller says "added, but the email didn't go
+// out" rather than reporting a failure that didn't happen.
+public record EmployeeSaveResult(
+    bool Ok, EmployeeDto? Employee, string? Error, bool? WelcomeEmailSent = null);
 
 // Same convention: Error null and Ok=false means "not found in this org".
 public record SetPasswordResult(bool Ok, string? Error);

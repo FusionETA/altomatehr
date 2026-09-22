@@ -73,6 +73,15 @@ public class CreateEmployeeDto
     [MaxLength(100)]
     public string? Password { get; set; }
 
+    // Opt-in, and unticked by default in the dialog. Nothing is sent by the
+    // XLSX import, so a 200-row file cannot blast 200 emails by accident.
+    public bool SendWelcomeEmail { get; set; }
+
+    // Required when creating a NEW account: the first password is the email
+    // followed by this as MMDD (see DefaultPassword). Stored on the profile so
+    // the payroll import doesn't ask for the same date again.
+    public DateTime? DateOfBirth { get; set; }
+
     // The person's display name. Required when creating a NEW account; ignored when
     // reusing an existing identity (they keep the name they already have).
     [MaxLength(160)]

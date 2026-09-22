@@ -73,6 +73,11 @@ export const updateEmployee = (id: string, body: UpdateEmployee) =>
   apiPut<Employee>(`/employees/${id}`, body);
 
 export type CreateEmployee = {
+  /** Required for a brand-new account unless a password is typed: the first
+   *  password is the email followed by this as MMDD. */
+  dateOfBirth?: string;
+  /** Opt-in. Nothing is sent by the XLSX import. */
+  sendWelcomeEmail?: boolean;
   email: string;
   // Only needed for a brand-new account; ignored if the email already exists (multi-org reuse).
   password?: string;

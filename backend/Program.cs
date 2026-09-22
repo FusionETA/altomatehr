@@ -66,6 +66,7 @@ builder.Services.AddDataProtection()
         Path.Combine(builder.Environment.ContentRootPath, "storage", "dp-keys")))
     .SetApplicationName("AltomateHR");
 builder.Services.Configure<XeroOptions>(builder.Configuration.GetSection("Xero"));
+builder.Services.Configure<PortalOptions>(builder.Configuration.GetSection(PortalOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("EngineMailer"));
 
