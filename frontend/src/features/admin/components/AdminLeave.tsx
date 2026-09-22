@@ -218,17 +218,21 @@ export function AdminLeave() {
         />
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 pb-1 sm:justify-end">
-        <select
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-          className="h-10 rounded-xl border border-border/70 bg-card px-3 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          {YEAR_OPTIONS.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        {/* The shared Radix control, like every other dropdown on this screen.
+            A bare <select> renders the operating system's own list, which is a
+            different shape on every platform and ignores the app's theme. */}
+        <Select value={String(year)} onValueChange={(next) => setYear(Number(next))}>
+          <SelectTrigger className="h-10 w-28 rounded-xl">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {YEAR_OPTIONS.map((y) => (
+              <SelectItem key={y} value={String(y)}>
+                {y}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {/* Same Export / Import pills as the claims screen. Three loose export
             buttons put every format on screen at once when an admin only ever
             wants one of them. */}
@@ -983,14 +987,18 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
 
         <div className="mt-5 space-y-4">
           <div className="flex items-center gap-2">
-            <select
+            <Select
               value={format}
-              onChange={(e) => setFormat(e.target.value as "csv" | "xlsx")}
-              className="h-10 rounded-xl border border-border/70 bg-card px-3 text-sm font-semibold text-foreground shadow-sm"
+              onValueChange={(next) => setFormat(next as "csv" | "xlsx")}
             >
-              <option value="xlsx">XLSX</option>
-              <option value="csv">CSV</option>
-            </select>
+              <SelectTrigger className="h-10 w-28 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xlsx">XLSX</SelectItem>
+                <SelectItem value="csv">CSV</SelectItem>
+              </SelectContent>
+            </Select>
             <button
               type="button"
               disabled={downloadingTemplate}
