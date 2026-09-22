@@ -244,16 +244,21 @@ export function OrgMileageDefaultsCard() {
               <label htmlFor="mileage-unit" className={LABEL}>
                 Unit
               </label>
-              <select
-                id="mileage-unit"
-                disabled={disabled}
-                className={`${INPUT} mt-1.5`}
+              <Select
                 value={org.mileageUnit}
-                onChange={(e) => setOrg({ ...org, mileageUnit: e.target.value as "KM" | "MILE" })}
+                disabled={disabled}
+                onValueChange={(next) =>
+                  setOrg({ ...org, mileageUnit: next as "KM" | "MILE" })
+                }
               >
-                <option value="KM">Kilometres</option>
-                <option value="MILE">Miles</option>
-              </select>
+                <SelectTrigger id="mileage-unit" className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="KM">Kilometres</SelectItem>
+                  <SelectItem value="MILE">Miles</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </>

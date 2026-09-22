@@ -3,6 +3,13 @@ import { createPortal } from "react-dom";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
 import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 
 const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50";
@@ -259,38 +266,40 @@ export function AddEmployeeModal({
                 <label htmlFor="add-role" className={LABEL}>
                   Role
                 </label>
-                <select
-                  id="add-role"
-                  className={INPUT}
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                >
-                  {STAFF_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger id="add-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAFF_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <label htmlFor="add-policy" className={LABEL}>
                   Policy
                 </label>
-                <select
-                  id="add-policy"
-                  className={INPUT}
-                  value={policyId}
-                  onChange={(e) => setPolicyId(e.target.value)}
-                >
-                  <option value={NONE}>Default policy</option>
-                  {policies
-                    .filter((p) => !p.isArchived)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
+                {/* NONE is already a non-empty sentinel, which Radix needs —
+                    it reserves the empty string for "nothing selected". */}
+                <Select value={policyId} onValueChange={setPolicyId}>
+                  <SelectTrigger id="add-policy">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Default policy</SelectItem>
+                    {policies
+                      .filter((p) => !p.isArchived)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

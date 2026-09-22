@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { createShift, setDefaultShift, updateShift, type Shift } from "@/features/shifts/api";
 import type { FilterOption } from "./AttendanceFilterBar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 
 const WEEKDAYS = [
   { iso: 1, label: "Mon" },
@@ -136,18 +143,26 @@ export function ShiftEditor({
               {projects.find((p) => p.id === projectId)?.name ?? "—"}
             </p>
           ) : (
-            <select
-              id="shift-project"
-              aria-label="Project"
-              className={FIELD}
+            // With no projects there is nothing to pick, so the empty state is
+            // the trigger's PLACEHOLDER rather than an option: Radix reserves
+            // the empty string for "nothing selected", and an item carrying it
+            // throws. Disabled too — an open, empty list explains nothing.
+            <Select
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              disabled={projects.length === 0}
+              onValueChange={setProjectId}
             >
-              {projects.length === 0 ? <option value="">No projects yet</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>{project.name}</option>
-              ))}
-            </select>
+              <SelectTrigger id="shift-project" aria-label="Project" className="h-11 px-3">
+                <SelectValue placeholder="No projects yet" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
 

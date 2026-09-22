@@ -4,6 +4,13 @@ import { convertCp8d, type Cp8dConvertRow } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
 import { BUTTON, BUTTON_GHOST, HINT, INPUT, LABEL } from "../lib/ui";
 import { ModalPortal } from "./ModalPortal";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 
 // CP8D converter.
 //
@@ -41,6 +48,11 @@ function newRow(): Row {
 
 const CELL =
   "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-xs text-foreground outline-none focus:border-border focus:bg-background";
+// The shared trigger defaults to a full-height form control (h-12, rounded-2xl,
+// solid background). In this grid it sits beside CELL text inputs, so it is cut
+// down to match them — the dropdown itself is the standard one.
+const CELL_SELECT =
+  "h-auto w-full gap-1 rounded-lg border-transparent bg-transparent px-2 py-1 text-xs shadow-none hover:border-border data-[state=open]:ring-0";
 const TH = "px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[0.12em]";
 
 export function Cp8dConverterModal({
@@ -232,31 +244,40 @@ export function Cp8dConverterModal({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <select
-                        className={CELL}
+                      <Select
                         value={row.category}
-                        onChange={(e) =>
-                          patch(row.id, { category: e.target.value as Row["category"] })
+                        onValueChange={(next) =>
+                          patch(row.id, { category: next as Row["category"] })
                         }
-                        aria-label={`Row ${index + 1} category`}
                       >
-                        <option value="1">1 — Single</option>
-                        <option value="2">2 — Married, sole earner</option>
-                        <option value="3">3 — Both working / other</option>
-                      </select>
+                        <SelectTrigger className={CELL_SELECT} aria-label={`Row ${index + 1} category`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 — Single</SelectItem>
+                          <SelectItem value="2">2 — Married, sole earner</SelectItem>
+                          <SelectItem value="3">3 — Both working / other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </td>
                     <td className="px-2 py-1.5">
-                      <select
-                        className={CELL}
+                      <Select
                         value={row.taxBorneByEmployer ? "1" : "2"}
-                        onChange={(e) =>
-                          patch(row.id, { taxBorneByEmployer: e.target.value === "1" })
+                        onValueChange={(next) =>
+                          patch(row.id, { taxBorneByEmployer: next === "1" })
                         }
-                        aria-label={`Row ${index + 1} tax borne by employer`}
                       >
-                        <option value="2">No</option>
-                        <option value="1">Yes</option>
-                      </select>
+                        <SelectTrigger
+                          className={CELL_SELECT}
+                          aria-label={`Row ${index + 1} tax borne by employer`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="2">No</SelectItem>
+                          <SelectItem value="1">Yes</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </td>
                     <NumberCell
                       label={`Row ${index + 1} children`}
