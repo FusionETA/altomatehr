@@ -187,6 +187,18 @@ export const createHoliday = (body: { date: string; name: string; projectId?: st
   apiPost<Holiday>("/holidays", body);
 export const deleteHoliday = (id: string) => apiDelete<void>(`/holidays/${id}`);
 
+// Pull a country's calendar for one year. `skipped` counts dates the org
+// already had — a re-run after a calendar revision leaves those alone rather
+// than overwriting a name an admin edited.
+export type HolidayImportResult = {
+  imported: number;
+  skipped: number;
+  source: string | null;
+};
+
+export const importHolidays = (year: number, countryCode: string) =>
+  apiPost<HolidayImportResult>("/holidays/import", { year, countryCode });
+
 // --- Projects ---
 export const getProjects = () => apiGet<Project[]>("/projects");
 

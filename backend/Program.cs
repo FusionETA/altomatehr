@@ -68,6 +68,8 @@ builder.Services.AddDataProtection()
 builder.Services.Configure<XeroOptions>(builder.Configuration.GetSection("Xero"));
 builder.Services.Configure<PortalOptions>(builder.Configuration.GetSection(PortalOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
+builder.Services.Configure<HolidayImportOptions>(
+    builder.Configuration.GetSection(HolidayImportOptions.SectionName));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("EngineMailer"));
 
 // CORS — let the Vite frontend (:5173) read our responses from the browser.
@@ -323,6 +325,7 @@ builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
+builder.Services.AddHttpClient<IPublicHolidaySource, PublicHolidaySource>();
 
 // Email: fall back to a logging stub when EngineMailer isn't configured, the same
 // way the cache above falls back to in-memory when Redis isn't. Keeps dev working

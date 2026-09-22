@@ -957,7 +957,11 @@ public class LeaveServiceTests
         public Task<HolidaySaveResult> UpdateAsync(string id, SaveHolidayDto dto) => throw new NotImplementedException();
         public Task<bool> DeleteAsync(string id) => throw new NotImplementedException();
         public Task<bool> IsHolidayAsync(DateTime date, string? projectId) => throw new NotImplementedException();
-    }
+    
+    // Importing is an admin action; nothing under test here performs one.
+    public Task<HolidayImportResult> ImportAsync(int year, string countryCode) =>
+        throw new NotSupportedException();
+}
 
     // None of the existing tests exercise GetTeamBalancesAsync's team-scoped
     // path — they only need the constructor satisfied. No supervised teams,

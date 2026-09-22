@@ -23,3 +23,15 @@ public class SaveHolidayDto
     [Required, MaxLength(160)]
     public string Name { get; set; } = string.Empty;
 }
+
+// Which country-year to pull from the public calendar API.
+public class ImportHolidaysDto
+{
+    [Range(2000, 2100)]
+    public int Year { get; set; }
+
+    // ISO 3166-1 alpha-2. Defaulted by the client to the org's own country;
+    // there is no country on Organization to read it from yet.
+    [Required, MaxLength(2), MinLength(2)]
+    public string CountryCode { get; set; } = "MY";
+}

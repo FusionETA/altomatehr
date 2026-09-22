@@ -168,7 +168,13 @@ public class AttendanceService : IAttendanceService
     // the record, so it was reading undefined.
     public async Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId)
     {
-        var pending = await _approvalRequests.GetOpenByKindsAsync(RecordKinds);
+        // AllKinds, not RecordKinds: a day whose ONLY pending request is a break
+        // has no clock event to pull its record in, so the card never appeared
+        // and the break was undecidable from this screen — while the sidebar
+        // badge, which counts breaks from their own endpoint, still advertised
+        // it. The break rows themselves still come from /attendance/team/breaks;
+        // this decides which DAYS are on the screen.
+        var pending = await _approvalRequests.GetOpenByKindsAsync(AllKinds);
         var projectIdByRecord = await ResolveProjectIdsAsync(pending);
 
         // Resolved in one batch rather than per request. Asking the router

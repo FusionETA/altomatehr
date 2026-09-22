@@ -4,6 +4,7 @@ import {
   createHoliday,
   deleteHoliday,
   getHolidays,
+  importHolidays,
   getOrganization,
   updateOrganization,
   type Holiday,
@@ -214,6 +215,16 @@ function HolidaysCard() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Importing a year at a time, because that is how the calendars are
+  // published. Defaults to next year once October is past: the reason anyone
+  // opens this card in Q4 is to load the year ahead.
+  const [importYear, setImportYear] = useState(() => {
+    const now = new Date();
+    return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+  });
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
   // Only org-wide holidays live here; project-specific ones are managed per
   // project. Sorted so the calendar reads top-to-bottom.
   const holidays = useMemo(
@@ -241,6 +252,32 @@ function HolidaysCard() {
     }
   }
 
+  async function runImport() {
+    setImporting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await importHolidays(importYear, "MY");
+      await holidaysQuery.refresh();
+      // Both halves reported: "imported 0, already had 16" is a different
+      // outcome from "imported 16", and an admin re-running after a revision
+      // needs to tell them apart.
+      setNotice(
+        [
+          `Added ${result.imported} ${result.imported === 1 ? "holiday" : "holidays"} for ${importYear}`,
+          result.skipped > 0 ? `${result.skipped} already on the calendar` : null,
+          result.source ? `via ${result.source}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import the holidays.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function remove(h: Holiday) {
     setDeletingId(h.id);
     setError(null);
@@ -262,6 +299,43 @@ function HolidaysCard() {
           Company-wide days off. They don't count as working days for leave or attendance.
         </p>
       </div>
+
+      {/* Import first, then correct by hand. Typing a year of public holidays
+          one at a time is how a calendar ends up half-entered — and a missing
+          holiday is silently charged to someone's leave balance. */}
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border/60 bg-surface-low p-4">
+        <div className="space-y-1.5">
+          <label htmlFor="holiday-import-year" className="text-xs text-muted-foreground">
+            Import Malaysian holidays for
+          </label>
+          <input
+            id="holiday-import-year"
+            type="number"
+            min={2000}
+            max={2100}
+            className={`${INPUT} w-32`}
+            value={importYear}
+            onChange={(e) => setImportYear(Number(e.target.value))}
+          />
+        </div>
+        <button
+          type="button"
+          disabled={importing}
+          onClick={() => void runImport()}
+          className="inline-flex h-12 items-center gap-2 rounded-2xl border border-border bg-card px-5 text-sm font-semibold text-foreground transition hover:border-primary/40 disabled:opacity-50"
+        >
+          {importing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+          Import
+        </button>
+        <p className="w-full text-xs text-muted-foreground">
+          Existing dates are left as they are, so re-running after a revision won't undo a
+          name you edited.
+        </p>
+      </div>
+
+      {notice ? (
+        <p className="text-sm font-medium text-foreground">{notice}</p>
+      ) : null}
 
       <form onSubmit={add} className="grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
         <div className="space-y-1.5">

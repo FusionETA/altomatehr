@@ -40,6 +40,21 @@ public class HolidaysController : ControllerBase
         return result.Ok ? Ok(result.Holiday) : BadRequest(new { message = result.Error });
     }
 
+    // POST /holidays/import — load a country's calendar for one year.
+    //
+    // A partial import is still a success: the body carries what landed and
+    // what was already there, because "imported 14, skipped 3" is the useful
+    // answer when an admin re-runs it after a calendar revision.
+    [Authorize(Roles = "Admin,Owner")]
+    [HttpPost("import")]
+    public async Task<IActionResult> Import(ImportHolidaysDto dto)
+    {
+        var result = await _holidays.ImportAsync(dto.Year, dto.CountryCode);
+        return result.Ok
+            ? Ok(new { result.Imported, result.Skipped, result.Source })
+            : BadRequest(new { message = result.Error });
+    }
+
     [Authorize(Roles = "Admin,Owner")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id) =>

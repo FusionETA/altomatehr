@@ -30,6 +30,10 @@ internal sealed class FakeHolidayService : IHolidayService
     public Task<HolidaySaveResult> CreateAsync(SaveHolidayDto dto) => throw new NotSupportedException();
     public Task<HolidaySaveResult> UpdateAsync(string id, SaveHolidayDto dto) => throw new NotSupportedException();
     public Task<bool> DeleteAsync(string id) => throw new NotSupportedException();
+
+    // Importing is an admin action; nothing under test here performs one.
+    public Task<HolidayImportResult> ImportAsync(int year, string countryCode) =>
+        throw new NotSupportedException();
 }
 
 internal sealed class FakeLeaveTypeService : ILeaveTypeService
