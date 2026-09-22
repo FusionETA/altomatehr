@@ -28,6 +28,68 @@ public class EmployeeServiceTests
         Assert.NotNull(result.Error);
     }
 
+    // The other half of the rule Teams enforces on placement. Without it the
+    // guard is a formality: place someone correctly as a Supervisor, then
+    // demote them here, and they are an approver the approvals screens will
+    // not let in — with their team already routing requests to them.
+    [Fact]
+    public async Task UpdateAsync_RefusesToDemoteSomeoneWhoStillApprovesForATeam()
+    {
+        var positions = new FakeApproverPositions();
+        positions.Place("usr-super", "Ops", layer: 1);
+        var service = MakeService(out var memberships, out _, out _, positions);
+
+        var result = await service.UpdateAsync("usr-super", new UpdateEmployeeDto { Role = "Employee" });
+
+        Assert.False(result.Ok);
+        Assert.Contains("Ops", result.Error!);
+        // Refused means unchanged — not reported-and-saved.
+        Assert.Equal("Supervisor", memberships.Single(m => m.UserId == "usr-super").Role);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DemotesSomeoneWhoApprovesForNobody()
+    {
+        var service = MakeService(out var memberships);
+
+        var result = await service.UpdateAsync("usr-super", new UpdateEmployeeDto { Role = "Employee" });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("Employee", memberships.Single(m => m.UserId == "usr-super").Role);
+    }
+
+    // Admin and Owner are subtracted from routing outright, so they are never
+    // anybody's approver whatever layer they sit in — promoting into one of
+    // those seats cannot strand a team.
+    [Fact]
+    public async Task UpdateAsync_AllowsAnApproverToBecomeAnAdmin()
+    {
+        var positions = new FakeApproverPositions();
+        positions.Place("usr-super", "Ops", layer: 1);
+        var service = MakeService(out var memberships, out _, out _, positions);
+
+        var result = await service.UpdateAsync("usr-super", new UpdateEmployeeDto { Role = "Admin" });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("Admin", memberships.Single(m => m.UserId == "usr-super").Role);
+    }
+
+    // Data that predates the guard stays editable. Someone already stored as
+    // an Employee at an upper layer is a problem to fix on the team screen —
+    // blocking every unrelated edit to their name or policy until then would
+    // punish the admin for a state they did not create.
+    [Fact]
+    public async Task UpdateAsync_DoesNotBlockEditingSomeoneAlreadyStoredAsAnEmployee()
+    {
+        var positions = new FakeApproverPositions();
+        positions.Place("usr-emp", "Ops", layer: 1);
+        var service = MakeService(out _, out _, out _, positions);
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto { Role = "Employee" });
+
+        Assert.True(result.Ok, result.Error);
+    }
+
     [Fact]
     public async Task UpdateAsync_ReturnsNotFoundResultForNonMember()
     {
@@ -214,7 +276,14 @@ public class EmployeeServiceTests
     private static EmployeeService MakeService(
         out List<OrganizationMembership> memberships,
         out List<EmployeeProfile> profiles,
-        out List<User> users)
+        out List<User> users) =>
+        MakeService(out memberships, out profiles, out users, new FakeApproverPositions());
+
+    private static EmployeeService MakeService(
+        out List<OrganizationMembership> memberships,
+        out List<EmployeeProfile> profiles,
+        out List<User> users,
+        FakeApproverPositions positions)
     {
         users = new List<User>
         {
@@ -238,6 +307,7 @@ public class EmployeeServiceTests
             new StubCurrentUser(),
             new CapturingEmailSender(),
             new FakeOrgRepositoryForWelcome(),
+            positions,
             Options.Create(new PortalOptions()));
     }
 
@@ -379,4 +449,29 @@ internal sealed class FakeOrgRepositoryForWelcome : IOrganizationRepository
     public Task AddAsync(Organization organization) => Task.CompletedTask;
     public Task UpdateAsync(Organization organization) => Task.CompletedTask;
     public Task<bool> AnyAsync() => Task.FromResult(true);
+}
+
+// Where someone sits in a team, for the guard that stops a supervisor being
+// demoted while people still route requests to them. Empty by default: most
+// tests here are about roles and emails, not team structure.
+internal sealed class FakeApproverPositions : AltomateHR.Api.Modules.Teams.IApproverPositions
+{
+    public Dictionary<string, List<AltomateHR.Api.Modules.Teams.ApproverPosition>> ByEmployee { get; } = [];
+
+    public void Place(string employeeId, string teamName, int layer)
+    {
+        if (!ByEmployee.TryGetValue(employeeId, out var list))
+        {
+            list = [];
+            ByEmployee[employeeId] = list;
+        }
+
+        list.Add(new AltomateHR.Api.Modules.Teams.ApproverPosition(
+            $"team-{teamName}", teamName, layer));
+    }
+
+    public Task<IReadOnlyList<AltomateHR.Api.Modules.Teams.ApproverPosition>> ForEmployeeAsync(
+        string employeeId) =>
+        Task.FromResult<IReadOnlyList<AltomateHR.Api.Modules.Teams.ApproverPosition>>(
+            ByEmployee.GetValueOrDefault(employeeId, []));
 }

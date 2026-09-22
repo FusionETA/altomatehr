@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
 using System.Text.Json;
 using AltomateHR.Api.Modules.Auth;
@@ -164,6 +165,29 @@ public class TeamService : ITeamService
         var known = await _supervision.GetEmailsAsync([dto.EmployeeId]);
         if (!known.ContainsKey(dto.EmployeeId))
             return new TeamSaveResult(false, null, "That employee doesn't exist in this organization.");
+
+        // An upper layer IS an approver position: ApprovalChainService routes
+        // every request from below straight to whoever stands here. But the
+        // approvals screens are gated on the stored role, so putting a plain
+        // Employee here creates a dead end — their team's requests route to
+        // someone the app then refuses to let in, and the requests simply sit.
+        //
+        // Refused rather than auto-promoted. Role decides more than approvals,
+        // and silently widening someone's access as a side effect of a team
+        // edit is not a thing an admin should have to discover afterwards.
+        if (dto.Layer > 0)
+        {
+            var role = await _supervision.GetRoleAsync(dto.EmployeeId);
+            if (!OrgRoles.IsAdministrative(role)
+                && !string.Equals(role, OrgRoles.Supervisor, StringComparison.OrdinalIgnoreCase))
+            {
+                return new TeamSaveResult(false, null,
+                    $"{known[dto.EmployeeId]} is an Employee, so they cannot be placed above the "
+                    + "bottom layer — everyone below them would route their requests to someone "
+                    + "who cannot open the approvals screens. Change their role to Supervisor "
+                    + "first, then add them to this layer.");
+            }
+        }
 
         var now = DateTime.UtcNow;
         var existing = await _memberships.GetByTeamAndEmployeeAsync(teamId, dto.EmployeeId);

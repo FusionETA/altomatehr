@@ -31,6 +31,7 @@ public class EmployeeService : IEmployeeService
     private readonly ICurrentUser _currentUser;
     private readonly IEmailSender _email;
     private readonly IOrganizationRepository _organizations;
+    private readonly Teams.IApproverPositions _approverPositions;
     private readonly PortalOptions _portal;
 
     public EmployeeService(
@@ -42,6 +43,7 @@ public class EmployeeService : IEmployeeService
         ICurrentUser currentUser,
         IEmailSender email,
         IOrganizationRepository organizations,
+        Teams.IApproverPositions approverPositions,
         IOptions<PortalOptions> portal)
     {
         _memberships = memberships;
@@ -52,6 +54,7 @@ public class EmployeeService : IEmployeeService
         _currentUser = currentUser;
         _email = email;
         _organizations = organizations;
+        _approverPositions = approverPositions;
         _portal = portal.Value;
     }
 
@@ -209,6 +212,30 @@ public class EmployeeService : IEmployeeService
         var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
+
+        // The other half of the rule Teams enforces on placement. Without this
+        // the guard is a formality: place someone correctly as a Supervisor,
+        // then demote them here, and they are back to being an approver the
+        // approvals screens will not admit — with their team's requests already
+        // routing to them.
+        //
+        // Admin and Owner are exempt for the same reason they are exempt there:
+        // approval routing subtracts them outright, so they are never anybody's
+        // approver no matter which layer they sit in.
+        if (string.Equals(role, OrgRoles.Employee, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(membership.Role, OrgRoles.Employee, StringComparison.OrdinalIgnoreCase))
+        {
+            var positions = await _approverPositions.ForEmployeeAsync(id);
+            if (positions.Count > 0)
+            {
+                var teams = string.Join(", ", positions.Select(p => $"\"{p.TeamName}\""));
+                return new EmployeeSaveResult(false, null,
+                    "They cannot be made an Employee while they sit above the bottom layer in "
+                    + $"{teams} — the people below them route requests to them, and an Employee "
+                    + "cannot open the approvals screens. Move them down a layer, or off those "
+                    + "teams, first.");
+            }
+        }
 
         // Email is checked for uniqueness before anything is touched, so a
         // rejected change never leaves a partial write behind.

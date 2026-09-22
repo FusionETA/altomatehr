@@ -240,6 +240,11 @@ internal sealed class FakeSupervisionService : ISupervisionService
     public Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds) =>
         Task.FromResult<IReadOnlyDictionary<string, string>>(
             userIds.Distinct().Where(_emails.ContainsKey).ToDictionary(id => id, id => _emails[id]));
+
+    // Only Teams asks this, to police upper-layer placements. Claims tests do
+    // no placement, so a permissive answer keeps them on topic.
+    public Task<string?> GetRoleAsync(string userId) =>
+        Task.FromResult<string?>(AdministrativeUserIds.Contains(userId) ? "Admin" : "Supervisor");
 }
 
 // Configurable approval router. `chains` maps an applicant id to its ordered

@@ -317,6 +317,7 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IApprovalDigestService, ApprovalDigestService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
+builder.Services.AddScoped<IApproverPositions, ApproverPositions>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();

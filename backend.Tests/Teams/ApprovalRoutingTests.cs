@@ -394,5 +394,10 @@ public class ApprovalRoutingTests
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
 
         public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
+
+        // Routing tests never place anyone, so the role behind a placement
+        // doesn't arise here. Roles set by placement tests live with them.
+        public Task<string?> GetRoleAsync(string userId) =>
+            Task.FromResult<string?>(administrative.Contains(userId) ? "Admin" : "Supervisor");
     }
 }

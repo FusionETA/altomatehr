@@ -25,6 +25,11 @@ public interface ISupervisionService
     // routing subtracts these, so an admin sitting in a team never becomes
     // somebody's approver.
     Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync();
+
+    // This person's role in the current org, or null when they aren't a member
+    // here. Teams needs it to refuse putting a plain Employee in a layer that
+    // would make them somebody's approver.
+    Task<string?> GetRoleAsync(string userId);
 }
 
 public class SupervisionService : ISupervisionService
@@ -53,4 +58,7 @@ public class SupervisionService : ISupervisionService
             .Where(m => OrgRoles.IsAdministrative(m.Role))
             .Select(m => m.UserId)
             .ToHashSet();
+
+    public async Task<string?> GetRoleAsync(string userId) =>
+        (await _directory.GetMembershipForUserAsync(userId))?.Role;
 }

@@ -21,6 +21,13 @@ public static class OrgRoles
     public const string Admin = "Admin";
     public const string Owner = "Owner";
 
+    // Not administrative — a supervisor oversees a team, they don't administer
+    // the org. Named here because the role is now load-bearing in two places
+    // that must agree: the approvals endpoints gate on it, and Teams refuses an
+    // upper-layer placement without it.
+    public const string Supervisor = "Supervisor";
+    public const string Employee = "Employee";
+
     private static readonly string[] Administrative = [Admin, Owner];
 
     public static bool IsAdministrative(string? role) =>

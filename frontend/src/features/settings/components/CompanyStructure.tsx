@@ -379,8 +379,10 @@ function TeamDetail({
     setWorking(true);
     try {
       onUpdated(await action());
+      return true;
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not update the team.");
+      return false;
     } finally {
       setWorking(false);
     }
@@ -388,9 +390,22 @@ function TeamDetail({
 
   async function add() {
     if (!addEmp) return;
-    await run(() => addTeamMember(team.id, { employeeId: addEmp, layer: Number(addLayer) }));
-    setAddEmp("");
+    const ok = await run(() =>
+      addTeamMember(team.id, { employeeId: addEmp, layer: Number(addLayer) }),
+    );
+    // Keep the selection when the server refused — an upper layer needs a
+    // Supervisor, and clearing the picker would make the admin re-find the
+    // person just to read the error and try a different layer.
+    if (ok) setAddEmp("");
   }
+
+  // The same rule the server enforces, said before the click rather than
+  // after: a layer above the bottom is an approver position, and the approvals
+  // screens are gated on the role. Administrative seats are exempt — approval
+  // routing subtracts them, so they are never anybody's approver.
+  const addingRole = employees.find((e) => e.id === addEmp)?.role;
+  const blockedByRole =
+    Number(addLayer) > 0 && addingRole === "Employee";
 
   return (
     <div>
@@ -542,7 +557,7 @@ function TeamDetail({
         </Select>
         <button
           type="button"
-          disabled={working || !addEmp}
+          disabled={working || !addEmp || blockedByRole}
           onClick={add}
           className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
         >
@@ -554,6 +569,14 @@ function TeamDetail({
           Add
         </button>
       </div>
+
+      {blockedByRole ? (
+        <p className="mt-2 text-xs font-medium text-destructive">
+          This person is an Employee, so they can only go in the bottom layer. Everyone below
+          them would route requests to someone who cannot open the approvals screens — change
+          their role to Supervisor first.
+        </p>
+      ) : null}
     </div>
   );
 }
