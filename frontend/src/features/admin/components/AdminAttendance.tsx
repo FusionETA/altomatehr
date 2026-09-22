@@ -116,6 +116,16 @@ const REPORT_TABS: { key: ReportTab; label: string }[] = [
   { key: "history", label: "History" },
 ];
 
+// Every table under Overview's four report tabs.
+//
+// The width lived on each table separately and had drifted — 920 on Today,
+// 900 on Analytics, 760 on Performance, 820 on History's two — so the columns
+// landed in a different place on each tab and the tables started scrolling at
+// different window widths. They are the same report at four angles; they
+// should measure the same. Widest of the four wins, since a table that has to
+// scroll is better than columns squeezed to nothing.
+const REPORT_TABLE = "w-full min-w-[900px] text-sm";
+
 // One row of the daily board: a person, and today's record if they have one.
 export type TodayRow = {
   employee: Employee;
@@ -859,7 +869,7 @@ function TodayTab({
         </EmptyRow>
       ) : (
         <div className="overflow-x-auto border-t border-border/60">
-          <table className="w-full min-w-[920px] text-sm">
+          <table className={REPORT_TABLE}>
             <thead>
               <tr className="border-b border-border/60">
                 {["Employee", "Project / job", "Clock in", "Clock out", "Status"].map((h) => (
@@ -1204,7 +1214,7 @@ function AnalyticsTab({
           <EmptyRow>No hours recorded in this range.</EmptyRow>
         ) : (
           <div className="nice-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className={REPORT_TABLE}>
               <thead>
                 {/* Grouped so the pairs read as pairs: normal answers expected,
                     beyond-shift answers approved OT. Nine flat columns of
@@ -1327,7 +1337,7 @@ function PerformanceTab({
           <EmptyRow>Nothing was decided in this range.</EmptyRow>
         ) : (
           <div className="nice-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className={REPORT_TABLE}>
               <thead>
                 {/* Counts and durations right-align, matching the Analytics
                     table. Left-aligned numbers under left-aligned headings made
@@ -1434,7 +1444,7 @@ function HistoryTab({
           <EmptyRow>No approvals in this range.</EmptyRow>
         ) : (
           <div className="nice-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className={REPORT_TABLE}>
               <thead>
                 <tr className="border-b border-border/60">
                   <th className={`${TH} h-10`}>Submitted</th>
@@ -1480,7 +1490,7 @@ function HistoryTab({
           <EmptyRow>No attendance in this range under these filters.</EmptyRow>
         ) : (
           <div className="nice-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className={REPORT_TABLE}>
               <thead>
                 <tr className="border-b border-border/60">
                   {/* Leading column for the expand arrow on split-shift days.
