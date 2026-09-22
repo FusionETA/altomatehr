@@ -484,6 +484,7 @@ public class AuthServiceTests
     {
         public Task<Organization?> GetByIdAsync(string id) =>
             Task.FromResult<Organization?>(new Organization { Id = id, Name = id });
+        public Task<List<Organization>> GetAllAsync() => Task.FromResult(new List<Organization>());
         public Task<Organization?> GetFirstAsync() => Task.FromResult<Organization?>(null);
         public Task AddAsync(Organization organization) => Task.CompletedTask;
         public Task UpdateAsync(Organization organization) => Task.CompletedTask;

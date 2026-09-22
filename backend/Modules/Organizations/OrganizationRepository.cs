@@ -16,6 +16,9 @@ public class OrganizationRepository : IOrganizationRepository
     public Task<Organization?> GetFirstAsync() =>
         _db.Organizations.OrderBy(o => o.CreatedAt).FirstOrDefaultAsync();
 
+    public Task<List<Organization>> GetAllAsync() =>
+        _db.Organizations.OrderBy(o => o.Name).ToListAsync();
+
     public async Task AddAsync(Organization organization)
     {
         _db.Organizations.Add(organization);

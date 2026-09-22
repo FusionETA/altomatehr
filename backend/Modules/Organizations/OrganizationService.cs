@@ -20,6 +20,7 @@ public class OrganizationService : IOrganizationService
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly ILeaveTypeService _leaveTypes;
     private readonly IDirectoryService _directory;
+    private readonly IOrganizationDefaultsService _defaults;
 
     public OrganizationService(
         IOrganizationRepository repo,
@@ -27,7 +28,8 @@ public class OrganizationService : IOrganizationService
         IAuditService audit,
         IXeroService xero,
         ILeaveTypeService leaveTypes,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        IOrganizationDefaultsService defaults)
     {
         _repo = repo;
         _memberships = memberships;
@@ -35,6 +37,7 @@ public class OrganizationService : IOrganizationService
         _xero = xero;
         _leaveTypes = leaveTypes;
         _directory = directory;
+        _defaults = defaults;
     }
 
     public async Task<OrganizationDto?> GetByIdAsync(string organizationId)
@@ -193,6 +196,13 @@ public class OrganizationService : IOrganizationService
         // So a new org isn't left with zero leave types until someone finds the
         // otherwise-unreachable /leave-types/defaults endpoint by hand.
         await _leaveTypes.EnsureDefaultsForOrganizationAsync(org.Id);
+
+        // And the other three a tenant needs before anyone can do anything:
+        // a policy (module access, OT rules), a project (somewhere to clock
+        // in) and a team (an approval chain). Without them the org exists but
+        // does nothing, and the owner has to find three settings screens to
+        // discover why.
+        await _defaults.EnsureForOrganizationAsync(org.Id, org.Name);
 
         return ToDto(org);
     }

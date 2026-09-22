@@ -239,6 +239,7 @@ builder.Services.AddScoped<IWebPushService, WebPushService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+builder.Services.AddScoped<IOrganizationDefaultsService, OrganizationDefaultsService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
@@ -437,6 +438,15 @@ app.MapControllers();
 // exits without serving. Deliberately ahead of the boot block below: a
 // verification dump must neither migrate the schema nor seed demo rows into
 // whatever database it happens to be pointed at.
+// `dotnet run -- seed-org-defaults [--commit]` backfills organisations created
+// before the defaults were seeded at creation. Same placement and reasoning as
+// the dump below: it must not migrate the schema or seed demo rows.
+if (args.Contains("seed-org-defaults"))
+{
+    await AltomateHR.Api.Tools.SeedOrgDefaults.RunAsync(app.Services, args.Contains("--commit"));
+    return;
+}
+
 if (args.Contains("dump-chains"))
 {
     var outPath = args.SkipWhile(a => a != "dump-chains").Skip(1).FirstOrDefault() ?? "chains.json";
