@@ -832,6 +832,34 @@ export function EmployeeDetail({
                   />
                 </Group>
 
+                {/* Owners are refused by the server, so offering the button
+                    for one would only produce an error the admin can't act
+                    on. Everyone else can be let back in from here. */}
+                {employee.role?.toLowerCase() !== "owner" ? (
+                  <Group
+                    title="Sign-in"
+                    hint="The reset link goes to the address on file. When someone can no longer reach that address, set a password for them here instead."
+                  >
+                    <Field label="Password" span>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSettingPassword(true)}
+                          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground transition hover:bg-muted"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                          Set a new password
+                        </button>
+                        {passwordSetFor === employee.id ? (
+                          <span className="text-xs font-semibold text-primary">
+                            Password updated.
+                          </span>
+                        ) : null}
+                      </div>
+                    </Field>
+                  </Group>
+                ) : null}
+
                 <Group title="Address" columns={3}>
                   <Field label="Address line 1" span>
                     <Text value={profile.addressLine1} onChange={(v) => set("addressLine1", v)} />
@@ -1183,33 +1211,6 @@ export function EmployeeDetail({
                   </Field>
                 </Group>
 
-                {/* Owners are refused by the server, so offering the button
-                    for one would only produce an error the admin can't act
-                    on. Everyone else can be let back in from here. */}
-                {employee.role?.toLowerCase() !== "owner" ? (
-                  <Group
-                    title="Sign-in"
-                    hint="The reset link goes to the address on file. When someone can no longer reach that address, set a password for them here instead."
-                  >
-                    <Field label="Password" span>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSettingPassword(true)}
-                          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 text-sm font-bold text-foreground transition hover:bg-muted"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                          Set a new password
-                        </button>
-                        {passwordSetFor === employee.id ? (
-                          <span className="text-xs font-semibold text-primary">
-                            Password updated.
-                          </span>
-                        ) : null}
-                      </div>
-                    </Field>
-                  </Group>
-                ) : null}
 
                 <Group
                   title="Archive"
