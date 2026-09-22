@@ -340,9 +340,26 @@ export const getTeamBreakApprovals = () =>
 
 // The pending approval-request ids on a record — what the decision endpoints
 // actually take.
+// The RECORD-level decisions still waiting on a day — clock-ins, clock-outs and
+// the corrections filed against them.
+//
+// Breaks are deliberately excluded even though they sit in `record.approvals`
+// too. /attendance/team attaches every request on the record regardless of
+// kind, while /attendance/team/breaks returns those same break rows again, by
+// the same ids. Every caller here pairs this helper with that second list, so
+// counting breaks in both places counted each one twice: a day with three clock
+// events and two breaks read "7 events pending" over five cards, and the
+// sidebar badge said 7 as well.
+//
+// Corrections stay in: a correction's kind is still CLOCK_IN or CLOCK_OUT, it
+// renders as its own card, and it is decided from the same button.
 export function pendingApprovalIds(record: AttendanceRecord): string[] {
   return (record.approvals ?? [])
-    .filter((a) => a.approvalStatus === "PENDING")
+    .filter(
+      (a) =>
+        a.approvalStatus === "PENDING" &&
+        (a.kind === "CLOCK_IN" || a.kind === "CLOCK_OUT"),
+    )
     .map((a) => a.id);
 }
 
