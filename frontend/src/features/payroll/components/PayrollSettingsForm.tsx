@@ -28,6 +28,7 @@ import {
 import { getXeroStatus } from "@/features/settings/api";
 import { Skeleton, SkeletonPanels } from "@/shared/components/Skeleton";
 import { CheckBox } from "./PayrollCheckbox";
+import { DISBURSEMENT_BANKS } from "../lib/disbursement";
 import { PayrollSelect } from "./PayrollSelect";
 import { PortalCredentialsSection } from "./settings/PortalCredentialsSection";
 import { XeroSyncSection } from "./settings/XeroSyncSection";
@@ -426,9 +427,10 @@ export function PayrollSettingsForm() {
                   options={DISBURSEMENT_BANKS}
                 />
                 <p className={HINT}>
-                  Only Public Bank&apos;s format is implemented so far. Anything else
-                  produces no upload file — key the payments in from the Payment Schedule
-                  report instead.
+                  Until this is set, a run produces no upload file — the layouts are not
+                  interchangeable, so there is nothing safe to default to. Choosing
+                  &ldquo;Other&rdquo; is fine: key the payments in from the Payment
+                  Schedule report instead.
                 </p>
               </div>
 
@@ -438,7 +440,7 @@ export function PayrollSettingsForm() {
                 value={settings.ecpPayorAccountNo}
                 onChange={(ecpPayorAccountNo) => patchSettings({ ecpPayorAccountNo })}
                 placeholder="Company payroll account no."
-                hint="Public Bank needs exactly 10 digits — the file is refused otherwise rather than rejected later by the portal."
+                hint="The account salaries are debited from. Public Bank needs exactly 10 digits — the file is refused otherwise rather than rejected later by the portal."
               />
               <Field
                 id="payorAccountHolderName"
@@ -449,10 +451,11 @@ export function PayrollSettingsForm() {
               />
               <Field
                 id="payorOrganisationCode"
-                label="Organisation code (optional)"
+                label="Organisation code"
                 value={settings.payorOrganisationCode}
                 onChange={(payorOrganisationCode) => patchSettings({ payorOrganisationCode })}
-                placeholder="Some banks require this"
+                placeholder="Issued by your bank"
+                hint="Required by Maybank (Corporate ID) and CIMB (Autopay Organisation Code). Public Bank and Hong Leong do not use it."
               />
             </div>
           </section>
@@ -949,14 +952,6 @@ function SectionPicker({
     </nav>
   );
 }
-
-// Public Bank is the only disbursement format this backend renders. Listing
-// the other three the reference supports would promise an upload file that
-// never arrives, so they are deliberately absent until their renderers exist.
-const DISBURSEMENT_BANKS = [
-  { value: "Public Bank Berhad", label: "Public Bank (incl. Public Islamic)" },
-  { value: "OTHER", label: "Other bank (no upload file)" },
-];
 
 // A statutory figure an admin cannot change. Rendered as text rather than a
 // disabled input — a greyed-out box still reads as something you could

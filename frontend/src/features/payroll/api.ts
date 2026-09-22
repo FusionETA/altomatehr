@@ -449,13 +449,31 @@ export const downloadPcbDetails = (runId: string) =>
     "pcb-calculation-details.pdf",
   );
 
-export const downloadBankFile = (runId: string, paymentDate?: string) =>
-  download(
-    `/payroll/runs/${runId}/documents/bank-file${
-      paymentDate ? `?paymentDate=${paymentDate}` : ""
-    }`,
-    "bank-file.xlsx",
+// The layout is decided by the company's own payroll bank, not by the caller
+// — so there is one endpoint and the server picks. `channel` and
+// `recipientReference` apply to Hong Leong only, which publishes two upload
+// portals taking different files; every other bank ignores them.
+export const downloadBankFile = (
+  runId: string,
+  paymentDate?: string,
+  options?: { channel?: HlbChannel; recipientReference?: string },
+) => {
+  const query = new URLSearchParams();
+  if (paymentDate) query.set("paymentDate", paymentDate);
+  if (options?.channel) query.set("channel", options.channel);
+  if (options?.recipientReference) {
+    query.set("recipientReference", options.recipientReference);
+  }
+
+  return download(
+    `/payroll/runs/${runId}/documents/bank-file${query.size > 0 ? `?${query}` : ""}`,
+    // Only a fallback — every format names its own file, and they are not all
+    // spreadsheets.
+    "bank-file",
   );
+};
+
+export type HlbChannel = "ConnectFirst" | "ConnectBiz";
 
 export const downloadEpfCsv = (runId: string) =>
   download(`/payroll/runs/${runId}/files/epf`, "epf.csv");

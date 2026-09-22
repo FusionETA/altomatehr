@@ -217,7 +217,11 @@ public class StatutoryFileService : IStatutoryFileService
         }
     }
 
-    public async Task<StatutoryFileResult> RenderBankFileAsync(string runId, DateTime? paymentDate)
+    public async Task<StatutoryFileResult> RenderBankFileAsync(
+        string runId,
+        DateTime? paymentDate,
+        string? recipientReference = null,
+        HlbChannel? channel = null)
     {
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
@@ -229,7 +233,66 @@ public class StatutoryFileService : IStatutoryFileService
 
         var settings = await _settings.GetAsync();
 
-        return PayrollBankFileXlsx.Render(model, valueDate, settings.EcpPayorAccountNo);
+        // Routed on the company's own bank, because that decides which portal
+        // the file goes to and therefore which layout it must be in. Until
+        // now this always rendered Public Bank's ECP spreadsheet: a Maybank or
+        // CIMB customer got a file their portal rejects, with nothing saying
+        // why. Refusing is the smaller failure — it names the setting to fix.
+        var format = PayrollDisbursement.FormatFor(settings.PayrollBankName);
+
+        if (format is null)
+        {
+            var configured = settings.PayrollBankName?.Trim();
+
+            // "Other" is a decision, not an omission: the admin looked at the
+            // list and none applied. Say so rather than nagging them to pick.
+            if (string.Equals(configured, PayrollDisbursement.OtherBank, StringComparison.OrdinalIgnoreCase))
+            {
+                return StatutoryFileResult.Refused(
+                    "This company's payroll bank is set to \"Other\", so there is no bulk-upload "
+                    + "file to generate. Pay the salaries through your bank's own process — the "
+                    + "Payment Schedule PDF lists every account and amount.");
+            }
+
+            return StatutoryFileResult.Refused(
+                string.IsNullOrEmpty(configured)
+                    ? "No payroll bank is set. Choose one in Payroll Settings → Company Info — it "
+                      + "decides which bank's upload file this generates."
+                    : $"No upload file is generated for \"{configured}\". Choose a supported bank "
+                      + "in Payroll Settings → Company Info, or pick \"Other\" if yours isn't listed.");
+        }
+
+        return format switch
+        {
+            PayrollFileFormat.PbEcpXlsx =>
+                PayrollBankFileXlsx.Render(model, valueDate, settings.EcpPayorAccountNo),
+
+            PayrollFileFormat.MbbM2eTxt =>
+                PayrollBankFileMbbTxt.Render(
+                    model, valueDate, settings.EcpPayorAccountNo, settings.PayorOrganisationCode),
+
+            PayrollFileFormat.CimbBizChannelTxt =>
+                PayrollBankFileCimbTxt.Render(model, valueDate, settings.PayorOrganisationCode),
+
+            // The only bank with two portals. Guessing one would hand over a
+            // file the other rejects, so an unspecified channel is refused
+            // with both names rather than defaulted.
+            PayrollFileFormat.HlbConnect => channel switch
+            {
+                HlbChannel.ConnectFirst =>
+                    PayrollBankFileHlb.RenderConnectFirstTxt(model, recipientReference),
+                HlbChannel.ConnectBiz =>
+                    PayrollBankFileHlb.RenderConnectBizXlsx(model, recipientReference),
+                _ => StatutoryFileResult.Refused(
+                    "Hong Leong has two upload channels and they take different files. Choose "
+                    + "Connect First or ConnectBiz in the download panel — whichever one your "
+                    + "company uses to submit bulk payroll."),
+            },
+
+            _ => StatutoryFileResult.Refused(
+                $"The upload file for {settings.PayrollBankName} isn't available yet. Use the "
+                + "Payment Schedule PDF for now — it lists every account and amount."),
+        };
     }
 
     private static DateTime LastDayOfPeriod(Entities.PayrollRun run) =>

@@ -40,7 +40,16 @@ public interface IStatutoryFileService
     // hand. Reads the payslip's stored breakdown; never recomputes it.
     Task<StatutoryFileResult> RenderPcbDetailsPdfAsync(string runId);
 
-    // The bank disbursement file itself. `paymentDate` is the value date the
-    // bank should act on; null means the last day of the payroll period.
-    Task<StatutoryFileResult> RenderBankFileAsync(string runId, DateTime? paymentDate);
+    // The bank disbursement file itself, in the layout of the company's own
+    // payroll bank. `paymentDate` is the value date the bank should act on;
+    // null means the last day of the payroll period.
+    //
+    // The last two are needed only by Hong Leong, which publishes TWO upload
+    // channels taking different files and requires a statement reference that
+    // no payroll data implies. Every other bank ignores them.
+    Task<StatutoryFileResult> RenderBankFileAsync(
+        string runId,
+        DateTime? paymentDate,
+        string? recipientReference = null,
+        HlbChannel? channel = null);
 }

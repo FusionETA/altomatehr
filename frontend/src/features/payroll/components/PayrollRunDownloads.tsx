@@ -9,8 +9,11 @@ import {
   downloadPcbDetails,
   downloadPcbTxt,
   downloadPerkesoTxt,
+  getPayrollSettings,
   type PayrollRun,
 } from "../api";
+import { DISBURSEMENT_BANKS, formatFor } from "../lib/disbursement";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { saveFile } from "@/shared/lib/api-client";
 import {
   BUTTON,
@@ -52,7 +55,14 @@ type Item = {
   // Where it is uploaded, when it is uploaded anywhere. Shown beside the
   // title so an admin can find the right file for the portal they have open.
   portal: string | null;
-  download: (runId: string, paymentDate: string) => Promise<{ blob: Blob; fileName: string }>;
+  download: (runId: string, ctx: DownloadContext) => Promise<{ blob: Blob; fileName: string }>;
+};
+
+// What the bank files need beyond the run itself. Only Hong Leong reads the
+// reference; the date reaches every format.
+type DownloadContext = {
+  paymentDate: string;
+  recipientReference: string;
 };
 
 const ITEMS: Item[] = [
@@ -118,16 +128,97 @@ const ITEMS: Item[] = [
     portal: null,
     download: (runId) => downloadAllPayslips(runId),
   },
-  {
-    key: "bank",
-    group: "BANK",
-    title: "Public Bank ECP (Bulk Payroll)",
-    description:
-      "Bulk salary disbursement sheet. Named the way PB's upload expects, and refused outright if the payor account is unset or a bank name is unrecognised — silently dropping a row means someone is not paid and nobody notices.",
-    portal: "PB enterprise (Public Bank)",
-    download: (runId, paymentDate) => downloadBankFile(runId, paymentDate),
-  },
 ];
+
+// The bank rows depend on the company's OWN bank, because the layouts are not
+// interchangeable — a Maybank customer offered Public Bank's sheet downloads a
+// file their portal rejects with nothing to say why. So the file on offer is
+// derived from the setting, and when nothing is set the section says which
+// setting to go and fill in.
+//
+// Hong Leong is the only bank with two rows: it publishes two upload portals
+// taking different files, and nothing in payroll data says which one a company
+// uses.
+function bankItems(bankName: string | null | undefined): Item[] {
+  const format = formatFor(bankName);
+  const label = DISBURSEMENT_BANKS.find((b) => formatFor(b.value) === format)?.label;
+
+  const refusedByServer =
+    "Refused outright if a required setting is unset or an employee's bank name is unrecognised — silently dropping a row means someone is not paid and nobody notices.";
+
+  switch (format) {
+    case "PbEcpXlsx":
+      return [
+        {
+          key: "bank",
+          group: "BANK",
+          title: "Public Bank ECP (Bulk Payroll)",
+          description: `Bulk salary disbursement sheet, named the way PB's upload expects. ${refusedByServer}`,
+          portal: "PB enterprise (Public Bank)",
+          download: (runId, ctx) => downloadBankFile(runId, ctx.paymentDate),
+        },
+      ];
+
+    case "MbbM2eTxt":
+      return [
+        {
+          key: "bank",
+          group: "BANK",
+          title: "Maybank2E Universal Payment File",
+          description: `Pipe-delimited bulk payment file. Maybank staff pay as an intra-bank book transfer, everyone else over IBG. ${refusedByServer}`,
+          portal: "Maybank2E → Bulk Payment",
+          download: (runId, ctx) => downloadBankFile(runId, ctx.paymentDate),
+        },
+      ];
+
+    case "CimbBizChannelTxt":
+      return [
+        {
+          key: "bank",
+          group: "BANK",
+          title: "BizChannel@CIMB Bulk Payroll",
+          description: `Fixed-width file matching CIMB's BizConverter output, routed by BNM bank code. ${refusedByServer}`,
+          portal: "BizChannel@CIMB → Bulk Payments",
+          download: (runId, ctx) => downloadBankFile(runId, ctx.paymentDate),
+        },
+      ];
+
+    case "HlbConnect":
+      return [
+        {
+          key: "bank-hlb-first",
+          group: "BANK",
+          title: "HLB Connect First (Bulk Payroll)",
+          description: `Fixed-width file for the Connect First portal. ${refusedByServer}`,
+          portal: "HLB Connect First",
+          download: (runId, ctx) =>
+            downloadBankFile(runId, ctx.paymentDate, {
+              channel: "ConnectFirst",
+              recipientReference: ctx.recipientReference,
+            }),
+        },
+        {
+          key: "bank-hlb-biz",
+          group: "BANK",
+          title: "HLB ConnectBiz (CBIZ Bulk Payroll)",
+          description: `HLB's own CBIZ template spreadsheet, for the ConnectBiz portal. Download whichever of the two your company submits through. ${refusedByServer}`,
+          portal: "HLB ConnectBiz",
+          download: (runId, ctx) =>
+            downloadBankFile(runId, ctx.paymentDate, {
+              channel: "ConnectBiz",
+              recipientReference: ctx.recipientReference,
+            }),
+        },
+      ];
+
+    default:
+      // "Other" and unset both produce no file. Saying so here beats a row
+      // that downloads a 409 — but they are different problems, so the
+      // section's own note tells them apart rather than this list.
+      void label;
+      return [];
+  }
+}
 
 export function PayrollRunDownloads({
   run,
@@ -186,14 +277,31 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     new Date(Date.UTC(run.periodYear, run.periodMonth, 0)).toISOString().slice(0, 10),
   );
 
+  // Hong Leong makes this mandatory and nothing in payroll data implies it —
+  // it is what the employee sees on their own bank statement. Prefilled with
+  // the period, which is what an admin types anyway, but still theirs to edit.
+  const [recipientReference, setRecipientReference] = useState(
+    () => `SALARY ${run.periodLabel}`.toUpperCase().slice(0, 20),
+  );
+
+  // Which bank file this org gets is a setting, so the rows are not known
+  // until it loads. Cached, so reopening the modal doesn't re-fetch.
+  const { data: settings } = useCachedQuery("payroll-settings", getPayrollSettings);
+  const bankName = settings?.payrollBankName ?? null;
+
+  const items = useMemo(() => [...ITEMS, ...bankItems(bankName)], [bankName]);
+  const needsReference = formatFor(bankName) === "HlbConnect";
+
   const grouped = useMemo(
     () =>
       (["REPORTS", "STATUTORY", "PAYSLIPS", "BANK"] as Group[]).map((group) => ({
         group,
-        items: ITEMS.filter((item) => item.group === group),
+        items: items.filter((item) => item.group === group),
       })),
-    [],
+    [items],
   );
+
+  const context: DownloadContext = { paymentDate, recipientReference };
 
   function toggle(key: string) {
     setPicked((current) => {
@@ -211,7 +319,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     });
 
     try {
-      saveFile(await item.download(run.id, paymentDate));
+      saveFile(await item.download(run.id, context));
     } catch (err) {
       setErrors((current) => ({
         ...current,
@@ -229,9 +337,9 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     setBusy("batch");
     setErrors({});
 
-    for (const item of ITEMS.filter((entry) => picked.has(entry.key))) {
+    for (const item of items.filter((entry) => picked.has(entry.key))) {
       try {
-        saveFile(await item.download(run.id, paymentDate));
+        saveFile(await item.download(run.id, context));
       } catch (err) {
         setErrors((current) => ({
           ...current,
@@ -244,7 +352,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     setBusy(null);
   }
 
-  const allPicked = picked.size === ITEMS.length;
+  const allPicked = picked.size > 0 && picked.size === items.length;
 
   return (
     <ModalPortal label={`Download files for ${run.periodLabel}`} onClose={onClose}>
@@ -274,11 +382,11 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
             <CheckBox
               checked={allPicked}
               onChange={() =>
-                setPicked(allPicked ? new Set() : new Set(ITEMS.map((item) => item.key)))
+                setPicked(allPicked ? new Set() : new Set(items.map((item) => item.key)))
               }
               ariaLabel="Select all files"
             />
-            Select all ({ITEMS.length})
+            Select all ({items.length})
           </label>
           <span className="text-muted-foreground">
             {picked.size > 0 ? `${picked.size} selected` : "none"}
@@ -293,23 +401,55 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
               </h3>
 
               {/* The bank file writes this date into the sheet and into the
-                  filename PB parses, so it is chosen here rather than
+                  filename the portal parses, so it is chosen here rather than
                   silently defaulted. */}
-              {group === "BANK" ? (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                  <label className={`${LABEL} mb-0 text-xs`} htmlFor="paymentDate">
-                    Payment date
-                  </label>
+              {group === "BANK" && items.length > ITEMS.length ? (
+                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
                   <div className="w-44">
-                  <input
-                    id="paymentDate"
-                    type="date"
-                    className={INPUT_SM}
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                  />
+                    <label className={`${LABEL} text-xs`} htmlFor="paymentDate">
+                      Payment date
+                    </label>
+                    <input
+                      id="paymentDate"
+                      type="date"
+                      className={INPUT_SM}
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                    />
                   </div>
+
+                  {/* Hong Leong refuses the file without one, so it is asked
+                      for here rather than discovered as a 409. */}
+                  {needsReference ? (
+                    <div className="w-56">
+                      <label className={`${LABEL} text-xs`} htmlFor="recipientReference">
+                        Recipient reference
+                      </label>
+                      <input
+                        id="recipientReference"
+                        type="text"
+                        maxLength={20}
+                        className={INPUT_SM}
+                        value={recipientReference}
+                        onChange={(e) => setRecipientReference(e.target.value)}
+                      />
+                      <p className={`${HINT} text-[11px]`}>
+                        What your employees see on their bank statement. Max 20 characters.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
+              ) : null}
+
+              {/* No bank file at all. Which of the two reasons it is matters:
+                  one is a setting nobody filled in, the other is a decision
+                  already taken. */}
+              {group === "BANK" && items.length === ITEMS.length ? (
+                <p className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                  {bankName
+                    ? "This company's payroll bank produces no bulk-upload file. Pay the salaries through your bank's own process — the Payment Schedule above lists every account and amount."
+                    : "No payroll bank is set, so there is no upload file to generate. Choose one under Payroll Settings → Company Info — it decides which bank's file a run produces."}
+                </p>
               ) : null}
 
               <ul className="space-y-2">

@@ -205,11 +205,17 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> PcbDetails(string id) =>
         File(_statutory.RenderPcbDetailsPdfAsync(id));
 
-    // The bank disbursement file. `paymentDate` is the value date; omitted
-    // means the last day of the payroll period.
+    // The bank disbursement file, in the layout of the company's own payroll
+    // bank. `paymentDate` is the value date; omitted means the last day of the
+    // payroll period. `recipientReference` and `channel` apply to Hong Leong
+    // only — every other bank ignores them.
     [HttpGet("{id}/documents/bank-file")]
-    public Task<IActionResult> BankFile(string id, [FromQuery] DateTime? paymentDate) =>
-        File(_statutory.RenderBankFileAsync(id, paymentDate));
+    public Task<IActionResult> BankFile(
+        string id,
+        [FromQuery] DateTime? paymentDate,
+        [FromQuery] string? recipientReference,
+        [FromQuery] HlbChannel? channel) =>
+        File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
 
     // A missing employer code or IC is the admin's data to fix, so it is a 409
     // with the specific reason — not a 500, and not a silently truncated file.
