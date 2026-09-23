@@ -62,6 +62,11 @@ public class AppDbContext : DbContext
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+
+    // Not ITenantScoped, so it gets no global query filter — that is the point.
+    // See MasterKey: provisioning cannot require a credential that already
+    // belongs to the organization it is about to create.
+    public DbSet<Modules.Provisioning.MasterKey> MasterKeys => Set<Modules.Provisioning.MasterKey>();
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();

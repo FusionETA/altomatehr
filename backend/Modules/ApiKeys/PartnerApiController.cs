@@ -58,6 +58,11 @@ public class PartnerApiController : ControllerBase
             apiKeyId = User.FindFirst(ApiKeyAuthenticationDefaults.ApiKeyIdClaim)?.Value,
             role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value,
             scopes,
+            // The deploy gate integrations probe before sending an optional
+            // block. Their schemas are strict, so an endpoint this deployment
+            // does not have yet would 400 the whole call — they check here
+            // instead of us coordinating release times.
+            features = ApiFeatures.All,
         });
     }
 
