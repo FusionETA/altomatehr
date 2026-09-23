@@ -16,6 +16,63 @@ public static class TabularReader
     // request thread; importers are for migrations, not bulk ingestion.
     public const int MaxRows = 20_000;
 
+    // Every sheet in the workbook, in order, each with its name.
+    //
+    // Read() takes the first sheet, which is right for a single-sheet import.
+    // A workbook written by the reference system leads with an instructions
+    // sheet, so an importer that can be handed one needs to look past it —
+    // and needs the names to say which sheet it settled on.
+    public static IReadOnlyList<TabularSheetContent> ReadAllSheets(
+        byte[] content, TabularFormat format)
+    {
+        if (format != TabularFormat.Xlsx)
+        {
+            return [new TabularSheetContent(string.Empty, Read(content, format))];
+        }
+
+        using var stream = new MemoryStream(content, writable: false);
+
+        XLWorkbook workbook;
+        try
+        {
+            workbook = new XLWorkbook(stream);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException("That file isn't a readable .xlsx workbook.", ex);
+        }
+
+        using (workbook)
+        {
+            var sheets = new List<TabularSheetContent>();
+            foreach (var worksheet in workbook.Worksheets)
+            {
+                var used = worksheet.RangeUsed();
+                if (used is null)
+                {
+                    sheets.Add(new TabularSheetContent(worksheet.Name, []));
+                    continue;
+                }
+
+                var lastColumn = used.LastColumn().ColumnNumber();
+                var rows = new List<List<string>>();
+                foreach (var row in used.RowsUsed())
+                {
+                    var cells = new List<string>(lastColumn);
+                    for (var c = used.FirstColumn().ColumnNumber(); c <= lastColumn; c++)
+                    {
+                        cells.Add(row.Cell(c).GetFormattedString());
+                    }
+                    rows.Add(cells);
+                }
+
+                sheets.Add(new TabularSheetContent(worksheet.Name, rows));
+            }
+
+            return sheets;
+        }
+    }
+
     public static IReadOnlyList<IReadOnlyList<string>> Read(byte[] content, TabularFormat format)
     {
         // Defensive: the import endpoints already refuse a .pdf upload, but a
@@ -144,3 +201,7 @@ public static class TabularReader
         return rows;
     }
 }
+
+// One sheet read out of a workbook: its name, and its rows.
+public sealed record TabularSheetContent(
+    string Name, IReadOnlyList<IReadOnlyList<string>> Rows);
