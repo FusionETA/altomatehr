@@ -109,6 +109,7 @@ public class AttendanceApprovalRegressionTests
             hours: new FakeHoursSummaryService(),
             teams: new FakeTeamService(),
             holidays: new FakeHolidayService(),
+            xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
             leaveTypes: new FakeLeaveTypeService());
 
@@ -683,6 +684,7 @@ public class AttendanceApprovalRegressionTests
             hours: new FakeHoursSummaryService(),
             teams: teams ?? new FakeTeamService(),
             holidays: new FakeHolidayService(),
+            xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
             leaveTypes: new FakeLeaveTypeService());
 
@@ -939,6 +941,7 @@ public class AttendanceApprovalRegressionTests
             hours: new FakeHoursSummaryService(),
             teams: new FakeTeamService(),
             holidays: new FakeHolidayService(),
+            xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
             leaveTypes: new FakeLeaveTypeService());
 
@@ -1206,4 +1209,13 @@ public class AttendanceApprovalRegressionTests
             throw new NotSupportedException();
     }
 
+}
+
+// Attendance now reads Xero-hosted clock photos back through a proxy. None of
+// these tests exercise that, so the stub has no connection — which is also what
+// an org without Xero looks like.
+internal sealed class StubXeroForAttendance : AltomateHR.Api.Modules.Xero.IXeroFileReader
+{
+    public Task<AltomateHR.Api.Modules.Xero.XeroFileContent?> GetFileContentAsync(string fileId) =>
+        Task.FromResult<AltomateHR.Api.Modules.Xero.XeroFileContent?>(null);
 }

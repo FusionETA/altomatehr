@@ -425,6 +425,25 @@ public class AttendanceController : ControllerBase
         }
     }
 
+    // GET /attendance/photos/xero/{xeroFileId} — the same, for a photo held in
+    // Xero Files. Server-side proxy so the OAuth token stays on the server.
+    //
+    // Declared before the {fileName} route it would otherwise collide with:
+    // this one has two segments, so routing picks it on specificity, but
+    // keeping them adjacent is what stops someone adding a catch-all between.
+    [RequireScope("attendance:read")]
+    [HttpGet("photos/xero/{xeroFileId}")]
+    public async Task<IActionResult> GetXeroPhoto(string xeroFileId)
+    {
+        var file = await _attendance.GetXeroPhotoForUserAsync(
+            xeroFileId, GetUserId(), User.IsAdministrative());
+
+        if (file is null) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     // GET /attendance/photos/{fileName} — serve a photo (owner or admin only).
     [RequireScope("attendance:read")]
     [HttpGet("photos/{fileName}")]

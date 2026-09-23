@@ -2,8 +2,18 @@ using System.Security.Cryptography;
 
 namespace AltomateHR.Api.Modules.Attendance;
 
-// Local-disk storage for off-site clock-in/out photos. Mirrors the claim receipt
-// storage but images only (a clock photo is a selfie/site snapshot, never a PDF).
+// Clock-in/out photos — a selfie or a site snapshot, images only (never a PDF,
+// unlike a claim receipt).
+//
+// Xero Files when the org has a connection, local disk otherwise: the same
+// order as claim receipts and leave attachments, and the reference app's. The
+// fallback is what lets an org with no Xero connection clock in at all, and
+// keeps clocking in working on the day Xero is down.
+//
+// No new columns for this. The four photo fields — clock-in and clock-out, on
+// both the record and the session — each hold a url, and a Xero-hosted one
+// carries its file id inside that url. The id is recoverable from the url, so
+// storing it twice would only create two things that can disagree.
 public class AttendancePhotoStorage : IAttendancePhotoStorage
 {
     private const long MaxPhotoBytes = 8 * 1024 * 1024;
@@ -18,9 +28,21 @@ public class AttendancePhotoStorage : IAttendancePhotoStorage
         ["image/heif"] = ".heif",
     };
 
-    private readonly IWebHostEnvironment _environment;
+    // What an accountant sees this grouped under in Xero Files.
+    private const string XeroFolder = "Attendance Photos";
 
-    public AttendancePhotoStorage(IWebHostEnvironment environment) => _environment = environment;
+    // The url segment that marks a photo as Xero-hosted. Everything after it is
+    // the file id.
+    public const string XeroSegment = "xero";
+
+    private readonly IWebHostEnvironment _environment;
+    private readonly Xero.IXeroFileUploader _xero;
+
+    public AttendancePhotoStorage(IWebHostEnvironment environment, Xero.IXeroFileUploader xero)
+    {
+        _environment = environment;
+        _xero = xero;
+    }
 
     public async Task<AttendancePhotoUploadResult> StoreAsync(AttendancePhotoUpload upload)
     {
@@ -34,14 +56,27 @@ public class AttendancePhotoStorage : IAttendancePhotoStorage
             throw new ArgumentException("Upload a JPG, PNG, WEBP, HEIC, or HEIF photo.");
 
         var extension = GetSafeExtension(upload.FileName, fallbackExtension);
+
+        // Buffered because both destinations need the whole thing: Xero takes a
+        // multipart body, and the local fallback must still be writable after a
+        // failed upload has already read the stream. Capped at 8 MB above.
+        using var buffer = new MemoryStream();
+        await upload.Content.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        var uploaded = await _xero.TryUploadFileAsync(
+            XeroFolder, bytes, Path.GetFileName(upload.FileName), upload.ContentType);
+
+        if (uploaded is not null)
+            return new AttendancePhotoUploadResult($"{PhotoRoutePrefix}/{XeroSegment}/{uploaded.FileId}");
+
         var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(8).ToLowerInvariant()}{extension}";
         var uploadDirectory = GetUploadDirectory();
 
         Directory.CreateDirectory(uploadDirectory);
 
         var path = Path.Combine(uploadDirectory, fileName);
-        await using var output = File.Create(path);
-        await upload.Content.CopyToAsync(output);
+        await File.WriteAllBytesAsync(path, bytes);
 
         return new AttendancePhotoUploadResult($"{PhotoRoutePrefix}/{fileName}");
     }

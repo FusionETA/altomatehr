@@ -19,7 +19,21 @@ public interface IXeroFileUploader
         string folderName, byte[] content, string fileName, string contentType);
 }
 
-public interface IXeroService : IXeroFileUploader
+// Just the read, for callers that only ever proxy a stored file back.
+//
+// Narrow for the same reason as IXeroFileUploader: attendance serving a clock
+// photo has no business being able to disconnect the org's Xero, and its tests
+// should not have to stub twenty methods they never call.
+public interface IXeroFileReader
+{
+    // Raw bytes of a file in Xero Files, for the CURRENT org's connection.
+    // Modules go through here rather than IXeroClient so connection lookup
+    // and token refresh stay in one place. Null when this org has no usable
+    // connection, or Xero reports the file is gone.
+    Task<XeroFileContent?> GetFileContentAsync(string fileId);
+}
+
+public interface IXeroService : IXeroFileUploader, IXeroFileReader
 {
     Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? returnUrl);
     Task<string> CompleteCallbackAsync(string code, string state);
@@ -31,12 +45,6 @@ public interface IXeroService : IXeroFileUploader
     // is no connection.
     Task<IReadOnlyList<XeroCurrencyResponse>> GetCurrenciesAsync();
     Task<XeroSyncProjectsResultDto> SyncProjectsAsync();
-
-    // Fetch a file from Xero Files for the CURRENT org's connection. Other
-    // modules go through here rather than IXeroClient so connection lookup and
-    // token refresh stay in one place. Null = no connection, or no such file.
-    Task<XeroFileContent?> GetFileContentAsync(string fileId);
-
 
 
     // Push a bill for the CURRENT org. Throws XeroConnectionException when the
