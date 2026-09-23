@@ -20,6 +20,7 @@ import { TableSkeleton } from "./TableSkeleton";
 // which is exactly when an admin wants to enter the month's overtime.
 export function PayrollRunAdjustments({
   runId,
+  memberIds,
   editable,
   categories,
   openFor,
@@ -28,6 +29,8 @@ export function PayrollRunAdjustments({
   periodLabel,
 }: {
   runId: string;
+  // The run's chosen roster. Empty means a pre-picker run: everyone.
+  memberIds: string[];
   editable: boolean;
   periodLabel: string;
   categories: AdjustmentCategory[];
@@ -44,18 +47,29 @@ export function PayrollRunAdjustments({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Stable key so a fresh-but-equal array from the parent doesn't refetch.
+  const memberKey = memberIds.join(",");
+
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
 
+    const members = new Set(memberKey ? memberKey.split(",") : []);
+
     return Promise.all([getPayrollEmployees(), getRunAdjustments(runId)])
       .then(([nextEmployees, nextAdjustments]) => {
-        setEmployees(nextEmployees);
+        // Only the people this run will pay — the ones ticked in the picker,
+        // not the whole roster.
+        setEmployees(
+          members.size === 0
+            ? nextEmployees
+            : nextEmployees.filter((employee) => members.has(employee.employeeProfileId)),
+        );
         setAdjustments(nextAdjustments);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [runId]);
+  }, [runId, memberKey]);
 
   useEffect(() => {
     void load();

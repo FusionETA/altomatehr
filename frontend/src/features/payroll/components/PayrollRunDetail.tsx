@@ -215,6 +215,7 @@ export function PayrollRunDetailView({
       {payslips.length === 0 ? (
         <PayrollRunAdjustments
           runId={run.id}
+          memberIds={detail.memberEmployeeProfileIds ?? []}
           editable={run.status === "DRAFT"}
           periodLabel={run.periodLabel}
           categories={categories}

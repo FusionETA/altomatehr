@@ -98,8 +98,11 @@ public class PayrollRunService : IPayrollRunService
 
         var payslips = await _payslips.GetForRunAsync(run.Id);
         var lineItems = await _payslips.GetLineItemsForRunAsync(run.Id);
+        var memberIds = (await _runMembers.GetForRunAsync(run.Id))
+            .Select(m => m.EmployeeProfileId)
+            .ToList();
 
-        return BuildDetail(run, payslips, lineItems);
+        return BuildDetail(run, payslips, lineItems, memberIds);
     }
 
     public async Task<PayrollRunSaveResult> CreateAsync(CreatePayrollRunDto dto)
@@ -374,7 +377,7 @@ public class PayrollRunService : IPayrollRunService
 
         return new PayrollRunGenerateResult(true, new GeneratePayrollRunResultDto
         {
-            Detail = BuildDetail(run, payslips, lineItems),
+            Detail = BuildDetail(run, payslips, lineItems, memberIds.ToList()),
             PayslipCount = payslips.Count,
             SkippedEmployees = skipped,
         }, null);
@@ -1074,7 +1077,8 @@ public class PayrollRunService : IPayrollRunService
     private static PayrollRunDetailDto BuildDetail(
         PayrollRun run,
         IReadOnlyList<Payslip> payslips,
-        IReadOnlyList<PayslipLineItem> lineItems)
+        IReadOnlyList<PayslipLineItem> lineItems,
+        List<string> memberIds)
     {
         var byPayslip = lineItems
             .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
@@ -1088,6 +1092,7 @@ public class PayrollRunService : IPayrollRunService
                     p,
                     byPayslip.TryGetValue(p.Id, out var items) ? items : []))
                 .ToList(),
+            MemberEmployeeProfileIds = memberIds,
         };
     }
 
