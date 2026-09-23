@@ -22,6 +22,7 @@ import {
 import {
   OffSiteClockDialog,
   type OffSiteProof,
+  type OffSiteReason,
 } from "@/features/attendance/components/OffSiteClockDialog";
 import {
   clockIn,
@@ -33,6 +34,7 @@ import {
   getTeamBreakApprovals,
   pendingApprovalIds,
   OFF_SITE_CODE,
+  LOCATION_REQUIRED_CODE,
   OPEN_SESSION_CODE,
   type AttendanceRecord,
 } from "@/features/attendance/api";
@@ -143,7 +145,12 @@ export function DashboardView({
   // Without it the retry called runClock(undefined, proof): the clock-out
   // landed, the adjustment was silently dropped, and nothing said so.
   const [offSite, setOffSite] = useState<
-    { action: "in" | "out"; distance?: number; choice?: ClockOutChoice } | null
+    {
+      action: "in" | "out";
+      distance?: number;
+      choice?: ClockOutChoice;
+      reason: OffSiteReason;
+    } | null
   >(null);
   // A shift from an earlier day that was never clocked out. While one exists the
   // server refuses a new clock-in, so the card stops offering one and asks for
@@ -207,9 +214,16 @@ export function DashboardView({
   // the picker empty while a stale shift was open — today has no record yet, so
   // the project the employee is actually still clocked in against went missing.
   // Written out rather than using `clockTarget`, which is declared below.
+  // Falls back to the first project rather than an empty picker: almost
+  // everyone is on exactly one, and "Select a project..." made that person
+  // choose the only answer there was — or clock in untagged by forgetting to.
+  // `current` is kept ahead of the fallback so a deliberate pick survives the
+  // project list arriving; the record still wins, since it's what the shift
+  // was actually filed against.
   useEffect(() => {
-    setProjectId((stale ?? today)?.projectId ?? "");
-  }, [stale, today]);
+    const onRecord = (stale ?? today)?.projectId;
+    setProjectId((current) => onRecord ?? (current || projects[0]?.id) ?? "");
+  }, [stale, today, projects]);
 
   // Supervisor review counters — only the requests where this user is the
   // current-step approver come back from the team endpoints.
@@ -360,7 +374,24 @@ export function DashboardView({
       // Collect the proof here and retry instead.
       if (e instanceof ApiError && e.code === OFF_SITE_CODE) {
         setClockOutOpen(false);
-        setOffSite({ action: clockingOut ? "out" : "in", distance: e.distanceMeters, choice });
+        setOffSite({
+          action: clockingOut ? "out" : "in",
+          distance: e.distanceMeters,
+          choice,
+          reason: "geofence",
+        });
+        return;
+      }
+
+      // No GPS fix reached the server. On a project with no geofenced site
+      // nothing else records where the shift started, so the clock-in is
+      // refused until there's either a location or a remark and a photo
+      // standing in for one. Same dialog, different wording — the first thing
+      // to try here is granting the browser permission, not explaining why
+      // you're away from the site.
+      if (e instanceof ApiError && e.code === LOCATION_REQUIRED_CODE) {
+        setClockOutOpen(false);
+        setOffSite({ action: "in", choice, reason: "no-location" });
         return;
       }
 
@@ -554,6 +585,7 @@ export function DashboardView({
             <OffSiteClockDialog
               action={offSite.action}
               distanceMeters={offSite.distance}
+              reason={offSite.reason}
               busy={busy}
               error={error}
               onSubmit={(proof) => void runClock(offSite.choice, proof)}

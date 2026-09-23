@@ -6,11 +6,17 @@ import { uploadAttendancePhoto } from "../api";
 
 export type OffSiteProof = { remark: string; photoUrl: string };
 
+/** Why the server refused. "geofence" = outside the project's radius;
+ *  "no-location" = no GPS fix at all, on a project that has nothing to be
+ *  outside of. Both need the same proof; only the wording differs. */
+export type OffSiteReason = "geofence" | "no-location";
+
 type Props = {
   /** "in" or "out" — only changes the wording. */
   action: "in" | "out";
   /** Metres from the project, when the server reported it. */
   distanceMeters?: number | null;
+  reason?: OffSiteReason;
   busy: boolean;
   error: string | null;
   onSubmit: (proof: OffSiteProof) => void;
@@ -18,7 +24,8 @@ type Props = {
 };
 
 // Collects the remark and photo the server requires to clock from outside the
-// project geofence, then hands them back so the caller can retry.
+// project geofence — or with no GPS fix at all, on a project with no geofence
+// to be outside of — then hands them back so the caller can retry.
 //
 // This replaces sending the person to the Attendance screen "to finish it
 // there" — that screen has no clock form, so the hand-off was a dead end and
@@ -37,6 +44,7 @@ function formatDistance(meters: number) {
 export function OffSiteClockDialog({
   action,
   distanceMeters,
+  reason = "geofence",
   busy,
   error,
   onSubmit,
@@ -52,6 +60,7 @@ export function OffSiteClockDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const verb = action === "in" ? "Clock in" : "Clock out";
+  const noLocation = reason === "no-location";
   const canSubmit = remark.trim().length > 0 && file !== null && !busy && !uploading;
 
   function pick(chosen: File | null) {
@@ -106,28 +115,42 @@ export function OffSiteClockDialog({
           <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 px-3.5 py-2.5 dark:bg-amber-500/10">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <p className="text-xs leading-relaxed text-amber-900 dark:text-amber-200">
-              {typeof distanceMeters === "number" ? (
+              {noLocation ? (
                 <>
-                  You&rsquo;re <b className="font-bold">{formatDistance(distanceMeters)}</b> from the
-                  project site.
+                  Your location couldn&rsquo;t be read, so there&rsquo;s nothing on file for where
+                  this shift started. Allow location access and try again &mdash; or add a note and
+                  a photo so your supervisor can approve it without one.
                 </>
               ) : (
-                <>You&rsquo;re outside the project geofence.</>
-              )}{" "}
-              Add a note and a photo so your supervisor can approve it.
+                <>
+                  {typeof distanceMeters === "number" ? (
+                    <>
+                      You&rsquo;re <b className="font-bold">{formatDistance(distanceMeters)}</b> from
+                      the project site.
+                    </>
+                  ) : (
+                    <>You&rsquo;re outside the project geofence.</>
+                  )}{" "}
+                  Add a note and a photo so your supervisor can approve it.
+                </>
+              )}
             </p>
           </div>
 
           <div className="mt-4 grid gap-3.5">
             <label className="grid gap-1.5">
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                Why are you off-site?
+                {noLocation ? "Where are you clocking in from?" : "Why are you off-site?"}
               </span>
               <textarea
                 value={remark}
                 onChange={(event) => setRemark(event.target.value)}
                 rows={2}
-                placeholder="Client visit, site inspection, working from home..."
+                placeholder={
+                  noLocation
+                    ? "Site name or address, and why location is unavailable..."
+                    : "Client visit, site inspection, working from home..."
+                }
                 className="resize-none rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </label>

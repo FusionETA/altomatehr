@@ -365,6 +365,13 @@ export function pendingApprovalIds(record: AttendanceRecord): string[] {
 
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
 
+// Returned when a clock-in carries no GPS fix at all. Separate from the
+// off-site code because it isn't about a geofence: a project with no geofenced
+// site has nothing to be outside of, and the coordinates are the only record
+// of where the shift started. Takes the same remark+photo override, so the
+// client answers it with the same proof dialog.
+export const LOCATION_REQUIRED_CODE = "LOCATION_REQUIRED";
+
 // Returned when a clock-in is refused because an earlier shift was never closed.
 // The rule: one open session at a time. Close the old one first, then correct
 // its time with an adjustment request — a second session would leave the first

@@ -23,6 +23,9 @@ namespace AltomateHR.Api.Modules.Attendance;
 // local business day. Geofence enforcement: clocking against a project that has
 // a geofence centre, from outside the org radius (or with no GPS at all),
 // requires BOTH a remark and a photo — matching the current AltomateHR.
+// A project with NO geofenced site is never off-site, but clock-in still
+// insists on a GPS fix (unless the policy turns location capture off), so
+// every shift carries a location an admin can audit.
 //
 // Approval lives entirely on AttendanceApprovalRequest — one row per event
 // (clock-in, clock-out, break-start, break-end). See that entity's comment
@@ -35,6 +38,7 @@ public class AttendanceService : IAttendanceService
     private const string OpenSessionCode = "OPEN_SESSION_REQUIRES_CLOCK_OUT";
     private const string NotOnProjectCode = "NOT_ON_PROJECT";
     private const string IpNotAllowedCode = "IP_NOT_ALLOWED";
+    private const string LocationRequiredCode = "LOCATION_REQUIRED";
     private const int MaxBulkIds = 200;
 
     private static readonly IReadOnlySet<AttendanceApprovalKind> RecordKinds =
@@ -388,6 +392,23 @@ public class AttendanceService : IAttendanceService
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
+
+        // Coordinates are required even when nothing is being verified against
+        // them. A project with no geofenced site is never off-site, so nothing
+        // above ever asked where this person was — a denied browser prompt
+        // produced a clock-in with no location at all, which is exactly the
+        // shift an admin later can't audit.
+        //
+        // Runs AFTER the geofence check so a genuinely off-site clock with no
+        // GPS still gets the geofence wording, and takes the same remark+photo
+        // override: a device that can't get a fix has to leave SOMETHING an
+        // approver can judge, and a photo is that something. Without the
+        // override this would be a dead end for anyone indoors with GPS off.
+        var captureOn = policy is null
+            || (policy.GeolocationEnabled && policy.CaptureLocationOnClockIn);
+        if (captureOn && (dto.Lat is null || dto.Lng is null)
+            && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
+            return LocationRequired();
 
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
@@ -2032,6 +2053,16 @@ public class AttendanceService : IAttendanceService
         "You're outside the project geofence. Add a remark and a photo to clock in from here.",
         OffSiteCode,
         distance);
+
+    // Distinct from OffSiteRequired because the employee's next move differs:
+    // here the first thing to try is allowing location, and the remark+photo
+    // is the fallback. Same override, so the client can reuse the proof dialog.
+    private static AttendanceActionResult LocationRequired() => new(
+        false,
+        null,
+        "Your location is needed to clock in. Allow location access and try again, "
+            + "or add a remark and a photo instead.",
+        LocationRequiredCode);
 
     // Unlike the off-site case, there's no remark/photo override — the IP
     // allowlist is a hard block, so the client shouldn't offer a retry path.

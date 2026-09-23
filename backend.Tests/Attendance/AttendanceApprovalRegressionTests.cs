@@ -33,6 +33,14 @@ namespace AltomateHR.Api.Tests.Attendance;
 // and never touches the CLOCK_IN one. This test locks that behaviour in.
 public class AttendanceApprovalRegressionTests
 {
+    // A clock-in carries a GPS fix. Not because anything here checks a
+    // geofence — none of these projects has one — but because clocking in
+    // without coordinates is refused outright (LOCATION_REQUIRED): a project
+    // with no geofenced site has nothing else recording where the shift
+    // started. The value is arbitrary; only its presence matters.
+    private const double ClockLat = 3.1390;
+    private const double ClockLng = 101.6869;
+
     [Fact]
     public async Task ClockOut_DoesNotOverwrite_AnAlreadyApprovedClockInRequest()
     {
@@ -145,7 +153,7 @@ public class AttendanceApprovalRegressionTests
         var yesterday = AttendanceTime.StartOfLocalDay(now.AddDays(-1));
         var service = BuildService([OpenRecord("rec-open", "emp-1", yesterday, now.AddDays(-1))]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(result.Ok);
         Assert.Equal("OPEN_SESSION_REQUIRES_CLOCK_OUT", result.Code);
@@ -180,7 +188,7 @@ public class AttendanceApprovalRegressionTests
         closed.TimeOut = now.AddDays(-1).AddHours(8);
         var service = BuildService([closed]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
     }
@@ -194,7 +202,7 @@ public class AttendanceApprovalRegressionTests
         var today = AttendanceTime.StartOfLocalDay(now);
         var service = BuildService([OpenRecord("rec-today", "emp-1", today, now.AddHours(-2))]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(result.Ok);
         Assert.Null(result.Code);
@@ -212,7 +220,7 @@ public class AttendanceApprovalRegressionTests
     {
         var service = BuildService([]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
@@ -227,7 +235,7 @@ public class AttendanceApprovalRegressionTests
         var approvals = new FakeAttendanceApprovalRequestRepository([]);
         var service = BuildService([], approvals);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.Null(Assert.Single(approvals.Requests).ReviewerId);
     }
@@ -238,7 +246,7 @@ public class AttendanceApprovalRegressionTests
         // Keeps the rule narrow: the ordinary employee path is untouched.
         var service = BuildService([], router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
@@ -328,7 +336,7 @@ public class AttendanceApprovalRegressionTests
         var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
         var service = BuildService([], teams: teams);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-theirs" });
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, ProjectId = "proj-theirs" });
 
         Assert.False(result.Ok);
         Assert.Equal("NOT_ON_PROJECT", result.Code);
@@ -340,10 +348,65 @@ public class AttendanceApprovalRegressionTests
         var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
         var service = BuildService([], teams: teams);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-mine" });
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, ProjectId = "proj-mine" });
 
         Assert.True(result.Ok);
         Assert.Equal("proj-mine", result.Record!.ProjectId);
+    }
+
+    // --- a clock-in has to say where it happened ---
+    //
+    // The geofence only speaks for projects that HAVE a geofenced site. On one
+    // that doesn't — and on no project at all — nothing above ever asked where
+    // the employee was, so a denied browser permission produced a shift with no
+    // location on file and nothing for an admin to audit afterwards.
+
+    [Fact]
+    public async Task ClockIn_IsRefused_WhenNoLocationWasCaptured()
+    {
+        var service = BuildService([], teams: new FakeTeamService());
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.False(result.Ok);
+        Assert.Equal("LOCATION_REQUIRED", result.Code);
+    }
+
+    [Fact]
+    public async Task ClockIn_WithoutLocation_IsAllowed_WithARemarkAndPhoto()
+    {
+        // The escape hatch, and the reason this isn't a hard block: a device
+        // that genuinely can't get a fix would otherwise be unable to start a
+        // shift at all. The proof is what the approver judges instead.
+        var service = BuildService([], teams: new FakeTeamService());
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto
+        {
+            Remark = "GPS won't lock on inside the basement car park.",
+            PhotoUrl = "/attendance/photos/entrance.jpg",
+        });
+
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task ClockIn_StoresTheCoordinates_OnAProjectWithNoGeofence()
+    {
+        // Captured, not just demanded: the point of the refusal above is that
+        // the fix ends up on the record, where an admin can read it back.
+        var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
+        var service = BuildService([], teams: teams);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto
+        {
+            ProjectId = "proj-mine",
+            Lat = ClockLat,
+            Lng = ClockLng,
+        });
+
+        Assert.True(result.Ok);
+        Assert.Equal(ClockLat, result.Record!.ClockInLat);
+        Assert.Equal(ClockLng, result.Record!.ClockInLng);
     }
 
     [Fact]
@@ -354,7 +417,7 @@ public class AttendanceApprovalRegressionTests
         // entirely.
         var service = BuildService([], teams: new FakeTeamService());
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         Assert.Null(result.Record!.ProjectId);
@@ -370,9 +433,9 @@ public class AttendanceApprovalRegressionTests
     {
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(second.Ok);
         Assert.Null(second.Record!.TimeOut);   // back on the clock
@@ -384,8 +447,8 @@ public class AttendanceApprovalRegressionTests
         // The guard that matters: only an OPEN stint blocks a new one.
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
-        var again = await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        var again = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(again.Ok);
         Assert.Contains("already clocked in", again.Error, StringComparison.OrdinalIgnoreCase);
@@ -401,7 +464,7 @@ public class AttendanceApprovalRegressionTests
         var repo = new FakeAttendanceRepository([]);
         var service = BuildService([], repo: repo, sessions: sessions);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
         // Backdate the closed stint so the two are genuinely apart.
         var first = sessions.All.Single();
@@ -409,7 +472,7 @@ public class AttendanceApprovalRegressionTests
         first.EndedAt = DateTime.UtcNow.AddHours(-4);
         first.DurationMin = 60;
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         var second = sessions.All.Last();
         second.StartedAt = DateTime.UtcNow.AddHours(-1);
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -427,9 +490,9 @@ public class AttendanceApprovalRegressionTests
         var sessions = new FakeAttendanceSessionRepository([]);
         var service = BuildService([], sessions: sessions);
 
-        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/morning.jpg" });
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/morning.jpg" });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/afternoon.jpg" });
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/afternoon.jpg" });
 
         Assert.Equal("/attendance/photos/morning.jpg", sessions.All.First().ClockInPhotoUrl);
         Assert.Equal("/attendance/photos/afternoon.jpg", sessions.All.Last().ClockInPhotoUrl);
@@ -444,9 +507,9 @@ public class AttendanceApprovalRegressionTests
         // ride along so the client can still show it.
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         var sessions = second.Record!.Sessions;
         Assert.Equal(2, sessions.Count);
