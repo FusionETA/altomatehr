@@ -24,6 +24,11 @@ public class EngineMailerEmailSender : IEmailSender
         PropertyNameCaseInsensitive = true,
     };
 
+    // EngineMailer's hard cap on total attachment size (base64-decoded) per
+    // send. Rejected before the network round-trip so the caller gets a
+    // clear reason instead of a provider rejection.
+    private const int MaxAttachmentBytes = 5 * 1024 * 1024;
+
     private readonly HttpClient _http;
     private readonly EmailOptions _options;
     private readonly ILogger<EngineMailerEmailSender> _logger;
@@ -42,6 +47,7 @@ public class EngineMailerEmailSender : IEmailSender
         string toEmail,
         string subject,
         string htmlBody,
+        IReadOnlyList<EmailAttachment>? attachments = null,
         CancellationToken cancellationToken = default)
     {
         if (!_options.IsConfigured)
@@ -50,6 +56,18 @@ public class EngineMailerEmailSender : IEmailSender
             // when unconfigured — but never fail open into a silent no-op.
             _logger.LogError("EngineMailer is not configured (EngineMailer:ApiKey / FromEmail).");
             return false;
+        }
+
+        if (attachments is { Count: > 0 })
+        {
+            var totalBytes = attachments.Sum(a => a.Content.Length);
+            if (totalBytes > MaxAttachmentBytes)
+            {
+                _logger.LogError(
+                    "Refusing to send to {To}: attachments total {Bytes} bytes, over EngineMailer's 5MB cap.",
+                    toEmail, totalBytes);
+                return false;
+            }
         }
 
         var request = new SendEmailRequest
@@ -61,6 +79,16 @@ public class EngineMailerEmailSender : IEmailSender
             Subject = subject,
             SubmittedContent = htmlBody,
             ToEmail = toEmail,
+            // Lowercase-n `Filename` is mandatory — `FileName` is silently
+            // accepted but arrives empty, per the monolith's own working
+            // client (modules/notifications/infrastructure/email.ts).
+            Attachments = attachments is { Count: > 0 }
+                ? [.. attachments.Select(a => new EmailAttachmentPayload
+                    {
+                        Filename = a.FileName,
+                        Content = Convert.ToBase64String(a.Content),
+                    })]
+                : null,
         };
 
         try
@@ -188,5 +216,23 @@ public class EngineMailerEmailSender : IEmailSender
 
         [JsonPropertyName("ToEmail")]
         public string ToEmail { get; set; } = string.Empty;
+
+        // Omitted entirely (not sent as null) when there are none — the
+        // monolith's own client does the same rather than risk EngineMailer
+        // treating an explicit null differently from an absent field.
+        [JsonPropertyName("Attachments")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<EmailAttachmentPayload>? Attachments { get; set; }
+    }
+
+    // See the `SendEmailRequest.Attachments` comment: `Filename` (lowercase
+    // n) is the field EngineMailer actually reads.
+    private sealed class EmailAttachmentPayload
+    {
+        [JsonPropertyName("Filename")]
+        public string Filename { get; set; } = string.Empty;
+
+        [JsonPropertyName("Content")]
+        public string Content { get; set; } = string.Empty;
     }
 }

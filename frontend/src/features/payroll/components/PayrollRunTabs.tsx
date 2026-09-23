@@ -1,24 +1,28 @@
-import { useState } from "react";
-
 // Payslips and what is in the way, as two tabs rather than one long stack.
 //
 // The figures are what an admin opens the run to read; burying them under
 // three warning cards means scrolling past the problem list every time,
 // including on the months where it is empty. The count on the tab is enough
 // to say something needs looking at.
+//
+// Controlled by the parent, not local state — Send for approval sits below
+// this on the same page and needs to jump an admin straight to the Needs
+// attention tab when that is why it is disabled.
 export function PayrollRunTabs({
   payslips,
   attention,
   payslipCount,
   attentionCount,
+  tab,
+  onTabChange,
 }: {
   payslips: React.ReactNode;
   attention: React.ReactNode;
   payslipCount: number;
   attentionCount: number;
+  tab: "payslips" | "attention";
+  onTabChange: (tab: "payslips" | "attention") => void;
 }) {
-  const [tab, setTab] = useState<"payslips" | "attention">("payslips");
-
   // Nothing to attend to — no need for a chooser with one real option.
   if (attentionCount === 0) return <>{payslips}</>;
 
@@ -27,13 +31,13 @@ export function PayrollRunTabs({
       <div role="tablist" aria-label="Run sections" className="flex flex-wrap gap-2">
         <Tab
           active={tab === "payslips"}
-          onClick={() => setTab("payslips")}
+          onClick={() => onTabChange("payslips")}
           label="Payslips"
           count={payslipCount}
         />
         <Tab
           active={tab === "attention"}
-          onClick={() => setTab("attention")}
+          onClick={() => onTabChange("attention")}
           label="Needs attention"
           count={attentionCount}
           accent

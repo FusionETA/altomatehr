@@ -201,7 +201,7 @@ public class AuthService : IAuthService
             user.Email,
             "Your AltomateHR password reset code",
             BuildOtpEmail(user.Name, code, minutes),
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         // A send failure is logged, not surfaced — see the enumeration note above.
         if (!sent)

@@ -1,5 +1,5 @@
-import { useState, type ChangeEvent } from "react";
-import { Download, LoaderCircle, Upload } from "lucide-react";
+import { useRef, useState, type ChangeEvent } from "react";
+import { CircleAlert, Download, Eye, LoaderCircle, Upload } from "lucide-react";
 import {
   downloadYtdTemplate,
   previewYtdImport,
@@ -13,7 +13,9 @@ import { PayrollSelect } from "./PayrollSelect";
 import { monthName, rm } from "../lib/payroll-format";
 import {
   BUTTON,
+  BUTTON_DANGER_SM,
   BUTTON_GHOST,
+  BUTTON_GHOST_SM,
   CARD,
   HINT,
   LABEL,
@@ -35,15 +37,40 @@ export function YtdImportPanel({ year, onImported }: { year: number; onImported:
   const [format, setFormat] = useState<TabularFormat>("Xlsx");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<YtdImportPreview | null>(null);
+  const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<YtdImportResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
+  const hasErrors = preview !== null && preview.errors.length > 0;
+  // Whether a file was chosen is not enough — importing off a file this
+  // system has not looked at yet is exactly what the automatic check exists
+  // to prevent, so the button stays shut until it finishes clean, even
+  // though nobody has to click anything to get there any more.
+  const canImport = file !== null && !checking && preview !== null && preview.ok;
+
+  // A file selected here goes straight to the server to be checked — no
+  // separate button to press first. The admin still sees the same match
+  // list and warnings before importing; they just don't have to ask for them.
   function reset(next: File | null) {
     setFile(next);
     setPreview(null);
     setResult(null);
     setError(null);
+    if (next) void check(next);
+  }
+
+  async function check(next: File) {
+    setChecking(true);
+    setError(null);
+    try {
+      setPreview(await previewYtdImport(year, next));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not check the file.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function act(key: string, action: () => Promise<void>) {
@@ -118,28 +145,42 @@ export function YtdImportPanel({ year, onImported }: { year: number; onImported:
           />
         </div>
 
-        <button
-          type="button"
-          className={BUTTON_GHOST}
-          disabled={busy !== null || !file}
-          onClick={() =>
-            void act("preview", async () => setPreview(await previewYtdImport(year, file!)))
-          }
-        >
-          {busy === "preview" ? (
-            <LoaderCircle className="size-4 animate-spin" aria-hidden />
-          ) : null}
-          Check the file
-        </button>
+        {file ? (
+          <button
+            type="button"
+            className={hasErrors && !checking ? BUTTON_DANGER_SM : BUTTON_GHOST_SM}
+            disabled={checking}
+            title={checking ? "Checking the file…" : hasErrors ? "See the errors below" : "See the preview below"}
+            onClick={() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+          >
+            {checking ? (
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+            ) : hasErrors ? (
+              <CircleAlert className="size-3.5" aria-hidden />
+            ) : (
+              <Eye className="size-3.5" aria-hidden />
+            )}
+            {checking ? "Checking…" : hasErrors ? "Error" : "Preview"}
+          </button>
+        ) : null}
 
         <button
           type="button"
           className={BUTTON}
-          // Importing without looking at the match list first is exactly what
-          // the two-step exists to prevent, so this stays shut until a clean
-          // preview has been seen.
-          disabled={busy !== null || !file || !preview?.ok}
-          title={preview?.ok ? undefined : "Check the file first"}
+          // The automatic check still has to come back clean before this
+          // goes ahead — importing off a file this system has not looked at
+          // yet is exactly what that check exists to prevent — but nobody
+          // has to click Preview first to satisfy it any more.
+          disabled={busy !== null || !canImport}
+          title={
+            !file
+              ? undefined
+              : checking
+                ? "Checking the file…"
+                : hasErrors
+                  ? "Fix the errors in this file first"
+                  : undefined
+          }
           onClick={() =>
             void act("import", async () => {
               const next = await runYtdImport(year, file!);
@@ -159,8 +200,10 @@ export function YtdImportPanel({ year, onImported }: { year: number; onImported:
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
-      {preview && !result ? <Preview preview={preview} /> : null}
-      {result ? <Result result={result} /> : null}
+      <div ref={previewRef}>
+        {preview && !result ? <Preview preview={preview} /> : null}
+        {result ? <Result result={result} /> : null}
+      </div>
     </section>
   );
 }

@@ -10,5 +10,6 @@ public interface IEmailSender
         string toEmail,
         string subject,
         string htmlBody,
+        IReadOnlyList<EmailAttachment>? attachments = null,
         CancellationToken cancellationToken = default);
 }

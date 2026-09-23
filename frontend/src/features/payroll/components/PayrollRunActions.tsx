@@ -11,7 +11,7 @@ import {
   type PayrollRun,
   type SkippedEmployee,
 } from "../api";
-import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, LABEL, TEXTAREA, WARN_PANEL } from "../lib/ui";
+import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, HINT, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
 
 // What can be done to a run, given where it is.
 //
@@ -30,6 +30,7 @@ export function PayrollRunActions({
   onChanged,
   onSkipped,
   onDeleted,
+  onViewAttention,
 }: {
   run: PayrollRun;
   payslipCount: number;
@@ -40,6 +41,12 @@ export function PayrollRunActions({
   onChanged: () => void;
   onSkipped: (skipped: SkippedEmployee[]) => void;
   onDeleted: () => void;
+  // Jumps to the Needs attention tab. A disabled Send for approval used to
+  // explain itself only in a hover title — invisible on the touch devices
+  // this is opened on, and easy to miss even with a mouse — so the same
+  // reason now sits in view next to the button, with a way straight to the
+  // list of what is actually blocking it.
+  onViewAttention: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,26 +134,45 @@ export function PayrollRunActions({
               {/* Only offered once there is something to submit. A button
                   that cannot possibly apply yet is noise, not guidance. */}
               {payslipCount > 0 ? (
-                <button
-                  type="button"
-                  className={BUTTON}
-                  disabled={busy !== null || run.isStale || blockingCount > 0}
-                  title={
-                    run.isStale
-                      ? "Regenerate first — these payslips are behind their inputs."
-                      : blockingCount > 0
-                        ? `Fix ${blockingCount} required field(s) above before submitting.`
-                        : undefined
-                  }
-                  onClick={() =>
-                    void run_("submit", () => submitPayrollRun(run.id)).then(
-                      (r) => r && onChanged(),
-                    )
-                  }
-                >
-                  {spinner("submit")}
-                  Send for approval
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    className={BUTTON}
+                    disabled={busy !== null || run.isStale || blockingCount > 0}
+                    title={
+                      run.isStale
+                        ? "Regenerate first — these payslips are behind their inputs."
+                        : blockingCount > 0
+                          ? `Fix ${blockingCount} required field(s) in Needs attention before submitting.`
+                          : undefined
+                    }
+                    onClick={() =>
+                      void run_("submit", () => submitPayrollRun(run.id)).then(
+                        (r) => r && onChanged(),
+                      )
+                    }
+                  >
+                    {spinner("submit")}
+                    Send for approval
+                  </button>
+
+                  {/* The title above is invisible until hovered — no help on
+                      a touch screen, and easy to miss even with a mouse. The
+                      same reason repeats here in view, and for a missing
+                      field it points straight at the tab that lists them,
+                      rather than leaving the admin to go hunting. */}
+                  {!run.isStale && blockingCount > 0 ? (
+                    <p className={`${HINT} mt-1.5`}>
+                      Disabled —{" "}
+                      {blockingCount === 1
+                        ? "1 required field still needs fixing."
+                        : `${blockingCount} required fields still need fixing.`}{" "}
+                      <button type="button" className={LINK_BUTTON} onClick={onViewAttention}>
+                        See what's missing
+                      </button>
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </>

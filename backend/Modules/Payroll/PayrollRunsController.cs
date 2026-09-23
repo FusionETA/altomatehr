@@ -22,6 +22,7 @@ public class PayrollRunsController : ControllerBase
     private readonly IStatutoryFileService _statutory;
     private readonly IPayrollXeroSyncService _xero;
     private readonly ISalaryChangeService _salaryChanges;
+    private readonly IPayslipEmailService _payslipEmail;
 
     public PayrollRunsController(
         IPayrollRunService runs,
@@ -30,7 +31,8 @@ public class PayrollRunsController : ControllerBase
         IPayrollRunClaimService claims,
         IStatutoryFileService statutory,
         IPayrollXeroSyncService xero,
-        ISalaryChangeService salaryChanges)
+        ISalaryChangeService salaryChanges,
+        IPayslipEmailService payslipEmail)
     {
         _salaryChanges = salaryChanges;
         _runs = runs;
@@ -39,6 +41,7 @@ public class PayrollRunsController : ControllerBase
         _claims = claims;
         _statutory = statutory;
         _xero = xero;
+        _payslipEmail = payslipEmail;
     }
 
     [HttpGet]
@@ -416,5 +419,24 @@ public class PayrollRunsController : ControllerBase
 
         if (!result.Found) return NotFound();
         return result.Ok ? NoContent() : Conflict(new { error = result.Error });
+    }
+
+    // ─── Emailing payslips ──────────────────────────────────────────────
+    //
+    // Manual, admin-triggered — never automatic. Refused unless the run is
+    // SUBMITTED, same as every other document this run produces.
+
+    [HttpPost("{id}/documents/payslip/{employeeProfileId}/email")]
+    public async Task<IActionResult> EmailPayslip(string id, string employeeProfileId)
+    {
+        var result = await _payslipEmail.EmailPayslipAsync(id, employeeProfileId);
+        return result.Ok ? Ok(result) : Conflict(new { error = result.Error });
+    }
+
+    [HttpPost("{id}/email-payslips")]
+    public async Task<IActionResult> EmailRunPayslips(string id)
+    {
+        var result = await _payslipEmail.EmailPayslipsForRunAsync(id);
+        return result.Error is null ? Ok(result) : Conflict(new { error = result.Error });
     }
 }
