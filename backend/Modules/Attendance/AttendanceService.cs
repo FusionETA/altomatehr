@@ -965,6 +965,24 @@ public class AttendanceService : IAttendanceService
             && requestedAt >= record.TimeOut.Value)
             return (false, "The corrected clock-in must be before the clock-out.", null);
 
+        // The checks above compare against the DAY. On a split-shift day the
+        // correction moves one end of one shift, so it has to stay on the right
+        // side of that shift's other end too: a clock-out of 15:00 is after the
+        // day's 14:41 start but before a second shift's 15:43 start, and would
+        // leave that shift ending before it began.
+        var dayShifts = await _sessions.GetByRecordAsync(record.Id);
+        var lastShift = dayShifts.LastOrDefault(x => x.EndedAt is not null);
+        if (kind == AttendanceApprovalKind.CLOCK_OUT
+            && lastShift is not null
+            && requestedAt <= lastShift.StartedAt)
+            return (false, "The corrected clock-out must be after your last shift that day started.", null);
+
+        var firstShift = dayShifts.FirstOrDefault();
+        if (kind == AttendanceApprovalKind.CLOCK_IN
+            && firstShift?.EndedAt is not null
+            && requestedAt >= firstShift.EndedAt.Value)
+            return (false, "The corrected clock-in must be before your first shift that day ended.", null);
+
         var now = DateTime.UtcNow;
 
         // Reuse an existing PENDING adjustment of the same kind so a re-submission
@@ -1994,19 +2012,74 @@ public class AttendanceService : IAttendanceService
         return created;
     }
 
+    // The correction lands on the SHIFT it corrects, and the day is re-derived
+    // from its shifts — the same direction every other write takes.
+    //
+    // This used to write the record's TimeIn/TimeOut/DurationMin directly and
+    // leave the session alone. The record is a roll-up of its sessions, so the
+    // two then disagreed: an overnight shift corrected to 18:00 still listed as
+    // "03:43 PM – 10:09 AM +1d, 18h 26m" beside a day total of 3h 19m. Worse,
+    // the next clock-in that day re-ran the roll-up from the untouched session
+    // and silently put the uncorrected hours back — into payroll too, which
+    // reads DurationMin. And a span-based duration counted the gap between two
+    // shifts as worked, which the sessions model exists to prevent.
     private async Task ApplyAdjustmentAsync(AttendanceApprovalRequest request)
     {
         var record = await _repo.GetByIdAsync(request.AttendanceRecordId);
         if (record is null) return;
 
-        if (request.Kind == AttendanceApprovalKind.CLOCK_IN) record.TimeIn = request.EventAt;
-        else if (request.Kind == AttendanceApprovalKind.CLOCK_OUT) record.TimeOut = request.EventAt;
+        var sessions = await _sessions.GetByRecordAsync(record.Id);   // oldest first
+        var target = AdjustedSession(request, sessions);
 
-        if (record.TimeIn is not null && record.TimeOut is not null)
-            record.DurationMin = (int)Math.Round((record.TimeOut.Value - record.TimeIn.Value).TotalMinutes);
+        if (target is null)
+        {
+            // A record from before sessions existed has nothing to re-derive
+            // from, so it keeps the old record-only write.
+            if (request.Kind == AttendanceApprovalKind.CLOCK_IN) record.TimeIn = request.EventAt;
+            else if (request.Kind == AttendanceApprovalKind.CLOCK_OUT) record.TimeOut = request.EventAt;
 
-        record.UpdatedAt = DateTime.UtcNow;
-        await _repo.UpdateAsync(record);
+            if (record.TimeIn is not null && record.TimeOut is not null)
+                record.DurationMin = (int)Math.Round((record.TimeOut.Value - record.TimeIn.Value).TotalMinutes);
+
+            record.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(record);
+            return;
+        }
+
+        if (request.Kind == AttendanceApprovalKind.CLOCK_IN) target.StartedAt = request.EventAt;
+        else target.EndedAt = request.EventAt;
+
+        if (target.EndedAt is not null)
+            // Floored at zero: submission refuses a correction that would cross
+            // the shift's other end, but a later edit to the shift could still.
+            target.DurationMin = Math.Max(0,
+                (int)Math.Round((target.EndedAt.Value - target.StartedAt).TotalMinutes));
+
+        target.UpdatedAt = DateTime.UtcNow;
+        await _sessions.UpdateAsync(target);
+        await RecomputeRollupAsync(record);
+    }
+
+    // Which shift a day-level correction belongs to. A clock-in correction is
+    // the day's first arrival and a clock-out correction its last departure —
+    // that is what the employee was shown and corrected. Matched on the original
+    // time first, so a shift started AFTER the request was filed can't be the
+    // one that gets rewritten.
+    private static AttendanceSession? AdjustedSession(
+        AttendanceApprovalRequest request, IReadOnlyList<AttendanceSession> sessions)
+    {
+        if (sessions.Count == 0) return null;
+
+        return request.Kind switch
+        {
+            AttendanceApprovalKind.CLOCK_IN =>
+                sessions.FirstOrDefault(x => x.StartedAt == request.OriginalEventAt)
+                ?? sessions[0],
+            AttendanceApprovalKind.CLOCK_OUT =>
+                sessions.FirstOrDefault(x => x.EndedAt is not null && x.EndedAt == request.OriginalEventAt)
+                ?? sessions.LastOrDefault(x => x.EndedAt is not null),
+            _ => null,
+        };
     }
 
     private async Task<AttendanceRecordDto?> ToRecordDtoAsync(AttendanceApprovalRequest? request)

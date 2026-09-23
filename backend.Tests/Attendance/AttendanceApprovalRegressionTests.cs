@@ -517,6 +517,111 @@ public class AttendanceApprovalRegressionTests
         Assert.Null(sessions[1].EndedAt);      // the one running now
     }
 
+    // --- an approved correction lands on the shift, not just the day ---
+    //
+    // The day on screen: shift 1 14:41–15:43, shift 2 opened at 15:43 and not
+    // clocked out until 10:09 the next morning, then corrected to 18:00. The
+    // correction used to rewrite only the record, so the shift still read
+    // 18h 26m beside a day total of 3h 19m — and the next roll-up put the
+    // uncorrected hours back.
+
+    private static readonly DateTime DayStart = DateTime.UtcNow.AddHours(-22);   // "14:41"
+
+    // Clocks two shifts through the real service, then moves them onto the
+    // screenshot's timeline. The record is re-aligned by hand because nothing
+    // re-runs the roll-up after a test moves a session.
+    private static async Task<(AttendanceService Service, FakeAttendanceSessionRepository Sessions, AttendanceRecord Record)>
+        OvernightSplitShiftDay()
+    {
+        var sessions = new FakeAttendanceSessionRepository([]);
+        var repo = new FakeAttendanceRepository([]);
+        var service = BuildService([], repo: repo, sessions: sessions);
+
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        var closed = await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        var (first, second) = (sessions.All[0], sessions.All[1]);
+        first.StartedAt = DayStart;
+        first.EndedAt = DayStart.AddMinutes(62);            // 15:43
+        first.DurationMin = 62;
+        second.StartedAt = DayStart.AddMinutes(62);         // 15:43
+        second.EndedAt = DayStart.AddMinutes(62 + 1106);    // 10:09 +1d
+        second.DurationMin = 1106;
+
+        var record = (await repo.GetByIdAsync(closed.Record!.Id))!;
+        record.TimeIn = first.StartedAt;
+        record.TimeOut = second.EndedAt;
+        record.DurationMin = 62 + 1106;
+        return (service, sessions, record);
+    }
+
+    [Fact]
+    public async Task AnApprovedClockOutCorrection_EndsTheShiftItCorrects()
+    {
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+        var corrected = DayStart.AddMinutes(199);           // 18:00
+
+        // No approver above emp-1, so the correction is approved on filing.
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = corrected,
+            Reason = "Forgot to clock out.",
+        });
+
+        Assert.True(result.Ok);
+        var second = sessions.All[1];
+        Assert.Equal(corrected, second.EndedAt);
+        Assert.Equal(137, second.DurationMin);              // 15:43–18:00, not 18h 26m
+        Assert.Equal(62, sessions.All[0].DurationMin);      // the other shift untouched
+        // The day is the sum of its shifts, and agrees with them.
+        Assert.Equal(corrected, record.TimeOut);
+        Assert.Equal(199, record.DurationMin);
+    }
+
+    [Fact]
+    public async Task AnApprovedCorrection_SurvivesTheNextClockInThatDay()
+    {
+        // The roll-up re-derives the day from its shifts on every clock event.
+        // With the correction only on the record, clocking in again put the
+        // uncorrected 18h 26m straight back into the day's hours.
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+        await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = DayStart.AddMinutes(199),
+            Reason = "Forgot to clock out.",
+        });
+
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        Assert.Equal(137, sessions.All[1].DurationMin);
+        // 62 + 137, plus the few seconds the third shift lasted.
+        Assert.InRange(record.DurationMin!.Value, 199, 200);
+    }
+
+    [Fact]
+    public async Task AClockOutCorrection_BeforeTheLastShiftStarted_IsRefused()
+    {
+        // 15:00 is after the day's 14:41 start, so the day-level check passed —
+        // but it's before shift 2's 15:43 start, and would have left that shift
+        // ending before it began.
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = DayStart.AddMinutes(19),     // 15:00
+            Reason = "Left early.",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Equal(DayStart.AddMinutes(62 + 1106), sessions.All[1].EndedAt);
+    }
+
     private static IEnumerable<AttendanceSession> SessionsFor(IEnumerable<AttendanceRecord> records) =>
         records
             .Where(r => r.TimeIn is not null)
