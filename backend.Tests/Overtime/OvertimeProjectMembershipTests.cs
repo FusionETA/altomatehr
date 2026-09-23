@@ -77,7 +77,8 @@ public class OvertimeProjectMembershipTests
             new FakeSupervisionService(),
             new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }),
             new FakeNotificationService(),
-            new FakeTeamService(projectsOf: new() { ["usr-emp"] = [.. onProjects] }));
+            new FakeTeamService(projectsOf: new() { ["usr-emp"] = [.. onProjects] }),
+            new StubXeroReader());
 
     private static CreateOvertimeRequestDto Dto(string? projectId) => new()
     {
@@ -88,4 +89,13 @@ public class OvertimeProjectMembershipTests
         Reason = "Deployment window",
         BeforePhotoUrl = "/overtime/photos/before.jpg",
     };
+}
+
+// Overtime now proxies Xero-hosted before/after photos. No test here exercises
+// that, so the reader has no connection — which is also what an org without
+// Xero looks like.
+internal sealed class StubXeroReader : AltomateHR.Api.Modules.Xero.IXeroFileReader
+{
+    public Task<AltomateHR.Api.Modules.Xero.XeroFileContent?> GetFileContentAsync(string fileId) =>
+        Task.FromResult<AltomateHR.Api.Modules.Xero.XeroFileContent?>(null);
 }

@@ -117,6 +117,22 @@ public class OvertimeController : ControllerBase
         }
     }
 
+    // The same, for a photo held in Xero Files. Server-side proxy so the OAuth
+    // token stays on the server. Two segments, so routing picks it over the
+    // {fileName} route below on specificity.
+    [RequireScope("overtime:read")]
+    [HttpGet("photos/xero/{xeroFileId}")]
+    public async Task<IActionResult> GetXeroPhoto(string xeroFileId)
+    {
+        var file = await _overtime.GetXeroPhotoForUserAsync(
+            xeroFileId, GetUserId(), User.IsAdministrative());
+
+        if (file is null) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     [RequireScope("overtime:read")]
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)

@@ -22,6 +22,7 @@ public class OvertimeService : IOvertimeService
     private readonly IApprovalRouter _router;
     private readonly INotificationService _notifications;
     private readonly ITeamService _teams;
+    private readonly Xero.IXeroFileReader _xero;
 
     public OvertimeService(
         IOvertimeRepository requests,
@@ -29,7 +30,8 @@ public class OvertimeService : IOvertimeService
         ISupervisionService supervision,
         IApprovalRouter router,
         INotificationService notifications,
-        ITeamService teams)
+        ITeamService teams,
+        Xero.IXeroFileReader xero)
     {
         _requests = requests;
         _photos = photos;
@@ -37,6 +39,7 @@ public class OvertimeService : IOvertimeService
         _router = router;
         _notifications = notifications;
         _teams = teams;
+        _xero = xero;
     }
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetMineAsync(string userId) =>
@@ -404,6 +407,33 @@ public class OvertimeService : IOvertimeService
         }
 
         return await _photos.GetAsync(fileName);
+    }
+
+    // The same question for a photo held in Xero Files: same lookup by photo
+    // url, same three-way rule — the owner, an admin, or whoever the request is
+    // currently waiting on — then the bytes come from Xero rather than disk so
+    // the OAuth token never reaches the browser.
+    //
+    // The approver matters here in a way it does not for a clock-in selfie: an
+    // overtime request cannot be approved without its after-work photo, so
+    // hiding it from the approver would make the request undecidable.
+    public async Task<Xero.XeroFileContent?> GetXeroPhotoForUserAsync(
+        string xeroFileId,
+        string userId,
+        bool isAdmin)
+    {
+        var request = await _requests.GetByPhotoUrlAsync(
+            $"{PhotoRoutePrefix}{OvertimePhotoStorage.XeroSegment}/{xeroFileId}");
+        if (request is null) return null;
+
+        if (!isAdmin && request.EmployeeId != userId)
+        {
+            var approvers = await _router.CurrentApproversAsync(
+                Module, request.EmployeeId, request.CurrentStep, request.ProjectId);
+            if (!approvers.Contains(userId)) return null;
+        }
+
+        return await _xero.GetFileContentAsync(xeroFileId);
     }
 
     private async Task<(OvertimeRequest? Request, OvertimeTransitionResult? Error)> AuthorizeAsync(

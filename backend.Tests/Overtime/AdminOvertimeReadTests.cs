@@ -175,7 +175,8 @@ public class AdminOvertimeReadTests
             new FakeSupervisionService(emails: emails),
             router,
             new FakeNotificationService(),
-            new AltomateHR.Api.Tests.Claims.FakeTeamService());
+            new AltomateHR.Api.Tests.Claims.FakeTeamService(),
+            new StubXeroReader());
 
     private static OvertimeRequest NewRequest(
         string id,

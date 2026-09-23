@@ -29,6 +29,11 @@ public interface IOvertimeService
     Task<OvertimeTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<OvertimeTransitionResult> CancelAsync(string id, string userId);
     Task<OvertimePhotoUploadResult> StorePhotoAsync(OvertimePhotoUpload upload);
+    // A before/after photo held in Xero Files, proxied. Null when the caller is
+    // neither its owner, an admin, nor the approver it currently waits on.
+    Task<Xero.XeroFileContent?> GetXeroPhotoForUserAsync(
+        string xeroFileId, string userId, bool isAdmin);
+
     Task<OvertimePhotoFileResult?> GetPhotoForUserAsync(string fileName, string userId, bool isAdmin);
 
     // One employee's overtime requests as entities, for the hours summary.
