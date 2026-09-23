@@ -325,6 +325,7 @@ builder.Services.AddScoped<IXeroService, XeroService>();
 // Same instance behind the narrow upload port the storage classes take.
 builder.Services.AddScoped<IXeroFileUploader>(sp => sp.GetRequiredService<IXeroService>());
 builder.Services.AddScoped<IXeroFileReader>(sp => sp.GetRequiredService<IXeroService>());
+builder.Services.AddScoped<IInboundSsoService, InboundSsoService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
