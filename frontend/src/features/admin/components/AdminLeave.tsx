@@ -32,7 +32,7 @@ import {
   type LeaveType,
   type TabularImportResult,
 } from "@/features/leave/api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { LeaveStatusBadge } from "@/features/leave/components/LeaveStatusBadge";
 import { LeaveDetailsModal } from "@/features/leave/components/LeaveDetailsModal";
 import { formatDateRange, relativeDaysAgo } from "@/features/leave/lib/leave-formatters";
@@ -164,7 +164,7 @@ export function AdminLeave() {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return balancesRows;
     return balancesRows.filter((r) =>
-      [r.email, buildName(r.email), r.role].join(" ").toLowerCase().includes(q),
+      [r.email, r.name ?? "", r.role].join(" ").toLowerCase().includes(q),
     );
   }, [balancesRows, searchTerm]);
 
@@ -363,7 +363,7 @@ export function AdminLeave() {
           application={selectedApplication}
           typeName={typeName(selectedApplication.leaveTypeId)}
           employeeLabel={
-            selectedApplication.employeeEmail ? buildName(selectedApplication.employeeEmail) : undefined
+            selectedApplication.employeeName?.trim() || selectedApplication.employeeEmail || undefined
           }
           showAudit
           onClose={() => setSelectedApplication(null)}
@@ -502,7 +502,7 @@ function HistoryTab({
       if (from && a.endDate.slice(0, 10) < from) return false;
       if (to && a.startDate.slice(0, 10) > to) return false;
       if (!q) return true;
-      const name = a.employeeEmail ? buildName(a.employeeEmail) : a.employeeId;
+      const name = personName(a.employeeName, a.employeeEmail, a.employeeId);
       return `${name} ${a.employeeEmail ?? ""}`.toLowerCase().includes(q);
     });
   }, [applications, status, typeId, from, to, search]);
@@ -681,7 +681,7 @@ function HistoryTab({
                     className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                   >
                     <td className="p-4 pl-6 align-middle font-bold text-foreground">
-                      {a.employeeEmail ? buildName(a.employeeEmail) : a.employeeId}
+                      {personName(a.employeeName, a.employeeEmail, a.employeeId)}
                     </td>
                     <td className="p-4 align-middle">{typeName(a.leaveTypeId)}</td>
                     <td className="p-4 align-middle">{formatDateRange(a.startDate, a.endDate)}</td>
@@ -899,7 +899,7 @@ function BalancesTab({
                     className="cursor-pointer border-b border-border/60 transition-colors hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
                   >
                     <td className="p-4 pl-6 align-middle">
-                      <p className="font-bold text-foreground">{buildName(row.email)}</p>
+                      <p className="font-bold text-foreground">{personName(row.name, row.email)}</p>
                       <p className="text-xs text-muted-foreground">{row.email}</p>
                     </td>
                     {types.map((t) => {

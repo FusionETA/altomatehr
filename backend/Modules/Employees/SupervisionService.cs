@@ -12,6 +12,11 @@ public interface ISupervisionService
     // Email lookup so approver views can label a request by who filed it.
     Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds);
 
+    // The person's real name, for the same views. Only people who HAVE one are
+    // in the result: a blank name is left for the client to fall back to the
+    // email, rather than sent as "" and shown as nobody.
+    Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds);
+
     // True when `role` is an administrative (Admin/Owner) seat.
     //
     // Named for approval for historical reasons, but every caller uses it as a
@@ -49,6 +54,16 @@ public class SupervisionService : ISupervisionService
         if (wanted.Count == 0) return new Dictionary<string, string>();
         var users = await _directory.GetUsersAsync();
         return users.Where(u => wanted.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email);
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds)
+    {
+        var wanted = userIds.ToHashSet();
+        if (wanted.Count == 0) return new Dictionary<string, string>();
+        var users = await _directory.GetUsersAsync();
+        return users
+            .Where(u => wanted.Contains(u.Id) && !string.IsNullOrWhiteSpace(u.Name))
+            .ToDictionary(u => u.Id, u => u.Name.Trim());
     }
 
     public bool IsOrgApprover(string? role) => OrgRoles.IsAdministrative(role);

@@ -6,7 +6,7 @@ import {
   type LeaveBalance,
   type LeaveType,
 } from "../api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
@@ -103,7 +103,7 @@ export function TeamBalancesView() {
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return inGroup;
-    return inGroup.filter((r) => [r.email, buildName(r.email)].join(" ").toLowerCase().includes(q));
+    return inGroup.filter((r) => [r.email, r.name ?? ""].join(" ").toLowerCase().includes(q));
   }, [inGroup, searchTerm]);
 
   const paged = usePaged(filtered, PAGE_SIZE);
@@ -210,7 +210,7 @@ export function TeamBalancesView() {
                 {paged.pageItems.map((row) => (
                   <EmployeeBalanceCard
                     key={`${row.teamId ?? "direct"}:${row.userId}`}
-                    name={buildName(row.email)}
+                    name={personName(row.name, row.email)}
                     email={row.email}
                     balances={row.balances}
                     types={activeTypes}

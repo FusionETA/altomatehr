@@ -15,7 +15,7 @@ import { formatDateRange, relativeDaysAgo, urgencyLabel } from "../lib/leave-for
 import { LeaveStatusBadge } from "./LeaveStatusBadge";
 import { LeaveDetailsModal } from "./LeaveDetailsModal";
 import { LEAVE_PAGE_SIZE, PaginationControls } from "./PaginationControls";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   BulkActionBar,
@@ -84,7 +84,7 @@ export function LeaveApprovals() {
   useRealtimeEvent(["LEAVE"], loadTeam);
 
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
-  const employeeName = (a: LeaveApplication) => (a.employeeEmail ? buildName(a.employeeEmail) : "—");
+  const employeeName = (a: LeaveApplication) => personName(a.employeeName, a.employeeEmail, "—");
 
   const filtered = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();

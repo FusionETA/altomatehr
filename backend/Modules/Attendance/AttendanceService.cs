@@ -23,6 +23,9 @@ namespace AltomateHR.Api.Modules.Attendance;
 // local business day. Geofence enforcement: clocking against a project that has
 // a geofence centre, from outside the org radius (or with no GPS at all),
 // requires BOTH a remark and a photo — matching the current AltomateHR.
+// A project with NO geofenced site is never off-site, but clock-in still
+// insists on a GPS fix (unless the policy turns location capture off), so
+// every shift carries a location an admin can audit.
 //
 // Approval lives entirely on AttendanceApprovalRequest — one row per event
 // (clock-in, clock-out, break-start, break-end). See that entity's comment
@@ -35,6 +38,7 @@ public class AttendanceService : IAttendanceService
     private const string OpenSessionCode = "OPEN_SESSION_REQUIRES_CLOCK_OUT";
     private const string NotOnProjectCode = "NOT_ON_PROJECT";
     private const string IpNotAllowedCode = "IP_NOT_ALLOWED";
+    private const string LocationRequiredCode = "LOCATION_REQUIRED";
     private const int MaxBulkIds = 200;
 
     private static readonly IReadOnlySet<AttendanceApprovalKind> RecordKinds =
@@ -213,12 +217,18 @@ public class AttendanceService : IAttendanceService
             .GroupBy(x => x.AttendanceRecordId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
 
-        var emails = await _supervision.GetEmailsAsync(records.Select(r => r.EmployeeId).Distinct());
+        var people = records.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         var dtos = records
             .OrderByDescending(r => r.Date)
             .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])))
             .ToList();
-        foreach (var dto in dtos) dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
+        foreach (var dto in dtos)
+        {
+            dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(dto.EmployeeId);
+        }
         return dtos;
     }
 
@@ -250,6 +260,7 @@ public class AttendanceService : IAttendanceService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
 
         var emails = await _supervision.GetEmailsAsync(employeeIds);
+        var names = await _supervision.GetNamesAsync(employeeIds);
         var projectNames = (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
 
         return supervised
@@ -260,6 +271,7 @@ public class AttendanceService : IAttendanceService
                 {
                     EmployeeId = id,
                     EmployeeEmail = emails.GetValueOrDefault(id),
+                    EmployeeName = names.GetValueOrDefault(id),
                     ProjectId = team.ProjectId,
                     ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
                     TeamId = team.TeamId,
@@ -388,6 +400,23 @@ public class AttendanceService : IAttendanceService
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
+
+        // Coordinates are required even when nothing is being verified against
+        // them. A project with no geofenced site is never off-site, so nothing
+        // above ever asked where this person was — a denied browser prompt
+        // produced a clock-in with no location at all, which is exactly the
+        // shift an admin later can't audit.
+        //
+        // Runs AFTER the geofence check so a genuinely off-site clock with no
+        // GPS still gets the geofence wording, and takes the same remark+photo
+        // override: a device that can't get a fix has to leave SOMETHING an
+        // approver can judge, and a photo is that something. Without the
+        // override this would be a dead end for anyone indoors with GPS off.
+        var captureOn = policy is null
+            || (policy.GeolocationEnabled && policy.CaptureLocationOnClockIn);
+        if (captureOn && (dto.Lat is null || dto.Lng is null)
+            && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
+            return LocationRequired();
 
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
@@ -711,8 +740,11 @@ public class AttendanceService : IAttendanceService
             if (approvers.Contains(userId)) visible.Add(request);
         }
 
-        var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
-        return visible.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
+        var people = visible.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
+        return visible.Select(r => ToApprovalRequestDto(
+            r, emails.GetValueOrDefault(r.EmployeeId), names.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceBreakListResult> GetBreaksForRecordAsync(
@@ -797,8 +829,11 @@ public class AttendanceService : IAttendanceService
         string? employeeId, DateTime? from, DateTime? to)
     {
         var requests = await _approvalRequests.GetForAuditAsync(employeeId, from, to);
-        var emails = await _supervision.GetEmailsAsync(requests.Select(r => r.EmployeeId).Distinct());
-        return requests.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
+        var people = requests.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
+        return requests.Select(r => ToApprovalRequestDto(
+            r, emails.GetValueOrDefault(r.EmployeeId), names.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceSelfieStorageStatsDto> GetSelfieStorageStatsAsync()
@@ -943,6 +978,24 @@ public class AttendanceService : IAttendanceService
             && record.TimeOut is not null
             && requestedAt >= record.TimeOut.Value)
             return (false, "The corrected clock-in must be before the clock-out.", null);
+
+        // The checks above compare against the DAY. On a split-shift day the
+        // correction moves one end of one shift, so it has to stay on the right
+        // side of that shift's other end too: a clock-out of 15:00 is after the
+        // day's 14:41 start but before a second shift's 15:43 start, and would
+        // leave that shift ending before it began.
+        var dayShifts = await _sessions.GetByRecordAsync(record.Id);
+        var lastShift = dayShifts.LastOrDefault(x => x.EndedAt is not null);
+        if (kind == AttendanceApprovalKind.CLOCK_OUT
+            && lastShift is not null
+            && requestedAt <= lastShift.StartedAt)
+            return (false, "The corrected clock-out must be after your last shift that day started.", null);
+
+        var firstShift = dayShifts.FirstOrDefault();
+        if (kind == AttendanceApprovalKind.CLOCK_IN
+            && firstShift?.EndedAt is not null
+            && requestedAt >= firstShift.EndedAt.Value)
+            return (false, "The corrected clock-in must be before your first shift that day ended.", null);
 
         var now = DateTime.UtcNow;
 
@@ -1091,8 +1144,14 @@ public class AttendanceService : IAttendanceService
             })
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(warnings.Select(w => w.EmployeeId).Distinct());
-        foreach (var w in warnings) w.EmployeeEmail = emails.GetValueOrDefault(w.EmployeeId);
+        var warned = warnings.Select(w => w.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(warned);
+        var names = await _supervision.GetNamesAsync(warned);
+        foreach (var w in warnings)
+        {
+            w.EmployeeEmail = emails.GetValueOrDefault(w.EmployeeId);
+            w.EmployeeName = names.GetValueOrDefault(w.EmployeeId);
+        }
         return warnings;
     }
 
@@ -1973,19 +2032,74 @@ public class AttendanceService : IAttendanceService
         return created;
     }
 
+    // The correction lands on the SHIFT it corrects, and the day is re-derived
+    // from its shifts — the same direction every other write takes.
+    //
+    // This used to write the record's TimeIn/TimeOut/DurationMin directly and
+    // leave the session alone. The record is a roll-up of its sessions, so the
+    // two then disagreed: an overnight shift corrected to 18:00 still listed as
+    // "03:43 PM – 10:09 AM +1d, 18h 26m" beside a day total of 3h 19m. Worse,
+    // the next clock-in that day re-ran the roll-up from the untouched session
+    // and silently put the uncorrected hours back — into payroll too, which
+    // reads DurationMin. And a span-based duration counted the gap between two
+    // shifts as worked, which the sessions model exists to prevent.
     private async Task ApplyAdjustmentAsync(AttendanceApprovalRequest request)
     {
         var record = await _repo.GetByIdAsync(request.AttendanceRecordId);
         if (record is null) return;
 
-        if (request.Kind == AttendanceApprovalKind.CLOCK_IN) record.TimeIn = request.EventAt;
-        else if (request.Kind == AttendanceApprovalKind.CLOCK_OUT) record.TimeOut = request.EventAt;
+        var sessions = await _sessions.GetByRecordAsync(record.Id);   // oldest first
+        var target = AdjustedSession(request, sessions);
 
-        if (record.TimeIn is not null && record.TimeOut is not null)
-            record.DurationMin = (int)Math.Round((record.TimeOut.Value - record.TimeIn.Value).TotalMinutes);
+        if (target is null)
+        {
+            // A record from before sessions existed has nothing to re-derive
+            // from, so it keeps the old record-only write.
+            if (request.Kind == AttendanceApprovalKind.CLOCK_IN) record.TimeIn = request.EventAt;
+            else if (request.Kind == AttendanceApprovalKind.CLOCK_OUT) record.TimeOut = request.EventAt;
 
-        record.UpdatedAt = DateTime.UtcNow;
-        await _repo.UpdateAsync(record);
+            if (record.TimeIn is not null && record.TimeOut is not null)
+                record.DurationMin = (int)Math.Round((record.TimeOut.Value - record.TimeIn.Value).TotalMinutes);
+
+            record.UpdatedAt = DateTime.UtcNow;
+            await _repo.UpdateAsync(record);
+            return;
+        }
+
+        if (request.Kind == AttendanceApprovalKind.CLOCK_IN) target.StartedAt = request.EventAt;
+        else target.EndedAt = request.EventAt;
+
+        if (target.EndedAt is not null)
+            // Floored at zero: submission refuses a correction that would cross
+            // the shift's other end, but a later edit to the shift could still.
+            target.DurationMin = Math.Max(0,
+                (int)Math.Round((target.EndedAt.Value - target.StartedAt).TotalMinutes));
+
+        target.UpdatedAt = DateTime.UtcNow;
+        await _sessions.UpdateAsync(target);
+        await RecomputeRollupAsync(record);
+    }
+
+    // Which shift a day-level correction belongs to. A clock-in correction is
+    // the day's first arrival and a clock-out correction its last departure —
+    // that is what the employee was shown and corrected. Matched on the original
+    // time first, so a shift started AFTER the request was filed can't be the
+    // one that gets rewritten.
+    private static AttendanceSession? AdjustedSession(
+        AttendanceApprovalRequest request, IReadOnlyList<AttendanceSession> sessions)
+    {
+        if (sessions.Count == 0) return null;
+
+        return request.Kind switch
+        {
+            AttendanceApprovalKind.CLOCK_IN =>
+                sessions.FirstOrDefault(x => x.StartedAt == request.OriginalEventAt)
+                ?? sessions[0],
+            AttendanceApprovalKind.CLOCK_OUT =>
+                sessions.FirstOrDefault(x => x.EndedAt is not null && x.EndedAt == request.OriginalEventAt)
+                ?? sessions.LastOrDefault(x => x.EndedAt is not null),
+            _ => null,
+        };
     }
 
     private async Task<AttendanceRecordDto?> ToRecordDtoAsync(AttendanceApprovalRequest? request)
@@ -2032,6 +2146,16 @@ public class AttendanceService : IAttendanceService
         "You're outside the project geofence. Add a remark and a photo to clock in from here.",
         OffSiteCode,
         distance);
+
+    // Distinct from OffSiteRequired because the employee's next move differs:
+    // here the first thing to try is allowing location, and the remark+photo
+    // is the fallback. Same override, so the client can reuse the proof dialog.
+    private static AttendanceActionResult LocationRequired() => new(
+        false,
+        null,
+        "Your location is needed to clock in. Allow location access and try again, "
+            + "or add a remark and a photo instead.",
+        LocationRequiredCode);
 
     // Unlike the off-site case, there's no remark/photo override — the IP
     // allowlist is a hard block, so the client shouldn't offer a retry path.
@@ -2141,11 +2265,13 @@ public class AttendanceService : IAttendanceService
         };
     }
 
-    private static AttendanceApprovalRequestDto ToApprovalRequestDto(AttendanceApprovalRequest a, string? employeeEmail) => new()
+    private static AttendanceApprovalRequestDto ToApprovalRequestDto(
+        AttendanceApprovalRequest a, string? employeeEmail, string? employeeName = null) => new()
     {
         Id = a.Id,
         EmployeeId = a.EmployeeId,
         EmployeeEmail = employeeEmail,
+        EmployeeName = employeeName,
         Kind = a.Kind,
         EventAt = Iso(a.EventAt) ?? string.Empty,
         OriginalEventAt = Iso(a.OriginalEventAt),

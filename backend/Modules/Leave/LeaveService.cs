@@ -99,11 +99,14 @@ public class LeaveService : ILeaveService
             .OrderByDescending(a => a.CreatedAt)
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(all.Select(a => a.EmployeeId).Distinct());
+        var people = all.Select(a => a.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         return all.Select(a =>
         {
             var dto = ToDto(a);
             dto.EmployeeEmail = emails.GetValueOrDefault(a.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(a.EmployeeId);
             return dto;
         });
     }
@@ -126,11 +129,14 @@ public class LeaveService : ILeaveService
                 .Contains(userId))
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(visible.Select(a => a.EmployeeId).Distinct());
+        var people = visible.Select(a => a.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         return visible.Select(a =>
         {
             var dto = ToDto(a);
             dto.EmployeeEmail = emails.GetValueOrDefault(a.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(a.EmployeeId);
             return dto;
         });
     }
@@ -151,6 +157,7 @@ public class LeaveService : ILeaveService
             .ToDictionary(g => g.Key, g => g.ToList());
         var entitlements = await _policies.GetLeaveEntitlementsForEmployeesAsync(userIds);
         var emails = await _supervision.GetEmailsAsync(userIds);
+        var names = await _supervision.GetNamesAsync(userIds);
         var rowsByEmployee = (await _entitlements.GetByYearAsync(year))
             .GroupBy(e => e.EmployeeId)
             .ToDictionary(g => g.Key, g => g.ToDictionary(e => e.LeaveTypeId));
@@ -159,6 +166,7 @@ public class LeaveService : ILeaveService
         {
             UserId = m.UserId,
             Email = emails.GetValueOrDefault(m.UserId) ?? string.Empty,
+            Name = names.GetValueOrDefault(m.UserId),
             Role = m.Role,
             Balances = BuildBalances(
                 types,
@@ -769,7 +777,9 @@ public class LeaveService : ILeaveService
             .Where(a => a.StartDate.Year == year)
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(all.Select(a => a.EmployeeId).Distinct());
+        var people = all.Select(a => a.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
 
         return new LeaveOverviewDto
         {
@@ -798,6 +808,7 @@ public class LeaveService : ILeaveService
                 {
                     var dto = ToDto(a);
                     dto.EmployeeEmail = emails.GetValueOrDefault(a.EmployeeId);
+                    dto.EmployeeName = names.GetValueOrDefault(a.EmployeeId);
                     return dto;
                 })
                 .ToList(),
@@ -832,6 +843,7 @@ public class LeaveService : ILeaveService
                 {
                     UserId = row.UserId,
                     Email = row.Email,
+                    Name = row.Name,
                     Role = row.Role,
                     Balances = row.Balances,
                     TeamId = team.TeamId,
@@ -856,7 +868,9 @@ public class LeaveService : ILeaveService
                         && a.StartDate.Date <= day && day <= a.EndDate.Date)
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(out_.Select(a => a.EmployeeId).Distinct());
+        var away = out_.Select(a => a.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(away);
+        var names = await _supervision.GetNamesAsync(away);
 
         return out_.Select(a =>
         {
@@ -865,6 +879,7 @@ public class LeaveService : ILeaveService
             {
                 EmployeeId = a.EmployeeId,
                 Email = emails.GetValueOrDefault(a.EmployeeId),
+                Name = names.GetValueOrDefault(a.EmployeeId),
                 LeaveTypeId = a.LeaveTypeId,
                 LeaveTypeCode = type?.Code ?? string.Empty,
                 LeaveTypeName = type?.Name ?? string.Empty,

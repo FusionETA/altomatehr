@@ -12,7 +12,7 @@ import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { WorkScheduleSettings } from "@/features/settings/components/WorkScheduleSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
-import { buildInitials, buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { buildInitials, personName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import {
@@ -72,8 +72,8 @@ export function AdminShell({
   }, []);
 
   const activeItem = findNavItem(activeParent);
-  const initials = useMemo(() => buildInitials(user.email), [user.email]);
-  const displayName = useMemo(() => buildName(user.email), [user.email]);
+  const initials = useMemo(() => buildInitials(user.email, user.name), [user.email, user.name]);
+  const displayName = useMemo(() => personName(user.name, user.email), [user.name, user.email]);
 
   useEffect(() => {
     if (!accountMenuOpen) return;

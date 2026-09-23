@@ -33,6 +33,14 @@ namespace AltomateHR.Api.Tests.Attendance;
 // and never touches the CLOCK_IN one. This test locks that behaviour in.
 public class AttendanceApprovalRegressionTests
 {
+    // A clock-in carries a GPS fix. Not because anything here checks a
+    // geofence — none of these projects has one — but because clocking in
+    // without coordinates is refused outright (LOCATION_REQUIRED): a project
+    // with no geofenced site has nothing else recording where the shift
+    // started. The value is arbitrary; only its presence matters.
+    private const double ClockLat = 3.1390;
+    private const double ClockLng = 101.6869;
+
     [Fact]
     public async Task ClockOut_DoesNotOverwrite_AnAlreadyApprovedClockInRequest()
     {
@@ -145,7 +153,7 @@ public class AttendanceApprovalRegressionTests
         var yesterday = AttendanceTime.StartOfLocalDay(now.AddDays(-1));
         var service = BuildService([OpenRecord("rec-open", "emp-1", yesterday, now.AddDays(-1))]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(result.Ok);
         Assert.Equal("OPEN_SESSION_REQUIRES_CLOCK_OUT", result.Code);
@@ -180,7 +188,7 @@ public class AttendanceApprovalRegressionTests
         closed.TimeOut = now.AddDays(-1).AddHours(8);
         var service = BuildService([closed]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
     }
@@ -194,7 +202,7 @@ public class AttendanceApprovalRegressionTests
         var today = AttendanceTime.StartOfLocalDay(now);
         var service = BuildService([OpenRecord("rec-today", "emp-1", today, now.AddHours(-2))]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(result.Ok);
         Assert.Null(result.Code);
@@ -212,7 +220,7 @@ public class AttendanceApprovalRegressionTests
     {
         var service = BuildService([]);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
@@ -227,7 +235,7 @@ public class AttendanceApprovalRegressionTests
         var approvals = new FakeAttendanceApprovalRequestRepository([]);
         var service = BuildService([], approvals);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.Null(Assert.Single(approvals.Requests).ReviewerId);
     }
@@ -238,7 +246,7 @@ public class AttendanceApprovalRegressionTests
         // Keeps the rule narrow: the ordinary employee path is untouched.
         var service = BuildService([], router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"]] }));
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         var clockIn = Assert.Single(result.Record!.Approvals!, a => a.Kind == AttendanceApprovalKind.CLOCK_IN);
@@ -328,7 +336,7 @@ public class AttendanceApprovalRegressionTests
         var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
         var service = BuildService([], teams: teams);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-theirs" });
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, ProjectId = "proj-theirs" });
 
         Assert.False(result.Ok);
         Assert.Equal("NOT_ON_PROJECT", result.Code);
@@ -340,10 +348,65 @@ public class AttendanceApprovalRegressionTests
         var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
         var service = BuildService([], teams: teams);
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto { ProjectId = "proj-mine" });
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, ProjectId = "proj-mine" });
 
         Assert.True(result.Ok);
         Assert.Equal("proj-mine", result.Record!.ProjectId);
+    }
+
+    // --- a clock-in has to say where it happened ---
+    //
+    // The geofence only speaks for projects that HAVE a geofenced site. On one
+    // that doesn't — and on no project at all — nothing above ever asked where
+    // the employee was, so a denied browser permission produced a shift with no
+    // location on file and nothing for an admin to audit afterwards.
+
+    [Fact]
+    public async Task ClockIn_IsRefused_WhenNoLocationWasCaptured()
+    {
+        var service = BuildService([], teams: new FakeTeamService());
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+
+        Assert.False(result.Ok);
+        Assert.Equal("LOCATION_REQUIRED", result.Code);
+    }
+
+    [Fact]
+    public async Task ClockIn_WithoutLocation_IsAllowed_WithARemarkAndPhoto()
+    {
+        // The escape hatch, and the reason this isn't a hard block: a device
+        // that genuinely can't get a fix would otherwise be unable to start a
+        // shift at all. The proof is what the approver judges instead.
+        var service = BuildService([], teams: new FakeTeamService());
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto
+        {
+            Remark = "GPS won't lock on inside the basement car park.",
+            PhotoUrl = "/attendance/photos/entrance.jpg",
+        });
+
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task ClockIn_StoresTheCoordinates_OnAProjectWithNoGeofence()
+    {
+        // Captured, not just demanded: the point of the refusal above is that
+        // the fix ends up on the record, where an admin can read it back.
+        var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-mine"] } };
+        var service = BuildService([], teams: teams);
+
+        var result = await service.ClockInAsync("emp-1", new ClockInDto
+        {
+            ProjectId = "proj-mine",
+            Lat = ClockLat,
+            Lng = ClockLng,
+        });
+
+        Assert.True(result.Ok);
+        Assert.Equal(ClockLat, result.Record!.ClockInLat);
+        Assert.Equal(ClockLng, result.Record!.ClockInLng);
     }
 
     [Fact]
@@ -354,7 +417,7 @@ public class AttendanceApprovalRegressionTests
         // entirely.
         var service = BuildService([], teams: new FakeTeamService());
 
-        var result = await service.ClockInAsync("emp-1", new ClockInDto());
+        var result = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         Assert.Null(result.Record!.ProjectId);
@@ -370,9 +433,9 @@ public class AttendanceApprovalRegressionTests
     {
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(second.Ok);
         Assert.Null(second.Record!.TimeOut);   // back on the clock
@@ -384,8 +447,8 @@ public class AttendanceApprovalRegressionTests
         // The guard that matters: only an OPEN stint blocks a new one.
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
-        var again = await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        var again = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.False(again.Ok);
         Assert.Contains("already clocked in", again.Error, StringComparison.OrdinalIgnoreCase);
@@ -401,7 +464,7 @@ public class AttendanceApprovalRegressionTests
         var repo = new FakeAttendanceRepository([]);
         var service = BuildService([], repo: repo, sessions: sessions);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
         // Backdate the closed stint so the two are genuinely apart.
         var first = sessions.All.Single();
@@ -409,7 +472,7 @@ public class AttendanceApprovalRegressionTests
         first.EndedAt = DateTime.UtcNow.AddHours(-4);
         first.DurationMin = 60;
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         var second = sessions.All.Last();
         second.StartedAt = DateTime.UtcNow.AddHours(-1);
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
@@ -427,9 +490,9 @@ public class AttendanceApprovalRegressionTests
         var sessions = new FakeAttendanceSessionRepository([]);
         var service = BuildService([], sessions: sessions);
 
-        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/morning.jpg" });
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/morning.jpg" });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        await service.ClockInAsync("emp-1", new ClockInDto { PhotoUrl = "/attendance/photos/afternoon.jpg" });
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/afternoon.jpg" });
 
         Assert.Equal("/attendance/photos/morning.jpg", sessions.All.First().ClockInPhotoUrl);
         Assert.Equal("/attendance/photos/afternoon.jpg", sessions.All.Last().ClockInPhotoUrl);
@@ -444,14 +507,119 @@ public class AttendanceApprovalRegressionTests
         // ride along so the client can still show it.
         var service = BuildService([]);
 
-        await service.ClockInAsync("emp-1", new ClockInDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockOutAsync("emp-1", new ClockOutDto());
-        var second = await service.ClockInAsync("emp-1", new ClockInDto());
+        var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         var sessions = second.Record!.Sessions;
         Assert.Equal(2, sessions.Count);
         Assert.NotNull(sessions[0].EndedAt);   // the morning, still there
         Assert.Null(sessions[1].EndedAt);      // the one running now
+    }
+
+    // --- an approved correction lands on the shift, not just the day ---
+    //
+    // The day on screen: shift 1 14:41–15:43, shift 2 opened at 15:43 and not
+    // clocked out until 10:09 the next morning, then corrected to 18:00. The
+    // correction used to rewrite only the record, so the shift still read
+    // 18h 26m beside a day total of 3h 19m — and the next roll-up put the
+    // uncorrected hours back.
+
+    private static readonly DateTime DayStart = DateTime.UtcNow.AddHours(-22);   // "14:41"
+
+    // Clocks two shifts through the real service, then moves them onto the
+    // screenshot's timeline. The record is re-aligned by hand because nothing
+    // re-runs the roll-up after a test moves a session.
+    private static async Task<(AttendanceService Service, FakeAttendanceSessionRepository Sessions, AttendanceRecord Record)>
+        OvernightSplitShiftDay()
+    {
+        var sessions = new FakeAttendanceSessionRepository([]);
+        var repo = new FakeAttendanceRepository([]);
+        var service = BuildService([], repo: repo, sessions: sessions);
+
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        var closed = await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        var (first, second) = (sessions.All[0], sessions.All[1]);
+        first.StartedAt = DayStart;
+        first.EndedAt = DayStart.AddMinutes(62);            // 15:43
+        first.DurationMin = 62;
+        second.StartedAt = DayStart.AddMinutes(62);         // 15:43
+        second.EndedAt = DayStart.AddMinutes(62 + 1106);    // 10:09 +1d
+        second.DurationMin = 1106;
+
+        var record = (await repo.GetByIdAsync(closed.Record!.Id))!;
+        record.TimeIn = first.StartedAt;
+        record.TimeOut = second.EndedAt;
+        record.DurationMin = 62 + 1106;
+        return (service, sessions, record);
+    }
+
+    [Fact]
+    public async Task AnApprovedClockOutCorrection_EndsTheShiftItCorrects()
+    {
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+        var corrected = DayStart.AddMinutes(199);           // 18:00
+
+        // No approver above emp-1, so the correction is approved on filing.
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = corrected,
+            Reason = "Forgot to clock out.",
+        });
+
+        Assert.True(result.Ok);
+        var second = sessions.All[1];
+        Assert.Equal(corrected, second.EndedAt);
+        Assert.Equal(137, second.DurationMin);              // 15:43–18:00, not 18h 26m
+        Assert.Equal(62, sessions.All[0].DurationMin);      // the other shift untouched
+        // The day is the sum of its shifts, and agrees with them.
+        Assert.Equal(corrected, record.TimeOut);
+        Assert.Equal(199, record.DurationMin);
+    }
+
+    [Fact]
+    public async Task AnApprovedCorrection_SurvivesTheNextClockInThatDay()
+    {
+        // The roll-up re-derives the day from its shifts on every clock event.
+        // With the correction only on the record, clocking in again put the
+        // uncorrected 18h 26m straight back into the day's hours.
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+        await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = DayStart.AddMinutes(199),
+            Reason = "Forgot to clock out.",
+        });
+
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+        await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        Assert.Equal(137, sessions.All[1].DurationMin);
+        // 62 + 137, plus the few seconds the third shift lasted.
+        Assert.InRange(record.DurationMin!.Value, 199, 200);
+    }
+
+    [Fact]
+    public async Task AClockOutCorrection_BeforeTheLastShiftStarted_IsRefused()
+    {
+        // 15:00 is after the day's 14:41 start, so the day-level check passed —
+        // but it's before shift 2's 15:43 start, and would have left that shift
+        // ending before it began.
+        var (service, sessions, record) = await OvernightSplitShiftDay();
+
+        var result = await service.SubmitTimeAdjustmentAsync("emp-1", new SubmitTimeAdjustmentDto
+        {
+            RecordId = record.Id,
+            RequestedTimeOut = DayStart.AddMinutes(19),     // 15:00
+            Reason = "Left early.",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Equal(DayStart.AddMinutes(62 + 1106), sessions.All[1].EndedAt);
     }
 
     private static IEnumerable<AttendanceSession> SessionsFor(IEnumerable<AttendanceRecord> records) =>

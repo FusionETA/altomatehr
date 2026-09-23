@@ -7,6 +7,8 @@ export type OvertimeRequest = {
   id: string;
   employeeId: string;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   projectId?: string | null;
   workDate: string;
   startAt: string;
@@ -22,6 +24,7 @@ export type OvertimeRequest = {
   // employee with no approver, or resolved by the unreachable-approval sweep.
   reviewerId?: string | null;
   reviewerEmail?: string | null;
+  reviewerName?: string | null;
   submittedAt: string;
   decidedAt?: string | null;
   createdAt: string;

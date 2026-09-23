@@ -55,7 +55,7 @@ import {
   type Shift,
 } from "@/features/shifts/api";
 import { getOrganization, type Organization } from "@/features/settings/api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { TablePager } from "@/shared/components/TablePager";
 import { usePaged } from "@/shared/lib/use-paged";
@@ -413,8 +413,7 @@ export function AdminAttendance() {
     (employeeId: string) => {
       const stored = names.get(employeeId);
       if (stored) return stored;
-      const email = emails.get(employeeId);
-      return email ? buildName(email) : employeeId;
+      return personName(null, emails.get(employeeId), employeeId);
     },
     [names, emails],
   );

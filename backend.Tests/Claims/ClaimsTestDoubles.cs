@@ -241,6 +241,10 @@ internal sealed class FakeSupervisionService : ISupervisionService
         Task.FromResult<IReadOnlyDictionary<string, string>>(
             userIds.Distinct().Where(_emails.ContainsKey).ToDictionary(id => id, id => _emails[id]));
 
+    // No names on file in these fakes — every person falls back to their email.
+    public Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds) =>
+        Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+
     // Only Teams asks this, to police upper-layer placements. Claims tests do
     // no placement, so a permissive answer keeps them on topic.
     public Task<string?> GetRoleAsync(string userId) =>

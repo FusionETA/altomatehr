@@ -22,7 +22,7 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { CLAIMS_PAGE_SIZE, PaginationControls } from "./PaginationControls";
 import { getAccounts } from "@/features/settings/api";
-import { buildName, displayPerson } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   BulkActionBar,
@@ -90,7 +90,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
     [accountsQuery.data],
   );
 
-  const employeeName = (c: Claim) => (c.employeeEmail ? buildName(c.employeeEmail) : "—");
+  const employeeName = (c: Claim) => personName(c.employeeName, c.employeeEmail, "—");
   const accountLabel = (c: Claim) =>
     c.chartOfAccountId ? accountLabels.get(c.chartOfAccountId) ?? "Not assigned" : "Not assigned";
 
@@ -173,7 +173,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
       setClaims(await getTeamClaims());
       setSelectedClaim((cur) =>
         cur?.id === updated.id
-          ? { ...updated, employeeEmail: cur.employeeEmail }
+          ? { ...updated, employeeEmail: cur.employeeEmail, employeeName: cur.employeeName }
           : cur,
       );
       onDecided?.();
@@ -644,7 +644,7 @@ function WhyNoAction({ claim }: { claim: Claim }) {
 
   return (
     <span className="text-xs text-muted-foreground">
-      You approved · now with {waiting.map(displayPerson).join(", ")}
+      You approved · now with {waiting.join(", ")}
     </span>
   );
 }

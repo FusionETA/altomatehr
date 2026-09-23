@@ -6,6 +6,9 @@ public class OnLeaveTodayDto
 {
     public string EmployeeId { get; set; } = string.Empty;
     public string? Email { get; set; }
+
+    // Real name from the directory; null when none is set.
+    public string? Name { get; set; }
     public string LeaveTypeId { get; set; } = string.Empty;
     public string LeaveTypeCode { get; set; } = string.Empty;
     public string LeaveTypeName { get; set; } = string.Empty;

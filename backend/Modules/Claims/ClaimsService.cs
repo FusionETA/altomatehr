@@ -130,9 +130,14 @@ public class ClaimsService : IClaimsService
             claims.Add(claim);
         }
 
-        var emails = await _supervision.GetEmailsAsync(claims.Select(c => c.EmployeeId).Distinct());
+        var people = claims.Select(c => c.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         foreach (var claim in claims)
+        {
             claim.EmployeeEmail = emails.GetValueOrDefault(claim.EmployeeId);
+            claim.EmployeeName = names.GetValueOrDefault(claim.EmployeeId);
+        }
 
         // Newest first: a queue is read top-down, and the settled rows are
         // history rather than work.
@@ -1441,6 +1446,9 @@ public class ClaimsService : IClaimsService
         foreach (var claim in claims)
         {
             claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
+            claim.EmployeeName = string.IsNullOrWhiteSpace(directory.NameOf(claim.EmployeeId))
+                ? null
+                : directory.NameOf(claim.EmployeeId).Trim();
             if (claim.Status != ClaimStatus.PENDING) continue;
 
             var approvers = approversByKey.GetValueOrDefault(

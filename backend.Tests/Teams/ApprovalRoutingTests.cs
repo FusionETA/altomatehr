@@ -393,6 +393,9 @@ public class ApprovalRoutingTests
         public Task<IReadOnlyDictionary<string, string>> GetEmailsAsync(IEnumerable<string> userIds) =>
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
 
+        public Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+
         public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
 
         // Routing tests never place anyone, so the role behind a placement

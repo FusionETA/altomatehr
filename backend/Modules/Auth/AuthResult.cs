@@ -10,7 +10,8 @@ public record AuthResult(
     string Role,
     string OrganizationId,
     string RefreshToken,
-    DateTime RefreshTokenExpiresAt);
+    DateTime RefreshTokenExpiresAt,
+    string? Name = null);
 
 // An org the signed-in account can act in (drives the org switcher). Role is the
 // account's role IN THAT org — Employee here, Supervisor there, etc. Name is the

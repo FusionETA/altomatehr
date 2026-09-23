@@ -47,6 +47,8 @@ export type AttendanceApprovalRequest = {
   id: string;
   employeeId: string;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   kind: "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END";
   eventAt: string;
   originalEventAt?: string | null;
@@ -86,6 +88,8 @@ export type AttendanceRecord = {
   approvalStatus: AttendanceApprovalStatus;
   currentStep: number;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   notes: string | null;
   remark: string | null;
   reviewNotes: string | null;
@@ -136,6 +140,8 @@ export const getOpenSession = async () =>
 export type TeamAttendanceMember = {
   employeeId: string;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   /** The project of the team they're in — what the supervisor switches between. */
   projectId: string;
   projectName?: string | null;
@@ -204,7 +210,12 @@ function reportQuery(from: string, to: string, filter: AdminAttendanceFilter = {
   return params.toString();
 }
 
-export type EmployeeHoursRow = { employeeId: string; email: string | null; buckets: HoursBuckets };
+export type EmployeeHoursRow = {
+  employeeId: string;
+  email: string | null;
+  name?: string | null;
+  buckets: HoursBuckets;
+};
 export type OrgHoursSummary = { totals: HoursBuckets; employees: EmployeeHoursRow[] };
 
 // Takes the whole filter, not just a team: the Analytics table and its totals
@@ -364,6 +375,13 @@ export function pendingApprovalIds(record: AttendanceRecord): string[] {
 }
 
 export const OFF_SITE_CODE = "OFF_SITE_ACTION_REQUIRED";
+
+// Returned when a clock-in carries no GPS fix at all. Separate from the
+// off-site code because it isn't about a geofence: a project with no geofenced
+// site has nothing to be outside of, and the coordinates are the only record
+// of where the shift started. Takes the same remark+photo override, so the
+// client answers it with the same proof dialog.
+export const LOCATION_REQUIRED_CODE = "LOCATION_REQUIRED";
 
 // Returned when a clock-in is refused because an earlier shift was never closed.
 // The rule: one open session at a time. Close the old one first, then correct

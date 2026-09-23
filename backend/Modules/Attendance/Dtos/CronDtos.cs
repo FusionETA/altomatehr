@@ -17,6 +17,10 @@ public class StillClockedInWarningDto
 {
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public string RecordId { get; set; } = string.Empty;
     public string TimeIn { get; set; } = string.Empty;   // ISO-8601 UTC
     public int MinutesClockedIn { get; set; }

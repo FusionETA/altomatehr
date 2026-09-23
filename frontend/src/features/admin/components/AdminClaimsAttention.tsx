@@ -16,7 +16,6 @@ import {
   sumAmount,
   STALE_AFTER_DAYS,
 } from "@/features/claims/lib/claim-insights";
-import { displayPerson } from "@/features/employee-portal/lib/employee-formatters";
 import type { AdminOverview } from "../api";
 import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
 import {
@@ -241,7 +240,7 @@ function StuckWithCard({
                     claimIdsDrilldown(
                       group.claimIds,
                       group.unassigned ? "Claims with no approver" : "Stuck with",
-                      group.unassigned ? undefined : displayPerson(group.approver),
+                      group.unassigned ? undefined : group.approver,
                     ),
                   )
                 }
@@ -257,7 +256,7 @@ function StuckWithCard({
                       group.unassigned ? "text-destructive" : "text-foreground"
                     }`}
                   >
-                    {group.unassigned ? group.approver : displayPerson(group.approver)}
+                    {group.unassigned ? group.approver : group.approver}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {group.claimIds.length} claim{group.claimIds.length === 1 ? "" : "s"} ·{" "}
@@ -445,7 +444,7 @@ function ApprovalTrustCard({
                     claimIdsDrilldown(
                       approver.claimIds,
                       "Overturned approvals",
-                      displayPerson(approver.supervisorName),
+                      approver.supervisorName,
                     ),
                   )
                 }
@@ -453,7 +452,7 @@ function ApprovalTrustCard({
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-foreground">
-                    {displayPerson(approver.supervisorName)}
+                    {approver.supervisorName}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     across {approver.affectedEmployees}{" "}

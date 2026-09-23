@@ -40,6 +40,8 @@ export type Claim = {
   spendingAt?: string | null;
   employeeId: string;
   employeeEmail?: string | null; // populated for team/approver views
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   // Team view only: whether the caller can decide this claim right now. A
   // settled claim, or one sitting with another step's approver, is visible but
   // not actionable.
