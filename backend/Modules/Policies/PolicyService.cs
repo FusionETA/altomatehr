@@ -93,6 +93,19 @@ public class PolicyService : IPolicyService
         return ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id));
     }
 
+    public async Task<PolicyModuleAccess> GetModuleAccessAsync(string employeeId)
+    {
+        var policy = await GetEffectivePolicyAsync(employeeId);
+
+        // No policy resolved — an org that never set one up, or an employee not
+        // assigned one. Full access rather than none: locking someone out of
+        // the whole app because config is missing is the worse failure.
+        if (policy is null) return PolicyModuleAccess.All;
+
+        return new PolicyModuleAccess(
+            policy.CanAccessAttendance, policy.CanAccessClaims, policy.CanAccessLeave);
+    }
+
     public async Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId)
     {
         var membership = await _directory.GetMembershipForUserAsync(employeeId);

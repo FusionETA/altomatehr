@@ -360,7 +360,11 @@ public class LeaveCronServiceTests
             GetLeaveEntitlementsForEmployeesAsync(IEnumerable<string> employeeIds) =>
             Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>(
                 new Dictionary<string, IReadOnlyDictionary<string, double>>());
-    }
+    
+    // Module access is not what these tests are about.
+    public Task<AltomateHR.Api.Modules.Policies.PolicyModuleAccess> GetModuleAccessAsync(string employeeId) =>
+        Task.FromResult(AltomateHR.Api.Modules.Policies.PolicyModuleAccess.All);
+}
 
     private sealed class FakeMembershipRepo(IEnumerable<OrganizationMembership> rows)
         : IOrganizationMembershipRepository

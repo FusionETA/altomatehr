@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -31,6 +32,7 @@ public class ClaimsController : ControllerBase
 
     // GET /claims — the caller's own claims.
     [RequireScope("claims:read")]
+    [RequirePolicyModule(PolicyModules.Claims)]
     [HttpGet]
     public async Task<IActionResult> GetMine() =>
         Ok(await _claims.GetMineAsync(GetUserId()));
@@ -66,6 +68,7 @@ public class ClaimsController : ControllerBase
     }
 
     // POST /claims
+    [RequirePolicyModule(PolicyModules.Claims)]
     [HttpPost]
     public async Task<IActionResult> Create(CreateClaimDto dto)
     {
@@ -81,6 +84,7 @@ public class ClaimsController : ControllerBase
     }
 
     // POST /claims/receipts
+    [RequirePolicyModule(PolicyModules.Claims)]
     [HttpPost("receipts")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     public async Task<ActionResult<UploadReceiptResponseDto>> UploadReceipt(IFormFile? receiptFile)

@@ -76,3 +76,16 @@ export const updatePolicy = (id: string, body: SavePolicy) => apiPut<Policy>(`/p
 export const setDefaultPolicy = (id: string) => apiPost<Policy>(`/policies/${id}/default`);
 export const archivePolicy = (id: string) => apiPost<Policy>(`/policies/${id}/archive`);
 export const restorePolicy = (id: string) => apiPost<Policy>(`/policies/${id}/restore`);
+
+// Which modules the SIGNED-IN employee's own policy includes.
+//
+// Advisory: the backend gates each endpoint regardless. This is so the shell
+// doesn't offer a section that would refuse them.
+export type MyModuleAccess = {
+  attendance: boolean;
+  claims: boolean;
+  leave: boolean;
+};
+
+export const getMyModuleAccess = () =>
+  apiGet<MyModuleAccess>("/policies/mine/modules");

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Policies;
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -33,6 +34,7 @@ public class LeaveController : ControllerBase
 
     // GET /leave — the caller's own applications.
     [RequireScope("leave:read")]
+    [RequirePolicyModule(PolicyModules.Leave)]
     [HttpGet]
     public async Task<IActionResult> GetMine() =>
         Ok(await _leave.GetMineAsync(GetUserId()));
@@ -341,6 +343,7 @@ public class LeaveController : ControllerBase
     // and hand back the url to send with the application. Separate from the
     // apply call so a failed upload costs the form nothing but a retry, and so
     // the application itself stays plain JSON.
+    [RequirePolicyModule(PolicyModules.Leave)]
     [HttpPost("attachments")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     public async Task<IActionResult> UploadAttachment(IFormFile? file)
@@ -386,6 +389,7 @@ public class LeaveController : ControllerBase
     }
 
     // POST /leave — apply.
+    [RequirePolicyModule(PolicyModules.Leave)]
     [HttpPost]
     public async Task<IActionResult> Apply(CreateLeaveApplicationDto dto)
     {

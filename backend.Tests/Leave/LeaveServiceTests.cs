@@ -1105,5 +1105,10 @@ public class LeaveServiceTests
 
         public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
             Task.FromResult<IReadOnlyList<PolicyLeaveEntitlement>>([]);
-    }
+    
+    // Module access is not what these tests are about; full access keeps them
+    // on topic.
+    public Task<AltomateHR.Api.Modules.Policies.PolicyModuleAccess> GetModuleAccessAsync(string employeeId) =>
+        Task.FromResult(AltomateHR.Api.Modules.Policies.PolicyModuleAccess.All);
+}
 }

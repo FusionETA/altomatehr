@@ -1596,6 +1596,11 @@ public class LeaveService : ILeaveService
     private static string? Iso(DateTime? d) =>
         d is null ? null : DateTime.SpecifyKind(d.Value, DateTimeKind.Utc).ToString("o");
 
+    // Where the proxy for a Xero-hosted attachment lives. Null for a local
+    // file, whose own stored url is already right.
+    private static string? XeroAttachmentUrl(string? xeroFileId) =>
+        string.IsNullOrWhiteSpace(xeroFileId) ? null : $"/leave/files/{xeroFileId}/content";
+
     private static LeaveApplicationDto ToDto(LeaveApplication a) => new()
     {
         Id = a.Id,
@@ -1611,6 +1616,12 @@ public class LeaveService : ILeaveService
         DecidedAt = Iso(a.DecidedAt),
         CreatedAt = Iso(a.CreatedAt) ?? string.Empty,
         AttachmentName = a.AttachmentName,
-        AttachmentUrl = a.AttachmentUrl,
+        // DERIVED from the file id whenever there is one, rather than trusting
+        // the stored url. Rows imported from the reference app carry ITS route
+        // — "/api/leave/files/{id}/content" — which this API does not serve, so
+        // the browser asked for a path that 404s and the attachment looked lost
+        // even with the file sitting in Xero. The id is the real data; the url
+        // is a function of it.
+        AttachmentUrl = XeroAttachmentUrl(a.XeroFileId) ?? a.AttachmentUrl,
     };
 }

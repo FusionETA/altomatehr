@@ -33,6 +33,7 @@ import { DashboardView } from "./DashboardView";
 import { PayslipsView } from "@/features/payslips/components/PayslipsView";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { getMyModuleAccess } from "@/features/policies/api";
 
 function CountBadge({ count, className = "" }: { count: number; className?: string }) {
   if (count <= 0) return null;
@@ -182,9 +183,31 @@ export function EmployeeShell({
     else if (path === "/overtime") selectChild("attendance", "att-overtime");
   }
 
+  const moduleQuery = useCachedQuery("/policies/mine/modules", getMyModuleAccess);
+  const moduleAccess = moduleQuery.data ?? null;
+
   const visibleChildren = (item = activeItem) =>
     (item.children ?? []).filter((c) => !c.supervisorOnly || isSupervisor);
   const activeChildren = visibleChildren();
+
+  // Sections the employee's own policy switches off — a part-time policy with
+  // Claims and Leave unticked. Until this landed the checkboxes saved and
+  // nothing read them, so those tabs stayed on screen and the endpoints behind
+  // them still answered.
+  //
+  // Defaults to showing everything while the first read is in flight: hiding a
+  // tab and then putting it back is worse than a moment of showing it, and the
+  // endpoints refuse on their own regardless.
+  const navItems = useMemo(
+    () =>
+      employeeNav.filter((item) => {
+        if (item.id === "claims") return moduleAccess?.claims !== false;
+        if (item.id === "leave") return moduleAccess?.leave !== false;
+        if (item.id === "attendance") return moduleAccess?.attendance !== false;
+        return true;
+      }),
+    [moduleAccess],
+  );
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[280px_1fr]">
@@ -197,7 +220,7 @@ export function EmployeeShell({
         </div>
 
         <nav className="mt-10 space-y-2">
-          {employeeNav.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = item.id === activeView;
             const kids = visibleChildren(item);
@@ -429,7 +452,7 @@ export function EmployeeShell({
         {/* Mobile bottom nav — all five tabs, with pending badges. */}
         <nav className="fixed inset-x-4 bottom-4 z-40 rounded-[32px] border border-border/60 glass-panel px-2 py-2 shadow-panel lg:hidden">
           <div className="grid grid-cols-5 gap-1">
-            {employeeNav.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const active = item.id === activeView;
               const count = badgeFor(item.id);

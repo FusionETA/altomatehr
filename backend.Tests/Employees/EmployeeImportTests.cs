@@ -372,7 +372,12 @@ public class EmployeeImportTests
         public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() => throw new NotSupportedException();
         public Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync() =>
             throw new NotSupportedException();
-    }
+    
+    // Module access is not what these tests are about; full access keeps them
+    // on topic.
+    public Task<AltomateHR.Api.Modules.Policies.PolicyModuleAccess> GetModuleAccessAsync(string employeeId) =>
+        Task.FromResult(AltomateHR.Api.Modules.Policies.PolicyModuleAccess.All);
+}
 
     private sealed class FakeShiftService : IShiftService
     {
