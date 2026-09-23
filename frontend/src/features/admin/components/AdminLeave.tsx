@@ -66,6 +66,7 @@ import {
 } from "./ActionMenu";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards, SkeletonStats } from "@/shared/components/Skeleton";
+import { SCROLL_LIST } from "../lib/dashboard-styles";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -727,7 +728,9 @@ function OnLeaveTodayPanel({ entries }: { entries: LeaveOverview["onLeaveToday"]
   return (
     <section className={CARD}>
       <CardHead title="On leave today" />
-      <div className="space-y-2">
+      {/* Unbounded: the week either side of a public holiday can put most of
+          a 231-person org on leave at once. */}
+      <div className={`${SCROLL_LIST} space-y-2`}>
         {entries.length === 0 ? (
           <EmptyState text="Nobody is on approved leave today." />
         ) : (
@@ -754,7 +757,15 @@ function DaysUsedByTypePanel({ items }: { items: LeaveOverview["daysUsedByType"]
   return (
     <section className={CARD}>
       <CardHead title="Days used by type" meta="This year" />
-      <div className="space-y-3">
+      {/* Capped at roughly five tiles, the rest behind a scroll.
+          An org runs nine or ten leave types and all but two of them sit at
+          0d, so the full list was a column of empty bars that pushed
+          everything beside it down the page. Sorted by days used, so the five
+          in view are the ones with anything to say.
+          A max-height rather than a slice: every type stays reachable, which
+          a "+4 more" would not give without a click. It is inert when the
+          list is shorter, so a small org sees no scrollbar. */}
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {sorted.length === 0 ? (
           <EmptyState text="No leave taken this year yet." />
         ) : (

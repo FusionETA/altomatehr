@@ -9,7 +9,7 @@ import type {
   StalePendingClaim,
   UpcomingClaimRun,
 } from "../api";
-import { CARD, EYEBROW, TILE } from "../lib/dashboard-styles";
+import { CARD, EYEBROW, SCROLL_LIST, TILE } from "../lib/dashboard-styles";
 import { CardHead, EmptyState, Stat } from "./DashboardCard";
 
 // Ported from the monolith's ExecutiveOverview — six analytics cards. Cards are wired to
@@ -48,7 +48,7 @@ function ProjectClaimsCard({ projects }: { projects: ProjectClaimSpend[] }) {
   return (
     <section className={CARD}>
       <CardHead title="Project claims" meta="This month" />
-      <div className="space-y-3">
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {projects.length === 0 ? (
           <EmptyState text="No claims submitted this month yet." />
         ) : (
@@ -91,7 +91,7 @@ function AttendanceHealthCard({ projects }: { projects: AttendanceHealth[] }) {
   return (
     <section className={CARD}>
       <CardHead title="Attendance health" meta="Last 30 days" />
-      <div className="space-y-3">
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {projects.length === 0 ? (
           <EmptyState text="No attendance recorded in the last 30 days." />
         ) : (
@@ -124,7 +124,7 @@ function SlowOtApproversCard({ approvers }: { approvers: SlowOtApprover[] }) {
         title="Slow OT approvers"
         meta="> 24h average"
       />
-      <div className="space-y-3">
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {approvers.length === 0 ? (
           <EmptyState text="All supervisors are reviewing OT requests within 24 hours." />
         ) : (
@@ -159,7 +159,7 @@ function StalePendingClaimsCard({ claims }: { claims: StalePendingClaim[] }) {
         title="Stale pending claims"
         meta="> 7 days"
       />
-      <div className="space-y-3">
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {claims.length === 0 ? (
           <EmptyState text="No claims have been pending for more than 7 days." />
         ) : (
@@ -236,7 +236,7 @@ function OverturnedSupervisorsCard({
         title="Most-overturned approvers"
         meta="Last 90 days"
       />
-      <div className="space-y-3">
+      <div className={`${SCROLL_LIST} space-y-3`}>
         {samples.length === 0 ? (
           <EmptyState text="No layer-1 approvals have been overturned recently." />
         ) : (

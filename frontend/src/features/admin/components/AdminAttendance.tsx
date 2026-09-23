@@ -126,6 +126,14 @@ const REPORT_TABS: { key: ReportTab; label: string }[] = [
 // scroll is better than columns squeezed to nothing.
 const REPORT_TABLE = "w-full min-w-[900px] text-sm";
 
+// Rows per page, everywhere on this screen.
+//
+// Only History paged; the rest rendered every row they had. At the largest org
+// that is 231 people on Today, on Analytics, and again as 231 cards on
+// Employees — a scroll with no sense of where you are in it, and on Employees
+// 231 hours meters laid out at once.
+const PAGE_SIZE = 10;
+
 // One row of the daily board: a person, and today's record if they have one.
 export type TodayRow = {
   employee: Employee;
@@ -825,6 +833,7 @@ function TodayTab({
   const [openShifts, setOpenShifts] = useState<string | null>(null);
 
   const shown = useMemo(() => rows.filter((row) => matchesChip(row, chip)), [rows, chip]);
+  const paged = usePaged(shown, PAGE_SIZE);
 
   return (
     <section className={`${CARD_BARE} overflow-hidden`}>
@@ -878,7 +887,7 @@ function TodayTab({
               </tr>
             </thead>
             <tbody>
-              {shown.map(({ employee, record }) => {
+              {paged.pageItems.map(({ employee, record }) => {
                 const offSite = isOffSite(record);
                 const sessions = record?.sessions ?? [];
                 // Today's board answers "where is everyone now", so a
@@ -1082,6 +1091,7 @@ function TodayTab({
           </table>
         </div>
       )}
+      <TablePager paged={paged} noun="person" />
     </section>
   );
 }
@@ -1177,6 +1187,10 @@ function AnalyticsTab({
   from: string;
   to: string;
 }) {
+  // Paged over the server's own roster, which is what the table renders — the
+  // strip above it keeps describing the whole population, not the page.
+  const paged = usePaged(summary?.employees ?? [], PAGE_SIZE);
+
   // Counts, which the hours report does not carry — it buckets minutes. Scoped
   // to the employees the server put in `summary` rather than filtered again
   // here: the roster is the server's answer, so the strip and the table below
@@ -1248,7 +1262,7 @@ function AnalyticsTab({
                 </tr>
               </thead>
               <tbody>
-                {summary.employees.map((row) => {
+                {paged.pageItems.map((row) => {
                   const b = row.buckets;
                   const verdict = verdictFor(b);
                   // Only a genuine shortfall is coloured. Someone with no
@@ -1312,6 +1326,7 @@ function AnalyticsTab({
             </table>
           </div>
         )}
+      <TablePager paged={paged} noun="person" />
       </section>
     </div>
   );
@@ -1322,6 +1337,8 @@ function PerformanceTab({
 }: {
   rows: SupervisorPerformance[];
 }) {
+  const paged = usePaged(rows, PAGE_SIZE);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <section className={CARD_BARE}>
@@ -1353,7 +1370,7 @@ function PerformanceTab({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {paged.pageItems.map((r) => (
                   <tr
                     key={r.reviewerId}
                     className="border-b border-border/50 transition-colors duration-150 hover:bg-surface-low/70"
@@ -1388,6 +1405,7 @@ function PerformanceTab({
             </table>
           </div>
         )}
+      <TablePager paged={paged} noun="supervisor" />
       </section>
 
     </div>
@@ -1397,8 +1415,6 @@ function PerformanceTab({
 // Rows per page in both History tables. Shared so the two sections page in
 // step — a reader comparing an approval against the day it belongs to should
 // not have to track two different page numbers.
-const HISTORY_PAGE_SIZE = 10;
-
 // The audit DTO types `kind` as a plain string, so this falls back rather than
 // asserting the map covers every value the server might add later.
 function eventLabel(kind: string): string {
@@ -1419,8 +1435,8 @@ function HistoryTab({
   // Paged rather than cut at 200. Both lists are whole-range reads filtered in
   // the browser, so paging here costs no request — and the previous slice
   // silently dropped everything past the 200th row.
-  const auditPaged = usePaged(audit, HISTORY_PAGE_SIZE);
-  const recordsPaged = usePaged(rows, HISTORY_PAGE_SIZE);
+  const auditPaged = usePaged(audit, PAGE_SIZE);
+  const recordsPaged = usePaged(rows, PAGE_SIZE);
   // One open row at a time: two expanded shift panels in a dense table stop
   // being easier to read than the table itself.
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
@@ -1699,6 +1715,8 @@ function EmployeesTab({
   rows: EmployeeRow[];
   onOpen: (employeeId: string) => void;
 }) {
+  const paged = usePaged(rows, PAGE_SIZE);
+
   if (rows.length === 0) {
     return (
       <section className={CARD_BARE}>
@@ -1713,7 +1731,7 @@ function EmployeesTab({
           now rides inside the filter card (it reflects the filters, so it
           belongs with them). */}
       <section className={`${CARD_BARE} divide-y divide-border/60`}>
-        {rows.map(({ employee, projects, buckets, record }) => (
+        {paged.pageItems.map(({ employee, projects, buckets, record }) => (
           <button
             key={employee.id}
             type="button"
@@ -1748,6 +1766,7 @@ function EmployeesTab({
             </div>
           </button>
         ))}
+      <TablePager paged={paged} noun="employee" />
       </section>
     </div>
   );
@@ -2281,7 +2300,7 @@ function EmployeeDetail({
     () => [...records].sort((a, b) => b.date.localeCompare(a.date)),
     [records],
   );
-  const historyPaged = usePaged(history, HISTORY_PAGE_SIZE);
+  const historyPaged = usePaged(history, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -2545,6 +2564,7 @@ function OvertimeTab({
     () => (status === "ALL" ? rows : rows.filter((r) => r.status === status)),
     [rows, status],
   );
+  const paged = usePaged(shown, PAGE_SIZE);
 
   return (
     <section className={`${CARD_BARE} overflow-hidden`}>
@@ -2569,7 +2589,7 @@ function OvertimeTab({
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => {
+              {paged.pageItems.map((r) => {
                 const attachments = [r.beforePhotoUrl, r.afterPhotoUrl].filter(Boolean).length;
                 const open = expanded === r.id;
                 return (
@@ -2654,6 +2674,7 @@ function OvertimeTab({
           </table>
         </div>
       )}
+      <TablePager paged={paged} noun="request" />
     </section>
   );
 }
@@ -2769,6 +2790,7 @@ function ShiftsTab({
   // on the toggle is what tells you there is anything to look at.
   const archivedCount = ofProject.filter((s) => s.isArchived).length;
   const shown = showArchived ? ofProject : ofProject.filter((s) => !s.isArchived);
+  const paged = usePaged(shown, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -2849,7 +2871,7 @@ function ShiftsTab({
                 </tr>
               </thead>
               <tbody>
-                {shown.map((shift) => (
+                {paged.pageItems.map((shift) => (
                   <tr key={shift.id} className="border-b border-border/60 last:border-0">
                     <td className="p-4 pl-6">
                       <span
@@ -2944,6 +2966,7 @@ function ShiftsTab({
               </tbody>
             </table>
           </div>
+          <TablePager paged={paged} noun="shift" />
         </section>
       )}
 
