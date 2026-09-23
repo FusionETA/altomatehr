@@ -251,4 +251,9 @@ internal sealed class FakeClaimsService : IClaimsService
         AltomateHR.Api.Modules.Claims.Dtos.UpdateClaimSettingsDto dto) => throw new NotSupportedException();
     public Task<AltomateHR.Api.Common.Tabular.TabularExportResult> ExportPayrollReimbursementsAsync(
         AltomateHR.Api.Common.Tabular.TabularFormat format, string? month) => throw new NotSupportedException();
+
+    // Receipt proxying is not exercised by payroll.
+    public Task<AltomateHR.Api.Modules.Xero.XeroFileContent?> GetXeroReceiptForUserAsync(
+        string xeroFileId, string userId, bool isAdmin) =>
+        throw new NotSupportedException();
 }

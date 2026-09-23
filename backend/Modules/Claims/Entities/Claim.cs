@@ -83,6 +83,13 @@ public class Claim : ITenantScoped
     [MaxLength(1000)]
     public string? ReceiptUrl { get; set; }
 
+    // Set when the receipt lives in XERO FILES rather than on this server's
+    // disk — the id only, with the bytes fetched back through our own proxy so
+    // the OAuth token never reaches the browser. Null means ReceiptUrl points
+    // at a local file, which is what an org with no Xero connection gets.
+    [MaxLength(80)]
+    public string? ReceiptXeroFileId { get; set; }
+
     [Column("SupportingDocumentUrls")]
     [JsonIgnore]
     public string? SupportingDocumentUrlsJson { get; set; }

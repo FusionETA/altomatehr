@@ -181,6 +181,7 @@ public class ClaimsService : IClaimsService
             MileageRateUsed = prepared.MileageRateUsed,
             MileageUnitUsed = prepared.MileageUnitUsed,
             ReceiptUrl = receiptUrl,
+            ReceiptXeroFileId = XeroReceiptId(receiptUrl),
             SupportingDocumentUrls = supportingDocuments,
             CreatedAt = now,
             UpdatedAt = now,
@@ -243,6 +244,7 @@ public class ClaimsService : IClaimsService
         claim.MileageRateUsed = prepared.MileageRateUsed;
         claim.MileageUnitUsed = prepared.MileageUnitUsed;
         claim.ReceiptUrl = receiptUrl;
+        claim.ReceiptXeroFileId = XeroReceiptId(receiptUrl);
         claim.SupportingDocumentUrls = supportingDocuments;
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
@@ -619,6 +621,38 @@ public class ClaimsService : IClaimsService
             return null;
 
         return await _receiptStorage.GetAsync(fileName);
+    }
+
+    // The Xero file id carried by a receipt url, or null for a local one.
+    //
+    // DERIVED rather than taken from the client: the url already names the
+    // file, and a separately-supplied id could disagree with it — which would
+    // leave the claim pointing at one file and the proxy fetching another.
+    private const string XeroReceiptPrefix = "/claims/receipts/xero/";
+
+    private static string? XeroReceiptId(string? receiptUrl) =>
+        receiptUrl is not null && receiptUrl.StartsWith(XeroReceiptPrefix, StringComparison.Ordinal)
+            ? receiptUrl[XeroReceiptPrefix.Length..] is { Length: > 0 } id ? id : null
+            : null;
+
+    // The same question for a receipt that lives in Xero Files: same lookup by
+    // receipt url, same owner-or-admin rule, then the bytes come from Xero
+    // rather than disk so the OAuth token never reaches the browser.
+    //
+    // Null covers "no such receipt", "not yours" and "Xero says it is gone" —
+    // one answer, because distinguishing them would confirm a receipt exists to
+    // someone not entitled to know.
+    public async Task<XeroFileContent?> GetXeroReceiptForUserAsync(
+        string xeroFileId,
+        string userId,
+        bool isAdmin)
+    {
+        var claim = await _repo.GetByReceiptUrlAsync($"/claims/receipts/xero/{xeroFileId}");
+        if (claim is null) return null;
+
+        if (!isAdmin && claim.EmployeeId != userId) return null;
+
+        return await _xero.GetFileContentAsync(xeroFileId);
     }
 
     // ---- Import / export ----

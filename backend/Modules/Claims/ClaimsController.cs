@@ -97,7 +97,11 @@ public class ClaimsController : ControllerBase
                 receiptFile.Length,
                 stream));
 
-            return Ok(new UploadReceiptResponseDto { ReceiptUrl = result.ReceiptUrl });
+            return Ok(new UploadReceiptResponseDto
+            {
+                ReceiptUrl = result.ReceiptUrl,
+                ReceiptXeroFileId = result.XeroFileId,
+            });
         }
         catch (ArgumentException ex)
         {
@@ -165,6 +169,24 @@ public class ClaimsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new { message = ex.Message, receiptUrl });
         }
+    }
+
+    // GET /claims/receipts/xero/{xeroFileId}
+    //
+    // Server-side proxy for a receipt held in Xero Files, mirroring the leave
+    // attachment proxy: the OAuth token stays on the server, and the caller is
+    // checked against the claim the receipt belongs to.
+    [RequireScope("claims:read")]
+    [HttpGet("receipts/xero/{xeroFileId}")]
+    public async Task<IActionResult> GetXeroReceipt(string xeroFileId)
+    {
+        var file = await _claims.GetXeroReceiptForUserAsync(
+            xeroFileId, GetUserId(), User.IsAdministrative());
+
+        if (file is null) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
     }
 
     // GET /claims/receipts/{fileName}

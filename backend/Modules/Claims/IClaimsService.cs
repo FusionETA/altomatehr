@@ -31,6 +31,11 @@ public interface IClaimsService
     Task<ClaimsBulkResult> BulkSyncToXeroAsync(IReadOnlyList<string> ids, XeroBillStatus? status = null);
     Task<ClaimStatusTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<ClaimReceiptUploadResult> StoreReceiptAsync(ClaimReceiptUpload upload);
+    // A receipt held in Xero Files, proxied. Null when it isn't theirs, isn't
+    // there, or Xero can't serve it.
+    Task<Xero.XeroFileContent?> GetXeroReceiptForUserAsync(
+        string xeroFileId, string userId, bool isAdmin);
+
     Task<ClaimReceiptFileResult?> GetReceiptForUserAsync(string fileName, string userId, bool isAdmin);
 
     // Every claim in the current org, for cross-module reporting (the admin
