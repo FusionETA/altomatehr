@@ -61,6 +61,25 @@ public class StatutoryFileService : IStatutoryFileService
     //
     // Readiness deliberately does NOT go through this: its whole job is to
     // be asked BEFORE a run is approved.
+    // An IMPORTED run's figures are the uploaded sheet as typed — they never
+    // went through the calculator. A payslip is a faithful render of what was
+    // stored, so it stays downloadable. Everything else would assert
+    // engine-derived numbers to a third party — LHDN, KWSP, PERKESO or the
+    // bank — off figures this system never computed, and whose statutory
+    // filings and payments the PREVIOUS system already made. Producing them
+    // here invites a double submission and a second payment run.
+    //
+    // Refused at the service, not hidden in the UI: this is the one chokepoint
+    // every download route passes through, so no direct URL gets around it.
+    private static StatutoryFileResult? RefuseIfImported(Entities.PayrollRun run) =>
+        run.Source == Entities.PayrollRunSource.IMPORTED
+            ? StatutoryFileResult.Refused(
+                "This month was imported from your previous payroll system, so its figures "
+                + "were never calculated here. Payslips are available; statutory files, the "
+                + "bank file and the run reports are not — the system that produced these "
+                + "figures is the one that files and pays them.")
+            : null;
+
     private static StatutoryFileResult? RefuseUnlessApproved(Entities.PayrollRun run) =>
         run.Status == Entities.PayrollRunStatus.SUBMITTED
             ? null
@@ -75,7 +94,9 @@ public class StatutoryFileService : IStatutoryFileService
         var payload = await LoadAsync(runId);
         if (payload is null) return new StatutoryFileResult(false, null, null, null, null);
 
-        return RefuseUnlessApproved(payload.Run) ?? render(payload);
+        return RefuseUnlessApproved(payload.Run)
+               ?? RefuseIfImported(payload.Run)
+               ?? render(payload);
     }
 
     // ─── Documents ──────────────────────────────────────────────────────
@@ -146,6 +167,7 @@ public class StatutoryFileService : IStatutoryFileService
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
 
         var fileName = $"payroll-summary-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.pdf";
         return new StatutoryFileResult(
@@ -157,6 +179,7 @@ public class StatutoryFileService : IStatutoryFileService
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
 
         var fileName = $"payment-schedule-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.pdf";
         return new StatutoryFileResult(
@@ -173,6 +196,7 @@ public class StatutoryFileService : IStatutoryFileService
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
 
         if (model.Rows.Count == 0)
         {
@@ -226,6 +250,7 @@ public class StatutoryFileService : IStatutoryFileService
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
 
         // Default to the last day of the period — the conventional pay date,
         // and never a date in a different month from the run.
