@@ -2,7 +2,24 @@ using AltomateHR.Api.Modules.Xero.Dtos;
 
 namespace AltomateHR.Api.Modules.Xero;
 
-public interface IXeroService
+// Just the upload, for the storage classes.
+//
+// Narrow on purpose: somewhere that saves an MC has no business being able to
+// disconnect the org's Xero, and a test of it should not have to stub twenty
+// methods it never calls.
+public interface IXeroFileUploader
+{
+    // Put an uploaded file in Xero Files, under `folderName`.
+    //
+    // Null when this org has no usable Xero connection, or when Xero refuses —
+    // NEVER throws. An attachment is a side effect of filing a claim or a leave
+    // request, and a Xero outage must not stop someone submitting one. The
+    // caller writes to local disk instead.
+    Task<XeroUploadedFile?> TryUploadFileAsync(
+        string folderName, byte[] content, string fileName, string contentType);
+}
+
+public interface IXeroService : IXeroFileUploader
 {
     Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? returnUrl);
     Task<string> CompleteCallbackAsync(string code, string state);
@@ -19,6 +36,8 @@ public interface IXeroService
     // modules go through here rather than IXeroClient so connection lookup and
     // token refresh stay in one place. Null = no connection, or no such file.
     Task<XeroFileContent?> GetFileContentAsync(string fileId);
+
+
 
     // Push a bill for the CURRENT org. Throws XeroConnectionException when the
     // org has no Xero connection — callers surface that as "connect Xero first"

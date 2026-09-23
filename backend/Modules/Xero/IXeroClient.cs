@@ -20,6 +20,18 @@ public interface IXeroClient
     // reports the file is missing.
     Task<XeroFileContent?> GetFileContentAsync(string accessToken, string tenantId, string fileId);
 
+    // The id of a named folder in Xero Files, creating it if it isn't there.
+    //
+    // Null when the tenant did not grant the `files` scope: the caller uploads
+    // to the inbox instead of failing, which is what Xero does with a file that
+    // names no folder.
+    Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName);
+
+    // Upload bytes to Xero Files. `folderId` null puts it in the inbox.
+    Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType);
+
     // Creates an accounts-payable bill (Xero calls it an ACCPAY Invoice).
     // Returns the bill's id and human reference so the caller can link to it.
     Task<XeroBillResponse> CreateBillAsync(string accessToken, string tenantId, XeroBillRequest bill);
@@ -67,3 +79,5 @@ public sealed record XeroProjectResponse(
     string ProjectId,
     string Name,
     string Status);
+
+public record XeroUploadedFile(string FileId, string FileName);

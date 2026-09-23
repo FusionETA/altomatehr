@@ -87,10 +87,64 @@ public class LeaveAttachmentStorageTests : IDisposable
         Assert.Null(await storage.GetAsync("20260101000000-deadbeef.pdf"));
     }
 
+    // ---- Xero Files ----
+
+    // The point of the change: a connected org's MC belongs in Xero, beside the
+    // books an accountant is already reconciling, not on this server's disk.
+    [Fact]
+    public async Task StoresInXeroWhenTheOrgIsConnected()
+    {
+        var storage = Create(new AltomateHR.Api.Modules.Xero.XeroUploadedFile("file-1", "mc.pdf"));
+
+        var result = await storage.StoreAsync(Upload("mc.pdf", "application/pdf", "x"));
+
+        Assert.Equal("file-1", result.XeroFileId);
+        // Read back through our own proxy, so the OAuth token never reaches
+        // the browser.
+        Assert.Equal("/leave/files/file-1/content", result.AttachmentUrl);
+        // And nothing was written locally.
+        Assert.False(Directory.Exists(Path.Combine(_root, "storage", "leave-attachments")));
+    }
+
+    // Xero refusing — an expired connection, a missing scope, an outage — must
+    // not stop someone filing leave. The bytes go to disk instead.
+    [Fact]
+    public async Task FallsBackToDiskWhenXeroDeclines()
+    {
+        var storage = Create();
+
+        var result = await storage.StoreAsync(Upload("mc.pdf", "application/pdf", "x"));
+
+        Assert.Null(result.XeroFileId);
+        Assert.StartsWith("/leave/attachments/", result.AttachmentUrl);
+        Assert.True(Directory.Exists(Path.Combine(_root, "storage", "leave-attachments")));
+    }
+
+    // Validation still comes first: a bad file is refused before either
+    // destination is touched.
+    [Fact]
+    public async Task RefusesAnUnsupportedTypeWithoutCallingXero()
+    {
+        var storage = Create(new AltomateHR.Api.Modules.Xero.XeroUploadedFile("file-1", "x.exe"));
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => storage.StoreAsync(Upload("x.exe", "application/x-msdownload", "x")));
+    }
+
     // ---- wiring ----
 
-    private LeaveAttachmentStorage Create() =>
-        new(new FakeHostEnvironment { ContentRootPath = _root });
+    // `xero` null means "no connection", which is the local-disk path these
+    // tests are about. The Xero path is covered by its own test below.
+    private LeaveAttachmentStorage Create(AltomateHR.Api.Modules.Xero.XeroUploadedFile? uploaded = null) =>
+        new(new FakeHostEnvironment { ContentRootPath = _root }, new StubXero(uploaded));
+
+    private sealed class StubXero(AltomateHR.Api.Modules.Xero.XeroUploadedFile? uploaded)
+        : AltomateHR.Api.Modules.Xero.IXeroFileUploader
+    {
+        public Task<AltomateHR.Api.Modules.Xero.XeroUploadedFile?> TryUploadFileAsync(
+            string folderName, byte[] content, string fileName, string contentType) =>
+            Task.FromResult(uploaded);
+    }
 
     private static LeaveAttachmentUpload Upload(string name, string contentType, string content)
     {

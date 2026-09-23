@@ -354,7 +354,15 @@ public class LeaveController : ControllerBase
             var result = await _attachments.StoreAsync(new LeaveAttachmentUpload(
                 file.FileName, file.ContentType ?? string.Empty, file.Length, stream));
 
-            return Ok(new { attachmentUrl = result.AttachmentUrl, attachmentName = file.FileName });
+            // xeroFileId comes back so the apply call can persist it. The
+            // proxy route reads it off the saved application, so the preview
+            // only resolves once the application itself is filed.
+            return Ok(new
+            {
+                attachmentUrl = result.AttachmentUrl,
+                attachmentName = file.FileName,
+                xeroFileId = result.XeroFileId,
+            });
         }
         catch (ArgumentException ex)
         {

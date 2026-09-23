@@ -156,6 +156,15 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
         string a, string t, XeroManualJournalRequest j) => throw new NotSupportedException();
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) =>
         Task.FromResult(_categories);
+
+    // Files API: nothing under test here uploads.
+    public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
+        Task.FromResult<string?>(null);
+
+    public Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType) =>
+        throw new NotSupportedException();
 }
 
 // The frontend has no router, so the callback's redirect is the only thing that

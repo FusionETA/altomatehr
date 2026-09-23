@@ -3,10 +3,14 @@ using System.Security.Cryptography;
 namespace AltomateHR.Api.Modules.Leave;
 
 // Supporting documents for a leave application — an MC, a hospital slip, a
-// letter. Stored on disk beside the claim receipts rather than in Xero Files:
-// applying for leave must work for an org that has never connected Xero, and
-// the previous system falls back to a local path for exactly that reason.
-// (LeaveApplication.XeroFileId remains for the Xero-hosted case.)
+// letter.
+//
+// Xero Files when the org has a connection, local disk otherwise. That order
+// is the reference app's: an accountant reconciling in Xero finds the MC
+// attached to the org they already have open, and the bytes stop being this
+// server's problem to back up. Applying for leave still has to work for an org
+// that never connected Xero — and on the day Xero is down — so local disk
+// stays as the fallback rather than the upload failing.
 public class LeaveAttachmentStorage : ILeaveAttachmentStorage
 {
     private const long MaxAttachmentBytes = 8 * 1024 * 1024;
@@ -24,9 +28,17 @@ public class LeaveAttachmentStorage : ILeaveAttachmentStorage
         ["application/pdf"] = ".pdf",
     };
 
-    private readonly IWebHostEnvironment _environment;
+    // What an accountant sees this grouped under in Xero Files.
+    private const string XeroFolder = "Leave Attachments";
 
-    public LeaveAttachmentStorage(IWebHostEnvironment environment) => _environment = environment;
+    private readonly IWebHostEnvironment _environment;
+    private readonly Xero.IXeroFileUploader _xero;
+
+    public LeaveAttachmentStorage(IWebHostEnvironment environment, Xero.IXeroFileUploader xero)
+    {
+        _environment = environment;
+        _xero = xero;
+    }
 
     public async Task<LeaveAttachmentUploadResult> StoreAsync(LeaveAttachmentUpload upload)
     {
@@ -40,14 +52,33 @@ public class LeaveAttachmentStorage : ILeaveAttachmentStorage
             throw new ArgumentException("Attach a JPG, PNG, WEBP, HEIC, HEIF, or PDF.");
 
         var extension = GetSafeExtension(upload.FileName, fallbackExtension);
+
+        // Buffered because both destinations need the whole thing: Xero takes a
+        // multipart body, and the local fallback has to be writable AFTER a
+        // failed upload has already read the stream. These are capped at 8 MB
+        // above, so this is bounded.
+        using var buffer = new MemoryStream();
+        await upload.Content.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        var uploaded = await _xero.TryUploadFileAsync(
+            XeroFolder, bytes, Path.GetFileName(upload.FileName), upload.ContentType);
+
+        if (uploaded is not null)
+        {
+            // Read back through the API's own proxy, so the OAuth token never
+            // reaches the browser.
+            return new LeaveAttachmentUploadResult(
+                $"/leave/files/{uploaded.FileId}/content", uploaded.FileId);
+        }
+
         var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(8).ToLowerInvariant()}{extension}";
         var uploadDirectory = GetUploadDirectory();
 
         Directory.CreateDirectory(uploadDirectory);
 
         var path = Path.Combine(uploadDirectory, fileName);
-        await using var output = File.Create(path);
-        await upload.Content.CopyToAsync(output);
+        await File.WriteAllBytesAsync(path, bytes);
 
         return new LeaveAttachmentUploadResult($"{RoutePrefix}/{fileName}");
     }

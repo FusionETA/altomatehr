@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Cryptography;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Audit;
@@ -15,6 +16,7 @@ public class XeroService : IXeroService
     private readonly ICurrentUser _currentUser;
     private readonly IXeroRepository _repo;
     private readonly IAuditService _audit;
+    private readonly ILogger<XeroService> _logger;
     private readonly IXeroClient _client;
     private readonly IDataProtector _protector;
     private readonly XeroOptions _options;
@@ -25,7 +27,10 @@ public class XeroService : IXeroService
         IXeroClient client,
         IDataProtectionProvider dataProtection,
         IOptions<XeroOptions> options,
-        IAuditService audit)
+        IAuditService audit,
+        // Optional so the many test call sites need not thread one through;
+        // DI always supplies the real logger.
+        ILogger<XeroService>? logger = null)
     {
         _currentUser = currentUser;
         _repo = repo;
@@ -33,6 +38,7 @@ public class XeroService : IXeroService
         _protector = dataProtection.CreateProtector("AltomateHR.XeroTokens.v1");
         _options = options.Value;
         _audit = audit;
+        _logger = logger ?? NullLogger<XeroService>.Instance;
     }
 
     public async Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? returnUrl)
@@ -537,6 +543,36 @@ public class XeroService : IXeroService
 
         var accessToken = await GetValidAccessTokenAsync(connection);
         return await _client.GetFileContentAsync(accessToken, connection.TenantId, fileId);
+    }
+
+    public async Task<XeroUploadedFile?> TryUploadFileAsync(
+        string folderName, byte[] content, string fileName, string contentType)
+    {
+        try
+        {
+            var connection = await GetCurrentConnectionAsync();
+            if (connection is null || !connection.IsConnected) return null;
+
+            var accessToken = await GetValidAccessTokenAsync(connection);
+
+            // Null folder is fine — the file lands in the tenant's inbox rather
+            // than nowhere, which is better than refusing the upload over a
+            // missing folder.
+            var folderId = await _client.EnsureFolderAsync(accessToken, connection.TenantId, folderName);
+
+            return await _client.UploadFileAsync(
+                accessToken, connection.TenantId, folderId, content, fileName, contentType);
+        }
+        catch (Exception ex)
+        {
+            // Swallowed on purpose, and logged so this is visible as a Xero
+            // problem rather than as files quietly landing on disk forever.
+            // An expired connection, a tenant that never granted the `files`
+            // scope, a network fault — none of them should block a submission.
+            _logger.LogWarning(ex,
+                "Xero file upload failed for {Folder}; falling back to local storage.", folderName);
+            return null;
+        }
     }
 
     public async Task<XeroBillResponse> CreateBillAsync(XeroBillRequest bill)

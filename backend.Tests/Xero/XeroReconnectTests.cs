@@ -215,6 +215,15 @@ internal sealed class FakeRefreshFailureClient : IXeroClient
     public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotImplementedException();
     public Task<XeroManualJournalResponse> CreateManualJournalAsync(string a, string t, XeroManualJournalRequest j) => throw new NotImplementedException();
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) => throw new NotImplementedException();
+
+    // Files API: nothing under test here uploads.
+    public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
+        Task.FromResult<string?>(null);
+
+    public Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType) =>
+        throw new NotSupportedException();
 }
 
 // Refreshes successfully, so the healthy path can be asserted too.
@@ -236,4 +245,13 @@ internal sealed class FakeWorkingRefreshClient : IXeroClient
     public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotImplementedException();
     public Task<XeroManualJournalResponse> CreateManualJournalAsync(string a, string t, XeroManualJournalRequest j) => throw new NotImplementedException();
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) => throw new NotImplementedException();
+
+    // Files API: nothing under test here uploads.
+    public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
+        Task.FromResult<string?>(null);
+
+    public Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType) =>
+        throw new NotSupportedException();
 }

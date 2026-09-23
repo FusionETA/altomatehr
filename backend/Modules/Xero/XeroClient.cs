@@ -19,6 +19,7 @@ public class XeroClient : IXeroClient
     private const string CurrenciesUrl = "https://api.xero.com/api.xro/2.0/Currencies";
     private const string ProjectsUrl = "https://api.xero.com/projects.xro/2.0/Projects";
     private const string FilesUrl = "https://api.xero.com/files.xro/1.0/Files";
+    private const string FoldersUrl = "https://api.xero.com/files.xro/1.0/Folders";
     private const string InvoicesUrl = "https://api.xero.com/api.xro/2.0/Invoices";
     private const string BankTransactionsUrl = "https://api.xero.com/api.xro/2.0/BankTransactions";
     private const string ManualJournalsUrl = "https://api.xero.com/api.xro/2.0/ManualJournals";
@@ -117,8 +118,101 @@ public class XeroClient : IXeroClient
             meta?.Name ?? fileId);
     }
 
+    // Xero Files stores everything flat unless a folder is named, so each kind
+    // of attachment gets its own — "Claims", "Leave Attachments" — and an
+    // accountant opening Files sees the same grouping the app uses.
+    public async Task<string?> EnsureFolderAsync(
+        string accessToken, string tenantId, string folderName)
+    {
+        using var listRequest = new HttpRequestMessage(HttpMethod.Get, FoldersUrl);
+        listRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        listRequest.Headers.Add("xero-tenant-id", tenantId);
+        listRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var listResponse = await _http.SendAsync(listRequest);
+
+        // The tenant never granted the `files` scope. Not an error: the caller
+        // falls back to the inbox, and if THAT is refused too, to local disk.
+        if (listResponse.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            return null;
+
+        await EnsureSuccessAsync(listResponse, "Xero folder lookup failed.");
+
+        var folders = await listResponse.Content.ReadFromJsonAsync<List<XeroFolderPayload>>(JsonOptions);
+        var existing = folders?.FirstOrDefault(f =>
+            string.Equals(f.Name, folderName, StringComparison.OrdinalIgnoreCase));
+        if (existing?.Id is { Length: > 0 }) return existing.Id;
+
+        using var createResponse = await _http.SendAsync(NewFolderRequest(accessToken, tenantId, folderName));
+        if (createResponse.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            return null;
+
+        await EnsureSuccessAsync(createResponse, "Xero folder creation failed.");
+        var created = await createResponse.Content.ReadFromJsonAsync<XeroFolderPayload>(JsonOptions);
+        return created?.Id;
+    }
+
+    private static HttpRequestMessage NewFolderRequest(
+        string accessToken, string tenantId, string folderName)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, FoldersUrl)
+        {
+            Content = JsonContent.Create(new { Name = folderName }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return request;
+    }
+
+    public async Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType)
+    {
+        var safeName = SafeFileName(fileName);
+
+        // Multipart, with the FIELD NAME set to the filename — Xero's Files API
+        // reads the name off the part, not off a separate field, and a part
+        // named anything else uploads as "blob".
+        using var body = new MultipartFormDataContent();
+        var part = new ByteArrayContent(content);
+        part.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        body.Add(part, safeName, safeName);
+
+        var url = string.IsNullOrEmpty(folderId) ? FilesUrl : $"{FilesUrl}/{folderId}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = body };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero file upload failed.");
+
+        var uploaded = await response.Content.ReadFromJsonAsync<XeroFilePayload>(JsonOptions);
+        if (string.IsNullOrEmpty(uploaded?.Id))
+            throw new XeroConnectionException("Xero accepted the upload but returned no file id.");
+
+        return new XeroUploadedFile(uploaded.Id, uploaded.Name ?? safeName);
+    }
+
+    // Xero rejects a name carrying a path separator, and the name is the one
+    // thing an employee controls here.
+    private static string SafeFileName(string fileName)
+    {
+        var name = Path.GetFileName(fileName ?? string.Empty).Trim();
+        foreach (var bad in Path.GetInvalidFileNameChars()) name = name.Replace(bad, '-');
+        return name.Length == 0 ? "attachment" : name;
+    }
+
+    private sealed class XeroFolderPayload
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+    }
+
     private sealed class XeroFilePayload
     {
+        public string? Id { get; set; }
         public string? Name { get; set; }
         public string? MimeType { get; set; }
     }

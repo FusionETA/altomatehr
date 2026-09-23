@@ -255,4 +255,13 @@ internal sealed class FakeXeroAccountsClient : IXeroClient
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(
         string accessToken, string tenantId) =>
         Task.FromResult(new List<XeroTrackingCategoryResponse>());
+
+    // Files API: nothing under test here uploads.
+    public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
+        Task.FromResult<string?>(null);
+
+    public Task<XeroUploadedFile> UploadFileAsync(
+        string accessToken, string tenantId, string? folderId,
+        byte[] content, string fileName, string contentType) =>
+        throw new NotSupportedException();
 }

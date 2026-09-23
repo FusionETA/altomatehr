@@ -12,7 +12,9 @@ public sealed record LeaveAttachmentUpload(
     long Length,
     Stream Content);
 
-public sealed record LeaveAttachmentUploadResult(string AttachmentUrl);
+// XeroFileId is set when the bytes went to Xero Files; null when they went to
+// local disk. The caller stores both, so a later read knows which way to go.
+public sealed record LeaveAttachmentUploadResult(string AttachmentUrl, string? XeroFileId = null);
 
 public sealed record LeaveAttachmentFileResult(
     string Path,

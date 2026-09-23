@@ -1057,6 +1057,11 @@ public class LeaveServiceTests
     public Task<XeroProjectTrackingDto> GetProjectTrackingAsync() => throw new NotSupportedException();
     public Task SetProjectTrackingCategoryAsync(string? categoryId) => throw new NotSupportedException();
 
+
+    // No connection in these tests, so an attachment would fall back to disk.
+    public Task<XeroUploadedFile?> TryUploadFileAsync(
+        string folderName, byte[] content, string fileName, string contentType) =>
+        Task.FromResult<XeroUploadedFile?>(null);
 }
 
     private sealed class FakeCurrentUser(string? userId, string? role) : ICurrentUser
