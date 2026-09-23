@@ -24,6 +24,11 @@ public interface IAttendanceService
     Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId);
     Task<AttendanceTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<AttendancePhotoUploadResult> StorePhotoAsync(AttendancePhotoUpload upload);
+    // A clock photo held in Xero Files, proxied. Null when it isn't theirs,
+    // isn't there, or Xero can't serve it.
+    Task<Xero.XeroFileContent?> GetXeroPhotoForUserAsync(
+        string xeroFileId, string userId, bool isAdmin);
+
     Task<AttendancePhotoFileResult?> GetPhotoForUserAsync(string fileName, string userId, bool isAdmin);
 
     Task<AttendanceBreakActionResult> StartBreakAsync(string employeeId, StartBreakDto dto);

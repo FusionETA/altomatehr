@@ -69,6 +69,7 @@ public class AttendanceService : IAttendanceService
     private readonly IHoursSummaryService _hours;
     private readonly ITeamService _teams;
     private readonly IHolidayService _holidays;
+    private readonly Xero.IXeroFileReader _xero;
     private readonly ILeaveService _leave;
     private readonly ILeaveTypeService _leaveTypes;
 
@@ -92,10 +93,12 @@ public class AttendanceService : IAttendanceService
         IHoursSummaryService hours,
         ITeamService teams,
         IHolidayService holidays,
+        Xero.IXeroFileReader xero,
         ILeaveService leave,
         ILeaveTypeService leaveTypes)
     {
         _holidays = holidays;
+        _xero = xero;
         _leave = leave;
         _leaveTypes = leaveTypes;
         _repo = repo;
@@ -1236,6 +1239,28 @@ public class AttendanceService : IAttendanceService
             return null;
 
         return await _photos.GetAsync(fileName);
+    }
+
+    // The same question for a photo held in Xero Files: same lookup by photo
+    // url, same owner-or-admin rule, then the bytes come from Xero rather than
+    // disk so the OAuth token never reaches the browser.
+    //
+    // Null covers "no such photo", "not yours" and "Xero no longer has it" —
+    // one answer, because telling them apart would confirm a photo exists to
+    // someone not entitled to know. A clock-in selfie is a picture of a person;
+    // it deserves the stricter reading.
+    public async Task<Xero.XeroFileContent?> GetXeroPhotoForUserAsync(
+        string xeroFileId,
+        string userId,
+        bool isAdmin)
+    {
+        var record = await _repo.GetByPhotoUrlAsync(
+            $"/attendance/photos/{AttendancePhotoStorage.XeroSegment}/{xeroFileId}");
+        if (record is null) return null;
+
+        if (!isAdmin && record.EmployeeId != userId) return null;
+
+        return await _xero.GetFileContentAsync(xeroFileId);
     }
 
     // Background-safe policy resolution: mirrors PolicyService.GetEffectivePolicy
