@@ -5,7 +5,7 @@ import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
@@ -512,7 +512,7 @@ function EmployeeRows({
                 <td className={TD_FIRST}>
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">
-                      {emp.name?.trim() || buildName(emp.email)}
+                      {personName(emp.name, emp.email)}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") || emp.email}

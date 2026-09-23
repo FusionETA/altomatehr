@@ -12,22 +12,20 @@ export function buildInitials(email: string, name?: string | null) {
   );
 }
 
-export function buildName(email: string) {
-  return (
-    email
-      .split("@")[0]
-      .split(/[._-]/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ") || "Employee"
-  );
-}
-
-// A label the server already resolved to a person — a real name where the
-// directory has one, an email where it doesn't. Prettifies the email case so an
-// admin never reads "aisha.rahman@acme.com" in a list of people.
-export function displayPerson(label: string) {
-  return label.includes("@") ? buildName(label) : label;
+// How a person is labelled everywhere: their real name from the directory,
+// else their email, else a neutral word.
+//
+// This replaced `buildName`, which invented a name from the email address —
+// "aisha.rahman@…" became "Aisha Rahman", "admin@…" became a person called
+// "Admin", "oscar123@…" became "Oscar123". It looked like data and wasn't:
+// the real name was on the user record the whole time and never read. The
+// email fallback is shown as-is, because a raw address is at least true.
+export function personName(
+  name: string | null | undefined,
+  email: string | null | undefined,
+  fallback = "Employee",
+) {
+  return name?.trim() || email?.trim() || fallback;
 }
 
 // The claim figures on the employee dashboard.

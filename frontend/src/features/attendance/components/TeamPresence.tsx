@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { exportTeamAttendancePdf, getTeamToday, type TeamAttendanceMember } from "../api";
 import { ExportButton } from "@/shared/components/ExportButton";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 
@@ -206,7 +206,7 @@ export function TeamPresence() {
 function MemberRow({ member }: { member: TeamAttendanceMember }) {
   const state = presenceOf(member);
   const record = member.record;
-  const name = member.employeeEmail ? buildName(member.employeeEmail) : "Employee";
+  const name = personName(member.employeeName, member.employeeEmail);
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border/50 px-4 py-3.5 first:border-t-0">

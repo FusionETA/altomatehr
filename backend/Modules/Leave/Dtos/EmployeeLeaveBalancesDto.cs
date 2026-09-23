@@ -10,6 +10,9 @@ public class EmployeeLeaveBalancesDto
 {
     public string UserId { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+
+    // Real name from the directory; null when none is set.
+    public string? Name { get; set; }
     public string Role { get; set; } = string.Empty;
     public IEnumerable<LeaveBalanceDto> Balances { get; set; } = Array.Empty<LeaveBalanceDto>();
 

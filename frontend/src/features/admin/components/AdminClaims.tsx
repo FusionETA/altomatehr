@@ -22,6 +22,7 @@ import { OrgCurrencyCard } from "@/features/settings/components/OrgFieldCards";
 import { ClaimsMonthEndActions } from "./ClaimsMonthEndActions";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanels, SkeletonStats } from "@/shared/components/Skeleton";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 
 // The claims admin dashboard, in the order an admin needs it: what requires a
 // decision, then what is owed, then every claim behind both.
@@ -35,6 +36,8 @@ type ClaimsTab = "overview" | "all" | "settings";
 export function AdminClaims() {
   const [projectNames, setProjectNames] = useState<Map<string, string>>(new Map());
   const [employeeEmails, setEmployeeEmails] = useState<Map<string, string>>(new Map());
+  // id → how that person is labelled: their real name, else their email.
+  const [employeeNames, setEmployeeNames] = useState<Map<string, string>>(new Map());
   const [accountLabels, setAccountLabels] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +71,9 @@ export function AdminClaims() {
   useEffect(() => {
     const employees = employeesQuery.data ?? [];
     setEmployeeEmails(new Map(employees.map((employee) => [employee.id, employee.email])));
+    setEmployeeNames(
+      new Map(employees.map((employee) => [employee.id, personName(employee.name, employee.email)])),
+    );
   }, [employeesQuery.data]);
   useEffect(() => {
     const accounts = accountsQuery.data ?? [];
@@ -97,12 +103,12 @@ export function AdminClaims() {
   );
 
   const filterSummary = useMemo(() => {
-    const base = describeFilters(filters, projectNames, employeeEmails);
+    const base = describeFilters(filters, projectNames, employeeNames);
 
     // Be straight about it: the export speaks the API's filters, not the
     // client-side subset a card click produced.
     return drilldown ? `${base} — a drill-through view isn't part of the export` : base;
-  }, [filters, projectNames, employeeEmails, drilldown]);
+  }, [filters, projectNames, employeeNames, drilldown]);
 
   return (
     <div className="space-y-6">
@@ -169,6 +175,7 @@ export function AdminClaims() {
           onFiltersChange={setFilters}
           projectNames={projectNames}
           employeeEmails={employeeEmails}
+          employeeNames={employeeNames}
           accountLabels={accountLabels}
           onDecided={() => void load()}
         />

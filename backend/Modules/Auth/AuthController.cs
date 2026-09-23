@@ -165,6 +165,7 @@ public class AuthController : ControllerBase
         {
             Token = result.AccessToken,
             Email = result.Email,
+            Name = result.Name,
             Role = result.Role,
             ActiveOrganizationId = result.OrganizationId,
         };

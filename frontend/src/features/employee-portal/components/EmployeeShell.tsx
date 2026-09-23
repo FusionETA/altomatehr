@@ -20,7 +20,7 @@ import { OrgSwitcher } from "@/features/admin/components/OrgSwitcher";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
-import { buildInitials, buildName } from "../lib/employee-formatters";
+import { buildInitials, personName } from "../lib/employee-formatters";
 import {
   defaultSubOf,
   employeeNav,
@@ -68,8 +68,8 @@ export function EmployeeShell({
   const [attendanceBadge, setAttendanceBadge] = useState(0);
 
   const activeItem = findNavItem(activeView);
-  const initials = useMemo(() => buildInitials(user.email), [user.email]);
-  const displayName = useMemo(() => buildName(user.email), [user.email]);
+  const initials = useMemo(() => buildInitials(user.email, user.name), [user.email, user.name]);
+  const displayName = useMemo(() => personName(user.name, user.email), [user.name, user.email]);
 
   // The org name never changes during a session, so once is enough — it was
   // being refetched on every mount of the shell.

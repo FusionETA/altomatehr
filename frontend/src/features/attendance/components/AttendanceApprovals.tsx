@@ -29,7 +29,7 @@ import {
   type OvertimeStatusFilter,
 } from "@/features/overtime/lib/overtime-status";
 import { getOrganization, getProjects } from "@/features/settings/api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { StatusFilterTabs } from "@/shared/components/StatusFilterTabs";
 import {
@@ -122,7 +122,7 @@ function groupApprovals(records: AttendanceRecord[], breaks: AttendanceApprovalR
       ({
         key,
         date: record.date,
-        employeeName: employeeEmail ? buildName(employeeEmail) : "Employee",
+        employeeName: personName(record.employeeName, employeeEmail),
         employeeEmail,
         records: [],
         breaks: [],
@@ -864,7 +864,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
     return requests.filter((request) => {
       if (!overtimeMatchesStatus(request, status)) return false;
       if (!query) return true;
-      const employee = request.employeeEmail ? buildName(request.employeeEmail) : "Employee";
+      const employee = personName(request.employeeName, request.employeeEmail);
       return `${employee} ${request.employeeEmail ?? ""}`.toLowerCase().includes(query);
     });
   }, [requests, status, employeeSearch]);
@@ -1027,7 +1027,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
       {!loading && !error && filteredRequests.length > 0 ? (
         <section className="grid gap-3">
           {filteredRequests.map((request) => {
-            const employee = request.employeeEmail ? buildName(request.employeeEmail) : "Employee";
+            const employee = personName(request.employeeName, request.employeeEmail);
             const projectName = request.projectId ? projectNames.get(request.projectId) : null;
             return (
               <OvertimeApprovalCard
@@ -1071,7 +1071,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
       {selectedRequest ? (
         <OvertimeApprovalDetailsModal
           request={selectedRequest}
-          employee={selectedRequest.employeeEmail ? buildName(selectedRequest.employeeEmail) : "Employee"}
+          employee={personName(selectedRequest.employeeName, selectedRequest.employeeEmail)}
           projectName={selectedRequest.projectId ? projectNames.get(selectedRequest.projectId) : null}
           onClose={() => setSelectedRequest(null)}
         />
@@ -1309,7 +1309,7 @@ function OvertimeRejectDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const employee = request.employeeEmail ? buildName(request.employeeEmail) : "Employee";
+  const employee = personName(request.employeeName, request.employeeEmail);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 py-5 backdrop-blur-sm sm:items-center">

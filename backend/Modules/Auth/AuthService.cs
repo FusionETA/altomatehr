@@ -330,6 +330,10 @@ public class AuthService : IAuthService
         };
         await _refreshRepo.AddAsync(refresh);
 
-        return new AuthResult(accessToken, email, role, organizationId, refresh.Token, refresh.ExpiresAt);
+        // The real name for the header and greeting, which used to guess one
+        // from the email — "admin@…" read as a person called "Admin".
+        var name = (await _userRepo.GetByIdAsync(userId))?.Name;
+        return new AuthResult(accessToken, email, role, organizationId, refresh.Token, refresh.ExpiresAt,
+            string.IsNullOrWhiteSpace(name) ? null : name.Trim());
     }
 }

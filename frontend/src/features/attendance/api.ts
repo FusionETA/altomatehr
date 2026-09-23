@@ -47,6 +47,8 @@ export type AttendanceApprovalRequest = {
   id: string;
   employeeId: string;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   kind: "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END";
   eventAt: string;
   originalEventAt?: string | null;
@@ -86,6 +88,8 @@ export type AttendanceRecord = {
   approvalStatus: AttendanceApprovalStatus;
   currentStep: number;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   notes: string | null;
   remark: string | null;
   reviewNotes: string | null;
@@ -136,6 +140,8 @@ export const getOpenSession = async () =>
 export type TeamAttendanceMember = {
   employeeId: string;
   employeeEmail?: string | null;
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   /** The project of the team they're in — what the supervisor switches between. */
   projectId: string;
   projectName?: string | null;
@@ -204,7 +210,12 @@ function reportQuery(from: string, to: string, filter: AdminAttendanceFilter = {
   return params.toString();
 }
 
-export type EmployeeHoursRow = { employeeId: string; email: string | null; buckets: HoursBuckets };
+export type EmployeeHoursRow = {
+  employeeId: string;
+  email: string | null;
+  name?: string | null;
+  buckets: HoursBuckets;
+};
 export type OrgHoursSummary = { totals: HoursBuckets; employees: EmployeeHoursRow[] };
 
 // Takes the whole filter, not just a team: the Analytics table and its totals

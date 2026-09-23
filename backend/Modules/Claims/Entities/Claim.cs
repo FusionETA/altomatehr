@@ -114,6 +114,11 @@ public class Claim : ITenantScoped
     [NotMapped]
     public string? EmployeeEmail { get; set; }
 
+    // Transient — the applicant's real name, alongside the email above. Null
+    // when the directory has no name for them.
+    [NotMapped]
+    public string? EmployeeName { get; set; }
+
     // Transient — whether the CALLER can decide this claim right now. The team
     // view returns a supervisor's whole team, including claims already settled
     // and ones sitting with a different step's approver, so the client needs to

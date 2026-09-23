@@ -14,7 +14,7 @@ import {
   type LeaveBalance,
   type LeaveType,
 } from "@/features/leave/api";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import {
   Select,
   SelectContent,
@@ -52,7 +52,7 @@ export function EmployeeLeaveModal({
   const [seeding, setSeeding] = useState(false);
   const [applyOnBehalfOpen, setApplyOnBehalfOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const employeeLabel = buildName(employee.email);
+  const employeeLabel = personName(employee.name, employee.email);
 
   // Keyed on both employee and year, so reopening the same person's report —
   // which an admin does repeatedly while comparing people — is instant.

@@ -1,7 +1,6 @@
 import type { Claim, ClaimsExportFilters } from "@/features/claims/api";
 import { claimDateKey, type ClaimDateBasis } from "@/features/claims/lib/claim-insights";
 import { claimMatchesStatus, type ClaimStatusFilter } from "@/features/claims/lib/claim-status";
-import { buildName } from "@/features/employee-portal/lib/employee-formatters";
 
 // The claims table's filter set, kept in one place so the rows on screen and
 // the rows in the export are derived from the same values. Every field here
@@ -66,7 +65,11 @@ export function activeAdvancedCount(filters: ClaimsFilters) {
 export function matchesFilters(
   claim: Claim,
   filters: ClaimsFilters,
-  labels: { projectName: (claim: Claim) => string; employeeEmail: (claim: Claim) => string },
+  labels: {
+    projectName: (claim: Claim) => string;
+    employeeEmail: (claim: Claim) => string;
+    employeeName: (claim: Claim) => string;
+  },
 ) {
   if (!claimMatchesStatus(claim, filters.status)) return false;
   if (filters.projectId !== ALL && (claim.projectId ?? "") !== filters.projectId) return false;
@@ -88,7 +91,7 @@ export function matchesFilters(
   return [
     claim.claimNumber,
     claim.title,
-    email ? buildName(email) : claim.employeeId,
+    labels.employeeName(claim),
     email,
     claim.category,
     labels.projectName(claim),
@@ -121,15 +124,14 @@ export function toExportFilters(filters: ClaimsFilters): ClaimsExportFilters {
 export function describeFilters(
   filters: ClaimsFilters,
   projectNames: Map<string, string>,
-  employeeEmails: Map<string, string>,
+  employeeNames: Map<string, string>,
 ) {
   const parts: string[] = [];
 
   if (filters.status !== "ALL") parts.push(`${filters.status.toLowerCase()} claims`);
   if (filters.projectId !== ALL) parts.push(projectNames.get(filters.projectId) ?? "one project");
   if (filters.employeeId !== ALL) {
-    const email = employeeEmails.get(filters.employeeId);
-    parts.push(email ? buildName(email) : "one employee");
+    parts.push(employeeNames.get(filters.employeeId) ?? "one employee");
   }
   if (filters.paymentType !== ALL) {
     parts.push(filters.paymentType === "PERSONAL" ? "paid personally" : "paid by the company");

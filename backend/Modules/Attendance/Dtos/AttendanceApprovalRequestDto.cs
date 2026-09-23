@@ -10,6 +10,10 @@ public class AttendanceApprovalRequestDto
     public string Id { get; set; } = string.Empty;
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public AttendanceApprovalKind Kind { get; set; }
     public string EventAt { get; set; } = string.Empty;   // ISO-8601 UTC — the proposed time, for an adjustment request
     public string? OriginalEventAt { get; set; }           // set only for a time-adjustment request

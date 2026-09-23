@@ -60,7 +60,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import type { SignedInUser } from "@/shared/types/session";
-import { buildName, summariseClaims } from "../lib/employee-formatters";
+import { summariseClaims } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
 import { getTeamOvertime } from "@/features/overtime/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -279,7 +279,9 @@ export function DashboardView({
   });
   const greeting =
     now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
-  const firstName = buildName(user.email).split(" ")[0];
+  // The first word of their real name. With no name on file the greeting says
+  // the email rather than a first name invented from it.
+  const firstName = user.name?.trim().split(/\s+/)[0] || user.email;
 
   // Ending a break changes today's totals, so the card re-reads the record.
   // Through the query, which writes the cache every other reader shares.

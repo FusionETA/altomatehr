@@ -205,6 +205,9 @@ public class UpperLayerRoleGuardTests
             Task.FromResult<IReadOnlyDictionary<string, string>>(
                 userIds.ToDictionary(id => id, _ => "person@example.com"));
 
+        public Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds) =>
+            Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+
         public bool IsOrgApprover(string? r) => r is "Admin" or "Owner";
 
         public Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>

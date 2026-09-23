@@ -25,7 +25,7 @@ import {
   STALE_AFTER_DAYS,
   sumAmount,
 } from "@/features/claims/lib/claim-insights";
-import { buildName, displayPerson } from "@/features/employee-portal/lib/employee-formatters";
+import { personName } from "@/features/employee-portal/lib/employee-formatters";
 import { SearchInput } from "@/shared/components/SearchInput";
 import {
   Select,
@@ -76,6 +76,7 @@ export function AdminClaimsTable({
   onFiltersChange,
   projectNames,
   employeeEmails,
+  employeeNames,
   accountLabels,
   onDecided,
 }: {
@@ -88,6 +89,7 @@ export function AdminClaimsTable({
   onFiltersChange: (filters: ClaimsFilters) => void;
   projectNames: Map<string, string>;
   employeeEmails: Map<string, string>;
+  employeeNames: Map<string, string>;
   accountLabels: Map<string, string>;
   // A decision changes the claim server-side, so the page re-reads rather than
   // this table patching a row it does not own.
@@ -146,7 +148,8 @@ export function AdminClaimsTable({
 
     // Wraps within the column rather than widening it. `title` keeps the full
     // list reachable when several approvers push it onto three lines.
-    const names = waiting.map(displayPerson).join(", ");
+    // Already resolved server-side to a real name, else the email.
+    const names = waiting.join(", ");
     return (
       <span
         title={`Waiting on ${names}`}
@@ -160,10 +163,12 @@ export function AdminClaimsTable({
   const set = <K extends keyof ClaimsFilters>(key: K, value: ClaimsFilters[K]) =>
     onFiltersChange({ ...filters, [key]: value });
 
-  const employeeName = (claim: Claim) => {
-    const email = claim.employeeEmail ?? employeeEmails.get(claim.employeeId);
-    return email ? buildName(email) : claim.employeeId;
-  };
+  const employeeName = (claim: Claim) =>
+    personName(
+      claim.employeeName ?? employeeNames.get(claim.employeeId),
+      claim.employeeEmail ?? employeeEmails.get(claim.employeeId),
+      claim.employeeId,
+    );
   const employeeEmail = (claim: Claim) =>
     claim.employeeEmail ?? employeeEmails.get(claim.employeeId) ?? "";
   const projectLabel = (claim: Claim) =>
@@ -174,7 +179,7 @@ export function AdminClaimsTable({
       : "Not assigned";
 
   const filtered = useMemo(() => {
-    const labels = { projectName: projectLabel, employeeEmail };
+    const labels = { projectName: projectLabel, employeeEmail, employeeName };
 
     return claims
       .filter((claim) => {
@@ -183,7 +188,7 @@ export function AdminClaimsTable({
       })
       .sort((a, b) => (b.submittedAt || b.spentAt).localeCompare(a.submittedAt || a.spentAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims, drilldown, filters, projectNames, employeeEmails]);
+  }, [claims, drilldown, filters, projectNames, employeeEmails, employeeNames]);
 
   useEffect(() => {
     setPage(1);
@@ -332,9 +337,9 @@ export function AdminClaimsTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Everyone</SelectItem>
-                {Array.from(employeeEmails.entries()).map(([id, email]) => (
+                {Array.from(employeeNames.entries()).map(([id, name]) => (
                   <SelectItem key={id} value={id}>
-                    {buildName(email)}
+                    {name}
                   </SelectItem>
                 ))}
               </SelectContent>

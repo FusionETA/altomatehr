@@ -47,6 +47,10 @@ public class AttendanceRecordDto
     public List<AttendanceSessionDto> Sessions { get; set; } = [];
 
     public string? EmployeeEmail { get; set; }
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public string? Notes { get; set; }
     public string? Remark { get; set; }
     public string CreatedAt { get; set; } = string.Empty;

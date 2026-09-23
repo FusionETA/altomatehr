@@ -59,11 +59,14 @@ public class OvertimeService : IOvertimeService
                 .Contains(userId))
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
+        var people = visible.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         return visible.Select(request =>
         {
             var dto = ToDto(request);
             dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(request.EmployeeId);
             return dto;
         });
     }
@@ -76,18 +79,24 @@ public class OvertimeService : IOvertimeService
 
         // Reviewers resolved in the same lookup as employees — the admin table
         // names both, and two round trips for one directory would be silly.
-        var emails = await _supervision.GetEmailsAsync(
-            all.Select(r => r.EmployeeId)
-                .Concat(all.Select(r => r.ReviewerId).Where(id => id is not null)!)
-                .Distinct());
+        var people = all.Select(r => r.EmployeeId)
+            .Concat(all.Select(r => r.ReviewerId).Where(id => id is not null)!)
+            .Distinct()
+            .ToList();
+        var emails = await _supervision.GetEmailsAsync(people!);
+        var names = await _supervision.GetNamesAsync(people!);
 
         return all.Select(request =>
         {
             var dto = ToDto(request);
             dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(request.EmployeeId);
             dto.ReviewerEmail = request.ReviewerId is null
                 ? null
                 : emails.GetValueOrDefault(request.ReviewerId);
+            dto.ReviewerName = request.ReviewerId is null
+                ? null
+                : names.GetValueOrDefault(request.ReviewerId);
             return dto;
         });
     }

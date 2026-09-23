@@ -8,6 +8,10 @@ public class OvertimeRequestDto
     public string Id { get; set; } = string.Empty;
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public string? ProjectId { get; set; }
     public string WorkDate { get; set; } = string.Empty;
     public string StartAt { get; set; } = string.Empty;
@@ -21,6 +25,7 @@ public class OvertimeRequestDto
     public string? ReviewNotes { get; set; }
     public string? ReviewerId { get; set; }
     public string? ReviewerEmail { get; set; }
+    public string? ReviewerName { get; set; }
     public string SubmittedAt { get; set; } = string.Empty;
     public string? DecidedAt { get; set; }
     public string CreatedAt { get; set; } = string.Empty;

@@ -217,12 +217,18 @@ public class AttendanceService : IAttendanceService
             .GroupBy(x => x.AttendanceRecordId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
 
-        var emails = await _supervision.GetEmailsAsync(records.Select(r => r.EmployeeId).Distinct());
+        var people = records.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
         var dtos = records
             .OrderByDescending(r => r.Date)
             .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])))
             .ToList();
-        foreach (var dto in dtos) dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
+        foreach (var dto in dtos)
+        {
+            dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
+            dto.EmployeeName = names.GetValueOrDefault(dto.EmployeeId);
+        }
         return dtos;
     }
 
@@ -254,6 +260,7 @@ public class AttendanceService : IAttendanceService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
 
         var emails = await _supervision.GetEmailsAsync(employeeIds);
+        var names = await _supervision.GetNamesAsync(employeeIds);
         var projectNames = (await _projects.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
 
         return supervised
@@ -264,6 +271,7 @@ public class AttendanceService : IAttendanceService
                 {
                     EmployeeId = id,
                     EmployeeEmail = emails.GetValueOrDefault(id),
+                    EmployeeName = names.GetValueOrDefault(id),
                     ProjectId = team.ProjectId,
                     ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
                     TeamId = team.TeamId,
@@ -732,8 +740,11 @@ public class AttendanceService : IAttendanceService
             if (approvers.Contains(userId)) visible.Add(request);
         }
 
-        var emails = await _supervision.GetEmailsAsync(visible.Select(r => r.EmployeeId).Distinct());
-        return visible.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
+        var people = visible.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
+        return visible.Select(r => ToApprovalRequestDto(
+            r, emails.GetValueOrDefault(r.EmployeeId), names.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceBreakListResult> GetBreaksForRecordAsync(
@@ -818,8 +829,11 @@ public class AttendanceService : IAttendanceService
         string? employeeId, DateTime? from, DateTime? to)
     {
         var requests = await _approvalRequests.GetForAuditAsync(employeeId, from, to);
-        var emails = await _supervision.GetEmailsAsync(requests.Select(r => r.EmployeeId).Distinct());
-        return requests.Select(r => ToApprovalRequestDto(r, emails.GetValueOrDefault(r.EmployeeId)));
+        var people = requests.Select(r => r.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
+        return requests.Select(r => ToApprovalRequestDto(
+            r, emails.GetValueOrDefault(r.EmployeeId), names.GetValueOrDefault(r.EmployeeId)));
     }
 
     public async Task<AttendanceSelfieStorageStatsDto> GetSelfieStorageStatsAsync()
@@ -1130,8 +1144,14 @@ public class AttendanceService : IAttendanceService
             })
             .ToList();
 
-        var emails = await _supervision.GetEmailsAsync(warnings.Select(w => w.EmployeeId).Distinct());
-        foreach (var w in warnings) w.EmployeeEmail = emails.GetValueOrDefault(w.EmployeeId);
+        var warned = warnings.Select(w => w.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(warned);
+        var names = await _supervision.GetNamesAsync(warned);
+        foreach (var w in warnings)
+        {
+            w.EmployeeEmail = emails.GetValueOrDefault(w.EmployeeId);
+            w.EmployeeName = names.GetValueOrDefault(w.EmployeeId);
+        }
         return warnings;
     }
 
@@ -2245,11 +2265,13 @@ public class AttendanceService : IAttendanceService
         };
     }
 
-    private static AttendanceApprovalRequestDto ToApprovalRequestDto(AttendanceApprovalRequest a, string? employeeEmail) => new()
+    private static AttendanceApprovalRequestDto ToApprovalRequestDto(
+        AttendanceApprovalRequest a, string? employeeEmail, string? employeeName = null) => new()
     {
         Id = a.Id,
         EmployeeId = a.EmployeeId,
         EmployeeEmail = employeeEmail,
+        EmployeeName = employeeName,
         Kind = a.Kind,
         EventAt = Iso(a.EventAt) ?? string.Empty,
         OriginalEventAt = Iso(a.OriginalEventAt),

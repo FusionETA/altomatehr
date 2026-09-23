@@ -10,6 +10,10 @@ public class LeaveApplicationDto
     public string Id { get; set; } = string.Empty;
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }   // populated for team/approver views
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public string LeaveTypeId { get; set; } = string.Empty;
     public string StartDate { get; set; } = string.Empty;
     public string EndDate { get; set; } = string.Empty;

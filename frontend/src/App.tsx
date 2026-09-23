@@ -25,7 +25,7 @@ function App() {
     refresh()
       .then((res) => {
         setAuthToken(res.token);
-        setUser({ email: res.email, role: res.role });
+        setUser({ email: res.email, role: res.role, name: res.name });
         connectRealtime();
       })
       .catch(() => {
@@ -45,7 +45,7 @@ function App() {
       <LoginForm
         onSuccess={(res) => {
           setAuthToken(res.token);
-          setUser({ email: res.email, role: res.role });
+          setUser({ email: res.email, role: res.role, name: res.name });
           connectRealtime();
         }}
       />

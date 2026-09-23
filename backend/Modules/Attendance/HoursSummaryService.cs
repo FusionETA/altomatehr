@@ -81,6 +81,7 @@ public class HoursSummaryService : IHoursSummaryService
 
         var ctx = await BuildContextAsync();
         var emails = await _supervision.GetEmailsAsync(staff.Select(m => m.UserId));
+        var names = await _supervision.GetNamesAsync(staff.Select(m => m.UserId));
         var employees = new List<EmployeeHoursSummaryDto>();
         foreach (var member in staff)
         {
@@ -89,6 +90,7 @@ public class HoursSummaryService : IHoursSummaryService
             {
                 EmployeeId = member.UserId,
                 Email = emails.GetValueOrDefault(member.UserId),
+                Name = names.GetValueOrDefault(member.UserId),
                 Buckets = buckets,
             });
         }

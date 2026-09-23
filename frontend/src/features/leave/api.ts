@@ -33,6 +33,8 @@ export type LeaveApplication = {
   id: string;
   employeeId: string;
   employeeEmail: string | null; // populated for team/approver views
+  /** Real name from the directory; null when none is set. */
+  employeeName?: string | null;
   leaveTypeId: string;
   startDate: string; // yyyy-MM-dd
   endDate: string;
@@ -75,6 +77,7 @@ export type LeaveBalance = {
 export type OnLeaveToday = {
   employeeId: string;
   email: string | null;
+  name?: string | null;
   leaveTypeId: string;
   leaveTypeCode: string;
   leaveTypeName: string;
@@ -95,6 +98,7 @@ export type LeaveOverview = {
 export type EmployeeLeaveBalances = {
   userId: string;
   email: string;
+  name?: string | null;
   role: string;
   balances: LeaveBalance[];
   // Only set on the supervisor "team balances" screen — which team this row is

@@ -16,6 +16,10 @@ public class TeamAttendanceMemberDto
 {
     public string EmployeeId { get; set; } = string.Empty;
     public string? EmployeeEmail { get; set; }
+
+    // The person's real name from the directory; null when none is set, in
+    // which case the client shows the email instead.
+    public string? EmployeeName { get; set; }
     public string ProjectId { get; set; } = string.Empty;
     public string? ProjectName { get; set; }
     public string TeamId { get; set; } = string.Empty;

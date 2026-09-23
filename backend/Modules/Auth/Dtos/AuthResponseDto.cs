@@ -6,6 +6,8 @@ public class AuthResponseDto
 {
     public string Token { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    // The signed-in person's real name; null when their profile has none.
+    public string? Name { get; set; }
     public string Role { get; set; } = string.Empty;
     public string ActiveOrganizationId { get; set; } = string.Empty;
 }
