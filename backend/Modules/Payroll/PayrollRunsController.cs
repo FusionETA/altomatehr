@@ -208,6 +208,29 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> PcbDetails(string id) =>
         File(_statutory.RenderPcbDetailsPdfAsync(id));
 
+    // GET /payroll/runs/{id}/download — every document this run produces, zipped.
+    //
+    // For an integration that wants the month's output in one request rather
+    // than six. A document that cannot be rendered is left out and named in the
+    // X-Bundle-Skipped header, with the count in X-Bundle-File-Count — so a
+    // caller can tell "no bank file configured" from "the zip is fine" without
+    // unpacking it first.
+    [HttpGet("{id}/documents/download")]
+    [HttpGet("{id}/download")]
+    public async Task<IActionResult> Download(string id, [FromQuery] DateTime? paymentDate)
+    {
+        var bundle = await _statutory.RenderRunBundleAsync(id, paymentDate);
+
+        if (!bundle.Ok)
+            return bundle.Error is null ? NotFound() : Conflict(new { error = bundle.Error });
+
+        Response.Headers["X-Bundle-File-Count"] = bundle.Included.Count.ToString();
+        if (bundle.Skipped.Count > 0)
+            Response.Headers["X-Bundle-Skipped"] = string.Join(",", bundle.Skipped.Keys);
+
+        return File(bundle.Content!, "application/zip", bundle.FileName);
+    }
+
     // The bank disbursement file, in the layout of the company's own payroll
     // bank. `paymentDate` is the value date; omitted means the last day of the
     // payroll period. `recipientReference` and `channel` apply to Hong Leong

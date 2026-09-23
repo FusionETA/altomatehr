@@ -45,6 +45,8 @@ public class InboundSsoTests
 
         Assert.NotNull(ticket);
         Assert.Contains(ticket!.Ticket, ticket.RedirectPath);
+        // The partner validates this and refuses a response without it.
+        Assert.Equal(120, ticket.ExpiresIn);
         // The user is pinned at mint time, not re-resolved from the email later.
         Assert.Equal(userId, store.Last!.UserId);
         Assert.Equal(Org, store.Last.OrganizationId);

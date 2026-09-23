@@ -53,7 +53,12 @@ public class InboundSsoController : ControllerBase
         // holding a key.
         return ticket is null
             ? NotFound(new { message = "No admin or owner with that email in this organization." })
-            : Ok(new { ticket = ticket.Ticket, redirectPath = ticket.RedirectPath });
+            : Ok(new
+            {
+                ticket = ticket.Ticket,
+                redirectPath = ticket.RedirectPath,
+                expiresIn = ticket.ExpiresIn,
+            });
     }
 
     // GET /sso/callback?t=... — the customer's browser lands here.

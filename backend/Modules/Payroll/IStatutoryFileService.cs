@@ -47,9 +47,30 @@ public interface IStatutoryFileService
     // The last two are needed only by Hong Leong, which publishes TWO upload
     // channels taking different files and requires a statement reference that
     // no payroll data implies. Every other bank ignores them.
+    // Everything a finalised run produces, in one zip: the bank file, the
+    // summary, the payslips and the three statutory uploads.
+    //
+    // For an integration that wants the month's output in one request rather
+    // than six. A document that cannot be rendered — a bank file with no payor
+    // account, say — is SKIPPED rather than failing the bundle, and named in
+    // `Skipped` so the caller knows what is absent instead of guessing from a
+    // short file list.
+    Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate);
+
     Task<StatutoryFileResult> RenderBankFileAsync(
         string runId,
         DateTime? paymentDate,
         string? recipientReference = null,
         HlbChannel? channel = null);
 }
+
+// A zip, plus what did not make it in and why. Ok=false with Error → the whole
+// bundle was refused (run not approved, or not found); a bundle that merely
+// lost a document is still Ok.
+public record PayrollBundleResult(
+    bool Ok,
+    string? FileName,
+    byte[]? Content,
+    IReadOnlyList<string> Included,
+    IReadOnlyDictionary<string, string> Skipped,
+    string? Error);

@@ -26,7 +26,10 @@ public interface IInboundSsoService
     Task<AuthResult?> RedeemAsync(string ticket);
 }
 
-public record InboundTicket(string Ticket, string RedirectPath);
+// ExpiresIn is seconds, and the caller VALIDATES it — the partner treats a
+// response without it as malformed and refuses the hand-off. Returning the
+// TTL rather than an absolute time keeps it free of clock skew between us.
+public record InboundTicket(string Ticket, string RedirectPath, int ExpiresIn);
 
 // Just enough of the resolved membership for the mint to proceed.
 internal record AdministrativeMember(string UserId, string Role);
@@ -67,7 +70,10 @@ public class InboundSsoService : IInboundSsoService
             new PartnerTicketData(InboundClientId, membership.UserId, organizationId),
             TicketTtl);
 
-        return new InboundTicket(ticket, $"/sso/callback?t={Uri.EscapeDataString(ticket)}");
+        return new InboundTicket(
+            ticket,
+            $"/sso/callback?t={Uri.EscapeDataString(ticket)}",
+            (int)TicketTtl.TotalSeconds);
     }
 
     public async Task<AuthResult?> RedeemAsync(string ticket)

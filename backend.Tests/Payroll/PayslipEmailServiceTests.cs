@@ -217,7 +217,11 @@ public class PayslipEmailServiceTests : IDisposable
         public Task<StatutoryFileResult> RenderBankFileAsync(
             string runId, DateTime? paymentDate, string? recipientReference = null, HlbChannel? channel = null) =>
             throw new NotSupportedException();
-    }
+    
+    // The bundle is an integration surface; payslip email does not build one.
+    public Task<AltomateHR.Api.Modules.Payroll.PayrollBundleResult> RenderRunBundleAsync(
+        string runId, DateTime? paymentDate) => throw new NotSupportedException();
+}
 
     private sealed record SentEmail(
         string To, string Subject, string Html, IReadOnlyList<EmailAttachment>? Attachments);

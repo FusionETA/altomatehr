@@ -141,6 +141,74 @@ public class StatutoryFileService : IStatutoryFileService
         return new StatutoryFileResult(true, fileName, buffer.ToArray(), "application/zip", null);
     }
 
+    // What goes in the bundle, in the order an admin works through them: pay
+    // the people, then file the returns. The bank file leads because it is the
+    // one with a deadline attached.
+    private static readonly string[] BundleDocuments =
+        ["bank-file", "summary", "payslips", "epf", "socso-eis", "pcb"];
+
+    public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
+    {
+        // Checked once, up front. Every renderer below would refuse an
+        // unapproved run individually, and a bundle of six identical refusals
+        // is a worse answer than one.
+        var model = await LoadDocumentAsync(runId);
+        if (model is null)
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), null);
+
+        if (RefuseUnlessApproved(model.Run) is { Error: { } refusal })
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), refusal);
+
+        var included = new List<string>();
+        var skipped = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var document in BundleDocuments)
+            {
+                // One document failing must not cost the other five. An org
+                // with no payor account still needs its statutory files.
+                StatutoryFileResult result;
+                try
+                {
+                    result = await RenderBundleDocumentAsync(document, runId, paymentDate);
+                }
+                catch (Exception ex)
+                {
+                    skipped[document] = ex.Message;
+                    continue;
+                }
+
+                if (!result.Ok || result.Content is null)
+                {
+                    skipped[document] = result.Error ?? "Could not be produced for this run.";
+                    continue;
+                }
+
+                var entry = archive.CreateEntry(result.FileName!, CompressionLevel.Optimal);
+                await using var stream = entry.Open();
+                await stream.WriteAsync(result.Content);
+                included.Add(document);
+            }
+        }
+
+        var fileName = $"payroll-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.zip";
+        return new PayrollBundleResult(true, fileName, buffer.ToArray(), included, skipped, null);
+    }
+
+    private Task<StatutoryFileResult> RenderBundleDocumentAsync(
+        string document, string runId, DateTime? paymentDate) => document switch
+        {
+            "bank-file" => RenderBankFileAsync(runId, paymentDate),
+            "summary" => RenderSummaryPdfAsync(runId),
+            "payslips" => RenderAllPayslipsZipAsync(runId),
+            "epf" => RenderEpfCsvAsync(runId),
+            "socso-eis" => RenderPerkesoTxtAsync(runId),
+            "pcb" => RenderPcbTxtAsync(runId),
+            _ => Task.FromResult(NotFound()),
+        };
+
     public async Task<StatutoryFileResult> RenderSummaryPdfAsync(string runId)
     {
         var model = await LoadDocumentAsync(runId);
