@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
-import { Building2, ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
+import { ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
@@ -8,7 +8,7 @@ import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
 import { getLeaveTypes } from "@/features/leave/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
-import { OrgSwitcher } from "@/features/admin/components/OrgSwitcher";
+import { OrgSwitcher, OrgSwitcherMenuList } from "@/features/admin/components/OrgSwitcher";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
@@ -255,7 +255,12 @@ export function EmployeeShell({
                   and without "New company" — that is an admin action. Without
                   it a multi-company employee is stuck in whichever membership
                   login happened to pick first, with no way to reach the rest. */}
-              <OrgSwitcher allowCreate={false} hideWhenSingle />
+              {/* Desktop only. On a phone the pill crowded the bar — the page
+                  title was clipped to a letter — so there the companies are in
+                  the account menu instead (OrgSwitcherMenuList below). */}
+              <div className="hidden sm:block">
+                <OrgSwitcher allowCreate={false} hideWhenSingle />
+              </div>
 
               <NotificationBell onNavigate={navigateFromNotification} />
 
@@ -310,17 +315,9 @@ export function EmployeeShell({
                       className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
                     />
 
-                    <button
-                      type="button"
-                      disabled
-                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground opacity-60"
-                    >
-                      <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>
-                        <span className="block font-semibold text-foreground">Switch company</span>
-                        <span className="block text-xs">Shown when multiple companies are available</span>
-                      </span>
-                    </button>
+                    {/* Phones only — the header pill covers larger screens.
+                        Replaces a permanently disabled placeholder row. */}
+                    <OrgSwitcherMenuList className="sm:hidden" />
 
                     <button
                       type="button"
