@@ -1,0 +1,9 @@
+# Run artefacts — regenerated on every run, never source.
+.out/
+.out-*.log
+state.txt
+cookies.txt
+*.csv
+*.bin
+*.pdf
+*.xlsx

@@ -63,6 +63,12 @@ public static class YtdImportParser
             ["meal allowance"] = PayrollAdjustmentCategories.AllowanceMeal,
             ["phone allowance"] = PayrollAdjustmentCategories.AllowancePhoneFixed,
             ["other allowance"] = PayrollAdjustmentCategories.AllowanceStandard,
+            // The reference system's own template spellings, so a sheet
+            // exported from it imports here without being re-headed.
+            ["phone/broadband allowance"] = PayrollAdjustmentCategories.AllowancePhoneFixed,
+            ["broadband allowance"] = PayrollAdjustmentCategories.AllowancePhoneFixed,
+            ["unpaid leave"] = PayrollAdjustmentCategories.DeductUnpaidLeave,
+            ["net salary deduction"] = PayrollAdjustmentCategories.DeductMiscellaneous,
         };
 
     // Every adjustment category, addressable by its own label.
@@ -224,7 +230,15 @@ public static class YtdImportParser
 
         try
         {
-            rows = TabularReader.Read(content, format);
+            // The reference system's workbook leads with an instructions sheet
+            // and keeps the data on the second, so taking sheet one would read
+            // prose and report the file as empty. Take the first sheet that
+            // actually carries a header row, and only fall back to sheet one
+            // so a single-sheet file still reports its own error.
+            var sheets = TabularReader.ReadAllSheets(content, format);
+            rows = sheets.FirstOrDefault(sheet => FindHeaderRow(sheet.Rows) >= 0)?.Rows
+                   ?? sheets.FirstOrDefault()?.Rows
+                   ?? [];
         }
         catch (Exception ex)
         {
@@ -254,6 +268,7 @@ public static class YtdImportParser
         // TYPE by position would mean column order only appeared not to
         // matter — reorder the sheet and every row would be misread.
         var nameColumn = IndexOf(header, "employee name");
+        if (nameColumn < 0) nameColumn = IndexOf(header, "full name");
         var idColumn = IndexOf(header, "personal id");
 
         var missing = MandatoryColumns.Values
@@ -283,7 +298,9 @@ public static class YtdImportParser
         {
             var cells = rows[i].Select(Normalise).ToList();
 
-            if (cells.Contains("employee name") && cells.Contains("basic salary")) return i;
+            // "Full Name" is the reference system's label for the same column.
+            var hasName = cells.Contains("employee name") || cells.Contains("full name");
+            if (hasName && cells.Contains("basic salary")) return i;
         }
 
         return -1;
@@ -314,7 +331,7 @@ public static class YtdImportParser
 
             // The two identity columns are positional in every other sense
             // but are still matched by name.
-            if (name is "employee name" or "personal id" or "month") continue;
+            if (name is "employee name" or "full name" or "personal id" or "month") continue;
 
             if (MandatoryColumns.TryGetValue(name, out var field))
             {
@@ -413,7 +430,9 @@ public static class YtdImportParser
                 // self-consistent.
                 Flush();
                 currentName = label;
-                currentId = idColumn >= 0 && idColumn < row.Count ? NullIfBlank(row[idColumn]) : null;
+                currentId = idColumn >= 0 && idColumn < row.Count
+                    ? StripIdPrefix(NullIfBlank(row[idColumn]))
+                    : null;
                 currentNameRow = r + 1;
                 currentNameRowHadAmounts = HasAnyAmount(row, columns);
                 continue;
@@ -552,6 +571,26 @@ public static class YtdImportParser
 
     // The template's column order, so the generated sheet and the parser
     // cannot disagree about what a valid file looks like.
+    // "NRIC: 001127-08-0576" / "Passport: A1234567" — the reference system
+    // labels the kind of document in the same cell. The number is what an
+    // employee record is matched on, so the label comes off before matching.
+    private static string? StripIdPrefix(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+
+        var colon = value.IndexOf(':');
+        if (colon < 0) return value.Trim();
+
+        var prefix = value[..colon].Trim();
+        if (!prefix.Equals("NRIC", StringComparison.OrdinalIgnoreCase)
+            && !prefix.Equals("Passport", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.Trim();
+        }
+
+        return NullIfBlank(value[(colon + 1)..]);
+    }
+
     public static IReadOnlyList<string> TemplateHeaders() =>
     [
         "Employee Name", "Personal ID",
