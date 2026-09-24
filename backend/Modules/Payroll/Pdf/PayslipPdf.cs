@@ -90,10 +90,31 @@ public static class PayslipPdf
                     // Zero rows are hidden rather than printed as RM 0.00 —
                     // an ordinary month should not read like an exception.
                     if (p.OtPay != 0m) PayrollPdfShared.AmountRow(earnings, "Overtime", p.OtPay);
-                    if (p.TotalAllowances != 0m)
-                        PayrollPdfShared.AmountRow(earnings, "Allowances", p.TotalAllowances);
-                    if (p.TotalReimbursements != 0m)
-                        PayrollPdfShared.AmountRow(earnings, "Reimbursements", p.TotalReimbursements);
+                    // One row per line item, so a reimbursed claim appears by
+                    // its own name rather than inside a lump called
+                    // "Reimbursements" — an employee looking for the RM 85.50
+                    // they claimed should find it, not a total to reverse-
+                    // engineer.
+                    //
+                    // Only when the rows visibly add up to the "Total earnings"
+                    // figure below. A YTD-imported payslip carries aggregates
+                    // with no line items behind them, and itemising those
+                    // prints rows that do not reconcile with the total printed
+                    // under them; those collapse to the old summary instead.
+                    var earningLines = BuildEarningLines(model);
+                    if (earningLines.Count > 0 && EarningsReconcile(p, earningLines))
+                    {
+                        foreach (var line in earningLines)
+                            PayrollPdfShared.AmountRow(earnings, line.Label, line.Amount);
+                    }
+                    else
+                    {
+                        if (p.TotalAllowances != 0m)
+                            PayrollPdfShared.AmountRow(earnings, "Allowances", p.TotalAllowances);
+                        if (p.TotalReimbursements != 0m)
+                            PayrollPdfShared.AmountRow(
+                                earnings, "Reimbursements", p.TotalReimbursements);
+                    }
 
                     // GrossPay already sums the rows above — see
                     // PayslipCalculator. Re-adding them here would double it.
@@ -266,6 +287,52 @@ public static class PayslipPdf
             .Text(PayrollPdfShared.Rm(employer)).FontSize(8.5f);
         table.Cell().PaddingVertical(1.5f).AlignRight()
             .Text(PayrollPdfShared.Rm(employee + employer)).FontSize(8.5f).SemiBold();
+    }
+
+    // The cash lines making up the Earnings column: reimbursements and
+    // allowances as positives, gross-reducing deductions (unpaid leave, an
+    // advance) as negatives. Benefits in kind are excluded — they never enter
+    // gross and have their own section lower down.
+    // Public so the rule can be asserted directly, the way TotalDeductions is
+    // — a PDF's bytes are a poor place to test what it decided to print.
+    public static List<(string Label, decimal Amount)> BuildEarningLines(PayslipPdfModel model)
+    {
+        var lines = new List<(string Label, decimal Amount)>();
+
+        foreach (var li in model.LineItems)
+        {
+            var meta = li.Category is null
+                ? null
+                : PayrollAdjustmentCategories.All.GetValueOrDefault(li.Category);
+
+            switch (li.Kind)
+            {
+                case PayslipLineKind.REIMBURSEMENT:
+                    lines.Add((li.Label, li.Amount));
+                    break;
+
+                case PayslipLineKind.ALLOWANCE when meta?.NonCash != true:
+                    lines.Add((li.Label, li.Amount));
+                    break;
+
+                case PayslipLineKind.DEDUCTION when meta?.ReducesGross == true:
+                    lines.Add((li.Label, -li.Amount));
+                    break;
+            }
+        }
+
+        return lines;
+    }
+
+    // Itemise only when the rows account for gross exactly. GrossPay is the
+    // calculator's own figure, not a re-sum of these rows, so a payslip whose
+    // line items are incomplete would otherwise print a column that visibly
+    // fails to add up to the total printed beneath it.
+    public static bool EarningsReconcile(
+        Entities.Payslip p, List<(string Label, decimal Amount)> lines)
+    {
+        var displayed = p.ProratedPay + p.OtPay + lines.Sum(l => l.Amount);
+        return Math.Abs(displayed - p.GrossPay) < 0.005m;
     }
 }
 

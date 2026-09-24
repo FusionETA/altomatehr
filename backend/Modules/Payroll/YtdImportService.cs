@@ -4,6 +4,7 @@ using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Payroll.Entities;
 
 namespace AltomateHR.Api.Modules.Payroll;
@@ -15,19 +16,22 @@ public class YtdImportService : IYtdImportService
     private readonly IDirectoryService _directory;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
+    private readonly IOrganizationRepository _organizations;
 
     public YtdImportService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
         IDirectoryService directory,
         ICurrentUser currentUser,
-        IAuditService audit)
+        IAuditService audit,
+        IOrganizationRepository organizations)
     {
         _runs = runs;
         _payslips = payslips;
         _directory = directory;
         _currentUser = currentUser;
         _audit = audit;
+        _organizations = organizations;
     }
 
     // A sheet pre-filled with the org's roster, so the admin fills figures
@@ -36,6 +40,29 @@ public class YtdImportService : IYtdImportService
     public async Task<TabularExportResult> BuildTemplateAsync(int year, TabularFormat format)
     {
         var (profiles, users) = await RosterAsync();
+
+        // XLSX gets the reference system's own three-sheet workbook, so a file
+        // exported there and a file exported here are the same shape. CSV has
+        // no sheets or styling to match, so it keeps the flat layout below.
+        if (format == TabularFormat.Xlsx)
+        {
+            var org = _currentUser.OrganizationId is null
+                ? null
+                : await _organizations.GetByIdAsync(_currentUser.OrganizationId);
+
+            var roster = profiles.Select(p =>
+            {
+                users.TryGetValue(p.UserId, out var u);
+                return new YtdImportTemplateWorkbook.Employee(
+                    u?.Name ?? u?.Email ?? p.Id,
+                    PersonalIdLabel(p));
+            }).ToList();
+
+            return new TabularExportResult(
+                YtdImportTemplateWorkbook.Build(year, org?.Name ?? "Your organisation", roster),
+                $"ytd-import-template-{year}.xlsx",
+                TabularFormat.Xlsx.ContentType());
+        }
 
         // The headers ARE the first row — the parser finds them by text, and
         // keeping the sheet machine-readable means the file it hands out is
@@ -90,6 +117,18 @@ public class YtdImportService : IYtdImportService
         }
 
         return TabularExportResult.From(sheet, format, $"ytd-import-template-{year}");
+    }
+
+    // "NRIC: 001127-08-0576" / "Passport: A1234567" — the reference system
+    // labels the document kind in the cell, and its instructions tell admins
+    // to keep the prefix, so the template hands it back the same way. The
+    // parser strips it again on the way in.
+    private static string PersonalIdLabel(EmployeeProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.IdNumber)) return string.Empty;
+
+        var kind = profile.IdType == Employees.Entities.IdType.PASSPORT ? "Passport" : "NRIC";
+        return $"{kind}: {profile.IdNumber}";
     }
 
     // Read the file and report what WOULD happen. Writes nothing: an admin

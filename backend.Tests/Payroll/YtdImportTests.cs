@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Organizations;
 using System.Text;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Data;
@@ -466,7 +467,8 @@ public class YtdImportServiceTests : IDisposable
                 new UserRepository(_db),
                 new EmployeeProfileRepository(_db)),
             _currentUser,
-            _audit);
+            _audit,
+            new OrganizationRepository(_db));
 
         _db.Users.Add(new User { Id = "usr-1", Email = "aisyah@x.com", Name = "Aisyah Binti Rahman" });
         _db.EmployeeProfiles.Add(new EmployeeProfile

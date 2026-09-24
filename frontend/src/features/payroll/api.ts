@@ -237,6 +237,9 @@ export type Payslip = {
 export type PayrollRunDetail = {
   run: PayrollRun;
   payslips: Payslip[];
+  // The roster chosen when the draft was created. Empty = a pre-picker run,
+  // which covers everyone on the payroll.
+  memberEmployeeProfileIds?: string[];
 };
 
 export type SkippedEmployee = {

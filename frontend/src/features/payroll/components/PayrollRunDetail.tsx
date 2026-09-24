@@ -222,6 +222,7 @@ export function PayrollRunDetailView({
           the list IS the way in — and only then. */}
       <PayrollRunAdjustments
         runId={run.id}
+        memberIds={detail.memberEmployeeProfileIds ?? []}
         editable={run.status === "DRAFT"}
         periodLabel={run.periodLabel}
         categories={categories}

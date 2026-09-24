@@ -84,6 +84,10 @@ public class PayrollRunDetailDto
 {
     public PayrollRunDto Run { get; set; } = new();
     public List<PayslipDto> Payslips { get; set; } = [];
+
+    // The roster chosen in the "Start a payroll run" picker. Empty for a run
+    // that predates the picker, which means "everyone on the payroll".
+    public List<string> MemberEmployeeProfileIds { get; set; } = [];
 }
 
 public class PayslipDto

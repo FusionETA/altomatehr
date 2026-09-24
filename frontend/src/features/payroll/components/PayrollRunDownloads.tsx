@@ -249,7 +249,10 @@ export function PayrollRunDownloads({
         <div>
           <h2 className="text-base font-semibold text-foreground">Documents and files</h2>
           <p className={HINT}>
-            Reports, statutory uploads, payslips and the bank file for this run.
+            {run.source === "IMPORTED"
+              ? "Payslips for this run. This month came from your previous payroll "
+                + "system, which owns its statutory filings and payments."
+              : "Reports, statutory uploads, payslips and the bank file for this run."}
           </p>
         </div>
 
@@ -298,15 +301,37 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   const { data: settings } = useCachedQuery("payroll-settings", getPayrollSettings);
   const bankName = settings?.payrollBankName ?? null;
 
-  const items = useMemo(() => [...ITEMS, ...bankItems(bankName)], [bankName]);
+  // An imported month's figures were typed in from the previous system, not
+  // calculated here. Its payslips render those figures faithfully, so they
+  // stay; everything else would assert numbers this system never computed to
+  // LHDN, KWSP, PERKESO or the bank, against filings and payments the old
+  // system already made.
+  //
+  // Filtered rather than shown-and-refused: a row you can tick and download
+  // only to be told no is a worse answer than not offering it. The service
+  // refuses too — that is the enforcement, and it covers a typed URL; this
+  // just stops the admin finding out by clicking.
+  const imported = run.source === "IMPORTED";
+
+  const items = useMemo(
+    () => {
+      const all = [...ITEMS, ...bankItems(bankName)];
+      return imported ? all.filter((item) => item.group === "PAYSLIPS") : all;
+    },
+    [bankName, imported],
+  );
   const needsReference = formatFor(bankName) === "HlbConnect";
 
   const grouped = useMemo(
     () =>
-      (["REPORTS", "STATUTORY", "PAYSLIPS", "BANK"] as Group[]).map((group) => ({
-        group,
-        items: items.filter((item) => item.group === group),
-      })),
+      (["REPORTS", "STATUTORY", "PAYSLIPS", "BANK"] as Group[])
+        .map((group) => ({
+          group,
+          items: items.filter((item) => item.group === group),
+        }))
+        // A heading with nothing under it reads as something failing to load.
+        // An imported run has only payslips, so the other three go entirely.
+        .filter(({ items: rows }) => rows.length > 0),
     [items],
   );
 
@@ -386,7 +411,9 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
             Download files — {run.periodLabel}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Reports, statutory uploads, and payslips for this run.
+            {imported
+              ? "Payslips for this run, rendered from the figures you imported."
+              : "Reports, statutory uploads, and payslips for this run."}
           </p>
         </div>
 
