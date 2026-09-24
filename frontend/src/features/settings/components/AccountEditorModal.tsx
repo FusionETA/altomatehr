@@ -43,6 +43,10 @@ export function AccountEditorModal({
   const [error, setError] = useState<string | null>(null);
 
   const fromXero = !!account.xeroAccountId;
+  // On a bank the tick means "offered as the account a company-paid claim was
+  // paid from" (the previous system's isBankAccount); mileage and spend limits
+  // are about what a claim is coded TO, so they don't apply.
+  const isBank = account.type === "BANK";
 
   async function save() {
     setSaving(true);
@@ -107,59 +111,67 @@ export function AccountEditorModal({
               className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
             />
             <span>
-              <span className="block text-sm font-bold text-foreground">Selectable for claims</span>
+              <span className="block text-sm font-bold text-foreground">
+                {isBank ? "Offer for company-paid claims" : "Selectable for claims"}
+              </span>
               <span className="block text-xs text-muted-foreground">
-                Employees can code an expense claim to this account.
+                {isBank
+                  ? "Employees can pick this as the account that paid for a claim."
+                  : "Employees can code an expense claim to this account."}
               </span>
             </span>
           </label>
 
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={allowMileage}
-              onChange={(event) => setAllowMileage(event.target.checked)}
-              className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
-            />
-            <span>
-              <span className="block text-sm font-bold text-foreground">Allow mileage claims</span>
-              <span className="block text-xs text-muted-foreground">
-                Mileage claims can only be coded to an account with this on — so at least one
-                needs it, or the mileage form has nothing to pick.
-              </span>
-            </span>
-          </label>
+          {isBank ? null : (
+            <>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={allowMileage}
+                  onChange={(event) => setAllowMileage(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
+                />
+                <span>
+                  <span className="block text-sm font-bold text-foreground">Allow mileage claims</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Mileage claims can only be coded to an account with this on — so at least one
+                    needs it, or the mileage form has nothing to pick.
+                  </span>
+                </span>
+              </label>
 
-          {allowMileage ? (
-            <div className="space-y-1.5">
-              <label className={LABEL}>Mileage rate (per km)</label>
-              <input
-                className={INPUT}
-                type="number"
-                step="0.01"
-                min="0"
-                value={mileageRate}
-                onChange={(event) => setMileageRate(event.target.value)}
-                placeholder="Leave blank to use the org default"
-              />
-            </div>
-          ) : null}
+              {allowMileage ? (
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Mileage rate (per km)</label>
+                  <input
+                    className={INPUT}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={mileageRate}
+                    onChange={(event) => setMileageRate(event.target.value)}
+                    placeholder="Leave blank to use the org default"
+                  />
+                </div>
+              ) : null}
 
-          <div className="space-y-1.5">
-            <label className={LABEL}>Spend limit (optional)</label>
-            <input
-              className={INPUT}
-              type="number"
-              step="0.01"
-              min="0"
-              value={limit}
-              onChange={(event) => setLimit(event.target.value)}
-              placeholder="No limit"
-            />
-            <p className="text-xs text-muted-foreground">
-              A claim above this is flagged over-limit — a caution for the approver, not a refusal.
-            </p>
-          </div>
+              <div className="space-y-1.5">
+                <label className={LABEL}>Spend limit (optional)</label>
+                <input
+                  className={INPUT}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={limit}
+                  onChange={(event) => setLimit(event.target.value)}
+                  placeholder="No limit"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A claim above this is flagged over-limit — a caution for the approver, not a refusal.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {error ? (

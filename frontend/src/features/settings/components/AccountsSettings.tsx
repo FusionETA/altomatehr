@@ -164,11 +164,9 @@ export function AccountsSettings() {
   const archivedCount = ofTab.filter((account) => account.isArchived).length;
   const visible = showArchived ? ofTab : ofTab.filter((account) => !account.isArchived);
 
-  // A Xero chart of accounts runs to dozens of expense codes; banks are a
-  // handful, so only the long list is paged.
-  const paged = tab === "EXPENSE"
-    ? visible.slice((page - 1) * ACCOUNTS_PER_PAGE, page * ACCOUNTS_PER_PAGE)
-    : visible;
+  // Both tabs page. Banks were assumed to be a handful, but a Xero org that
+  // books each company card as its own bank account has well over a hundred.
+  const paged = visible.slice((page - 1) * ACCOUNTS_PER_PAGE, page * ACCOUNTS_PER_PAGE);
   const totalPages = Math.max(1, Math.ceil(visible.length / ACCOUNTS_PER_PAGE));
 
   return (
@@ -300,7 +298,7 @@ export function AccountsSettings() {
               checked={form.isSelectable}
               onChange={(e) => setForm({ ...form, isSelectable: e.target.checked })}
             />
-            Selectable for claims
+            {form.type === "BANK" ? "Offer for company-paid claims" : "Selectable for claims"}
           </label>
           <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
             <input
@@ -402,7 +400,11 @@ export function AccountsSettings() {
                     <td className="px-3 py-3">{account.limitAmount != null ? account.limitAmount : "—"}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {[
-                        account.isSelectable ? "selectable" : null,
+                        account.isSelectable
+                          ? account.type === "BANK"
+                            ? "company-paid claims"
+                            : "selectable"
+                          : null,
                         account.allowMileageClaim ? "mileage" : null,
                       ]
                         .filter(Boolean)
@@ -434,7 +436,7 @@ export function AccountsSettings() {
           </div>
         )}
 
-        {tab === "EXPENSE" && visible.length > ACCOUNTS_PER_PAGE ? (
+        {visible.length > ACCOUNTS_PER_PAGE ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               Showing{" "}

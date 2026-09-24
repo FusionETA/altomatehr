@@ -1345,14 +1345,19 @@ public class ClaimsService : IClaimsService
         if (dto.ClaimType == ClaimType.MILEAGE && !account.AllowMileageClaim)
             throw new ClaimValidationException("Select an account configured for mileage claims.", nameof(dto.ChartOfAccountId));
 
-        if (dto.ClaimType == ClaimType.EXPENSE && !account.IsSelectable)
+        // A ticked BANK is selectable too — as a paid-from account, never as
+        // what the expense is coded to.
+        if (dto.ClaimType == ClaimType.EXPENSE && (!account.IsSelectable || account.Type == "BANK"))
             throw new ClaimValidationException("Select an enabled chart of account option.", nameof(dto.ChartOfAccountId));
 
         string? payViaAccountId = null;
         if (dto.PaymentType == PaymentType.COMPANY)
         {
             var bankAccount = await _accounts.GetByIdAsync(dto.PayViaAccountId!);
-            if (bankAccount is null || bankAccount.IsArchived || bankAccount.Type != "BANK")
+            // Only the banks the admin ticked, as in the previous system's
+            // isBankAccount: an org with a card per employee does not want every
+            // one of them offered to everybody.
+            if (bankAccount is null || bankAccount.IsArchived || bankAccount.Type != "BANK" || !bankAccount.IsSelectable)
             {
                 throw new ClaimValidationException(
                     "Select a bank account enabled by your admin for company-money claims.",

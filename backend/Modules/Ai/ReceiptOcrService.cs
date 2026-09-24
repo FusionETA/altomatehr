@@ -47,7 +47,7 @@ public partial class ReceiptOcrService : IReceiptOcrService
         // Only offer accounts the employee could actually pick, so the model
         // can't suggest an archived or non-selectable one.
         var candidates = (await _accounts.GetAllAsync())
-            .Where(a => a is { IsSelectable: true, IsArchived: false })
+            .Where(a => a is { IsSelectable: true, IsArchived: false } && a.Type != "BANK")
             .ToList();
 
         // Type is non-nullable but lands in a string? Hint slot, and C# won't

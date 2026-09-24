@@ -155,8 +155,11 @@ public class XeroAccountSyncTests
         Assert.Equal("BANK", bank.Type);
     }
 
+    // On a bank the tick is the admin's "offer this for company-paid claims"
+    // (v1's isBankAccount). Clearing it on every sync emptied the claim form's
+    // bank list — so a sync leaves it exactly as the admin set it.
     [Fact]
-    public async Task SyncAccountsAsync_DeselectsABankAccountThatWasSelectableBefore()
+    public async Task SyncAccountsAsync_KeepsTheAdminsTickOnABankAccount()
     {
         var repo = new FakeXeroRepository();
         repo.Accounts.Add(new ChartOfAccount
@@ -166,13 +169,13 @@ public class XeroAccountSyncTests
             Name = "Business account",
             Type = "BANK",
             XeroAccountId = "x-2",
-            IsSelectable = true,   // wrong, from an earlier import
+            IsSelectable = true,   // ticked by an admin
         });
 
         var service = Create(repo, [Account("x-2", "1000", "Business account", "BANK")]);
         await service.SyncAccountsAsync();
 
-        Assert.False(repo.Accounts.Single().IsSelectable);
+        Assert.True(repo.Accounts.Single().IsSelectable);
     }
 
     [Fact]

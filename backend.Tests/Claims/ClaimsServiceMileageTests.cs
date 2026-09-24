@@ -120,6 +120,38 @@ public class ClaimsServiceMileageTests
         Assert.Equal("Client A", claim.SpendingWith);
     }
 
+    // v1's isBankAccount: an admin picks which banks employees may say paid for
+    // a claim. An org with a card per director does not want all of them offered.
+    [Fact]
+    public async Task CreateAsync_RefusesABankTheAdminHasNotOffered()
+    {
+        var service = CreateService([]);
+        var dto = ExpenseDto();
+        dto.PaymentType = PaymentType.COMPANY;
+        dto.PayViaAccountId = "acct-bank-unticked";
+        dto.SpendingAt = "Petronas";
+
+        var ex = await Assert.ThrowsAsync<ClaimValidationException>(
+            () => service.CreateAsync(dto, "usr-emp"));
+
+        Assert.Equal(nameof(dto.PayViaAccountId), ex.Field);
+    }
+
+    // A ticked bank is "selectable" — as the account money came FROM. It must
+    // never become what an expense is coded TO.
+    [Fact]
+    public async Task CreateAsync_RefusesCodingAnExpenseToABank()
+    {
+        var service = CreateService([]);
+        var dto = ExpenseDto();
+        dto.ChartOfAccountId = "acct-bank";
+
+        var ex = await Assert.ThrowsAsync<ClaimValidationException>(
+            () => service.CreateAsync(dto, "usr-emp"));
+
+        Assert.Equal(nameof(dto.ChartOfAccountId), ex.Field);
+    }
+
     private static CreateClaimDto ExpenseDto() => new()
     {
         Title = "Fuel",

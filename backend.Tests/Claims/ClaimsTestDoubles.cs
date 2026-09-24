@@ -151,6 +151,16 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
                     // Spends address the bank by its Xero id, so an account
                     // that was never synced cannot be spent from.
                     XeroAccountId = "xero-bank-1",
+                    // On a bank, ticked = offered for company-paid claims.
+                    IsSelectable = true,
+                },
+                new ChartOfAccountDto
+                {
+                    Id = "acct-bank-unticked",
+                    Code = "1010",
+                    Name = "Director's card",
+                    Type = "BANK",
+                    XeroAccountId = "xero-bank-2",
                     IsSelectable = false,
                 },
             }.ToDictionary(a => a.Id);

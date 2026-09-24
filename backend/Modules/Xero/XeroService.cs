@@ -151,7 +151,19 @@ public class XeroService : IXeroService
     // Appends ?xero=connected / ?xero=failed, respecting whatever query the
     // configured URL already carries.
     private static string WithOutcome(string url, string outcome) =>
-        url.Contains('?') ? $"{url}&xero={outcome}" : $"{url}?xero={outcome}";
+        WithQuery(url, $"xero={outcome}");
+
+    // Into the QUERY, ahead of any #fragment. Xero's sign-in leaves "#_=_" on
+    // the page URL, which the frontend then sends back as its return URL;
+    // appending after it put the marker inside the fragment, where the app
+    // never reads it — so "Connected to Xero" never showed, and every reconnect
+    // stacked another "&xero=connected" onto the fragment.
+    public static string WithQuery(string url, string query)
+    {
+        var hash = url.IndexOf('#');
+        var (path, fragment) = hash < 0 ? (url, "") : (url[..hash], url[hash..]);
+        return (path.Contains('?') ? $"{path}&{query}" : $"{path}?{query}") + fragment;
+    }
 
     // A refused connect says WHY, so the card can tell the admin what to do
     // instead of "the sign-in was cancelled".
@@ -163,10 +175,10 @@ public class XeroService : IXeroService
             XeroTenantChoice.Refusal.SeveralAuthorised => "several",
             _ => "none",
         };
-        var withReason = $"{WithOutcome(url, "failed")}&xeroReason={reason}";
-        return choice.TenantName is null
-            ? withReason
-            : $"{withReason}&xeroOrg={Uri.EscapeDataString(choice.TenantName)}";
+        var query = $"xero=failed&xeroReason={reason}";
+        if (choice.TenantName is not null)
+            query += $"&xeroOrg={Uri.EscapeDataString(choice.TenantName)}";
+        return WithQuery(url, query);
     }
 
     public async Task<XeroStatusDto> GetStatusAsync()
@@ -335,8 +347,12 @@ public class XeroService : IXeroService
             existing.XeroStatus = xeroAccount.Status;
             existing.XeroSyncedAt = now;
             existing.IsArchived = !IsActive(xeroAccount.Status);
-            // A bank account that was somehow selectable stops being so.
-            if (!IsClaimable(xeroAccount.Type)) existing.IsSelectable = false;
+            // Anything a claim can't be coded to stops being selectable — except
+            // a bank, where the tick means something else: that it is offered
+            // as the account a company-paid claim was paid FROM. That is the
+            // admin's choice, and clearing it here emptied the claim form's
+            // bank list on every sync.
+            if (!IsClaimable(xeroAccount.Type) && !IsBank(xeroAccount.Type)) existing.IsSelectable = false;
             await _repo.UpdateAccountAsync(existing);
             result.Updated++;
         }
@@ -404,7 +420,21 @@ public class XeroService : IXeroService
             throw new XeroConnectionException("Xero is disconnected.");
 
         var accessToken = await GetValidAccessTokenAsync(connection);
-        var xeroProjects = await _client.GetProjectsAsync(accessToken, connection.TenantId);
+        List<XeroProjectResponse> xeroProjects;
+        try
+        {
+            xeroProjects = await _client.GetProjectsAsync(accessToken, connection.TenantId);
+        }
+        catch (XeroConnectionException ex) when (ex.StatusCode is 401 or 403)
+        {
+            // The token was checked a moment ago, so a refusal here is about
+            // Xero Projects itself — not enabled for this Xero org, or not
+            // granted — rather than a dead connection. Such an org keeps its
+            // projects on a tracking category, which is exactly what the
+            // fallback below reads. Failing here instead threw a 500 at an admin
+            // who had just picked that category (GESSB, 2026-09-24).
+            xeroProjects = [];
+        }
         var result = new XeroSyncProjectsResultDto();
         var now = DateTime.UtcNow;
 

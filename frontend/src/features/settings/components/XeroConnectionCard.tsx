@@ -52,7 +52,11 @@ export function XeroConnectionCard() {
     try {
       // Xero has to be reached as a full page navigation: it's a third-party
       // consent screen, not something that can be fetched.
-      const { url } = await getXeroConnectUrl(window.location.href);
+      // Without the #fragment: Xero's sign-in leaves "#_=_" behind, and a
+      // return URL carrying it got the outcome marker appended inside it.
+      const { url } = await getXeroConnectUrl(
+        `${window.location.origin}${window.location.pathname}${window.location.search}`,
+      );
       window.location.href = url;
     } catch (e: unknown) {
       setError(message(e, "Could not start the Xero connection."));

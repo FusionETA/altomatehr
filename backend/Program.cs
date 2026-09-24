@@ -425,6 +425,30 @@ app.UseExceptionHandler(errorApp =>
             return;
         }
 
+        // Any other Xero failure: say what Xero said. These carry no more than
+        // Xero's own error summary (or one of our "connect Xero first"
+        // sentences), and a generic "unexpected error" left an admin with no
+        // idea whether to retry, reconnect, or fix something in Xero.
+        if (exception is XeroConnectionException xero)
+        {
+            logger.LogWarning(xero, "Xero call failed while processing {Path}", context.Request.Path);
+
+            // A status means Xero answered and refused; none means we refused
+            // before asking (not connected, category gone).
+            var status = xero.StatusCode is null ? StatusCodes.Status409Conflict : StatusCodes.Status502BadGateway;
+            context.Response.StatusCode = status;
+            context.Response.ContentType = "application/problem+json";
+
+            await context.Response.WriteAsJsonAsync(new ProblemDetails
+            {
+                Status = status,
+                Title = "Xero request failed.",
+                Detail = xero.Message,
+                Extensions = { ["code"] = "xero_error" },
+            });
+            return;
+        }
+
         if (exception is not null)
         {
             logger.LogError(exception, "Unhandled exception while processing {Path}", context.Request.Path);

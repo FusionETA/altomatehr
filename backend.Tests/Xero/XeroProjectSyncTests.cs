@@ -138,8 +138,12 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
         _categories = categories ?? [];
     }
 
+    // Set to make the Projects API refuse, as Xero does for an org that keeps
+    // its projects on a tracking category instead.
+    public XeroConnectionException? ProjectsFailure { get; set; }
+
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) =>
-        Task.FromResult(_projects);
+        ProjectsFailure is null ? Task.FromResult(_projects) : throw ProjectsFailure;
 
     public Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string a, string t) =>
         Task.FromResult(new List<XeroCurrencyResponse>());
@@ -427,6 +431,77 @@ public class XeroTrackingFallbackOrderTests
 
         Assert.Equal(["Client Site A"], repo.Projects.Select(p => p.Name));
     }
+}
+
+// GESSB, 2026-09-24: an org that doesn't use Xero Projects had the Projects API
+// refuse, and that refusal failed the whole sync — so picking its TEAM category
+// answered "unexpected error" and not one of its 44 options came in.
+public class XeroProjectsApiRefusalTests
+{
+    private static (XeroService Service, FakeXeroRepository Repo) Create(XeroConnectionException failure)
+    {
+        var repo = new FakeXeroRepository();
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        repo.Connection = new XeroConnection
+        {
+            OrganizationId = "org-1",
+            TenantId = "tenant-1",
+            AccessTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("token"),
+            RefreshTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+        };
+        var client = new FakeXeroProjectsClient(
+            [],
+            [new XeroTrackingCategoryResponse("cat-team", "TEAM", "ACTIVE",
+                [new XeroTrackingOptionResponse("opt-1", "6949 (HQ)", "ACTIVE"),
+                 new XeroTrackingOptionResponse("opt-2", "6949A (ZAMRI)", "ACTIVE")])])
+        {
+            ProjectsFailure = failure,
+        };
+        return (new XeroService(new FakeXeroCurrentUser(), repo, client, provider,
+            Options.Create(new XeroOptions()), new FakeAuditService()), repo);
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task ARefusedProjectsApiFallsBackToTheTrackingCategory(int status)
+    {
+        var (service, repo) = Create(new XeroConnectionException("Xero project sync failed.", status));
+
+        var result = await service.SyncProjectsAsync();
+
+        Assert.Equal(2, result.Imported);
+        Assert.Equal("TEAM", result.TrackingCategoryName);
+        Assert.Equal(["6949 (HQ)", "6949A (ZAMRI)"], repo.Projects.Select(p => p.Name));
+    }
+
+    // Xero having a bad day is not "this org has no Projects": importing only
+    // the tracking options then would quietly skip every real Xero project.
+    [Theory]
+    [InlineData(429)]
+    [InlineData(500)]
+    public async Task AnyOtherProjectsApiFailureStillFailsTheSync(int status)
+    {
+        var (service, repo) = Create(new XeroConnectionException("Xero project sync failed.", status));
+
+        await Assert.ThrowsAsync<XeroConnectionException>(() => service.SyncProjectsAsync());
+        Assert.Empty(repo.Projects);
+    }
+}
+
+// The outcome marker has to land in the QUERY. Xero's sign-in leaves "#_=_" on
+// the page, and appending after it put the marker inside the fragment: the app
+// never saw it, and each reconnect stacked another "&xero=connected".
+public class XeroReturnUrlTests
+{
+    [Theory]
+    [InlineData("https://hr.example/?v=settings#_=_", "https://hr.example/?v=settings&xero=connected#_=_")]
+    [InlineData("https://hr.example/#_=_", "https://hr.example/?xero=connected#_=_")]
+    [InlineData("https://hr.example/?v=settings", "https://hr.example/?v=settings&xero=connected")]
+    [InlineData("https://hr.example/", "https://hr.example/?xero=connected")]
+    public void TheMarkerGoesBeforeTheFragment(string returnUrl, string expected) =>
+        Assert.Equal(expected, XeroService.WithQuery(returnUrl, "xero=connected"));
 }
 
 // A claim's project reaches its Xero bill as a tracking tag — category and

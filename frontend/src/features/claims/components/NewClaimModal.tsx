@@ -517,7 +517,8 @@ function ClaimDetailsForm({
     [accounts, claimType],
   );
   const bankAccounts = useMemo(
-    () => accounts.filter((account) => account.type === "BANK"),
+    // Only the banks an admin ticked — on a bank, "selectable" means offered here.
+    () => accounts.filter((account) => account.type === "BANK" && account.isSelectable),
     [accounts],
   );
   const selectedAccount = visibleAccounts.find((a) => a.id === chartOfAccountId) ?? null;
