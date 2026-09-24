@@ -8,6 +8,8 @@ import {
   type PayslipLineItem,
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
+import { usePaged } from "@/shared/lib/use-paged";
+import { TablePager } from "@/shared/components/TablePager";
 import { rm, warningLabels } from "../lib/payroll-format";
 import { BADGE, CARD, HINT, NOTE_PANEL } from "../lib/ui";
 import { PayslipDrawer } from "./PayslipDrawer";
@@ -70,6 +72,12 @@ export function PayrollPayslipsTable({
   );
 
   const totals = useMemo(() => sum(payslips), [payslips]);
+
+  // Ten rows a page, like the other admin tables — a 19-person run was one
+  // very long scroll to reach the totals. The footer and the remittance
+  // panel below still add up the WHOLE run: that is the figure paid, and a
+  // total that changed as you paged would be a different, wrong number.
+  const paged = usePaged(payslips, 10);
 
   if (payslips.length === 0) {
     return (
@@ -170,7 +178,7 @@ export function PayrollPayslipsTable({
           </thead>
 
           <tbody>
-            {payslips.map((payslip) => (
+            {paged.pageItems.map((payslip) => (
               <Row
                 key={payslip.id}
                 payslip={payslip}
@@ -189,7 +197,7 @@ export function PayrollPayslipsTable({
           <tfoot>
             <tr className="border-t border-border/70 bg-muted/40 font-semibold">
               <td className="sticky left-0 z-20 border-r border-border/60 bg-muted/40 px-3 py-2 text-left">
-                Total
+                {paged.pageCount > 1 ? `Total · all ${payslips.length}` : "Total"}
               </td>
               <td colSpan={5} />
               <td className={CELL}>{rm(totals.gross)}</td>
@@ -208,6 +216,8 @@ export function PayrollPayslipsTable({
           </tfoot>
         </table>
       </div>
+
+      <TablePager paged={paged} noun="payslip" />
 
       {/* What actually gets paid to each agency: the two halves added
           together. Reading it off the bands above means adding two columns

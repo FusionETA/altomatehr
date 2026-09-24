@@ -11,7 +11,6 @@ import {
 import {
   loanStatusLabels,
   loanStatusTone,
-  periodLabel,
   rm,
 } from "../lib/payroll-format";
 import {
@@ -139,17 +138,20 @@ export function PayrollLoansTab() {
         </section>
       ) : loans.length > 0 ? (
         <section className={`${CARD} overflow-x-auto p-0 sm:p-0`}>
-          <table className="w-full min-w-[940px] border-collapse">
+          {/* Six columns rather than eight — lent + per month, and period +
+              progress, each read as one fact — so the table fits a normal
+              screen without scrolling sideways to reach its buttons. On a
+              narrow one the actions column stays pinned right, so Edit and
+              Cancel never sit off-screen behind a scrollbar. */}
+          <table className="w-full min-w-[760px] border-collapse">
             <thead>
               <tr className="border-b border-border/70">
                 <th className={TH}>Employee</th>
-                <th className={TH_NUM}>Lent</th>
-                <th className={TH_NUM}>Per month</th>
-                <th className={TH}>Period</th>
-                <th className={TH}>Progress</th>
+                <th className={TH_NUM}>Amount</th>
+                <th className={TH}>Repayment</th>
                 <th className={TH_NUM}>Outstanding</th>
                 <th className={TH}>Status</th>
-                <th className={TH} aria-label="Actions" />
+                <th className={`${TH} ${PINNED}`} aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -174,6 +176,20 @@ export function PayrollLoansTab() {
       ) : null}
     </div>
   );
+}
+
+// Pinned to the right edge so the row's buttons are always in reach, even
+// when a narrow screen scrolls the table sideways. Opaque, or the figures
+// scrolling underneath would show through.
+const PINNED = "sticky right-0 bg-card";
+
+// "Sep 2026" — the full month names made the period the widest thing in the
+// row.
+function shortPeriod(year: number, month: number): string {
+  return new Date(year, month - 1, 1).toLocaleDateString("en-MY", {
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function Row({
@@ -213,23 +229,28 @@ function Row({
             ) : (
               <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
             )}
-            {loan.employeeName}
+            {loan.employeeName || (
+              // Blank only when the person is no longer in this org's
+              // directory. A blank cell made the note underneath read as
+              // the name.
+              <span className="italic text-muted-foreground">Employee no longer on file</span>
+            )}
           </button>
           {loan.notes ? (
             <div className="ml-5 text-xs text-muted-foreground">{loan.notes}</div>
           ) : null}
         </td>
 
-        <td className={TD_NUM}>{rm(loan.principalAmount)}</td>
-        <td className={TD_NUM}>{rm(loan.installmentAmount)}</td>
-        <td className={`${TD} text-muted-foreground`}>
-          {periodLabel(loan.startYear, loan.startMonth)} –{" "}
-          {periodLabel(loan.endYear, loan.endMonth)}
+        <td className={TD_NUM}>
+          <div>{rm(loan.principalAmount)}</div>
+          <div className="text-xs text-muted-foreground">
+            {rm(loan.installmentAmount)} / month
+          </div>
         </td>
 
         <td className={TD}>
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+            <div className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary"
                 style={{
@@ -240,8 +261,12 @@ function Row({
               />
             </div>
             <span className="text-xs tabular-nums text-muted-foreground">
-              {loan.paidInstallments}/{loan.installmentCount}
+              {loan.paidInstallments} of {loan.installmentCount}
             </span>
+          </div>
+          <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+            {shortPeriod(loan.startYear, loan.startMonth)} –{" "}
+            {shortPeriod(loan.endYear, loan.endMonth)}
           </div>
         </td>
 
@@ -255,7 +280,8 @@ function Row({
               className="text-muted-foreground"
               title="Cancelled — no further deductions will be taken"
             >
-              {rm(loan.remainingAmount)} not collected
+              <span className="block">{rm(loan.remainingAmount)}</span>
+              <span className="block text-xs">not collected</span>
             </span>
           ) : (
             <span className="font-semibold">{rm(loan.remainingAmount)}</span>
@@ -268,7 +294,7 @@ function Row({
           </span>
         </td>
 
-        <td className={`${TD} text-right`}>
+        <td className={`${TD} ${PINNED} text-right`}>
           <div className="flex justify-end gap-2">
             {loan.status === "ACTIVE" ? (
               <>
@@ -321,7 +347,7 @@ function Row({
 
       {expanded ? (
         <tr className="border-b border-border/40 bg-muted/30 last:border-0">
-          <td colSpan={8} className="px-3 py-4">
+          <td colSpan={6} className="px-3 py-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Repayment schedule
             </p>

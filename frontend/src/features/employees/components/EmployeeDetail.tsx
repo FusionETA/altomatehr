@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { UnsavedChangesBar } from "@/shared/components/UnsavedChangesBar";
 import {
   CHILD_ABILITY,
   CHILD_ABILITY_LABELS,
@@ -1929,31 +1930,11 @@ export function EmployeeDetail({
       {/* Appears only once something has changed — so "did that save?" is never
           a question, and an untouched record shows no call to action. */}
       {dirty ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-foreground">Unsaved changes</p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={discard}
-                disabled={saving}
-                className="inline-flex h-11 items-center gap-1.5 rounded-full border border-border bg-card px-4 text-sm font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Discard
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving}
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-60"
-              >
-                {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Save changes
-              </button>
-            </div>
-          </div>
-        </div>
+        <UnsavedChangesBar
+          saving={saving}
+          onSave={() => void handleSave()}
+          onDiscard={discard}
+        />
       ) : null}
 
       {settingPassword ? (

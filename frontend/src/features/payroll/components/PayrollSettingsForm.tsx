@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import * as cache from "@/shared/lib/api-cache";
 import {
@@ -17,7 +17,6 @@ import {
   type WorkingDaysRule,
 } from "../api";
 import {
-  BUTTON,
   CARD,
   ERROR_PANEL,
   HINT,
@@ -27,6 +26,7 @@ import {
 } from "../lib/ui";
 import { getXeroStatus } from "@/features/settings/api";
 import { Skeleton, SkeletonPanels } from "@/shared/components/Skeleton";
+import { UnsavedChangesBar } from "@/shared/components/UnsavedChangesBar";
 import { CheckBox } from "./PayrollCheckbox";
 import { DISBURSEMENT_BANKS } from "../lib/disbursement";
 import { PayrollSelect } from "./PayrollSelect";
@@ -44,6 +44,21 @@ import { XeroSyncSection } from "./settings/XeroSyncSection";
 // first time fills both in one sitting.
 // LHDN's own identification categories for a declarant.
 const ID_TYPES: IdType[] = ["NRIC", "PASSPORT", "ARMY", "POLICE"];
+
+type Snapshot = {
+  settings: PayrollSettings;
+  info: PayrollCompanyInfo;
+  xeroMapping: PayrollXeroMapping;
+};
+
+// The dirty-check key: everything save posts, serialised in one fixed shape.
+function snapshot(
+  settings: PayrollSettings,
+  info: PayrollCompanyInfo,
+  xeroMapping: PayrollXeroMapping,
+): string {
+  return JSON.stringify({ settings, info, xeroMapping } satisfies Snapshot);
+}
 
 // The Form E summary line — the red tab's explanation, in view on the tab.
 const FIELDS_MISSING =
@@ -78,7 +93,19 @@ export function PayrollSettingsForm() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  // A refused save, shown on the save bar next to the button — kept apart
+  // from `error`, which is a load failure and blanks the page.
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // What was last loaded or saved — the working copy above is compared with
+  // it to decide whether there is anything to save, and Discard goes back to
+  // it. One serialised snapshot rather than a per-field dirty map, the same
+  // approach the employee profile uses, so it cannot drift as fields are added.
+  const [baseline, setBaseline] = useState<string | null>(() => {
+    const s = cache.peek<PayrollSettings>("/payroll/settings")?.data;
+    const i = cache.peek<PayrollCompanyInfo>("/payroll/company-info")?.data;
+    return s && i ? snapshot(s, i, parseMapping(s.xeroMappingJson)) : null;
+  });
   // How many portals have a password on file — only the pill's subtitle needs
   // it. Read through the SAME cache key the credentials section uses, so the
   // count and the section it summarises can't disagree and the page doesn't
@@ -108,9 +135,11 @@ export function PayrollSettingsForm() {
     const nextInfo = infoQuery.data;
     if (!nextSettings || !nextInfo) return;
     seeded.current = true;
+    const nextMapping = parseMapping(nextSettings.xeroMappingJson);
     setSettings(nextSettings);
     setInfo(nextInfo);
-    setXeroMapping(parseMapping(nextSettings.xeroMappingJson));
+    setXeroMapping(nextMapping);
+    setBaseline(snapshot(nextSettings, nextInfo, nextMapping));
   }, [settingsQuery.data, infoQuery.data]);
 
   useEffect(() => {
@@ -128,21 +157,38 @@ export function PayrollSettingsForm() {
 
   function patchSettings(patch: Partial<PayrollSettings>) {
     setSettings((current) => (current ? { ...current, ...patch } : current));
-    setSaved(false);
   }
 
   function patchInfo(patch: Partial<PayrollCompanyInfo>) {
     setInfo((current) => (current ? { ...current, ...patch } : current));
-    setSaved(false);
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  const dirty =
+    settings !== null &&
+    info !== null &&
+    baseline !== null &&
+    snapshot(settings, info, xeroMapping) !== baseline;
+
+  function discard() {
+    if (!baseline) return;
+    const restored = JSON.parse(baseline) as Snapshot;
+    setSettings(restored.settings);
+    setInfo(restored.info);
+    setXeroMapping(restored.xeroMapping);
+    setSaveError(null);
+  }
+
+  // Enter in any field still saves, as it always has.
+  function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    void save();
+  }
+
+  async function save() {
     if (!settings || !info) return;
 
     setSaving(true);
-    setError(null);
-    setSaved(false);
+    setSaveError(null);
 
     try {
       const {
@@ -164,12 +210,13 @@ export function PayrollSettingsForm() {
         savePayrollCompanyInfo(infoBody),
       ]);
 
+      const nextMapping = parseMapping(nextSettings.xeroMappingJson);
       setSettings(nextSettings);
       setInfo(nextInfo);
-      setXeroMapping(parseMapping(nextSettings.xeroMappingJson));
-      setSaved(true);
+      setXeroMapping(nextMapping);
+      setBaseline(snapshot(nextSettings, nextInfo, nextMapping));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the payroll settings.");
+      setSaveError(err instanceof Error ? err.message : "Could not save the payroll settings.");
     } finally {
       setSaving(false);
     }
@@ -188,6 +235,8 @@ export function PayrollSettingsForm() {
     info?.perkesoEmployerCode,
   ].filter((v) => !v?.trim()).length;
   const formEComplete = formEMissing === 0;
+
+  const neverSaved = settings !== null && !settings.isConfigured;
 
   const status: Record<SettingsSection, SectionStatus> = {
     // Nothing on this tab can be missing — every field ships with its
@@ -233,7 +282,7 @@ export function PayrollSettingsForm() {
   if (!settings || !info) return null;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 pb-24">
       {!settings.isConfigured ? (
         <section className={NOTE_PANEL}>
           Payroll has not been set up for this organisation yet. Nothing is missing on the
@@ -738,23 +787,26 @@ export function PayrollSettingsForm() {
       ) : null}
 
 
-      {/* Credentials has its own per-portal save, so a second button here
-          would suggest the two were connected. */}
-      {section === "credentials" ? null : (
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" className={BUTTON} disabled={saving}>
-          {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
-          {saving ? "Saving…" : "Save payroll settings"}
-        </button>
-
-        {saved ? (
-          <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-            Saved.
-          </span>
-        ) : null}
-        {error ? <span className="text-sm font-medium text-destructive">{error}</span> : null}
-      </div>
-      )}
+      {/* The save bar, as on the employee profile: there while something is
+          unsaved, gone once it isn't. It also shows for defaults that have
+          NEVER been saved, with nothing edited — the General tab asks for
+          exactly that, and without this there would be no button to do it.
+          That case hides on Credentials, which saves each portal itself; a
+          real unsaved edit follows the admin to every tab. */}
+      {dirty || (neverSaved && section !== "credentials") ? (
+        <UnsavedChangesBar
+          message={
+            dirty
+              ? "Unsaved changes"
+              : "Payroll settings haven't been saved yet — save to confirm these defaults."
+          }
+          saving={saving}
+          error={saveError}
+          onSave={() => void save()}
+          onDiscard={dirty ? discard : undefined}
+          saveLabel={dirty ? "Save changes" : "Save payroll settings"}
+        />
+      ) : null}
     </form>
   );
 }
