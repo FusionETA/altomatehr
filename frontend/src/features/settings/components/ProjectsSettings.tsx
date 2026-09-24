@@ -13,6 +13,7 @@ import {
   updateProject,
   type Project,
   type XeroTrackingCategory,
+  type XeroProjectTracking,
 } from "../api";
 import {
   Select,
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import * as cache from "@/shared/lib/api-cache";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { OrgGeofenceCard } from "./OrgFieldCards";
 import {
@@ -33,6 +35,7 @@ import {
 import { isValidIpOrCidr } from "../lib/ip-allowlist";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { TablePager } from "@/shared/components/TablePager";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { usePaged } from "@/shared/lib/use-paged";
 
 const CARD =
@@ -92,12 +95,18 @@ function legacyIps(project: Project): IpDraft[] {
 }
 
 export function ProjectsSettings() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Seeded from the cache so a revisit paints the list on the first frame.
+  // Starting empty and filling it from an effect drew one empty frame first —
+  // the list blinked out and back in on every visit.
+  const [projects, setProjects] = useState<Project[]>(
+    () => cache.peek<Project[]>("/projects")?.data ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<"active" | "archived">("active");
 
   // Per-row editor: geofence location + IP allowlist.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -115,17 +124,34 @@ export function ProjectsSettings() {
 
   // Xero sync — the button only shows when a connection exists, so we never
   // offer a sync that can only fail.
-  const [xeroConnected, setXeroConnected] = useState(false);
+  // Through the shared cached status (the Xero card and payroll settings read
+  // the same key). It used to be fetched fresh on every visit and start as
+  // "not connected", so the page first drew the manual layout — the Add box,
+  // hand-made projects — and then flipped to the Xero one when the answer came.
+  const statusQuery = useCachedQuery("/xero/status", getXeroStatus);
+  const xeroKnown = statusQuery.data !== undefined || statusQuery.error !== null;
+  const xeroConnected = statusQuery.data?.connected ?? false;
   // Which Xero org the list comes from. Named on this card because a wrong
   // connection shows up HERE first — as a project list that isn't yours.
-  const [xeroOrgName, setXeroOrgName] = useState<string | null>(null);
+  const xeroOrgName = xeroConnected ? (statusQuery.data?.tenantName ?? null) : null;
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   // Which Xero tracking category holds the projects. Only worth showing when
   // Xero offers a choice — with one category the sync adopts it silently.
-  const [categories, setCategories] = useState<XeroTrackingCategory[]>([]);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Cached too, so the picker is there on a revisit instead of popping in.
+  // A failure only costs the picker, never the list.
+  const trackingQuery = useCachedQuery(
+    xeroConnected ? "/xero/project-tracking" : null,
+    getXeroProjectTracking,
+  );
+  const categories: XeroTrackingCategory[] = trackingQuery.data?.categories ?? [];
+  const [categoryId, setCategoryId] = useState<string | null>(
+    () => cache.peek<XeroProjectTracking>("/xero/project-tracking")?.data?.selectedCategoryId ?? null,
+  );
+  useEffect(() => {
+    if (trackingQuery.data) setCategoryId(trackingQuery.data.selectedCategoryId);
+  }, [trackingQuery.data]);
   const [savingCategory, setSavingCategory] = useState(false);
   // A switch waiting for the admin to confirm what it does.
   const [pendingCategory, setPendingCategory] = useState<XeroTrackingCategory | null>(null);
@@ -135,29 +161,15 @@ export function ProjectsSettings() {
   const [pickerKey, setPickerKey] = useState(0);
 
   const query = useCachedQuery("/projects", getProjects);
-  const loading = query.loading;
+  // Until Xero's status is known the page can't tell which layout it is, so
+  // it waits rather than drawing one and switching.
+  const loading = query.loading || !xeroKnown;
   useEffect(() => {
     if (query.data) setProjects(query.data);
   }, [query.data]);
   useEffect(() => {
     if (query.error) setError(query.error);
   }, [query.error]);
-  useEffect(() => {
-    getXeroStatus()
-      .then((s) => {
-        setXeroConnected(s.connected);
-        setXeroOrgName(s.connected ? s.tenantName : null);
-        if (!s.connected) return;
-        // A failure here only costs the category picker, never the list.
-        return getXeroProjectTracking()
-          .then((t) => {
-            setCategories(t.categories);
-            setCategoryId(t.selectedCategoryId);
-          })
-          .catch(() => undefined);
-      })
-      .catch(() => setXeroConnected(false));
-  }, []);
 
   // The first choice just takes effect — there is nothing yet to lose. A
   // SWITCH changes which projects every picker offers, so it asks first.
@@ -360,17 +372,113 @@ export function ProjectsSettings() {
   ).filter((p) => !p.hiddenByTrackingCategory);
   const hiddenBySwitch = projects.filter((p) => p.hiddenByTrackingCategory).length;
 
+  // Active and archived apart — mixed together, the archived half of a
+  // 100-project list buried the ones in use under strike-through names.
+  const activeCount = visibleProjects.filter((p) => !p.isArchived).length;
+  const archivedCount = visibleProjects.length - activeCount;
+  const inTab = visibleProjects.filter((p) => (statusTab === "archived") === p.isArchived);
+
   // Filter then page. The whole list is already in hand, so both happen here
   // rather than costing a round trip per keystroke or per page.
   const needle = search.trim().toLowerCase();
   const matching = needle
-    ? visibleProjects.filter((p) => p.name.toLowerCase().includes(needle))
-    : visibleProjects;
+    ? inTab.filter((p) => p.name.toLowerCase().includes(needle))
+    : inTab;
   const paged = usePaged(matching, PAGE_SIZE);
 
   // The editor renders below the grid rather than inside a card, so it needs
   // the project itself and not just the id.
-  const editingProject = visibleProjects.find((p) => p.id === editingId) ?? null;
+  // The editor, opened directly under its own row — rows are full width, so
+  // expanding in place no longer leaves a hole beside it the way cards did.
+  const renderEditor = (editingProject: Project) => (
+    <div className="space-y-3 border-t border-border/50 bg-surface-low/40 px-4 py-4 sm:px-5">
+              {loadingEditor ? (
+                <p className="text-xs text-muted-foreground">Loading this project's sites…</p>
+              ) : null}
+
+              <GeofenceSitesEditor sites={sites} onChange={setSites} />
+              <AllowedIpsEditor entries={ipEntries} onChange={setIpEntries} />
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">Work schedule</label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="text-xs text-muted-foreground">Start</span>
+                    <input
+                      type="time"
+                      className={`${INPUT} mt-1`}
+                      value={whStart}
+                      onChange={(e) => setWhStart(e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-muted-foreground">End</span>
+                    <input
+                      type="time"
+                      className={`${INPUT} mt-1`}
+                      value={whEnd}
+                      onChange={(e) => setWhEnd(e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-muted-foreground">Lunch (min)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="480"
+                      className={`${INPUT} mt-1`}
+                      value={lunch}
+                      onChange={(e) => setLunch(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {DAYS.map((d) => {
+                    const on = workDays.has(d.n);
+                    return (
+                      <button
+                        key={d.n}
+                        type="button"
+                        onClick={() =>
+                          setWorkDays((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(d.n)) next.delete(d.n);
+                            else next.add(d.n);
+                            return next;
+                          })
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          on
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Overrides the organisation's default schedule for this site. Leave the
+                  times blank to fall back to the org-wide schedule.
+                </p>
+              </div>
+
+              {locError ? <p className="text-xs font-medium text-destructive">{locError}</p> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => saveLocation(editingProject)}
+                  disabled={savingLoc}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingLoc ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                  Save
+                </button>
+                <span className="text-xs text-muted-foreground">Clear both coordinates to remove the geofence.</span>
+              </div>
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -490,7 +598,9 @@ export function ProjectsSettings() {
         </p>
       ) : null}
 
-      {!xeroConnected ? (
+      {/* Only once Xero's status is known — otherwise the manual box flashes
+          up on a Xero-connected org before its status arrives. */}
+      {xeroKnown && !xeroConnected ? (
         <form onSubmit={handleAdd} className="flex gap-2">
           <input
             className={INPUT}
@@ -511,8 +621,31 @@ export function ProjectsSettings() {
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
 
-      {!loading && visibleProjects.length > SEARCHABLE_FROM ? (
-        <SearchInput value={search} onChange={setSearch} placeholder="Search projects…" />
+      {!loading && visibleProjects.length > 0 ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <OverflowTabList<"active" | "archived">
+            items={[
+              // Counts as plain text, not the tab badge — that badge is the red
+              // "waiting for you" marker, and an archived count isn't an alert.
+              // Non-breaking spaces: the segmented pill otherwise wraps the count
+              // onto a second line.
+              { id: "active", label: `Active\u00a0·\u00a0${activeCount}` },
+              { id: "archived", label: `Archived\u00a0·\u00a0${archivedCount}` },
+            ]}
+            value={statusTab}
+            onChange={(next) => {
+              setStatusTab(next);
+              setEditingId(null);
+            }}
+            variant="segmented"
+            ariaLabel="Project status"
+          />
+          {visibleProjects.length > SEARCHABLE_FROM ? (
+            <div className="sm:w-72">
+              <SearchInput value={search} onChange={setSearch} placeholder="Search projects…" />
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {loading ? (
@@ -525,10 +658,20 @@ export function ProjectsSettings() {
         </p>
       ) : (
         <>
-          {/* A grid, not a list: one project per full-width row spent most of
-              the line on nothing, and the coordinates that filled it are
-              editable in the panel below anyway. Cards use the width instead. */}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {matching.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+              {needle
+                ? `No ${statusTab} projects match “${search.trim()}”.`
+                : statusTab === "archived"
+                  ? "No archived projects."
+                  : "No active projects."}
+            </p>
+          ) : (
+          // A list rather than a card grid. At 100+ projects the cards cut
+          // every long name short and spread the list over pages of scrolling;
+          // a row gives the name the width it needs and keeps the actions in
+          // one column.
+          <ul className="divide-y divide-border/50 overflow-hidden rounded-2xl border border-border/60 bg-card">
             {paged.pageItems.map((project) => {
               // Sites first, the legacy single pair as the fallback — reading
               // latitude alone would call a project with three sites
@@ -546,171 +689,85 @@ export function ProjectsSettings() {
                     ? project.allowedIps.split(",").filter((p) => p.trim()).length
                     : 0;
               const open = editingId === project.id;
+              const source = project.xeroProjectId
+                ? "Xero project"
+                : project.xeroTrackingOptionId
+                  ? "Tracking option"
+                  : "Manual";
               return (
-                <div
-                  key={project.id}
-                  className={`flex flex-col gap-3 rounded-2xl border p-4 transition ${
-                    open ? "border-primary/60 bg-primary/5" : "border-border/60 bg-card"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p
-                      className={`truncate font-semibold ${
-                        project.isArchived ? "text-muted-foreground line-through" : "text-foreground"
-                      }`}
-                    >
-                      {project.name}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                      {/* The pin says yes-or-no; the numbers themselves live in
-                          the editor, where they can actually be changed. */}
-                      <span
-                        className={`inline-flex items-center gap-1 ${
-                          siteCount > 0 ? "text-primary" : "text-muted-foreground"
+                <li key={project.id} className={open ? "bg-primary/5" : undefined}>
+                  <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`line-clamp-2 break-words text-sm font-semibold ${
+                          project.isArchived ? "text-muted-foreground" : "text-foreground"
+                        }`}
+                        title={project.name}
+                      >
+                        {project.name}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                        {/* The pin says yes-or-no; the numbers themselves live
+                            in the editor, where they can actually be changed. */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
+                            siteCount > 0
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <MapPin className="h-3 w-3" />
+                          {siteCount === 0
+                            ? "No geofence"
+                            : siteCount === 1
+                              ? "Geofenced"
+                              : `${siteCount} sites`}
+                        </span>
+                        {ipCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                            <ShieldCheck className="h-3 w-3" />
+                            {ipCount === 1 ? "IP allowlist" : `${ipCount} IP entries`}
+                          </span>
+                        ) : null}
+                        {project.workingHoursStart && project.workingHoursEnd ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                            {project.workingHoursStart}&ndash;{project.workingHoursEnd}
+                          </span>
+                        ) : null}
+                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-muted-foreground">
+                          {source}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => (open ? setEditingId(null) : openEditor(project))}
+                        className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
+                          open
+                            ? "border-primary/40 bg-primary/10 text-primary"
+                            : "border-border/60 bg-card text-foreground hover:bg-muted/60"
                         }`}
                       >
-                        <MapPin className="h-3 w-3" />
-                        {siteCount === 0
-                          ? "No geofence"
-                          : siteCount === 1
-                            ? "Geofenced"
-                            : `${siteCount} sites`}
-                      </span>
-                      {ipCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-primary">
-                          <ShieldCheck className="h-3 w-3" />
-                          {ipCount === 1 ? "IP allowlist" : `${ipCount} IP entries`}
-                        </span>
-                      ) : null}
-                      {project.workingHoursStart && project.workingHoursEnd ? (
-                        <span className="text-muted-foreground">
-                          {project.workingHoursStart}&ndash;{project.workingHoursEnd}
-                        </span>
-                      ) : null}
-                      {project.isArchived ? (
-                        <span className="text-muted-foreground">Archived</span>
-                      ) : null}
+                        {open ? "Close" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === project.id}
+                        onClick={() => toggleArchive(project)}
+                        className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+                      >
+                        {project.isArchived ? "Restore" : "Archive"}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="mt-auto flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => (open ? setEditingId(null) : openEditor(project))}
-                      className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {open ? "Close" : "Edit"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === project.id}
-                      onClick={() => toggleArchive(project)}
-                      className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                    >
-                      {project.isArchived ? "Restore" : "Archive"}
-                    </button>
-                  </div>
-                </div>
+                  {open ? renderEditor(project) : null}
+                </li>
               );
             })}
-          </div>
-
-          {/* Below the grid, full width. Expanding a card in place would push
-              the rest of its row down and leave a hole beside it. */}
-          {editingProject ? (
-            <div className="mt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Editing {editingProject.name}
-              </p>
-            <div className="mt-3 space-y-3 rounded-2xl border border-border/60 bg-background/60 p-3">
-              {loadingEditor ? (
-                <p className="text-xs text-muted-foreground">Loading this project's sites…</p>
-              ) : null}
-
-              <GeofenceSitesEditor sites={sites} onChange={setSites} />
-              <AllowedIpsEditor entries={ipEntries} onChange={setIpEntries} />
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">Work schedule</label>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <label className="block">
-                    <span className="text-xs text-muted-foreground">Start</span>
-                    <input
-                      type="time"
-                      className={`${INPUT} mt-1`}
-                      value={whStart}
-                      onChange={(e) => setWhStart(e.target.value)}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs text-muted-foreground">End</span>
-                    <input
-                      type="time"
-                      className={`${INPUT} mt-1`}
-                      value={whEnd}
-                      onChange={(e) => setWhEnd(e.target.value)}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs text-muted-foreground">Lunch (min)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="480"
-                      className={`${INPUT} mt-1`}
-                      value={lunch}
-                      onChange={(e) => setLunch(e.target.value)}
-                    />
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {DAYS.map((d) => {
-                    const on = workDays.has(d.n);
-                    return (
-                      <button
-                        key={d.n}
-                        type="button"
-                        onClick={() =>
-                          setWorkDays((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(d.n)) next.delete(d.n);
-                            else next.add(d.n);
-                            return next;
-                          })
-                        }
-                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                          on
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Overrides the organisation's default schedule for this site. Leave the
-                  times blank to fall back to the org-wide schedule.
-                </p>
-              </div>
-
-              {locError ? <p className="text-xs font-medium text-destructive">{locError}</p> : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => saveLocation(editingProject)}
-                  disabled={savingLoc}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {savingLoc ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  Save
-                </button>
-                <span className="text-xs text-muted-foreground">Clear both coordinates to remove the geofence.</span>
-              </div>
-            </div>
-            </div>
-          ) : null}
+          </ul>
+          )}
 
           <TablePager paged={paged} noun="project" />
         </>

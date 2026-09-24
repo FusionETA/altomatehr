@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import * as cache from "@/shared/lib/api-cache";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { OrgMileageDefaultsCard } from "./OrgFieldCards";
 
@@ -51,7 +52,11 @@ function message(err: unknown, fallback: string) {
 }
 
 export function AccountsSettings() {
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
+  // Seeded from the cache: starting empty and filling from an effect drew one
+  // empty frame on every visit, which is the blink.
+  const [accounts, setAccounts] = useState<ChartOfAccount[]>(
+    () => cache.peek<ChartOfAccount[]>("/accounts")?.data ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<SaveAccount>(emptyForm);
   const [adding, setAdding] = useState(false);
@@ -61,7 +66,12 @@ export function AccountsSettings() {
   // The whole status, not just the boolean: an admin looking at a list Xero
   // owns needs to know WHICH Xero owns it — an org with two Xero tenants can
   // otherwise sync the wrong chart of accounts without a hint on screen.
-  const [xero, setXero] = useState<XeroStatus | null>(null);
+  // Through the shared cached status, so a revisit knows at once instead of
+  // re-asking and redrawing when the answer lands.
+  const xeroQuery = useCachedQuery("/xero/status", getXeroStatus);
+  const xero: XeroStatus | null =
+    xeroQuery.data ??
+    (xeroQuery.error ? { connected: false, tenantName: null, tenantId: null, connectedAt: null } : null);
   const xeroConnected = xero === null ? null : xero.connected;
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
@@ -79,7 +89,9 @@ export function AccountsSettings() {
   const [page, setPage] = useState(1);
 
   const query = useCachedQuery("/accounts", getAccounts);
-  const loading = query.loading;
+  // Which layout this is depends on Xero, so wait for that too rather than
+  // drawing the manual one first.
+  const loading = query.loading || xero === null;
   useEffect(() => {
     if (query.data) setAccounts(query.data);
   }, [query.data]);
@@ -87,11 +99,6 @@ export function AccountsSettings() {
     if (query.error) setError(query.error);
   }, [query.error]);
 
-  useEffect(() => {
-    getXeroStatus()
-      .then(setXero)
-      .catch(() => setXero({ connected: false, tenantName: null, tenantId: null, connectedAt: null }));
-  }, []);
 
   async function handleSyncFromXero() {
     setSyncing(true);
@@ -227,7 +234,9 @@ export function AccountsSettings() {
             Xero's.
           </p>
         </section>
-      ) : (
+      ) : xeroConnected === null ? null : (
+      // Nothing until Xero's status is known — the manual form used to flash
+      // up on a Xero-connected org for a moment before its status arrived.
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
           <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
