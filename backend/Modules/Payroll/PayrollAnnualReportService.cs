@@ -191,7 +191,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         profiles.TryGetValue(employeeProfileId, out var profile);
 
         var name = profile is not null && users.TryGetValue(profile.UserId, out var user)
-            ? user.Name ?? user.Email
+            ? PersonName.Display(user.Name, user.Email)
             // The profile was archived or deleted since the run. Falling back
             // to the snapshot keeps them on the filing rather than dropping
             // someone the employer genuinely paid that year.

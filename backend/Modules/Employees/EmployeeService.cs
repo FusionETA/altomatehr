@@ -188,16 +188,13 @@ public class EmployeeService : IEmployeeService
 
     // Names the change rather than saying "updated": a feed of twenty identical
     // "Employee updated" lines is a feed nobody reads.
-    private static string DescribeEmployeeChange(string userId, string? fromRole, string toRole)
-    {
-        var parts = new List<string>();
-        if (!string.Equals(fromRole, toRole, StringComparison.Ordinal))
-            parts.Add($"role {fromRole ?? "none"} → {toRole}");
-
-        return parts.Count == 0
-            ? userId
-            : $"{userId} — {string.Join(", ", parts)}";
-    }
+    // A sentence an admin can read in the activity log. This used to be the
+    // user's GUID (plus "— role X → Y"), which named nobody: the id is already
+    // on the entry as TargetId for anything that needs to follow it.
+    private static string DescribeEmployeeChange(string who, string? fromRole, string toRole) =>
+        string.Equals(fromRole, toRole, StringComparison.Ordinal)
+            ? $"Updated {who}'s details"
+            : $"Changed {who}'s role from {fromRole ?? "none"} to {toRole}";
 
     public async Task<EmployeeSaveResult> UpdateAsync(string id, UpdateEmployeeDto dto)
     {
@@ -312,9 +309,13 @@ public class EmployeeService : IEmployeeService
         // approve.
         var roleChanged = !string.Equals(previousRole, membership.Role, StringComparison.Ordinal);
 
+        var target = await _users.GetByIdAsync(membership.UserId);
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.EmployeeUpdate,
-            DescribeEmployeeChange(membership.UserId, previousRole, membership.Role),
+            DescribeEmployeeChange(
+                PersonName.Display(target?.Name, target?.Email, "an employee"),
+                previousRole,
+                membership.Role),
             TargetType: "Employee",
             TargetId: membership.UserId,
             Metadata: new

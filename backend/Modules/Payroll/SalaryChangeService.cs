@@ -168,7 +168,7 @@ public class SalaryChangeService : ISalaryChangeService
     private async Task<IReadOnlyDictionary<string, string>> NamesAsync()
     {
         var users = (await _directory.GetUsersAsync())
-            .ToDictionary(u => u.Id, u => u.Name ?? u.Email, StringComparer.Ordinal);
+            .ToDictionary(u => u.Id, u => PersonName.Display(u.Name, u.Email), StringComparer.Ordinal);
 
         return users;
     }

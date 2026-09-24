@@ -2,6 +2,9 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Audit.Dtos;
 using AltomateHR.Api.Modules.Audit.Entities;
+using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AltomateHR.Api.Tests.Audit;
@@ -13,10 +16,67 @@ public class AuditServiceTests
 {
     private static AuditService Service(
         IAuditRepository? repo = null,
-        ICurrentUser? currentUser = null) =>
+        ICurrentUser? currentUser = null,
+        IEnumerable<User>? users = null) =>
         new(repo ?? new InMemoryAuditRepository(),
             currentUser ?? new StubCurrentUser(),
-            NullLogger<AuditService>.Instance);
+            NullLogger<AuditService>.Instance,
+            new UsersOnlyDirectory(users ?? []));
+
+    // ---- Readable summaries ----
+
+    // Employee updates used to be written with the user's GUID as their whole
+    // summary. The rows are hash-chained and must not be rewritten, so the
+    // name goes in when the log is READ.
+    [Fact]
+    public async Task AnOldEmployeeUpdateShowsThePersonsNameInsteadOfTheirId()
+    {
+        var repo = new InMemoryAuditRepository();
+        var users = new[] { new User { Id = "usr-9", Email = "hafiz@x.com", Name = "Hafiz Rosli" } };
+        var service = Service(repo, users: users);
+        await service.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeUpdate, "usr-9", TargetType: "Employee", TargetId: "usr-9"));
+        await service.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeUpdate, "usr-9 — role Employee → Supervisor",
+            TargetType: "Employee", TargetId: "usr-9"));
+
+        var summaries = (await service.ListAsync(new AuditQueryDto())).Entries.Select(e => e.Summary).ToList();
+
+        Assert.Contains("Updated Hafiz Rosli's details", summaries);
+        Assert.Contains("Hafiz Rosli — role Employee → Supervisor", summaries);
+        Assert.DoesNotContain(summaries, s => s.Contains("usr-9"));
+    }
+
+    // Display only — the stored row, and so the chain, is untouched.
+    [Fact]
+    public async Task NamingAnOldEntryDoesNotChangeTheStoredRow()
+    {
+        var repo = new InMemoryAuditRepository();
+        var users = new[] { new User { Id = "usr-9", Email = "hafiz@x.com", Name = "Hafiz Rosli" } };
+        var service = Service(repo, users: users);
+        await service.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeUpdate, "usr-9", TargetType: "Employee", TargetId: "usr-9"));
+
+        await service.ListAsync(new AuditQueryDto());
+
+        Assert.Equal("usr-9", Assert.Single(repo.Rows).Summary);
+        Assert.True((await service.VerifyAsync()).Ok);
+    }
+
+    // Only employee targets are touched: an id that happens to appear in some
+    // other entry's summary is left as it was.
+    [Fact]
+    public async Task OtherEntriesKeepTheirSummaryAsWritten()
+    {
+        var users = new[] { new User { Id = "usr-9", Email = "hafiz@x.com", Name = "Hafiz Rosli" } };
+        var service = Service(users: users);
+        await service.WriteAsync(new AuditEvent(
+            "settings.org.update", "usr-9 changed the timezone", TargetType: "Organization", TargetId: "usr-9"));
+
+        var entry = Assert.Single((await service.ListAsync(new AuditQueryDto())).Entries);
+
+        Assert.Equal("usr-9 changed the timezone", entry.Summary);
+    }
 
     // ---- Never throws ----
 
@@ -297,4 +357,18 @@ internal sealed class StubCurrentUser : ICurrentUser
     public string? IpAddress { get; set; } = "127.0.0.1";
     public bool IsAdmin => Role is "Admin" or "Owner";
     public bool IsAuthenticated => UserId is not null;
+}
+
+// The audit service reads only users from the directory, to name old entries.
+internal sealed class UsersOnlyDirectory(IEnumerable<User> users) : IDirectoryService
+{
+    public Task<List<User>> GetUsersAsync() => Task.FromResult(users.ToList());
+
+    public Task<OrganizationMembership?> GetMembershipForUserAsync(string userId) => throw new NotSupportedException();
+    public Task<List<OrganizationMembership>> GetMembershipsForCurrentOrgAsync() => throw new NotSupportedException();
+    public Task<OrganizationMembership?> GetMembershipAsync(string organizationId, string userId) => throw new NotSupportedException();
+    public Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId) => throw new NotSupportedException();
+    public Task<int> CountMembershipsByShiftAsync(string shiftId) => throw new NotSupportedException();
+    public Task<List<EmployeeProfile>> GetProfilesForCurrentOrgAsync() => throw new NotSupportedException();
+    public Task<User?> GetUserAsync(string id) => throw new NotSupportedException();
 }

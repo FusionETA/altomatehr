@@ -236,34 +236,46 @@ export function ActivityLog() {
                       one-line summary has no room for. */}
                   {open && detail ? (
                     <tr className="border-b border-border/60 bg-primary/5">
-                      <td colSpan={5} className="px-6 pb-4 pt-0">
-                        <dl className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
-                          {detail.map(({ label, from, to, value }) => (
-                            <div key={label} className="flex flex-wrap items-baseline gap-x-2">
-                              <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                                {label}
-                              </dt>
-                              <dd className="text-xs text-foreground">
-                                {from !== undefined ? (
-                                  <>
-                                    <span className="text-muted-foreground line-through">
-                                      {from}
-                                    </span>
-                                    <span className="mx-1.5 text-muted-foreground">→</span>
-                                    <span className="font-semibold">{to}</span>
-                                  </>
-                                ) : (
-                                  value
-                                )}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                        {entry.ipAddress ? (
-                          <p className="mt-3 font-mono text-[10px] text-muted-foreground/70">
-                            from {entry.ipAddress} · entry #{entry.seq}
-                          </p>
-                        ) : null}
+                      <td colSpan={5} className="px-6 pb-5 pt-1">
+                        {/* An inset card, so the details read as belonging to
+                            the row above rather than as a second, unruled table.
+                            Label over value: the old inline "LABEL value" pairs
+                            ran together, and all-caps labels at 11px were harder
+                            to read than the numbers they introduced. */}
+                        <div className="rounded-2xl border border-border/60 bg-card px-5 py-4">
+                          <p className="mb-3 text-xs font-semibold text-muted-foreground">Details</p>
+                          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {detail.map(({ label, from, to, value, kind }) => (
+                              <div key={label} className="min-w-0">
+                                <dt className="text-xs text-muted-foreground">{label}</dt>
+                                <dd
+                                  className={`mt-0.5 break-words ${
+                                    kind === "id"
+                                      ? "font-mono text-[11px] text-muted-foreground"
+                                      : "text-sm font-medium text-foreground tabular-nums"
+                                  }`}
+                                >
+                                  {from !== undefined ? (
+                                    <>
+                                      <span className="font-normal text-muted-foreground line-through">
+                                        {from}
+                                      </span>
+                                      <span className="mx-1.5 text-muted-foreground">→</span>
+                                      <span>{to}</span>
+                                    </>
+                                  ) : (
+                                    value
+                                  )}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                          {entry.ipAddress ? (
+                            <p className="mt-4 border-t border-border/50 pt-3 text-xs text-muted-foreground">
+                              Recorded from {entry.ipAddress} · Entry #{entry.seq}
+                            </p>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ) : null}
@@ -314,7 +326,14 @@ function formatWhen(iso: string) {
 // one; anything else is shown as-is. That shape is a convention the writers
 // follow, not a contract — an action carrying something else still displays,
 // just without the arrow.
-type DetailRow = { label: string; from?: string; to?: string; value?: string };
+type DetailRow = {
+  label: string;
+  from?: string;
+  to?: string;
+  value?: string;
+  // An internal id — shown small and muted: rarely read, occasionally copied.
+  kind?: "id";
+};
 
 function parseMetadata(raw: string | null): DetailRow[] | null {
   if (!raw) return null;
@@ -330,21 +349,33 @@ function parseMetadata(raw: string | null): DetailRow[] | null {
 
   if (typeof parsed !== "object" || parsed === null) return null;
 
+  const entries = Object.entries(parsed as Record<string, unknown>);
   const rows: DetailRow[] = [];
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+
+  // PeriodYear + PeriodMonth are one fact — "September 2026" — not two rows.
+  const year = entries.find(([k]) => k.toLowerCase() === "periodyear")?.[1];
+  const month = entries.find(([k]) => k.toLowerCase() === "periodmonth")?.[1];
+  const period =
+    typeof year === "number" && typeof month === "number" && month >= 1 && month <= 12
+      ? new Date(year, month - 1, 1).toLocaleDateString("en-MY", { month: "long", year: "numeric" })
+      : null;
+  if (period) rows.push({ label: "Period", value: period });
+
+  for (const [key, value] of entries) {
+    if (period && /^period(year|month)$/i.test(key)) continue;
     const label = humanizeKey(key);
 
     if (isBeforeAfter(value)) {
-      const from = show(value.From ?? value.from);
-      const to = show(value.To ?? value.to);
+      const from = show(value.From ?? value.from, key);
+      const to = show(value.To ?? value.to, key);
       // A "change" that changed nothing is noise — the writers record both
       // sides unconditionally, so filtering happens here.
       if (from !== to) rows.push({ label, from, to });
       continue;
     }
 
-    const text = show(value);
-    if (text !== "—") rows.push({ label, value: text });
+    const text = show(value, key);
+    if (text !== "—") rows.push({ label, value: text, kind: isId(key, value) ? "id" : undefined });
   }
 
   return rows.length > 0 ? rows : null;
@@ -356,11 +387,31 @@ function isBeforeAfter(value: unknown): value is Record<string, unknown> {
   return keys.includes("from") && keys.includes("to");
 }
 
-function show(value: unknown): string {
+// Money-shaped keys — totals, gross, net, amounts. "Count" keys are never
+// money even when they start with "total" (TotalCount, PayslipCount).
+const MONEY_KEY = /(gross|net|cost|amount|salary|pay$|payment|pcb|epf|socso|eis|deduction|total)/i;
+const COUNT_KEY = /(count|days|hours|minutes|number|seq|year|month|index)/i;
+
+function show(value: unknown, key = ""): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    // "119500" and "106225.3" read as raw data; "RM 119,500.00" reads as pay.
+    if (MONEY_KEY.test(key) && !COUNT_KEY.test(key)) {
+      return `RM ${value.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return /year/i.test(key) ? String(value) : value.toLocaleString("en-MY");
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+// "PayrollRunId", "ClaimId"… or a bare GUID.
+function isId(key: string, value: unknown): boolean {
+  return (
+    /id$/i.test(key) ||
+    (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
+  );
 }
 
 // "ClaimRunCutoffDay" / "claimRunCutoffDay" → "Claim run cutoff day"

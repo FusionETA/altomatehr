@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.Text.Json;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Audit;
@@ -85,7 +86,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         return new PayrollAdjustmentContextDto
         {
             EmployeeProfileId = profile.Id,
-            EmployeeName = user?.Name ?? user?.Email ?? string.Empty,
+            EmployeeName = PersonName.Display(user?.Name, user?.Email),
             SalaryType = profile.SalaryType,
             Adjustment = adjustment is null ? null : ToDto(adjustment),
             FixedAllowances = ParseFixedAllowances(profile.FixedAllowancesJson),

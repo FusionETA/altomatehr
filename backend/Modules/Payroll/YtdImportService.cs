@@ -54,7 +54,7 @@ public class YtdImportService : IYtdImportService
             {
                 users.TryGetValue(p.UserId, out var u);
                 return new YtdImportTemplateWorkbook.Employee(
-                    u?.Name ?? u?.Email ?? p.Id,
+                    PersonName.Display(u?.Name, u?.Email, p.Id),
                     PersonalIdLabel(p));
             }).ToList();
 
@@ -105,7 +105,7 @@ public class YtdImportService : IYtdImportService
             // cell that is going to be discarded is how a whole year of figures
             // got typed onto the wrong row and imported as nothing at all.
             sheet.AddRow(Row(
-                user?.Name ?? user?.Email ?? profile.Id,
+                PersonName.Display(user?.Name, user?.Email, profile.Id),
                 profile.IdNumber ?? string.Empty,
                 columnCount));
             sheet.MuteLastRowFrom(FirstAmountColumn);

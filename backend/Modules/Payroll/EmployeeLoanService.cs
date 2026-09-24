@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Payroll.Dtos;
@@ -217,7 +218,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     private async Task<IReadOnlyDictionary<string, string>> NamesAsync()
     {
         var users = (await _directory.GetUsersAsync())
-            .ToDictionary(u => u.Id, u => u.Name ?? u.Email, StringComparer.Ordinal);
+            .ToDictionary(u => u.Id, u => PersonName.Display(u.Name, u.Email), StringComparer.Ordinal);
 
         return (await _directory.GetProfilesForCurrentOrgAsync())
             .GroupBy(p => p.Id, StringComparer.Ordinal)

@@ -11,12 +11,15 @@ public class AuditService : IAuditService
     private readonly IAuditRepository _repo;
     private readonly ICurrentUser _currentUser;
     private readonly ILogger<AuditService> _logger;
+    private readonly Employees.IDirectoryService _directory;
 
     public AuditService(
         IAuditRepository repo,
         ICurrentUser currentUser,
-        ILogger<AuditService> logger)
+        ILogger<AuditService> logger,
+        Employees.IDirectoryService directory)
     {
+        _directory = directory;
         _repo = repo;
         _currentUser = currentUser;
         _logger = logger;
@@ -83,11 +86,42 @@ public class AuditService : IAuditService
 
         var (rows, total) = await _repo.QueryAsync(query, organizationId);
 
+        // Employee updates written before the summary named anyone carry the
+        // user's GUID as their summary. The rows themselves are hash-chained
+        // (AuditChain) and must never be rewritten, so the name is put in at
+        // READ time instead — only for those, and only on this page's rows.
+        var idsToName = rows
+            .Where(r => IsEmployeeTarget(r) && r.Summary.Contains(r.TargetId!, StringComparison.Ordinal))
+            .Select(r => r.TargetId!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var names = idsToName.Count == 0
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : (await _directory.GetUsersAsync())
+                .Where(u => idsToName.Contains(u.Id))
+                .ToDictionary(u => u.Id, u => PersonName.Display(u.Name, u.Email), StringComparer.Ordinal);
+
         return new AuditPageDto
         {
-            Entries = rows.Select(ToDto).ToList(),
+            Entries = rows.Select(r => ToDto(r, names)).ToList(),
             Total = total,
         };
+    }
+
+    private static bool IsEmployeeTarget(AuditLog row) =>
+        string.Equals(row.TargetType, "Employee", StringComparison.Ordinal)
+        && !string.IsNullOrEmpty(row.TargetId);
+
+    // The summary as shown. A bare id reads as the sentence new entries use; an
+    // id with more after it just has the id swapped for the name.
+    private static string ReadableSummary(AuditLog row, IReadOnlyDictionary<string, string> names)
+    {
+        if (!IsEmployeeTarget(row) || !names.TryGetValue(row.TargetId!, out var name))
+            return row.Summary;
+
+        return row.Summary == row.TargetId
+            ? $"Updated {name}'s details"
+            : row.Summary.Replace(row.TargetId!, name, StringComparison.Ordinal);
     }
 
     public async Task<AuditVerificationDto> VerifyAsync()
@@ -127,7 +161,7 @@ public class AuditService : IAuditService
         _ => "The log could not be verified.",
     };
 
-    private static AuditLogDto ToDto(AuditLog row) => new()
+    private static AuditLogDto ToDto(AuditLog row, IReadOnlyDictionary<string, string> names) => new()
     {
         Id = row.Id,
         Seq = row.Seq,
@@ -138,7 +172,7 @@ public class AuditService : IAuditService
         Action = row.Action,
         Label = AuditActions.Humanize(row.Action),
         Status = row.Status,
-        Summary = row.Summary,
+        Summary = ReadableSummary(row, names),
         ErrorReason = row.ErrorReason,
         TargetType = row.TargetType,
         TargetId = row.TargetId,
