@@ -28,6 +28,8 @@ import {
   rememberedHolidayCountry,
 } from "../lib/holiday-countries";
 import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
+import { TablePager } from "@/shared/components/TablePager";
+import { usePaged } from "@/shared/lib/use-paged";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -223,6 +225,8 @@ function ScheduleCard() {
   );
 }
 
+const HOLIDAYS_PER_PAGE = 10;
+
 function HolidaysCard() {
   const holidaysQuery = useCachedQuery("/holidays", getHolidays);
   const [date, setDate] = useState("");
@@ -252,6 +256,9 @@ function HolidaysCard() {
         .sort((a, b) => a.date.localeCompare(b.date)),
     [holidaysQuery.data],
   );
+  // Importing a few years for a country with regional days runs well past what
+  // fits on a settings screen, and the import form sits above the list.
+  const paged = usePaged(holidays, HOLIDAYS_PER_PAGE);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -425,29 +432,32 @@ function HolidaysCard() {
           No holidays yet. Add the ones your company observes.
         </div>
       ) : (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
-          {holidays.map((h) => (
-            <li key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-foreground">{h.name}</p>
-                <p className="text-xs text-muted-foreground">{formatHolidayDate(h.date)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void remove(h)}
-                disabled={deletingId === h.id}
-                aria-label={`Remove ${h.name}`}
-                className="shrink-0 rounded-full p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-              >
-                {deletingId === h.id ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div>
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
+            {paged.pageItems.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-foreground">{h.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatHolidayDate(h.date)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void remove(h)}
+                  disabled={deletingId === h.id}
+                  aria-label={`Remove ${h.name}`}
+                  className="shrink-0 rounded-full p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                >
+                  {deletingId === h.id ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <TablePager paged={paged} noun="holiday" />
+        </div>
       )}
     </section>
   );
