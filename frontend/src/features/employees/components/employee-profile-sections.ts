@@ -28,39 +28,70 @@ function present(value: unknown): boolean {
   return typeof value === "string" ? value.trim().length > 0 : true;
 }
 
-/** What each section is still missing, in the admin's words. */
-export function missingFields(profile: EmployeeProfile, section: SectionId): string[] {
-  const gaps: string[] = [];
+// One rule per required field: when it applies, and whether it is filled.
+// `label` is the field's label on the form — the same words the "Still needed
+// here" banner prints, and what `Field` matches itself against to mark the box.
+type Rule = {
+  label: string;
+  applies: (p: EmployeeProfile) => boolean;
+  filled: (p: EmployeeProfile) => boolean;
+};
 
-  if (section === "personal") {
-    if (!present(profile.gender)) gaps.push("Gender");
-    if (!present(profile.dateOfBirth)) gaps.push("Date of birth");
-    if (!present(profile.nationality)) gaps.push("Nationality");
-    if (!present(profile.idType)) gaps.push("ID type");
-    if (!present(profile.idNumber)) gaps.push("ID number");
-    if (!present(profile.maritalStatus)) gaps.push("Marital status");
+const always = () => true;
+
+const RULES: Record<SectionId, Rule[]> = {
+  personal: [
+    { label: "Gender", applies: always, filled: (p) => present(p.gender) },
+    { label: "Date of birth", applies: always, filled: (p) => present(p.dateOfBirth) },
+    { label: "Nationality", applies: always, filled: (p) => present(p.nationality) },
+    { label: "ID type", applies: always, filled: (p) => present(p.idType) },
+    { label: "ID number", applies: always, filled: (p) => present(p.idNumber) },
+    { label: "Marital status", applies: always, filled: (p) => present(p.maritalStatus) },
     // Drives the PCB spouse-relief branch, so it only matters once married.
-    if (profile.maritalStatus === "MARRIED" && profile.spouseWorking === null)
-      gaps.push("Spouse working");
-  }
-
-  if (section === "employment") {
-    if (!present(profile.joinDate)) gaps.push("Join date");
-    const basis = profile.salaryType;
-    if (basis === "MONTHLY" && !present(profile.monthlySalary)) gaps.push("Monthly salary");
-    if (basis === "HOURLY" && !present(profile.hourlyRate)) gaps.push("Hourly rate");
-  }
-
-  if (section === "statutory") {
-    // Only gated when they actually contribute to the scheme.
-    if (profile.contributeToEpf && !present(profile.epfNumber)) gaps.push("EPF number");
-    if (present(profile.socsoScheme) && !present(profile.socsoNumber)) gaps.push("SOCSO number");
-  }
-
+    {
+      label: "Spouse working",
+      applies: (p) => p.maritalStatus === "MARRIED",
+      filled: (p) => p.spouseWorking !== null,
+    },
+  ],
+  employment: [
+    { label: "Join date", applies: always, filled: (p) => present(p.joinDate) },
+    {
+      label: "Monthly salary",
+      applies: (p) => p.salaryType === "MONTHLY",
+      filled: (p) => present(p.monthlySalary),
+    },
+    {
+      label: "Hourly rate",
+      applies: (p) => p.salaryType === "HOURLY",
+      filled: (p) => present(p.hourlyRate),
+    },
+  ],
+  // Only gated when they actually contribute to the scheme.
+  statutory: [
+    { label: "EPF number", applies: (p) => p.contributeToEpf, filled: (p) => present(p.epfNumber) },
+    {
+      label: "SOCSO number",
+      applies: (p) => present(p.socsoScheme),
+      filled: (p) => present(p.socsoNumber),
+    },
+  ],
   // "company" is never gated: role and policy always hold a value, and where
   // someone sits in the org is not what stops payroll from running.
+  company: [],
+  documents: [],
+};
 
-  return gaps;
+/** Which fields this section requires right now, given the rest of the profile. */
+export function requiredFields(profile: EmployeeProfile, section: SectionId): string[] {
+  return RULES[section].filter((r) => r.applies(profile)).map((r) => r.label);
+}
+
+/** What each section is still missing, in the admin's words. */
+export function missingFields(profile: EmployeeProfile, section: SectionId): string[] {
+  return RULES[section]
+    .filter((r) => r.applies(profile) && !r.filled(profile))
+    .map((r) => r.label);
 }
 
 export function isSectionComplete(profile: EmployeeProfile, section: SectionId) {

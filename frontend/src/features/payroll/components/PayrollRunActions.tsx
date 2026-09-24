@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { ArrowRight, CircleAlert, LoaderCircle } from "lucide-react";
 import {
   approvePayrollRun,
   deletePayrollRun,
@@ -11,7 +11,12 @@ import {
   type PayrollRun,
   type SkippedEmployee,
 } from "../api";
-import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, HINT, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
+import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
+
+// WARN_PANEL's colours at a single line's weight — a reason next to a button,
+// not a panel of its own.
+const BLOCKER_STRIP =
+  "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-800 dark:text-amber-300";
 
 // What can be done to a run, given where it is.
 //
@@ -100,6 +105,18 @@ export function PayrollRunActions({
   const spinner = (key: string) =>
     busy === key ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null;
 
+  // What is stopping a draft from being sent for approval, in words. Null
+  // when nothing is — or when there are no payslips yet, because then the
+  // button is not offered at all.
+  const submitBlocker =
+    run.status !== "DRAFT" || payslipCount === 0
+      ? null
+      : run.isStale
+        ? "These payslips are behind their inputs. Regenerate them before sending for approval."
+        : blockingCount > 0
+          ? `${blockingCount === 1 ? "1 required field needs" : `${blockingCount} required fields need`} fixing before this can be sent for approval.`
+          : null;
+
   return (
     <div className="space-y-3">
       {/* Delete sits at the far end, away from the others. It destroys the
@@ -108,9 +125,12 @@ export function PayrollRunActions({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {run.status === "DRAFT" ? (
           <>
+            {/* On a phone the row stacks: every button goes full width so the
+                column reads as one set, and Delete drops to the bottom — the
+                same distance-from-the-others rule, in the other direction. */}
             <button
               type="button"
-              className={BUTTON_DANGER}
+              className={`${BUTTON_DANGER} max-sm:order-last max-sm:w-full`}
               disabled={busy !== null}
               onClick={() =>
                 void run_("delete", () => deletePayrollRun(run.id)).then(() => onDeleted())
@@ -120,7 +140,7 @@ export function PayrollRunActions({
               Delete draft
             </button>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch">
               <button
                 type="button"
                 className={BUTTON_GHOST}
@@ -134,45 +154,20 @@ export function PayrollRunActions({
               {/* Only offered once there is something to submit. A button
                   that cannot possibly apply yet is noise, not guidance. */}
               {payslipCount > 0 ? (
-                <div>
-                  <button
-                    type="button"
-                    className={BUTTON}
-                    disabled={busy !== null || run.isStale || blockingCount > 0}
-                    title={
-                      run.isStale
-                        ? "Regenerate first — these payslips are behind their inputs."
-                        : blockingCount > 0
-                          ? `Fix ${blockingCount} required field(s) in Needs attention before submitting.`
-                          : undefined
-                    }
-                    onClick={() =>
-                      void run_("submit", () => submitPayrollRun(run.id)).then(
-                        (r) => r && onChanged(),
-                      )
-                    }
-                  >
-                    {spinner("submit")}
-                    Send for approval
-                  </button>
-
-                  {/* The title above is invisible until hovered — no help on
-                      a touch screen, and easy to miss even with a mouse. The
-                      same reason repeats here in view, and for a missing
-                      field it points straight at the tab that lists them,
-                      rather than leaving the admin to go hunting. */}
-                  {!run.isStale && blockingCount > 0 ? (
-                    <p className={`${HINT} mt-1.5`}>
-                      Disabled —{" "}
-                      {blockingCount === 1
-                        ? "1 required field still needs fixing."
-                        : `${blockingCount} required fields still need fixing.`}{" "}
-                      <button type="button" className={LINK_BUTTON} onClick={onViewAttention}>
-                        See what's missing
-                      </button>
-                    </p>
-                  ) : null}
-                </div>
+                <button
+                  type="button"
+                  className={BUTTON}
+                  disabled={busy !== null || submitBlocker !== null}
+                  aria-describedby={submitBlocker ? "submit-blocker" : undefined}
+                  onClick={() =>
+                    void run_("submit", () => submitPayrollRun(run.id)).then(
+                      (r) => r && onChanged(),
+                    )
+                  }
+                >
+                  {spinner("submit")}
+                  Send for approval
+                </button>
               ) : null}
             </div>
           </>
@@ -217,6 +212,27 @@ export function PayrollRunActions({
           </button>
         ) : null}
       </div>
+
+      {/* Why Send for approval is greyed out, in view rather than in a hover
+          title (invisible on a touch screen, easy to miss with a mouse). It
+          sits on its own line under the buttons: tucked beneath the button
+          itself, it pushed that button out of line with its neighbours. A
+          missing field links straight to the tab that lists them. */}
+      {submitBlocker ? (
+        <div id="submit-blocker" role="status" className={BLOCKER_STRIP}>
+          <CircleAlert className="size-4 shrink-0" aria-hidden />
+          {/* A floor on the message's width, so on a narrow screen the link
+              drops to its own line instead of crushing the sentence into a
+              one-word column. */}
+          <span className="min-w-[14rem] flex-1">{submitBlocker}</span>
+          {!run.isStale ? (
+            <button type="button" className={LINK_BUTTON} onClick={onViewAttention}>
+              See what's missing
+              <ArrowRight className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* An empty reason is allowed — "send it back" is sometimes said in
           person — so the field is optional rather than validated. */}

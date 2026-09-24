@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -44,6 +44,37 @@ export function Group({
   );
 }
 
+// Which fields in the current section are required, and which of those are
+// still empty — keyed by label. Provided once around a section rather than
+// threaded into each Field, so the marks come from the SAME rules as the tab
+// badges and the "Still needed here" banner, and a field can't be flagged in
+// one place and not the other.
+type RequiredFields = { required: ReadonlySet<string>; missing: ReadonlySet<string> };
+const RequiredFieldsContext = createContext<RequiredFields | null>(null);
+
+export function RequiredFieldsProvider({
+  required,
+  missing,
+  children,
+}: {
+  required: readonly string[];
+  missing: readonly string[];
+  children: ReactNode;
+}) {
+  return (
+    <RequiredFieldsContext.Provider
+      value={{ required: new Set(required), missing: new Set(missing) }}
+    >
+      {children}
+    </RequiredFieldsContext.Provider>
+  );
+}
+
+// An empty required field's control, outlined red whatever kind it is: a text
+// or number input, a picker (Radix renders a combobox button), or a tri-state.
+const MISSING_CONTROL =
+  "[&_input]:border-destructive [&_button[role=combobox]]:border-destructive [&_[data-tri]]:ring-2 [&_[data-tri]]:ring-destructive/60";
+
 export function Field({
   label,
   hint,
@@ -59,10 +90,21 @@ export function Field({
   locked?: boolean;
   children: ReactNode;
 }) {
+  const marks = useContext(RequiredFieldsContext);
+  const required = marks?.required.has(label) ?? false;
+  const missing = marks?.missing.has(label) ?? false;
+
   return (
-    <label className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""}`}>
+    <label
+      className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""} ${missing ? MISSING_CONTROL : ""}`}
+    >
       <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
+        {required ? (
+          <span className="ml-0.5 text-destructive" aria-hidden>
+            *
+          </span>
+        ) : null}
         {locked ? (
           <span className="ml-1.5 rounded border border-border/70 bg-muted px-1.5 py-px align-middle text-[9px] font-semibold normal-case tracking-wide text-muted-foreground">
             Locked
@@ -70,6 +112,8 @@ export function Field({
         ) : null}
       </span>
       {children}
+      {/* Inside the <label>, so a screen reader announces it with the field. */}
+      {missing ? <span className="text-xs font-medium text-destructive">Required</span> : null}
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </label>
   );
@@ -248,7 +292,7 @@ export function TriToggle({
   ];
   return (
     <Field label={label}>
-      <div className="flex gap-1 rounded-full bg-muted p-1">
+      <div data-tri className="flex gap-1 rounded-full bg-muted p-1">
         {options.map((o) => {
           const active =
             (o.value === NONE && value === null) ||

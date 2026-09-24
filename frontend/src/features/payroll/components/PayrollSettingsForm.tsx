@@ -45,6 +45,10 @@ import { XeroSyncSection } from "./settings/XeroSyncSection";
 // LHDN's own identification categories for a declarant.
 const ID_TYPES: IdType[] = ["NRIC", "PASSPORT", "ARMY", "POLICE"];
 
+// The Form E summary line — the red tab's explanation, in view on the tab.
+const FIELDS_MISSING =
+  "flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive";
+
 const ID_TYPE_LABELS: Record<IdType, string> = {
   NRIC: "NRIC",
   PASSPORT: "Passport",
@@ -177,15 +181,23 @@ export function PayrollSettingsForm() {
   //
   // The Form E check is the SAME four fields PayrollRunReadiness refuses a
   // submission over, so "tab is red" and "submit is blocked" cannot disagree.
-  const formEComplete = Boolean(
-    info?.employerName &&
-      info.employerTin &&
-      info.registrationNo &&
-      info.perkesoEmployerCode,
-  );
+  const formEMissing = [
+    info?.employerName,
+    info?.employerTin,
+    info?.registrationNo,
+    info?.perkesoEmployerCode,
+  ].filter((v) => !v?.trim()).length;
+  const formEComplete = formEMissing === 0;
 
   const status: Record<SettingsSection, SectionStatus> = {
-    general: { complete: Boolean(settings?.isConfigured) },
+    // Nothing on this tab can be missing — every field ships with its
+    // statutory default. It is incomplete only until the defaults have been
+    // saved once, so it says that rather than "required fields missing".
+    general: {
+      complete: Boolean(settings?.isConfigured),
+      pendingLabel: "Not saved",
+      pendingTitle: "Nothing is missing — review the defaults and save",
+    },
     formE: { complete: formEComplete },
     credentials: {
       complete: credentialCount > 0,
@@ -224,8 +236,9 @@ export function PayrollSettingsForm() {
     <form onSubmit={handleSubmit} className="space-y-6">
       {!settings.isConfigured ? (
         <section className={NOTE_PANEL}>
-          Payroll has not been configured for this organisation yet. The values below are the
-          Malaysian statutory defaults — review them and save to make them yours.
+          Payroll has not been set up for this organisation yet. Nothing is missing on the
+          General tab — its values are the Malaysian statutory defaults. Review them and press
+          Save payroll settings to confirm.
         </section>
       ) : null}
 
@@ -490,6 +503,15 @@ export function PayrollSettingsForm() {
 
       {section === "formE" ? (
         <>
+        {/* Says how many, so the red tab and the red boxes below add up. */}
+        {formEMissing > 0 ? (
+          <p role="status" className={FIELDS_MISSING}>
+            <CircleAlert className="size-4 shrink-0" aria-hidden />
+            {formEMissing === 1
+              ? "1 required field below is empty (marked *). Payroll can't be sent for approval until it's filled."
+              : `${formEMissing} required fields below are empty (marked *). Payroll can't be sent for approval until they're filled.`}
+          </p>
+        ) : null}
         <section className={CARD}>
           <header className="mb-5">
             <h3 className="text-[15px] font-semibold text-foreground">Employer details</h3>
@@ -505,37 +527,41 @@ export function PayrollSettingsForm() {
               label="Employer name"
               value={info.employerName}
               onChange={(employerName) => patchInfo({ employerName })}
-              placeholder="Globe Engineering Sdn Bhd"
+              placeholder="e.g. Globe Engineering Sdn Bhd"
+              required
             />
             <Field
               id="employerTin"
               label="LHDN employer no. (E number)"
               value={info.employerTin}
               onChange={(employerTin) => patchInfo({ employerTin })}
-              placeholder="E 1234567890"
-              hint="Required for the CP39 monthly file and the CP8D annual upload."
+              placeholder="e.g. E 1234567890"
+              hint="Needed for the CP39 monthly file and the CP8D annual upload."
+              required
             />
             <Field
               id="registrationNo"
               label="SSM registration no."
               value={info.registrationNo}
               onChange={(registrationNo) => patchInfo({ registrationNo })}
-              placeholder="202001012345"
+              placeholder="e.g. 202001012345"
+              required
             />
             <Field
               id="perkesoEmployerCode"
               label="PERKESO employer code"
               value={info.perkesoEmployerCode}
               onChange={(perkesoEmployerCode) => patchInfo({ perkesoEmployerCode })}
-              placeholder="A1234567890"
-              hint="Required for the SOCSO / EIS submission file."
+              placeholder="e.g. A1234567890"
+              hint="Needed for the SOCSO / EIS submission file."
+              required
             />
             <Field
               id="epfEmployerNo"
               label="KWSP employer no."
               value={info.epfEmployerNo}
               onChange={(epfEmployerNo) => patchInfo({ epfEmployerNo })}
-              placeholder="7654321"
+              placeholder="e.g. 7654321"
             />
             <Field
               id="hrdfEmployerNo"
@@ -741,6 +767,7 @@ function Field({
   placeholder,
   hint,
   type = "text",
+  required = false,
 }: {
   id: string;
   label: string;
@@ -749,22 +776,45 @@ function Field({
   placeholder?: string;
   hint?: string;
   type?: string;
+  // One of the fields a tab's "Required" is counting. Marked on the label,
+  // and outlined red while empty, so the red tab points at something — a red
+  // tab over a page of unmarked boxes leaves the admin guessing which.
+  required?: boolean;
 }) {
+  const missing = required && !value?.trim();
+  const errorId = `${id}-required`;
+
   return (
     <div>
       <label className={LABEL} htmlFor={id}>
         {label}
+        {required ? (
+          <span className="ml-0.5 text-destructive" aria-hidden>
+            *
+          </span>
+        ) : null}
       </label>
       <input
         id={id}
         type={type}
-        className={INPUT}
+        className={`${INPUT} ${missing ? "border-destructive focus-visible:ring-destructive" : ""}`}
         placeholder={placeholder}
         value={value ?? ""}
+        // aria-required, not `required`: the native attribute would make the
+        // browser refuse to save until all four are filled, and saving what
+        // you have so far is a normal thing to do.
+        aria-required={required || undefined}
+        aria-invalid={missing || undefined}
+        aria-describedby={missing ? errorId : undefined}
         // An emptied field means "no value on file", not an empty string —
         // the backend treats null and "" differently on some of these.
         onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
       />
+      {missing ? (
+        <p id={errorId} className="mt-1 text-xs font-medium text-destructive">
+          Required
+        </p>
+      ) : null}
       {hint ? <p className={HINT}>{hint}</p> : null}
     </div>
   );
@@ -828,6 +878,10 @@ type SectionStatus = {
   optional?: boolean;
   // Subtitle override for an optional section that does have something in it.
   savedLabel?: string;
+  // For a required section whose "incomplete" is not about empty fields: the
+  // pill's short text and its tooltip, instead of "Required".
+  pendingLabel?: string;
+  pendingTitle?: string;
 };
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
@@ -898,7 +952,7 @@ function SectionPicker({
             : "Optional"
           : state.complete
             ? "Completed"
-            : "Required fields missing";
+            : (state.pendingTitle ?? "Required fields missing");
 
         return (
           <button
@@ -942,7 +996,7 @@ function SectionPicker({
             {entry.label}
             {blocking ? (
               <span className={active ? "text-primary-foreground/80" : "text-destructive/80"}>
-                · Required
+                · {state.pendingLabel ?? "Required"}
               </span>
             ) : null}
             <span className="sr-only"> — {statusLabel}</span>

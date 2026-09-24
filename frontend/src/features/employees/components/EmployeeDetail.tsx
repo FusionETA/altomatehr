@@ -81,6 +81,7 @@ import {
   Percent,
   Picker,
   RepeaterRow,
+  RequiredFieldsProvider,
   Stack,
   Text,
   Toggle,
@@ -89,6 +90,7 @@ import {
 import {
   isReadyForPayroll,
   missingFields,
+  requiredFields,
   type SectionId,
 } from "./employee-profile-sections";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -741,6 +743,12 @@ export function EmployeeDetail({
             ariaLabel="Profile sections"
           />
 
+          {/* Marks every required field in the section with a *, and outlines
+              the empty ones — by label, from the same rules as the badges. */}
+          <RequiredFieldsProvider
+            required={requiredFields(profile, section)}
+            missing={sectionGaps}
+          >
           <div className="space-y-4">
             {/* What this section still needs, spelled out — the pill's count
                 tells you there's a gap, this tells you which field. */}
@@ -748,7 +756,8 @@ export function EmployeeDetail({
               <p className="flex items-start gap-2 rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
                 <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  Still needed here: <strong>{sectionGaps.join(", ")}</strong>
+                  Still needed here (outlined in red below):{" "}
+                  <strong>{sectionGaps.join(", ")}</strong>
                 </span>
               </p>
             ) : null}
@@ -1913,6 +1922,7 @@ export function EmployeeDetail({
               </>
             )}
           </div>
+          </RequiredFieldsProvider>
         </div>
       )}
 
