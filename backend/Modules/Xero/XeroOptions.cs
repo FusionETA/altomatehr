@@ -5,7 +5,7 @@ public class XeroOptions
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
     public string RedirectUri { get; set; } = string.Empty;
-    public string Scopes { get; set; } = "offline_access accounting.settings accounting.transactions projects.read files";
+    public string Scopes { get; set; } = "openid profile email offline_access accounting.invoices accounting.banktransactions accounting.contacts accounting.settings accounting.manualjournals projects files";
     // Where the OAuth callback sends the browser when there is no stored return
     // URL. The outcome marker (?xero=connected / ?xero=failed) is appended by
     // XeroService, so these stay plain — the frontend reads that marker to open
