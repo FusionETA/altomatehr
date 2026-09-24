@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Download, FileText, LoaderCircle } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { saveFile } from "@/shared/lib/api-client";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
 import { downloadMyPayslipPdf, getMyPayslips, type PayslipSummary } from "../api";
@@ -26,7 +27,15 @@ export function PayslipsView() {
     setDownloading(payslip.id);
     setError(null);
     try {
-      await downloadMyPayslipPdf(payslip.id, payslip.periodLabel.replace(/\s+/g, "-").toLowerCase());
+      // apiGetFile only FETCHES the file — handing it to the browser is
+      // saveFile's job. Without it the PDF was downloaded into memory and
+      // dropped, so the button spun and then nothing happened.
+      saveFile(
+        await downloadMyPayslipPdf(
+          payslip.id,
+          payslip.periodLabel.replace(/\s+/g, "-").toLowerCase(),
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not download that payslip.");
     } finally {
