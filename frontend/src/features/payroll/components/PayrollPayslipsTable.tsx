@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Download, LoaderCircle, Sliders, TriangleAlert } from "lucide-react";
+import { Download, LoaderCircle, Mail, Sliders, TriangleAlert } from "lucide-react";
 import {
   downloadPayslipPdf,
+  emailPayslip,
   type AdjustmentCategory,
   type Payslip,
   type PayslipLineItem,
@@ -44,6 +45,7 @@ export function PayrollPayslipsTable({
   payslips,
   categories = [],
   onAdjust,
+  canEmail = false,
 }: {
   runId: string;
   payslips: Payslip[];
@@ -52,9 +54,15 @@ export function PayrollPayslipsTable({
   categories?: AdjustmentCategory[];
   // Absent on a run that can no longer be edited.
   onAdjust?: (employeeProfileId: string) => void;
+  // Emailing a payslip needs the SAME figures a bank file trusts — a run
+  // that can still be regenerated has none of those yet. Mirrors the
+  // backend's own SUBMITTED gate (see PayslipEmailService).
+  canEmail?: boolean;
 }) {
   const [open, setOpen] = useState<Payslip | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [emailing, setEmailing] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<{ id: string; message: string } | null>(null);
 
   const nonCash = useMemo(
     () => new Set(categories.filter((c) => c.nonCash).map((c) => c.code)),
@@ -77,6 +85,21 @@ export function PayrollPayslipsTable({
       saveFile(await downloadPayslipPdf(runId, payslip.employeeProfileId));
     } finally {
       setDownloading(null);
+    }
+  }
+
+  async function sendEmail(payslip: Payslip) {
+    setEmailing(payslip.id);
+    setEmailError(null);
+    try {
+      await emailPayslip(runId, payslip.employeeProfileId);
+    } catch (e: unknown) {
+      setEmailError({
+        id: payslip.id,
+        message: e instanceof Error ? e.message : "Could not email this payslip.",
+      });
+    } finally {
+      setEmailing(null);
     }
   }
 
@@ -156,6 +179,9 @@ export function PayrollPayslipsTable({
                 onOpen={() => setOpen(payslip)}
                 onPdf={() => void getPdf(payslip)}
                 onAdjust={onAdjust}
+                emailBusy={emailing === payslip.id}
+                emailErrorMessage={emailError?.id === payslip.id ? emailError.message : null}
+                onEmail={canEmail ? () => void sendEmail(payslip) : undefined}
               />
             ))}
           </tbody>
@@ -235,6 +261,9 @@ function Row({
   onOpen,
   onPdf,
   onAdjust,
+  onEmail,
+  emailBusy,
+  emailErrorMessage,
 }: {
   payslip: Payslip;
   nonCash: Set<string>;
@@ -242,6 +271,10 @@ function Row({
   onOpen: () => void;
   onPdf: () => void;
   onAdjust?: (employeeProfileId: string) => void;
+  // Absent on a run that isn't SUBMITTED yet.
+  onEmail?: () => void;
+  emailBusy: boolean;
+  emailErrorMessage: string | null;
 }) {
   const hourly = payslip.snapshotSalaryType === "HOURLY";
 
@@ -331,8 +364,29 @@ function Row({
               <Download className="size-3" aria-hidden />
             )}
           </button>
+
+          {onEmail ? (
+            <button
+              type="button"
+              aria-label={`Email ${payslip.snapshotName}'s payslip`}
+              title="Email this payslip"
+              className={ROW_ACTION}
+              disabled={emailBusy}
+              onClick={onEmail}
+            >
+              {emailBusy ? (
+                <LoaderCircle className="size-3 animate-spin" aria-hidden />
+              ) : (
+                <Mail className="size-3" aria-hidden />
+              )}
+            </button>
+          ) : null}
         </div>
        </div>
+
+       {emailErrorMessage ? (
+         <p className="mt-1 text-[10px] font-medium text-destructive">{emailErrorMessage}</p>
+       ) : null}
       </td>
 
       {/* Days and the OT columns are a MONTHLY concept — an hourly employee

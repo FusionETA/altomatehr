@@ -22,7 +22,9 @@ using AltomateHR.Api.Modules.Notifications;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Holidays;
 using AltomateHR.Api.Modules.Overtime;
+using AltomateHR.Api.Modules.Onboarding;
 using AltomateHR.Api.Modules.Partners;
+using AltomateHR.Api.Modules.Provisioning;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Projects;
@@ -303,6 +305,7 @@ builder.Services.AddScoped<IPayrollRunClaimRepository, PayrollRunClaimRepository
 builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
+builder.Services.AddScoped<IPayslipEmailService, PayslipEmailService>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
 builder.Services.AddScoped<IShiftRepository, ShiftRepository>();
@@ -325,6 +328,10 @@ builder.Services.AddScoped<IXeroService, XeroService>();
 // Same instance behind the narrow upload port the storage classes take.
 builder.Services.AddScoped<IXeroFileUploader>(sp => sp.GetRequiredService<IXeroService>());
 builder.Services.AddScoped<IXeroFileReader>(sp => sp.GetRequiredService<IXeroService>());
+builder.Services.AddScoped<IInboundSsoService, InboundSsoService>();
+builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<IMasterKeyRepository, MasterKeyRepository>();
+builder.Services.AddScoped<IProvisioningService, ProvisioningService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();

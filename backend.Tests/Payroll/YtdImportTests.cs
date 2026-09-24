@@ -562,6 +562,136 @@ public class YtdImportServiceTests : IDisposable
         Assert.Equal(110m, run.TotalPcb);
     }
 
+    // ─── Tax-exempt allowances ──────────────────────────────────────────
+
+    // A travel allowance for official duty is PCB-exempt to RM 6,000 a YEAR
+    // (LHDN PR 5/2019 §7.2.1), so the ceiling has to be consumed across the
+    // imported months rather than reset every one of them.
+    private static byte[] TravelSheet(int monthly, params int[] months)
+    {
+        var lines = new List<string>
+        {
+            Header + ",Travel/Petrol/Toll (Official Duty)",
+            "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+        };
+
+        foreach (var m in months)
+        {
+            lines.Add($"{m},,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,{monthly}");
+        }
+
+        return Encoding.UTF8.GetBytes(string.Join("\n", lines));
+    }
+
+    [Fact]
+    public async Task AnExemptAllowanceIsCarriedAgainstTheAnnualCeilingNotAMonthlyOne()
+    {
+        // 2,500/month against a 6,000 ceiling: two months clear, the third
+        // straddles it, the fourth is wholly taxable.
+        var result = await _service.ImportAsync(
+            2026, TravelSheet(2500, 1, 2, 3, 4), TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var byMonth = await _db.PayslipLineItems
+            .Where(li => li.Category == PayrollAdjustmentCategories.AllowanceTravelOfficial)
+            .Join(_db.Payslips, li => li.PayslipId, p => p.Id, (li, p) => new { li, p.PayrollRunId })
+            .Join(_db.PayrollRuns, x => x.PayrollRunId, r => r.Id, (x, r) => new { r.PeriodMonth, x.li })
+            .ToListAsync();
+
+        decimal? Taxable(int month) =>
+            byMonth.Single(x => x.PeriodMonth == month).li.PcbTaxableAmount;
+
+        // null means "all of it is taxable" — so the exempt months must say 0,
+        // not nothing.
+        Assert.Equal(0m, Taxable(1));
+        Assert.Equal(0m, Taxable(2));
+        Assert.Equal(1500m, Taxable(3));
+        Assert.Null(Taxable(4));
+    }
+
+    // The bug this guards: with the ceiling inert on imported history, the
+    // first COMPUTED month after a migration annualises against an inflated Y
+    // and over-deducts for the rest of the year.
+    [Fact]
+    public async Task TheExemptPortionStaysOutOfYearToDateTaxablePay()
+    {
+        await _service.ImportAsync(2026, TravelSheet(500, 1, 2, 3), TabularFormat.Csv);
+
+        var ytd = await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, excludeRunId: null);
+
+        // 3 × 5,000 basic. The 3 × 500 travel is inside the 6,000 ceiling and
+        // adds nothing.
+        Assert.Equal(15_000m, ytd["emp-1"].Taxable);
+    }
+
+    // A fully taxable allowance has no ceiling to consume, so it must not be
+    // given one by accident.
+    [Fact]
+    public async Task AnAllowanceWithNoCeilingIsTaxableInFull()
+    {
+        var lines = new List<string>
+        {
+            Header + ",Travel/Petrol Allowance (Private Use/Commuting)",
+            "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,500",
+        };
+
+        await _service.ImportAsync(
+            2026, Encoding.UTF8.GetBytes(string.Join("\n", lines)), TabularFormat.Csv);
+
+        var line = await _db.PayslipLineItems.SingleAsync(
+            li => li.Category == PayrollAdjustmentCategories.AllowanceTravelPrivate);
+
+        Assert.Null(line.PcbTaxableAmount);
+
+        var ytd = await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, excludeRunId: null);
+        Assert.Equal(5_500m, ytd["emp-1"].Taxable);
+    }
+
+    // A year that already has a computed month must not hand the ceiling back
+    // to the imported ones — the two together still only get RM 6,000.
+    [Fact]
+    public async Task AMonthTheImportSkipsStillCountsAgainstTheCeiling()
+    {
+        var run = new PayrollRun
+        {
+            Id = "run-jan", OrganizationId = "org-1",
+            PeriodYear = 2026, PeriodMonth = 1,
+            Status = PayrollRunStatus.SUBMITTED, Source = PayrollRunSource.COMPUTED,
+        };
+        var payslip = new Payslip
+        {
+            Id = "ps-jan", OrganizationId = "org-1", PayrollRunId = "run-jan",
+            EmployeeProfileId = "emp-1", UserId = "usr-1",
+            SnapshotName = "Aisyah Binti Rahman", BasicPay = 5000m, ProratedPay = 5000m,
+        };
+        _db.PayrollRuns.Add(run);
+        _db.Payslips.Add(payslip);
+        _db.PayslipLineItems.Add(new PayslipLineItem
+        {
+            OrganizationId = "org-1", PayslipId = "ps-jan",
+            Kind = PayslipLineKind.ALLOWANCE,
+            Category = PayrollAdjustmentCategories.AllowanceTravelOfficial,
+            Label = "Travel", Amount = 5500m, SubjectToPcb = true,
+            PcbTaxableAmount = 0m,
+        });
+        await _db.SaveChangesAsync();
+
+        // February onwards: only RM 500 of headroom is left.
+        var result = await _service.ImportAsync(
+            2026, TravelSheet(2000, 2, 3), TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var feb = await _db.PayslipLineItems
+            .Join(_db.Payslips, li => li.PayslipId, p => p.Id, (li, p) => new { li, p.PayrollRunId })
+            .Join(_db.PayrollRuns, x => x.PayrollRunId, r => r.Id, (x, r) => new { r.PeriodMonth, x.li })
+            .Where(x => x.li.Category == PayrollAdjustmentCategories.AllowanceTravelOfficial)
+            .ToListAsync();
+
+        Assert.Equal(1500m, feb.Single(x => x.PeriodMonth == 2).li.PcbTaxableAmount);
+        Assert.Null(feb.Single(x => x.PeriodMonth == 3).li.PcbTaxableAmount);
+    }
+
     // ─── Matching ───────────────────────────────────────────────────────
 
     [Fact]

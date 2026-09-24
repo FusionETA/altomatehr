@@ -2,6 +2,16 @@ using System.Security.Cryptography;
 
 namespace AltomateHR.Api.Modules.Overtime;
 
+// Before/after work photos on an overtime request — the evidence an approver
+// reviews, and the reason a request cannot be approved without one.
+//
+// Xero Files when the org has a connection, local disk otherwise: the same
+// order as attendance photos, claim receipts and leave attachments. The
+// fallback keeps someone able to file overtime when Xero is unreachable.
+//
+// No new columns. BeforePhotoUrl and AfterPhotoUrl each hold a url, and a
+// Xero-hosted photo carries its file id inside that url — so the id is
+// recoverable without a second field to keep in step.
 public class OvertimePhotoStorage : IOvertimePhotoStorage
 {
     private const long MaxPhotoBytes = 8 * 1024 * 1024;
@@ -16,9 +26,21 @@ public class OvertimePhotoStorage : IOvertimePhotoStorage
         ["image/heif"] = ".heif",
     };
 
-    private readonly IWebHostEnvironment _environment;
+    // What an accountant sees this grouped under in Xero Files.
+    private const string XeroFolder = "Overtime Photos";
 
-    public OvertimePhotoStorage(IWebHostEnvironment environment) => _environment = environment;
+    // The url segment marking a photo as Xero-hosted; everything after it is
+    // the file id.
+    public const string XeroSegment = "xero";
+
+    private readonly IWebHostEnvironment _environment;
+    private readonly Xero.IXeroFileUploader _xero;
+
+    public OvertimePhotoStorage(IWebHostEnvironment environment, Xero.IXeroFileUploader xero)
+    {
+        _environment = environment;
+        _xero = xero;
+    }
 
     public async Task<OvertimePhotoUploadResult> StoreAsync(OvertimePhotoUpload upload)
     {
@@ -32,14 +54,27 @@ public class OvertimePhotoStorage : IOvertimePhotoStorage
             throw new ArgumentException("Upload a JPG, PNG, WEBP, HEIC, or HEIF photo.");
 
         var extension = GetSafeExtension(upload.FileName, fallbackExtension);
+
+        // Buffered because both destinations need the whole thing: Xero takes a
+        // multipart body, and the local fallback must still be writable after a
+        // failed upload has already read the stream. Capped at 8 MB above.
+        using var buffer = new MemoryStream();
+        await upload.Content.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        var uploaded = await _xero.TryUploadFileAsync(
+            XeroFolder, bytes, Path.GetFileName(upload.FileName), upload.ContentType);
+
+        if (uploaded is not null)
+            return new OvertimePhotoUploadResult($"{PhotoRoutePrefix}/{XeroSegment}/{uploaded.FileId}");
+
         var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(8).ToLowerInvariant()}{extension}";
         var uploadDirectory = GetUploadDirectory();
 
         Directory.CreateDirectory(uploadDirectory);
 
         var path = Path.Combine(uploadDirectory, fileName);
-        await using var output = File.Create(path);
-        await upload.Content.CopyToAsync(output);
+        await File.WriteAllBytesAsync(path, bytes);
 
         return new OvertimePhotoUploadResult($"{PhotoRoutePrefix}/{fileName}");
     }

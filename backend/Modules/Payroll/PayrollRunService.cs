@@ -725,6 +725,14 @@ public class PayrollRunService : IPayrollRunService
         // The employee's prior-employer carryover (their TP3) folds into the YTD
         // figures, so a mid-year joiner is not over-withheld until December.
         //
+        // A TP3 declares ONE calendar year (LHDN MTD Spec §10), so it only
+        // applies to the run whose year it is tagged with. Without this gate a
+        // figure declared for 2026 keeps inflating Y in 2027 and every year
+        // after, over-withholding forever. A declaration with no year is not
+        // attributable to any year and is ignored — the same answer v1 gives,
+        // where the comparison is against a null.
+        var carryApplies = profile.PrevEmploymentYear == run.PeriodYear;
+
         // `PrevIncludesPriorThisOrgPeriod` marks a rehire whose declared prev*
         // figures ALREADY include the months they worked here earlier this year.
         // Adding this org's own YTD on top would then double-count it.
@@ -854,13 +862,15 @@ public class PayrollRunService : IPayrollRunService
                 .Select(c => new PayslipCalculator.Reimbursement(c.ClaimId, c.Label, c.Amount))
                 .ToList(),
 
-            YtdTaxable = ytd.Taxable + Carry(profile.PrevRemuneration, carryOwnOrgYtd, ytd.Taxable),
-            YtdEpf = ytd.Epf + Carry(profile.PrevEpf, carryOwnOrgYtd, ytd.Epf),
-            YtdPcb = ytd.Pcb + Carry(profile.PrevPcb, carryOwnOrgYtd, ytd.Pcb),
-            YtdZakat = ytd.Zakat + Carry(profile.PrevZakat, carryOwnOrgYtd, ytd.Zakat),
+            YtdTaxable = ytd.Taxable
+                + Carry(carryApplies, profile.PrevRemuneration, carryOwnOrgYtd, ytd.Taxable),
+            YtdEpf = ytd.Epf + Carry(carryApplies, profile.PrevEpf, carryOwnOrgYtd, ytd.Epf),
+            YtdPcb = ytd.Pcb + Carry(carryApplies, profile.PrevPcb, carryOwnOrgYtd, ytd.Pcb),
+            YtdZakat = ytd.Zakat + Carry(carryApplies, profile.PrevZakat, carryOwnOrgYtd, ytd.Zakat),
             YtdSocsoEis = ytd.SocsoEis,
             YtdAllowableDeductions = ytd.AllowableDeductions
-                + Carry(profile.PrevAllowableDeductions, carryOwnOrgYtd, ytd.AllowableDeductions),
+                + Carry(carryApplies, profile.PrevAllowableDeductions,
+                        carryOwnOrgYtd, ytd.AllowableDeductions),
             YtdAllowanceByCategory = ytd.AllowanceByCategory,
         };
     }
@@ -920,9 +930,10 @@ public class PayrollRunService : IPayrollRunService
     // rehire flagged `PrevIncludesPriorThisOrgPeriod` the declared total already
     // covers the months worked here, so this org's YTD is subtracted back out
     // before adding, and the result is floored at zero rather than credited.
-    private static decimal Carry(decimal? declared, bool isPriorEmployerOnly, decimal ownOrgYtd)
+    private static decimal Carry(
+        bool applies, decimal? declared, bool isPriorEmployerOnly, decimal ownOrgYtd)
     {
-        if (declared is null or <= 0m) return 0m;
+        if (!applies || declared is null or <= 0m) return 0m;
 
         return isPriorEmployerOnly
             ? declared.Value

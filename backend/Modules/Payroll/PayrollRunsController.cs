@@ -22,6 +22,7 @@ public class PayrollRunsController : ControllerBase
     private readonly IStatutoryFileService _statutory;
     private readonly IPayrollXeroSyncService _xero;
     private readonly ISalaryChangeService _salaryChanges;
+    private readonly IPayslipEmailService _payslipEmail;
 
     public PayrollRunsController(
         IPayrollRunService runs,
@@ -30,7 +31,8 @@ public class PayrollRunsController : ControllerBase
         IPayrollRunClaimService claims,
         IStatutoryFileService statutory,
         IPayrollXeroSyncService xero,
-        ISalaryChangeService salaryChanges)
+        ISalaryChangeService salaryChanges,
+        IPayslipEmailService payslipEmail)
     {
         _salaryChanges = salaryChanges;
         _runs = runs;
@@ -39,6 +41,7 @@ public class PayrollRunsController : ControllerBase
         _claims = claims;
         _statutory = statutory;
         _xero = xero;
+        _payslipEmail = payslipEmail;
     }
 
     [HttpGet]
@@ -204,6 +207,29 @@ public class PayrollRunsController : ControllerBase
     [HttpGet("{id}/documents/pcb-details")]
     public Task<IActionResult> PcbDetails(string id) =>
         File(_statutory.RenderPcbDetailsPdfAsync(id));
+
+    // GET /payroll/runs/{id}/download — every document this run produces, zipped.
+    //
+    // For an integration that wants the month's output in one request rather
+    // than six. A document that cannot be rendered is left out and named in the
+    // X-Bundle-Skipped header, with the count in X-Bundle-File-Count — so a
+    // caller can tell "no bank file configured" from "the zip is fine" without
+    // unpacking it first.
+    [HttpGet("{id}/documents/download")]
+    [HttpGet("{id}/download")]
+    public async Task<IActionResult> Download(string id, [FromQuery] DateTime? paymentDate)
+    {
+        var bundle = await _statutory.RenderRunBundleAsync(id, paymentDate);
+
+        if (!bundle.Ok)
+            return bundle.Error is null ? NotFound() : Conflict(new { error = bundle.Error });
+
+        Response.Headers["X-Bundle-File-Count"] = bundle.Included.Count.ToString();
+        if (bundle.Skipped.Count > 0)
+            Response.Headers["X-Bundle-Skipped"] = string.Join(",", bundle.Skipped.Keys);
+
+        return File(bundle.Content!, "application/zip", bundle.FileName);
+    }
 
     // The bank disbursement file, in the layout of the company's own payroll
     // bank. `paymentDate` is the value date; omitted means the last day of the
@@ -416,5 +442,24 @@ public class PayrollRunsController : ControllerBase
 
         if (!result.Found) return NotFound();
         return result.Ok ? NoContent() : Conflict(new { error = result.Error });
+    }
+
+    // ─── Emailing payslips ──────────────────────────────────────────────
+    //
+    // Manual, admin-triggered — never automatic. Refused unless the run is
+    // SUBMITTED, same as every other document this run produces.
+
+    [HttpPost("{id}/documents/payslip/{employeeProfileId}/email")]
+    public async Task<IActionResult> EmailPayslip(string id, string employeeProfileId)
+    {
+        var result = await _payslipEmail.EmailPayslipAsync(id, employeeProfileId);
+        return result.Ok ? Ok(result) : Conflict(new { error = result.Error });
+    }
+
+    [HttpPost("{id}/email-payslips")]
+    public async Task<IActionResult> EmailRunPayslips(string id)
+    {
+        var result = await _payslipEmail.EmailPayslipsForRunAsync(id);
+        return result.Error is null ? Ok(result) : Conflict(new { error = result.Error });
     }
 }

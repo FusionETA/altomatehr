@@ -3128,6 +3128,40 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("ProjectManagers");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Provisioning.MasterKey", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("TokenPrefix")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MasterKeys");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Shifts.Entities.Shift", b =>
                 {
                     b.Property<string>("Id")

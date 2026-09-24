@@ -64,6 +64,10 @@ public static class AuditActions
     public const string PayrollRunRevertToDraft = "payroll.run.revert-to-draft";
     public const string PayrollRunDelete = "payroll.run.delete";
 
+    // A payslip emailed to an employee — manual, admin-triggered, one row per
+    // successful send (a failed send is nothing that happened, so it gets no row).
+    public const string PayrollRunPayslipEmail = "payroll.run.payslip-email";
+
     // Chart of accounts
     public const string AccountCreate = "coa.create";
     public const string AccountUpdate = "coa.update";

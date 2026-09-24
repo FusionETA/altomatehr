@@ -92,7 +92,8 @@ public class NoApproverAboveTests
             new FakeSupervisionService(),
             new FakeApprovalRouter(chains),
             new FakeNotificationService(),
-            new AltomateHR.Api.Tests.Claims.FakeTeamService());
+            new AltomateHR.Api.Tests.Claims.FakeTeamService(),
+            new AltomateHR.Api.Tests.Overtime.StubXeroReader());
     }
 
     private sealed class StubOvertimeRepository : IOvertimeRepository

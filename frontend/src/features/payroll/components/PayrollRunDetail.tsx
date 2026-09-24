@@ -55,6 +55,9 @@ export function PayrollRunDetailView({
   const [skipped, setSkipped] = useState<SkippedEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Lifted out of PayrollRunTabs so Send for approval, below it, can jump an
+  // admin straight to Needs attention when that is why it is disabled.
+  const [runTab, setRunTab] = useState<"payslips" | "attention">("payslips");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -190,12 +193,15 @@ export function PayrollRunDetailView({
       <PayrollRunTabs
         payslipCount={payslips.length}
         attentionCount={attentionCount}
+        tab={runTab}
+        onTabChange={setRunTab}
         payslips={
           <PayrollPayslipsTable
             runId={run.id}
             payslips={payslips}
             categories={categories}
             onAdjust={setAdjusting}
+            canEmail={run.status === "SUBMITTED"}
           />
         }
         attention={
@@ -207,23 +213,24 @@ export function PayrollRunDetailView({
         }
       />
 
-      {/* Adjustments have no standalone section once the run is generated:
-          every payslip row carries its own adjust button, so a list of the
-          same people underneath is the same thing twice. Before generation
-          there are no rows to hang a button on, so the list IS the way in —
-          and only then. */}
-      {payslips.length === 0 ? (
-        <PayrollRunAdjustments
-          runId={run.id}
-          memberIds={detail.memberEmployeeProfileIds ?? []}
-          editable={run.status === "DRAFT"}
-          periodLabel={run.periodLabel}
-          categories={categories}
-          openFor={adjusting}
-          onOpenHandled={() => setAdjusting(null)}
-          onChanged={() => void load()}
-        />
-      ) : null}
+      {/* Always mounted — a payslip row's shortcut opens its dialog via
+          `openFor`, which only works while this is on screen. Its own
+          roster LIST has no standalone section once the run is generated
+          though: every payslip row already carries its own adjust button,
+          so a list of the same people underneath would be the same thing
+          twice. Before generation there are no rows to hang a button on, so
+          the list IS the way in — and only then. */}
+      <PayrollRunAdjustments
+        runId={run.id}
+        memberIds={detail.memberEmployeeProfileIds ?? []}
+        editable={run.status === "DRAFT"}
+        periodLabel={run.periodLabel}
+        categories={categories}
+        showRoster={payslips.length === 0}
+        openFor={adjusting}
+        onOpenHandled={() => setAdjusting(null)}
+        onChanged={() => void load()}
+      />
 
       {/* Claims only when there is something to show or something to
           attach. An org whose claims settle through Xero will never have
@@ -251,6 +258,7 @@ export function PayrollRunDetailView({
           onChanged={() => void load()}
           onSkipped={setSkipped}
           onDeleted={onBack}
+          onViewAttention={() => setRunTab("attention")}
         />
       </section>
     </div>

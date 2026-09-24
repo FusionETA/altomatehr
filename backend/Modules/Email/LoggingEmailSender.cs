@@ -17,11 +17,16 @@ public class LoggingEmailSender : IEmailSender
         string toEmail,
         string subject,
         string htmlBody,
+        IReadOnlyList<EmailAttachment>? attachments = null,
         CancellationToken cancellationToken = default)
     {
+        var attachmentNote = attachments is { Count: > 0 }
+            ? $" | Attachments: {string.Join(", ", attachments.Select(a => $"{a.FileName} ({a.Content.Length} bytes)"))}"
+            : "";
+
         _logger.LogWarning(
-            "[email not sent — EngineMailer unconfigured] To: {To} | Subject: {Subject}\n{Body}",
-            toEmail, subject, htmlBody);
+            "[email not sent — EngineMailer unconfigured] To: {To} | Subject: {Subject}{Attachments}\n{Body}",
+            toEmail, subject, attachmentNote, htmlBody);
 
         return Task.FromResult(true);
     }

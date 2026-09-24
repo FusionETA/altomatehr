@@ -642,6 +642,7 @@ public class PayrollRunServiceTests : IDisposable
         var july = await CreateRunAsync(2026, 7);
         var without = Assert.Single((await _service.GenerateAsync(july.Id)).Result!.Detail.Payslips);
 
+        profile.PrevEmploymentYear = 2026;
         profile.PrevRemuneration = 54_000m;
         profile.PrevEpf = 5_940m;
         await _db.SaveChangesAsync();
@@ -666,6 +667,7 @@ public class PayrollRunServiceTests : IDisposable
 
         // Declared total for the year so far is 9,000 — which is exactly the
         // January this org already paid.
+        profile.PrevEmploymentYear = 2026;
         profile.PrevRemuneration = 9_000m;
         profile.PrevIncludesPriorThisOrgPeriod = true;
         await _db.SaveChangesAsync();
@@ -682,6 +684,52 @@ public class PayrollRunServiceTests : IDisposable
             (await _service.GenerateAsync(february.Id)).Result!.Detail.Payslips);
 
         Assert.True(flagged.Pcb < doubleCounted.Pcb);
+    }
+
+    // A TP3 declares ONE calendar year. Carrying it into the next one would
+    // over-withhold every month of a year the employee never earned it in —
+    // and, because nothing clears the field, would do so forever.
+    [Fact]
+    public async Task PriorEmployerCarryover_DoesNotLeakIntoTheFollowingYear()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+        profile.PrevEmploymentYear = 2026;
+        profile.PrevRemuneration = 54_000m;
+        profile.PrevEpf = 5_940m;
+        await _db.SaveChangesAsync();
+
+        var declaredYear = await CreateRunAsync(2026, 7);
+        var carried = Assert.Single(
+            (await _service.GenerateAsync(declaredYear.Id)).Result!.Detail.Payslips);
+
+        var nextYear = await CreateRunAsync(2027, 7);
+        var notCarried = Assert.Single(
+            (await _service.GenerateAsync(nextYear.Id)).Result!.Detail.Payslips);
+
+        Assert.True(carried.Pcb > notCarried.Pcb);
+    }
+
+    // An amount with no year is not attributable to any year, so it is ignored
+    // rather than silently applied to whichever run asks — matching v1, where
+    // the comparison is against a null.
+    [Fact]
+    public async Task PriorEmployerCarryover_IsIgnoredWhenNoYearIsDeclared()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+
+        var july = await CreateRunAsync(2026, 7);
+        var baseline = Assert.Single(
+            (await _service.GenerateAsync(july.Id)).Result!.Detail.Payslips);
+
+        profile.PrevEmploymentYear = null;
+        profile.PrevRemuneration = 54_000m;
+        profile.PrevEpf = 5_940m;
+        await _db.SaveChangesAsync();
+
+        var untagged = Assert.Single(
+            (await _service.GenerateAsync(july.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(baseline.Pcb, untagged.Pcb);
     }
 
     // ─── Settings ───────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ export function PayrollRunAdjustments({
   memberIds,
   editable,
   categories,
+  showRoster,
   openFor,
   onOpenHandled,
   onChanged,
@@ -34,6 +35,11 @@ export function PayrollRunAdjustments({
   editable: boolean;
   periodLabel: string;
   categories: AdjustmentCategory[];
+  // False once the run has payslips — each row already carries its own
+  // adjust button, so this component's own roster list would repeat them.
+  // The component stays mounted either way: it also owns the dialog a
+  // payslip row's shortcut opens via `openFor`.
+  showRoster: boolean;
   // A payslip row's shortcut opens the editor here rather than mounting a
   // second copy of it beside the table.
   openFor: string | null;
@@ -88,111 +94,115 @@ export function PayrollRunAdjustments({
   );
 
   return (
-    <section className={CARD}>
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-foreground">One-off adjustments</h2>
-          <p className={HINT}>
-            Overtime hours, a bonus, a deduction, or a change to someone's recurring
-            allowances — for this month only. These survive a regeneration; the payslip
-            lines they produce do not.
-          </p>
-        </div>
+    <>
+      {showRoster ? (
+        <section className={CARD}>
+          <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-foreground">One-off adjustments</h2>
+              <p className={HINT}>
+                Overtime hours, a bonus, a deduction, or a change to someone's recurring
+                allowances — for this month only. These survive a regeneration; the payslip
+                lines they produce do not.
+              </p>
+            </div>
 
-        {/* Only on a draft: the import writes through the same service the
-            editor does, and that refuses anything else. */}
-        {editable ? (
-          <button
-            type="button"
-            onClick={() => setImporting(true)}
-            className={`${BUTTON_GHOST_SM} shrink-0`}
-          >
-            <Upload className="size-3.5" aria-hidden />
-            Import adjustments
-          </button>
-        ) : null}
-      </header>
+            {/* Only on a draft: the import writes through the same service the
+                editor does, and that refuses anything else. */}
+            {editable ? (
+              <button
+                type="button"
+                onClick={() => setImporting(true)}
+                className={`${BUTTON_GHOST_SM} shrink-0`}
+              >
+                <Upload className="size-3.5" aria-hidden />
+                Import adjustments
+              </button>
+            ) : null}
+          </header>
 
-      {error ? <p className={ERROR_PANEL}>Error: {error}</p> : null}
+          {error ? <p className={ERROR_PANEL}>Error: {error}</p> : null}
 
-      {loading ? (
-        <TableSkeleton columns={3} label="Loading adjustments" />
-      ) : employees.length === 0 ? (
-        <p className={HINT}>No employees on the payroll yet.</p>
-      ) : (
-        <>
-          {withSomething.length === 0 ? (
-            <p className={`${HINT} mb-3`}>
-              Nothing set for anyone this month. Everyone is paid straight off their
-              profile.
-            </p>
-          ) : null}
+          {loading ? (
+            <TableSkeleton columns={3} label="Loading adjustments" />
+          ) : employees.length === 0 ? (
+            <p className={HINT}>No employees on the payroll yet.</p>
+          ) : (
+            <>
+              {withSomething.length === 0 ? (
+                <p className={`${HINT} mb-3`}>
+                  Nothing set for anyone this month. Everyone is paid straight off their
+                  profile.
+                </p>
+              ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse">
-              <thead>
-                <tr className="border-b border-border/70">
-                  <th className={TH}>Employee</th>
-                  <th className={TH}>Set for this month</th>
-                  <th className={TH} aria-label="Edit" />
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((employee) => {
-                  const adjustment = byEmployee.get(employee.employeeProfileId);
-
-                  return (
-                    <tr
-                      key={employee.employeeProfileId}
-                      className="border-b border-border/40 last:border-0"
-                    >
-                      <td className={TD}>
-                        <span className="font-medium text-foreground">{employee.name}</span>
-                        {employee.employeeNumber ? (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {employee.employeeNumber}
-                          </span>
-                        ) : null}
-                      </td>
-
-                      <td className={TD}>
-                        {adjustment ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {summarise(adjustment).map((chip) => (
-                              <span
-                                key={chip}
-                                className={`${BADGE} border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400`}
-                              >
-                                {chip}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
-                      </td>
-
-                      <td className={`${TD} text-right`}>
-                        <button
-                          type="button"
-                          className={BUTTON_GHOST_SM}
-                          onClick={() => setOpen(employee.employeeProfileId)}
-                        >
-                          <SlidersHorizontal className="size-3.5" aria-hidden />
-                          {/* A submitted run still opens, read-only — an
-                              admin asking "why was this month different?"
-                              needs to see the inputs, not be locked out. */}
-                          {editable ? (adjustment ? "Edit" : "Adjust") : "View"}
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/70">
+                      <th className={TH}>Employee</th>
+                      <th className={TH}>Set for this month</th>
+                      <th className={TH} aria-label="Edit" />
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+                  </thead>
+                  <tbody>
+                    {employees.map((employee) => {
+                      const adjustment = byEmployee.get(employee.employeeProfileId);
+
+                      return (
+                        <tr
+                          key={employee.employeeProfileId}
+                          className="border-b border-border/40 last:border-0"
+                        >
+                          <td className={TD}>
+                            <span className="font-medium text-foreground">{employee.name}</span>
+                            {employee.employeeNumber ? (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {employee.employeeNumber}
+                              </span>
+                            ) : null}
+                          </td>
+
+                          <td className={TD}>
+                            {adjustment ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {summarise(adjustment).map((chip) => (
+                                  <span
+                                    key={chip}
+                                    className={`${BADGE} border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400`}
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            )}
+                          </td>
+
+                          <td className={`${TD} text-right`}>
+                            <button
+                              type="button"
+                              className={BUTTON_GHOST_SM}
+                              onClick={() => setOpen(employee.employeeProfileId)}
+                            >
+                              <SlidersHorizontal className="size-3.5" aria-hidden />
+                              {/* A submitted run still opens, read-only — an
+                                  admin asking "why was this month different?"
+                                  needs to see the inputs, not be locked out. */}
+                              {editable ? (adjustment ? "Edit" : "Adjust") : "View"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
 
       {open ? (
         <AdjustmentEditor
@@ -221,7 +231,7 @@ export function PayrollRunAdjustments({
           }}
         />
       ) : null}
-</section>
+    </>
   );
 }
 

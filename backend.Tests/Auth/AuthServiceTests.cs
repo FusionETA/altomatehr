@@ -532,7 +532,9 @@ public class AuthServiceTests
         public bool Succeeds { get; init; } = true;
 
         public Task<bool> SendAsync(
-            string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+            string toEmail, string subject, string htmlBody,
+            IReadOnlyList<EmailAttachment>? attachments = null,
+            CancellationToken cancellationToken = default)
         {
             Sent.Add((toEmail, subject, htmlBody));
             return Task.FromResult(Succeeds);

@@ -18,6 +18,12 @@ public static class ApiScopes
         "policies:read",      "policies:write",
         "organizations:read", "organizations:write",
         "notifications:write",   // no :read pair — there's nothing to list, only send
+        // Mint an SSO hand-off ticket for one of this org's admins. Write-only
+        // for the same reason: there is nothing to read, only a door to open.
+        "sso:write",
+        // Payroll is read-only over a key: a run is money leaving a company, and
+        // an integration has no business submitting one.
+        "payroll:read",
     };
 
     private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);

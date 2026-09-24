@@ -120,15 +120,11 @@ export function PayrollRunsList({
                   className="cursor-pointer border-b border-border/40 transition last:border-0 hover:bg-muted/40"
                   onClick={() => onOpen(run.id)}
                 >
-                  <td className={`${TD} font-medium`}>
-                    <div className="flex items-center gap-2">
-                      {run.periodLabel}
-                      {run.source === "IMPORTED" ? (
-                        <span className={`${BADGE} border-border bg-muted/60 text-muted-foreground`}>
-                          {sourceLabels.IMPORTED}
-                        </span>
-                      ) : null}
-                    </div>
+                  <td className={TD}>
+                    <div className="font-medium">{run.periodLabel}</div>
+                    {run.source === "IMPORTED" ? (
+                      <div className="text-xs text-muted-foreground">{sourceLabels.IMPORTED}</div>
+                    ) : null}
                   </td>
 
                   <td className={TD}>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FileText, LoaderCircle, X } from "lucide-react";
+import { Download, FileText, LoaderCircle, Mail, X } from "lucide-react";
 import {
   downloadAllPayslips,
   downloadBankFile,
@@ -9,8 +9,10 @@ import {
   downloadPcbDetails,
   downloadPcbTxt,
   downloadPerkesoTxt,
+  emailRunPayslips,
   getPayrollSettings,
   type PayrollRun,
+  type PayslipEmailBulkResult,
 } from "../api";
 import { DISBURSEMENT_BANKS, formatFor } from "../lib/disbursement";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -273,6 +275,13 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // shared error line would hide which needs fixing.
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Emailing is its own action, not a download — it can half-succeed the
+  // same way a download batch does (one address bounces, the rest don't),
+  // so the result is a sent/failed breakdown rather than a single error.
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailResult, setEmailResult] = useState<PayslipEmailBulkResult | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
   // The bank file embeds a value date, so it is picked rather than assumed.
   // Defaults to the last day of the period — the conventional pay date, and
   // what the server falls back to.
@@ -375,6 +384,21 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     }
 
     setBusy(null);
+  }
+
+  async function sendAllPayslips() {
+    if (!window.confirm(`Email every payslip on ${run.periodLabel} to its employee?`)) return;
+
+    setEmailBusy(true);
+    setEmailError(null);
+    setEmailResult(null);
+    try {
+      setEmailResult(await emailRunPayslips(run.id));
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Could not email the payslips.");
+    } finally {
+      setEmailBusy(false);
+    }
   }
 
   const allPicked = picked.size > 0 && picked.size === items.length;
@@ -534,6 +558,61 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                   </li>
                 ))}
               </ul>
+
+              {/* Emailing isn't a download — it can half-succeed the same way
+                  a download batch does, so its result is a sent/failed
+                  breakdown rather than the shared per-item error above. */}
+              {group === "PAYSLIPS" ? (
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Email every payslip to its employee
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Sends each employee their own payslip PDF by email. One address
+                        bouncing does not stop the rest from going out.
+                      </p>
+                      {emailError ? (
+                        <p className="mt-1 text-xs font-medium text-destructive">{emailError}</p>
+                      ) : emailResult ? (
+                        <div className="mt-1.5 text-xs">
+                          <p className="font-medium text-foreground">
+                            Sent {emailResult.sent}
+                            {emailResult.failed.length > 0
+                              ? `, ${emailResult.failed.length} failed`
+                              : ""}
+                            .
+                          </p>
+                          {emailResult.failed.length > 0 ? (
+                            <ul className="mt-1 space-y-0.5 text-destructive">
+                              {emailResult.failed.slice(0, 8).map((f) => (
+                                <li key={f.employeeName}>
+                                  {f.employeeName}: {f.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`${BUTTON_GHOST_SM} shrink-0`}
+                      disabled={emailBusy}
+                      onClick={() => void sendAllPayslips()}
+                    >
+                      {emailBusy ? (
+                        <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <Mail className="size-3.5" aria-hidden />
+                      )}
+                      Email all
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </section>
           ))}
         </div>

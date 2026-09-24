@@ -446,6 +446,30 @@ export const downloadPaymentSchedule = (runId: string) =>
     "payment-schedule.pdf",
   );
 
+// ─── Emailing payslips ──────────────────────────────────────────────────
+//
+// Manual, admin-triggered — never automatic. Refused (409, thrown as an
+// ApiError) unless the run is SUBMITTED, same gate as every download above.
+// A single send either succeeds or throws — there's no partial outcome to
+// report. A bulk send is different: the run-level gate still throws, but
+// once past it, one employee failing does not fail the request — the 200
+// body names who got sent and who didn't.
+
+export type PayslipEmailFailure = { employeeName: string; reason: string };
+
+export type PayslipEmailBulkResult = {
+  sent: number;
+  failed: PayslipEmailFailure[];
+};
+
+export const emailPayslip = (runId: string, employeeProfileId: string) =>
+  apiPost<void>(
+    `/payroll/runs/${runId}/documents/payslip/${employeeProfileId}/email`,
+  );
+
+export const emailRunPayslips = (runId: string) =>
+  apiPost<PayslipEmailBulkResult>(`/payroll/runs/${runId}/email-payslips`);
+
 export const downloadPcbDetails = (runId: string) =>
   download(
     `/payroll/runs/${runId}/documents/pcb-details`,
