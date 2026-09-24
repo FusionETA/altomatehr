@@ -30,21 +30,17 @@ import {
   submitTimeAdjustment,
   getTodayAttendance,
   getOpenSession,
-  getTeamAttendanceApprovals,
-  getTeamBreakApprovals,
-  pendingApprovalIds,
   OFF_SITE_CODE,
   LOCATION_REQUIRED_CODE,
   OPEN_SESSION_CODE,
   type AttendanceRecord,
 } from "@/features/attendance/api";
-import { getMyClaims, getTeamClaims } from "@/features/claims/api";
+import { getMyClaims } from "@/features/claims/api";
 import { formatCurrency } from "@/features/claims/lib/claim-formatters";
 import { NewClaimModal } from "@/features/claims/components/NewClaimModal";
 import {
   getLeaveBalances,
   getLeaveTypes,
-  getTeamLeave,
   type LeaveBalance,
   type LeaveType,
 } from "@/features/leave/api";
@@ -62,10 +58,10 @@ import {
 import type { SignedInUser } from "@/shared/types/session";
 import { summariseClaims } from "../lib/employee-formatters";
 import type { EmployeeView } from "../lib/types";
-import { getTeamOvertime } from "@/features/overtime/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { getMyPayslips } from "@/features/payslips/api";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
+import { useApprovalCounts } from "../lib/use-approval-counts";
 import { Skeleton } from "@/shared/components/Skeleton";
 
 // The still-open session only matters here when it started on an EARLIER day —
@@ -130,9 +126,6 @@ export function DashboardView({
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [claimCount, setClaimCount] = useState(0);
-  const [leaveCount, setLeaveCount] = useState(0);
-  const [attendanceCount, setAttendanceCount] = useState(0);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [newClaimOpen, setNewClaimOpen] = useState(false);
@@ -225,36 +218,15 @@ export function DashboardView({
     setProjectId((current) => onRecord ?? (current || projects[0]?.id) ?? "");
   }, [stale, today, projects]);
 
-  // Supervisor review counters — only the requests where this user is the
-  // current-step approver come back from the team endpoints.
-  useEffect(() => {
-    if (!isSupervisor) return;
-    Promise.all([
-      getTeamClaims().catch(() => []),
-      getTeamLeave().catch(() => []),
-      // Clock and break approvals are separate queues on the server but one
-      // number here — the badge answers "how much is waiting for me", and the
-      // screen it opens shows both together.
-      getTeamAttendanceApprovals().catch(() => []),
-      getTeamBreakApprovals().catch(() => []),
-      // Overtime is reviewed on the Attendance screen too, so it belongs in
-      // this count — otherwise the card and the nav badge disagree about how
-      // much is waiting behind the same tab.
-      getTeamOvertime().catch(() => []),
-    ]).then(([claims, leave, days, breaks, overtime]) => {
-      setClaimCount(claims.filter((c) => c.status === "PENDING").length);
-      setLeaveCount(leave.filter((l) => l.status === "PENDING").length);
-      // Counting decisions, not days: one shift can have a clock-in AND a
-      // clock-out waiting, which is two things to review. Breaks already arrive
-      // as one request each.
-      setAttendanceCount(
-        days.reduce((n, day) => n + pendingApprovalIds(day).length, 0) +
-          breaks.filter((b) => b.approvalStatus === "PENDING").length +
-          // /overtime/team carries decided rows too — the queue shows history.
-          overtime.filter((o) => o.status === "PENDING").length,
-      );
-    });
-  }, [isSupervisor]);
+  // Supervisor review counters — the same live numbers as the nav badges
+  // (useApprovalCounts), so the card and the sidebar cannot disagree. This
+  // used to be its own one-off fetch on mount: stale after the first decision,
+  // and counting every pending claim where the badge counted only the ones
+  // this person can act on.
+  const approvals = useApprovalCounts(isSupervisor);
+  const claimCount = approvals.claims;
+  const leaveCount = approvals.leave;
+  const attendanceCount = approvals.attendance;
 
   // Two states, because a finished shift no longer ends the day: a day holds
   // several sessions, so clocking out at noon and back in at one is normal.

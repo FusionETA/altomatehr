@@ -1,18 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
 import { Building2, ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
-import { getTeamClaims } from "@/features/claims/api";
-import { getTeamLeave } from "@/features/leave/api";
-import {
-  getTeamAttendanceApprovals,
-  getTeamBreakApprovals,
-  pendingApprovalIds,
-} from "@/features/attendance/api";
-import { getTeamOvertime } from "@/features/overtime/api";
 import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
 import { getLeaveTypes } from "@/features/leave/api";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
@@ -21,6 +13,7 @@ import { PushToggleMenuItem } from "@/features/notifications/components/PushTogg
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import type { SignedInUser } from "@/shared/types/session";
 import { buildInitials, personName } from "../lib/employee-formatters";
+import { useApprovalCounts } from "../lib/use-approval-counts";
 import {
   defaultSubOf,
   employeeNav,
@@ -60,12 +53,9 @@ export function EmployeeShell({
   const activeView = nav.parent as EmployeeView;
   const sub = nav.child;
   const [organizationName, setOrganizationName] = useState<string | null>(null);
-  const [claimBadge, setClaimBadge] = useState(0);
-  const [leaveBadge, setLeaveBadge] = useState(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  const [attendanceBadge, setAttendanceBadge] = useState(0);
 
   const activeItem = findNavItem(activeView);
   const initials = useMemo(() => buildInitials(user.email, user.name), [user.email, user.name]);
@@ -95,39 +85,15 @@ export function EmployeeShell({
     setOrganizationName(orgQuery.data?.name ?? null);
   }, [orgQuery.data]);
 
-  // Named so an approval can call it again. Fetched once on mount, the badge
-  // kept claiming work was waiting after the approver had already cleared it.
-  const refreshBadges = useCallback(() => {
-    if (!isSupervisor) return;
-    Promise.all([
-      getTeamClaims().catch(() => []),
-      getTeamLeave().catch(() => []),
-      // The Attendance tab holds three queues, so its badge is their sum —
-      // a "2" that turns out to be one clock-out and one overtime request is
-      // still the honest count of what is waiting behind that tab.
-      getTeamAttendanceApprovals().catch(() => []),
-      getTeamBreakApprovals().catch(() => []),
-      getTeamOvertime().catch(() => []),
-    ]).then(([claims, leave, days, breaks, overtime]) => {
-      // canAct, not status. The team view now includes the whole team's
-      // claims, so counting every pending one would advertise work that
-      // belongs to a different step's approver.
-      setClaimBadge(claims.filter((c) => c.canAct).length);
-      setLeaveBadge(leave.filter((l) => l.status === "PENDING").length);
-      setAttendanceBadge(
-        // Decisions, not days: one shift can have a clock-in AND a clock-out
-        // waiting, which is two things to review.
-        days.reduce((n, day) => n + pendingApprovalIds(day).length, 0) +
-          breaks.filter((b) => b.approvalStatus === "PENDING").length +
-          // /overtime/team carries decided rows too — the queue shows history.
-          overtime.filter((o) => o.status === "PENDING").length,
-      );
-    });
-  }, [isSupervisor]);
-
-  useEffect(() => {
-    refreshBadges();
-  }, [refreshBadges]);
+  // Live — see useApprovalCounts. These used to be fetched once on mount and
+  // refreshed only after a CLAIM decision, so approving leave, attendance or
+  // overtime, or a teammate submitting something new, left them stale until
+  // the page was reloaded.
+  const approvals = useApprovalCounts(isSupervisor);
+  const claimBadge = approvals.claims;
+  const leaveBadge = approvals.leave;
+  const attendanceBadge = approvals.attendance;
+  const refreshBadges = approvals.refresh;
 
   useEffect(() => {
     if (!accountMenuOpen) return;

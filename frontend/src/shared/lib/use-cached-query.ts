@@ -13,9 +13,19 @@ import * as cache from "./api-cache";
 export function useCachedQuery<T>(
   path: string | null,
   fetcher: () => Promise<T>,
-  options: { enabled?: boolean } = {},
+  options: {
+    enabled?: boolean;
+    // Re-read as soon as a write invalidates this path, instead of waiting to
+    // be remounted. Off by default: a screen normally refreshes itself after
+    // its own write, and every mounted query in a module re-fetching on every
+    // write would be a lot of requests nobody asked for. For something that
+    // must stay live wherever the write happened — a nav badge counting
+    // approvals made on another screen — it is the point.
+    refetchOnInvalidate?: boolean;
+  } = {},
 ) {
   const enabled = options.enabled ?? path !== null;
+  const refetchOnInvalidate = options.refetchOnInvalidate ?? false;
   const cached = path ? cache.peek<T>(path) : null;
 
   const [data, setData] = useState<T | undefined>(cached?.data);
@@ -65,8 +75,11 @@ export function useCachedQuery<T>(
     return cache.subscribe(path, () => {
       const hit = cache.peek<T>(path);
       if (hit) setData(hit.data);
+      // No entry means the path was just invalidated by a write. The data on
+      // screen is kept while the new answer is fetched.
+      else if (refetchOnInvalidate) void load(false);
     });
-  }, [enabled, path, load]);
+  }, [enabled, path, load, refetchOnInvalidate]);
 
   return {
     data,
