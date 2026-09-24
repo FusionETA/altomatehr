@@ -1,0 +1,34 @@
+-- hr_prod -> altomatehr : project managers, LOAD — BLOCKED, DO NOT RUN YET
+--
+-- Blocked on v2 having somewhere to put this. Pick one shape first:
+--
+--   (a) PREFERRED — child table, mirrors v1's ProjectManager join table
+--       (v1 supports many managers per project; today's data happens to be
+--       exactly one each, so a scalar column would silently cap a capability
+--       v1 already has):
+--
+--         ProjectManagers(Id, OrganizationId, ProjectId, UserId, CreatedAt)
+--         unique (OrganizationId, ProjectId, UserId), ITenantScoped
+--
+--   (b) scalar Project.ProjectManagerId varchar(40) NULL — matches v1's
+--       legacy column, which v1 itself keeps only as a mirror of "first
+--       picked PM" and tells new code not to read.
+--
+-- Uncomment the matching block once the EF migration is applied.
+-- Re-running is safe either way.
+
+-- (a) child table
+-- INSERT INTO altomatehr.ProjectManagers (Id, OrganizationId, ProjectId, UserId, CreatedAt)
+-- SELECT UUID(), p.OrganizationId, m.v2_project_id, m.v2_user_id, UTC_TIMESTAMP(6)
+-- FROM altomatehr._mig_projectmanagers m
+-- JOIN altomatehr.Projects p ON p.Id = m.v2_project_id
+-- ON DUPLICATE KEY UPDATE UserId = VALUES(UserId);
+
+-- (b) scalar column
+-- UPDATE altomatehr.Projects p
+-- JOIN altomatehr._mig_projectmanagers m ON m.v2_project_id = p.Id
+-- SET p.ProjectManagerId = m.v2_user_id;
+
+-- Verify after whichever you ran: expect 84.
+-- SELECT COUNT(*) FROM altomatehr.Projects WHERE ProjectManagerId IS NOT NULL;      -- (b)
+-- SELECT COUNT(*) FROM altomatehr.ProjectManagers;                                   -- (a)
