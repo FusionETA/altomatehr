@@ -177,6 +177,19 @@ public class YtdImportService : IYtdImportService
         var monthsImported = 0;
         var payslipsImported = 0;
 
+        // How much of each employee's ANNUAL exemption ceiling is already
+        // spent, keyed by employee + category. A travel allowance is
+        // PCB-exempt up to RM 6,000 a YEAR, not per month, so the headroom
+        // has to carry across the loop below — which is why it is ordered by
+        // month. Without this the ceiling is inert on imported history and
+        // every exempt sen lands in Y, so the first COMPUTED month after an
+        // import over-deducts for the rest of the year.
+        //
+        // Seeded from the months this import will NOT rewrite, so a year
+        // that already has a computed month (or an imported one absent from
+        // the sheet) does not hand the ceiling back.
+        var exemptUsed = await SeedExemptUsedAsync(year, [.. byMonth.Keys]);
+
         foreach (var (month, entries) in byMonth.OrderBy(kv => kv.Key))
         {
             var run = await _runs.GetByPeriodAsync(year, month);
@@ -217,6 +230,8 @@ public class YtdImportService : IYtdImportService
                     if (amount <= 0m) continue;
 
                     var meta = PayrollAdjustmentCategories.Find(category);
+                    var pcbTaxable = PcbTaxablePortion(
+                        employee.Profile.Id, category, meta, amount, exemptUsed);
 
                     lineItems.Add(new PayslipLineItem
                     {
@@ -229,6 +244,11 @@ public class YtdImportService : IYtdImportService
                         SubjectToSocso = meta?.SubjectToSocso ?? false,
                         SubjectToEis = meta?.SubjectToEis ?? false,
                         SubjectToPcb = meta?.SubjectToPcb ?? true,
+                        // Only stored when it differs from the full amount,
+                        // mirroring PayslipCalculator — a null here means
+                        // "the whole line is taxable", which is what the YTD
+                        // reader falls back to.
+                        PcbTaxableAmount = pcbTaxable < amount ? pcbTaxable : null,
                         CreatedAt = now,
                     });
                 }
@@ -336,6 +356,82 @@ public class YtdImportService : IYtdImportService
             .Order()];
 
     // ─── Mapping ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Exemption headroom already consumed by the year's SUBMITTED months
+    /// that this import leaves alone, keyed the same way as
+    /// <see cref="PcbTaxablePortion"/>.
+    /// </summary>
+    /// <remarks>
+    /// Months present in the sheet are excluded because they are about to be
+    /// replaced wholesale — counting their current rows would charge the
+    /// ceiling twice for the same month.
+    /// </remarks>
+    private async Task<Dictionary<string, decimal>> SeedExemptUsedAsync(
+        int year, HashSet<int> replacing)
+    {
+        var used = new Dictionary<string, decimal>();
+
+        var untouched = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == year
+                        && r.Status == PayrollRunStatus.SUBMITTED
+                        && !replacing.Contains(r.PeriodMonth));
+
+        foreach (var run in untouched)
+        {
+            var employeeByPayslip = (await _payslips.GetForRunAsync(run.Id))
+                .ToDictionary(p => p.Id, p => p.EmployeeProfileId, StringComparer.Ordinal);
+
+            foreach (var li in await _payslips.GetLineItemsForRunAsync(run.Id))
+            {
+                if (li.Category is null) continue;
+                if (!employeeByPayslip.TryGetValue(li.PayslipId, out var employeeId)) continue;
+
+                var meta = PayrollAdjustmentCategories.Find(li.Category);
+                if (meta?.TaxExemptLimit is null) continue;
+
+                // The FULL amount, matching what PayslipCalculator charges
+                // against the ceiling from year-to-date. Past the ceiling the
+                // two differ, but headroom is already clamped to zero there.
+                var key = $"{employeeId}|{li.Category}";
+                used[key] = (used.TryGetValue(key, out var u) ? u : 0m) + li.Amount;
+            }
+        }
+
+        return used;
+    }
+
+    /// <summary>
+    /// The PCB-taxable slice of one imported allowance line, consuming the
+    /// employee's remaining ANNUAL exemption headroom for that category.
+    ///
+    /// Same rule as <see cref="PayslipCalculator"/> applies to a computed
+    /// run — it has to be, or the month after an import would be priced
+    /// against a year-to-date that never granted the exemption.
+    /// </summary>
+    private static decimal PcbTaxablePortion(
+        string employeeProfileId,
+        string category,
+        PayrollAdjustmentCategoryMeta? meta,
+        decimal amount,
+        Dictionary<string, decimal> exemptUsed)
+    {
+        if (meta is null
+            || meta.Kind != PayslipLineKind.ALLOWANCE
+            || !meta.SubjectToPcb
+            || meta.TaxExemptLimit is null)
+        {
+            return amount;
+        }
+
+        var key = $"{employeeProfileId}|{category}";
+        var used = exemptUsed.TryGetValue(key, out var u) ? u : 0m;
+        var headroom = Math.Max(0m, meta.TaxExemptLimit.Value - used);
+        var exempt = Math.Min(amount, headroom);
+
+        exemptUsed[key] = used + exempt;
+        return Money.Round2(Math.Max(0m, amount - exempt));
+    }
 
     // The figures are taken EXACTLY as typed. Nothing here recomputes EPF or
     // PCB from the salary: these months were paid, and what this engine would

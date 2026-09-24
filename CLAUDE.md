@@ -141,4 +141,3 @@ review exactly what moved before accepting it. Only list files changed in that t
 - Don't put secrets in `appsettings.json` or commit them.
 - Don't run EF migrations against the real app's Prisma database.
 - Don't add a separate `Interfaces/` folder — co-locate interfaces.
-- Don't modify the real app at `globe-engineering-claim`.
