@@ -41,6 +41,7 @@ import {
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Skeleton } from "@/shared/components/Skeleton";
+import { businessToday } from "@/shared/lib/business-day";
 
 type FlowStep = "payment" | "type" | "receipt" | "form";
 type ClaimType = "EXPENSE" | "MILEAGE";
@@ -446,7 +447,7 @@ function ClaimDetailsForm({
   const [spentAt, setSpentAt] = useState(
     editingClaim?.spentAt
       ? editingClaim.spentAt.slice(0, 10)
-      : (read?.date ?? new Date().toISOString().slice(0, 10)),
+      : (read?.date ?? businessToday()),
   );
   const [projectId, setProjectId] = useState(editingClaim?.projectId ?? "");
   const [chartOfAccountId, setChartOfAccountId] = useState(

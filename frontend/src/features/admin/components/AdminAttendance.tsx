@@ -82,6 +82,7 @@ import {
 } from "./AttendanceFilterBar";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows, SkeletonStats } from "@/shared/components/Skeleton";
+import { businessToday } from "@/shared/lib/business-day";
 
 // Two levels, mirroring production's own split:
 //
@@ -200,14 +201,8 @@ const TH =
 const ROW_ACTION =
   "inline-flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
 
-function isoDay(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 function startOfMonth() {
-  const d = new Date();
-  d.setUTCDate(1);
-  return isoDay(d);
+  return `${businessToday().slice(0, 8)}01`;
 }
 
 // Beyond the geofence. 200m matches the threshold the clock-in path itself
@@ -275,7 +270,7 @@ export function AdminAttendance() {
   const [tab, setTab] = useState<ReportTab>("today");
   const [filter, setFilter] = useState<AdminAttendanceFilter>({});
   const [from, setFrom] = useState(startOfMonth);
-  const [to, setTo] = useState(() => isoDay(new Date()));
+  const [to, setTo] = useState(() => businessToday());
   // Lifted so the OT tab's status filter can live in the filter card rather
   // than the submissions card's header.
   const [otStatus, setOtStatus] = useState<OtStatusFilter>("ALL");
@@ -420,7 +415,8 @@ export function AdminAttendance() {
 
   // Today's rows come from the records already loaded — the day is a slice of
   // the same roll call, not a separate query.
-  const today = isoDay(new Date());
+  // Malaysia's date, not UTC's — see business-day.ts.
+  const today = businessToday();
   // Who the project/team filters admit. null = no filter at all, which is not
   // the same as an empty set — that one matched nobody.
   const scopedIds = useMemo(() => {

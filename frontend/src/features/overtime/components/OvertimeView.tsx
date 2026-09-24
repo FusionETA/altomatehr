@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { businessToday } from "@/shared/lib/business-day";
 
 const CARD = "rounded-2xl border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
 const NO_PROJECT = "__none__";
@@ -335,7 +336,7 @@ function NewOvertimeModal({
   onCreated: (request: OvertimeRequest) => void;
 }) {
   const [projectId, setProjectId] = useState(NO_PROJECT);
-  const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [workDate, setWorkDate] = useState(() => businessToday());
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");

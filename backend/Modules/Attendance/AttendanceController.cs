@@ -284,10 +284,12 @@ public class AttendanceController : ControllerBase
     // "this month" rather than an error.
     private static (DateTime From, DateTime To) ResolveRange(DateTime? from, DateTime? to)
     {
+        // The business day, not UTC's: before 08:00 in Malaysia the UTC date is
+        // still yesterday, and on the 1st that is last month.
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
         if (from is not null || to is not null)
-            return (from?.Date ?? DateTime.UtcNow.Date, to?.Date ?? DateTime.UtcNow.Date);
+            return (from?.Date ?? today, to?.Date ?? today);
 
-        var today = DateTime.UtcNow.Date;
         var first = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         return (first, first.AddMonths(1).AddDays(-1));
     }
