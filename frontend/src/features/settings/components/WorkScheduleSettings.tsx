@@ -11,6 +11,22 @@ import {
   type Organization,
 } from "../api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import {
+  HOLIDAY_COUNTRY_GROUPS,
+  countryName,
+  rememberHolidayCountry,
+  rememberedHolidayCountry,
+} from "../lib/holiday-countries";
 import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD =
@@ -222,6 +238,8 @@ function HolidaysCard() {
     const now = new Date();
     return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
   });
+  // Malaysia unless this browser last imported somewhere else.
+  const [importCountry, setImportCountry] = useState(rememberedHolidayCountry);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -257,14 +275,15 @@ function HolidaysCard() {
     setError(null);
     setNotice(null);
     try {
-      const result = await importHolidays(importYear, "MY");
+      const result = await importHolidays(importYear, importCountry);
+      rememberHolidayCountry(importCountry);
       await holidaysQuery.refresh();
       // Both halves reported: "imported 0, already had 16" is a different
       // outcome from "imported 16", and an admin re-running after a revision
       // needs to tell them apart.
       setNotice(
         [
-          `Added ${result.imported} ${result.imported === 1 ? "holiday" : "holidays"} for ${importYear}`,
+          `Added ${result.imported} ${result.imported === 1 ? "holiday" : "holidays"} for ${countryName(importCountry)} ${importYear}`,
           result.skipped > 0 ? `${result.skipped} already on the calendar` : null,
           result.source ? `via ${result.source}` : null,
         ]
@@ -305,8 +324,31 @@ function HolidaysCard() {
           holiday is silently charged to someone's leave balance. */}
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border/60 bg-surface-low p-4">
         <div className="space-y-1.5">
+          <label htmlFor="holiday-import-country" className="text-xs text-muted-foreground">
+            Country
+          </label>
+          <Select value={importCountry} onValueChange={setImportCountry}>
+            <SelectTrigger id="holiday-import-country" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HOLIDAY_COUNTRY_GROUPS.map((group, i) => (
+                <SelectGroup key={group.label}>
+                  {i > 0 ? <SelectSeparator /> : null}
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.countries.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
           <label htmlFor="holiday-import-year" className="text-xs text-muted-foreground">
-            Import Malaysian holidays for
+            Year
           </label>
           <input
             id="holiday-import-year"
