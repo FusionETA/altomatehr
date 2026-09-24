@@ -211,6 +211,11 @@ public class ProjectService : IProjectService
         dto.AllowedIpEntries = (await _repo.GetAllowedIpsAsync(p.Id))
             .Select(a => new AllowedIpDto { Id = a.Id, Label = a.Label, Cidr = a.Cidr })
             .ToList();
+        // The counts the list view reads. Left at 0 here, the project returned
+        // by a SAVE claimed no sites — and since saving also clears the legacy
+        // lat/long pair, the card said "No geofence" right after one was added.
+        dto.GeofenceSiteCount = dto.GeofencePoints.Count;
+        dto.AllowedIpCount = dto.AllowedIpEntries.Count;
         return dto;
     }
 

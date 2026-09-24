@@ -123,6 +123,27 @@ public class ProjectsForMemberTests
         Assert.True(all["prj-old"].HiddenByTrackingCategory);
     }
 
+    // The project a SAVE returns replaces the card in the list. Its site count
+    // came back 0, and since saving also clears the legacy lat/long pair, the
+    // card said "No geofence" straight after a site was added.
+    [Fact]
+    public async Task UpdateAsync_ReturnsTheSiteAndIpCountsTheListShows()
+    {
+        var service = Create([Project("prj-a", "Project Alpha")]);
+
+        var saved = await service.UpdateAsync("prj-a", new Modules.Projects.Dtos.SaveProjectDto
+        {
+            Name = "Project Alpha",
+            GeofencePoints = [new() { Label = "Gate", Latitude = 3.06, Longitude = 101.5 }],
+            AllowedIpEntries = [new() { Label = "HQ", Cidr = "203.106.51.0/24" }],
+        });
+
+        Assert.NotNull(saved);
+        Assert.Equal(1, saved!.GeofenceSiteCount);
+        Assert.Equal(1, saved.AllowedIpCount);
+        Assert.Single(saved.GeofencePoints);
+    }
+
     // ---- wiring ----
 
     private static Project Project(string id, string name) => new() { Id = id, Name = name };
@@ -148,14 +169,24 @@ internal sealed class FixedTrackingScope(string? activeCategoryId) : IProjectTra
 
 internal sealed class FakeProjectRepository : IProjectRepository
 {
+        // Keeps what a save replaced, so a test can read it back.
+        private readonly Dictionary<string, List<ProjectGeofencePoint>> _sites = new();
+        private readonly Dictionary<string, List<ProjectAllowedIp>> _ips = new();
+
         public Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
-            Task.FromResult(new List<ProjectGeofencePoint>());
+            Task.FromResult(_sites.GetValueOrDefault(projectId) ?? new List<ProjectGeofencePoint>());
         public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) =>
-            Task.FromResult(new List<ProjectAllowedIp>());
-        public Task ReplaceGeofencePointsAsync(string projectId, IReadOnlyList<ProjectGeofencePoint> points) =>
-            Task.CompletedTask;
-        public Task ReplaceAllowedIpsAsync(string projectId, IReadOnlyList<ProjectAllowedIp> entries) =>
-            Task.CompletedTask;
+            Task.FromResult(_ips.GetValueOrDefault(projectId) ?? new List<ProjectAllowedIp>());
+        public Task ReplaceGeofencePointsAsync(string projectId, IReadOnlyList<ProjectGeofencePoint> points)
+        {
+            _sites[projectId] = points.ToList();
+            return Task.CompletedTask;
+        }
+        public Task ReplaceAllowedIpsAsync(string projectId, IReadOnlyList<ProjectAllowedIp> entries)
+        {
+            _ips[projectId] = entries.ToList();
+            return Task.CompletedTask;
+        }
         public Task<Dictionary<string, int>> GetGeofencePointCountsAsync() =>
             Task.FromResult(new Dictionary<string, int>());
         public Task<Dictionary<string, int>> GetAllowedIpCountsAsync() =>
