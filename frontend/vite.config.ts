@@ -1,11 +1,35 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+// One id per build, baked into the bundle AND written to /version.json, so a
+// tab left open across a deploy can tell it is running an old build. Without
+// this an employee who keeps the portal open all day carries on with
+// yesterday's code until they happen to reload — which is how a fix can be
+// live on the server and still missing on their screen.
+const BUILD_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+function versionFile(): Plugin {
+  return {
+    name: 'altomatehr-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ build: BUILD_ID }),
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), versionFile()],
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -39,6 +39,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return; // backend calls (incl. the SSE stream) always go live
+  // The build stamp an open tab compares itself against. Answering it from
+  // cache would tell a stale tab it is up to date, which is the whole bug
+  // this file exists to catch.
+  if (url.pathname === "/version.json") return;
 
   // Page navigations: try the network first (so a redeploy is seen right
   // away), fall back to the cached shell when offline.
