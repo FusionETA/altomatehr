@@ -13,7 +13,9 @@ namespace AltomateHR.Api.Modules.Auth;
 [Route("[controller]")]        // → /auth
 public class AuthController : ControllerBase
 {
-    private const string RefreshCookie = "refreshToken";
+    // Public so the SSO callback (Partners/InboundSsoController) sets the very
+    // cookie /auth/refresh reads — see the note there.
+    public const string RefreshCookie = "refreshToken";
 
     private readonly IAuthService _auth;
     private readonly ICurrentUser _currentUser;

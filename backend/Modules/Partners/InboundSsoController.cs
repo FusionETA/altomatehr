@@ -18,9 +18,11 @@ namespace AltomateHR.Api.Modules.Partners;
 [Route("sso")]
 public class InboundSsoController : ControllerBase
 {
-    // Must match AuthController's, or the session it sets would not be the one
-    // /auth/refresh reads.
-    private const string RefreshCookie = "altomate_refresh";
+    // AuthController's own constant, not a copy of it. This was a separate
+    // literal, "altomate_refresh", while login used "refreshToken": the callback
+    // set a cookie /auth/refresh never read, so every SSO hand-off landed on the
+    // sign-in page as if the ticket had failed.
+    private const string RefreshCookie = AuthController.RefreshCookie;
 
     private readonly IInboundSsoService _sso;
     private readonly PortalOptions _portal;

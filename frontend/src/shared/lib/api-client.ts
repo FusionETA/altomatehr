@@ -9,6 +9,12 @@
 // database while the API and DB are perfectly healthy.
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
+// A backend URL for a full-page navigation rather than a fetch — the SSO
+// hand-off below, where the browser itself has to arrive at the API.
+export function apiUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
+
 import * as cache from "./api-cache";
 
 // The ACCESS token, held in memory. Set after login; attached below.
