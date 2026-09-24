@@ -326,6 +326,7 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IApproverPositions, ApproverPositions>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
+builder.Services.AddScoped<IProjectTrackingScope, ProjectTrackingScope>();
 // Same instance behind the narrow upload port the storage classes take.
 builder.Services.AddScoped<IXeroFileUploader>(sp => sp.GetRequiredService<IXeroService>());
 builder.Services.AddScoped<IXeroFileReader>(sp => sp.GetRequiredService<IXeroService>());

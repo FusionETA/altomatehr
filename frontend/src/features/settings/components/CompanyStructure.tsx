@@ -85,7 +85,9 @@ export function CompanyStructure() {
     const p = projectsQuery.data;
     if (!t || !p) return;
     setTeams(t);
-    const active = p.filter((x) => !x.isArchived);
+    // Not archived, and not from a Xero tracking category the org has switched
+    // away from — neither can be given a team.
+    const active = p.filter((x) => !x.isArchived && !x.hiddenByTrackingCategory);
     setProjects(active);
     // Land on a project with teams rather than whichever happens to sort
     // first. Opening onto an empty middle pane looks like the page failed

@@ -483,7 +483,8 @@ public class ClaimsService : IClaimsService
             DueDate: claim.SpentAt,
             CurrencyCode: claim.Currency,
             Status: stage,
-            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)],
+            ProjectTrackingOptionId: await ProjectTrackingOptionIdAsync(claim));
 
         try
         {
@@ -547,7 +548,8 @@ public class ClaimsService : IClaimsService
             Date: claim.SpentAt,
             CurrencyCode: claim.Currency,
             BankAccountId: bankId,
-            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)]);
+            Lines: [new XeroBillLine(claim.Title, claim.Amount, accountCode)],
+            ProjectTrackingOptionId: await ProjectTrackingOptionIdAsync(claim));
 
         try
         {
@@ -1238,6 +1240,15 @@ public class ClaimsService : IClaimsService
         var code = org?.DefaultCurrency;
         return string.IsNullOrWhiteSpace(code) ? "MYR" : code.Trim().ToUpperInvariant();
     }
+
+    // Which Xero tracking option this claim's project was synced from, so the
+    // bill carries the project as a tracking tag — the same thing the previous
+    // system did. Null for a claim with no project, or one on a hand-made or
+    // Xero Projects-API project, which have no tracking option to tag with.
+    private async Task<string?> ProjectTrackingOptionIdAsync(Claim claim) =>
+        string.IsNullOrEmpty(claim.ProjectId)
+            ? null
+            : (await _projects.GetByIdAsync(claim.ProjectId))?.XeroTrackingOptionId;
 
     // Acts on the payout route the moment a claim is approved, so an admin never
     // has to press anything for a claim that cleared its chain.

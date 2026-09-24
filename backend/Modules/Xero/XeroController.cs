@@ -82,7 +82,7 @@ public class XeroController : ControllerBase
     [HttpPut("project-tracking")]
     public async Task<IActionResult> SetProjectTracking([FromBody] XeroSetProjectTrackingDto dto)
     {
-        await _xero.SetProjectTrackingCategoryAsync(dto.CategoryId);
-        return NoContent();
+        var synced = await _xero.SetProjectTrackingCategoryAsync(dto.CategoryId);
+        return synced is null ? NoContent() : Ok(synced);
     }
 }

@@ -63,7 +63,10 @@ public interface IXeroService : IXeroFileUploader, IXeroFileReader
     // The org's tracking categories, for mapping the payroll project dimension.
     Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync();
     Task<XeroProjectTrackingDto> GetProjectTrackingAsync();
-    Task SetProjectTrackingCategoryAsync(string? categoryId);
+    // Choosing (or switching) the category also syncs it straight away, so the
+    // project list flips to the new category's options without a second step
+    // nobody would know to take. Null result when the choice was cleared.
+    Task<XeroSyncProjectsResultDto?> SetProjectTrackingCategoryAsync(string? categoryId);
 
     Task<bool> IsConnectedAsync();
 }

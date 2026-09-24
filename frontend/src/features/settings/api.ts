@@ -58,6 +58,10 @@ export type Project = {
    *  xeroTrackingOptionId for an option on a tracking category. */
   xeroProjectId: string | null;
   xeroTrackingOptionId: string | null;
+  /** Synced from a Xero tracking category that no longer holds projects. Kept
+   *  (past claims and shifts point at it) but not offered where a project is
+   *  picked. */
+  hiddenByTrackingCategory: boolean;
   xeroStatus: string | null;
   xeroSyncedAt: string | null;
   /** Work schedule. Times are local "HH:mm"; workingDays is a CSV of ISO
@@ -302,5 +306,7 @@ export type XeroProjectTracking = {
 export const getXeroProjectTracking = () =>
   apiGet<XeroProjectTracking>("/xero/project-tracking");
 
+// Choosing or switching the category syncs it straight away and returns what
+// the sync did; clearing it returns nothing.
 export const setXeroProjectTrackingCategory = (categoryId: string | null) =>
-  apiPut<void>("/xero/project-tracking", { categoryId });
+  apiPut<XeroSyncProjectsResult | undefined>("/xero/project-tracking", { categoryId });

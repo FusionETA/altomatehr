@@ -319,13 +319,22 @@ export function EmployeeDetail({
   // two memberships on one project would make the chain resolution ambiguous.
   const assignableProjects = useMemo(() => {
     const taken = new Set(myMemberships.map(({ team }) => team.projectId));
-    return projects.filter((p) => !taken.has(p.id) && teams.some((t) => t.projectId === p.id));
+    // Nor one from a Xero tracking category the org switched away from.
+    return projects.filter(
+      (p) =>
+        !p.hiddenByTrackingCategory &&
+        !taken.has(p.id) &&
+        teams.some((t) => t.projectId === p.id),
+    );
   }, [projects, teams, myMemberships]);
 
   // Named so the empty-picker message can point at the actual blocker rather
   // than leaving an admin staring at a dropdown with nothing in it.
   const projectsWithoutTeams = useMemo(
-    () => projects.filter((p) => !teams.some((t) => t.projectId === p.id)),
+    () =>
+      projects.filter(
+        (p) => !p.hiddenByTrackingCategory && !teams.some((t) => t.projectId === p.id),
+      ),
     [projects, teams],
   );
 

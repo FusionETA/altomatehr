@@ -247,6 +247,11 @@ public class XeroClient : IXeroClient
                         Quantity = 1,
                         UnitAmount = line.Amount,
                         AccountCode = line.AccountCode,
+                        // At most two per line — Xero's limit, as on journals.
+                        Tracking = (line.Tracking ?? [])
+                            .Take(2)
+                            .Select(t => new { t.Name, t.Option })
+                            .ToArray(),
                     }).ToArray(),
                 },
             },
@@ -312,6 +317,10 @@ public class XeroClient : IXeroClient
                         UnitAmount = line.Amount,
                         AccountCode = line.AccountCode,
                         TaxType = "NONE",
+                        Tracking = (line.Tracking ?? [])
+                            .Take(2)
+                            .Select(t => new { t.Name, t.Option })
+                            .ToArray(),
                     }).ToArray(),
                 },
             },

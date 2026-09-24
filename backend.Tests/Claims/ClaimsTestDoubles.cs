@@ -403,7 +403,7 @@ internal sealed class FakeXeroBillService : IXeroService
     public Task<IReadOnlyList<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync() =>
         Task.FromResult<IReadOnlyList<XeroTrackingCategoryResponse>>([]);
     public Task<XeroProjectTrackingDto> GetProjectTrackingAsync() => throw new NotSupportedException();
-    public Task SetProjectTrackingCategoryAsync(string? categoryId) => throw new NotSupportedException();
+    public Task<AltomateHR.Api.Modules.Xero.Dtos.XeroSyncProjectsResultDto?> SetProjectTrackingCategoryAsync(string? categoryId) => throw new NotSupportedException();
 
 
     // No connection in these tests, so an attachment would fall back to disk.

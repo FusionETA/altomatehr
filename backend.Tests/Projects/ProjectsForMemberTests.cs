@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Teams.Dtos;
+using AltomateHR.Api.Modules.Xero;
 
 using AltomateHR.Api.Tests.Audit;
 
@@ -48,17 +49,101 @@ public class ProjectsForMemberTests
         Assert.Equal(2, all.Count());
     }
 
+    // ---- switching the Xero tracking category ----
+    //
+    // A Xero org can hold projects in either of two tracking categories. After
+    // the admin switches, the old category's projects must stop being offered
+    // — a picker mixing "Region" options with projects is wrong — but must not
+    // be deleted, because past claims and shifts still point at them.
+
+    [Fact]
+    public async Task GetForMemberAsync_LeavesOutProjectsFromTheCategorySwitchedAwayFrom()
+    {
+        var service = Create(
+            [FromCategory("prj-new", "Tower A", "cat-projects"), FromCategory("prj-old", "Penang", "cat-regions")],
+            onProjects: ["prj-new", "prj-old"],
+            activeCategory: "cat-projects");
+
+        var mine = await service.GetForMemberAsync("usr-emp");
+
+        Assert.Equal(["Tower A"], mine.Select(p => p.Name));
+    }
+
+    // Hand-made and Xero Projects-API projects have no tracking option, so no
+    // category to be switched away from. They stay.
+    [Fact]
+    public async Task GetForMemberAsync_KeepsProjectsThatDidNotComeFromACategory()
+    {
+        var service = Create(
+            [Project("prj-manual", "Office"), FromCategory("prj-old", "Penang", "cat-regions")],
+            onProjects: ["prj-manual", "prj-old"],
+            activeCategory: "cat-projects");
+
+        var mine = await service.GetForMemberAsync("usr-emp");
+
+        Assert.Equal(["Office"], mine.Select(p => p.Name));
+    }
+
+    // Synced before the category was recorded: whether it is current can't be
+    // told, and hiding a current project would be worse than showing an old one.
+    [Fact]
+    public async Task GetForMemberAsync_KeepsATrackedProjectWhoseCategoryIsUnknown()
+    {
+        var legacy = new Project { Id = "prj-legacy", Name = "Legacy", XeroTrackingOptionId = "opt-1" };
+        var service = Create([legacy], onProjects: ["prj-legacy"], activeCategory: "cat-projects");
+
+        Assert.Single(await service.GetForMemberAsync("usr-emp"));
+    }
+
+    // No category chosen (or Xero not connected): nothing is hidden.
+    [Fact]
+    public async Task GetForMemberAsync_HidesNothingWhenNoCategoryIsChosen()
+    {
+        var service = Create(
+            [FromCategory("prj-a", "Tower A", "cat-projects"), FromCategory("prj-b", "Penang", "cat-regions")],
+            onProjects: ["prj-a", "prj-b"],
+            activeCategory: null);
+
+        Assert.Equal(2, (await service.GetForMemberAsync("usr-emp")).Count());
+    }
+
+    // The full list keeps every project — other modules look names up in it
+    // for past records — and flags the switched-out ones for pickers.
+    [Fact]
+    public async Task GetAllAsync_KeepsSwitchedOutProjectsButFlagsThem()
+    {
+        var service = Create(
+            [FromCategory("prj-new", "Tower A", "cat-projects"), FromCategory("prj-old", "Penang", "cat-regions")],
+            activeCategory: "cat-projects");
+
+        var all = (await service.GetAllAsync()).ToDictionary(p => p.Id);
+
+        Assert.Equal(2, all.Count);
+        Assert.False(all["prj-new"].HiddenByTrackingCategory);
+        Assert.True(all["prj-old"].HiddenByTrackingCategory);
+    }
+
     // ---- wiring ----
 
     private static Project Project(string id, string name) => new() { Id = id, Name = name };
 
+    private static Project FromCategory(string id, string name, string categoryId) =>
+        new() { Id = id, Name = name, XeroTrackingOptionId = $"opt-{id}", XeroTrackingCategoryId = categoryId };
+
     private static Project Archived(string id, string name) =>
         new() { Id = id, Name = name, IsArchived = true };
 
-    private static ProjectService Create(List<Project> projects, string[]? onProjects = null) =>
+    private static ProjectService Create(
+        List<Project> projects, string[]? onProjects = null, string? activeCategory = null) =>
         new(new FakeProjectRepository(projects),
             new FakeAuditService(),
-            new FakeProjectTeamService(onProjects ?? []));
+            new FakeProjectTeamService(onProjects ?? []),
+            new FixedTrackingScope(activeCategory));
+}
+
+internal sealed class FixedTrackingScope(string? activeCategoryId) : IProjectTrackingScope
+{
+    public Task<string?> GetActiveCategoryIdAsync() => Task.FromResult(activeCategoryId);
 }
 
 internal sealed class FakeProjectRepository : IProjectRepository

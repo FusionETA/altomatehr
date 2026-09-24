@@ -37,6 +37,11 @@ public class ProjectDto
     public string? WorkingDays { get; set; }
     public int LunchBreakMinutes { get; set; }
     public bool IsArchived { get; set; }
+
+    // Synced from a Xero tracking category that is no longer the one holding
+    // projects. Kept (past claims and shifts point at it) but not offered
+    // anywhere a project is picked; see IProjectTrackingScope.
+    public bool HiddenByTrackingCategory { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

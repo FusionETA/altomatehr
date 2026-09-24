@@ -150,12 +150,27 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
     public Task<XeroTokenResponse> RefreshTokenAsync(string r) => throw new NotSupportedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotSupportedException();
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotSupportedException();
-    public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b) => throw new NotSupportedException();
-    public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s) => throw new NotSupportedException();
+    // Recorded rather than refused, so a test can read what was sent.
+    public List<XeroBillRequest> Bills { get; } = [];
+    public List<XeroSpendRequest> Spends { get; } = [];
+    public bool FailTrackingRead { get; set; }
+
+    public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b)
+    {
+        Bills.Add(b);
+        return Task.FromResult(new XeroBillResponse("bill-1", b.Reference));
+    }
+    public Task<XeroSpendResponse> CreateSpendAsync(string a, string t, XeroSpendRequest s)
+    {
+        Spends.Add(s);
+        return Task.FromResult(new XeroSpendResponse("txn-1"));
+    }
     public Task<XeroManualJournalResponse> CreateManualJournalAsync(
         string a, string t, XeroManualJournalRequest j) => throw new NotSupportedException();
     public Task<List<XeroTrackingCategoryResponse>> GetTrackingCategoriesAsync(string a, string t) =>
-        Task.FromResult(_categories);
+        FailTrackingRead
+            ? throw new XeroConnectionException("Xero is down")
+            : Task.FromResult(_categories);
 
     // Files API: nothing under test here uploads.
     public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
@@ -302,6 +317,39 @@ public class XeroTrackingCategoryProjectSyncTests
         Assert.False(repo.Projects.Single().IsArchived);
     }
 
+    // Switching which category holds the projects imports the new one's
+    // options straight away — and deletes nothing: projects from the old
+    // category stay, because past claims and shifts still point at them.
+    [Fact]
+    public async Task SwitchingCategory_SyncsTheNewOneAndKeepsTheOldProjects()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo,
+        [
+            Category("cat-projects", "Project", ("opt-tower", "Tower A")),
+            Category("cat-regions", "Region", ("opt-penang", "Penang")),
+        ]);
+        repo.Connection!.ProjectTrackingCategoryId = "cat-regions";
+        await service.SyncProjectsAsync();
+
+        var result = await service.SetProjectTrackingCategoryAsync("cat-projects");
+
+        Assert.NotNull(result);
+        Assert.Equal("Project", result!.TrackingCategoryName);
+        Assert.Equal(["Penang", "Tower A"], repo.Projects.Select(p => p.Name).Order());
+        Assert.Equal("cat-projects", repo.Connection.ProjectTrackingCategoryId);
+    }
+
+    [Fact]
+    public async Task ClearingTheCategory_DoesNotSync()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [Category("cat-projects", "Project", ("opt-tower", "Tower A"))]);
+
+        Assert.Null(await service.SetProjectTrackingCategoryAsync(null));
+        Assert.Empty(repo.Projects);
+    }
+
     // ---- wiring ----
 
     private static XeroTrackingCategoryResponse Category(
@@ -368,5 +416,120 @@ public class XeroTrackingFallbackOrderTests
         await service.SyncProjectsAsync();
 
         Assert.Equal(["Client Site A"], repo.Projects.Select(p => p.Name));
+    }
+}
+
+// A claim's project reaches its Xero bill as a tracking tag — category and
+// option NAMES, which is how Xero's bill API identifies them — the way the
+// previous system tagged bills. Read live, and never at the cost of the bill.
+public class XeroBillProjectTrackingTests
+{
+    private static readonly XeroTrackingCategoryResponse Projects =
+        new("cat-projects", "Project", "ACTIVE",
+            [new XeroTrackingOptionResponse("opt-tower", "Tower A", "ACTIVE")]);
+
+    private static XeroBillRequest Bill(string? optionId) => new(
+        "Aisyah", "CLM-1", new DateTime(2026, 9, 1), new DateTime(2026, 9, 1), "MYR",
+        XeroBillStatus.Draft, [new XeroBillLine("Taxi", 42m, "400")], optionId);
+
+    [Fact]
+    public async Task ABillIsTaggedWithTheProjectsCategoryAndOption()
+    {
+        var (service, client) = Create([Projects], activeCategory: "cat-projects");
+
+        await service.CreateBillAsync(Bill("opt-tower"));
+
+        var tag = Assert.Single(Assert.Single(client.Bills).Lines.Single().Tracking!);
+        Assert.Equal("Project", tag.Name);
+        Assert.Equal("Tower A", tag.Option);
+    }
+
+    // The option was renamed in Xero after the last sync: the LIVE name goes
+    // out, because Xero would refuse the stale one.
+    [Fact]
+    public async Task TheTagUsesTheOptionsCurrentNameInXero()
+    {
+        var renamed = new XeroTrackingCategoryResponse("cat-projects", "Project", "ACTIVE",
+            [new XeroTrackingOptionResponse("opt-tower", "Tower A (Phase 2)", "ACTIVE")]);
+        var (service, client) = Create([renamed], activeCategory: "cat-projects");
+
+        await service.CreateBillAsync(Bill("opt-tower"));
+
+        Assert.Equal("Tower A (Phase 2)", client.Bills.Single().Lines.Single().Tracking!.Single().Option);
+    }
+
+    // The project came from the category the admin has since switched away
+    // from: tagging it under the new category would be a wrong tag.
+    [Fact]
+    public async Task AProjectFromAnotherCategoryIsNotTagged()
+    {
+        var regions = new XeroTrackingCategoryResponse("cat-regions", "Region", "ACTIVE",
+            [new XeroTrackingOptionResponse("opt-penang", "Penang", "ACTIVE")]);
+        var (service, client) = Create([Projects, regions], activeCategory: "cat-projects");
+
+        await service.CreateBillAsync(Bill("opt-penang"));
+
+        Assert.Empty(client.Bills.Single().Lines.Single().Tracking ?? []);
+    }
+
+    [Fact]
+    public async Task AClaimWithNoProjectIsNotTagged()
+    {
+        var (service, client) = Create([Projects], activeCategory: "cat-projects");
+
+        await service.CreateBillAsync(Bill(null));
+
+        Assert.Empty(client.Bills.Single().Lines.Single().Tracking ?? []);
+    }
+
+    // Losing a reporting dimension beats losing the reimbursement.
+    [Fact]
+    public async Task TheBillStillPostsWhenXeroCantBeAskedForTheNames()
+    {
+        var (service, client) = Create([Projects], activeCategory: "cat-projects");
+        client.FailTrackingRead = true;
+
+        await service.CreateBillAsync(Bill("opt-tower"));
+
+        Assert.Empty(client.Bills.Single().Lines.Single().Tracking ?? []);
+    }
+
+    [Fact]
+    public async Task ACompanyPaidSpendIsTaggedTheSameWay()
+    {
+        var (service, client) = Create([Projects], activeCategory: "cat-projects");
+
+        await service.CreateSpendAsync(new XeroSpendRequest(
+            "Grab", "CLM-2", new DateTime(2026, 9, 1), "MYR", "bank-1",
+            [new XeroBillLine("Taxi", 42m, "400")], "opt-tower"));
+
+        Assert.Equal("Tower A", client.Spends.Single().Lines.Single().Tracking!.Single().Option);
+    }
+
+    private static (XeroService, FakeXeroProjectsClient) Create(
+        List<XeroTrackingCategoryResponse> categories, string? activeCategory)
+    {
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        string Protect(string v) => provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect(v);
+
+        var repo = new FakeXeroRepository();
+        repo.Connection = new XeroConnection
+        {
+            OrganizationId = "org-1",
+            TenantId = "tenant-1",
+            AccessTokenProtected = Protect("token"),
+            RefreshTokenProtected = Protect("refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+            ProjectTrackingCategoryId = activeCategory,
+        };
+        var client = new FakeXeroProjectsClient([], categories);
+
+        return (new XeroService(
+            new FakeXeroCurrentUser(),
+            repo,
+            client,
+            provider,
+            Options.Create(new XeroOptions()),
+            new FakeAuditService()), client);
     }
 }

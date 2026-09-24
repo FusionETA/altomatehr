@@ -102,6 +102,7 @@ public static class AuditActions
     public const string XeroDisconnect = "xero.disconnect";
     public const string XeroReconnectRequired = "xero.reconnect_required";
     public const string XeroSyncAccounts = "xero.accounts.sync";
+    public const string XeroProjectTrackingSet = "xero.project-tracking.set";
 
     // Auth. Successful sign-ins are recorded as well as failed ones: "has this
     // supervisor been in this week" is a question the log gets asked, and a feed
@@ -147,6 +148,7 @@ public static class AuditActions
         [XeroDisconnect] = "Xero disconnected",
         [XeroReconnectRequired] = "Xero reconnect required",
         [XeroSyncAccounts] = "Xero accounts synced",
+        [XeroProjectTrackingSet] = "Project tracking category set",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",

@@ -124,6 +124,12 @@ export function ProjectsSettings() {
   const [categories, setCategories] = useState<XeroTrackingCategory[]>([]);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
+  // A switch waiting for the admin to confirm what it does.
+  const [pendingCategory, setPendingCategory] = useState<XeroTrackingCategory | null>(null);
+  // Bumped when a switch is cancelled so the picker remounts: Radix treats
+  // re-choosing the option you just backed out of as "no change" and would
+  // never ask again.
+  const [pickerKey, setPickerKey] = useState(0);
 
   const query = useCachedQuery("/projects", getProjects);
   const loading = query.loading;
@@ -149,21 +155,46 @@ export function ProjectsSettings() {
       .catch(() => setXeroConnected(false));
   }, []);
 
-  async function handleCategory(id: string) {
-    const previous = categoryId;
-    setCategoryId(id);
+  // The first choice just takes effect — there is nothing yet to lose. A
+  // SWITCH changes which projects every picker offers, so it asks first.
+  function handleCategory(id: string) {
+    if (id === categoryId) return;
+    const chosen = categories.find((c) => c.id === id);
+    if (!chosen) return;
+    if (categoryId === null) void applyCategory(chosen);
+    else setPendingCategory(chosen);
+  }
+
+  function cancelSwitch() {
+    setPendingCategory(null);
+    setPickerKey((k) => k + 1);
+  }
+
+  // Saving the category also syncs it on the server, so the list flips to the
+  // new category's options in one step.
+  async function applyCategory(chosen: XeroTrackingCategory) {
     setSavingCategory(true);
     setError(null);
+    setSyncMsg(null);
     try {
-      await setXeroProjectTrackingCategory(id);
-      setSyncMsg(null);
+      const r = await setXeroProjectTrackingCategory(chosen.id);
+      setCategoryId(chosen.id);
+      setPendingCategory(null);
+      setSyncMsg(
+        r
+          ? `Projects now come from “${chosen.name}” — ${r.imported} added, ${r.updated} updated.`
+          : `Projects now come from “${chosen.name}”.`,
+      );
+      await query.refresh();
     } catch (err) {
-      setCategoryId(previous);
-      setError(message(err, "Could not save the tracking category."));
+      setError(message(err, "Could not switch the tracking category."));
+      setPickerKey((k) => k + 1);
     } finally {
       setSavingCategory(false);
     }
   }
+
+  const currentCategory = categories.find((c) => c.id === categoryId) ?? null;
 
   async function handleSync() {
     setSyncing(true);
@@ -314,9 +345,16 @@ export function ProjectsSettings() {
   // off — matching the monolith, which hides manual projects (not deletes them)
   // once Xero takes over. So the settings list shows only Xero-sourced projects
   // then, and the manual "add" box disappears.
-  const visibleProjects = xeroConnected
-    ? projects.filter((p) => p.xeroProjectId != null || p.xeroTrackingOptionId != null)
-    : projects;
+  //
+  // Projects from a tracking category the admin has switched away from are
+  // left out too — kept on the server for past records, but no longer this
+  // org's project list. They come back if the category is switched back.
+  const visibleProjects = (
+    xeroConnected
+      ? projects.filter((p) => p.xeroProjectId != null || p.xeroTrackingOptionId != null)
+      : projects
+  ).filter((p) => !p.hiddenByTrackingCategory);
+  const hiddenBySwitch = projects.filter((p) => p.hiddenByTrackingCategory).length;
 
   // Filter then page. The whole list is already in hand, so both happen here
   // rather than costing a round trip per keystroke or per page.
@@ -364,9 +402,10 @@ export function ProjectsSettings() {
             Tracking category holding your projects
           </label>
           <Select
+            key={pickerKey}
             value={categoryId ?? ""}
             onValueChange={handleCategory}
-            disabled={savingCategory || syncing}
+            disabled={savingCategory || syncing || pendingCategory !== null}
           >
             <SelectTrigger className="mt-1.5 bg-card">
               <SelectValue placeholder="Choose a category" />
@@ -380,11 +419,66 @@ export function ProjectsSettings() {
             </SelectContent>
           </Select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Each option in this category becomes a project.
+            Each option in this category becomes a project. Xero allows two active categories —
+            pick the one that represents your projects.
           </p>
         </div>
       ) : null}
+
+      {/* What a switch does, said before it happens — the same points the
+          previous system made. Inline rather than a pop-up, like the other
+          confirmations in this app. */}
+      {pendingCategory ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+          <p className="font-semibold">
+            Switch from “{currentCategory?.name ?? "the current category"}” to “{pendingCategory.name}”?
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>
+              The {pendingCategory.optionCount} option{pendingCategory.optionCount === 1 ? "" : "s"} in
+              “{pendingCategory.name}” are imported as projects straight away.
+            </li>
+            <li>
+              Projects from “{currentCategory?.name ?? "the current category"}” stop being offered in
+              pickers. They are not deleted — past claims and attendance keep showing them.
+            </li>
+            <li>
+              Teams linked to the old projects need linking to the new ones before their members can
+              pick them.
+            </li>
+            <li>Claims sent to Xero from now on are tagged under “{pendingCategory.name}”.</li>
+            <li>You can switch back at any time.</li>
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void applyCategory(pendingCategory)}
+              disabled={savingCategory}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+            >
+              {savingCategory ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              Switch and sync
+            </button>
+            <button
+              type="button"
+              onClick={cancelSwitch}
+              disabled={savingCategory}
+              className="inline-flex h-10 items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       {syncMsg ? <p className="text-sm font-medium text-primary">{syncMsg}</p> : null}
+      {hiddenBySwitch > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {hiddenBySwitch === 1
+            ? "1 project from a previous tracking category is hidden."
+            : `${hiddenBySwitch} projects from a previous tracking category are hidden.`}{" "}
+          They still show on past claims and attendance, and come back if you switch back.
+        </p>
+      ) : null}
 
       {!xeroConnected ? (
         <form onSubmit={handleAdd} className="flex gap-2">

@@ -11,9 +11,13 @@ public class ProjectService : IProjectService
     private readonly IProjectRepository _repo;
     private readonly IAuditService _audit;
     private readonly ITeamService _teams;
+    private readonly Xero.IProjectTrackingScope _trackingScope;
 
-    public ProjectService(IProjectRepository repo, IAuditService audit, ITeamService teams)
+    public ProjectService(
+        IProjectRepository repo, IAuditService audit, ITeamService teams,
+        Xero.IProjectTrackingScope trackingScope)
     {
+        _trackingScope = trackingScope;
         _repo = repo;
         _audit = audit;
         _teams = teams;
@@ -27,12 +31,19 @@ public class ProjectService : IProjectService
         // Two grouped queries for the whole org, not one pair per project.
         var sites = await _repo.GetGeofencePointCountsAsync();
         var ips = await _repo.GetAllowedIpCountsAsync();
+        var activeCategory = await _trackingScope.GetActiveCategoryIdAsync();
 
+        // Every project is still returned — other modules look names up in
+        // this list for past records — but ones from a switched-out tracking
+        // category are flagged, so screens that PICK a project can leave them
+        // out.
         return projects.Select(p =>
         {
             var dto = ToDto(p);
             dto.GeofenceSiteCount = sites.GetValueOrDefault(p.Id);
             dto.AllowedIpCount = ips.GetValueOrDefault(p.Id);
+            dto.HiddenByTrackingCategory = Xero.ProjectTrackingVisibility.IsHidden(
+                p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory);
             return dto;
         });
     }
@@ -44,8 +55,15 @@ public class ProjectService : IProjectService
     public async Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId)
     {
         var mine = (await _teams.GetProjectIdsForMemberAsync(userId)).ToHashSet();
+        var activeCategory = await _trackingScope.GetActiveCategoryIdAsync();
+
+        // Also leaves out projects from a Xero tracking category the admin has
+        // switched away from: after switching "Project" → "Region", offering
+        // both sets would put regions and projects in one picker.
         return (await _repo.GetAllAsync())
             .Where(p => !p.IsArchived && mine.Contains(p.Id))
+            .Where(p => !Xero.ProjectTrackingVisibility.IsHidden(
+                p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory))
             .Select(ToDto);
     }
 

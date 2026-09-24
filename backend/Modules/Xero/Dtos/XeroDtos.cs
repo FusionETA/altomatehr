@@ -93,14 +93,22 @@ public sealed record XeroBillRequest(
     DateTime DueDate,
     string CurrencyCode,
     XeroBillStatus Status,
-    IReadOnlyList<XeroBillLine> Lines);
+    IReadOnlyList<XeroBillLine> Lines,
+    // The claim's project, as the option on the project tracking category it
+    // was synced from. XeroService turns it into a tracking tag on every line
+    // (category + option NAMES, which is what Xero wants) using the live
+    // names, so a rename in Xero since the last sync can't get the bill
+    // rejected. Null: a claim with no project, or a project not from Xero.
+    string? ProjectTrackingOptionId = null);
 
 public sealed record XeroBillLine(
     string Description,
     decimal Amount,
     // Xero's chart-of-account CODE, not our internal account id. Null lets Xero
     // fall back to its own default rather than rejecting the whole bill.
-    string? AccountCode);
+    string? AccountCode,
+    // Filled in by XeroService from the request's ProjectTrackingOptionId.
+    IReadOnlyList<XeroTrackingRef>? Tracking = null);
 
 public sealed record XeroBillResponse(string BillId, string? Reference);
 
@@ -121,7 +129,9 @@ public sealed record XeroSpendRequest(
     // code because Xero bank accounts often have no code. Required: a spend has
     // to come from somewhere, and guessing would misstate a balance.
     string BankAccountId,
-    IReadOnlyList<XeroBillLine> Lines);
+    IReadOnlyList<XeroBillLine> Lines,
+    // As on XeroBillRequest — the same project tag on a company-paid claim.
+    string? ProjectTrackingOptionId = null);
 
 public sealed record XeroSpendResponse(string TransactionId);
 

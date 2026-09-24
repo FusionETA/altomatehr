@@ -427,7 +427,7 @@ public class PayrollXeroSyncServiceTests : IDisposable
             throw new NotSupportedException();
         public Task<XeroProjectTrackingDto> GetProjectTrackingAsync() =>
             throw new NotSupportedException();
-        public Task SetProjectTrackingCategoryAsync(string? categoryId) =>
+        public Task<AltomateHR.Api.Modules.Xero.Dtos.XeroSyncProjectsResultDto?> SetProjectTrackingCategoryAsync(string? categoryId) =>
             throw new NotSupportedException();
     
     // No connection in these tests, so an attachment would fall back to disk.

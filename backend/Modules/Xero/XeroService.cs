@@ -460,7 +460,7 @@ public class XeroService : IXeroService
         };
     }
 
-    public async Task SetProjectTrackingCategoryAsync(string? categoryId)
+    public async Task<XeroSyncProjectsResultDto?> SetProjectTrackingCategoryAsync(string? categoryId)
     {
         var connection = await GetCurrentConnectionAsync()
             ?? throw new XeroConnectionException("Connect Xero before choosing a tracking category.");
@@ -470,7 +470,7 @@ public class XeroService : IXeroService
             connection.ProjectTrackingCategoryId = null;
             connection.ProjectTrackingCategoryName = null;
             await _repo.UpdateConnectionAsync(connection);
-            return;
+            return null;
         }
 
         var accessToken = await GetValidAccessTokenAsync(connection);
@@ -479,9 +479,24 @@ public class XeroService : IXeroService
             string.Equals(c.TrackingCategoryId, categoryId, StringComparison.Ordinal))
             ?? throw new XeroConnectionException("That tracking category no longer exists in Xero.");
 
+        var previous = connection.ProjectTrackingCategoryName;
         connection.ProjectTrackingCategoryId = category.TrackingCategoryId;
         connection.ProjectTrackingCategoryName = category.Name;
         await _repo.UpdateConnectionAsync(connection);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroProjectTrackingSet,
+            previous is null || previous == category.Name
+                ? $"Projects now come from the Xero tracking category \"{category.Name}\""
+                : $"Switched the project tracking category from \"{previous}\" to \"{category.Name}\"",
+            TargetType: "XeroConnection",
+            TargetId: connection.Id,
+            Metadata: new { Category = new { From = previous, To = category.Name } }));
+
+        // Pulls the new category's options in now. Projects from the previous
+        // category are NOT touched — they stop being offered (see
+        // IProjectTrackingScope) and come back if the admin switches back.
+        return await SyncProjectsAsync();
     }
 
     private async Task<string> GetValidAccessTokenAsync(XeroConnection connection)
@@ -582,7 +597,45 @@ public class XeroService : IXeroService
             throw new XeroConnectionException("This organization isn't connected to Xero.");
 
         var accessToken = await GetValidAccessTokenAsync(connection);
+        var tracking = await ProjectTrackingAsync(connection, accessToken, bill.ProjectTrackingOptionId);
+        if (tracking is not null)
+            bill = bill with { Lines = [.. bill.Lines.Select(l => l with { Tracking = tracking })] };
+
         return await _client.CreateBillAsync(accessToken, connection.TenantId, bill);
+    }
+
+    // The tracking tag for a claim's project: the CURRENT project category and
+    // the option's CURRENT name, both read live from Xero — the bill API names
+    // tracking by name, not id, so a name cached at the last sync could be
+    // stale and get the bill refused.
+    //
+    // Never fatal. No project, a project from another category (the admin has
+    // since switched), a category that's gone, or Xero not answering: the bill
+    // still posts, just untagged. Losing a reporting dimension beats losing the
+    // reimbursement.
+    private async Task<IReadOnlyList<XeroTrackingRef>?> ProjectTrackingAsync(
+        XeroConnection connection, string accessToken, string? optionId)
+    {
+        if (string.IsNullOrEmpty(optionId) || string.IsNullOrEmpty(connection.ProjectTrackingCategoryId))
+            return null;
+
+        try
+        {
+            var category = (await _client.GetTrackingCategoriesAsync(accessToken, connection.TenantId))
+                .FirstOrDefault(c => string.Equals(
+                    c.TrackingCategoryId, connection.ProjectTrackingCategoryId, StringComparison.Ordinal));
+            var option = category?.Options.FirstOrDefault(o =>
+                string.Equals(o.TrackingOptionId, optionId, StringComparison.Ordinal));
+
+            return category is null || option is null || string.IsNullOrWhiteSpace(option.Name)
+                ? null
+                : [new XeroTrackingRef(category.Name, option.Name)];
+        }
+        catch (XeroConnectionException ex)
+        {
+            _logger.LogWarning(ex, "Could not read tracking categories; posting without a project tag.");
+            return null;
+        }
     }
 
     public async Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend)
@@ -592,6 +645,10 @@ public class XeroService : IXeroService
             throw new XeroConnectionException("This organization isn't connected to Xero.");
 
         var accessToken = await GetValidAccessTokenAsync(connection);
+        var tracking = await ProjectTrackingAsync(connection, accessToken, spend.ProjectTrackingOptionId);
+        if (tracking is not null)
+            spend = spend with { Lines = [.. spend.Lines.Select(l => l with { Tracking = tracking })] };
+
         return await _client.CreateSpendAsync(accessToken, connection.TenantId, spend);
     }
 
