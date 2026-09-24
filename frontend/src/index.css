@@ -251,10 +251,15 @@ input[type="search"]::-webkit-search-decoration {
   appearance: none;
 }
 
-/* Slim, rounded, inset scrollbar for scroll containers (e.g. modal bodies). */
-.nice-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(76, 26, 134, 0.28) transparent;
+/* Slim, rounded, inset scrollbar for scroll containers (e.g. modal bodies).
+   The standard properties are Firefox-only: set for Chrome too, they switch
+   off the ::-webkit- styling below and the custom look never appears (see
+   .overflow-x-auto further down). */
+@supports not selector(::-webkit-scrollbar) {
+  .nice-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(76, 26, 134, 0.28) transparent;
+  }
 }
 .nice-scrollbar::-webkit-scrollbar {
   width: 10px;
@@ -273,10 +278,13 @@ input[type="search"]::-webkit-search-decoration {
   background-color: rgba(76, 26, 134, 0.4);
 }
 
-/* Shared horizontal scrollbar for tab strips where hidden overflow would be unclear. */
-.horizontal-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(76, 26, 134, 0.32) transparent;
+/* Shared horizontal scrollbar for tab strips where hidden overflow would be
+   unclear. Standard properties Firefox-only, for the same reason as above. */
+@supports not selector(::-webkit-scrollbar) {
+  .horizontal-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(76, 26, 134, 0.32) transparent;
+  }
 }
 .horizontal-scrollbar::-webkit-scrollbar {
   height: 10px;
@@ -292,6 +300,40 @@ input[type="search"]::-webkit-search-decoration {
 }
 .horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(76, 26, 134, 0.42);
+}
+
+/* Every sideways-scrolling area — wide tables above all. Left unstyled, macOS
+   draws its thick overlay scrollbar ON TOP of the last row, so a table's Total
+   line sat underneath it and couldn't be read. A CUSTOM (::-webkit-scrollbar)
+   scrollbar is not an overlay: it takes its own few pixels below the content,
+   so it slims down AND stops covering anything. Applied to the utility itself
+   rather than to each of the ~30 tables, so a new wide table gets it without
+   anyone remembering to.
+
+   The standard scrollbar-width / scrollbar-color are deliberately NOT set for
+   Chrome and Safari: once either is present, Chrome ignores the ::-webkit-
+   rules entirely and goes back to a thin OVERLAY bar — still drawn over the
+   Total row. Only Firefox, which has no ::-webkit-scrollbar, gets them. */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 10px;
+}
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(76, 26, 134, 0.24);
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(76, 26, 134, 0.42);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .overflow-x-auto {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(76, 26, 134, 0.32) transparent;
+  }
 }
 
 /* Swipe-scroll with no visible scrollbar (mobile pill nav strips). */
