@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, CircleAlert, CircleCheck, Plus, Upload, Users } from "lucide-react";
+import { Archive, ChevronRight, CircleAlert, CircleCheck, Plus, Upload, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -57,6 +57,10 @@ const ALL = "ALL";
 const ROLE_FILTERS = ["Employee", "Supervisor"] as const;
 type RoleFilter = (typeof ROLE_FILTERS)[number] | typeof ALL;
 
+// Active by default: someone who has left is a record to keep, not a person to
+// manage, and listing them among the staff put leavers in "ready for payroll".
+type StatusFilter = "ACTIVE" | "ARCHIVED" | typeof ALL;
+
 // Supervisors read differently at a glance than staff, and that difference is
 // what an admin scans this list for.
 const ROLE_PILL: Record<string, string> = {
@@ -67,8 +71,10 @@ const ROLE_PILL: Record<string, string> = {
 export function EmployeesSettings() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [page, setPage] = useState(1);
   const [readyPage, setReadyPage] = useState(1);
+  const [archivedPage, setArchivedPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // Which employee's full record is open. Null = the list.
@@ -149,6 +155,13 @@ export function EmployeesSettings() {
     return row.sections.length > 0 ? `${row.sections.join(", ")} incomplete` : null;
   };
 
+  // Archived lives on the payroll profile, so it is read from the same roster.
+  // Until that lands everyone counts as active — the default view — rather
+  // than the list emptying and refilling.
+  const isArchived = (userId: string) => readiness.get(userId)?.archived === true;
+  const archivedCount = staff.filter((e) => isArchived(e.id)).length;
+  const activeCount = staff.length - archivedCount;
+
   // Counted over the whole roster, not the filtered page: "3 need setup" must
   // not change because someone typed in the search box.
   const needsSetupCount = staff.filter((e) => setupGap(e.id) !== null).length;
@@ -160,6 +173,8 @@ export function EmployeesSettings() {
     const query = searchTerm.trim().toLowerCase();
     return staff.filter((emp) => {
       if (roleFilter !== ALL && emp.role !== roleFilter) return false;
+      if (statusFilter === "ACTIVE" && isArchived(emp.id)) return false;
+      if (statusFilter === "ARCHIVED" && !isArchived(emp.id)) return false;
       if (!query) return true;
       return [
         emp.name,
@@ -176,22 +191,31 @@ export function EmployeesSettings() {
         .toLowerCase()
         .includes(query);
     });
-  }, [staff, policies, searchTerm, roleFilter]);
+    // isArchived closes over the payroll roster.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff, policies, searchTerm, roleFilter, statusFilter, readiness]);
 
   // Two boxes, not two tabs: the people who cannot be paid yet are the whole
   // reason an admin opens this screen, so they sit at the top of the same page
   // as everyone else rather than behind a tab nobody clicks.
   const needsSetup = useMemo(
-    () => filtered.filter((e) => setupGap(e.id) !== null),
+    () => filtered.filter((e) => !isArchived(e.id) && setupGap(e.id) !== null),
     // setupGap closes over the payroll roster; `filtered` and that are the
     // only inputs that move.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filtered, readiness, payrollQuery.data],
   );
   const ready = useMemo(
-    () => filtered.filter((e) => setupGap(e.id) === null),
+    () => filtered.filter((e) => !isArchived(e.id) && setupGap(e.id) === null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filtered, readiness, payrollQuery.data],
+  );
+  // Their own box: not "ready for payroll" (a run leaves them out) and not a
+  // setup problem either.
+  const archived = useMemo(
+    () => filtered.filter((e) => isArchived(e.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, readiness],
   );
 
   // Paged apart, so clearing the backlog at the top does not shuffle the
@@ -199,7 +223,8 @@ export function EmployeesSettings() {
   useEffect(() => {
     setPage(1);
     setReadyPage(1);
-  }, [searchTerm, roleFilter]);
+    setArchivedPage(1);
+  }, [searchTerm, roleFilter, statusFilter]);
 
   const setupPages = Math.max(1, Math.ceil(needsSetup.length / CLAIMS_PAGE_SIZE));
   const setupCurrent = Math.min(page, setupPages);
@@ -215,6 +240,13 @@ export function EmployeesSettings() {
     readyCurrent * CLAIMS_PAGE_SIZE,
   );
 
+  const archivedPages = Math.max(1, Math.ceil(archived.length / CLAIMS_PAGE_SIZE));
+  const archivedCurrent = Math.min(archivedPage, archivedPages);
+  const archivedSlice = archived.slice(
+    (archivedCurrent - 1) * CLAIMS_PAGE_SIZE,
+    archivedCurrent * CLAIMS_PAGE_SIZE,
+  );
+
   // Distinct from "needs setup": these pass every readiness check and would
   // simply be paid nothing, which blocks a submission just as hard.
   const noSalary = (payrollQuery.data ?? []).filter(
@@ -224,7 +256,11 @@ export function EmployeesSettings() {
   );
 
   const selected = employees.find((e) => e.id === selectedId) ?? null;
-  const narrowed = filtered.length !== staff.length;
+  // Against the chosen status, so the default Active view doesn't read as
+  // filtered just because archived people exist.
+  const statusTotal =
+    statusFilter === "ACTIVE" ? activeCount : statusFilter === "ARCHIVED" ? archivedCount : staff.length;
+  const narrowed = filtered.length !== statusTotal;
 
   // A row opens the full record, as in the previous system. The list stays a
   // list — every field is edited in one place rather than three of them being
@@ -235,9 +271,13 @@ export function EmployeesSettings() {
         employee={selected}
         policies={policies}
         onBack={() => setSelectedId(null)}
-        onSaved={(updated) =>
-          setEmployees((cur) => cur.map((e) => (e.id === updated.id ? updated : e)))
-        }
+        onSaved={(updated) => {
+          setEmployees((cur) => cur.map((e) => (e.id === updated.id ? updated : e)));
+          // Archiving is saved on the profile, but read here from the payroll
+          // roster — a different cache key — so refresh it, or someone just
+          // archived stays under Active until a reload.
+          void payrollQuery.refresh();
+        }}
       />
     );
   }
@@ -258,7 +298,7 @@ export function EmployeesSettings() {
               {loading ? null : (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
                   <Users className="h-3 w-3" />
-                  {narrowed ? `${filtered.length} of ${staff.length}` : staff.length}
+                  {narrowed ? `${filtered.length} of ${statusTotal}` : statusTotal}
                 </span>
               )}
 
@@ -304,6 +344,23 @@ export function EmployeesSettings() {
                     {role}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={statusFilter}
+              onValueChange={(next) => setStatusFilter(next as StatusFilter)}
+            >
+              <SelectTrigger
+                aria-label="Filter by status"
+                className="h-10 w-full rounded-xl border-border/70 bg-card/90 text-sm sm:w-40"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Active ({activeCount})</SelectItem>
+                <SelectItem value="ARCHIVED">Archived ({archivedCount})</SelectItem>
+                <SelectItem value={ALL}>All statuses</SelectItem>
               </SelectContent>
             </Select>
             {/* Beside Add employee, quieter than it: onboarding a batch is the
@@ -368,7 +425,9 @@ export function EmployeesSettings() {
           <p className="py-8 text-center text-sm text-muted-foreground">
             {staff.length === 0
               ? "No employees yet. Add the first one to get started."
-              : "No employees match these filters."}
+              : statusFilter === "ARCHIVED" && archivedCount === 0
+                ? "No archived employees."
+                : "No employees match these filters."}
           </p>
         </div>
       ) : (
@@ -401,6 +460,7 @@ export function EmployeesSettings() {
                 rows={setupSlice}
                 policyName={policyName}
                 setupGap={setupGap}
+                isArchived={isArchived}
                 onOpen={setSelectedId}
               />
               <PaginationControls
@@ -428,6 +488,7 @@ export function EmployeesSettings() {
                 rows={readySlice}
                 policyName={policyName}
                 setupGap={setupGap}
+                isArchived={isArchived}
                 onOpen={setSelectedId}
               />
               <PaginationControls
@@ -436,6 +497,34 @@ export function EmployeesSettings() {
                 totalItems={ready.length}
                 itemNoun="people"
                 onPageChange={setReadyPage}
+              />
+            </section>
+          ) : null}
+
+          {archived.length > 0 ? (
+            <section className={`${BOX} border border-border/70 bg-card/90`}>
+              <header className={BOX_HEADER}>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                  <Archive className="size-4 text-muted-foreground" aria-hidden />
+                  {archived.length} archived
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  No longer employed. Kept for their payslips and records; a run leaves them out.
+                </p>
+              </header>
+              <EmployeeRows
+                rows={archivedSlice}
+                policyName={policyName}
+                setupGap={setupGap}
+                isArchived={isArchived}
+                onOpen={setSelectedId}
+              />
+              <PaginationControls
+                className={BOX_FOOT}
+                currentPage={archivedCurrent}
+                totalItems={archived.length}
+                itemNoun="people"
+                onPageChange={setArchivedPage}
               />
             </section>
           ) : null}
@@ -474,11 +563,13 @@ function EmployeeRows({
   rows,
   policyName,
   setupGap,
+  isArchived,
   onOpen,
 }: {
   rows: Employee[];
   policyName: (id: string | null) => string;
   setupGap: (userId: string) => string | null;
+  isArchived: (userId: string) => boolean;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -536,7 +627,12 @@ function EmployeeRows({
                   {/* The warning chip is bordered like the Ready one beside
                       it: its row sits on an amber wash, so a fill alone no
                       longer separates it from its background. */}
-                  {gap ? (
+                  {isArchived(emp.id) ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                      <Archive className="size-3" aria-hidden />
+                      Archived
+                    </span>
+                  ) : gap ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-foreground/25 bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
                       <CircleAlert className="size-3" aria-hidden />
                       {gap}
