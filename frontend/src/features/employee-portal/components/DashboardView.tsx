@@ -386,14 +386,16 @@ export function DashboardView({
       }
 
       // No GPS fix reached the server. On a project with no geofenced site
-      // nothing else records where the shift started, so the clock-in is
-      // refused until there's either a location or a remark and a photo
-      // standing in for one. Same dialog, different wording — the first thing
-      // to try here is granting the browser permission, not explaining why
-      // you're away from the site.
+      // nothing else records where the shift started or ended, so the clock
+      // is refused until there's either a location or a remark and a photo
+      // standing in for one — at either end of the shift. Same dialog,
+      // different wording — the first thing to try here is granting the
+      // browser permission, not explaining why you're away from the site.
+      // `choice` rides along so a correction asked for on clock-out survives
+      // the retry, exactly as on the off-site path above.
       if (e instanceof ApiError && e.code === LOCATION_REQUIRED_CODE) {
         setClockOutOpen(false);
-        setOffSite({ action: "in", choice, reason: "no-location" });
+        setOffSite({ action: clockingOut ? "out" : "in", choice, reason: "no-location" });
         return;
       }
 

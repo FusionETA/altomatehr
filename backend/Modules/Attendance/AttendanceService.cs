@@ -419,7 +419,7 @@ public class AttendanceService : IAttendanceService
             || (policy.GeolocationEnabled && policy.CaptureLocationOnClockIn);
         if (captureOn && (dto.Lat is null || dto.Lng is null)
             && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
-            return LocationRequired();
+            return LocationRequired("clock in");
 
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockIn ?? true, dto.Lat, dto.Lng);
@@ -532,6 +532,17 @@ public class AttendanceService : IAttendanceService
         var (_, distance, offSite) = await EvaluateGeofenceAsync(employeeId, record.ProjectId, dto.Lat, dto.Lng);
         if (offSite && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
             return OffSiteRequired(distance);
+
+        // The same rule as clock-in, for the other end of the shift. Without it
+        // a denied location prompt still produced a clock-out with no location
+        // AND no photo — the one event nobody could verify afterwards, and the
+        // easiest to fake from anywhere. Governed by the policy's clock-out
+        // switch, so an org that only tracks where shifts start is unaffected.
+        var captureOutOn = policy is null
+            || (policy.GeolocationEnabled && policy.CaptureLocationOnClockOut);
+        if (captureOutOn && (dto.Lat is null || dto.Lng is null)
+            && OffSiteProofMissing(dto.Remark, dto.PhotoUrl))
+            return LocationRequired("clock out");
 
         var (capturedLat, capturedLng) =
             CaptureCoords(policy, policy?.CaptureLocationOnClockOut ?? true, dto.Lat, dto.Lng);
@@ -2175,10 +2186,10 @@ public class AttendanceService : IAttendanceService
     // Distinct from OffSiteRequired because the employee's next move differs:
     // here the first thing to try is allowing location, and the remark+photo
     // is the fallback. Same override, so the client can reuse the proof dialog.
-    private static AttendanceActionResult LocationRequired() => new(
+    private static AttendanceActionResult LocationRequired(string action) => new(
         false,
         null,
-        "Your location is needed to clock in. Allow location access and try again, "
+        $"Your location is needed to {action}. Allow location access and try again, "
             + "or add a remark and a photo instead.",
         LocationRequiredCode);
 

@@ -33,11 +33,11 @@ namespace AltomateHR.Api.Tests.Attendance;
 // and never touches the CLOCK_IN one. This test locks that behaviour in.
 public class AttendanceApprovalRegressionTests
 {
-    // A clock-in carries a GPS fix. Not because anything here checks a
-    // geofence — none of these projects has one — but because clocking in
-    // without coordinates is refused outright (LOCATION_REQUIRED): a project
-    // with no geofenced site has nothing else recording where the shift
-    // started. The value is arbitrary; only its presence matters.
+    // Every clock carries a GPS fix. Not because anything here checks a
+    // geofence — none of these projects has one — but because clocking in OR
+    // out without coordinates is refused outright (LOCATION_REQUIRED): a
+    // project with no geofenced site has nothing else recording where the
+    // shift started or ended. The value is arbitrary; only its presence matters.
     private const double ClockLat = 3.1390;
     private const double ClockLng = 101.6869;
 
@@ -114,7 +114,7 @@ public class AttendanceApprovalRegressionTests
             leaveTypes: new FakeLeaveTypeService());
 
         // --- Act: employee clocks out. ---
-        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
 
         // --- Assert ---
         Assert.True(result.Ok);
@@ -174,7 +174,7 @@ public class AttendanceApprovalRegressionTests
         var open = OpenRecord("rec-open", "emp-1", yesterday, now.AddDays(-1));
         var service = BuildService([open]);
 
-        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         Assert.NotNull(open.TimeOut);
@@ -390,6 +390,37 @@ public class AttendanceApprovalRegressionTests
         Assert.True(result.Ok);
     }
 
+    // The other end of the shift gets the same rule. Before it, a denied
+    // location prompt produced a clock-out with no location and no photo —
+    // the one event in the day nobody could verify.
+    [Fact]
+    public async Task ClockOut_IsRefused_WhenNoLocationWasCaptured()
+    {
+        var service = BuildService([], teams: new FakeTeamService());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+
+        Assert.False(result.Ok);
+        Assert.Equal("LOCATION_REQUIRED", result.Code);
+        Assert.Contains("clock out", result.Error);
+    }
+
+    [Fact]
+    public async Task ClockOut_WithoutLocation_IsAllowed_WithARemarkAndPhoto()
+    {
+        var service = BuildService([], teams: new FakeTeamService());
+        await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
+
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto
+        {
+            Remark = "Phone's location is switched off.",
+            PhotoUrl = "/attendance/photos/leaving.jpg",
+        });
+
+        Assert.True(result.Ok);
+    }
+
     [Fact]
     public async Task ClockIn_StoresTheCoordinates_OnAProjectWithNoGeofence()
     {
@@ -435,7 +466,7 @@ public class AttendanceApprovalRegressionTests
         var service = BuildService([]);
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
         var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(second.Ok);
@@ -466,7 +497,7 @@ public class AttendanceApprovalRegressionTests
         var service = BuildService([], repo: repo, sessions: sessions);
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
         // Backdate the closed stint so the two are genuinely apart.
         var first = sessions.All.Single();
         first.StartedAt = DateTime.UtcNow.AddHours(-5);
@@ -476,7 +507,7 @@ public class AttendanceApprovalRegressionTests
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
         var second = sessions.All.Last();
         second.StartedAt = DateTime.UtcNow.AddHours(-1);
-        var result = await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var result = await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.True(result.Ok);
         // ~120 minutes of work across a 5-hour span.
@@ -492,7 +523,7 @@ public class AttendanceApprovalRegressionTests
         var service = BuildService([], sessions: sessions);
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/morning.jpg" });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng, PhotoUrl = "/attendance/photos/afternoon.jpg" });
 
         Assert.Equal("/attendance/photos/morning.jpg", sessions.All.First().ClockInPhotoUrl);
@@ -509,7 +540,7 @@ public class AttendanceApprovalRegressionTests
         var service = BuildService([]);
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
         var second = await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
 
         var sessions = second.Record!.Sessions;
@@ -539,9 +570,9 @@ public class AttendanceApprovalRegressionTests
         var service = BuildService([], repo: repo, sessions: sessions);
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        var closed = await service.ClockOutAsync("emp-1", new ClockOutDto());
+        var closed = await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
 
         var (first, second) = (sessions.All[0], sessions.All[1]);
         first.StartedAt = DayStart;
@@ -597,7 +628,7 @@ public class AttendanceApprovalRegressionTests
         });
 
         await service.ClockInAsync("emp-1", new ClockInDto { Lat = ClockLat, Lng = ClockLng });
-        await service.ClockOutAsync("emp-1", new ClockOutDto());
+        await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
 
         Assert.Equal(137, sessions.All[1].DurationMin);
         // 62 + 137, plus the few seconds the third shift lasted.
