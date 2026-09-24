@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { login, type AuthResponse } from "../api";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
+import { ssoLinkExpired } from "../lib/sso-outcome";
 
 export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => void }) {
   // Empty, not seeded with the demo account. A prefilled password is one
@@ -54,6 +55,13 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => voi
                 Login
               </h1>
             </div>
+
+            {ssoLinkExpired ? (
+              <p className="rounded-2xl border border-border/60 bg-surface-low px-4 py-3 text-sm text-muted-foreground">
+                That sign-in link has expired or was already used. Go back to Altomate and open
+                altomate HR again, or sign in below.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-5 pt-2 sm:pt-6">
