@@ -863,6 +863,11 @@ export type AdjustmentCategory = {
 export const getAdjustmentCategories = () =>
   apiGet<AdjustmentCategory[]>("/payroll/adjustment-categories");
 
+// The bank register the bank files match employees against (MalaysianBanks.cs).
+export type MalaysianBank = { name: string; aliases: string[] };
+
+export const getMalaysianBanks = () => apiGet<MalaysianBank[]>("/payroll/banks");
+
 // ─── Per-run adjustments ──────────────────────────────────────────────
 
 export type ManualLineItem = {

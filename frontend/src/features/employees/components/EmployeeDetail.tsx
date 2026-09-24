@@ -44,6 +44,8 @@ import {
 import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
 import { getProjects } from "@/features/settings/api";
+import { getMalaysianBanks } from "@/features/payroll/api";
+import { matchBank } from "../lib/malaysian-bank";
 import {
   addTeamMember,
   clearApproverOverride,
@@ -269,6 +271,9 @@ export function EmployeeDetail({
   // its load seeds a SOCSO recommendation and the dirty-check baseline.
   const teamsQuery = useCachedQuery("/teams", getTeams);
   const projectsQuery = useCachedQuery("/projects", getProjects);
+  // The register the bank file matches against — the Bank field picks from it.
+  const banksQuery = useCachedQuery("/payroll/banks", getMalaysianBanks);
+  const banks = banksQuery.data ?? [];
   // Seeded from the cache so the first frame of a revisit is the real thing;
   // still state because editing a team patches one in place. The effect
   // below keeps it in step with a background refresh.
@@ -1405,8 +1410,31 @@ export function EmployeeDetail({
                   {/* Bank details are only meaningful for a transfer. */}
                   {profile.paymentMethod === "BANK_TRANSFER" ? (
                     <>
-                      <Field label="Bank">
-                        <Text value={profile.bankName} onChange={(v) => set("bankName", v)} />
+                      {/* A pick from the bank register, not free text. The bank
+                          file matches this name against the same register and
+                          refuses the WHOLE file if anyone's bank is unknown —
+                          so a typo like "abc" stopped everyone being paid. An
+                          existing value is shown as the bank it matches
+                          ("Cimb" → CIMB Bank Berhad) and only rewritten if the
+                          admin picks again. Free text until the list loads. */}
+                      <Field
+                        label="Bank"
+                        hint={
+                          banks.length > 0 && profile.bankName && !matchBank(profile.bankName, banks)
+                            ? `"${profile.bankName}" isn't a recognised Malaysian bank — pick one, or the bank file for the run will be refused.`
+                            : undefined
+                        }
+                      >
+                        {banks.length > 0 ? (
+                          <Picker
+                            value={matchBank(profile.bankName, banks)?.name ?? null}
+                            onChange={(v) => set("bankName", v ?? "")}
+                            placeholder="Choose a bank"
+                            options={banks.map((b) => ({ value: b.name, label: b.name }))}
+                          />
+                        ) : (
+                          <Text value={profile.bankName} onChange={(v) => set("bankName", v)} />
+                        )}
                       </Field>
                       <Field label="Account number">
                         <Text

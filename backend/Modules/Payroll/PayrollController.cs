@@ -24,6 +24,16 @@ public class PayrollController : ControllerBase
         _companyInfo = companyInfo;
     }
 
+    // The bank register the bank-file generators match employees against.
+    // Served rather than copied into the client for the same reason as the
+    // categories below: a bank picked from a second list that drifted would be
+    // refused by the very file it was picked for, and one unmatched name
+    // refuses the whole run's bank file.
+    [RequireScope("payroll:read")]
+    [HttpGet("banks")]
+    public IActionResult Banks() =>
+        Ok(MalaysianBanks.All.Select(b => new { name = b.Name, aliases = b.Aliases }));
+
     // Both GETs return defaults rather than 404 for an org that hasn't
     // configured payroll yet — see the services for why.
     // The adjustment category catalogue. Static reference data, served rather
