@@ -66,7 +66,10 @@ public class PayrollRunClaimService : IPayrollRunClaimService
 
     public async Task<List<AttachableClaimDto>> GetAttachableAsync()
     {
-        var claims = await _claims.GetPayrollReimbursableAsync();
+        // The wide set — see IClaimsService.GetPayrollAttachableAsync. An org
+        // that switched to payroll settlement later still has older claims
+        // stamped XERO_BILL, and an admin must be able to pay those here.
+        var claims = await _claims.GetPayrollAttachableAsync();
         if (claims.Count == 0) return [];
 
         var people = await LoadPeopleAsync();
@@ -149,6 +152,11 @@ public class PayrollRunClaimService : IPayrollRunClaimService
         var blocked = BlockedReasonFor(claim, person);
         if (blocked is not null) return new PayrollRunClaimAttachResult(true, false, null, blocked);
 
+        // Before the attachment exists: once it is routed to PAYROLL, Xero will
+        // refuse to bill it, so the receipt cannot be paid twice even if the
+        // admin table's Sync is pressed a second later.
+        await _claims.RouteToPayrollAsync(claim.Id);
+
         var attachment = await _attachments.AddAsync(new PayrollRunClaim
         {
             PayrollRunId = runId,
@@ -210,6 +218,10 @@ public class PayrollRunClaimService : IPayrollRunClaimService
 
         await _attachments.DeleteByClaimIdAsync(claimId);
 
+        // Back to whatever the org settles claims through today, so a claim
+        // attached by mistake can still be billed to Xero if that is the route.
+        await _claims.RouteToDefaultSettlementAsync(claimId);
+
         if (run is not null) await _runs.MarkMutatedAsync(run.Id);
 
         await _audit.WriteAsync(new AuditEvent(
@@ -230,12 +242,24 @@ public class PayrollRunClaimService : IPayrollRunClaimService
 
     // ─── Eligibility ────────────────────────────────────────────────────
 
-    // Null means the claim can be attached. The reimbursable set already
-    // guarantees APPROVED + PERSONAL + PAYROLL settlement, so what is left is
-    // whether there is anyone on the payroll to pay it to, and the belt-and-
-    // braces check that it has not already gone out through Xero.
+    // Null means the claim can be attached. Checked on the attach itself, not
+    // just in the list: the endpoint takes any claim id, so a pending or
+    // company-paid claim must be refused here rather than trusted to the UI.
+    // The settlement route is NOT checked — attaching re-routes it.
     private static string? BlockedReasonFor(Claim claim, Person? person)
     {
+        if (claim.Status != ClaimStatus.APPROVED)
+        {
+            return "Only approved claims can be reimbursed through payroll.";
+        }
+
+        // A company-card purchase cost the employee nothing; paying it back
+        // through their salary would hand them money they never spent.
+        if (claim.PaymentType != PaymentType.PERSONAL)
+        {
+            return "This claim was paid by the company, so there is nothing to reimburse the employee.";
+        }
+
         if (person is null)
         {
             return "The claim's submitter has no employee profile, so they cannot be paid through payroll.";
@@ -246,9 +270,8 @@ public class PayrollRunClaimService : IPayrollRunClaimService
             return "The claim's submitter is archived and is not on this payroll.";
         }
 
-        // A PAYROLL-settled claim never syncs to Xero, so this only fires when
-        // the route was switched after the money had already gone out. Paying
-        // it again through payroll would reimburse it twice.
+        // Already billed through Xero, so the money has gone out that way.
+        // Paying it again through payroll would reimburse it twice.
         if (!string.IsNullOrWhiteSpace(claim.XeroBillId))
         {
             return "This claim has already been billed to Xero, so it cannot also be reimbursed through payroll.";

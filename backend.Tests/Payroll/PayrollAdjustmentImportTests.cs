@@ -56,7 +56,8 @@ public class PayrollAdjustmentImportTests : IDisposable
             policies,
             new StubPayrollHours(),
             new EmployeeLoanService(new EmployeeLoanRepository(_db), runs, directory, _audit),
-            _audit);
+            _audit,
+            new StubApprovedOvertime());
 
         _import = new PayrollAdjustmentImportService(
             runs,

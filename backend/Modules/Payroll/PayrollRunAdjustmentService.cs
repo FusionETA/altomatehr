@@ -18,6 +18,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     private readonly IHoursSummaryService _hours;
     private readonly IEmployeeLoanService _loans;
     private readonly IAuditService _audit;
+    private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
 
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
@@ -26,8 +27,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         IPolicyService policies,
         IHoursSummaryService hours,
         IEmployeeLoanService loans,
-        IAuditService audit)
+        IAuditService audit,
+        Overtime.IApprovedOvertimeService approvedOvertime)
     {
+        _approvedOvertime = approvedOvertime;
         _adjustments = adjustments;
         _runs = runs;
         _directory = directory;
@@ -64,10 +67,15 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         // the policy puts the employee on attendance at all.
         var attendanceApplies = policy?.CanAccessAttendance == true && hours is not null;
 
-        // Cash overtime, minus the `adjustment is not null` clause — that one
-        // only says whether hours have been TYPED yet, which is what this form
-        // is for. What matters here is whether the policy would pay them.
+        // Whether the policy would pay cash OT at all. Generation also needs
+        // hours to exist; here the form is where they are shown or typed.
         var cashOt = policy is null || (policy.OtEnabled && policy.OtMethod == OtMethod.CASH);
+
+        // Converted through the same helper generation uses, so the hint and
+        // the payslip cannot round differently.
+        var approvedOt = (await _approvedOvertime.GetApprovedMinutesAsync(
+                periodStart, periodEnd, profile.UserId))
+            .GetValueOrDefault(profile.UserId);
 
         var loan = (await _loans.GetRepaymentsForPeriodAsync(run.PeriodYear, run.PeriodMonth))
             .GetValueOrDefault(profile.Id);
@@ -91,11 +99,14 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             AttendanceApplies = attendanceApplies,
 
             CashOvertime = cashOt,
+            ApprovedOtNormalHours = PayrollOvertimeHours.ToHours(approvedOt?.NormalDayMin ?? 0),
+            ApprovedOtRestHours = PayrollOvertimeHours.ToHours(approvedOt?.RestDayMin ?? 0),
+            ApprovedOtPublicHours = PayrollOvertimeHours.ToHours(approvedOt?.PublicHolidayMin ?? 0),
             OvertimeDisabledReason = cashOt
                 ? null
                 : policy!.OtEnabled
-                    ? "This employee's policy banks overtime as time off, so hours typed here are not paid in cash."
-                    : "This employee's policy has overtime switched off, so hours typed here are not paid.",
+                    ? "This employee's policy banks overtime as time off, so neither approved nor typed overtime is paid in cash."
+                    : "This employee's policy has overtime switched off, so neither approved nor typed overtime is paid.",
 
             LoanInstallments = loan > 0m
                 ? [new LoanInstallmentPreviewDto

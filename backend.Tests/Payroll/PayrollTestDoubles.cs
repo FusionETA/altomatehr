@@ -6,6 +6,7 @@ using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Payroll;
+using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Organizations.Dtos;
 using AltomateHR.Api.Modules.Leave.Dtos;
 
@@ -49,6 +50,19 @@ internal sealed class StubPayrollHours : IHoursSummaryService
     public Task<HoursBucketsDto?> GetEmployeeHoursSummaryAsync(
         string employeeId, DateTime from, DateTime to, string requestingUserId, string? requestingRole) =>
         throw new NotSupportedException();
+}
+
+// Approved overtime by user id — empty unless a test sets it, so every
+// existing payroll test keeps paying exactly the OT it typed.
+internal sealed class StubApprovedOvertime : IApprovedOvertimeService
+{
+    public Dictionary<string, ApprovedOvertimeMinutes> ByUser { get; } = new(StringComparer.Ordinal);
+
+    public Task<IReadOnlyDictionary<string, ApprovedOvertimeMinutes>> GetApprovedMinutesAsync(
+        DateTime from, DateTime to, string? employeeId = null) =>
+        Task.FromResult<IReadOnlyDictionary<string, ApprovedOvertimeMinutes>>(
+            ByUser.Where(kv => employeeId is null || kv.Key == employeeId)
+                  .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal));
 }
 
 // Leave. Seed with `SetUnpaidDays(userId, days)`.
@@ -203,6 +217,33 @@ internal sealed class FakeClaimsService : IClaimsService
                      && c.Status == ClaimStatus.APPROVED
                      && c.PaymentType == PaymentType.PERSONAL)
             .ToList());
+
+    // Same rule as ClaimsService: route-agnostic, but never an already-billed one.
+    public Task<IReadOnlyList<Claim>> GetPayrollAttachableAsync() =>
+        Task.FromResult<IReadOnlyList<Claim>>(_claims
+            .Where(c => c.Status == ClaimStatus.APPROVED
+                     && c.PaymentType == PaymentType.PERSONAL
+                     && string.IsNullOrWhiteSpace(c.XeroBillId))
+            .ToList());
+
+    // The org's current claim settlement route, which a detach hands back to.
+    public ClaimSettlement DefaultRoute { get; set; } = ClaimSettlement.XERO_BILL;
+
+    public Task RouteToPayrollAsync(string claimId)
+    {
+        var claim = _claims.FirstOrDefault(c => c.Id == claimId);
+        if (claim is not null && string.IsNullOrWhiteSpace(claim.XeroBillId))
+            claim.Settlement = ClaimSettlement.PAYROLL;
+        return Task.CompletedTask;
+    }
+
+    public Task RouteToDefaultSettlementAsync(string claimId)
+    {
+        var claim = _claims.FirstOrDefault(c => c.Id == claimId);
+        if (claim is not null && string.IsNullOrWhiteSpace(claim.XeroBillId))
+            claim.Settlement = DefaultRoute;
+        return Task.CompletedTask;
+    }
 
     public Task<Claim?> GetByIdAsync(string id) =>
         Task.FromResult(_claims.FirstOrDefault(c => c.Id == id));

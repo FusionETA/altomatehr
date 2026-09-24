@@ -29,6 +29,7 @@ public class PayrollRunStateMachineTests : IDisposable
     private readonly StubPayrollXeroSync _xeroSync = new();
     private EmployeeLoanService _loanService = null!;
     private readonly StubPayrollHours _hours = new();
+    private readonly StubApprovedOvertime _approvedOt = new();
     private readonly StubPayrollLeave _leave = new();
     private readonly PayrollRunService _service;
     private readonly StatutoryFileService _statutory;
@@ -89,7 +90,8 @@ public class PayrollRunStateMachineTests : IDisposable
             _currentUser,
             _audit,
             _xeroSync,
-            _loanService);
+            _loanService,
+            _approvedOt);
     }
 
     public void Dispose() => _db.Dispose();

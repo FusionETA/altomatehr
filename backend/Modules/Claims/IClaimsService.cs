@@ -90,6 +90,20 @@ public interface IClaimsService
     // table itself, so what counts as reimbursable is defined once, here, and
     // the export and the attach list cannot drift apart.
     Task<IReadOnlyList<Claim>> GetPayrollReimbursableAsync();
+
+    // Every claim an admin MAY attach to a payroll run by hand: APPROVED,
+    // PERSONAL-paid and not already billed to Xero — whatever settlement route
+    // it was stamped with. Wider than GetPayrollReimbursableAsync on purpose:
+    // an org that turns on payroll settlement later still has older claims
+    // stamped XERO_BILL, and those must be payable through payroll too.
+    Task<IReadOnlyList<Claim>> GetPayrollAttachableAsync();
+
+    // Attaching a claim to a payroll run re-routes it to PAYROLL, which is what
+    // stops SyncToXeroAsync billing it as well — the same receipt must never be
+    // paid twice. Detaching hands it back to the org's CURRENT route. Both are
+    // no-ops on a claim already billed to Xero.
+    Task RouteToPayrollAsync(string claimId);
+    Task RouteToDefaultSettlementAsync(string claimId);
 }
 
 // Mirrors the attendance bulk contract: per-id success/failure, so the response

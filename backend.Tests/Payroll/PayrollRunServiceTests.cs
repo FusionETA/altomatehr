@@ -4,6 +4,7 @@ using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
@@ -25,6 +26,7 @@ public class PayrollRunServiceTests : IDisposable
     private readonly StubPayrollXeroSync _xeroSync = new();
     private EmployeeLoanService _loanService = null!;
     private readonly StubPayrollHours _hours = new();
+    private readonly StubApprovedOvertime _approvedOt = new();
     private readonly StubPayrollLeave _leave = new();
     private readonly PayrollRunService _service;
     private readonly PayslipRepository _payslips;
@@ -85,7 +87,8 @@ public class PayrollRunServiceTests : IDisposable
             _currentUser,
             _audit,
             _xeroSync,
-            _loanService);
+            _loanService,
+            _approvedOt);
     }
 
     public void Dispose() => _db.Dispose();
@@ -917,6 +920,109 @@ public class PayrollRunServiceTests : IDisposable
 
         // RM 25/h x 2 h x (1.5 + 2 + 3) = RM 325.00.
         Assert.Equal(325m, payslip.OtPay);
+    }
+
+    // ---- Overtime from approved requests ----
+
+    // The point of the link: OT an employee submitted and had approved is paid
+    // without anyone re-keying it — nothing is on the adjustment row at all.
+    [Fact]
+    public async Task GenerateAsync_PaysApprovedOvertimeWhenNothingWasTyped()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy(normal: 1.5m, rest: 2.0m, publicHoliday: 3.0m);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(
+            NormalDayMin: 120, RestDayMin: 120, PublicHolidayMin: 120);
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(2m, payslip.OtNormalHours);
+        Assert.Equal(2m, payslip.OtRestHours);
+        Assert.Equal(2m, payslip.OtPublicHours);
+        // RM 25/h x 2 h x (1.5 + 2 + 3) = RM 325.00 — each day type at its own rate.
+        Assert.Equal(325m, payslip.OtPay);
+    }
+
+    // An adjustment row can exist for other reasons (an allowance override, a
+    // one-off) with its OT fields left at zero. That is "not typed", so the
+    // approved figure still applies.
+    [Fact]
+    public async Task GenerateAsync_PaysApprovedOvertimeWhenTheAdjustmentLeavesOtAtZero()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy(normal: 1.5m);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 0, 0);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, workedHours: 160m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(10m, payslip.OtNormalHours);
+        Assert.Equal(375m, payslip.OtPay);
+    }
+
+    // What the admin typed wins outright — they may be correcting the approved
+    // figure. Never both: that would pay the same hours twice.
+    [Fact]
+    public async Task GenerateAsync_TypedOvertimeReplacesTheApprovedFigureRatherThanAddingToIt()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy(normal: 1.5m);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 120, 0);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, otNormal: 4m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(4m, payslip.OtNormalHours);
+        Assert.Equal(0m, payslip.OtRestHours);
+        // RM 25/h x 4 h x 1.5 = RM 150.00.
+        Assert.Equal(150m, payslip.OtPay);
+    }
+
+    // Approved OT under a TIME_BANK policy was already credited as time off.
+    [Fact]
+    public async Task GenerateAsync_PaysNoApprovedOvertimeUnderATimeBankPolicy()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddPolicy(otMethod: OtMethod.TIME_BANK);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 0, 0);
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.OtPay);
+        Assert.Equal(0m, payslip.OtNormalHours);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_PaysNoApprovedOvertimeWhenThePolicyDisablesIt()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddPolicy(otEnabled: false);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 0, 0);
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.OtPay);
+    }
+
+    // One employee's approved OT must not land on a colleague's payslip.
+    [Fact]
+    public async Task GenerateAsync_PaysApprovedOvertimeOnlyToWhoeverWorkedIt()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddEmployee("usr-2", "Ben", monthlySalary: 5200m);
+        AddPolicy(normal: 1.5m);
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 0, 0);
+        var run = await CreateRunAsync();
+
+        var payslips = (await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips;
+
+        Assert.Equal(375m, payslips.Single(p => p.SnapshotName == "Aisyah").OtPay);
+        Assert.Equal(0m, payslips.Single(p => p.SnapshotName == "Ben").OtPay);
     }
 
     // EPF Act 1991 s.2 excludes overtime from wages; SOCSO and EIS include it.

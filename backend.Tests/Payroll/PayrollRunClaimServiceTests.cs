@@ -370,5 +370,96 @@ public class PayrollRunClaimServiceTests : IDisposable
         Assert.Null(row.EmployeeProfileId);
     }
 
+    // ─── Settlement route ───────────────────────────────────────────────
+
+    // An org that turned payroll settlement on AFTER these claims were
+    // approved still has them stamped XERO_BILL. They must be payable here.
+    [Fact]
+    public async Task GetAttachableAsync_IncludesClaimsStampedForXeroThatWereNeverBilled()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddClaim("clm-1", "usr-1").Settlement = ClaimSettlement.XERO_BILL;
+
+        var row = Assert.Single(await _service.GetAttachableAsync());
+
+        Assert.Equal("clm-1", row.ClaimId);
+        Assert.Null(row.BlockedReason);
+    }
+
+    [Fact]
+    public async Task GetAttachableAsync_LeavesOutAClaimAlreadyBilledToXero()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var claim = AddClaim("clm-1", "usr-1");
+        claim.Settlement = ClaimSettlement.XERO_BILL;
+        claim.XeroBillId = "bill-1";
+
+        Assert.Empty(await _service.GetAttachableAsync());
+    }
+
+    // The whole point of re-routing: once it is PAYROLL, SyncToXeroAsync
+    // refuses to bill it, so the receipt cannot be paid through both.
+    [Fact]
+    public async Task AttachAsync_ReroutesAXeroStampedClaimToPayroll()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var claim = AddClaim("clm-1", "usr-1");
+        claim.Settlement = ClaimSettlement.XERO_BILL;
+        var run = await AddRunAsync();
+
+        var result = await _service.AttachAsync(run.Id, "clm-1");
+
+        Assert.True(result.Ok);
+        Assert.Equal(ClaimSettlement.PAYROLL, claim.Settlement);
+    }
+
+    // Attached by mistake: detaching hands it back to how the org settles
+    // claims today, so it can still go out as a Xero bill.
+    [Fact]
+    public async Task DetachAsync_HandsTheClaimBackToTheOrgsCurrentRoute()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var claim = AddClaim("clm-1", "usr-1");
+        claim.Settlement = ClaimSettlement.XERO_BILL;
+        _claims.DefaultRoute = ClaimSettlement.XERO_BILL;
+        var run = await AddRunAsync();
+        await _service.AttachAsync(run.Id, "clm-1");
+
+        await _service.DetachAsync("clm-1");
+
+        Assert.Equal(ClaimSettlement.XERO_BILL, claim.Settlement);
+    }
+
+    // The endpoint takes any claim id, so eligibility is enforced on the attach
+    // itself — not trusted to the list the UI happened to show.
+    [Theory]
+    [InlineData(ClaimStatus.PENDING)]
+    [InlineData(ClaimStatus.REJECTED)]
+    public async Task AttachAsync_RefusesAClaimThatIsNotApproved(ClaimStatus status)
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddClaim("clm-1", "usr-1").Status = status;
+        var run = await AddRunAsync();
+
+        var result = await _service.AttachAsync(run.Id, "clm-1");
+
+        Assert.False(result.Ok);
+        Assert.Empty(await _service.GetForRunAsync(run.Id));
+    }
+
+    // A company-card purchase cost the employee nothing.
+    [Fact]
+    public async Task AttachAsync_RefusesACompanyPaidClaim()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddClaim("clm-1", "usr-1").PaymentType = PaymentType.COMPANY;
+        var run = await AddRunAsync();
+
+        var result = await _service.AttachAsync(run.Id, "clm-1");
+
+        Assert.False(result.Ok);
+        Assert.Empty(await _service.GetForRunAsync(run.Id));
+    }
+
     // ─── Fakes ──────────────────────────────────────────────────────────
 }

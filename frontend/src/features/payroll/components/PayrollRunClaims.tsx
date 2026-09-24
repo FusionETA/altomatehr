@@ -237,14 +237,14 @@ export function PayrollRunClaims({
             </ul>
           ) : null}
 
-          {/* The commonest reason this list is empty, and the only one an
-              admin can do nothing about from here. */}
+          {/* Why the list is empty. The settlement route no longer decides it —
+              any unbilled claim can be attached by hand, and attaching moves it
+              off the Xero route so it cannot be paid twice. */}
           {editable && free.length === 0 && attached.length === 0 ? (
             <p className={HINT}>
-              Nothing is waiting. A claim only reaches payroll when it is approved,
-              paid personally, and the org's claim settlement route is set to Payroll
-              rather than Xero — that switch is under Claims → Settings, and it only
-              affects claims submitted after it is changed.
+              Nothing is waiting. A claim shows up here once it is approved and was paid
+              out of the employee's own pocket. Claims already billed to Xero are left
+              out, because they have been paid that way.
             </p>
           ) : null}
         </div>

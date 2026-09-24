@@ -943,9 +943,14 @@ export type PayrollAdjustmentContext = {
   // above are then absent rather than zero.
   attendanceApplies: boolean;
   // False when the policy banks overtime as time off or disables it, in which
-  // case typed hours are IGNORED by generation.
+  // case neither approved nor typed hours are paid in cash.
   cashOvertime: boolean;
   overtimeDisabledReason: string | null;
+  // Approved overtime requests for the period, in hours by day type. Paid by
+  // generation whenever all three OT fields are left at zero.
+  approvedOtNormalHours: number;
+  approvedOtRestHours: number;
+  approvedOtPublicHours: number;
   loanInstallments: LoanInstallmentPreview[];
   editable: boolean;
 };

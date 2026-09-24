@@ -95,6 +95,14 @@ public class PayrollAdjustmentContextDto
     public bool CashOvertime { get; set; }
     public string? OvertimeDisabledReason { get; set; }
 
+    // Approved overtime requests for the period, in hours by day type. This is
+    // what generation pays when the OT fields above are left at zero — shown so
+    // the admin can see where a payslip's OT came from, and type over it only
+    // when it needs correcting.
+    public decimal ApprovedOtNormalHours { get; set; }
+    public decimal ApprovedOtRestHours { get; set; }
+    public decimal ApprovedOtPublicHours { get; set; }
+
     public IReadOnlyList<LoanInstallmentPreviewDto> LoanInstallments { get; set; } = [];
 
     // Only a DRAFT run accepts an edit.

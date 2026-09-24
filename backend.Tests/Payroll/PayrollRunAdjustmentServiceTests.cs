@@ -53,7 +53,8 @@ public class PayrollRunAdjustmentServiceTests : IDisposable
                 new PayrollRunRepository(_db),
                 directory,
                 _audit),
-            _audit);
+            _audit,
+            new StubApprovedOvertime());
     }
 
     public void Dispose() => _db.Dispose();

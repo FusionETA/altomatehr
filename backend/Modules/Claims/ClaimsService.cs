@@ -1156,6 +1156,49 @@ public class ClaimsService : IClaimsService
                      && c.PaymentType == PaymentType.PERSONAL)
             .ToList();
 
+    // The v1 rule: anything approved, paid out of the employee's pocket and not
+    // yet billed in Xero. The route it was stamped with does not matter here —
+    // attaching re-routes it (RouteToPayrollAsync).
+    public async Task<IReadOnlyList<Claim>> GetPayrollAttachableAsync() =>
+        (await _repo.GetAllAsync())
+            .Where(c => c.Status == ClaimStatus.APPROVED
+                     && c.PaymentType == PaymentType.PERSONAL
+                     && string.IsNullOrWhiteSpace(c.XeroBillId))
+            .ToList();
+
+    public async Task RouteToPayrollAsync(string claimId)
+    {
+        var claim = await _repo.GetByIdAsync(claimId);
+        if (claim is null || !string.IsNullOrWhiteSpace(claim.XeroBillId)) return;
+        if (claim.Settlement == ClaimSettlement.PAYROLL) return;
+
+        claim.Settlement = ClaimSettlement.PAYROLL;
+
+        // It is no longer headed for Xero, so a failed earlier attempt is not a
+        // problem to retry any more — leaving ERROR up would offer a Retry that
+        // SyncToXeroAsync would only refuse.
+        claim.XeroSyncStatus = XeroSyncStatus.NOT_SYNCED;
+        claim.XeroSyncError = null;
+        claim.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(claim);
+    }
+
+    public async Task RouteToDefaultSettlementAsync(string claimId)
+    {
+        var claim = await _repo.GetByIdAsync(claimId);
+        if (claim is null || !string.IsNullOrWhiteSpace(claim.XeroBillId)) return;
+
+        var route = (await GetSettingsAsync()).SettlementRoute;
+        if (claim.Settlement == route) return;
+
+        // Not billed automatically: SettleAsync only runs on approval. The claim
+        // simply shows up as unsynced in the admin table again, where Sync
+        // bills it once the admin decides to.
+        claim.Settlement = route;
+        claim.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(claim);
+    }
+
     public async Task<TabularExportResult> ExportPayrollReimbursementsAsync(
         TabularFormat format, string? month)
     {

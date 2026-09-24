@@ -39,6 +39,7 @@ public class PayrollRunService : IPayrollRunService
     private readonly IAuditService _audit;
     private readonly IPayrollXeroSyncService _xeroSync;
     private readonly IEmployeeLoanService _loans;
+    private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -55,8 +56,10 @@ public class PayrollRunService : IPayrollRunService
         ICurrentUser currentUser,
         IAuditService audit,
         IPayrollXeroSyncService xeroSync,
-        IEmployeeLoanService loans)
+        IEmployeeLoanService loans,
+        Overtime.IApprovedOvertimeService approvedOvertime)
     {
+        _approvedOvertime = approvedOvertime;
         _statutory = statutory;
         _hours = hours;
         _leave = leave;
@@ -292,6 +295,10 @@ public class PayrollRunService : IPayrollRunService
         // Keyed by user id, like the hours — the Leave module works in users.
         var unpaidDaysByUser = await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd);
 
+        // Approved overtime requests for the month, split by day type. Paid by
+        // default — see PayrollOvertimeHours for when the admin's figure wins.
+        var approvedOtByUser = await _approvedOvertime.GetApprovedMinutesAsync(periodStart, periodEnd);
+
         // What each employee's active loans take this period. One query for
         // the whole run, like the hours and the leave above it.
         var loanRepayments = await _loans.GetRepaymentsForPeriodAsync(
@@ -334,11 +341,13 @@ public class PayrollRunService : IPayrollRunService
             var unpaidDays = (decimal)unpaidDaysByUser.GetValueOrDefault(profile.UserId);
 
             var loanRepayment = loanRepayments.GetValueOrDefault(profile.Id);
+            var overtime = PayrollOvertimeHours.Resolve(
+                adjustment, approvedOtByUser.GetValueOrDefault(profile.UserId));
 
             var result = PayslipCalculator.Calculate(
                 BuildInput(
                     profile, settings, run, ytd, adjustment, attached, policy,
-                    buckets, unpaidDays, workingDaysBasis, loanRepayment));
+                    buckets, unpaidDays, workingDaysBasis, loanRepayment, overtime));
 
             memberships.TryGetValue(profile.UserId, out var membership);
 
@@ -717,7 +726,8 @@ public class PayrollRunService : IPayrollRunService
         HoursBucketsDto? hours,
         decimal unpaidLeaveDays,
         int workingDaysBasis,
-        decimal loanRepayment)
+        decimal loanRepayment,
+        PayrollOvertimeHours.Hours overtime)
     {
         // The employee's prior-employer carryover (their TP3) folds into the YTD
         // figures, so a mid-year joiner is not over-withheld until December.
@@ -735,8 +745,9 @@ public class PayrollRunService : IPayrollRunService
         // Adding this org's own YTD on top would then double-count it.
         var carryOwnOrgYtd = !profile.PrevIncludesPriorThisOrgPeriod;
 
-        // Cash overtime needs hours on the run's adjustment row, and a policy
-        // that does not say otherwise.
+        // Cash overtime needs hours — approved requests, or the admin's own
+        // figure on the adjustment row (PayrollOvertimeHours decides which) —
+        // and a policy that does not say otherwise.
         //
         // A policy can switch cash OT off two ways, and both are honoured: OT
         // disabled outright, or TIME_BANK, which credits time off for the same
@@ -744,13 +755,13 @@ public class PayrollRunService : IPayrollRunService
         //
         // The ABSENCE of a policy is not one of those ways, and this is a
         // deliberate divergence from the reference, which pays nothing without
-        // one. Two reasons. The hours only exist because an admin typed them,
-        // so paying zero for them is an underpayment with nothing on the
-        // payslip to explain it. And EA 1955 s.60A sets a floor an employer
+        // one. Two reasons. The hours only exist because an admin typed them
+        // or a supervisor approved them, so paying zero for them is an
+        // underpayment with nothing on the payslip to explain it. And EA 1955 s.60A sets a floor an employer
         // does not opt into by configuring a policy — so with no policy the
         // calculator's statutory defaults apply, which is what its OtRate*
         // defaults already are.
-        var cashOt = adjustment is not null
+        var cashOt = overtime.Any
                      && (policy is null || (policy.OtEnabled && policy.OtMethod == OtMethod.CASH));
 
         // Attendance figures only mean anything when the employee's policy puts
@@ -828,14 +839,15 @@ public class PayrollRunService : IPayrollRunService
             AutoApplySocsoEisRelief = settings.AutoApplySocsoEisRelief,
 
             // ---- Overtime ----
-            // Hours are the admin's, from the run's adjustment row; the
-            // multipliers are the policy's. Both or neither: `cashOt` is false
+            // Hours are the approved requests' unless the admin typed their own
+            // (PayrollOvertimeHours); the multipliers are the policy's. Both or
+            // neither: `cashOt` is false
             // when the policy banks overtime as time off or disables it
             // outright, and paying cash for hours already banked would pay them
             // twice.
-            OtNormalHours = cashOt ? adjustment!.OtNormalHours : 0m,
-            OtRestHours = cashOt ? adjustment!.OtRestHours : 0m,
-            OtPublicHours = cashOt ? adjustment!.OtPublicHours : 0m,
+            OtNormalHours = cashOt ? overtime.Normal : 0m,
+            OtRestHours = cashOt ? overtime.Rest : 0m,
+            OtPublicHours = cashOt ? overtime.PublicHoliday : 0m,
 
             // Left at the calculator's statutory defaults (EA 1955 s.60A) when
             // the employee has no policy — the floor the Act sets, not zero.

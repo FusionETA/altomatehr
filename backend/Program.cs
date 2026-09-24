@@ -272,6 +272,7 @@ builder.Services.AddScoped<IOvertimeRepository, OvertimeRepository>();
 builder.Services.AddScoped<IOvertimePhotoStorage, OvertimePhotoStorage>();
 builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IOtRateService, OtRateService>();
+builder.Services.AddScoped<IApprovedOvertimeService, ApprovedOvertimeService>();
 builder.Services.AddScoped<IHolidayRepository, HolidayRepository>();
 builder.Services.AddScoped<IHolidayService, HolidayService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();

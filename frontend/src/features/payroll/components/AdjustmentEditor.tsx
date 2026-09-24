@@ -67,6 +67,11 @@ export function AdjustmentEditor({
   const [otNormal, setOtNormal] = useState("");
   const [otRest, setOtRest] = useState("");
   const [otPublic, setOtPublic] = useState("");
+
+  // Typing ANY overtime figure replaces all three approved ones (see
+  // PayrollOvertimeHours on the server) — a blank box then pays 0, not the
+  // approved hours, so its placeholder has to say 0 too.
+  const otTyped = [otNormal, otRest, otPublic].some((v) => Number(v) > 0);
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
   const [notes, setNotes] = useState("");
@@ -116,6 +121,24 @@ export function AdjustmentEditor({
 
   const monthly = context?.salaryType === "MONTHLY";
   const editable = context?.editable ?? false;
+
+  // Approved overtime requests for the period, by day type — what generation
+  // pays when all three OT fields are left blank.
+  const approvedOt = {
+    normal: context?.approvedOtNormalHours ?? 0,
+    rest: context?.approvedOtRestHours ?? 0,
+    publicHoliday: context?.approvedOtPublicHours ?? 0,
+  };
+  const hasApprovedOt = approvedOt.normal + approvedOt.rest + approvedOt.publicHoliday > 0;
+  const approvedOtSummary = [
+    approvedOt.normal > 0 ? `${hoursLabel(approvedOt.normal)} normal day` : null,
+    approvedOt.rest > 0 ? `${hoursLabel(approvedOt.rest)} rest day` : null,
+    approvedOt.publicHoliday > 0 ? `${hoursLabel(approvedOt.publicHoliday)} public holiday` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const otPlaceholder = (approved: number) =>
+    otTyped || approved <= 0 ? "0" : String(Number(approved.toFixed(2)));
 
   // The KIND decides which half of the catalogue the row can pick from;
   // the category within it decides the statutory treatment.
@@ -321,7 +344,7 @@ export function AdjustmentEditor({
             {/* ── Overtime ───────────────────────────────────────────── */}
             <Block
               title="Overtime"
-              hint="Hours are yours to enter; the multipliers come from the employee's policy (or the Employment Act floor when they have none)."
+              hint="Approved overtime requests are paid automatically. Type hours only to correct them. The multipliers come from the employee's policy (or the Employment Act floor when they have none)."
             >
               {/* Typed hours are silently ignored when the policy banks OT as
                   time off — paying cash for hours already credited as leave
@@ -337,6 +360,7 @@ export function AdjustmentEditor({
                   label="Normal day"
                   value={otNormal}
                   onChange={setOtNormal}
+                  placeholder={otPlaceholder(context.approvedOtNormalHours)}
                   disabled={!editable || !context.cashOvertime}
                 />
                 <Hours
@@ -344,6 +368,7 @@ export function AdjustmentEditor({
                   label="Rest day"
                   value={otRest}
                   onChange={setOtRest}
+                  placeholder={otPlaceholder(context.approvedOtRestHours)}
                   disabled={!editable || !context.cashOvertime}
                 />
                 <Hours
@@ -351,9 +376,26 @@ export function AdjustmentEditor({
                   label="Public holiday"
                   value={otPublic}
                   onChange={setOtPublic}
+                  placeholder={otPlaceholder(context.approvedOtPublicHours)}
                   disabled={!editable || !context.cashOvertime}
                 />
               </div>
+
+              {/* Where the payslip's OT will come from, in words. Generation
+                  pays the approved requests unless ANY field is filled in —
+                  then the typed figures replace all three, which is why the
+                  greyed placeholders drop to 0 the moment one is typed. */}
+              {context.cashOvertime ? (
+                <p className={`${HINT} mt-2`}>
+                  {otTyped
+                    ? hasApprovedOt
+                      ? `Your figures replace the approved overtime (${approvedOtSummary}). Clear all three to pay the approved hours instead.`
+                      : "Your figures are what will be paid."
+                    : hasApprovedOt
+                      ? `Approved overtime this month: ${approvedOtSummary}. Leave these blank to pay it.`
+                      : "No approved overtime this month."}
+                </p>
+              ) : null}
             </Block>
 
             {/* ── Recurring rows, this month only ────────────────────── */}
@@ -580,6 +622,11 @@ export function AdjustmentEditor({
   );
 }
 
+// "1.5h", "2h" — hours arrive at 2dp and never need trailing zeros.
+function hoursLabel(hours: number): string {
+  return `${Number(hours.toFixed(2))}h`;
+}
+
 // What an empty field falls back to, shown as its placeholder so the admin
 // can see the figure they are choosing not to override.
 function placeholderFor(auto: number | null): string {
@@ -615,12 +662,14 @@ function Hours({
   value,
   onChange,
   disabled,
+  placeholder = "0",
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (next: string) => void;
   disabled: boolean;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -632,7 +681,7 @@ function Hours({
         type="number"
         step="0.5"
         min="0"
-        placeholder="0"
+        placeholder={placeholder}
         className={INPUT_SM}
         disabled={disabled}
         value={value}
