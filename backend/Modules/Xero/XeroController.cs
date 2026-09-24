@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,6 +7,8 @@ using Microsoft.Extensions.Options;
 namespace AltomateHR.Api.Modules.Xero;
 
 [ApiController]
+// No API or partner key may use this — see HumanOnlyAttribute.
+[HumanOnly]
 [Route("xero")]
 public class XeroController : ControllerBase
 {

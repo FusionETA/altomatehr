@@ -11,6 +11,8 @@ namespace AltomateHR.Api.Modules.ApiKeys;
 // Superadmin policy also means a wp_live_ key (no email claim) can never mint or revoke
 // keys — no privilege escalation.
 [ApiController]
+// No API or partner key may use this — see HumanOnlyAttribute.
+[HumanOnly]
 [Route("api-keys")]
 [Authorize(Policy = AuthPolicies.Superadmin)]
 public class ApiKeysController : ControllerBase

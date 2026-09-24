@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -20,11 +21,13 @@ public class PortalCredentialsController : ControllerBase
         _credentials = credentials;
 
     // Every portal, with passwords masked.
+    [RequireScope("payroll:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _credentials.GetAllAsync());
 
     // The password in clear. A separate endpoint behind an explicit click so
     // it is never fetched just by opening the page.
+    [RequireScope("payroll:read")]
     [HttpGet("{portal}/reveal")]
     public async Task<IActionResult> Reveal(PortalKind portal)
     {
@@ -32,10 +35,12 @@ public class PortalCredentialsController : ControllerBase
         return credential is null ? NotFound() : Ok(credential);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPut("{portal}")]
     public async Task<IActionResult> Save(PortalKind portal, SavePortalCredentialDto dto) =>
         Ok(await _credentials.SaveAsync(portal, dto));
 
+    [RequireScope("payroll:write")]
     [HttpDelete("{portal}")]
     public async Task<IActionResult> Delete(PortalKind portal) =>
         await _credentials.DeleteAsync(portal) ? NoContent() : NotFound();

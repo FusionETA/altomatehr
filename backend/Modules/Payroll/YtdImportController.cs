@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Common.Tabular;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ public class YtdImportController : ControllerBase
 
     public YtdImportController(IYtdImportService import) => _import = import;
 
+    [RequireScope("payroll:read")]
     [HttpGet("template/{year:int}")]
     public async Task<IActionResult> Template(int year, [FromQuery] TabularFormat format = TabularFormat.Xlsx)
     {
@@ -25,6 +27,7 @@ public class YtdImportController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{year:int}/preview")]
     public async Task<IActionResult> Preview(int year, IFormFile file) =>
         await WithUpload(file, async (content, format) =>
@@ -33,6 +36,7 @@ public class YtdImportController : ControllerBase
             return preview.Ok ? Ok(preview) : BadRequest(preview);
         });
 
+    [RequireScope("payroll:write")]
     [HttpPost("{year:int}")]
     public async Task<IActionResult> Import(int year, IFormFile file) =>
         await WithUpload(file, async (content, format) =>

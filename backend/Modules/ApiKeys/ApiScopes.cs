@@ -21,9 +21,11 @@ public static class ApiScopes
         // Mint an SSO hand-off ticket for one of this org's admins. Write-only
         // for the same reason: there is nothing to read, only a door to open.
         "sso:write",
-        // Payroll is read-only over a key: a run is money leaving a company, and
-        // an integration has no business submitting one.
-        "payroll:read",
+        // Payroll. ":write" covers submitting, approving, rejecting and reverting
+        // a run, its adjustments, and payroll settings — the same meaning as the
+        // previous system's scope. A run is money leaving a company, so a key
+        // only gets it when it was explicitly granted.
+        "payroll:read",       "payroll:write",
     };
 
     private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);

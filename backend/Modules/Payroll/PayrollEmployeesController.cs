@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Common.Tabular;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,10 +27,12 @@ public class PayrollEmployeesController : ControllerBase
     // The roster, with each person's statutory gaps already worked out — the
     // same gaps a run's readiness check reports, so they can be cleared
     // before a run exists rather than when one refuses to submit.
+    [RequireScope("payroll:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] bool includeArchived = false) =>
         Ok(await _roster.GetAllAsync(includeArchived));
 
+    [RequireScope("payroll:read")]
     [HttpGet("template")]
     public IActionResult Template([FromQuery] TabularFormat format = TabularFormat.Xlsx)
     {
@@ -37,6 +40,7 @@ public class PayrollEmployeesController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [RequireScope("payroll:read")]
     [HttpGet("export")]
     public async Task<IActionResult> Export([FromQuery] TabularFormat format = TabularFormat.Xlsx)
     {
@@ -47,6 +51,7 @@ public class PayrollEmployeesController : ControllerBase
     // Per-row success and failure, so the response is a report rather than
     // one pass/fail for the whole file — the same contract the attendance,
     // leave and claims imports use.
+    [RequireScope("payroll:write")]
     [HttpPost("import")]
     public async Task<IActionResult> Import(IFormFile? file)
     {

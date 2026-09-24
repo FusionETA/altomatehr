@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,7 @@ public class SalaryChangesController : ControllerBase
 
     public SalaryChangesController(ISalaryChangeService changes) => _changes = changes;
 
+    [RequireScope("payroll:read")]
     [HttpGet("{employeeProfileId}")]
     public async Task<IActionResult> GetForEmployee(string employeeProfileId) =>
         Ok(await _changes.GetForEmployeeAsync(employeeProfileId));

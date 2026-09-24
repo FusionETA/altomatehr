@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -20,10 +21,12 @@ public class PayrollLoansController : ControllerBase
     public PayrollLoansController(IEmployeeLoanService loans) => _loans = loans;
 
     // `employeeProfileId` narrows to one person — the employee detail page.
+    [RequireScope("payroll:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? employeeProfileId) =>
         Ok(await _loans.GetAllAsync(employeeProfileId));
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
     {
@@ -31,10 +34,12 @@ public class PayrollLoansController : ControllerBase
         return loan is null ? NotFound() : Ok(loan);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveEmployeeLoanDto dto) =>
         await Guarded(async () => Ok(await _loans.CreateAsync(dto)));
 
+    [RequireScope("payroll:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveEmployeeLoanDto dto) =>
         await Guarded(async () =>
@@ -45,6 +50,7 @@ public class PayrollLoansController : ControllerBase
 
     // Cancelling stops the deductions from the next run while leaving the ones
     // already taken explained — which is why a started loan cannot be deleted.
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(string id)
     {
@@ -52,6 +58,7 @@ public class PayrollLoansController : ControllerBase
         return loan is null ? NotFound() : Ok(loan);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/reactivate")]
     public async Task<IActionResult> Reactivate(string id)
     {
@@ -59,6 +66,7 @@ public class PayrollLoansController : ControllerBase
         return loan is null ? NotFound() : Ok(loan);
     }
 
+    [RequireScope("payroll:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id) =>
         await Guarded(async () => await _loans.DeleteAsync(id) ? NoContent() : NotFound());

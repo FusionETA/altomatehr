@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,9 +19,11 @@ public class PayslipsController : ControllerBase
 
     public PayslipsController(IEmployeePayrollService payroll) => _payroll = payroll;
 
+    [RequireScope("payroll:read")]
     [HttpGet]
     public async Task<IActionResult> GetMine() => Ok(await _payroll.GetMyPayslipsAsync());
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
     {
@@ -28,6 +31,7 @@ public class PayslipsController : ControllerBase
         return payslip is null ? NotFound() : Ok(payslip);
     }
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/pdf")]
     public async Task<IActionResult> Pdf(string id)
     {

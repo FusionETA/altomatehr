@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -44,14 +45,17 @@ public class PayrollRunsController : ControllerBase
         _payslipEmail = payslipEmail;
     }
 
+    [RequireScope("payroll:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _runs.GetAllAsync());
 
     // Policies + their payable employees, for the "Start a payroll run" picker.
     // Literal segment, so it wins over the {id} route below.
+    [RequireScope("payroll:read")]
     [HttpGet("picker")]
     public async Task<IActionResult> GetPicker() => Ok(await _runs.GetPickerAsync());
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
     {
@@ -59,6 +63,7 @@ public class PayrollRunsController : ControllerBase
         return detail is null ? NotFound() : Ok(detail);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost]
     public async Task<IActionResult> Create(CreatePayrollRunDto dto)
     {
@@ -73,6 +78,7 @@ public class PayrollRunsController : ControllerBase
 
     // Rebuilds every payslip on the run from the employees' current profiles,
     // discarding the previous ones. Safe to call repeatedly on a draft.
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/generate")]
     public async Task<IActionResult> Generate(string id)
     {
@@ -89,6 +95,7 @@ public class PayrollRunsController : ControllerBase
     // A refused transition is a 409: the run is in a state the caller did not
     // expect, and the fix is to look at it rather than to resend.
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/submit")]
     public async Task<IActionResult> SubmitForApproval(string id)
     {
@@ -98,6 +105,7 @@ public class PayrollRunsController : ControllerBase
         return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/approve")]
     public async Task<IActionResult> Approve(string id)
     {
@@ -107,6 +115,7 @@ public class PayrollRunsController : ControllerBase
         return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> Reject(string id, RejectPayrollRunDto dto)
     {
@@ -118,6 +127,7 @@ public class PayrollRunsController : ControllerBase
 
     // Reverting cascades to every later submitted month in the same year, so
     // the response reports the whole set, not just the run asked for.
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/revert")]
     public async Task<IActionResult> Revert(string id)
     {
@@ -129,6 +139,7 @@ public class PayrollRunsController : ControllerBase
 
     // What a revert would drag back with it — for the confirm dialog, so the
     // admin is told before rather than after. Empty is the common case.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/revert-impact")]
     public async Task<IActionResult> RevertImpact(string id)
     {
@@ -140,6 +151,7 @@ public class PayrollRunsController : ControllerBase
 
     // Deletes the run's payslips, adjustments and claim attachments with it.
     // The claims themselves survive and become free to attach elsewhere.
+    [RequireScope("payroll:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -155,17 +167,21 @@ public class PayrollRunsController : ControllerBase
     // payslips rather than stored — the payslips are the record, a file is
     // just one rendering of them.
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/files/epf")]
     public Task<IActionResult> EpfCsv(string id) => File(_statutory.RenderEpfCsvAsync(id));
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/files/socso-eis")]
     public Task<IActionResult> PerkesoTxt(string id) => File(_statutory.RenderPerkesoTxtAsync(id));
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/files/pcb")]
     public Task<IActionResult> PcbTxt(string id) => File(_statutory.RenderPcbTxtAsync(id));
 
     // What the files above still need. The run page shows this as a banner,
     // and submission refuses while it is not ok.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/readiness")]
     public async Task<IActionResult> Readiness(string id)
     {
@@ -185,25 +201,30 @@ public class PayrollRunsController : ControllerBase
     // ─── Documents ──────────────────────────────────────────────────────
 
     // One employee's payslip.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/payslip/{employeeProfileId}")]
     public Task<IActionResult> Payslip(string id, string employeeProfileId) =>
         File(_statutory.RenderPayslipPdfAsync(id, employeeProfileId));
 
     // Every payslip as a ZIP of individual PDFs — finance forwards them one
     // at a time, so a single concatenated document would need splitting.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/payslips")]
     public Task<IActionResult> AllPayslips(string id) =>
         File(_statutory.RenderAllPayslipsZipAsync(id));
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/summary")]
     public Task<IActionResult> Summary(string id) =>
         File(_statutory.RenderSummaryPdfAsync(id));
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/payment-schedule")]
     public Task<IActionResult> PaymentSchedule(string id) =>
         File(_statutory.RenderPaymentSchedulePdfAsync(id));
 
     // The LHDN MTD §E worksheet, one page per employee.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/pcb-details")]
     public Task<IActionResult> PcbDetails(string id) =>
         File(_statutory.RenderPcbDetailsPdfAsync(id));
@@ -215,6 +236,7 @@ public class PayrollRunsController : ControllerBase
     // X-Bundle-Skipped header, with the count in X-Bundle-File-Count — so a
     // caller can tell "no bank file configured" from "the zip is fine" without
     // unpacking it first.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/download")]
     [HttpGet("{id}/download")]
     public async Task<IActionResult> Download(string id, [FromQuery] DateTime? paymentDate)
@@ -235,6 +257,7 @@ public class PayrollRunsController : ControllerBase
     // bank. `paymentDate` is the value date; omitted means the last day of the
     // payroll period. `recipientReference` and `channel` apply to Hong Leong
     // only — every other bank ignores them.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/documents/bank-file")]
     public Task<IActionResult> BankFile(
         string id,
@@ -261,6 +284,7 @@ public class PayrollRunsController : ControllerBase
     // needs. Advisory: the engine pays one salary for the month, and whether
     // a raise was meant to be backdated is the admin's call. Applying a hint
     // means saving its suggested line through the adjustments endpoint.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/salary-change-hints")]
     public async Task<IActionResult> SalaryChangeHints(string id)
     {
@@ -275,10 +299,12 @@ public class PayrollRunsController : ControllerBase
     // The org's Xero tracking categories, for the mapping picker in Settings.
     // Not run-scoped, but it lives here with the rest of the payroll-to-Xero
     // surface rather than in a controller of its own.
+    [RequireScope("payroll:read")]
     [HttpGet("xero/tracking-categories")]
     public async Task<IActionResult> GetXeroTrackingCategories() =>
         Ok(await _xero.GetTrackingCategoriesAsync());
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/xero/preview")]
     public async Task<IActionResult> XeroPreview(string id)
     {
@@ -288,6 +314,7 @@ public class PayrollRunsController : ControllerBase
 
     // Post the run. Safe to press twice: the second call reports the journal
     // already there rather than creating another.
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/xero/sync")]
     public async Task<IActionResult> XeroSync(string id)
     {
@@ -311,6 +338,7 @@ public class PayrollRunsController : ControllerBase
     // GET the template pre-filled with the run's payable employees and the
     // manual lines already on it — import REPLACES those lines, so anything
     // left out of the file is deleted.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/adjustments/template")]
     public async Task<IActionResult> AdjustmentTemplate(string id)
     {
@@ -321,6 +349,7 @@ public class PayrollRunsController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/adjustments/import")]
     public async Task<IActionResult> ImportAdjustments(string id, IFormFile? file)
     {
@@ -354,6 +383,7 @@ public class PayrollRunsController : ControllerBase
         return Ok(result);
     }
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/adjustments")]
     public async Task<IActionResult> GetAdjustments(string id)
     {
@@ -361,6 +391,7 @@ public class PayrollRunsController : ControllerBase
         return run is null ? NotFound() : Ok(await _adjustments.GetForRunAsync(id));
     }
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/adjustments/{employeeProfileId}")]
     public async Task<IActionResult> GetAdjustment(string id, string employeeProfileId)
     {
@@ -369,6 +400,7 @@ public class PayrollRunsController : ControllerBase
     }
 
     // Everything the adjustment editor needs for one employee, in one read.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/adjustments/{employeeProfileId}/context")]
     public async Task<IActionResult> GetAdjustmentContext(string id, string employeeProfileId)
     {
@@ -378,6 +410,7 @@ public class PayrollRunsController : ControllerBase
 
     // Replaces the row wholesale — see SavePayrollRunAdjustmentDto for why a
     // partial patch would be ambiguous.
+    [RequireScope("payroll:write")]
     [HttpPut("{id}/adjustments/{employeeProfileId}")]
     public async Task<IActionResult> SaveAdjustment(
         string id, string employeeProfileId, SavePayrollRunAdjustmentDto dto)
@@ -398,6 +431,7 @@ public class PayrollRunsController : ControllerBase
         return Ok(result.Adjustment);
     }
 
+    [RequireScope("payroll:write")]
     [HttpDelete("{id}/adjustments/{employeeProfileId}")]
     public async Task<IActionResult> ClearAdjustment(string id, string employeeProfileId)
     {
@@ -409,6 +443,7 @@ public class PayrollRunsController : ControllerBase
 
     // ─── Attached claims ────────────────────────────────────────────────
 
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/claims")]
     public async Task<IActionResult> GetClaims(string id)
     {
@@ -419,6 +454,7 @@ public class PayrollRunsController : ControllerBase
     // Claims that could go on a run — org-wide, since a claim is eligible for
     // whichever run an admin chooses to put it on. Rows already attached come
     // back flagged rather than omitted, so the picker can say where they are.
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/claims/attachable")]
     public async Task<IActionResult> GetAttachableClaims(string id)
     {
@@ -426,6 +462,7 @@ public class PayrollRunsController : ControllerBase
         return run is null ? NotFound() : Ok(await _claims.GetAttachableAsync());
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/claims")]
     public async Task<IActionResult> AttachClaim(string id, AttachPayrollRunClaimDto dto)
     {
@@ -435,6 +472,7 @@ public class PayrollRunsController : ControllerBase
         return result.Ok ? Ok(result.Attachment) : Conflict(new { error = result.Error });
     }
 
+    [RequireScope("payroll:write")]
     [HttpDelete("{id}/claims/{claimId}")]
     public async Task<IActionResult> DetachClaim(string id, string claimId)
     {
@@ -449,6 +487,7 @@ public class PayrollRunsController : ControllerBase
     // Manual, admin-triggered — never automatic. Refused unless the run is
     // SUBMITTED, same as every other document this run produces.
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/documents/payslip/{employeeProfileId}/email")]
     public async Task<IActionResult> EmailPayslip(string id, string employeeProfileId)
     {
@@ -456,6 +495,7 @@ public class PayrollRunsController : ControllerBase
         return result.Ok ? Ok(result) : Conflict(new { error = result.Error });
     }
 
+    [RequireScope("payroll:write")]
     [HttpPost("{id}/email-payslips")]
     public async Task<IActionResult> EmailRunPayslips(string id)
     {

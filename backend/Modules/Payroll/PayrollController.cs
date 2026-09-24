@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ public class PayrollController : ControllerBase
     // than duplicated in the client: the calculator dispatches on these codes,
     // and a second copy that drifted would describe a row's statutory
     // treatment wrongly or offer a code generation silently skips.
+    [RequireScope("payroll:read")]
     [HttpGet("adjustment-categories")]
     public IActionResult AdjustmentCategories() =>
         Ok(PayrollAdjustmentCategories.All.Values.Select(meta => new PayrollAdjustmentCategoryDto
@@ -62,16 +64,20 @@ public class PayrollController : ControllerBase
             },
         }));
 
+    [RequireScope("payroll:read")]
     [HttpGet("settings")]
     public async Task<IActionResult> GetSettings() => Ok(await _settings.GetAsync());
 
+    [RequireScope("payroll:write")]
     [HttpPut("settings")]
     public async Task<IActionResult> SaveSettings(SavePayrollSettingsDto dto) =>
         Ok(await _settings.SaveAsync(dto));
 
+    [RequireScope("payroll:read")]
     [HttpGet("company-info")]
     public async Task<IActionResult> GetCompanyInfo() => Ok(await _companyInfo.GetAsync());
 
+    [RequireScope("payroll:write")]
     [HttpPut("company-info")]
     public async Task<IActionResult> SaveCompanyInfo(SavePayrollCompanyInfoDto dto) =>
         Ok(await _companyInfo.SaveAsync(dto));
