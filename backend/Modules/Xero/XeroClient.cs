@@ -85,7 +85,8 @@ public class XeroClient : IXeroClient
                 t.Id ?? string.Empty,
                 t.TenantId ?? string.Empty,
                 t.TenantName ?? string.Empty,
-                t.TenantType))
+                t.TenantType,
+                t.AuthEventId))
             .ToList() ?? [];
     }
 
@@ -673,6 +674,7 @@ public class XeroClient : IXeroClient
         public string? TenantId { get; set; }
         public string? TenantName { get; set; }
         public string? TenantType { get; set; }
+        public string? AuthEventId { get; set; }
     }
 
     private sealed class XeroBankTransactionsPayload

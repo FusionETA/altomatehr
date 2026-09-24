@@ -65,7 +65,12 @@ public sealed record XeroTenantResponse(
     string Id,
     string TenantId,
     string TenantName,
-    string? TenantType);
+    string? TenantType,
+    // The sign-in that created or last re-authorised this connection. Xero's
+    // /connections returns EVERY org this app has ever been connected to, so
+    // this is what identifies the one(s) the admin just chose — matched
+    // against the access token's authentication_event_id.
+    string? AuthEventId = null);
 
 public sealed record XeroAccountResponse(
     string AccountId,

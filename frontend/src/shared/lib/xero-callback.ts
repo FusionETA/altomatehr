@@ -11,6 +11,14 @@
 
 export type XeroCallbackOutcome = "connected" | "failed";
 
+// Why a connect was refused, when the server said:
+//   in-use  — that Xero org is already connected to a different company
+//   several — more than one org was ticked on Xero's screen
+//   none    — Xero returned no org for this sign-in
+export type XeroRefusal = { reason: "in-use" | "several" | "none"; org: string | null };
+
+let refusal: XeroRefusal | null = null;
+
 function read(): XeroCallbackOutcome | null {
   if (typeof window === "undefined") return null;
 
@@ -18,7 +26,14 @@ function read(): XeroCallbackOutcome | null {
   const outcome = params.get("xero");
   if (outcome !== "connected" && outcome !== "failed") return null;
 
+  const reason = params.get("xeroReason");
+  if (outcome === "failed" && (reason === "in-use" || reason === "several" || reason === "none")) {
+    refusal = { reason, org: params.get("xeroOrg") };
+  }
+
   params.delete("xero");
+  params.delete("xeroReason");
+  params.delete("xeroOrg");
   const query = params.toString();
   window.history.replaceState(
     null,
@@ -29,3 +44,4 @@ function read(): XeroCallbackOutcome | null {
 }
 
 export const xeroCallbackOutcome = read();
+export const xeroCallbackRefusal: XeroRefusal | null = refusal;

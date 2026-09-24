@@ -116,6 +116,9 @@ export function ProjectsSettings() {
   // Xero sync — the button only shows when a connection exists, so we never
   // offer a sync that can only fail.
   const [xeroConnected, setXeroConnected] = useState(false);
+  // Which Xero org the list comes from. Named on this card because a wrong
+  // connection shows up HERE first — as a project list that isn't yours.
+  const [xeroOrgName, setXeroOrgName] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
@@ -143,6 +146,7 @@ export function ProjectsSettings() {
     getXeroStatus()
       .then((s) => {
         setXeroConnected(s.connected);
+        setXeroOrgName(s.connected ? s.tenantName : null);
         if (!s.connected) return;
         // A failure here only costs the category picker, never the list.
         return getXeroProjectTracking()
@@ -389,8 +393,14 @@ export function ProjectsSettings() {
       </div>
       {xeroConnected ? (
         <p className="text-sm text-muted-foreground">
-          Projects are pulled from Xero — either from its Projects product or from the options on a
-          tracking category. Use <span className="font-semibold">Sync from Xero</span> to refresh the
+          Projects are pulled from Xero
+          {xeroOrgName ? (
+            <>
+              {" "}
+              (<span className="font-semibold text-foreground">{xeroOrgName}</span>)
+            </>
+          ) : null}{" "}
+          — either from its Projects product or from the options on a tracking category. Use <span className="font-semibold">Sync from Xero</span> to refresh the
           list; add or rename projects in Xero.
         </p>
       ) : null}

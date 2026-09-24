@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
+import { xeroCallbackOutcome, xeroCallbackRefusal } from "@/shared/lib/xero-callback";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -33,6 +33,8 @@ export function XeroConnectionCard() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Captured at app boot, before this ever rendered — see xero-callback.ts.
   const callback = xeroCallbackOutcome;
+  // Why a refused connect was refused, when the server said.
+  const refusal = xeroCallbackRefusal;
 
   const statusQuery = useCachedQuery("/xero/status", getXeroStatus);
   useEffect(() => {
@@ -124,8 +126,13 @@ export function XeroConnectionCard() {
           <div>
             <p className="font-semibold text-foreground">Xero didn't finish connecting</p>
             <p className="mt-1 text-muted-foreground">
-              The sign-in was cancelled, or took long enough that the request expired. Nothing
-              changed — press Connect to try again.
+              {refusal?.reason === "in-use"
+                ? `“${refusal.org ?? "That Xero organisation"}” is already connected to a different company in AltomateHR, so it can't be connected here too. Press Connect and choose this company's own Xero organisation.`
+                : refusal?.reason === "several"
+                  ? "More than one Xero organisation was ticked. Press Connect again and choose only this company's one."
+                  : refusal?.reason === "none"
+                    ? "Xero didn't return an organisation for that sign-in. Press Connect and choose one on Xero's screen."
+                    : "The sign-in was cancelled, or took long enough that the request expired. Nothing changed — press Connect to try again."}
             </p>
           </div>
         </div>

@@ -72,10 +72,28 @@ public class XeroService : IXeroService
 
         var token = await _client.ExchangeCodeAsync(code);
         var tenants = await _client.GetTenantsAsync(token.AccessToken);
-        var tenant = tenants.FirstOrDefault()
-            ?? throw new XeroConnectionException("No Xero organization was returned for this connection.");
+
+        // Which org this sign-in connects — see XeroTenantChoice. It used to be
+        // tenants[0], i.e. whichever org the app was connected to FIRST, so an
+        // admin who chose their company's Xero got another company's instead.
+        var choice = XeroTenantChoice.Choose(
+            tenants,
+            XeroTenantChoice.AuthEventIdOf(token.AccessToken),
+            await _repo.GetTenantIdsConnectedElsewhereAsync(
+                tenants.Select(t => t.TenantId), storedState.OrganizationId));
 
         var now = DateTime.UtcNow;
+
+        if (choice.Tenant is null)
+        {
+            // Spent either way: the same code can't be replayed into a
+            // different outcome.
+            storedState.UsedAt = now;
+            await _repo.UpdateStateAsync(storedState);
+            return WithRefusal(_options.FailureRedirectUrl, choice);
+        }
+
+        var tenant = choice.Tenant;
 
         // Read before the upsert, because the upsert is what clears
         // DisconnectedAt. An org that was already connected is re-authorising,
@@ -134,6 +152,22 @@ public class XeroService : IXeroService
     // configured URL already carries.
     private static string WithOutcome(string url, string outcome) =>
         url.Contains('?') ? $"{url}&xero={outcome}" : $"{url}?xero={outcome}";
+
+    // A refused connect says WHY, so the card can tell the admin what to do
+    // instead of "the sign-in was cancelled".
+    private static string WithRefusal(string url, XeroTenantChoice.Result choice)
+    {
+        var reason = choice.Refusal switch
+        {
+            XeroTenantChoice.Refusal.InUseElsewhere => "in-use",
+            XeroTenantChoice.Refusal.SeveralAuthorised => "several",
+            _ => "none",
+        };
+        var withReason = $"{WithOutcome(url, "failed")}&xeroReason={reason}";
+        return choice.TenantName is null
+            ? withReason
+            : $"{withReason}&xeroOrg={Uri.EscapeDataString(choice.TenantName)}";
+    }
 
     public async Task<XeroStatusDto> GetStatusAsync()
     {

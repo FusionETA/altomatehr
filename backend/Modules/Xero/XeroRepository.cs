@@ -31,6 +31,22 @@ public class XeroRepository : IXeroRepository
     public Task<XeroConnection?> GetConnectionAsync(string organizationId) =>
         _db.XeroConnections.FirstOrDefaultAsync(c => c.OrganizationId == organizationId);
 
+    public async Task<HashSet<string>> GetTenantIdsConnectedElsewhereAsync(
+        IEnumerable<string> tenantIds, string organizationId)
+    {
+        var ids = tenantIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+
+        var taken = await _db.XeroConnections
+            .IgnoreQueryFilters()
+            .Where(c => ids.Contains(c.TenantId)
+                        && c.OrganizationId != organizationId
+                        && c.DisconnectedAt == null)
+            .Select(c => c.TenantId)
+            .ToListAsync();
+        return [.. taken];
+    }
+
     public async Task<XeroConnection> UpsertConnectionAsync(XeroConnection connection)
     {
         var existing = await GetConnectionAsync(connection.OrganizationId);

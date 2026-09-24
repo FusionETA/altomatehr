@@ -10,6 +10,12 @@ public interface IXeroRepository
     Task<XeroOAuthState?> GetStateAsync(string state);
     Task UpdateStateAsync(XeroOAuthState state);
     Task<XeroConnection?> GetConnectionAsync(string organizationId);
+
+    // Of these Xero orgs, the ones actively connected to a DIFFERENT
+    // AltomateHR company. Crosses tenants on purpose — it is the check that
+    // keeps one company's Xero off another's — so it ignores the org filter.
+    Task<HashSet<string>> GetTenantIdsConnectedElsewhereAsync(
+        IEnumerable<string> tenantIds, string organizationId);
     Task<XeroConnection> UpsertConnectionAsync(XeroConnection connection);
     Task UpdateConnectionAsync(XeroConnection connection);
     Task<ChartOfAccount?> GetAccountByXeroIdAsync(string organizationId, string xeroAccountId);

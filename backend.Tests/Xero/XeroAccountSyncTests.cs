@@ -163,6 +163,12 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task<XeroConnection?> GetConnectionAsync(string organizationId) =>
         Task.FromResult(Connection);
 
+    // Xero orgs connected to OTHER companies — seeded by the callback tests.
+    public HashSet<string> TenantsUsedElsewhere { get; } = [];
+    public Task<HashSet<string>> GetTenantIdsConnectedElsewhereAsync(
+        IEnumerable<string> tenantIds, string organizationId) =>
+        Task.FromResult(tenantIds.Where(TenantsUsedElsewhere.Contains).ToHashSet());
+
     public Task<ChartOfAccount?> GetAccountByXeroIdAsync(string organizationId, string xeroAccountId) =>
         Task.FromResult(Accounts.FirstOrDefault(a => a.XeroAccountId == xeroAccountId));
 
