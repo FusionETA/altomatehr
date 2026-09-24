@@ -196,6 +196,13 @@ public class XeroService : IXeroService
         var connection = await GetCurrentConnectionAsync();
         if (connection is null) return;
 
+        // Revoked on Xero's side first, while the tokens still work — so the
+        // app disappears from the Xero org's "Connected apps" rather than
+        // lingering there with access nobody here can see. Best-effort, as in
+        // the previous system: Xero being down or the grant already revoked
+        // must not leave an admin unable to disconnect.
+        var revokedOnXero = connection.IsConnected && await RevokeOnXeroAsync(connection);
+
         connection.DisconnectedAt = DateTime.UtcNow;
         connection.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateConnectionAsync(connection);
@@ -208,9 +215,51 @@ public class XeroService : IXeroService
         // system. Worth a name and a timestamp.
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.XeroDisconnect,
-            connection.TenantName,
+            revokedOnXero
+                ? $"{connection.TenantName} — access removed in Xero too"
+                : connection.TenantName,
             TargetType: "XeroConnection",
-            TargetId: connection.TenantId));
+            TargetId: connection.TenantId,
+            Metadata: new { RevokedOnXero = revokedOnXero }));
+    }
+
+    private async Task<bool> RevokeOnXeroAsync(XeroConnection connection)
+    {
+        // Never pull access another AltomateHR company is still using: the
+        // Xero grant is per org, so revoking it here would disconnect them too.
+        // (One Xero org on two companies is refused at connect time now, but
+        // rows made before that rule can still share one.)
+        var sharedWith = await _repo.GetTenantIdsConnectedElsewhereAsync(
+            [connection.TenantId], connection.OrganizationId);
+        if (sharedWith.Count > 0)
+        {
+            _logger.LogWarning(
+                "Not revoking Xero access for {Tenant}: another company is still connected to it.",
+                connection.TenantName);
+            return false;
+        }
+
+        try
+        {
+            var accessToken = await GetValidAccessTokenAsync(connection);
+
+            // Rows from before the connection id was stored have to look it up.
+            var connectionId = connection.ConnectionId
+                ?? (await _client.GetTenantsAsync(accessToken))
+                    .FirstOrDefault(t => t.TenantId == connection.TenantId)?.Id;
+            if (string.IsNullOrWhiteSpace(connectionId)) return false;
+
+            await _client.DeleteConnectionAsync(accessToken, connectionId);
+            return true;
+        }
+        // Any failure, deliberately: revoking is best-effort, and nothing that
+        // goes wrong talking to Xero may stop an admin disconnecting.
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not revoke Xero access for {Tenant}; disconnected locally.",
+                connection.TenantName);
+            return false;
+        }
     }
 
     // The currencies this org may file claims in. Empty when Xero is not
@@ -292,14 +341,55 @@ public class XeroService : IXeroService
             result.Updated++;
         }
 
+        // Accounts synced earlier that the connected Xero org no longer has — an
+        // account deleted in Xero, or a whole chart pulled from a DIFFERENT Xero
+        // org before the connection was corrected (a test org's "310 Cost of
+        // Goods Sold"… sat selectable in a real company's claim form). The sync
+        // used to only add and update, so those stayed offered forever.
+        //
+        // Retired, not deleted: archived and unselectable, so no new claim can
+        // use them while past claims keep their account. Custom accounts have
+        // no Xero id and are never touched. Skipped entirely when Xero returned
+        // nothing — an empty answer is far likelier a hiccup than a chart that
+        // was emptied, and it must not retire every account the org has.
+        //
+        // And skipped when MOST of the chart would go: that is the signature of
+        // the wrong Xero org being connected (which is how the test chart got
+        // in), and retiring a real company's whole chart on its say-so would
+        // stop every claim. Reported instead, so the admin checks the
+        // connection.
+        if (xeroAccounts.Count > 0)
+        {
+            var inXero = xeroAccounts.Select(a => a.AccountId).ToHashSet(StringComparer.Ordinal);
+            var fromXero = await _repo.GetXeroSourcedAccountsAsync(orgId);
+            var missing = fromXero.Where(a => !inXero.Contains(a.XeroAccountId!)).ToList();
+
+            if (missing.Count * 2 > fromXero.Count)
+            {
+                result.WrongOrgSuspected = missing.Count;
+            }
+            else
+            {
+                foreach (var gone in missing.Where(a => !a.IsArchived || a.IsSelectable))
+                {
+                    gone.IsArchived = true;
+                    gone.IsSelectable = false;
+                    gone.XeroSyncedAt = now;
+                    await _repo.UpdateAccountAsync(gone);
+                    result.Retired++;
+                }
+            }
+        }
+
         // A sync rewrites the chart of accounts every claim is coded against,
         // so the counts are worth keeping even though nothing failed.
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.XeroSyncAccounts,
-            $"{result.Imported} imported · {result.Updated} updated · {result.Skipped} skipped",
+            $"{result.Imported} imported · {result.Updated} updated · {result.Skipped} skipped"
+            + (result.Retired > 0 ? $" · {result.Retired} retired (no longer in Xero)" : ""),
             TargetType: "XeroConnection",
             TargetId: connection.TenantId,
-            Metadata: new { result.Imported, result.Updated, result.Skipped }));
+            Metadata: new { result.Imported, result.Updated, result.Skipped, result.Retired }));
 
         return result;
     }

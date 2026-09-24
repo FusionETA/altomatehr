@@ -70,6 +70,16 @@ public class XeroClient : IXeroClient
             ["refresh_token"] = refreshToken,
         });
 
+    public async Task DeleteConnectionAsync(string accessToken, string connectionId)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete, $"{ConnectionsUrl}/{Uri.EscapeDataString(connectionId)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero refused to remove the connection.");
+    }
+
     public async Task<List<XeroTenantResponse>> GetTenantsAsync(string accessToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, ConnectionsUrl);

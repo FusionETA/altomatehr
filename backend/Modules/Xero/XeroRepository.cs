@@ -83,6 +83,11 @@ public class XeroRepository : IXeroRepository
         _db.ChartOfAccounts.FirstOrDefaultAsync(a =>
             a.OrganizationId == organizationId && a.XeroAccountId == xeroAccountId);
 
+    public Task<List<ChartOfAccount>> GetXeroSourcedAccountsAsync(string organizationId) =>
+        _db.ChartOfAccounts
+            .Where(a => a.OrganizationId == organizationId && a.XeroAccountId != null)
+            .ToListAsync();
+
     public async Task AddAccountAsync(ChartOfAccount account)
     {
         _db.ChartOfAccounts.Add(account);

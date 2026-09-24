@@ -8,6 +8,11 @@ public interface IXeroClient
     Task<XeroTokenResponse> ExchangeCodeAsync(string code);
     Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken);
     Task<List<XeroTenantResponse>> GetTenantsAsync(string accessToken);
+
+    // Removes this app's access to one Xero org — it disappears from the org's
+    // "Connected apps" in Xero and the tokens stop working. Takes Xero's
+    // CONNECTION id (the `id` from /connections), not the tenant id.
+    Task DeleteConnectionAsync(string accessToken, string connectionId);
     Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId);
 
     // The currencies the Xero org is subscribed to. Anything else is refused

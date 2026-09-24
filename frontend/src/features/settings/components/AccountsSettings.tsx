@@ -101,7 +101,13 @@ export function AccountsSettings() {
       const result = await syncXeroAccounts();
       setAccounts(await getAccounts());
       setSyncNote(
-        `${result.imported} added · ${result.updated} updated · ${result.skipped} skipped`,
+        result.wrongOrgSuspected > 0
+          ? `${result.wrongOrgSuspected} of your accounts aren't in the Xero organisation that's connected — ` +
+            "check this company is connected to its own Xero. Nothing was archived."
+          : `${result.imported} added · ${result.updated} updated · ${result.skipped} skipped` +
+            (result.retired > 0
+              ? ` · ${result.retired} archived because they're no longer in Xero`
+              : ""),
       );
     } catch (e) {
       setError(message(e, "Could not sync from Xero."));

@@ -274,7 +274,17 @@ export const disconnectXero = () => apiPost<void>("/xero/disconnect", {});
 // Pulls Xero's chart of accounts in. While Xero is connected this is the only
 // way accounts get created — the backend refuses hand-made ones, because an
 // account with no Xero counterpart cannot carry a valid code onto a bill.
-export type XeroSyncAccountsResult = { imported: number; updated: number; skipped: number };
+export type XeroSyncAccountsResult = {
+  imported: number;
+  updated: number;
+  skipped: number;
+  /** Synced earlier but no longer in the connected Xero — archived and made
+   *  unselectable (kept for past claims). */
+  retired: number;
+  /** Most of the org's Xero accounts aren't in the connected Xero — the wrong
+   *  Xero org looks connected, so nothing was retired. */
+  wrongOrgSuspected: number;
+};
 
 export const syncXeroAccounts = () =>
   apiPost<XeroSyncAccountsResult>("/xero/sync-accounts");

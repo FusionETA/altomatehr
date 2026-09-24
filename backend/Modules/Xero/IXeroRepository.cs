@@ -19,6 +19,8 @@ public interface IXeroRepository
     Task<XeroConnection> UpsertConnectionAsync(XeroConnection connection);
     Task UpdateConnectionAsync(XeroConnection connection);
     Task<ChartOfAccount?> GetAccountByXeroIdAsync(string organizationId, string xeroAccountId);
+    // Every account this org has that came from Xero (custom ones excluded).
+    Task<List<ChartOfAccount>> GetXeroSourcedAccountsAsync(string organizationId);
     Task AddAccountAsync(ChartOfAccount account);
     Task UpdateAccountAsync(ChartOfAccount account);
     Task<int> ArchiveManualProjectsAsync(string organizationId);

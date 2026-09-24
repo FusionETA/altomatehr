@@ -26,6 +26,13 @@ public class XeroSyncAccountsResultDto
     public int Imported { get; set; }
     public int Updated { get; set; }
     public int Skipped { get; set; }
+    // Synced from Xero earlier but no longer in the connected Xero org — now
+    // archived and unselectable (never deleted; old claims still point at them).
+    public int Retired { get; set; }
+    // Set instead of retiring when MOST of the org's Xero accounts are missing
+    // from the connected Xero — which means the wrong Xero org is connected,
+    // not that the chart changed. Nothing was retired; this many would have been.
+    public int WrongOrgSuspected { get; set; }
 }
 
 public class XeroSyncProjectsResultDto

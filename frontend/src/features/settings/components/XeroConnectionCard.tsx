@@ -225,7 +225,8 @@ function DisconnectDialog({
         <h2 className="text-xl font-black text-foreground">Disconnect Xero?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Approved claims can no longer be pushed as bills, and the chart of accounts stops being
-          kept in step.
+          kept in step. AltomateHR is also removed from this Xero organisation's connected apps, so
+          it no longer has any access there.
         </p>
 
         <div className="mt-4 rounded-2xl border border-amber-300/50 bg-amber-50/70 p-4 text-sm dark:bg-amber-500/10">

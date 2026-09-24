@@ -45,6 +45,95 @@ public class XeroAccountSyncTests
             repo.Accounts.Select(a => a.Code));
     }
 
+    // ---- accounts the connected Xero no longer has ----
+    //
+    // A chart pulled from the wrong Xero org (a test org's "310 Cost of Goods
+    // Sold") stayed selectable in a real company's claim form, because the
+    // sync only ever added and updated.
+
+    [Fact]
+    public async Task SyncAccountsAsync_RetiresAccountsTheConnectedXeroNoLongerHas()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount
+        {
+            Code = "310", Name = "Cost of Goods Sold", XeroAccountId = "x-test", IsSelectable = true,
+        });
+        var service = Create(repo, [Account("x-1", "6100", "Travel", "EXPENSE")]);
+
+        var result = await service.SyncAccountsAsync();
+
+        var gone = repo.Accounts.Single(a => a.XeroAccountId == "x-test");
+        Assert.True(gone.IsArchived);
+        Assert.False(gone.IsSelectable);
+        Assert.Equal(1, result.Retired);
+        // Retired, not removed: past claims still point at it.
+        Assert.Equal(2, repo.Accounts.Count);
+    }
+
+    // Syncing while the WRONG Xero org is connected: most of the real chart is
+    // "missing". Retiring it would stop every claim, so nothing is retired and
+    // the sync says the connection looks wrong.
+    [Fact]
+    public async Task SyncAccountsAsync_RetiresNothingWhenMostOfTheChartIsMissing()
+    {
+        var repo = new FakeXeroRepository();
+        foreach (var i in Enumerable.Range(1, 5))
+            repo.Accounts.Add(new ChartOfAccount { Code = $"B-{i}", Name = $"Real {i}", XeroAccountId = $"x-real-{i}", IsSelectable = true });
+        var service = Create(repo, [Account("x-test", "310", "Cost of Goods Sold", "EXPENSE")]);
+
+        var result = await service.SyncAccountsAsync();
+
+        Assert.Equal(0, result.Retired);
+        Assert.Equal(5, result.WrongOrgSuspected);
+        Assert.All(repo.Accounts.Where(a => a.Code.StartsWith("B-")), a => Assert.False(a.IsArchived));
+    }
+
+    // Custom accounts were never in Xero, so "not in Xero" says nothing.
+    [Fact]
+    public async Task SyncAccountsAsync_NeverRetiresACustomAccount()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount { Code = "C-1", Name = "Petty cash", IsCustom = true, IsSelectable = true });
+        var service = Create(repo, [Account("x-1", "6100", "Travel", "EXPENSE")]);
+
+        var result = await service.SyncAccountsAsync();
+
+        var custom = repo.Accounts.Single(a => a.Code == "C-1");
+        Assert.False(custom.IsArchived);
+        Assert.True(custom.IsSelectable);
+        Assert.Equal(0, result.Retired);
+    }
+
+    // An empty answer is far likelier a hiccup than an emptied chart — it must
+    // not retire every account the company has.
+    [Fact]
+    public async Task SyncAccountsAsync_RetiresNothingWhenXeroReturnsNoAccounts()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount { Code = "6100", Name = "Travel", XeroAccountId = "x-1", IsSelectable = true });
+        var service = Create(repo, []);
+
+        var result = await service.SyncAccountsAsync();
+
+        Assert.False(repo.Accounts.Single().IsArchived);
+        Assert.Equal(0, result.Retired);
+    }
+
+    // Already retired: counted once, not on every later sync.
+    [Fact]
+    public async Task SyncAccountsAsync_DoesNotRecountAnAlreadyRetiredAccount()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount
+        {
+            Code = "310", Name = "Cost of Goods Sold", XeroAccountId = "x-test", IsArchived = true, IsSelectable = false,
+        });
+        var service = Create(repo, [Account("x-1", "6100", "Travel", "EXPENSE")]);
+
+        Assert.Equal(0, (await service.SyncAccountsAsync()).Retired);
+    }
+
     [Fact]
     public async Task SyncAccountsAsync_NeverMakesABankAccountSelectableForClaims()
     {
@@ -172,6 +261,9 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task<ChartOfAccount?> GetAccountByXeroIdAsync(string organizationId, string xeroAccountId) =>
         Task.FromResult(Accounts.FirstOrDefault(a => a.XeroAccountId == xeroAccountId));
 
+    public Task<List<ChartOfAccount>> GetXeroSourcedAccountsAsync(string organizationId) =>
+        Task.FromResult(Accounts.Where(a => a.XeroAccountId != null).ToList());
+
     public Task AddAccountAsync(ChartOfAccount account)
     {
         Accounts.Add(account);
@@ -248,6 +340,7 @@ internal sealed class FakeXeroAccountsClient : IXeroClient
     public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
     public Task<XeroTokenResponse> RefreshTokenAsync(string r) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
+    public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) => throw new NotImplementedException();
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
     public Task<XeroBillResponse> CreateBillAsync(string a, string t, XeroBillRequest b) => throw new NotImplementedException();

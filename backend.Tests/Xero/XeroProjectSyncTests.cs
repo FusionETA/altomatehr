@@ -149,6 +149,16 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
     public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotSupportedException();
     public Task<XeroTokenResponse> RefreshTokenAsync(string r) => throw new NotSupportedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotSupportedException();
+
+    // Revocations asked for; FailRevoke makes Xero refuse.
+    public List<string> RevokedConnections { get; } = [];
+    public bool FailRevoke { get; set; }
+    public Task DeleteConnectionAsync(string a, string connectionId)
+    {
+        if (FailRevoke) throw new XeroConnectionException("Xero is down");
+        RevokedConnections.Add(connectionId);
+        return Task.CompletedTask;
+    }
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotSupportedException();
     // Recorded rather than refused, so a test can read what was sent.
     public List<XeroBillRequest> Bills { get; } = [];
@@ -531,5 +541,73 @@ public class XeroBillProjectTrackingTests
             provider,
             Options.Create(new XeroOptions()),
             new FakeAuditService()), client);
+    }
+}
+
+// Disconnecting removes the app's access in Xero too, as the previous system
+// did — so it no longer shows under the Xero org's "Connected apps" holding
+// access nobody here can see. Best-effort, and never at another company's cost.
+public class XeroDisconnectTests
+{
+    [Fact]
+    public async Task DisconnectRevokesTheConnectionOnXero()
+    {
+        var (service, repo, client) = Create();
+
+        await service.DisconnectAsync();
+
+        Assert.Equal(["conn-globe"], client.RevokedConnections);
+        Assert.False(repo.Connection!.IsConnected);
+    }
+
+    // The Xero grant is per org, so revoking it would disconnect every
+    // AltomateHR company still on that org.
+    [Fact]
+    public async Task DisconnectLeavesXeroAloneWhenAnotherCompanyUsesTheSameOrg()
+    {
+        var (service, repo, client) = Create();
+        repo.TenantsUsedElsewhere.Add("tenant-globe");
+
+        await service.DisconnectAsync();
+
+        Assert.Empty(client.RevokedConnections);
+        Assert.False(repo.Connection!.IsConnected);
+    }
+
+    // Xero down or the grant already gone: the admin can still disconnect.
+    [Fact]
+    public async Task DisconnectStillCompletesWhenXeroRefusesTheRevoke()
+    {
+        var (service, repo, client) = Create();
+        client.FailRevoke = true;
+
+        await service.DisconnectAsync();
+
+        Assert.False(repo.Connection!.IsConnected);
+    }
+
+    private static (XeroService, FakeXeroRepository, FakeXeroProjectsClient) Create()
+    {
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        string Protect(string v) => provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect(v);
+
+        var repo = new FakeXeroRepository
+        {
+            Connection = new XeroConnection
+            {
+                OrganizationId = "org-1",
+                ConnectionId = "conn-globe",
+                TenantId = "tenant-globe",
+                TenantName = "GLOBE SUCCESS LEARNING SDN. BHD.",
+                AccessTokenProtected = Protect("token"),
+                RefreshTokenProtected = Protect("refresh"),
+                AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+            },
+        };
+        var client = new FakeXeroProjectsClient([]);
+
+        return (new XeroService(
+            new FakeXeroCurrentUser(), repo, client, provider,
+            Options.Create(new XeroOptions()), new FakeAuditService()), repo, client);
     }
 }

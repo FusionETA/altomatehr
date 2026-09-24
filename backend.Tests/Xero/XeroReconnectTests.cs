@@ -208,6 +208,7 @@ internal sealed class FakeRefreshFailureClient : IXeroClient
     public string BuildAuthorizationUrl(string state) => throw new NotImplementedException();
     public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
+    public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string a, string t) => throw new NotImplementedException();
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) => throw new NotImplementedException();
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
@@ -238,6 +239,7 @@ internal sealed class FakeWorkingRefreshClient : IXeroClient
     public string BuildAuthorizationUrl(string state) => throw new NotImplementedException();
     public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
+    public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string a, string t) => throw new NotImplementedException();
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) => throw new NotImplementedException();
     public Task<XeroFileContent?> GetFileContentAsync(string a, string t, string f) => throw new NotImplementedException();
