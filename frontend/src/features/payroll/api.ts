@@ -607,6 +607,9 @@ export type TabularImportResult = {
   skipped: number;
   failed: number;
   errors: { row: number; message: string }[];
+  // Imported, but worth a look — e.g. a nationality kept as typed because it
+  // could not be matched to the list.
+  warnings?: { row: number; message: string }[];
 };
 
 export const downloadPayrollEmployeeTemplate = (format: TabularFormat) =>

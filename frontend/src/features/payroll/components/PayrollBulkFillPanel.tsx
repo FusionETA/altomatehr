@@ -186,6 +186,17 @@ export function PayrollBulkFillPanel({ onImported }: { onImported: () => void })
                   ))}
                 </ul>
               ) : null}
+              {/* Imported, but kept as typed — listed apart from the errors so
+                  it does not read as a failed row. */}
+              {result.warnings && result.warnings.length > 0 ? (
+                <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-amber-700 dark:text-amber-400">
+                  {result.warnings.map((w) => (
+                    <li key={`${w.row}-${w.message}`}>
+                      Row {w.row}: {w.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -143,6 +143,22 @@ public class SalaryChangeServiceTests : IDisposable
         Assert.Null(change.RaisePercent);
     }
 
+    // Not a salary fact, but this is the harness with the real profile save:
+    // a partner system's "Malaysia" saves as the dropdown's "Malaysian", and
+    // something unrecognised is kept as sent.
+    [Theory]
+    [InlineData("Malaysia", "Malaysian")]
+    [InlineData("Martian", "Martian")]
+    public async Task AProfileSave_MapsTheNationalityOntoTheList(string sent, string saved)
+    {
+        var edit = Edit();
+        edit.Nationality = sent;
+
+        var result = await _profiles.SaveAsync("usr-1", edit);
+
+        Assert.Equal(saved, result!.Nationality);
+    }
+
     [Fact]
     public async Task WithNoEffectiveDateGiven_ItTakesEffectToday()
     {
