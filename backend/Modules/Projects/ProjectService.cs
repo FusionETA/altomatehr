@@ -43,7 +43,7 @@ public class ProjectService : IProjectService
             dto.GeofenceSiteCount = sites.GetValueOrDefault(p.Id);
             dto.AllowedIpCount = ips.GetValueOrDefault(p.Id);
             dto.HiddenByTrackingCategory = Xero.ProjectTrackingVisibility.IsHidden(
-                p.XeroProjectId, p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory);
+                p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory);
             return dto;
         });
     }
@@ -63,7 +63,7 @@ public class ProjectService : IProjectService
         return (await _repo.GetAllAsync())
             .Where(p => !p.IsArchived && mine.Contains(p.Id))
             .Where(p => !Xero.ProjectTrackingVisibility.IsHidden(
-                p.XeroProjectId, p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory))
+                p.XeroTrackingOptionId, p.XeroTrackingCategoryId, activeCategory))
             .Select(ToDto);
     }
 

@@ -431,6 +431,40 @@ public class XeroTrackingFallbackOrderTests
 
         Assert.Equal(["Client Site A"], repo.Projects.Select(p => p.Name));
     }
+
+    // A PICKED category is the list, as in the previous system, which never
+    // read Xero Projects. GSL uses both, and got 70 Xero Projects imported
+    // beside the course category it had chosen.
+    [Fact]
+    public async Task SyncProjectsAsync_ReadsOnlyThePickedCategory_EvenWhenXeroProjectsExist()
+    {
+        var repo = new FakeXeroRepository();
+        var provider = DataProtectionProvider.Create("AltomateHR.Tests");
+        repo.Connection = new XeroConnection
+        {
+            OrganizationId = "org-1",
+            TenantId = "tenant-1",
+            AccessTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("token"),
+            RefreshTokenProtected = provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
+            ProjectTrackingCategoryId = "cat-1",
+        };
+
+        var service = new XeroService(
+            new FakeXeroCurrentUser(),
+            repo,
+            new FakeXeroProjectsClient(
+                [new XeroProjectResponse("x-1", "M&Y Product - T-Shirt", "INPROGRESS")],
+                [new XeroTrackingCategoryResponse("cat-1", "Course", "ACTIVE",
+                    [new XeroTrackingOptionResponse("opt-1", "Leadership Gym", "ACTIVE")])]),
+            provider,
+            Options.Create(new XeroOptions()),
+            new FakeAuditService());
+
+        await service.SyncProjectsAsync();
+
+        Assert.Equal(["Leadership Gym"], repo.Projects.Select(p => p.Name));
+    }
 }
 
 // GESSB, 2026-09-24: an org that doesn't use Xero Projects had the Projects API

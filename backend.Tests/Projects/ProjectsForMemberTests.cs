@@ -69,19 +69,20 @@ public class ProjectsForMemberTests
         Assert.Equal(["Tower A"], mine.Select(p => p.Name));
     }
 
-    // A legacy Xero Projects-API row (no tracking option, but still Xero's —
-    // XeroProjectId is set) has no category to be switched away from. It stays.
+    // A picked category is the whole list, as in the previous system: a Xero
+    // Projects-API row is Xero's, but not the list the admin chose. GSL showed
+    // 26 of them beside its course category.
     [Fact]
-    public async Task GetForMemberAsync_KeepsALegacyProjectsApiRowEvenWithACategoryActive()
+    public async Task GetForMemberAsync_HidesAProjectsApiRowOnceACategoryIsActive()
     {
         var service = Create(
-            [LegacyProjectsApi("prj-legacy", "Office"), FromCategory("prj-old", "Penang", "cat-regions")],
-            onProjects: ["prj-legacy", "prj-old"],
+            [LegacyProjectsApi("prj-legacy", "Office"), FromCategory("prj-now", "Tower A", "cat-projects")],
+            onProjects: ["prj-legacy", "prj-now"],
             activeCategory: "cat-projects");
 
         var mine = await service.GetForMemberAsync("usr-emp");
 
-        Assert.Equal(["Office"], mine.Select(p => p.Name));
+        Assert.Equal(["Tower A"], mine.Select(p => p.Name));
     }
 
     // Connecting Xero archives every hand-made project that exists at that

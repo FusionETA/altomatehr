@@ -423,7 +423,14 @@ public class XeroService : IXeroService
         List<XeroProjectResponse> xeroProjects;
         try
         {
-            xeroProjects = await _client.GetProjectsAsync(accessToken, connection.TenantId);
+            // A picked tracking category IS the project list, as in the
+            // previous system, which never read Xero Projects at all. An org
+            // using both (GSL: 70 Xero Projects beside its course category)
+            // otherwise got the Projects rows imported on top, and since they
+            // came back non-empty the category was never even read.
+            xeroProjects = string.IsNullOrEmpty(connection.ProjectTrackingCategoryId)
+                ? await _client.GetProjectsAsync(accessToken, connection.TenantId)
+                : [];
         }
         catch (XeroConnectionException ex) when (ex.StatusCode is 401 or 403)
         {
