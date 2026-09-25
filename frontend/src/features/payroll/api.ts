@@ -519,13 +519,16 @@ export const downloadBankFile = (
 export type HlbChannel = "ConnectFirst" | "ConnectBiz";
 
 export const downloadEpfCsv = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/epf`, "epf.csv");
+  download(`/payroll/runs/${runId}/files/epf`, "EPF_iAkaun.csv");
 
 export const downloadPerkesoTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/socso-eis`, "socso-eis.txt");
+  download(`/payroll/runs/${runId}/files/socso-eis`, "SOCSO_EIS.txt");
+
+export const downloadPerkesoSkbbkTxt = (runId: string) =>
+  download(`/payroll/runs/${runId}/files/socso-eis-skbbk`, "SOCSO_EIS_SKBBK.txt");
 
 export const downloadPcbTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/pcb`, "pcb.txt");
+  download(`/payroll/runs/${runId}/files/pcb`, "PCB.txt");
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
