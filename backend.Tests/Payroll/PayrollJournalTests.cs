@@ -382,7 +382,80 @@ public class PayrollJournalTests
             Mapping(omitSlots: [PayrollXeroAccounts.AccrualHrdf]), rows: [Row(hrdf: 80m)]));
 
         Assert.False(withHrdf.Ok);
-        Assert.Contains("accrualHrdf", withHrdf.Error);
+        // Named as the settings page names it, not by its JSON key.
+        Assert.Contains("HRD Corp levy payable", withHrdf.Error);
+    }
+
+    // An unmapped employer contribution used to be skipped silently, leaving
+    // its accrual credit unmatched — the admin got "does not balance (out by
+    // 650.00)", which named nothing to fix.
+    [Fact]
+    public void AnUnmappedEmployerContribution_IsNamedNotUnbalanced()
+    {
+        var result = PayrollJournal.Build(
+            Input(Mapping(omitSlots: [PayrollXeroAccounts.EpfEmployer])));
+
+        Assert.False(result.Ok);
+        Assert.Contains("EPF — employer contribution", result.Error);
+        Assert.DoesNotContain("does not balance", result.Error);
+    }
+
+    // An account the Xero sync has archived (inactive, or retired because the
+    // connected org no longer has it) would be rejected by Xero. The slot
+    // still LOOKS mapped on the settings page, so the refusal says why.
+    [Fact]
+    public void ASalaryMappedToAnArchivedAccount_SaysItIsArchived()
+    {
+        var input = Input() with
+        {
+            ArchivedAccounts = new Dictionary<string, string>
+            {
+                [$"acct-{PayrollXeroAccounts.Salary}"] = "260 · Other Revenue",
+            },
+        };
+
+        var result = PayrollJournal.Build(input);
+
+        Assert.False(result.Ok);
+        Assert.Contains("260 · Other Revenue", result.Error);
+        Assert.Contains("archived", result.Error);
+    }
+
+    [Fact]
+    public void AnAccrualMappedToAnArchivedAccount_IsNamedWithTheAccount()
+    {
+        var input = Input() with
+        {
+            ArchivedAccounts = new Dictionary<string, string>
+            {
+                [$"acct-{PayrollXeroAccounts.AccrualEpf}"] = "830 · EPF Payable (old)",
+            },
+        };
+
+        var result = PayrollJournal.Build(input);
+
+        Assert.False(result.Ok);
+        Assert.Contains("EPF payable (830 · EPF Payable (old))", result.Error);
+        Assert.DoesNotContain("not mapped", result.Error);
+    }
+
+    // A per-category override pointing at an archived account falls back to
+    // the unified allowance account rather than posting to a dead one.
+    [Fact]
+    public void AnArchivedCategoryOverride_FallsBackToTheUnifiedAccount()
+    {
+        var input = Input(
+            Mapping(allowanceAccounts: new Dictionary<string, string?> { ["allowance_meal"] = "acct-old-meal" }),
+            rows: [Row(allowances: [new("allowance_meal", 200m, "Meal")])]) with
+        {
+            AccountCodeById = new Dictionary<string, string>(Codes()) { ["acct-old-meal"] = "OLD-MEAL" },
+            ArchivedAccounts = new Dictionary<string, string> { ["acct-old-meal"] = "OLD-MEAL · Meals" },
+        };
+
+        var result = Build(input);
+
+        Assert.DoesNotContain(result.Lines, l => l.AccountCode == "OLD-MEAL");
+        Assert.Contains(result.Lines, l => l.AccountCode == $"CODE-{PayrollXeroAccounts.Allowance}");
     }
 
     // Every unmapped account is the same class of problem, so one message
