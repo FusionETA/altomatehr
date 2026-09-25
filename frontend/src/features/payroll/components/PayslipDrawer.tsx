@@ -20,7 +20,11 @@ export function PayslipDrawer({
   const earnings = payslip.lineItems.filter(
     (item) => item.kind === "ALLOWANCE" || item.kind === "REIMBURSEMENT",
   );
-  const deductions = payslip.lineItems.filter((item) => item.kind === "DEDUCTION");
+  // Additional PCB is already inside the PCB / MTD row below, so its line is
+  // not listed again.
+  const deductions = payslip.lineItems.filter(
+    (item) => item.kind === "DEDUCTION" && item.category !== "deduct_additional_pcb",
+  );
 
   // Mirrors the engine: gross less what the employee paid. Shown as a list
   // rather than a single figure so the arithmetic is checkable by eye.
@@ -29,7 +33,7 @@ export function PayslipDrawer({
     { label: "SOCSO (employee)", value: payslip.socsoEmployee },
     { label: "EIS (employee)", value: payslip.eisEmployee },
     { label: "SKBBK", value: payslip.skbbkEmployee },
-    { label: "PCB / MTD", value: payslip.pcb },
+    { label: "PCB / MTD", value: payslip.pcb + payslip.voluntaryPcb },
     { label: "CP38", value: payslip.cp38 },
     { label: "Zakat", value: payslip.zakat },
   ].filter((row) => row.value > 0);

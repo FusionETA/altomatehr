@@ -121,7 +121,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                 .Select(kv => ToRow(kv.Key, kv.Value, profiles, users))
                 // By employee code so regenerating a file produces the same
                 // bytes, and so the CP8D rows line up with the EA pages.
-                .OrderBy(r => r.EmployeeCode, StringComparer.Ordinal)
+                // Culture-aware, matching the previous system's localeCompare.
+                .OrderBy(r => r.EmployeeCode, StringComparer.InvariantCulture)
                 .ThenBy(r => r.EmployeeName, StringComparer.Ordinal)],
         };
     }

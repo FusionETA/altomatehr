@@ -10,7 +10,11 @@ public interface IStatutoryFileService
 {
     Task<StatutoryFileResult> RenderEpfCsvAsync(string runId);
 
+    // SOCSO + EIS, PERKESO spec v1.0.
     Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId);
+
+    // SOCSO + EIS + SKBBK, ASSIST 2.0 — offered beside the one above, as before.
+    Task<StatutoryFileResult> RenderPerkesoSkbbkTxtAsync(string runId);
 
     Task<StatutoryFileResult> RenderPcbTxtAsync(string runId);
 

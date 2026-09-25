@@ -27,7 +27,9 @@ public static class EpfContributionCsv
         "Member Contribution Amount",
     ];
 
-    public static StatutoryFileResult Render(StatutoryRunPayload payload)
+    // `generatedOn` only names the file ({DDMMYYYY}-EPF_iAkaun-{YYYY}_{MM}.csv,
+    // the previous system's pattern); the content never depends on it.
+    public static StatutoryFileResult Render(StatutoryRunPayload payload, DateOnly generatedOn)
     {
         var sb = new StringBuilder();
         sb.Append(string.Join(',', Header)).Append(StatutoryFileFields.LineEnding);
@@ -44,7 +46,8 @@ public static class EpfContributionCsv
             if (row.Payslip.EpfEmployee == 0m && row.Payslip.EpfEmployer == 0m) continue;
 
             sb.Append(string.Join(',',
-                StatutoryFileFields.CsvField(row.EpfNumber.Trim()),
+                // Written as stored, untrimmed — the previous system's bytes.
+                StatutoryFileFields.CsvField(row.EpfNumber),
                 StatutoryFileFields.CsvField(
                     StatutoryFileFields.AlphanumericOnly(row.IdNumber)),
                 StatutoryFileFields.CsvField(row.EmployeeName),
@@ -57,7 +60,8 @@ public static class EpfContributionCsv
             sb.Append(StatutoryFileFields.LineEnding);
         }
 
-        var fileName = $"epf-{payload.Run.PeriodYear}-{payload.Run.PeriodMonth:D2}.csv";
+        var fileName =
+            $"{generatedOn:ddMMyyyy}-EPF_iAkaun-{payload.Run.PeriodYear:D4}_{payload.Run.PeriodMonth:D2}.csv";
         return StatutoryFileResult.Text(fileName, sb.ToString(), ContentType);
     }
 

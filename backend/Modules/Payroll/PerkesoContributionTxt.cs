@@ -27,18 +27,28 @@ namespace AltomateHR.Api.Modules.Payroll;
 // near-identical files and a comment asking whoever edits one to diff the
 // other; a single renderer cannot fall out of step with itself.
 //
-// WHICH layout is decided by the PERIOD, not by the caller. SKBBK began
-// 1 Jun 2026, so a rerun of an earlier month must produce the v1 layout that
-// month was actually filed under — the same rule the contribution tables
-// follow.
+// WHICH layout is the caller's choice, as in the previous system: both files
+// are offered, because PERKESO accepted either during the Jun–Sep 2026 grace
+// window and admins pick the one their portal account is on. Output — bytes,
+// skip rule and file name — matches the previous system's for each.
+public enum PerkesoLayout
+{
+    // SOCSO + EIS, spec v1.0. File SOCSO_EIS_MMYYYY.txt.
+    SocsoEis,
+    // SOCSO + EIS + SKBBK, ASSIST 2.0. File SOCSO_EIS_SKBBK_MMYYYY.txt.
+    SocsoEisSkbbk,
+}
+
 public static class PerkesoContributionTxt
 {
     public const string ContentType = "text/plain";
 
     private const int RowWidth = 278;
 
-    public static StatutoryFileResult Render(StatutoryRunPayload payload)
+    public static StatutoryFileResult Render(StatutoryRunPayload payload, PerkesoLayout layout)
     {
+        var includeSkbbk = layout == PerkesoLayout.SocsoEisSkbbk;
+
         // Normalised, because the code is padded verbatim into a fixed-width
         // column: "A 3702 1815 43P" typed off the certificate would ship its
         // spaces to PERKESO, which answers "Invalid employer code format".
@@ -48,7 +58,7 @@ public static class PerkesoContributionTxt
         {
             return StatutoryFileResult.Refused(
                 "PERKESO Employer Code is missing. Set it in Payroll Settings → Company Info "
-                + "before generating the SOCSO/EIS file.");
+                + $"before generating the {(includeSkbbk ? "SOCSO + EIS + SKBBK" : "SOCSO + EIS")} file.");
         }
 
         // The code is the first field of every row, so a placeholder fails the
@@ -61,11 +71,8 @@ public static class PerkesoContributionTxt
                 + "— it is the first field of every row, so the portal rejects the upload on line 1.");
         }
 
-        var myCoId = payload.CompanyInfo?.RegistrationNo?.Trim() ?? string.Empty;
-
-        // The period decides the layout — see the note above.
-        var includeSkbbk = StatutoryTables.GetSkbbkPhaseForPeriod(
-            payload.Run.PeriodYear, payload.Run.PeriodMonth) is not null;
+        // Written as stored, untrimmed — the previous system's bytes.
+        var myCoId = payload.CompanyInfo?.RegistrationNo ?? string.Empty;
 
         var contributionMonth =
             $"{payload.Run.PeriodMonth:D2}{payload.Run.PeriodYear:D4}";
@@ -76,10 +83,11 @@ public static class PerkesoContributionTxt
         {
             var p = row.Payslip;
 
-            // Nothing to remit for this person this month.
+            // Nothing to remit for this person this month. SKBBK only counts in
+            // the layout that carries it — the v1 file has nowhere to put it.
             if (p.SocsoEmployer == 0m && p.SocsoEmployee == 0m
                 && p.EisEmployer == 0m && p.EisEmployee == 0m
-                && p.SkbbkEmployee == 0m)
+                && (!includeSkbbk || p.SkbbkEmployee == 0m))
             {
                 continue;
             }
@@ -87,9 +95,14 @@ public static class PerkesoContributionTxt
             // Locals and PRs are keyed by IC. Everyone else has no NRIC, so
             // PERKESO keys them by their SOCSO number, then their foreign-worker
             // number, and only then falls back to whatever ID is on file.
-            var identification = row.IsLocalOrPr
+            // Routed on nationality + PR alone, with the previous system's
+            // spellings of Malaysian — PERKESO has the files it filed that way.
+            var isLocalOrPr = StatutoryFileFields.IsMalaysianNationality(row.Nationality) || row.HasPr;
+            // Null-coalescing, as the previous system did it: a SOCSO number
+            // stored as an empty string is still "the SOCSO number".
+            var identification = isLocalOrPr
                 ? StatutoryFileFields.DigitsOnly(row.IdNumber)
-                : FirstNonBlank(row.SocsoNumber, row.SsfwNumber)
+                : row.SocsoNumber ?? row.SsfwNumber
                   ?? StatutoryFileFields.DigitsOnly(row.IdNumber);
 
             var line = new StringBuilder(RowWidth)
@@ -120,20 +133,15 @@ public static class PerkesoContributionTxt
               .Append(StatutoryFileFields.LineEnding);
         }
 
-        var fileName =
-            $"socso-eis-{payload.Run.PeriodYear}-{payload.Run.PeriodMonth:D2}.txt";
+        var period = StatutoryFileFields.PeriodMmYyyy(payload.Run.PeriodYear, payload.Run.PeriodMonth);
+        var fileName = includeSkbbk ? $"SOCSO_EIS_SKBBK_{period}.txt" : $"SOCSO_EIS_{period}.txt";
 
         return StatutoryFileResult.Text(fileName, sb.ToString(), ContentType);
     }
 
+    // At least three digits ("000", "050"), then space-padded to the column.
     private static string Sen(decimal ringgit, int width) =>
-        StatutoryFileFields.PadLeft(
-            StatutoryFileFields.ToSen(ringgit)
-                .ToString(System.Globalization.CultureInfo.InvariantCulture),
-            width);
-
-    private static string? FirstNonBlank(params string?[] candidates) =>
-        candidates.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c))?.Trim();
+        StatutoryFileFields.PadLeft(StatutoryFileFields.SenDigits(ringgit), width);
 
     // A row of the wrong length shifts every column after it. The field
     // helpers are already total, so this can only fire if the layout above is

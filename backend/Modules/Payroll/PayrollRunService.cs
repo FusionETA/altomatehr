@@ -1032,6 +1032,7 @@ public class PayrollRunService : IPayrollRunService
             PcbAdditional = r.PcbAdditional,
             PcbCalculationJson = JsonSerializer.Serialize(r.PcbCalculation, SnapshotJson),
             Cp38 = r.Cp38,
+            VoluntaryPcb = r.VoluntaryPcb,
             Zakat = r.Zakat,
             Hrdf = r.Hrdf,
             HrdfWage = r.HrdfWage,

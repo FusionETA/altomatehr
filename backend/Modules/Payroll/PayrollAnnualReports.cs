@@ -86,14 +86,13 @@ public static class PayrollAnnualReports
 
     // ─── Shared field rules ─────────────────────────────────────────────
 
-    // The LHDN tax reference as CP8D wants it: digits only. The SG / OG / C
-    // prefix and any punctuation are stripped, and for a reference of 11 or
-    // more digits the LAST digit is the wife code rather than part of the
-    // number.
+    // The LHDN tax reference as CP8D wants it, with the SG / OG / C prefix and
+    // separators stripped — the same rule as the monthly PCB file, which is
+    // the previous system's (letters, whitespace and - _ ( ) removed). For a
+    // reference of 11 or more digits the LAST digit is the wife code rather
+    // than part of the number.
     public static string NormaliseTaxRef(string? taxRef) =>
-        string.IsNullOrWhiteSpace(taxRef)
-            ? string.Empty
-            : new string([.. taxRef.Where(char.IsDigit)]);
+        StatutoryFileFields.NormaliseTaxRef(taxRef);
 
     // A new IC as 12 digits with no dashes. A passport is NOT an IC and is
     // deliberately not coerced into one — CP8D has its own handling, and
@@ -117,9 +116,9 @@ public static class PayrollAnnualReports
     {
         if (maritalStatus == Employees.Entities.MaritalStatus.MARRIED)
         {
-            // Only a definite "spouse does not work" opens category 2 — the
-            // same gate the PCB spouse relief uses.
-            return spouseWorking == false ? "2" : "3";
+            // Category 3 needs a definite "spouse works"; unanswered files as
+            // 2, as the previous system did.
+            return spouseWorking == true ? "3" : "2";
         }
 
         if (maritalStatus is Employees.Entities.MaritalStatus.DIVORCED
@@ -132,5 +131,6 @@ public static class PayrollAnnualReports
     }
 
     // The E-number reduced to the digits LHDN's filenames are built from.
-    public static string EmployerNumber(string? employerTin) => NormaliseTaxRef(employerTin);
+    public static string EmployerNumber(string? employerTin) =>
+        StatutoryFileFields.DigitsOnly(employerTin);
 }

@@ -235,6 +235,33 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.True((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
     }
 
+    // Every document carries the previous system's file name, so an admin's
+    // folders and the payslips already emailed to staff line up with it.
+    [Fact]
+    public async Task Documents_AreNamedAsThePreviousSystemNamedThem()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+
+        Assert.Equal("Payroll_Summary_January_2026.pdf",
+            (await _statutory.RenderSummaryPdfAsync(run.Id)).FileName);
+        Assert.Equal("Payment_Schedule_January_2026.pdf",
+            (await _statutory.RenderPaymentSchedulePdfAsync(run.Id)).FileName);
+        Assert.Equal("PCB_Calculation_Details_January_2026.pdf",
+            (await _statutory.RenderPcbDetailsPdfAsync(run.Id)).FileName);
+
+        var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
+        Assert.Equal("Payslips_2026_01_All.zip", zip.FileName);
+
+        // {employeeId}_{name, whitespace → _}_{MM-YYYY}.pdf
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip.Content!));
+        Assert.Equal("E-001_Aisyah_Binti_Rahman_01-2026.pdf", Assert.Single(archive.Entries).FullName);
+
+        var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
+        Assert.Equal("E-001_Aisyah_Binti_Rahman_01-2026.pdf",
+            (await _statutory.RenderPayslipPdfAsync(run.Id, profileId)).FileName);
+    }
+
     // Reverting takes the month back to draft, so the files it could produce
     // go away with it — otherwise a reverted run keeps handing out figures
     // that are no longer filed.
