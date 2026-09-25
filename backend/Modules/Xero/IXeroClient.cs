@@ -83,7 +83,11 @@ public sealed record XeroAccountResponse(
     string Name,
     string Type,
     string Status,
-    bool? EnablePaymentsToAccount);
+    bool? EnablePaymentsToAccount,
+    // Xero's own accounts (Bank Revaluations, Rounding, Unrealised Currency
+    // Gains…). Some carry an expense type, but a manual journal line coded to
+    // one is rejected, and nobody files a claim against them.
+    bool SystemAccount = false);
 
 public sealed record XeroProjectResponse(
     string ProjectId,

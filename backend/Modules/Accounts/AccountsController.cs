@@ -15,9 +15,12 @@ public class AccountsController : ControllerBase
     public AccountsController(IChartOfAccountService accounts) => _accounts = accounts;
 
     // GET /accounts — any authenticated user (employees pick a selectable account when filing a claim).
+    // ?includeLiabilities=true adds the liability accounts, which only the
+    // payroll Xero mapping needs (the credit side of the journal).
     [RequireScope("accounts:read")]
     [HttpGet]
-    public async Task<IActionResult> GetAll() => Ok(await _accounts.GetAllAsync());
+    public async Task<IActionResult> GetAll([FromQuery] bool includeLiabilities = false) =>
+        Ok(await _accounts.GetAllAsync(includeLiabilities));
 
     // 409, not 400: the input is fine, the org's state forbids it — Xero owns
     // the chart of accounts while it is connected.

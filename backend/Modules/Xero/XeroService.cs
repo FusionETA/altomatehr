@@ -305,8 +305,9 @@ public class XeroService : IXeroService
         {
             if (!ShouldImportAccount(xeroAccount))
             {
-                // Not claimable — but an earlier, unfiltered sync may already
-                // have imported it. Skipping alone would leave "Sales" and
+                // Not imported (neither expense, bank nor liability, or one of
+                // Xero's system accounts) — but an earlier, unfiltered sync may
+                // already have imported it. Skipping alone would leave "Sales" and
                 // "Retained Earnings" sitting selectable in the claim form
                 // forever, so a row that exists is corrected rather than left.
                 var stale = await _repo.GetAccountByXeroIdAsync(orgId, xeroAccount.AccountId);
@@ -868,21 +869,38 @@ public class XeroService : IXeroService
     private static bool IsClaimable(string type) =>
         ClaimableTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
 
+    // Liabilities are imported for the payroll journal's credit side — the
+    // EPF / SOCSO / EIS / PCB / net salary payable lines. Without them those
+    // dropdowns could only offer expense accounts, and the accruals landed on
+    // "Travel - National". They are never claimable (see ToLocalAccountType).
+    // LIABILITY is Xero's legacy code; current charts use CURRLIAB / TERMLIAB.
+    private static readonly string[] LiabilityTypes = ["CURRLIAB", "TERMLIAB", "LIABILITY"];
+
+    private static bool IsLiability(string type) =>
+        LiabilityTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
+
     private static bool ShouldImportAccount(XeroAccountResponse account)
     {
         var known = IsActive(account.Status)
             || string.Equals(account.Status, "ARCHIVED", StringComparison.OrdinalIgnoreCase);
 
-        return known && (IsClaimable(account.Type) || IsBank(account.Type));
+        // Xero's system accounts are skipped whatever their type, as the
+        // previous system did: the manual journal API rejects a line coded to
+        // one. One an earlier sync imported is archived by the caller.
+        if (account.SystemAccount) return false;
+
+        return known && (IsClaimable(account.Type) || IsBank(account.Type) || IsLiability(account.Type));
     }
 
     private static bool IsActive(string status) =>
         string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
 
-    // Only BANK and EXPENSE exist locally. Everything importable that is not a
-    // bank is an expense family type, so it collapses to EXPENSE.
+    // Xero's expense family collapses to EXPENSE; banks and liabilities keep
+    // their own local type. See ChartOfAccountTypes.
     private static string ToLocalAccountType(string xeroType) =>
-        IsBank(xeroType) ? "BANK" : "EXPENSE";
+        IsBank(xeroType) ? ChartOfAccountTypes.Bank
+        : IsLiability(xeroType) ? ChartOfAccountTypes.Liability
+        : ChartOfAccountTypes.Expense;
 
     private static bool ShouldImportProject(XeroProjectResponse project) =>
         !string.Equals(project.Status, "DELETED", StringComparison.OrdinalIgnoreCase);
