@@ -143,7 +143,7 @@ export function Cp8dConverterModal({
                 className={INPUT}
                 value={employerNo}
                 onChange={(e) => setEmployerNo(e.target.value)}
-                placeholder="0009089151"
+                placeholder="e.g. 1234567890"
                 inputMode="numeric"
               />
             </div>
@@ -238,7 +238,7 @@ export function Cp8dConverterModal({
                         className={CELL}
                         value={row.newIc}
                         onChange={(e) => patch(row.id, { newIc: e.target.value })}
-                        placeholder="900101015523"
+                        placeholder="12 digits, no dashes"
                         inputMode="numeric"
                         aria-label={`Row ${index + 1} IC`}
                       />

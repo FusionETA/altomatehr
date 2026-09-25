@@ -582,7 +582,7 @@ export function PayrollSettingsForm() {
               label="Employer name"
               value={info.employerName}
               onChange={(employerName) => patchInfo({ employerName })}
-              placeholder="e.g. Globe Engineering Sdn Bhd"
+              placeholder="e.g. Acme Sdn Bhd"
               required
             />
             <Field

@@ -7,7 +7,7 @@ namespace AltomateHR.Api.Modules.Projects.Entities;
 // clock in from.
 //
 // A row rather than an entry in Project.AllowedIps, which is a comma-separated
-// string and therefore cannot carry a label. "203.106.51.0/24" tells whoever
+// string and therefore cannot carry a label. "203.0.113.0/24" tells whoever
 // reads the settings screen nothing; "KL office wifi" tells them whether it is
 // safe to delete. The legacy system reached the same conclusion and replaced
 // its own comma-separated column with a labelled list.

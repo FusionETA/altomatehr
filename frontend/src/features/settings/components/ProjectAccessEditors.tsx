@@ -7,7 +7,7 @@ import { useState } from "react";
 // The two list editors on a project: where people may clock in from, by
 // location and by network. Both were single fields — one lat/lng pair and one
 // comma-separated string — which could not express a site with two entrances
-// or say what "203.106.51.0/24" actually is.
+// or say what "203.0.113.0/24" actually is.
 
 const INPUT =
   "w-full rounded-xl border border-border/70 bg-card px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
@@ -258,7 +258,7 @@ export function AllowedIpsEditor({
                   className={`${INPUT} ${invalid ? "border-destructive" : ""}`}
                   value={entry.cidr}
                   onChange={(e) => update(index, { cidr: e.target.value })}
-                  placeholder="203.106.51.0/24"
+                  placeholder="203.0.113.0/24"
                   aria-invalid={invalid}
                 />
                 <button
@@ -282,7 +282,7 @@ export function AllowedIpsEditor({
 
       {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
       <p className="text-xs text-muted-foreground">
-        A single address or a range (<code>203.106.51.0/24</code> covers the whole network). Only
+        A single address or a range (<code>203.0.113.0/24</code> covers the whole network). Only
         enforced for employees whose policy requires it.
       </p>
     </div>
