@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 
 const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -66,6 +67,7 @@ export function CompanyStructure() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   // Both lists get a search box once they're long enough to scan badly. The
   // threshold is low on purpose: it should appear as the org grows, not once
   // the list is already unmanageable.
@@ -148,7 +150,13 @@ export function CompanyStructure() {
   };
 
   async function onDelete(team: Team) {
-    if (!window.confirm(`Delete team "${team.name}"? Its members are unassigned.`)) return;
+    const ok = await confirm({
+      title: `Delete team "${team.name}"?`,
+      message: "Its members are unassigned, and their claims and leave stop routing through this team.",
+      confirmLabel: "Delete team",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await deleteTeam(team.id);
       setTeams((cur) => cur.filter((t) => t.id !== team.id));
@@ -160,6 +168,7 @@ export function CompanyStructure() {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       {/* No page title here: the admin shell header already renders "Company
           Structure", so repeating it is the one thing that made this tab look
           different from every other view. The shell header is the anchor. */}
@@ -304,6 +313,7 @@ export function CompanyStructure() {
               <TeamEditor
                 team={null}
                 projects={projects}
+                defaultProjectId={selectedProjectId}
                 onCancel={() => setCreating(false)}
                 onSaved={(t) => {
                   upsert(t);

@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { LoaderCircle, Lock } from "lucide-react";
 import {
   APPROVAL_MODULES,
@@ -28,16 +28,28 @@ const INPUT =
 export function TeamEditor({
   team,
   projects,
+  defaultProjectId,
   onCancel,
   onSaved,
 }: {
   /** Null puts the panel in create mode. */
   team: Team | null;
   projects: Project[];
+  /** Create mode: the project picked in the Projects pane, so a new team lands
+   *  where the admin was looking rather than in whichever project sorts first. */
+  defaultProjectId?: string | null;
   onCancel: () => void;
   onSaved: (t: Team) => void;
 }) {
-  const [projectId, setProjectId] = useState(team?.projectId ?? projects[0]?.id ?? "");
+  const [projectId, setProjectId] = useState(
+    team?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "",
+  );
+
+  // Clicking another project while this form is open moves the new team with
+  // it — without remounting, so a name already typed survives.
+  useEffect(() => {
+    if (!team && defaultProjectId) setProjectId(defaultProjectId);
+  }, [team, defaultProjectId]);
   const [name, setName] = useState(team?.name ?? "");
   const [layerCount, setLayerCount] = useState(team?.layerCount ?? 1);
   const [labels, setLabels] = useState<string[]>(() =>

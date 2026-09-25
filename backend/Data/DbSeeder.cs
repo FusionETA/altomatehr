@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Claims;
+using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Leave;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Leave.Dtos;
@@ -20,6 +21,8 @@ using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Shifts.Entities;
+using AltomateHR.Api.Modules.Teams;
+using AltomateHR.Api.Modules.Teams.Entities;
 using System.Text.Json;
 using BC = BCrypt.Net.BCrypt;
 
@@ -61,7 +64,9 @@ public static class DbSeeder
         IOvertimeRepository overtime,
         IOvertimePhotoStorage overtimePhotos,
         ILeaveApplicationRepository leaveApplications,
-        IShiftRepository shifts)
+        IShiftRepository shifts,
+        ITeamRepository teams,
+        ITeamMembershipRepository teamMemberships)
     {
         await SeedOrganizationAsync(organizations);
         await SeedApiClientsAsync(apiClients);
@@ -80,8 +85,145 @@ public static class DbSeeder
         await SeedSplitShiftsAsync(attendance, attendanceSessions, demoProject.Id);
         await BackfillLatenessAsync(attendance, organizations);
         await SeedOvertimeAsync(overtime, overtimePhotos, demoProject.Id);
+        await SeedApprovalTeamAsync(teams, teamMemberships, demoProject.Id);
         await SeedLeaveAsync(leaveApplications, leaveTypes);
+        await SeedClaimsAsync(claims, demoProject.Id);
     }
+
+    // Approvals route purely through the team hierarchy (ApprovalRouter): an
+    // applicant's approver is whoever sits on a higher layer of their team.
+    // With no team, a PENDING claim or leave request has nobody to decide it
+    // and appears in no queue — so the demo requests below need one.
+    //
+    // Sara (usr-super) sits on layer 1 of "Demo Crew"; every demo applicant
+    // who is on NO team yet joins it on layer 0. Someone already placed on a
+    // team (by hand, in the Teams screen) is left exactly where they are.
+    private const string DemoTeamId = "team-demo-crew";
+
+    private static readonly string[] DemoApplicants =
+        ["usr-emp", "usr-demo-aisyah", "usr-demo-farid", "usr-demo-mei"];
+
+    private static async Task SeedApprovalTeamAsync(
+        ITeamRepository teams, ITeamMembershipRepository memberships, string projectId)
+    {
+        var unplaced = new List<string>();
+        foreach (var id in DemoApplicants)
+        {
+            if ((await memberships.GetByEmployeeAsync(id)).Count == 0) unplaced.Add(id);
+        }
+
+        // Nothing to route: everyone already has a team. Don't create an empty one.
+        if (unplaced.Count == 0 && await teams.GetByIdAsync(DemoTeamId) is null) return;
+
+        var now = DateTime.UtcNow;
+        if (await teams.GetByIdAsync(DemoTeamId) is null)
+        {
+            await teams.AddAsync(new Team
+            {
+                Id = DemoTeamId,
+                OrganizationId = DemoOrgId,   // no request context during seeding
+                ProjectId = projectId,
+                Name = "Demo Crew",
+                LayerCount = 2,
+                LayerLabels = "[\"Member\",\"Supervisor\"]",
+                ModuleApprovalConfig = "{\"CLAIMS\":[0,1],\"OT\":[0,1],\"LEAVE\":[0,1],\"ATTENDANCE\":[0,1]}",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        async Task Place(string employeeId, int layer)
+        {
+            if (await memberships.GetByTeamAndEmployeeAsync(DemoTeamId, employeeId) is not null) return;
+            await memberships.AddAsync(new TeamMembership
+            {
+                OrganizationId = DemoOrgId,
+                TeamId = DemoTeamId,
+                EmployeeId = employeeId,
+                Layer = layer,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        await Place("usr-super", 1);
+        foreach (var id in unplaced) await Place(id, 0);
+    }
+
+    // Demo claims for Sara's queue: pending ones to approve or reject, plus an
+    // approved and a rejected one so every filter on the screen has something.
+    //
+    // Idempotent per ROW on a fixed id, like the overtime and leave seeds: a
+    // claim you have since approved or edited is never recreated or touched.
+    // On the demo project so the claim resolves the team that governs it.
+    private static async Task SeedClaimsAsync(IClaimsRepository claims, string projectId)
+    {
+        var now = DateTime.UtcNow;
+        var rows = new[]
+        {
+            //                 id             employee           cat                    amount  spent  status
+            new DemoClaimRow("clm-demo-1", "usr-emp",         ClaimCategory.MEAL,      86.40m,  -3, ClaimStatus.PENDING,
+                "Client lunch — site handover", "Lunch with the client's project team after the handover walk.", null),
+            new DemoClaimRow("clm-demo-2", "usr-emp",         ClaimCategory.TRANSPORT, 42.00m,  -5, ClaimStatus.PENDING,
+                "Grab to site office", "Return trip to the Shah Alam site office.", null),
+            new DemoClaimRow("clm-demo-3", "usr-emp",         ClaimCategory.OFFICE,   129.90m,  -8, ClaimStatus.PENDING,
+                "Printer toner", "Replacement toner for the site office printer.", null),
+            new DemoClaimRow("clm-demo-4", "usr-demo-aisyah", ClaimCategory.TRAVEL,   356.00m,  -6, ClaimStatus.PENDING,
+                "Hotel — Penang inspection", "One night for the Penang facade inspection.", null),
+            new DemoClaimRow("clm-demo-5", "usr-demo-farid",  ClaimCategory.HARDWARE,  74.50m,  -4, ClaimStatus.PENDING,
+                "Safety gloves and cable ties", "Consumables for the week's installation work.", null),
+            new DemoClaimRow("clm-demo-6", "usr-emp",         ClaimCategory.MEDICAL,   60.00m, -20, ClaimStatus.APPROVED,
+                "Clinic visit", "GP consultation.", "Approved."),
+            new DemoClaimRow("clm-demo-7", "usr-emp",         ClaimCategory.MEAL,     210.00m, -15, ClaimStatus.REJECTED,
+                "Team dinner", "Dinner after the project milestone.",
+                "Team dinners need prior approval — please attach the approval email and refile."),
+        };
+
+        var number = 0;
+        foreach (var row in rows)
+        {
+            number++;
+            if (await claims.GetByIdAsync(row.Id) is not null) continue;
+
+            var spentAt = AttendanceTime.StartOfLocalDay(now.AddDays(row.SpentDaysFromToday));
+            var submittedAt = spentAt.AddDays(1);
+            var decided = row.Status is ClaimStatus.APPROVED or ClaimStatus.REJECTED;
+
+            await claims.AddAsync(new Claim
+            {
+                Id = row.Id,
+                OrganizationId = DemoOrgId,   // no request context during seeding
+                ClaimNumber = $"CLM-DEMO-{number:000}",
+                Title = row.Title,
+                Description = row.Description,
+                Category = row.Category,
+                Amount = row.Amount,
+                Currency = "MYR",
+                SpentAt = spentAt,
+                SubmittedAt = submittedAt,
+                Status = row.Status,
+                CurrentStep = 0,
+                ClaimType = ClaimType.EXPENSE,
+                PaymentType = PaymentType.PERSONAL,
+                EmployeeId = row.EmployeeId,
+                ProjectId = projectId,
+                ReviewNotes = row.ReviewNotes,
+                CreatedAt = submittedAt,
+                UpdatedAt = decided ? submittedAt.AddDays(1) : submittedAt,
+            });
+        }
+    }
+
+    private sealed record DemoClaimRow(
+        string Id,
+        string EmployeeId,
+        ClaimCategory Category,
+        decimal Amount,
+        int SpentDaysFromToday,
+        ClaimStatus Status,
+        string Title,
+        string Description,
+        string? ReviewNotes);
 
     // Register the Appraisify partner app (idempotent). Reads the roster
     // (employees:read) and sends notifications (notifications:write) — no
@@ -799,6 +941,15 @@ public static class DbSeeder
                 "Long weekend.", "Approved — enjoy the break."),
             new DemoLeaveRow("lv-demo-4",  Unpaid,  -11,  -10,  LeaveDuration.FULL_DAY,  2,    LeaveStatus.REJECTED,
                 "Personal errand.", "Month-end close that week — please refile for the following one."),
+            // More pending ones for Sara to decide — added under new ids because
+            // the seed never re-creates a row, so on a database where 1 and 2
+            // were already decided the queue would otherwise stay empty.
+            new DemoLeaveRow("lv-demo-5",  Annual,   12,   13,  LeaveDuration.FULL_DAY,  2,    LeaveStatus.PENDING,
+                "Cousin's wedding in Ipoh.", null),
+            new DemoLeaveRow("lv-demo-6",  Medical,  -2,   -2,  LeaveDuration.FULL_DAY,  1,    LeaveStatus.PENDING,
+                "Fever — MC from the clinic.", null),
+            new DemoLeaveRow("lv-demo-7",  Annual,   20,   20,  LeaveDuration.FULL_DAY,  1,    LeaveStatus.PENDING,
+                "Moving house.", null, "usr-demo-mei"),
         };
 
         foreach (var row in rows)
@@ -820,7 +971,7 @@ public static class DbSeeder
             {
                 Id = row.Id,
                 OrganizationId = DemoOrgId,   // set explicitly — no request context during seeding
-                EmployeeId = "usr-emp",
+                EmployeeId = row.EmployeeId,
                 LeaveTypeId = type.Id,
                 StartDate = startDate,
                 EndDate = endDate,
@@ -899,7 +1050,8 @@ public static class DbSeeder
         double TotalDays,
         LeaveStatus Status,
         string Reason,
-        string? ReviewNotes);
+        string? ReviewNotes,
+        string EmployeeId = "usr-emp");
 
     private static async Task SeedOrganizationAsync(IOrganizationRepository organizations)
     {
