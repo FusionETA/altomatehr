@@ -398,6 +398,8 @@ public class EmployeeServiceTests
         public Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string a) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> RejectAsync(string i, string a, string? n) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> CancelAsync(string i, string u) => throw new NotImplementedException();
+        public Task<LeaveTransitionResult> AdminCancelApprovedAsync(string i, string a, string? r) =>
+            throw new NotImplementedException();
         public Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync() =>
             throw new NotImplementedException();
     }

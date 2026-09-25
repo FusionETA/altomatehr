@@ -67,3 +67,11 @@ public class RejectLeaveDto
     [MaxLength(1000)]
     public string? ReviewNotes { get; set; }
 }
+
+// Optional: why an admin is withdrawing approved leave. Shown in the approval
+// trail and in the employee's notification.
+public class AdminCancelLeaveDto
+{
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
+}

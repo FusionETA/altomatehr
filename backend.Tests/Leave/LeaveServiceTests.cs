@@ -816,6 +816,93 @@ public class LeaveServiceTests
         }
     }
 
+    // ---- Admin cancels approved leave ----
+    //
+    // The correction path for approved leave that is no longer being taken.
+    // The days come back because "taken" is summed from APPROVED rows only.
+
+    [Fact]
+    public async Task AdminCancel_ApprovedLeave_ReturnsDaysToBalance()
+    {
+        var apps = new[] { MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.APPROVED) };
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: apps);
+
+        var result = await service.AdminCancelApprovedAsync("a1", "usr-admin", "Trip called off");
+
+        Assert.True(result.Transitioned);
+        Assert.Equal(LeaveStatus.CANCELLED, result.Application!.Status);
+        var al = (await service.GetBalancesAsync("usr-emp", Year)).Single();
+        Assert.Equal(0, al.TakenDays);
+        Assert.Equal(14, al.RemainingDays);
+    }
+
+    [Fact]
+    public async Task AdminCancel_RecordsItOnTheTrail_AndTellsTheEmployee()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 2, LeaveStatus.APPROVED);
+        var notifications = new FakeNotificationService();
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app], notifications: notifications);
+
+        await service.AdminCancelApprovedAsync("a1", "usr-admin", "  Trip called off  ");
+
+        Assert.Contains("\"ADMIN_CANCELLED\"", app.Approvals);
+        Assert.Contains("Trip called off", app.Approvals);
+        var sent = Assert.Single(notifications.Sent);
+        Assert.Equal("usr-emp", sent.UserId);
+        Assert.Equal("Leave cancelled", sent.Title);
+        Assert.Contains("Reason: Trip called off", sent.Body);
+    }
+
+    [Theory]
+    [InlineData(LeaveStatus.PENDING)]
+    [InlineData(LeaveStatus.REJECTED)]
+    public async Task AdminCancel_RefusesLeaveThatIsNotApproved(LeaveStatus status)
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 2, status);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+
+        var result = await service.AdminCancelApprovedAsync("a1", "usr-admin", null);
+
+        Assert.True(result.Found);
+        Assert.False(result.Transitioned);
+        Assert.Equal(status, app.Status);
+    }
+
+    [Fact]
+    public async Task AdminCancel_UnknownId_IsNotFound()
+    {
+        var result = await MakeService().AdminCancelApprovedAsync("nope", "usr-admin", null);
+
+        Assert.False(result.Found);
+    }
+
+    [Theory]
+    [InlineData(false, 1)]   // unpaid: payroll deducted these days, so drafts need a re-run
+    [InlineData(true, 0)]    // paid: no payslip figure depends on it
+    public async Task AdminCancel_FlagsPayrollDrafts_OnlyForUnpaidLeave(bool paid, int expectedSweeps)
+    {
+        var drafts = new RecordingDraftStaleness();
+        var service = MakeService(
+            types: [MakeType("t-x", "UL", 14, paid: paid)],
+            apps: [MakeApp("a1", "usr-emp", "t-x", 2, LeaveStatus.APPROVED)],
+            drafts: drafts);
+
+        await service.AdminCancelApprovedAsync("a1", "usr-admin", null);
+
+        Assert.Equal(expectedSweeps, drafts.Covering.Count);
+    }
+
+    private sealed class RecordingDraftStaleness : AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness
+    {
+        public List<(DateTime From, DateTime To)> Covering { get; } = [];
+        public Task MarkAllDraftsAsync() => Task.CompletedTask;
+        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to)
+        {
+            Covering.Add((from, to));
+            return Task.CompletedTask;
+        }
+    }
+
     private static LeaveService MakeService(
         IEnumerable<LeaveType>? types = null,
         IEnumerable<LeaveApplication>? apps = null,
@@ -826,7 +913,9 @@ public class LeaveServiceTests
         ICurrentUser? currentUser = null,
         IEnumerable<LeaveEntitlement>? entitlementRows = null,
         IXeroService? xero = null,
-        IEmployeeRowResolver? employees = null) =>
+        IEmployeeRowResolver? employees = null,
+        FakeNotificationService? notifications = null,
+        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
@@ -840,10 +929,11 @@ public class LeaveServiceTests
             new FakeOrganizationService(),
             new FakeHolidayService(),
             new FakeRealtimeService(),
-            new FakeNotificationService(),
+            notifications ?? new FakeNotificationService(),
             employees ?? new FakeEmployeeDirectory(),
             new FakeTeamService(),
-            new FakeProjectService());
+            new FakeProjectService(),
+            drafts);
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {

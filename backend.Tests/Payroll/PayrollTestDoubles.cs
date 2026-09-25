@@ -142,6 +142,8 @@ internal sealed class StubPayrollLeave : ILeaveService
         throw new NotSupportedException();
     public Task<LeaveTransitionResult> CancelAsync(string id, string userId) =>
         throw new NotSupportedException();
+    public Task<LeaveTransitionResult> AdminCancelApprovedAsync(string id, string adminId, string? reason) =>
+        throw new NotSupportedException();
     public Task<int> ReconcileUnreachableApprovalsAsync(bool apply) => throw new NotSupportedException();
     public Task<IReadOnlyList<AltomateHR.Api.Modules.Leave.Dtos.OrgApprovalDigestEntryDto>>
         GetOrgApprovalDigestAsync() => throw new NotSupportedException();

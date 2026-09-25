@@ -111,6 +111,12 @@ public interface ILeaveService
     Task<LeaveTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);
     Task<LeaveTransitionResult> CancelAsync(string id, string userId);
 
+    // An admin/owner withdraws leave that was already APPROVED — the correction
+    // path when approved leave is no longer being taken. The days return to the
+    // balance on their own: "taken" is summed from APPROVED applications, so a
+    // CANCELLED one simply stops counting. The controller gates the role.
+    Task<LeaveTransitionResult> AdminCancelApprovedAsync(string id, string adminId, string? reason);
+
     // Resolves PENDING items that no longer have any approver to route to.
     // `apply: false` only counts them. See the implementation for why.
     Task<int> ReconcileUnreachableApprovalsAsync(bool apply);

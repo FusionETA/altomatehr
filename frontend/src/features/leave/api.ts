@@ -146,7 +146,7 @@ export type LeaveSummaryReport = {
 export type LeaveApprovalEntry = {
   step: number;
   approverId: string;
-  decision: string; // "APPROVED" | "REJECTED" | "ADMIN_APPLIED" | "IMPORTED"
+  decision: string; // "APPROVED" | "REJECTED" | "ADMIN_APPLIED" | "ADMIN_CANCELLED" | "IMPORTED"
   decidedAt: string;
   notes: string | null;
 };
@@ -206,6 +206,10 @@ export const bulkApproveLeave = (ids: string[]) =>
 export const rejectLeave = (id: string, reviewNotes?: string) =>
   apiPost<LeaveApplication>(`/leave/${id}/reject`, { reviewNotes });
 export const cancelLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/cancel`);
+// Admin/owner only: withdraw leave that was already APPROVED. The days return
+// to the employee's balance; `reason` goes on the trail and in their notification.
+export const adminCancelLeave = (id: string, reason?: string) =>
+  apiPost<LeaveApplication>(`/leave/${id}/admin-cancel`, { reason });
 
 // `date` is a yyyy-MM-dd string; omit for today.
 export const getOnLeaveToday = (date?: string) =>
