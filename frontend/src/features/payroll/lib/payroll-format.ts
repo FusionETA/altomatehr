@@ -111,12 +111,14 @@ export const loanStatusLabels: Record<LoanStatus, string> = {
   ACTIVE: "Active",
   COMPLETED: "Repaid",
   CANCELLED: "Cancelled",
+  PAUSED: "Paused",
 };
 
 export const loanStatusTone: Record<LoanStatus, string> = {
   ACTIVE: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400",
   COMPLETED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
   CANCELLED: "border-border bg-muted/60 text-muted-foreground",
+  PAUSED: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
 };
 
 // "September 2026" from the two numbers a period is stored as.

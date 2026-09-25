@@ -18,6 +18,14 @@ public interface IEmployeeLoanService
 
     Task<EmployeeLoanDto?> SetStatusAsync(string id, LoanStatus status);
 
+    // Changing a loan that has started. Months with a submitted or
+    // awaiting-approval run are locked; each throws PayrollLoanException with
+    // the reason when the change would touch one, or not add up.
+    Task<EmployeeLoanDto?> ReplanAsync(string id, ReplanLoanDto dto);
+    Task<EmployeeLoanDto?> SkipMonthsAsync(string id, SkipLoanMonthsDto dto);
+    Task<EmployeeLoanDto?> PauseAsync(string id, PauseLoanDto dto);
+    Task<EmployeeLoanDto?> ResumeAsync(string id, ResumeLoanDto dto);
+
     // False when it does not exist. A loan that has started repaying is
     // cancelled rather than deleted — deleting it would erase the explanation
     // for deductions already taken.

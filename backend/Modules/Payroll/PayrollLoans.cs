@@ -14,7 +14,10 @@ public static class PayrollLoans
 {
     public readonly record struct Period(int Year, int Month);
 
-    public sealed record Installment(int Index, int Year, int Month, decimal Amount, bool Paid);
+    // Paused: the loan is PAUSED and this month falls on or after the pause,
+    // so nothing is taken and it is not paid, whatever run exists for it.
+    public sealed record Installment(
+        int Index, int Year, int Month, decimal Amount, bool Paid, bool Paused = false);
 
     public sealed record Terms(decimal InstallmentAmount, int InstallmentCount);
 
@@ -87,16 +90,24 @@ public static class PayrollLoans
         return BuildEqualSchedule(loan.PrincipalAmount, loan.InstallmentAmount, loan.InstallmentCount);
     }
 
+    // Where a PAUSED loan's pause begins in its schedule. Null otherwise.
+    public static int? PausedIndex(EmployeeLoan loan) =>
+        loan.Status == LoanStatus.PAUSED && loan.PausedFromYear is { } y && loan.PausedFromMonth is { } m
+            ? PeriodIndex(loan, y, m)
+            : null;
+
     // What this loan deducts in this period. Zero when the loan is not active
     // or the period falls outside the window — a cancelled loan must stop
-    // deducting immediately, not at the end of its schedule.
+    // deducting immediately, not at the end of its schedule. A paused loan
+    // still deducts the months BEFORE its pause.
     public static decimal InstallmentForPeriod(EmployeeLoan loan, int year, int month)
     {
-        if (loan.Status != LoanStatus.ACTIVE) return 0m;
+        if (loan.Status is not (LoanStatus.ACTIVE or LoanStatus.PAUSED)) return 0m;
         if (loan.InstallmentCount <= 0 || loan.PrincipalAmount <= 0m) return 0m;
 
         var index = PeriodIndex(loan, year, month);
         if (index < 0 || index >= loan.InstallmentCount) return 0m;
+        if (PausedIndex(loan) is { } paused && index >= paused) return 0m;
 
         var schedule = ResolveSchedule(loan);
 
@@ -113,13 +124,19 @@ public static class PayrollLoans
         EmployeeLoan loan, IEnumerable<Period> submittedPeriods)
     {
         var submitted = submittedPeriods.ToHashSet();
+        var pausedFrom = PausedIndex(loan);
 
         return [.. ResolveSchedule(loan).Select((amount, index) =>
         {
             var period = PeriodAtIndex(loan.StartYear, loan.StartMonth, index);
 
+            // A month under the pause took nothing, so a submitted run for it
+            // is not a repayment.
+            var paused = pausedFrom is { } from && index >= from;
+
             return new Installment(
-                index, period.Year, period.Month, Money.Round2(amount), submitted.Contains(period));
+                index, period.Year, period.Month, Money.Round2(amount),
+                !paused && submitted.Contains(period), paused);
         })];
     }
 
@@ -193,9 +210,17 @@ public static class PayrollLoans
             throw new PayrollLoanException("A loan needs at least one installment.");
         }
 
-        if (schedule.Any(n => n <= 0m))
+        // RM 0 is a skipped or paused month. Negative is never meaningful, and
+        // a schedule ending on a skip would report an end date nothing is
+        // deducted in.
+        if (schedule.Any(n => n < 0m))
         {
-            throw new PayrollLoanException("Every installment must be greater than zero.");
+            throw new PayrollLoanException("An installment cannot be negative.");
+        }
+
+        if (schedule[^1] <= 0m)
+        {
+            throw new PayrollLoanException("The last installment must be greater than zero.");
         }
 
         var total = Money.Round2(schedule.Sum());
@@ -207,6 +232,184 @@ public static class PayrollLoans
                 $"Installments must add up to the loan amount ({expected:0.00}). "
                 + $"They currently total {total:0.00}.");
         }
+    }
+
+    // ─── Changing a loan that has started ───────────────────────────────
+    //
+    // One rule for re-planning, skipping and pausing: a month whose payroll is
+    // SUBMITTED or awaiting approval is filed (or about to be), so its
+    // installment is locked; everything after the last such month is the
+    // admin's to change, and the schedule must still add up to the principal.
+
+    // The first installment index that can still change. Periods BEFORE the
+    // loan starts are ignored; one past the end of the schedule still counts,
+    // so a loan whose last month is filed has nothing left to change.
+    public static int FirstEditableIndex(EmployeeLoan loan, IEnumerable<Period> lockedPeriods)
+    {
+        var first = 0;
+        foreach (var period in lockedPeriods)
+        {
+            var index = PeriodIndex(loan, period.Year, period.Month);
+            if (index >= 0) first = Math.Max(first, index + 1);
+        }
+
+        return first;
+    }
+
+    // What the locked installments leave to repay.
+    public static decimal RemainingToPlan(
+        IReadOnlyList<decimal> schedule, decimal principal, int firstEditable) =>
+        Math.Max(0m, Money.Round2(principal - schedule.Take(firstEditable).Sum()));
+
+    // Keep the locked installments and replace everything after them with a
+    // new plan for the balance: an equal split over N months (FIXED), RM X a
+    // month (CUSTOM), or amounts the admin typed month by month (remainder).
+    public static IReadOnlyList<decimal> Replan(
+        IReadOnlyList<decimal> schedule,
+        decimal principal,
+        int firstEditable,
+        LoanRepaymentMode mode,
+        int? installmentCount,
+        decimal? installmentAmount,
+        IReadOnlyList<decimal>? remainder)
+    {
+        var locked = schedule.Take(firstEditable).ToList();
+        var balance = Money.Round2(principal - locked.Sum());
+
+        if (balance <= 0m)
+        {
+            throw new PayrollLoanException(
+                "Every installment of this loan is already filed, so there is nothing left to re-plan.");
+        }
+
+        List<decimal> plan;
+        if (remainder is { Count: > 0 })
+        {
+            plan = [.. remainder.Select(Money.Round2)];
+            if (plan.Any(n => n <= 0m))
+            {
+                throw new PayrollLoanException(
+                    "Every new installment must be greater than zero. Skip a month with Pause instead.");
+            }
+
+            var total = Money.Round2(plan.Sum());
+            if (Math.Abs(total - balance) > 0.01m)
+            {
+                throw new PayrollLoanException(
+                    $"The new installments must add up to the balance still owed ({balance:0.00}). "
+                    + $"They currently total {total:0.00}.");
+            }
+        }
+        else
+        {
+            var terms = ComputeTerms(mode, balance, installmentCount, installmentAmount);
+            plan = [.. BuildEqualSchedule(balance, terms.InstallmentAmount, terms.InstallmentCount)];
+        }
+
+        List<decimal> result = [.. locked, .. plan];
+        ValidateSchedule(result, principal);
+        return result;
+    }
+
+    // RM 0 for `months` months from `atIndex`. Nothing is forgiven — the
+    // installments still owed move into the next months that are not skipped,
+    // so the loan just ends later.
+    //
+    // A skipped month is a CALENDAR decision ("nothing in November"), so a
+    // later skip or pause must not shift an earlier one along with the money.
+    // Skipping Oct–Dec over a loan already skipping Nov–Dec displaces one
+    // installment, not three.
+    public static IReadOnlyList<decimal> InsertSkipped(
+        IReadOnlyList<decimal> schedule, int atIndex, int months)
+    {
+        if (months <= 0) return schedule;
+
+        var skipped = new HashSet<int>(Enumerable.Range(atIndex, months));
+        for (var i = atIndex; i < schedule.Count; i++)
+        {
+            if (schedule[i] == 0m) skipped.Add(i);
+        }
+
+        var owed = new Queue<decimal>(schedule.Skip(atIndex).Where(n => n > 0m));
+
+        List<decimal> result = [.. schedule.Take(atIndex)];
+        for (var i = atIndex; owed.Count > 0; i++)
+        {
+            result.Add(skipped.Contains(i) ? 0m : owed.Dequeue());
+        }
+
+        return result;
+    }
+
+    // The headline "per month" figure: the next non-zero installment from
+    // `fromIndex`, since a skipped month is not what the loan costs.
+    public static decimal HeadlineInstallment(IReadOnlyList<decimal> schedule, int fromIndex)
+    {
+        var next = schedule.Skip(fromIndex).FirstOrDefault(n => n > 0m);
+        return next > 0m ? next : schedule.LastOrDefault(n => n > 0m);
+    }
+
+    // ─── Warnings ───────────────────────────────────────────────────────
+
+    // Things an admin should see before relying on a plan. Advisory — the
+    // plan is still saved, because the admin may already have agreed a
+    // settlement outside payroll.
+    //
+    //   • repayments that run past the employee's last day, which payroll can
+    //     never collect;
+    //   • a month where this employee's loan deductions come to more than half
+    //     their monthly salary. The Employment Act 1955 generally caps total
+    //     deductions at 50% of wages, and loans alone reaching it is a strong
+    //     sign the plan is too aggressive.
+    public static IReadOnlyList<string> Warnings(
+        EmployeeLoan loan,
+        IEnumerable<EmployeeLoan> employeesOtherLoans,
+        IEnumerable<Period> submittedPeriods,
+        decimal? monthlySalary,
+        DateTime? leaveDate)
+    {
+        if (loan.Status is not (LoanStatus.ACTIVE or LoanStatus.PAUSED)) return [];
+
+        var warnings = new List<string>();
+        var upcoming = Breakdown(loan, submittedPeriods)
+            .Where(i => !i.Paid && !i.Paused && i.Amount > 0m)
+            .ToList();
+
+        if (leaveDate is { } leaves)
+        {
+            var afterLeaving = upcoming
+                .Where(i => (i.Year, i.Month).CompareTo((leaves.Year, leaves.Month)) > 0)
+                .ToList();
+            if (afterLeaving.Count > 0)
+            {
+                var last = afterLeaving[^1];
+                warnings.Add(
+                    $"Repayments run to {PeriodLabel(last.Year, last.Month)}, after the last day on file "
+                    + $"({leaves:d MMM yyyy}). RM {afterLeaving.Sum(i => i.Amount):N2} would still be "
+                    + "owed then — settle it from the final pay or agree a plan outside payroll.");
+            }
+        }
+
+        if (monthlySalary is > 0m and var salary)
+        {
+            var others = employeesOtherLoans.Where(l => l.Id != loan.Id).ToList();
+            foreach (var installment in upcoming)
+            {
+                var total = installment.Amount + others.Sum(l =>
+                    InstallmentForPeriod(l, installment.Year, installment.Month));
+
+                if (total > salary / 2m)
+                {
+                    warnings.Add(
+                        $"{PeriodLabel(installment.Year, installment.Month)}: loan deductions of "
+                        + $"RM {total:N2} are more than half of the RM {salary:N2} monthly salary. The "
+                        + "Employment Act 1955 generally limits total deductions to 50% of wages.");
+                    break;
+                }
+            }
+        }
+
+        return warnings;
     }
 
     // ─── JSON ───────────────────────────────────────────────────────────

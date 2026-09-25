@@ -22,6 +22,10 @@ public enum LoanStatus
     ACTIVE,
     COMPLETED,
     CANCELLED,
+    // Deducting nothing from PausedFrom onwards until an admin resumes it.
+    // Resuming writes the paused months into the schedule as RM 0 and moves
+    // the rest later, so the balance is still repaid in full.
+    PAUSED,
 }
 
 // A salary advance or staff loan, repaid by deduction from payroll.
@@ -59,6 +63,10 @@ public class EmployeeLoan : ITenantScoped
     public int InstallmentCount { get; set; }
 
     public LoanStatus Status { get; set; } = LoanStatus.ACTIVE;
+
+    // The first month a PAUSED loan stops deducting. Null unless PAUSED.
+    public int? PausedFromYear { get; set; }
+    public int? PausedFromMonth { get; set; }
 
     [MaxLength(500)]
     public string? Notes { get; set; }

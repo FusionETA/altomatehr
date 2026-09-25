@@ -54,19 +54,38 @@ public class PayrollLoansController : ControllerBase
     // already taken explained — which is why a started loan cannot be deleted.
     [RequireScope("payroll:write")]
     [HttpPost("{id}/cancel")]
-    public async Task<IActionResult> Cancel(string id)
-    {
-        var loan = await _loans.SetStatusAsync(id, LoanStatus.CANCELLED);
-        return loan is null ? NotFound() : Ok(loan);
-    }
+    public async Task<IActionResult> Cancel(string id) =>
+        await Guarded(async () => OkOrNotFound(await _loans.SetStatusAsync(id, LoanStatus.CANCELLED)));
 
     [RequireScope("payroll:write")]
     [HttpPost("{id}/reactivate")]
-    public async Task<IActionResult> Reactivate(string id)
-    {
-        var loan = await _loans.SetStatusAsync(id, LoanStatus.ACTIVE);
-        return loan is null ? NotFound() : Ok(loan);
-    }
+    public async Task<IActionResult> Reactivate(string id) =>
+        await Guarded(async () => OkOrNotFound(await _loans.SetStatusAsync(id, LoanStatus.ACTIVE)));
+
+    // A started loan: re-spread what is still owed, skip months, or pause
+    // until resumed. Filed months never change.
+    [RequireScope("payroll:write")]
+    [HttpPost("{id}/replan")]
+    public async Task<IActionResult> Replan(string id, ReplanLoanDto dto) =>
+        await Guarded(async () => OkOrNotFound(await _loans.ReplanAsync(id, dto)));
+
+    [RequireScope("payroll:write")]
+    [HttpPost("{id}/skip")]
+    public async Task<IActionResult> Skip(string id, SkipLoanMonthsDto dto) =>
+        await Guarded(async () => OkOrNotFound(await _loans.SkipMonthsAsync(id, dto)));
+
+    [RequireScope("payroll:write")]
+    [HttpPost("{id}/pause")]
+    public async Task<IActionResult> Pause(string id, PauseLoanDto dto) =>
+        await Guarded(async () => OkOrNotFound(await _loans.PauseAsync(id, dto)));
+
+    [RequireScope("payroll:write")]
+    [HttpPost("{id}/resume")]
+    public async Task<IActionResult> Resume(string id, ResumeLoanDto dto) =>
+        await Guarded(async () => OkOrNotFound(await _loans.ResumeAsync(id, dto)));
+
+    private IActionResult OkOrNotFound(EmployeeLoanDto? loan) =>
+        loan is null ? NotFound() : Ok(loan);
 
     [RequireScope("payroll:write")]
     [HttpDelete("{id}")]

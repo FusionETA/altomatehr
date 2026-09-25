@@ -146,10 +146,10 @@ does the loading.
   someone was paid is the month's filed figure and must never move. An EPF
   number is a current fact about a person, so a corrected typo should reach the
   next regeneration rather than being frozen into a bad submission.
-- **One PERKESO renderer, not two.** v1 and v2 (SKBBK) differ by a single
-  6-byte column carved out of filler. Which one is produced is decided by the
-  PERIOD — SKBBK began Jun 2026 — so a rerun of an earlier month gets the
-  layout it was actually filed under.
+- **One PERKESO renderer, two files.** v1 and v2 (SKBBK) differ by a single
+  6-byte column carved out of filler. Both are offered, as the previous system
+  did (`files/socso-eis` and `files/socso-eis-skbbk`) — the caller picks the
+  layout; the period does not.
 - **Additional PCB rides in CP39's PCB field.** `deduct_additional_pcb` lands
   in `Payslip.VoluntaryPcb`, never `Payslip.Pcb` (the MTD spec's X excludes
   it, so next month's formula must not see it). `PcbCp39Txt` files
@@ -222,6 +222,30 @@ The income tax number is deliberately **not** in the gate — PCB computes
 without one, and a new joiner waiting on a TIN must not hold up everyone
 else's pay. `PcbCp39Txt` checks it at generation time instead, and only for
 employees who actually had tax withheld.
+
+## Loans
+
+`PayrollLoans` (pure) + `EmployeeLoanService`. The schedule is POSITIONAL —
+installment i is start + i months — and an installment is PAID when its month
+has a SUBMITTED run. Nothing records payments, which is why reverting a month
+un-pays it for free, and why every change below keeps money tied to its month.
+
+- **Locked months never change.** A month with a SUBMITTED or
+  PENDING_APPROVAL run is locked (`FirstEditableIndex`). A started loan cannot
+  be re-termed wholesale; `Replan` keeps the locked prefix and re-spreads what
+  is left (over N months, RM X a month, or typed month by month). Re-planning
+  a started loan makes it CUSTOM.
+- **RM 0 is a skipped month, and skips are calendar months.** `InsertSkipped`
+  moves what was due into the next months that are NOT skipped, so a later
+  skip or pause never drags an earlier one along. A trailing RM 0 is invalid.
+- **PAUSED deducts nothing from `PausedFrom`**, and months under it are never
+  "paid" whatever run exists. Resume writes the paused months in as RM 0 (the
+  same `InsertSkipped`); cancelling a paused loan does the same for the paused
+  months already filed, or they would read back as repaid.
+- **Warnings are advisory**: repayments past the leaving date, and a month
+  where the person's loans together exceed half the monthly salary.
+- **A loan needs a real EmployeeProfile.** The payroll roster lists members
+  without one under a stand-in id no payslip carries; `CreateAsync` refuses.
 
 ## Attendance and unpaid leave
 
