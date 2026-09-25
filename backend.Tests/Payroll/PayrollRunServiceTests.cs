@@ -1155,6 +1155,38 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(120m, payslip.TotalReimbursements);
     }
 
+    // The previous system listed an attached claim as the last earnings line,
+    // in the order the calculator produced the lines. v2 wrote every line of a
+    // run with one timestamp and read the run's lines back with no ORDER BY, so
+    // the payslip showed them in whatever order the database chose. Labels are
+    // picked so alphabetical order would put the claim FIRST.
+    [Fact]
+    public async Task ReadingARunBack_KeepsTheCalculatorsLineOrder_ClaimLast()
+    {
+        var profile = AddEmployee(
+            "usr-1", "Aisyah",
+            fixedAllowancesJson:
+            """
+            [{"category":"allowance_parking","name":"Zone parking","amount":150},
+             {"category":"allowance_meal","name":"Yearly meals","amount":80}]
+            """);
+        var run = await CreateRunAsync();
+        await AttachClaimAsync(run.Id, profile.Id, "clm-1", 120m, "Airport taxi");
+        await _service.GenerateAsync(run.Id);
+
+        var payslip = Assert.Single((await _service.GetAsync(run.Id))!.Payslips);
+        var earnings = payslip.LineItems
+            .Where(li => li.Kind is PayslipLineKind.ALLOWANCE or PayslipLineKind.REIMBURSEMENT)
+            .Select(li => li.Label)
+            .ToList();
+
+        Assert.Equal(["Zone parking", "Yearly meals", "Airport taxi"], earnings);
+        // The order is stored, not left to the database: MySQL returns rows in
+        // no particular order, which is how the claim stopped being last.
+        Assert.Equal([1, 2, 3],
+            (await _payslips.GetLineItemsForRunAsync(run.Id)).Select(li => li.SortOrder));
+    }
+
     // Paying back what someone already spent is not wages. A reimbursement
     // that reached the contribution bases would over-collect on every agency
     // at once.

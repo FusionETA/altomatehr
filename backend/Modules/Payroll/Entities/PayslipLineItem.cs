@@ -41,6 +41,14 @@ public class PayslipLineItem : ITenantScoped
     // The claim this reimbursement came from (phase 4). Null otherwise.
     [MaxLength(40)] public string? ClaimId { get; set; }
 
+    // Position on the payslip, in the order the calculator produced the lines:
+    // recurring allowances and one-off adjustments, then attached claims, then
+    // manual deductions — so a claim reads as the last earnings line, as it did
+    // in the previous system. Every line of a run shares one CreatedAt, so
+    // without this the lines came back in whatever order the database chose.
+    // 0 on rows written before this column existed; those fall back to kind.
+    public int SortOrder { get; set; }
+
     // Snapshotted from the category rather than re-read at query time — the
     // catalogue can change, a filed payslip cannot.
     public bool SubjectToEpf { get; set; }

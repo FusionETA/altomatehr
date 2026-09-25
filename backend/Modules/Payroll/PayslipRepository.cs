@@ -42,7 +42,8 @@ public class PayslipRepository : IPayslipRepository
     public Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId) =>
         _db.PayslipLineItems
             .Where(li => li.PayslipId == payslipId)
-            .OrderBy(li => li.Kind)
+            .OrderBy(li => li.SortOrder)
+            .ThenBy(li => li.Kind)
             .ThenBy(li => li.CreatedAt)
             .ToListAsync();
 
@@ -52,8 +53,14 @@ public class PayslipRepository : IPayslipRepository
             .Where(p => p.PayrollRunId == payrollRunId)
             .Select(p => p.Id);
 
+        // Ordered, like the single-payslip read above: with no ORDER BY the
+        // payslip drawer and PDFs listed lines in whatever order MySQL chose.
         return _db.PayslipLineItems
             .Where(li => payslipIds.Contains(li.PayslipId))
+            .OrderBy(li => li.PayslipId)
+            .ThenBy(li => li.SortOrder)
+            .ThenBy(li => li.Kind)
+            .ThenBy(li => li.CreatedAt)
             .ToListAsync();
     }
 

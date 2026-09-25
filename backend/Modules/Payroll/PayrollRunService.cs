@@ -244,7 +244,7 @@ public class PayrollRunService : IPayrollRunService
         if (run.Status != PayrollRunStatus.DRAFT)
         {
             return new PayrollRunGenerateResult(
-                false, null, "Only a draft run can be generated.");
+                false, null, "Payroll can only be run on a draft.");
         }
 
         var settings = await _settings.GetEffectiveAsync();
@@ -356,7 +356,7 @@ public class PayrollRunService : IPayrollRunService
 
             var payslip = ToPayslip(run, profile, name, membership, result, now);
             payslips.Add(payslip);
-            lineItems.AddRange(result.LineItems.Select(li => ToLineItem(payslip.Id, li, now)));
+            lineItems.AddRange(result.LineItems.Select((li, i) => ToLineItem(payslip.Id, li, now, i + 1)));
         }
 
         await _payslips.ReplaceForRunAsync(run.Id, payslips, lineItems);
@@ -369,7 +369,7 @@ public class PayrollRunService : IPayrollRunService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunGenerate,
-            $"Generated {payslips.Count} payslip(s) for the "
+            $"Ran payroll — {payslips.Count} payslip(s) for the "
             + $"{PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
@@ -413,7 +413,7 @@ public class PayrollRunService : IPayrollRunService
         if (payslips.Count == 0)
         {
             return Refused(
-                "Generate this run's payslips before submitting — an empty run cannot be finalised.");
+                "Run payroll before submitting — an empty run cannot be finalised.");
         }
 
         // Guard 2 — staleness. The inputs moved after the payslips were built,
@@ -424,7 +424,7 @@ public class PayrollRunService : IPayrollRunService
         if (run.LastMutatedAt is not null && run.LastMutatedAt > latestGeneration)
         {
             return Refused(
-                "Payroll inputs changed after this draft was generated. "
+                "Something this run uses changed after payroll was run. "
                 + "Re-run payroll before submitting.");
         }
 
@@ -1049,9 +1049,10 @@ public class PayrollRunService : IPayrollRunService
         };
 
     private static PayslipLineItem ToLineItem(
-        string payslipId, PayslipCalculator.LineItem li, DateTime now) => new()
+        string payslipId, PayslipCalculator.LineItem li, DateTime now, int sortOrder) => new()
         {
             PayslipId = payslipId,
+            SortOrder = sortOrder,
             Kind = li.Kind,
             Label = li.Label,
             Amount = li.Amount,
