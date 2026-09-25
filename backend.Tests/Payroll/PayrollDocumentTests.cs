@@ -218,30 +218,53 @@ public class PayrollDocumentTests
         Assert.True(IsPdf(PayrollSummaryPdf.Render(model)));
     }
 
-    // The summary exists to be RECONCILED: gross minus the deduction columns
-    // has to equal the net column on every row. A statutory item with no
-    // column of its own makes each row silently short — SKBBK was exactly
-    // that, and was 90 sen out per employee until a rendered page was
-    // actually looked at.
+    // Laid out as the previous system's summary: no "other deductions"
+    // column — every line is itemised under the employee, deductions in the
+    // negative, so the row can still be reconciled line by line.
     [Fact]
-    public void Summary_ColumnsReconcileToNetPayOnEveryRow()
+    public void Summary_ItemisesEachEmployeesPayUnderTheirName()
     {
-        var rows = new[]
+        var payslip = Payslip();
+        payslip.ProratedPay = 4500m;
+        payslip.OtPay = 150m;
+        payslip.OtNormalHours = 6m;
+        payslip.OtRestHours = 1.5m;
+
+        var items = new List<PayslipLineItem>
         {
-            Row(payslip: Payslip(skbbk: 0.90m, zakat: 100m, cp38: 50m, otherDeductions: 150m)),
-            Row(payslip: Payslip(skbbk: 0m, otherDeductions: 0m)),
+            new() { Kind = PayslipLineKind.ALLOWANCE, Label = "Travel Allowance", Amount = 250m,
+                    Category = PayrollAdjustmentCategories.AllowanceStandard },
+            new() { Kind = PayslipLineKind.DEDUCTION, Label = "Loan Repayment", Amount = 100m,
+                    Category = PayrollAdjustmentCategories.DeductLoanRepayment },
         };
 
-        foreach (var row in rows)
-        {
-            var p = row.Payslip;
+        var lines = PayrollSummaryPdf.Breakdown(payslip, items);
 
-            // The columns the sheet prints, in order.
-            var columns = p.EpfEmployee + p.SocsoEmployee + p.EisEmployee
-                          + p.SkbbkEmployee + p.Pcb + p.TotalDeductions;
+        Assert.Equal(
+        [
+            new PayrollSummaryPdf.BreakdownLine("Base salary", 4500m, false),
+            new PayrollSummaryPdf.BreakdownLine("Overtime (6 normal + 1.5 rest)", 150m, true),
+            new PayrollSummaryPdf.BreakdownLine("Travel Allowance", 250m, true),
+            new PayrollSummaryPdf.BreakdownLine("Loan Repayment", -100m, true),
+        ], lines);
+    }
 
-            Assert.Equal(p.NetPay, p.GrossPay - columns);
-        }
+    // A benefit in kind never reaches gross, so it is listed unsigned and
+    // marked as disclosure only.
+    [Fact]
+    public void Summary_MarksABenefitInKindAsNonCash()
+    {
+        var bikCategory = PayrollAdjustmentCategories.All.Values.First(m => m.NonCash).Code;
+        var payslip = Payslip();
+        payslip.ProratedPay = 0m;
+
+        var line = Assert.Single(PayrollSummaryPdf.Breakdown(payslip,
+        [
+            new PayslipLineItem { Kind = PayslipLineKind.ALLOWANCE, Label = "Company car", Amount = 800m,
+                                  Category = bikCategory },
+        ]));
+
+        Assert.Equal(new PayrollSummaryPdf.BreakdownLine("Company car (BIK · non-cash)", 800m, false), line);
     }
 
     [Fact]

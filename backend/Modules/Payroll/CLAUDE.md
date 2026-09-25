@@ -174,8 +174,7 @@ be rasterised and LOOKED AT.
 **Look at a rendered page before believing a document is finished.** The
 compiler and the unit tests both passed on a payroll summary whose columns had
 silently shifted by one and whose rows no longer reconciled; a single PNG made
-it obvious. `PayrollSummaryPdf` now also has a test asserting that gross minus
-every deduction column equals net, because that is what the sheet is FOR.
+it obvious.
 
 Rules the documents keep:
 
@@ -186,8 +185,13 @@ Rules the documents keep:
   rows, so the catch-all "Other" nets them off rather than counting twice.
   **Additional PCB** (`VoluntaryPcb`) is too, but is shown INSIDE the
   "PCB / MTD" row (`Pcb + VoluntaryPcb`) rather than as its own row.
-- **Every deduction needs a column on the summary.** A statutory item with
-  nowhere to go makes every row silently short — SKBBK was exactly that.
+- **The summary is the previous system's layout** (A3 landscape): GROSS,
+  the employee PCB/EPF/SOCSO/EIS/SKBBK band, NET, the employer
+  EPF/SOCSO/EIS/HRDF band, COST — run totals under each heading — and every
+  employee's base salary, overtime and line items itemised under their name
+  (deductions in red), then the summary block. There is no "other deductions"
+  column; non-statutory deductions reconcile through the itemised lines. Each
+  employee's block is kept whole across a page break.
 - **A payslip masks the bank account; the payment schedule shows it in full.**
   One is handed to an employee, the other exists so an approver can verify the
   destination before money moves.
