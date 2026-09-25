@@ -4,11 +4,13 @@ using AltomateHR.Api.Modules.Projects.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Projects;
 
 [ApiController]
 [Route("[controller]")]        // → /projects
+[RequireModule(OrgModules.Projects)]
 [Authorize]
 public class ProjectsController : ControllerBase
 {

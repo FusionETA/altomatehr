@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.ApiKeys;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -12,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // what someone earns.
 [ApiController]
 [Route("payroll/salary-changes")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class SalaryChangesController : ControllerBase
 {

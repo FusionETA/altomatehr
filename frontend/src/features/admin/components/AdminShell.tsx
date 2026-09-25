@@ -16,12 +16,13 @@ import { buildInitials, personName } from "@/features/employee-portal/lib/employ
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
 import type { SignedInUser } from "@/shared/types/session";
 import {
-  adminNav,
   defaultChildOf,
   findNavItem,
   NAV_FALLBACK,
   normaliseAdminNav,
+  visibleAdminNav,
 } from "../lib/nav";
+import { useEnabledModules } from "@/features/settings/lib/module-access";
 import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { AdminAttendance } from "./AdminAttendance";
@@ -48,11 +49,22 @@ export function AdminShell({
   // Bound to the signed-in role, so an ownerOnly view cannot be reached by
   // typing its id into the address bar. Captured once, which is fine: a role
   // does not change for the life of a mounted shell.
-  const normalise = useCallback(
-    (candidate: UrlNav) => normaliseAdminNav(candidate, user.role === "Owner"),
-    [user.role],
+  const isOwner = user.role === "Owner";
+  // What this admin's grant (and the org's plan) lets them see. The URL is
+  // normalised against it at mount, and the view is re-checked on every render
+  // below: the modules usually land AFTER the first read of the URL, and a
+  // bookmark to a module the grant leaves out must not stay open once they do.
+  const enabledModules = useEnabledModules();
+  const visibleNav = useMemo(
+    () => visibleAdminNav(isOwner, enabledModules),
+    [isOwner, enabledModules],
   );
-  const [nav, go] = useUrlNav(NAV_FALLBACK, normalise);
+  const normalise = useCallback(
+    (candidate: UrlNav) => normaliseAdminNav(candidate, isOwner, enabledModules),
+    [isOwner, enabledModules],
+  );
+  const [urlNav, go] = useUrlNav(NAV_FALLBACK, normalise);
+  const nav = normalise(urlNav);
   const activeParent = nav.parent;
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -71,7 +83,8 @@ export function AdminShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const activeItem = findNavItem(activeParent);
+  // From the visible nav, so its children are already filtered by grant.
+  const activeItem = visibleNav.find((item) => item.id === activeParent) ?? findNavItem(activeParent);
   const initials = useMemo(() => buildInitials(user.email, user.name), [user.email, user.name]);
   const displayName = useMemo(() => personName(user.name, user.email), [user.name, user.email]);
 
@@ -125,7 +138,7 @@ export function AdminShell({
         </div>
 
         <nav className="mt-10 space-y-1.5">
-          {adminNav.map((item) => {
+          {visibleNav.map((item) => {
             const Icon = item.icon;
             const active = item.id === activeParent;
 
@@ -146,9 +159,7 @@ export function AdminShell({
 
                 {item.children && active ? (
                   <div className="ml-5 mt-1 space-y-0.5 border-l border-border/60 pl-4">
-                    {item.children
-                      .filter((child) => !child.ownerOnly || user.role === "Owner")
-                      .map((child) => {
+                    {item.children.map((child) => {
                       const childActive = child.id === activeChild;
                       return (
                         <button
@@ -259,7 +270,7 @@ export function AdminShell({
 
         {/* Mobile module switcher — the desktop sidebar is hidden below lg. */}
         <HorizontalScrollArea className="px-4 py-3 lg:hidden" contentClassName="gap-2">
-          {adminNav.map((item) => {
+          {visibleNav.map((item) => {
             const active = item.id === activeParent;
             const Icon = item.icon;
             return (
@@ -283,9 +294,7 @@ export function AdminShell({
         {/* Mobile sub-nav for the active module. */}
         {activeItem.children ? (
           <HorizontalScrollArea className="px-4 pb-3 lg:hidden" contentClassName="gap-2">
-            {activeItem.children
-              .filter((child) => !child.ownerOnly || user.role === "Owner")
-              .map((child) => {
+            {activeItem.children.map((child) => {
               const childActive = child.id === activeChild;
               return (
                 <button
