@@ -188,7 +188,8 @@ public class EmployeesController : ControllerBase
 
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
-    public async Task<IActionResult> Import(IFormFile? file)
+    public async Task<IActionResult> Import(
+        IFormFile? file, [FromForm] EmployeeImportBlankCells blankCells = EmployeeImportBlankCells.Keep)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "No file was uploaded." });
@@ -202,7 +203,7 @@ public class EmployeesController : ControllerBase
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer);
 
-        var result = await _import.ImportAsync(buffer.ToArray(), format);
+        var result = await _import.ImportAsync(buffer.ToArray(), format, blankCells);
 
         // A whole-file problem is a 400; row errors come back 200 alongside
         // whatever DID import, because the good rows were really applied and

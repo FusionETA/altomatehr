@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { PayrollBulkFillPanel } from "@/features/payroll/components/PayrollBulkFillPanel";
 import {
   CLAIMS_PAGE_SIZE,
   PaginationControls,
@@ -365,15 +364,15 @@ export function EmployeesSettings() {
             </Select>
             {/* Beside Add employee, quieter than it: onboarding a batch is the
                 rarer act, and the single-add button is what most visits want.
-                "People", because the panel below imports payroll details and
-                two unqualified Imports on one screen is a coin toss. */}
+                The one bulk path — adding people and updating every field,
+                payroll details included, through a single spreadsheet. */}
             <button
               type="button"
               onClick={() => setShowImport(true)}
               className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
             >
               <Upload className="h-4 w-4" />
-              Import people
+              Import employees
             </button>
 
             <button
@@ -403,11 +402,6 @@ export function EmployeesSettings() {
           </p>
         ) : null}
 
-        {/* The statutory round-trip, in the header card rather than a card of
-            its own: it is the fastest way to empty the box below, so it
-            belongs with the roster's other controls — and this page has
-            enough boxes already. */}
-        <PayrollBulkFillPanel onImported={() => void payrollQuery.refresh()} />
       </div>
 
       {loading ? (
@@ -548,8 +542,12 @@ export function EmployeesSettings() {
         <ImportEmployeesDialog
           onClose={() => setShowImport(false)}
           // A bulk import can both create and update, so the list is
-          // refetched rather than patched from the response.
-          onImported={() => void employeesQuery.refresh()}
+          // refetched rather than patched from the response — and the payroll
+          // roster too, since the same file carries payroll details.
+          onImported={() => {
+            void employeesQuery.refresh();
+            void payrollQuery.refresh();
+          }}
         />
       ) : null}
     </div>

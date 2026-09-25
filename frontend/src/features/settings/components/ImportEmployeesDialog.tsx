@@ -4,11 +4,18 @@ import {
   downloadEmployeeExport,
   downloadEmployeeImportTemplate,
   importEmployees,
+  type EmployeeImportBlankCells,
   type EmployeeImportResult,
 } from "@/features/employees/api";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { saveFile } from "@/shared/lib/api-client";
 
-// Bulk onboarding: download the template, fill it, upload it back.
+// The one employee spreadsheet: add new people, or export everyone, edit, and
+// import back to update them in bulk.
+//
+// What a blank cell means is the admin's call, made here rather than in the
+// file: keep the existing value (the default — a partial sheet can't wipe
+// anything) or erase it. Erase asks once more before anything is saved.
 //
 // The passwords for accounts this creates come back ONCE, in the response, and
 // are stored nowhere. So the dialog will not let them go by accident — the
@@ -30,6 +37,8 @@ export function ImportEmployeesDialog({
   const [result, setResult] = useState<EmployeeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [blankCells, setBlankCells] = useState<EmployeeImportBlankCells>("Keep");
+  const [confirm, confirmDialog] = useConfirm();
 
   // Two starting points, because they answer different needs: a blank template
   // for onboarding new hires, the current roster for filling a field in for
@@ -52,11 +61,23 @@ export function ImportEmployeesDialog({
 
   async function upload() {
     if (!file) return;
+    if (
+      blankCells === "Erase" &&
+      !(await confirm({
+        title: "Erase data in blank cells?",
+        message:
+          "Every blank cell in this file will erase that field for the person on that row. " +
+          "Columns you deleted from the file, and people not in it, are not affected.",
+        confirmLabel: "Erase and import",
+        destructive: true,
+      }))
+    )
+      return;
     setImporting(true);
     setError(null);
     setResult(null);
     try {
-      const imported = await importEmployees(file);
+      const imported = await importEmployees(file, blankCells);
       setResult(imported);
       // Refresh the list even on a partial import: the rows that landed are
       // real people, and leaving them off the table until a reload is worse
@@ -88,8 +109,8 @@ export function ImportEmployeesDialog({
         <header className="border-b border-border/70 px-6 py-4">
           <h2 className="text-base font-semibold text-foreground">Import employees</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Add people in bulk instead of one at a time. An email already in this organisation is
-            updated rather than duplicated.
+            Add new people, or update everyone's details in bulk — profile, payroll, bank and
+            statutory fields included. An email already in this company updates that person.
           </p>
         </header>
 
@@ -127,14 +148,43 @@ export function ImportEmployeesDialog({
             </div>
             <p className="text-xs text-muted-foreground">
               <span className="font-semibold text-foreground">Blank template</span> for new hires;{" "}
-              <span className="font-semibold text-foreground">Export current</span> to fill a field
-              in for people already here. Email is the only required column, Policy and Shift are
-              matched by name, and a blank cell leaves an existing person's field alone.
+              <span className="font-semibold text-foreground">Export current</span> to update people
+              already here — edit the cells you want and import the same file. The file's{" "}
+              <span className="font-semibold text-foreground">READ ME</span> sheet explains every
+              column.
             </p>
           </section>
 
           <section className="space-y-2">
-            <h3 className={LABEL}>Step 2 — upload it back</h3>
+            <h3 className={LABEL}>Step 2 — what should a blank cell do?</h3>
+            <div role="radiogroup" aria-label="Blank cells" className="grid gap-2 sm:grid-cols-2">
+              <BlankCellsOption
+                value="Keep"
+                selected={blankCells}
+                onSelect={setBlankCells}
+                title="Keep existing values"
+                description="Blank leaves that field as it is. Safe for a file with only some details filled in."
+              />
+              <BlankCellsOption
+                value="Erase"
+                selected={blankCells}
+                onSelect={setBlankCells}
+                title="Erase existing values"
+                description="Blank clears that field. Use when the file is the full, up-to-date record."
+              />
+            </div>
+            {blankCells === "Erase" ? (
+              <p className="flex items-start gap-1.5 rounded-2xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                Every blank cell erases data for that person. Name, Role, Employee No, Salary Type
+                and EPF/EIS can't be erased — a blank there fails the row. Columns you deleted from
+                the file are left alone.
+              </p>
+            ) : null}
+          </section>
+
+          <section className="space-y-2">
+            <h3 className={LABEL}>Step 3 — upload it back</h3>
             <input
               type="file"
               accept=".xlsx,.csv"
@@ -229,6 +279,55 @@ export function ImportEmployeesDialog({
           </button>
         </footer>
       </div>
+      {confirmDialog}
     </div>
+  );
+}
+
+function BlankCellsOption({
+  value,
+  selected,
+  onSelect,
+  title,
+  description,
+}: {
+  value: EmployeeImportBlankCells;
+  selected: EmployeeImportBlankCells;
+  onSelect: (value: EmployeeImportBlankCells) => void;
+  title: string;
+  description: string;
+}) {
+  const checked = value === selected;
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={() => onSelect(value)}
+      className={`rounded-2xl border px-3 py-2.5 text-left transition ${
+        checked
+          ? value === "Erase"
+            ? "border-destructive/50 bg-destructive/5 ring-1 ring-destructive/30"
+            : "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
+          : "border-border/70 bg-card hover:bg-muted"
+      }`}
+    >
+      <span className="flex items-center gap-2 text-sm font-bold text-foreground">
+        <span
+          aria-hidden
+          className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+            checked ? (value === "Erase" ? "border-destructive" : "border-primary") : "border-border"
+          }`}
+        >
+          {checked ? (
+            <span
+              className={`size-2 rounded-full ${value === "Erase" ? "bg-destructive" : "bg-primary"}`}
+            />
+          ) : null}
+        </span>
+        {title}
+      </span>
+      <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+    </button>
   );
 }

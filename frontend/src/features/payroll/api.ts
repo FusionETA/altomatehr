@@ -606,23 +606,6 @@ export type TabularImportResult = {
   errors: { row: number; message: string }[];
 };
 
-export const downloadPayrollEmployeeTemplate = (format: TabularFormat) =>
-  download(
-    `/payroll/employees/template?format=${format}`,
-    `payroll-employees-template.${format === "Csv" ? "csv" : "xlsx"}`,
-  );
-
-export const downloadPayrollEmployeeExport = (format: TabularFormat) =>
-  download(
-    `/payroll/employees/export?format=${format}`,
-    `payroll-employees.${format === "Csv" ? "csv" : "xlsx"}`,
-  );
-
-export function importPayrollEmployees(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  return apiPostForm<TabularImportResult>("/payroll/employees/import", form);
-}
 
 // ─── Loans ────────────────────────────────────────────────────────────
 

@@ -429,9 +429,9 @@ export const downloadLhdnForm = (id: string, kind: string, year: number | null) 
 
 // ─── Bulk import ──────────────────────────────────────────────────────
 //
-// Creating accounts and memberships — the step BEFORE the payroll employees
-// import, which fills in payroll fields for people who already exist and
-// refuses a row it cannot match.
+// The one employee spreadsheet: adds new people and bulk-updates everyone's
+// record — roster, profile, statutory and salary details. The XLSX leads with
+// a READ ME sheet explaining the blank-cell choice below.
 
 export type EmployeeImportResult = {
   ok: boolean;
@@ -441,8 +441,9 @@ export type EmployeeImportResult = {
   updated: number;
   errors: { row: number; message: string }[];
 
-  // Shown ONCE and stored nowhere. Existing people are absent: they already
-  // have a password and the import never touches it.
+  // Shown ONCE and stored nowhere. Existing people — and anyone whose account
+  // already existed in another company — are absent: they keep the password
+  // they have, and the import never touches it.
   createdAccounts: { email: string; name: string; password: string }[];
 };
 
@@ -454,8 +455,13 @@ export const downloadEmployeeImportTemplate = () =>
 export const downloadEmployeeExport = () =>
   apiGetFile("/employees/export", "employees.xlsx");
 
-export function importEmployees(file: File) {
+// What a blank cell does to someone who already exists. A column missing from
+// the file is left alone either way.
+export type EmployeeImportBlankCells = "Keep" | "Erase";
+
+export function importEmployees(file: File, blankCells: EmployeeImportBlankCells) {
   const form = new FormData();
   form.append("file", file);
+  form.append("blankCells", blankCells);
   return apiPostForm<EmployeeImportResult>("/employees/import", form);
 }

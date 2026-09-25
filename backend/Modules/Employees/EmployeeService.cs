@@ -297,13 +297,14 @@ public class EmployeeService : IEmployeeService
         // both lost the date AND triggered the accrual recompute below — so
         // changing somebody's role quietly rewrote their leave balance.
         var previousJoinDate = membership.JoinDate;
-        if (dto.JoinDate is not null) membership.JoinDate = dto.JoinDate.Value.Date;
+        if (dto.ClearJoinDate) membership.JoinDate = null;
+        else if (dto.JoinDate is not null) membership.JoinDate = dto.JoinDate.Value.Date;
         var joinDateChanged = previousJoinDate != membership.JoinDate;
         await _memberships.UpdateAsync(membership);
 
         // Null birthday: the edit form doesn't carry one, and null means
         // "leave unchanged" rather than clear it.
-        await SyncProfileDatesAsync(membership.UserId, dto.JoinDate, null);
+        await SyncProfileDatesAsync(membership.UserId, dto.JoinDate, null, dto.ClearJoinDate);
 
         // The one field on this form that decides what this person can
         // approve.
@@ -345,8 +346,22 @@ public class EmployeeService : IEmployeeService
     // employees import does: a member without one is a roster waiting to be
     // filled in, not an error.
     private async Task SyncProfileDatesAsync(
-        string userId, DateTime? joinDate, DateTime? dateOfBirth)
+        string userId, DateTime? joinDate, DateTime? dateOfBirth, bool clearJoinDate = false)
     {
+        // The explicit clear keeps the two join dates in step when one is
+        // erased, for the same reason they are synced when one is set.
+        if (clearJoinDate)
+        {
+            var existing = await _profiles.GetByUserAsync(userId);
+            if (existing?.JoinDate is not null)
+            {
+                existing.JoinDate = null;
+                existing.UpdatedAt = DateTime.UtcNow;
+                await _profiles.UpdateAsync(existing);
+            }
+            joinDate = null;
+        }
+
         // Null means "leave unchanged" for both, exactly as it does for the
         // membership above — neither must clear a date the profile already has.
         if (joinDate is null && dateOfBirth is null) return;
