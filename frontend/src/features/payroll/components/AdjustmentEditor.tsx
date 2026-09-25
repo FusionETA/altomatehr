@@ -244,8 +244,8 @@ export function AdjustmentEditor({
               {context?.employeeName ?? "Adjustments"}
             </h2>
             <p className={HINT}>
-              One-off changes for this month only. They survive a regeneration;
-              the payslip lines they produce do not.
+              One-off changes for this month only. They carry over when payroll is
+              re-run; the payslip lines are rebuilt from them.
             </p>
           </div>
           <button

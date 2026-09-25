@@ -279,7 +279,7 @@ public class PayrollRunStateMachineTests : IDisposable
         var result = await _service.SubmitForApprovalAsync(created.Run!.Id);
 
         Assert.False(result.Ok);
-        Assert.Contains("Generate", result.Error);
+        Assert.Contains("Run payroll", result.Error);
     }
 
     // The inputs moved after the payslips were built, so the figures about to

@@ -257,6 +257,11 @@ Nothing on the payslip is a placeholder any more.
 - Don't pay cash OT without checking the policy — `TIME_BANK` already credited
   the same hours as time off, and paying them again pays them twice.
 - Don't mutate an adjustment or attachment without `MarkMutatedAsync`.
+- Don't change anything a draft is built from OUTSIDE the run (an employee's
+  payroll profile, a loan, unpaid leave, approved OT, payroll settings, salary
+  history, YTD figures) without `IPayrollDraftStaleness` — otherwise the draft
+  keeps yesterday's figures and can still be submitted. The UI calls this
+  "Run payroll" / "Re-run payroll", as the previous system did.
 - Don't let a status change touch `LastMutatedAt`.
 - Don't revert a month without cascading to the later submitted months in its
   year — their year-to-date depends on it.

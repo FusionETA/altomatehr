@@ -70,7 +70,7 @@ export function PayrollRunsList({
             <h2 className="text-base font-semibold text-foreground">Start a payroll run</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               One run per month. Pick the period and which policies and employees to include —
-              nothing is calculated until you generate the draft.
+              nothing is calculated until you run payroll.
             </p>
           </div>
           <button type="button" className={BUTTON} onClick={() => setPickerOpen(true)}>
@@ -138,7 +138,7 @@ export function PayrollRunsList({
                       {run.isStale ? (
                         <span
                           className={`${BADGE} border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400`}
-                          title="Inputs changed since these payslips were generated"
+                          title="Something changed since payroll was run — re-run it"
                         >
                           <TriangleAlert className="size-3" aria-hidden />
                           Stale

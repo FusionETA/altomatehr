@@ -81,4 +81,27 @@ public class PayrollRunRepository : IPayrollRunRepository
         run.UpdatedAt = now;
         await _db.SaveChangesAsync();
     }
+
+    public async Task MarkDraftsMutatedAsync(
+        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods)
+    {
+        // Ungenerated drafts are skipped: with no payslips there is nothing to
+        // be behind, and flagging one would show a stale banner on an empty run.
+        var drafts = await _db.PayrollRuns
+            .Where(r => r.OrganizationId == organizationId
+                        && r.Status == PayrollRunStatus.DRAFT
+                        && r.GeneratedAt != null)
+            .ToListAsync();
+        if (periods is not null)
+            drafts = drafts.Where(r => periods.Contains((r.PeriodYear, r.PeriodMonth))).ToList();
+        if (drafts.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        foreach (var run in drafts)
+        {
+            run.LastMutatedAt = now;
+            run.UpdatedAt = now;
+        }
+        await _db.SaveChangesAsync();
+    }
 }

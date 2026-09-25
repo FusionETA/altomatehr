@@ -184,7 +184,7 @@ export function ImportAdjustmentsDialog({
             ) : null}
 
             <p className="text-xs text-muted-foreground">
-              Regenerate the payslips to see it on the run.
+              Re-run payroll to see it on the run.
             </p>
           </div>
         ) : null}

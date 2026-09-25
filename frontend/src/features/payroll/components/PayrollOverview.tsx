@@ -149,8 +149,8 @@ export function PayrollOverview({
         <Tile
           icon={TriangleAlert}
           count={stale.length}
-          label="Drafts behind their inputs"
-          detail="Regenerate before filing"
+          label="Drafts to re-run"
+          detail="Re-run payroll before filing"
           clearText="No stale drafts"
           tone="tertiary"
           onClick={() => onGo("runs")}
@@ -175,7 +175,7 @@ export function PayrollOverview({
                   <span
                     className={`${BADGE} border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400`}
                   >
-                    Behind its inputs
+                    Needs re-run
                   </span>
                 ) : null}
                 <span className="text-xs text-muted-foreground">

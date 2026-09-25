@@ -23,6 +23,9 @@ public class OvertimeService : IOvertimeService
     private readonly INotificationService _notifications;
     private readonly ITeamService _teams;
     private readonly Xero.IXeroFileReader _xero;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does.
+    private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     public OvertimeService(
         IOvertimeRepository requests,
@@ -31,8 +34,10 @@ public class OvertimeService : IOvertimeService
         IApprovalRouter router,
         INotificationService notifications,
         ITeamService teams,
-        Xero.IXeroFileReader xero)
+        Xero.IXeroFileReader xero,
+        Payroll.IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _requests = requests;
         _photos = photos;
         _supervision = supervision;
@@ -246,6 +251,15 @@ public class OvertimeService : IOvertimeService
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
+    // Approved overtime is paid through that month's payroll run, so a
+    // generated draft for its month is now behind. A step that only advanced
+    // the chain changes nothing yet.
+    private async Task MarkPayrollIfApprovedAsync(OvertimeRequest request)
+    {
+        if (_drafts is null || request.Status != OvertimeStatus.APPROVED) return;
+        await _drafts.MarkDraftsCoveringAsync(request.WorkDate, request.WorkDate);
+    }
+
     public async Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId)
     {
         var (request, error) = await AuthorizeAsync(id, approverId);
@@ -273,6 +287,7 @@ public class OvertimeService : IOvertimeService
 
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
+        await MarkPayrollIfApprovedAsync(request);
         await NotifyDecisionAsync(request, approved: true);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
@@ -344,6 +359,7 @@ public class OvertimeService : IOvertimeService
 
             request.UpdatedAt = now;
             await _requests.UpdateAsync(request);
+            await MarkPayrollIfApprovedAsync(request);
             items.Add(new OvertimeBulkResultItem(id, true));
         }
 

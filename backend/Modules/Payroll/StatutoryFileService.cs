@@ -132,7 +132,7 @@ public class StatutoryFileService : IStatutoryFileService
         if (model.Rows.Count == 0)
         {
             return StatutoryFileResult.Refused(
-                "Generate this run's payslips before downloading them.");
+                "Run payroll before downloading the payslips.");
         }
 
         // The YTD read is one query for the whole run, so it is hoisted out
@@ -269,7 +269,7 @@ public class StatutoryFileService : IStatutoryFileService
         if (model.Rows.Count == 0)
         {
             return StatutoryFileResult.Refused(
-                "Generate this run's payslips before downloading the PCB calculation details.");
+                "Run payroll before downloading the PCB calculation details.");
         }
 
         var details = new PcbDetailsModel

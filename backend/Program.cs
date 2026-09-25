@@ -297,6 +297,7 @@ builder.Services.AddScoped<IPayrollSettingsService, PayrollSettingsService>();
 builder.Services.AddScoped<IPayrollCompanyInfoRepository, PayrollCompanyInfoRepository>();
 builder.Services.AddScoped<IPayrollCompanyInfoService, PayrollCompanyInfoService>();
 builder.Services.AddScoped<IPayrollRunRepository, PayrollRunRepository>();
+builder.Services.AddScoped<IPayrollDraftStaleness, PayrollDraftStaleness>();
 builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
 builder.Services.AddScoped<IPayrollRunService, PayrollRunService>();
 builder.Services.AddScoped<IPayrollRunAdjustmentRepository, PayrollRunAdjustmentRepository>();

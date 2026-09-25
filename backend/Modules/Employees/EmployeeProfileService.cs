@@ -18,8 +18,10 @@ public class EmployeeProfileService : IEmployeeProfileService
         IEmployeeProfileRepository profiles,
         IOrganizationMembershipRepository memberships,
         IDirectoryService directory,
-        Payroll.ISalaryChangeService salaryChanges)
+        Payroll.ISalaryChangeService salaryChanges,
+        Payroll.IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _profiles = profiles;
         _memberships = memberships;
         _directory = directory;
@@ -27,6 +29,9 @@ public class EmployeeProfileService : IEmployeeProfileService
     }
 
     private readonly Payroll.ISalaryChangeService _salaryChanges;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See PayrollDraftStaleness for why saves here mark drafts.
+    private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
     {
@@ -73,6 +78,12 @@ public class EmployeeProfileService : IEmployeeProfileService
                 Notes = dto.SalaryChangeNotes,
             });
         }
+
+        // Any of ~30 fields here feeds the calculation (salary, EPF/SOCSO
+        // flags, reliefs, DOB, residency). Not diffed field by field, as in
+        // the previous system: a false positive costs one re-run, a miss ships
+        // wrong statutory figures.
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
 
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);

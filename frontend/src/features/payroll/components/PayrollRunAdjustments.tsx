@@ -102,8 +102,8 @@ export function PayrollRunAdjustments({
               <h2 className="text-base font-semibold text-foreground">One-off adjustments</h2>
               <p className={HINT}>
                 Overtime hours, a bonus, a deduction, or a change to someone's recurring
-                allowances — for this month only. These survive a regeneration; the payslip
-                lines they produce do not.
+                allowances — for this month only. These carry over when payroll is re-run;
+                the payslip lines are rebuilt from them.
               </p>
             </div>
 

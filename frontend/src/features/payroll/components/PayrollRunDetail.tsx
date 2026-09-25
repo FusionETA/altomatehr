@@ -171,11 +171,13 @@ export function PayrollRunDetailView({
         <div className={WARN_PANEL}>
           <p className="flex items-center gap-2 font-semibold">
             <TriangleAlert className="size-4" aria-hidden />
-            These payslips are behind their inputs
+            Run payroll again before submitting
           </p>
           <p className="mt-1">
-            An adjustment or an attached claim changed after this run was generated, so what is
-            shown below is not what it would produce now. Regenerate before filing.
+            Something this run uses changed after payroll was run — an employee's payroll
+            details, a loan, unpaid leave, overtime, payroll settings, an adjustment or an
+            attached claim. The figures below are from before that change. Re-run payroll to
+            bring them up to date.
           </p>
         </div>
       ) : null}

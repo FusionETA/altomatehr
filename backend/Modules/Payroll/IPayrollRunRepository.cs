@@ -41,4 +41,12 @@ public interface IPayrollRunRepository
     // generation. Touches only LastMutatedAt/UpdatedAt, so it cannot disturb
     // totals a caller happens to be holding.
     Task MarkMutatedAsync(string runId);
+
+    // The same stamp on every GENERATED draft of one org — all of them, or only
+    // those whose period is in `periods`. For inputs that live outside a run
+    // (an employee's profile, a loan, unpaid leave, payroll settings): a draft
+    // built before they changed is showing yesterday's numbers. The org is
+    // explicit, not left to the tenant filter, because that filter is a no-op
+    // without a current org and this must never reach another company's runs.
+    Task MarkDraftsMutatedAsync(string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods);
 }

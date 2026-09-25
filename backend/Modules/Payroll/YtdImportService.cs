@@ -17,6 +17,9 @@ public class YtdImportService : IYtdImportService
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
     private readonly IOrganizationRepository _organizations;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See PayrollDraftStaleness for why saves here mark drafts.
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public YtdImportService(
         IPayrollRunRepository runs,
@@ -24,8 +27,10 @@ public class YtdImportService : IYtdImportService
         IDirectoryService directory,
         ICurrentUser currentUser,
         IAuditService audit,
-        IOrganizationRepository organizations)
+        IOrganizationRepository organizations,
+        IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _runs = runs;
         _payslips = payslips;
         _directory = directory;
@@ -314,6 +319,8 @@ public class YtdImportService : IYtdImportService
                 SkippedMonths = blocked,
             }));
 
+        // Imported year-to-date figures move every later month's PCB.
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return new YtdImportResult(true, [], monthsImported, payslipsImported, unmatched,
             [.. blocked.Select(m => PayrollPeriodLabel.For(year, m))]);
     }

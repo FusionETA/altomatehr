@@ -112,7 +112,7 @@ export function PayrollRunActions({
     run.status !== "DRAFT" || payslipCount === 0
       ? null
       : run.isStale
-        ? "These payslips are behind their inputs. Regenerate them before sending for approval."
+        ? "Something this run uses changed after payroll was run. Re-run payroll before sending for approval."
         : blockingCount > 0
           ? `${blockingCount === 1 ? "1 required field needs" : `${blockingCount} required fields need`} fixing before this can be sent for approval.`
           : null;
@@ -148,7 +148,13 @@ export function PayrollRunActions({
                 onClick={() => void handleGenerate()}
               >
                 {spinner("generate")}
-                {run.generatedAt ? "Regenerate payslips" : "Generate payslips"}
+                {/* The previous system's words: the admin runs payroll, and
+                    re-runs it after something changes. */}
+                {busy === "generate"
+                  ? "Running payroll…"
+                  : run.generatedAt
+                    ? "Re-run payroll"
+                    : "Run payroll"}
               </button>
 
               {/* Only offered once there is something to submit. A button
@@ -300,7 +306,7 @@ export function PayrollRunActions({
             <p className="mt-1">
               These later months were calculated from this one's year-to-date figures and will
               go back to draft as well: <strong>{revertImpact.join(", ")}</strong>. Their
-              payslips are kept, so they can be regenerated and re-approved.
+              payslips are kept, so payroll can be re-run and re-approved.
             </p>
           ) : (
             <p className="mt-1">

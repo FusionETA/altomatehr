@@ -12,13 +12,18 @@ public class EmployeeLoanService : IEmployeeLoanService
     private readonly IPayrollRunRepository _runs;
     private readonly IDirectoryService _directory;
     private readonly IAuditService _audit;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See PayrollDraftStaleness for why saves here mark drafts.
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public EmployeeLoanService(
         IEmployeeLoanRepository loans,
         IPayrollRunRepository runs,
         IDirectoryService directory,
-        IAuditService audit)
+        IAuditService audit,
+        IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _loans = loans;
         _runs = runs;
         _directory = directory;
@@ -74,6 +79,8 @@ public class EmployeeLoanService : IEmployeeLoanService
                 loan.StartMonth,
             }));
 
+        // A draft built before this deducts the old instalment (or none).
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return ToDto(loan, await SubmittedPeriodsAsync(), await NamesAsync());
     }
 
@@ -112,6 +119,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             TargetId: loan.Id,
             Metadata: new { loan.PrincipalAmount, loan.InstallmentCount }));
 
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return ToDto(loan, submitted, await NamesAsync());
     }
 
@@ -131,6 +139,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             TargetId: loan.Id,
             Metadata: new { Status = status.ToString() }));
 
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return ToDto(loan, await SubmittedPeriodsAsync(), await NamesAsync());
     }
 
@@ -156,6 +165,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             TargetType: "EmployeeLoan",
             TargetId: id));
 
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return true;
     }
 

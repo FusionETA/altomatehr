@@ -18,6 +18,9 @@ public class SalaryChangeService : ISalaryChangeService
     private readonly IDirectoryService _directory;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See PayrollDraftStaleness for why saves here mark drafts.
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public SalaryChangeService(
         ISalaryChangeRepository changes,
@@ -27,8 +30,10 @@ public class SalaryChangeService : ISalaryChangeService
         IPayrollSettingsService settings,
         IDirectoryService directory,
         ICurrentUser currentUser,
-        IAuditService audit)
+        IAuditService audit,
+        IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _changes = changes;
         _runs = runs;
         _payslips = payslips;
@@ -93,6 +98,7 @@ public class SalaryChangeService : ISalaryChangeService
                 Reason = change.Reason.ToString(),
             }));
 
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
         return ToDto(change, await NamesAsync());
     }
 

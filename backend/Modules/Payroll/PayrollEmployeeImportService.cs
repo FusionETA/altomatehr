@@ -12,13 +12,18 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
     private readonly IEmployeeRowResolver _employees;
     private readonly IDirectoryService _directory;
     private readonly IAuditService _audit;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does.
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public PayrollEmployeeImportService(
         IEmployeeProfileRepository profiles,
         IEmployeeRowResolver employees,
         IDirectoryService directory,
-        IAuditService audit)
+        IAuditService audit,
+        IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _profiles = profiles;
         _employees = employees;
         _directory = directory;
@@ -185,6 +190,8 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
             TargetType: "EmployeeProfile",
             Metadata: new { Updated = updated, result.Skipped, Failed = result.Errors.Count }));
 
+        // A bulk fill writes the same payroll fields a profile save does.
+        if (updated > 0 && _drafts is not null) await _drafts.MarkAllDraftsAsync();
         return result;
     }
 

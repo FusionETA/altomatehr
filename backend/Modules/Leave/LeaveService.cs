@@ -45,6 +45,9 @@ public class LeaveService : ILeaveService
     private readonly IEmployeeRowResolver _employees;
     private readonly ITeamService _teams;
     private readonly IProjectService _projects;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does.
+    private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -62,8 +65,10 @@ public class LeaveService : ILeaveService
         INotificationService notifications,
         IEmployeeRowResolver employees,
         ITeamService teams,
-        IProjectService projects)
+        IProjectService projects,
+        Payroll.IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _apps = apps;
         _types = types;
         _supervision = supervision;
@@ -1025,6 +1030,7 @@ public class LeaveService : ILeaveService
         }
 
         await _apps.AddAsync(application);
+        await MarkPayrollIfUnpaidApprovedAsync(application);
         await NotifyAsync(application, RealtimeAction.SUBMITTED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(application), null);
     }
@@ -1052,6 +1058,7 @@ public class LeaveService : ILeaveService
         AppendTrail(app, app.CurrentStep, adminUserId, "ADMIN_APPLIED", dto.Reason);
         app.UpdatedAt = DateTime.UtcNow;
         await _apps.UpdateAsync(app);
+        await MarkPayrollIfUnpaidApprovedAsync(app);
 
         // The employee never asked for this, so their calendar/balance changing
         // out from under them is exactly the case live updates exist for.
@@ -1355,6 +1362,19 @@ public class LeaveService : ILeaveService
         return Math.Max(0, available - pending);
     }
 
+    // Approved UNPAID leave is docked from pay, so a generated payroll draft for
+    // any month it touches is now behind — mark it, so it has to be re-run
+    // before it can be submitted. Paid leave changes no figure, and flagging
+    // every annual-leave approval would bury the warnings that matter. Still-
+    // pending leave (a step advanced, not decided) changes nothing yet.
+    private async Task MarkPayrollIfUnpaidApprovedAsync(LeaveApplication app)
+    {
+        if (_drafts is null || app.Status != LeaveStatus.APPROVED) return;
+        var type = await _types.GetByIdAsync(app.LeaveTypeId);
+        if (type is null || type.Paid) return;
+        await _drafts.MarkDraftsCoveringAsync(app.StartDate, app.EndDate);
+    }
+
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
     {
         var (found, error) = await AuthorizeAsync(id, approverId);
@@ -1378,6 +1398,7 @@ public class LeaveService : ILeaveService
         }
         app.UpdatedAt = now;
         await _apps.UpdateAsync(app);
+        await MarkPayrollIfUnpaidApprovedAsync(app);
 
         // Still PENDING here means the chain advanced, so NotifyAsync also
         // reaches the next step's approver.
@@ -1446,6 +1467,7 @@ public class LeaveService : ILeaveService
 
             app.UpdatedAt = now;
             await _apps.UpdateAsync(app);
+            await MarkPayrollIfUnpaidApprovedAsync(app);
             approved.Add(app);
             items.Add(new LeaveBulkResultItem(id, true));
         }

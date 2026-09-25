@@ -8,9 +8,14 @@ public class PayrollSettingsService : IPayrollSettingsService
 {
     private readonly IPayrollSettingsRepository _repo;
     private readonly IAuditService _audit;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See PayrollDraftStaleness for why saves here mark drafts.
+    private readonly IPayrollDraftStaleness? _drafts;
 
-    public PayrollSettingsService(IPayrollSettingsRepository repo, IAuditService audit)
+    public PayrollSettingsService(
+        IPayrollSettingsRepository repo, IAuditService audit, IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _repo = repo;
         _audit = audit;
     }
@@ -67,6 +72,10 @@ public class PayrollSettingsService : IPayrollSettingsService
                 settings.HrdfRate,
                 settings.AutoApplySocsoEisRelief,
             }));
+
+        // EPF rates, the working-days rule and HRDF all change what a draft
+        // computes.
+        if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
 
         return ToDto(settings);
     }

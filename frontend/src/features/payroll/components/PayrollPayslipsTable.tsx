@@ -82,7 +82,7 @@ export function PayrollPayslipsTable({
   if (payslips.length === 0) {
     return (
       <section className={NOTE_PANEL}>
-        No payslips yet. Generate the run to produce them.
+        No payslips yet. Run payroll to produce them.
       </section>
     );
   }
