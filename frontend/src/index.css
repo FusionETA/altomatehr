@@ -239,6 +239,26 @@
   text-wrap: balance;
 }
 
+/* iOS Safari zooms the whole page in when a text field whose font is under
+   16px takes focus — and leaves it zoomed after you are done typing. Every
+   field here is text-sm (14px) or smaller, so tapping any of them on an
+   iPhone did it. On touch devices the fields render at 16px instead.
+
+   Not `maximum-scale=1` on the viewport: that also stops people pinch-zooming
+   on Android, which some need to read the screen at all.
+
+   Unlayered on purpose: Tailwind's `text-sm` lives in a cascade layer, and an
+   unlayered rule beats a layered one without `!important`. Fields that are
+   already larger (the OTP box's text-lg) are left alone — the point is a
+   16px minimum, not shrinking anything. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="hidden"]):not([class*="text-lg"], [class*="text-xl"], [class*="text-2xl"], [class*="text-3xl"], [class*="text-4xl"]),
+  textarea:not([class*="text-lg"], [class*="text-xl"], [class*="text-2xl"], [class*="text-3xl"], [class*="text-4xl"]),
+  select:not([class*="text-lg"], [class*="text-xl"], [class*="text-2xl"], [class*="text-3xl"], [class*="text-4xl"]) {
+    font-size: 16px;
+  }
+}
+
 /* WebKit draws its own clear button inside input[type="search"], which sat
    beside SearchInput's styled one and put two X's in every search field. The
    type stays — it is the right semantics and gives mobile keyboards a search
