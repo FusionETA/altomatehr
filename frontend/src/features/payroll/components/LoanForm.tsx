@@ -32,7 +32,9 @@ export function LoanForm({
   const now = new Date();
 
   const [employeeProfileId, setEmployeeProfileId] = useState(
-    existing?.employeeProfileId ?? employees[0]?.employeeProfileId ?? "",
+    existing?.employeeProfileId ??
+      employees.find((employee) => employee.hasPayrollProfile)?.employeeProfileId ??
+      "",
   );
   const [principal, setPrincipal] = useState(String(existing?.principalAmount ?? ""));
   const [mode, setMode] = useState<LoanRepaymentMode>(existing?.mode ?? "FIXED");
@@ -99,9 +101,9 @@ export function LoanForm({
 
       {locked ? (
         <div className={`${WARN_PANEL} mb-4`}>
-          Repayments have already been taken on this loan, so its terms are fixed — changing
-          them would restate months that are already filed. Cancel it instead to stop the
-          remaining deductions.
+          Repayments have already been taken on this loan, so the amount lent and the months
+          already filed are fixed. Use Re-plan on the loans list to change what is still owed,
+          or Pause to skip months.
         </div>
       ) : null}
 
@@ -116,7 +118,10 @@ export function LoanForm({
               value={employeeProfileId}
               disabled={existing !== null}
               onChange={(next) => next && setEmployeeProfileId(next)}
+              // Someone with no saved profile is listed under a stand-in id
+              // no payslip carries, so a loan against them would never deduct.
               options={employees.map((employee) => ({
+                disabled: !employee.hasPayrollProfile && existing === null,
                 value: employee.employeeProfileId,
                 label: employee.employeeNumber
                   ? `${employee.name} (${employee.employeeNumber})`
