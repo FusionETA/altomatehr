@@ -46,6 +46,7 @@ import type { Policy } from "@/features/policies/api";
 import { getProjects } from "@/features/settings/api";
 import { getMalaysianBanks } from "@/features/payroll/api";
 import { matchBank } from "../lib/malaysian-bank";
+import { NATIONALITIES } from "../lib/nationalities";
 import {
   addTeamMember,
   clearApproverOverride,
@@ -547,6 +548,22 @@ export function EmployeeDetail({
     setProfile((current) => (current ? { ...current, [key]: value } : current));
   }
 
+  // Nationality drives PR and tax residence, as in the previous system: a
+  // Malaysian citizen holds no PR (it is a status for non-citizens — leaving
+  // it on routed citizens over 60 into the wrong EPF part) and is always a
+  // tax resident. So picking Malaysian sets both, and the toggles lock.
+  function setNationality(value: string | null) {
+    setProfile((current) =>
+      current
+        ? {
+            ...current,
+            nationality: value,
+            ...(isMalaysianNationality(value) ? { hasPr: false, isResident: true } : {}),
+          }
+        : current,
+    );
+  }
+
   // Both lists live on the profile as a JSON string. Editing them as arrays
   // and serializing on every change keeps a single source of truth — the dirty
   // check and the save payload stay exactly what they were.
@@ -604,6 +621,9 @@ export function EmployeeDetail({
       const savedProfile = await saveEmployeeProfile(employee.id, {
         ...profile,
         epfEmployeeRate: epfInfo.employeeRate,
+        // Whatever an older record holds, a citizen is saved as the locked
+        // toggles show them.
+        ...(isMalaysianCitizen ? { hasPr: false, isResident: true } : {}),
       });
 
       setProfile(savedProfile);
@@ -844,7 +864,16 @@ export function EmployeeDetail({
                     <Text value={profile.idNumber} onChange={(v) => set("idNumber", v)} />
                   </Field>
                   <Field label="Nationality">
-                    <Text value={profile.nationality} onChange={(v) => set("nationality", v)} />
+                    <Picker
+                      value={profile.nationality}
+                      onChange={setNationality}
+                      allowNone
+                      placeholder="Not set"
+                      options={nationalityOptions(profile.nationality).map((n) => ({
+                        value: n,
+                        label: n,
+                      }))}
+                    />
                   </Field>
                   <Field label="Race">
                     <Text value={profile.race} onChange={(v) => set("race", v)} />
@@ -868,13 +897,20 @@ export function EmployeeDetail({
                 <Group title="Status" hint="These affect what payroll deducts." columns={3}>
                   <Toggle
                     label="Malaysian PR"
-                    checked={profile.hasPr}
+                    hint={isMalaysianCitizen ? "Citizens do not hold PR." : undefined}
+                    checked={isMalaysianCitizen ? false : profile.hasPr}
+                    disabled={isMalaysianCitizen}
                     onChange={(v) => set("hasPr", v)}
                   />
                   <Toggle
                     label="Tax resident"
-                    hint="Non-residents are taxed at a flat rate."
-                    checked={profile.isResident}
+                    hint={
+                      isMalaysianCitizen
+                        ? "A Malaysian citizen is always a tax resident."
+                        : "Non-residents are taxed at a flat rate."
+                    }
+                    checked={isMalaysianCitizen ? true : profile.isResident}
+                    disabled={isMalaysianCitizen}
                     onChange={(v) => set("isResident", v)}
                   />
                   <Toggle
@@ -2000,4 +2036,12 @@ export function EmployeeDetail({
       ) : null}
     </div>
   );
+}
+
+// The list, plus a value an older record holds that is not on it ("Malaysia",
+// "MY"), so it still shows and saves back unchanged rather than blanking.
+function nationalityOptions(current: string | null): string[] {
+  return current && !(NATIONALITIES as readonly string[]).includes(current)
+    ? [current, ...NATIONALITIES]
+    : [...NATIONALITIES];
 }
