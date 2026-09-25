@@ -69,19 +69,44 @@ public class ProjectsForMemberTests
         Assert.Equal(["Tower A"], mine.Select(p => p.Name));
     }
 
-    // Hand-made and Xero Projects-API projects have no tracking option, so no
-    // category to be switched away from. They stay.
+    // A picked category is the whole list, as in the previous system: a Xero
+    // Projects-API row is Xero's, but not the list the admin chose. GSL showed
+    // 26 of them beside its course category.
     [Fact]
-    public async Task GetForMemberAsync_KeepsProjectsThatDidNotComeFromACategory()
+    public async Task GetForMemberAsync_HidesAProjectsApiRowOnceACategoryIsActive()
     {
         var service = Create(
-            [Project("prj-manual", "Office"), FromCategory("prj-old", "Penang", "cat-regions")],
-            onProjects: ["prj-manual", "prj-old"],
+            [LegacyProjectsApi("prj-legacy", "Office"), FromCategory("prj-now", "Tower A", "cat-projects")],
+            onProjects: ["prj-legacy", "prj-now"],
             activeCategory: "cat-projects");
 
         var mine = await service.GetForMemberAsync("usr-emp");
 
-        Assert.Equal(["Office"], mine.Select(p => p.Name));
+        Assert.Equal(["Tower A"], mine.Select(p => p.Name));
+    }
+
+    // Connecting Xero archives every hand-made project that exists at that
+    // moment, but that sweep only runs once — a manual project made
+    // afterwards (or one it missed) has no Xero id of either kind, and once a
+    // category is actually active it has nowhere left to belong.
+    [Fact]
+    public async Task GetForMemberAsync_HidesAHandMadeProjectOnceACategoryIsActive()
+    {
+        var service = Create(
+            [Project("prj-manual", "Office")],
+            onProjects: ["prj-manual"],
+            activeCategory: "cat-projects");
+
+        Assert.Empty(await service.GetForMemberAsync("usr-emp"));
+    }
+
+    // Before Xero provides a real list, a hand-made project is all there is.
+    [Fact]
+    public async Task GetForMemberAsync_KeepsAHandMadeProjectWhenNoCategoryIsActive()
+    {
+        var service = Create([Project("prj-manual", "Office")], onProjects: ["prj-manual"]);
+
+        Assert.Single(await service.GetForMemberAsync("usr-emp"));
     }
 
     // Synced before the category was recorded: whether it is current can't be
@@ -113,14 +138,21 @@ public class ProjectsForMemberTests
     public async Task GetAllAsync_KeepsSwitchedOutProjectsButFlagsThem()
     {
         var service = Create(
-            [FromCategory("prj-new", "Tower A", "cat-projects"), FromCategory("prj-old", "Penang", "cat-regions")],
+            [
+                FromCategory("prj-new", "Tower A", "cat-projects"),
+                FromCategory("prj-old", "Penang", "cat-regions"),
+                Project("prj-manual", "Office"),
+            ],
             activeCategory: "cat-projects");
 
         var all = (await service.GetAllAsync()).ToDictionary(p => p.Id);
 
-        Assert.Equal(2, all.Count);
+        Assert.Equal(3, all.Count);
         Assert.False(all["prj-new"].HiddenByTrackingCategory);
         Assert.True(all["prj-old"].HiddenByTrackingCategory);
+        // The admin list still shows it — that's where it gets manually
+        // archived or reconciled — it is only flagged, same as the others.
+        Assert.True(all["prj-manual"].HiddenByTrackingCategory);
     }
 
     // The project a SAVE returns replaces the card in the list. Its site count
@@ -150,6 +182,9 @@ public class ProjectsForMemberTests
 
     private static Project FromCategory(string id, string name, string categoryId) =>
         new() { Id = id, Name = name, XeroTrackingOptionId = $"opt-{id}", XeroTrackingCategoryId = categoryId };
+
+    private static Project LegacyProjectsApi(string id, string name) =>
+        new() { Id = id, Name = name, XeroProjectId = $"xp-{id}" };
 
     private static Project Archived(string id, string name) =>
         new() { Id = id, Name = name, IsArchived = true };

@@ -837,6 +837,45 @@ public class PayslipCalculatorTests
         Assert.Equal(Money.Round2(plain.NetPay - 150m), withCp38.NetPay);
     }
 
+    // CP38 and Additional PCB are stated ringgit amounts, not monthly
+    // entitlements, so a mid-month joiner has the whole amount withheld — as
+    // the previous system did. Prorating them under-remits to LHDN.
+    [Theory]
+    [InlineData(PayrollAdjustmentCategories.DeductCp38)]
+    [InlineData(PayrollAdjustmentCategories.DeductAdditionalPcb)]
+    public void TaxInstalments_AreNotProratedForAMidMonthJoiner(string category)
+    {
+        var r = PayslipCalculator.Calculate(Make(
+            monthlySalary: 9000m,
+            joinDate: new DateTime(2026, 1, 16),
+            allowances: [Allowance(category, 150m)]));
+
+        Assert.True(r.ProratedFactor < 1m);
+        Assert.Equal(150m, r.TotalDeductions);
+    }
+
+    // Additional PCB (Employment Income) comes out of take-home pay like any
+    // cash deduction, but is held apart from Pcb: the MTD spec's X excludes
+    // "additional MTD requested by the employee", so folding it in would
+    // suppress next month's withholding. CP39 files Pcb + VoluntaryPcb.
+    [Fact]
+    public void AdditionalPcb_IsWithheldButKeptOffTheFormulaPcb()
+    {
+        var plain = PayslipCalculator.Calculate(Make(monthlySalary: 9000m));
+        var withExtra = PayslipCalculator.Calculate(Make(
+            monthlySalary: 9000m,
+            allowances: [Allowance(PayrollAdjustmentCategories.DeductAdditionalPcb, 200m)]));
+
+        Assert.Equal(200m, withExtra.VoluntaryPcb);
+        Assert.Equal(plain.Pcb, withExtra.Pcb);
+        Assert.Equal(0m, withExtra.Cp38);
+        Assert.Equal(200m, withExtra.TotalDeductions);
+        Assert.Equal(Money.Round2(plain.NetPay - 200m), withExtra.NetPay);
+        // Touches no wage base.
+        Assert.Equal(plain.EpfEmployee, withExtra.EpfEmployee);
+        Assert.Equal(plain.SocsoEmployee, withExtra.SocsoEmployee);
+    }
+
     // ─── TP1 declarations ───────────────────────────────────────────────
 
     // A TP1 item lowers chargeable income, hence the month's PCB, but takes

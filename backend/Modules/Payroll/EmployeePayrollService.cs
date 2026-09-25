@@ -42,7 +42,8 @@ public class EmployeePayrollService : IEmployeePayrollService
             EpfEmployee = row.Payslip.EpfEmployee,
             SocsoEmployee = row.Payslip.SocsoEmployee,
             EisEmployee = row.Payslip.EisEmployee,
-            Pcb = row.Payslip.Pcb,
+            // Tax withheld, so Additional PCB is included — matches the detail view.
+            Pcb = row.Payslip.Pcb + row.Payslip.VoluntaryPcb,
             SubmittedAt = row.Run.SubmittedAt,
         })];
     }

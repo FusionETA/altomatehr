@@ -235,6 +235,9 @@ export type Payslip = {
   pcbAdditional: number;
   pcbCalculationJson: string | null;
   cp38: number;
+  // Additional PCB (Employment Income). Kept off `pcb` so next month's
+  // formula ignores it, but withheld and filed WITH it — show `pcb + voluntaryPcb`.
+  voluntaryPcb: number;
   zakat: number;
   hrdf: number;
   hrdfWage: number;
@@ -516,13 +519,16 @@ export const downloadBankFile = (
 export type HlbChannel = "ConnectFirst" | "ConnectBiz";
 
 export const downloadEpfCsv = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/epf`, "epf.csv");
+  download(`/payroll/runs/${runId}/files/epf`, "EPF_iAkaun.csv");
 
 export const downloadPerkesoTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/socso-eis`, "socso-eis.txt");
+  download(`/payroll/runs/${runId}/files/socso-eis`, "SOCSO_EIS.txt");
+
+export const downloadPerkesoSkbbkTxt = (runId: string) =>
+  download(`/payroll/runs/${runId}/files/socso-eis-skbbk`, "SOCSO_EIS_SKBBK.txt");
 
 export const downloadPcbTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/pcb`, "pcb.txt");
+  download(`/payroll/runs/${runId}/files/pcb`, "PCB.txt");
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
@@ -759,6 +765,11 @@ export type PayrollAnnualPayload = {
   // unset, which the TXT renderers treat as a refusal.
   employerNo: string;
   employees: AnnualEmployeeRow[];
+  // Months (1–12) with an approved run. The forms cover the whole year, so
+  // they can only be produced once `canGenerate` — all twelve approved.
+  submittedMonths: number[];
+  missingMonths: number[];
+  canGenerate: boolean;
 };
 
 export const getAnnualReportKinds = () =>
@@ -866,6 +877,7 @@ export type AdjustmentCategory = {
   cashNeutral: boolean;
   feedsLp1Relief: boolean;
   addsToCp38Field: boolean;
+  addsToStandardPcb: boolean;
   isAdditionalRemuneration: boolean;
   offsetsPcb: boolean;
   // A benefit in kind: never reaches cash, still taxable income on Form EA.

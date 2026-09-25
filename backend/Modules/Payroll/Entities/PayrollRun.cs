@@ -68,14 +68,15 @@ public class PayrollRun : ITenantScoped
 
     public DateTime? SubmittedForApprovalAt { get; set; }
 
-    [MaxLength(40)]
+    // 64 fits an API-key caller's "apikey:<guid>" as well as a user id.
+    [MaxLength(64)]
     public string? SubmittedForApprovalById { get; set; }
 
     // When the run went live. This is the timestamp every later run's YTD
     // depends on, because GetYtdByEmployeeAsync counts SUBMITTED runs only.
     public DateTime? SubmittedAt { get; set; }
 
-    [MaxLength(40)]
+    [MaxLength(64)]
     public string? SubmittedById { get; set; }
 
     // Why an approver sent a pending run back. Kept on the run after it

@@ -26,6 +26,17 @@ public sealed record PayrollAnnualPayload
     // One row per employee, ordered by employee code so regenerating a file
     // produces the same bytes.
     public IReadOnlyList<AnnualEmployeeRow> Employees { get; init; } = [];
+
+    // Which months of the year have an APPROVED (submitted) run, 1–12.
+    public IReadOnlyList<int> SubmittedMonths { get; init; } = [];
+
+    public IReadOnlyList<int> MissingMonths =>
+        [.. Enumerable.Range(1, 12).Where(m => !SubmittedMonths.Contains(m))];
+
+    // The annual forms declare the whole January–December year, so — as in
+    // the previous system — none is produced until all twelve months are
+    // approved. A return built on eleven months would under-declare.
+    public bool CanGenerate => MissingMonths.Count == 0;
 }
 
 // One employee's whole year, summed across the SUBMITTED runs.

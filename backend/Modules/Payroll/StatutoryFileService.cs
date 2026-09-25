@@ -38,11 +38,19 @@ public class StatutoryFileService : IStatutoryFileService
         _settings = settings;
     }
 
+    // The file name carries the day it was generated. UTC, because the previous
+    // system dated it off its server clock and that server (Vercel) runs in
+    // UTC — so between midnight and 8am Malaysian time it named the file with
+    // the previous day, and so does this.
     public async Task<StatutoryFileResult> RenderEpfCsvAsync(string runId) =>
-        await RenderAsync(runId, EpfContributionCsv.Render);
+        await RenderAsync(runId, payload =>
+            EpfContributionCsv.Render(payload, DateOnly.FromDateTime(DateTime.UtcNow)));
 
     public async Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId) =>
-        await RenderAsync(runId, PerkesoContributionTxt.Render);
+        await RenderAsync(runId, payload => PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis));
+
+    public async Task<StatutoryFileResult> RenderPerkesoSkbbkTxtAsync(string runId) =>
+        await RenderAsync(runId, payload => PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEisSkbbk));
 
     public async Task<StatutoryFileResult> RenderPcbTxtAsync(string runId) =>
         await RenderAsync(runId, PcbCp39Txt.Render);
@@ -144,13 +152,21 @@ public class StatutoryFileService : IStatutoryFileService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
                 StringComparer.Ordinal);
 
+        // Two employees can sanitise to the same name; the second becomes
+        // "…_2.pdf", as the previous system numbered them.
+        var used = new HashSet<string>(StringComparer.Ordinal);
+
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
             foreach (var row in model.Rows)
             {
-                var entry = archive.CreateEntry(
-                    PayslipFileName(model, row), CompressionLevel.Optimal);
+                var baseName = PayslipFileName(model, row);
+                var name = baseName;
+                for (var n = 2; !used.Add(name); n++)
+                    name = baseName[..^".pdf".Length] + $"_{n}.pdf";
+
+                var entry = archive.CreateEntry(name, CompressionLevel.Optimal);
 
                 await using var stream = entry.Open();
                 var pdf = PayslipPdf.Render(BuildPayslipModel(model, row, ytd, lineItems));
@@ -158,7 +174,7 @@ public class StatutoryFileService : IStatutoryFileService
             }
         }
 
-        var fileName = $"payslips-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.zip";
+        var fileName = $"Payslips_{model.Run.PeriodYear}_{model.Run.PeriodMonth:D2}_All.zip";
         return new StatutoryFileResult(true, fileName, buffer.ToArray(), "application/zip", null);
     }
 
@@ -166,7 +182,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "summary", "payslips", "epf", "socso-eis", "pcb"];
+        ["bank-file", "summary", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -226,6 +242,7 @@ public class StatutoryFileService : IStatutoryFileService
             "payslips" => RenderAllPayslipsZipAsync(runId),
             "epf" => RenderEpfCsvAsync(runId),
             "socso-eis" => RenderPerkesoTxtAsync(runId),
+            "socso-eis-skbbk" => RenderPerkesoSkbbkTxtAsync(runId),
             "pcb" => RenderPcbTxtAsync(runId),
             _ => Task.FromResult(NotFound()),
         };
@@ -237,9 +254,28 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
         if (RefuseIfImported(model.Run) is { } imported) return imported;
 
-        var fileName = $"payroll-summary-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.pdf";
+        if (model.Rows.Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "Run payroll before downloading the summary — there are no payslips on this run.");
+        }
+
+        // The summary itemises every payslip's lines under the employee's name.
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(model.Run.Id))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+
+        var summary = model with
+        {
+            LineItems = lineItems,
+            GeneratedAt = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(
+                DateTime.UtcNow, Attendance.AttendanceTime.DefaultTimeZone),
+        };
+
+        var fileName = $"Payroll_Summary_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
-            true, fileName, PayrollSummaryPdf.Render(model), PayrollSummaryPdf.ContentType, null);
+            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
     }
 
     public async Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId)
@@ -249,7 +285,7 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
         if (RefuseIfImported(model.Run) is { } imported) return imported;
 
-        var fileName = $"payment-schedule-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.pdf";
+        var fileName = $"Payment_Schedule_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
             true, fileName, PaymentSchedulePdf.Render(model), PaymentSchedulePdf.ContentType, null);
     }
@@ -279,7 +315,7 @@ public class StatutoryFileService : IStatutoryFileService
             Employees = [.. model.Rows.Select(ToPcbDetailsEmployee)],
         };
 
-        var fileName = $"pcb-calculation-details-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.pdf";
+        var fileName = $"PCB_Calculation_Details_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
             true, fileName, PcbCalculationDetailsPdf.Render(details),
             PcbCalculationDetailsPdf.ContentType, null);
@@ -291,6 +327,7 @@ public class StatutoryFileService : IStatutoryFileService
         Position = row.Payslip.SnapshotPosition,
         EmployeeCode = row.EmployeeCode,
         Breakdown = DeserialiseBreakdown(row.Payslip.PcbCalculationJson),
+        VoluntaryPcb = row.Payslip.VoluntaryPcb,
     };
 
     // A snapshot that will not parse is a missing working, not a crash. The
@@ -393,26 +430,31 @@ public class StatutoryFileService : IStatutoryFileService
 
     private static StatutoryFileResult NotFound() => new(false, null, null, null, null);
 
-    // Sortable and recognisable inside a ZIP, and safe on both Windows and
-    // macOS — an employee name can legally contain characters neither will
-    // accept in a filename.
+    // The previous system's names: "Payroll_Summary_January_2026.pdf".
+    private static string MonthYear(Entities.PayrollRun run) =>
+        $"{System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(run.PeriodMonth)}_{run.PeriodYear}";
+
+    // {employeeId}_{name}_{MM-YYYY}.pdf, the previous system's pattern, off the
+    // payslip's SNAPSHOT identity as it did — so the file an employee was
+    // emailed keeps its name after they are renamed.
     private static string PayslipFileName(PayrollDocumentModel model, StatutoryEmployeeRow row)
     {
-        var code = Sanitise(row.EmployeeCode);
-        var name = Sanitise(row.EmployeeName);
+        var id = SanitiseFileName(row.Payslip.SnapshotEmployeeNumber ?? string.Empty);
+        var name = SanitiseFileName(row.Payslip.SnapshotName);
         var period = $"{model.Run.PeriodMonth:D2}-{model.Run.PeriodYear}";
 
-        var stem = string.IsNullOrEmpty(code) ? name : $"{code}_{name}";
-        return $"{(string.IsNullOrEmpty(stem) ? "payslip" : stem)}_{period}.pdf";
+        return $"{(id.Length == 0 ? "Employee" : id)}_{(name.Length == 0 ? "Unnamed" : name)}_{period}.pdf";
     }
 
-    private static string Sanitise(string value)
+    // Drop the characters Windows rejects, turn whitespace runs into "_",
+    // collapse repeated "_", trim them off the ends, cap at 80 — exactly the
+    // previous system's sanitiser.
+    private static string SanitiseFileName(string raw)
     {
-        var cleaned = new string(value
-            .Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : ' ')
-            .ToArray());
-
-        return string.Join('_', cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var kept = new string(raw.Where(c => c is not ('<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*')).ToArray());
+        var underscored = System.Text.RegularExpressions.Regex.Replace(kept, @"\s+", "_");
+        var collapsed = System.Text.RegularExpressions.Regex.Replace(underscored, "_+", "_").Trim('_');
+        return collapsed.Length > 80 ? collapsed[..80] : collapsed;
     }
 
     private async Task<(PayslipPdfModel Model, PayslipYtdSummary Ytd)> BuildPayslipAsync(
@@ -506,7 +548,12 @@ public class StatutoryFileService : IStatutoryFileService
         var rows = payslips
             .Select(p => ToRow(p, profiles.GetValueOrDefault(p.EmployeeProfileId), users, memberships))
             // Stable order so regenerating a file produces the same bytes.
-            .OrderBy(r => r.EmployeeCode, StringComparer.Ordinal)
+            // Culture-aware like the previous system's localeCompare, so the
+            // rows come out in the order it filed them ("emp2" beside "EMP1").
+            // Ties fall back to the snapshot employee number — the order the
+            // previous system loaded payslips in before its stable sort.
+            .OrderBy(r => r.EmployeeCode, StringComparer.InvariantCulture)
+            .ThenBy(r => r.Payslip.SnapshotEmployeeNumber, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.EmployeeName, StringComparer.Ordinal)
             .ToList();
 
@@ -538,7 +585,8 @@ public class StatutoryFileService : IStatutoryFileService
         return new StatutoryEmployeeRow
         {
             Payslip = payslip,
-            EmployeeName = string.IsNullOrWhiteSpace(name) ? payslip.SnapshotName : name,
+            // The live name even when blank, as the previous system took it.
+            EmployeeName = name,
             EmployeeCode = membership?.EmployeeNumber
                            ?? payslip.SnapshotEmployeeNumber
                            ?? string.Empty,

@@ -145,6 +145,7 @@ public class PayslipDto
     // payslips generated before phase 6. See PcbBreakdown.
     public string? PcbCalculationJson { get; set; }
     public decimal Cp38 { get; set; }
+    public decimal VoluntaryPcb { get; set; }
     public decimal Zakat { get; set; }
     public decimal Hrdf { get; set; }
     public decimal HrdfWage { get; set; }

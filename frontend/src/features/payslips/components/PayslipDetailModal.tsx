@@ -87,7 +87,8 @@ export function PayslipDetailModal({
               {payslip.skbbkEmployee > 0 ? (
                 <Row label="SKBBK" value={payslip.skbbkEmployee} />
               ) : null}
-              <Row label="PCB (tax)" value={payslip.pcb} />
+              {/* Includes Additional PCB — withheld and filed as PCB. */}
+              <Row label="PCB (tax)" value={payslip.pcb + payslip.voluntaryPcb} />
               {payslip.cp38 > 0 ? <Row label="CP38" value={payslip.cp38} /> : null}
               {payslip.zakat > 0 ? <Row label="Zakat" value={payslip.zakat} /> : null}
               {payslip.totalDeductions > 0 ? (

@@ -65,6 +65,15 @@ public sealed record PayrollAdjustmentCategoryMeta
     // month's withholding.
     public bool AddsToCp38Field { get; init; }
 
+    // Additional PCB (Employment Income): a manual top-up the admin adds to the
+    // month's PCB. Comes out of take-home pay like any cash deduction and is
+    // remitted in CP39's STANDARD PCB field (no column of its own — that is
+    // what separates it from CP38). Held apart from `Payslip.Pcb` in
+    // `Payslip.VoluntaryPcb` for the same reason as CP38: the MTD spec's X
+    // excludes "additional Monthly Tax Deduction requested by the employee",
+    // so folding it in would suppress next month's withholding.
+    public bool AddsToStandardPcb { get; init; }
+
     // A one-off payment. LHDN taxes it as the delta it adds to annual chargeable
     // income rather than projecting it across the remaining months, so a RM
     // 10,000 bonus is not withheld against as a RM 10,000/month salary.
@@ -130,6 +139,7 @@ public static class PayrollAdjustmentCategories
     public const string DeductLoanRepayment = "deduct_loan_repayment";
     public const string DeductMiscellaneous = "deduct_miscellaneous";
     public const string DeductCp38 = "deduct_cp38";
+    public const string DeductAdditionalPcb = "deduct_additional_pcb";
     public const string DeductZakat = "deduct_zakat";
     public const string DeductZakatTp1 = "deduct_zakat_tp1";
     public const string DeductTp1 = "deduct_tp1";
@@ -550,6 +560,24 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 AddsToCp38Field = true,
+                // A stated ringgit amount from LHDN's order, not a monthly
+                // entitlement — prorating it would under-remit for a mid-month
+                // joiner or leaver.
+                SkipProration = true,
+            },
+
+            // The employee asked for extra tax to be withheld, or an
+            // under-deduction is being trued up. Touches no wage base.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductAdditionalPcb,
+                Label = "Additional PCB",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                AddsToStandardPcb = true,
+                // A stated ringgit amount, not a monthly entitlement.
+                SkipProration = true,
             },
 
             // Zakat deducted through payroll and remitted to the zakat centre by

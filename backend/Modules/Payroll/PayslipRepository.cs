@@ -134,7 +134,9 @@ public class PayslipRepository : IPayslipRepository
                     EisEmployee = g.Sum(p => p.EisEmployee),
                     EisEmployer = g.Sum(p => p.EisEmployer),
                     SkbbkEmployee = g.Sum(p => p.SkbbkEmployee),
-                    Pcb = g.Sum(p => p.Pcb),
+                    // Tax actually withheld, so Additional PCB is included —
+                    // unlike the MTD formula's X, which must exclude it.
+                    Pcb = g.Sum(p => p.Pcb + p.VoluntaryPcb),
                     Hrdf = g.Sum(p => p.Hrdf),
                 },
                 StringComparer.Ordinal);

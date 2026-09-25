@@ -32,8 +32,9 @@ public class AuditLog : ITenantScoped
     // Email and name are COPIED rather than joined: an audit row has to still
     // say who did it after that employee is renamed or removed, and a join would
     // quietly rewrite history when they are.
-    [MaxLength(40)]
-    public string? ActorUserId { get; set; }                // null for system/API actors
+    // 64, not 40: an API-key caller is "apikey:<guid>" (43 chars).
+    [MaxLength(64)]
+    public string? ActorUserId { get; set; }                // user id, "apikey:<id>", or null for system
 
     [MaxLength(20)]
     public string? ActorRole { get; set; }

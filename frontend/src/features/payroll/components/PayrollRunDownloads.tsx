@@ -8,6 +8,7 @@ import {
   downloadPayrollSummary,
   downloadPcbDetails,
   downloadPcbTxt,
+  downloadPerkesoSkbbkTxt,
   downloadPerkesoTxt,
   emailRunPayslips,
   getPayrollSettings,
@@ -28,6 +29,7 @@ import {
   LABEL,
 } from "../lib/ui";
 import { CheckBox } from "./PayrollCheckbox";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { ModalPortal } from "./ModalPortal";
 
 // Everything a generated run produces, behind one button.
@@ -107,11 +109,20 @@ const ITEMS: Item[] = [
   {
     key: "perkeso",
     group: "STATUTORY",
-    title: "SOCSO + EIS Contribution TXT",
+    title: "SOCSO + EIS Contribution TXT (v1)",
     description:
-      "The combined PERKESO upload, 278-char fixed width. Which layout it uses is decided by the PERIOD — SKBBK from June 2026 — so an older month files under the rules it was paid under.",
-    portal: "PERKESO ASSIST",
+      "Combined SOCSO + EIS upload (278-char fixed-width per PERKESO spec v1.0). Use this for periods before Jun 2026, or during the v1/v2 grace window (Jun-Sep 2026).",
+    portal: "PERKESO ASSIST Portal",
     download: (runId) => downloadPerkesoTxt(runId),
+  },
+  {
+    key: "perkeso-skbbk",
+    group: "STATUTORY",
+    title: "SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)",
+    description:
+      "Combined SOCSO + EIS + SKBBK (LINDUNG 24 Jam) upload (278-char fixed-width per PERKESO ASSIST 2.0 spec). Mandatory from Jun 2026 onward; until then PERKESO accepts either format.",
+    portal: "PERKESO ASSIST 2.0 Portal",
+    download: (runId) => downloadPerkesoSkbbkTxt(runId),
   },
   {
     key: "pcb",
@@ -281,6 +292,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailResult, setEmailResult] = useState<PayslipEmailBulkResult | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   // The bank file embeds a value date, so it is picked rather than assumed.
   // Defaults to the last day of the period — the conventional pay date, and
@@ -387,7 +399,12 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   }
 
   async function sendAllPayslips() {
-    if (!window.confirm(`Email every payslip on ${run.periodLabel} to its employee?`)) return;
+    const ok = await confirm({
+      title: `Email every payslip on ${run.periodLabel}?`,
+      message: "Each employee is sent their own payslip. This can't be recalled once sent.",
+      confirmLabel: "Send payslips",
+    });
+    if (!ok) return;
 
     setEmailBusy(true);
     setEmailError(null);
@@ -405,6 +422,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   return (
     <ModalPortal label={`Download files for ${run.periodLabel}`} onClose={onClose}>
+      {confirmDialog}
       <header className="flex items-start justify-between gap-4 border-b border-border/60 p-6">
         <div>
           <h2 className="text-xl font-semibold text-foreground">

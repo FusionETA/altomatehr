@@ -30,11 +30,13 @@ namespace AltomateHR.Api.Modules.Payroll;
 //   119-126  CP38 amount, sen        8 numeric, zero-pad
 //   127-136  Employee/payroll number 10 alphanumeric, left
 //
-// Two notes carried over from the reference, both deliberate:
+// Notes carried over from the reference, all deliberate:
 //
 //   • Old IC is left BLANK. The code this was ported from wrote the New IC
 //     into both slots, which is wrong — an employee with no old-format IC
 //     would be filed as having one.
+//   • The PCB field carries Pcb + VoluntaryPcb (Additional PCB), which has
+//     no column of its own.
 //   • CP38 is a court-ordered arrears instalment and is filed SEPARATELY
 //     from PCB. A row with CP38 but no PCB still belongs in the file, which
 //     is why the skip test below checks both.
@@ -80,7 +82,10 @@ public static class PcbCp39Txt
 
         foreach (var row in payload.Rows)
         {
-            var pcbSen = StatutoryFileFields.ToSen(row.Payslip.Pcb);
+            // Additional PCB has no CP39 column of its own — LHDN takes it in
+            // the standard PCB field, as the previous system filed it. CP38
+            // keeps its own column below.
+            var pcbSen = StatutoryFileFields.ToSen(row.Payslip.Pcb + row.Payslip.VoluntaryPcb);
             var cp38Sen = StatutoryFileFields.ToSen(row.Payslip.Cp38);
 
             // Nothing withheld from this person — LHDN does not want the row.
@@ -104,8 +109,11 @@ public static class PcbCp39Txt
                 .Append(StatutoryFileFields.PadRight(string.Empty, 12))   // Old IC — see above
                 .Append(StatutoryFileFields.PadRight(newIc, 12))
                 .Append(StatutoryFileFields.PadRight(passport, 12))
+                // Country code belongs to the passport: blank for a local, as
+                // the previous system filed it.
                 .Append(StatutoryFileFields.PadRight(
-                    StatutoryFileFields.CountryCodeForNationality(row.Nationality), 2))
+                    IsMalaysian(row) ? string.Empty
+                        : StatutoryFileFields.CountryCodeForNationality(row.Nationality), 2))
                 .Append(StatutoryFileFields.PadZero(pcbSen, 8))
                 .Append(StatutoryFileFields.PadZero(cp38Sen, 8))
                 .Append(StatutoryFileFields.PadRight(row.EmployeeCode.Trim(), 10));
@@ -138,7 +146,7 @@ public static class PcbCp39Txt
                    + StatutoryFileFields.LineEnding
                    + details;
 
-        var fileName = $"pcb-cp39-{payload.Run.PeriodYear}-{payload.Run.PeriodMonth:D2}.txt";
+        var fileName = $"PCB_{StatutoryFileFields.PeriodMmYyyy(payload.Run.PeriodYear, payload.Run.PeriodMonth)}.txt";
         return StatutoryFileResult.Text(fileName, text, ContentType);
     }
 
@@ -152,8 +160,8 @@ public static class PcbCp39Txt
         StatutoryEmployeeRow row, out string taxRef, out string newIc, out string passport)
     {
         taxRef = StatutoryFileFields.NormaliseTaxRef(row.IncomeTaxNumber);
-        newIc = row.IsLocalOrPr ? StatutoryFileFields.DigitsOnly(row.IdNumber) : string.Empty;
-        passport = row.IsLocalOrPr
+        newIc = IsMalaysian(row) ? StatutoryFileFields.DigitsOnly(row.IdNumber) : string.Empty;
+        passport = IsMalaysian(row)
             ? string.Empty
             : StatutoryFileFields.AlphanumericOnly(row.IdNumber);
 
@@ -174,17 +182,17 @@ public static class PcbCp39Txt
                  + "LHDN needs exactly 11 digits, including any leading zero.";
         }
 
-        if (row.IsLocalOrPr && newIc.Length == 0) return $"{who} has no IC number.";
+        if (IsMalaysian(row) && newIc.Length == 0) return $"{who} has no IC number.";
 
         // A new IC is always 12 digits. A shorter one here is a passport with
         // its letter stripped, which is how a 7-digit "IC" reached LHDN.
-        if (row.IsLocalOrPr && newIc.Length != 12)
+        if (IsMalaysian(row) && newIc.Length != 12)
         {
             return $"{who} has a {newIc.Length}-digit IC number ({row.IdNumber}); a Malaysian IC "
                  + "is 12 digits. If this is a passport, set the ID type to Passport.";
         }
 
-        if (!row.IsLocalOrPr && passport.Length == 0) return $"{who} has no passport number.";
+        if (!IsMalaysian(row) && passport.Length == 0) return $"{who} has no passport number.";
         if (string.IsNullOrWhiteSpace(row.EmployeeCode))
         {
             return $"{row.EmployeeName} has no employee number.";
@@ -192,6 +200,15 @@ public static class PcbCp39Txt
 
         return null;
     }
+
+    // Local (New IC) vs foreign (passport + country code), by the previous
+    // system's exact PCB rule: a PASSPORT id type wins, then PR or a
+    // nationality of exactly "malaysian" (any case, NOT trimmed). Narrower
+    // than `IsLocalOrPr`, which trims — kept apart so this file's bytes match
+    // what was filed before.
+    private static bool IsMalaysian(StatutoryEmployeeRow row) =>
+        row.IdType != Employees.Entities.IdType.PASSPORT
+        && (row.HasPr || (row.Nationality ?? string.Empty).ToLowerInvariant() == "malaysian");
 
     private static string Exactly(string line, int width) =>
         line.Length == width ? line : line.PadRight(width, ' ')[..width];

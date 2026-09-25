@@ -14,6 +14,10 @@ import type { EmployeeProfile } from "../api";
 //   - a salary figure for whichever basis the person is on, and a join date
 //     (first/last month proration)
 //   - the statutory numbers, but only for the schemes they actually contribute to
+//   - an employee number: LHDN's CP39 has a mandatory employee-number column,
+//     and the run refuses submission without one. The previous system could
+//     never lack it (its employee id was non-nullable); here it is optional on
+//     the membership, so it has to be asked for.
 //
 // Deliberately NOT required, matching the previous system: address (foreign
 // workers and new joiners often have none captured yet), income tax number
@@ -28,13 +32,18 @@ function present(value: unknown): boolean {
   return typeof value === "string" ? value.trim().length > 0 : true;
 }
 
+// What the rules need from outside the profile record. The employee number
+// lives on the org membership, not the profile, so it is passed in — the
+// value as currently typed, so the red outline clears as the admin fills it.
+export type ProfileContext = { employeeNumber?: string | null };
+
 // One rule per required field: when it applies, and whether it is filled.
 // `label` is the field's label on the form — the same words the "Still needed
 // here" banner prints, and what `Field` matches itself against to mark the box.
 type Rule = {
   label: string;
   applies: (p: EmployeeProfile) => boolean;
-  filled: (p: EmployeeProfile) => boolean;
+  filled: (p: EmployeeProfile, ctx: ProfileContext) => boolean;
 };
 
 const always = () => true;
@@ -76,9 +85,11 @@ const RULES: Record<SectionId, Rule[]> = {
       filled: (p) => present(p.socsoNumber),
     },
   ],
-  // "company" is never gated: role and policy always hold a value, and where
-  // someone sits in the org is not what stops payroll from running.
-  company: [],
+  // Role and policy always hold a value, so only the employee number is gated
+  // — the one field here a statutory file (CP39) cannot go without.
+  company: [
+    { label: "Employee number", applies: always, filled: (_p, ctx) => present(ctx.employeeNumber) },
+  ],
   documents: [],
 };
 
@@ -88,18 +99,26 @@ export function requiredFields(profile: EmployeeProfile, section: SectionId): st
 }
 
 /** What each section is still missing, in the admin's words. */
-export function missingFields(profile: EmployeeProfile, section: SectionId): string[] {
+export function missingFields(
+  profile: EmployeeProfile,
+  section: SectionId,
+  ctx: ProfileContext = {},
+): string[] {
   return RULES[section]
-    .filter((r) => r.applies(profile) && !r.filled(profile))
+    .filter((r) => r.applies(profile) && !r.filled(profile, ctx))
     .map((r) => r.label);
 }
 
-export function isSectionComplete(profile: EmployeeProfile, section: SectionId) {
-  return missingFields(profile, section).length === 0;
+export function isSectionComplete(
+  profile: EmployeeProfile,
+  section: SectionId,
+  ctx: ProfileContext = {},
+) {
+  return missingFields(profile, section, ctx).length === 0;
 }
 
-/** Every section satisfied — the same bar payroll uses to include someone in a run. */
-export function isReadyForPayroll(profile: EmployeeProfile) {
+/** Every section satisfied — what payroll needs to include someone in a run and submit it. */
+export function isReadyForPayroll(profile: EmployeeProfile, ctx: ProfileContext = {}) {
   const sections: SectionId[] = ["personal", "employment", "statutory", "company"];
-  return sections.every((s) => isSectionComplete(profile, s));
+  return sections.every((s) => isSectionComplete(profile, s, ctx));
 }

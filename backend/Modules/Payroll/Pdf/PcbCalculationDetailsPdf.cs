@@ -106,7 +106,7 @@ public static class PcbCalculationDetailsPdf
 
             if (breakdown.Formula == PcbFormula.NonResident)
             {
-                NonResident(column, breakdown);
+                NonResident(column, breakdown, employee.VoluntaryPcb);
                 return;
             }
 
@@ -123,14 +123,14 @@ public static class PcbCalculationDetailsPdf
                 SectionArPcb(column, ar, breakdown.Z);
             }
 
-            SectionNetPcb(column, breakdown);
+            SectionNetPcb(column, breakdown, employee.VoluntaryPcb);
             SectionAllowableDeductions(column, breakdown);
         });
 
     // Non-residents are a flat withholding with no reliefs and no bands.
     // Printing an M, an R or a relief here would imply the 30% came from
     // somewhere it did not.
-    private static void NonResident(ColumnDescriptor column, PcbBreakdown b)
+    private static void NonResident(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb)
     {
         SectionTitle(column, "Non-resident — flat-rate withholding");
 
@@ -146,9 +146,7 @@ public static class PcbCalculationDetailsPdf
             "Bonus, commission, arrears and other one-off payments this month.", b.AdditionalTaxable);
         Variable(column, "PCB — additional",
             "Flat-rate withholding on additional remuneration.", b.PcbAdditional);
-        Variable(column, "PCB",
-            "Net PCB this month — the amount deducted from the employee's pay and remitted to LHDN.",
-            b.PcbTotal, bold: true);
+        NetPcbRows(column, b.PcbTotal, voluntaryPcb);
     }
 
     // ─── 1. PCB(A) — the normal monthly deduction ───────────────────────
@@ -298,7 +296,7 @@ public static class PcbCalculationDetailsPdf
 
     // ─── 5. What was actually deducted ──────────────────────────────────
 
-    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b) =>
+    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb) =>
         column.Item().ShowEntire().Column(section =>
         {
         SectionTitle(section, "5. PCB Current Month");
@@ -306,10 +304,35 @@ public static class PcbCalculationDetailsPdf
         Formula(section, "PCB (A) + PCB (C)");
         Formula(section, $"{Amount(b.PcbNormal)} + {Amount(b.PcbAdditional)}");
 
-        Variable(section, "PCB",
-            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN.",
-            b.PcbTotal, bold: true);
+        NetPcbRows(section, b.PcbTotal, voluntaryPcb);
     });
+
+    // The formula's PCB, then — only when there is one — the manual Additional
+    // PCB and their sum, so the bold figure is always what left the employee's
+    // pay and went into CP39's PCB field.
+    private static void NetPcbRows(ColumnDescriptor column, decimal formulaPcb, decimal voluntaryPcb)
+    {
+        if (voluntaryPcb <= 0m)
+        {
+            Variable(column, "PCB",
+                "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN.",
+                formulaPcb, bold: true);
+            return;
+        }
+
+        Variable(column, "PCB",
+            "Formula PCB this month — before the manual Additional PCB added below.",
+            formulaPcb);
+        Variable(column, "+ Add. PCB",
+            "Additional PCB (Employment Income) — a manual top-up added directly to this month's PCB, "
+            + "remitted via the standard PCB field of the CP39 file. NOT part of the LHDN MTD formula, so "
+            + "it does not carry into next month's calculation.",
+            voluntaryPcb);
+        Variable(column, "PCB payable",
+            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN "
+            + "(formula PCB + Additional PCB).",
+            formulaPcb + voluntaryPcb, bold: true);
+    }
 
     private static void SectionAllowableDeductions(ColumnDescriptor column, PcbBreakdown b) =>
         column.Item().ShowEntire().Column(section =>

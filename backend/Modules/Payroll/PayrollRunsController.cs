@@ -178,6 +178,10 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> PerkesoTxt(string id) => File(_statutory.RenderPerkesoTxtAsync(id));
 
     [RequireScope("payroll:read")]
+    [HttpGet("{id}/files/socso-eis-skbbk")]
+    public Task<IActionResult> PerkesoSkbbkTxt(string id) => File(_statutory.RenderPerkesoSkbbkTxtAsync(id));
+
+    [RequireScope("payroll:read")]
     [HttpGet("{id}/files/pcb")]
     public Task<IActionResult> PcbTxt(string id) => File(_statutory.RenderPcbTxtAsync(id));
 

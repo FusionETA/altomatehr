@@ -33,6 +33,7 @@ public class PayrollAdjustmentCategoryDto
     public bool CashNeutral { get; set; }
     public bool FeedsLp1Relief { get; set; }
     public bool AddsToCp38Field { get; set; }
+    public bool AddsToStandardPcb { get; set; }
     public bool IsAdditionalRemuneration { get; set; }
     public bool OffsetsPcb { get; set; }
 
