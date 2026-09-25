@@ -531,7 +531,35 @@ using (var scope = app.Services.CreateScope())
         var overtimePhotos = services.GetRequiredService<IOvertimePhotoStorage>();
         var leaveApplications = services.GetRequiredService<ILeaveApplicationRepository>();
         var shifts = services.GetRequiredService<IShiftRepository>();
-        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, attendanceSessions, apiClients, overtime, overtimePhotos, leaveApplications, shifts);
+        var teams = services.GetRequiredService<ITeamRepository>();
+        var teamMemberships = services.GetRequiredService<ITeamMembershipRepository>();
+        await DbSeeder.SeedAsync(organizations, users, memberships, claims, leaveTypes, policies, projects, attendance, attendanceApprovalRequests, attendanceSessions, apiClients, overtime, overtimePhotos, leaveApplications, shifts, teams, teamMemberships);
+
+        // Demo payslips go through the real payroll services, which read the
+        // tenant and the actor from ICurrentUser — so they run in their own
+        // scope whose HttpContext carries the demo org's Owner.
+        using var payrollScope = app.Services.CreateScope();
+        var payrollServices = payrollScope.ServiceProvider;
+        payrollServices.GetRequiredService<IHttpContextAccessor>().HttpContext =
+            new DefaultHttpContext { User = DemoPayrollSeeder.DemoOwner(), RequestServices = payrollServices };
+        try
+        {
+            await DemoPayrollSeeder.SeedAsync(
+                payrollServices.GetRequiredService<IEmployeeProfileRepository>(),
+                payrollServices.GetRequiredService<IOrganizationMembershipRepository>(),
+                payrollServices.GetRequiredService<IPayrollCompanyInfoRepository>(),
+                payrollServices.GetRequiredService<IPayrollRunService>(),
+                payrollServices.GetRequiredService<ILoggerFactory>().CreateLogger("DemoPayrollSeeder"));
+        }
+        catch (Exception ex)
+        {
+            // Demo data must never stop the API from starting.
+            app.Logger.LogWarning(ex, "Demo payroll seeding failed");
+        }
+        finally
+        {
+            payrollServices.GetRequiredService<IHttpContextAccessor>().HttpContext = null;
+        }
     }
 }
 
