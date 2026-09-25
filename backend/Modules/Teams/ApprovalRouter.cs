@@ -35,6 +35,21 @@ public interface IApprovalRouter
     Task<IReadOnlyDictionary<(string ApplicantId, string? ProjectId), int>> StepCountForManyAsync(
         ApprovalModule module,
         IReadOnlyCollection<(string ApplicantId, string? ProjectId)> applicants);
+
+    // Whether `userId` sits at ANY step of the applicant's chain — not just the
+    // current one. For read access to the applicant's evidence (a clock-in
+    // photo), where the question is "does this person oversee them", not "is it
+    // their turn". Default body so test doubles needn't implement it; the real
+    // router overrides it with a single chain lookup.
+    async Task<bool> IsInChainAsync(
+        ApprovalModule module, string applicantId, string userId, string? projectId = null)
+    {
+        var steps = await StepCountAsync(module, applicantId, projectId);
+        for (var step = 0; step < steps; step++)
+            if ((await CurrentApproversAsync(module, applicantId, step, projectId)).Contains(userId))
+                return true;
+        return false;
+    }
 }
 
 public class ApprovalRouter : IApprovalRouter
@@ -87,5 +102,12 @@ public class ApprovalRouter : IApprovalRouter
     {
         var chain = await _chain.GetChainAsync(applicantId, module, projectId);
         return chain.Count;
+    }
+
+    public async Task<bool> IsInChainAsync(
+        ApprovalModule module, string applicantId, string userId, string? projectId = null)
+    {
+        var chain = await _chain.GetChainAsync(applicantId, module, projectId);
+        return chain.Any(step => step.ApproverIds.Contains(userId));
     }
 }
