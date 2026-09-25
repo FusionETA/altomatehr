@@ -82,6 +82,7 @@ import {
 } from "./AttendanceFilterBar";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows, SkeletonStats } from "@/shared/components/Skeleton";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { businessToday } from "@/shared/lib/business-day";
 
 // Two levels, mirroring production's own split:
@@ -2728,6 +2729,7 @@ function ShiftsTab({
   // Which row is mid-request, so its buttons can't be double-fired.
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   const promote = async (shift: Shift) => {
     setBusyId(shift.id);
@@ -2759,12 +2761,13 @@ function ShiftsTab({
     // Permanent, unlike Archive right next to it — so the prompt names the
     // reversible alternative rather than just warning. The server refuses while
     // anyone is still assigned and its message names how many, surfaced as-is.
-    if (
-      !window.confirm(
-        `Delete shift "${shift.name}" permanently? This cannot be undone — archive it instead to keep its history.`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Delete shift "${shift.name}" permanently?`,
+      message: "This cannot be undone — archive it instead to keep its history.",
+      confirmLabel: "Delete shift",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusyId(shift.id);
     setError(null);
     try {
@@ -2789,6 +2792,7 @@ function ShiftsTab({
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <section className={`${CARD_BARE} flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:p-6`}>
         <div className="min-w-0 flex-1 space-y-1.5">
           <label
