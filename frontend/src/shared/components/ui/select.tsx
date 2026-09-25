@@ -192,7 +192,9 @@ const SelectContent = React.forwardRef<
           // max-w constraint keeps the popover from overflowing the viewport
           // on mobile when a SelectItem holds a long string. Pair with the
           // `break-words` on SelectItem below so it wraps instead of clipping.
-          "relative z-50 min-w-[8rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-white/40 bg-card/95 p-1 text-foreground shadow-[0_18px_48px_rgba(76,26,134,0.16)] backdrop-blur-xl",
+          // z-[100]: the list portals to <body>, so it must sit above every
+          // modal overlay (z-[60]/z-[70]) or it opens hidden behind them.
+          "relative z-[100] min-w-[8rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-white/40 bg-card/95 p-1 text-foreground shadow-[0_18px_48px_rgba(76,26,134,0.16)] backdrop-blur-xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           position === "popper" &&
