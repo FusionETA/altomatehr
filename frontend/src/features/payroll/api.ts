@@ -1119,7 +1119,7 @@ export type PayrollXeroMapping = {
   v: number;
   aggregationMode: XeroAggregationMode;
   trackingCategoryId: string | null;
-  // Xero account ids keyed by the slot names below.
+  // Local chart-of-account ids (ChartOfAccount.id) keyed by the slot names below.
   accounts: Record<string, string | null>;
   allowanceMode: XeroLineGroupingMode;
   allowanceAccounts: Record<string, string | null>;

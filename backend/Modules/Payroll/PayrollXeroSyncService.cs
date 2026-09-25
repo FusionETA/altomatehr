@@ -228,13 +228,31 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         // Xero addresses accounts by CODE; the mapping and the claims store
         // ids. One lookup serves both.
         var accounts = await _accounts.GetAllAsync();
-        var codeByXeroId = accounts
-            .Where(a => !string.IsNullOrWhiteSpace(a.XeroAccountId) && !string.IsNullOrWhiteSpace(a.Code))
-            .GroupBy(a => a.XeroAccountId!, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().Code, StringComparer.Ordinal);
         var codeByLocalId = accounts
             .Where(a => !string.IsNullOrWhiteSpace(a.Code))
             .ToDictionary(a => a.Id, a => a.Code, StringComparer.Ordinal);
+
+        // The settings page saves the LOCAL chart-of-account id. Keying this
+        // by XeroAccountId alone made every mapped slot read as unmapped, so
+        // the sync refused with "No Xero account is mapped for Salary" while
+        // the page showed one. Local ids resolve first; a Xero id is still
+        // accepted so a blob written the other way keeps working.
+        var accountCodeById = new Dictionary<string, string>(codeByLocalId, StringComparer.Ordinal);
+        foreach (var a in accounts)
+        {
+            if (string.IsNullOrWhiteSpace(a.XeroAccountId) || string.IsNullOrWhiteSpace(a.Code)) continue;
+            accountCodeById.TryAdd(a.XeroAccountId, a.Code);
+        }
+
+        // Archived covers inactive in Xero AND retired because the connected
+        // org no longer has it. Keyed both ways, like the codes.
+        var archivedAccounts = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var a in accounts.Where(a => a.IsArchived))
+        {
+            var label = string.Join(" · ", new[] { a.Code, a.Name }.Where(p => !string.IsNullOrWhiteSpace(p)));
+            archivedAccounts.TryAdd(a.Id, label);
+            if (!string.IsNullOrWhiteSpace(a.XeroAccountId)) archivedAccounts.TryAdd(a.XeroAccountId, label);
+        }
 
         // A claim's expense account, for the reimbursement debits.
         var claimAccounts = (await _claims.GetPayrollReimbursableAsync())
@@ -302,7 +320,8 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             PeriodYear = run.PeriodYear,
             PeriodMonth = run.PeriodMonth,
             Mapping = mapping,
-            AccountCodeById = codeByXeroId,
+            AccountCodeById = accountCodeById,
+            ArchivedAccounts = archivedAccounts,
             TrackingCategoryName = trackingName,
             TrackingOptions = trackingOptions,
             Rows = rows,

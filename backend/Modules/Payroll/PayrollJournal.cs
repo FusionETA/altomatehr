@@ -96,9 +96,18 @@ public static class PayrollJournal
         public required int PeriodMonth { get; init; }
         public required PayrollXeroMapping Mapping { get; init; }
 
-        // Xero account ID → the CODE a journal line carries. Journals address
-        // accounts by code; the mapping stores ids.
+        // Account id → the CODE a journal line carries. Journals address
+        // accounts by code; the mapping stores ids (the local chart-of-account
+        // id, with the Xero AccountID also accepted).
         public IReadOnlyDictionary<string, string> AccountCodeById { get; init; }
+            = new Dictionary<string, string>();
+
+        // Accounts that are archived — inactive in Xero, or retired because
+        // the connected Xero org no longer has them — keyed like
+        // AccountCodeById, valued with "code · name" for the refusal. Xero
+        // rejects a journal line coded to one, so a slot mapped to it is
+        // treated as unmapped, and the message says why.
+        public IReadOnlyDictionary<string, string> ArchivedAccounts { get; init; }
             = new Dictionary<string, string>();
 
         // The tracking category's name, and the options that exist on it. A
@@ -125,8 +134,10 @@ public static class PayrollJournal
         var salaryCode = CodeFor(input, PayrollXeroAccounts.Salary);
         if (salaryCode is null)
         {
-            return Result.Refused(
-                "No Xero account is mapped for Salary. Set it under Payroll Settings → Xero before posting.");
+            return Result.Refused(ArchivedFor(input, PayrollXeroAccounts.Salary) is { } archived
+                ? $"Salary is mapped to {archived}, which is archived or no longer in Xero. "
+                  + "Pick a current account under Payroll Settings → Xero before posting."
+                : "No Xero account is mapped for Salary. Set it under Payroll Settings → Xero before posting.");
         }
 
         if (input.Mapping.AggregationMode == XeroAggregationMode.PER_EMPLOYEE)
@@ -138,17 +149,21 @@ public static class PayrollJournal
             ByProjectDebits(input, lines, salaryCode, unmappedAllowances, unmappedDeductions);
         }
 
-        EmployerContributions(input, lines);
+        // Slots the run needs but cannot resolve. Collected across the
+        // employer contributions and the accruals so one message names them all.
+        var missingSlots = new List<string>();
+
+        EmployerContributions(input, lines, missingSlots);
         Reimbursements(input, lines, unmappedClaims);
 
         // Every unmapped account is the same class of problem, so they are
         // reported together — an admin fixing one at a time through four
         // failed posts is four round trips that one message avoids.
-        var refusal = Unmapped(unmappedAllowances, unmappedDeductions, unmappedClaims);
+        var refusal = Unmapped(input, unmappedAllowances, unmappedDeductions, unmappedClaims);
         if (refusal is not null) return Result.Refused(refusal);
 
-        var accrualError = Accruals(input, lines);
-        if (accrualError is not null) return Result.Refused(accrualError);
+        Accruals(input, lines, missingSlots);
+        if (missingSlots.Count > 0) return Result.Refused(MissingSlots(input, missingSlots));
 
         // The journal must net to zero. A sen of slack is allowed for the
         // rounding each line already carries; anything larger is a real
@@ -299,7 +314,7 @@ public static class PayrollJournal
 
     // These are expenses, so they split by project like the salary lines do.
     // Only the accrual credits stay summed.
-    private static void EmployerContributions(Input input, List<Line> lines)
+    private static void EmployerContributions(Input input, List<Line> lines, List<string> missing)
     {
         var buckets = new Dictionary<string, (decimal Epf, decimal Socso, decimal Eis, decimal Hrdf)>(
             StringComparer.Ordinal);
@@ -316,24 +331,33 @@ public static class PayrollJournal
 
         foreach (var (project, b) in buckets.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
-            Contribution(input, lines, PayrollXeroAccounts.EpfEmployer, b.Epf,
+            Contribution(input, lines, missing, PayrollXeroAccounts.EpfEmployer, b.Epf,
                 $"EPF CONTRIBUTION - EMPLOYER - {project}", project);
-            Contribution(input, lines, PayrollXeroAccounts.SocsoEmployer, b.Socso,
+            Contribution(input, lines, missing, PayrollXeroAccounts.SocsoEmployer, b.Socso,
                 $"SOCSO CONTRIBUTION - EMPLOYER - {project}", project);
-            Contribution(input, lines, PayrollXeroAccounts.EisEmployer, b.Eis,
+            Contribution(input, lines, missing, PayrollXeroAccounts.EisEmployer, b.Eis,
                 $"EIS CONTRIBUTION - EMPLOYER - {project}", project);
-            Contribution(input, lines, PayrollXeroAccounts.HrdfEmployer, b.Hrdf,
+            Contribution(input, lines, missing, PayrollXeroAccounts.HrdfEmployer, b.Hrdf,
                 $"HRDF - EMPLOYER - {project}", project);
         }
     }
 
+    // An unmapped slot is a refusal, not a skipped line: its accrual credit
+    // still carries the employer share, so dropping the debit left the
+    // journal "out by" exactly that amount — a message that named nothing
+    // the admin could fix.
     private static void Contribution(
-        Input input, List<Line> lines, string slot, decimal amount, string description, string project)
+        Input input, List<Line> lines, List<string> missing,
+        string slot, decimal amount, string description, string project)
     {
         if (amount <= 0m) return;
 
         var code = CodeFor(input, slot);
-        if (code is null) return;
+        if (code is null)
+        {
+            if (!missing.Contains(slot)) missing.Add(slot);
+            return;
+        }
 
         lines.Add(Line_(input, code, Money.Round2(amount), description, project));
     }
@@ -383,7 +407,7 @@ public static class PayrollJournal
     // One credit per agency plus the net owed to staff, always summed and
     // always against "(All projects)" — a liability to KWSP is one liability,
     // not one per project.
-    private static string? Accruals(Input input, List<Line> lines)
+    private static void Accruals(Input input, List<Line> lines, List<string> missing)
     {
         var totals = new (string Slot, decimal Amount, string Description)[]
         {
@@ -415,8 +439,6 @@ public static class PayrollJournal
                 "ACCRUAL - SALARY"),
         };
 
-        var missing = new List<string>();
-
         foreach (var (slot, amount, description) in totals)
         {
             if (amount <= 0m) continue;
@@ -430,23 +452,58 @@ public static class PayrollJournal
 
             lines.Add(Line_(input, code, -Money.Round2(amount), description, AllProjects));
         }
+    }
 
-        return missing.Count == 0
-            ? null
-            : "These Xero accounts are needed by this run but are not mapped: "
-              + string.Join(", ", missing)
-              + ". Set them under Payroll Settings → Xero before posting.";
+    // Named the way the settings page names them, and an archived account
+    // is called out as such — "not mapped" beside a dropdown that shows one
+    // reads as a bug.
+    private static string MissingSlots(Input input, List<string> slots)
+    {
+        var unmapped = slots.Where(s => ArchivedFor(input, s) is null)
+            .Select(PayrollXeroAccounts.Label).ToList();
+        var archived = slots.Where(s => ArchivedFor(input, s) is not null)
+            .Select(s => $"{PayrollXeroAccounts.Label(s)} ({ArchivedFor(input, s)})").ToList();
+
+        var problems = new List<string>();
+        if (unmapped.Count > 0)
+        {
+            problems.Add("these Xero accounts are needed by this run but are not mapped: "
+                + string.Join(", ", unmapped));
+        }
+
+        if (archived.Count > 0)
+        {
+            problems.Add("these are mapped to accounts that are archived or no longer in Xero: "
+                + string.Join(", ", archived));
+        }
+
+        var sentence = string.Join("; ", problems);
+        return char.ToUpperInvariant(sentence[0]) + sentence[1..]
+            + ". Set them under Payroll Settings → Xero before posting.";
     }
 
     // ─── Account resolution ─────────────────────────────────────────────
 
-    private static string? CodeFor(Input input, string slot)
+    private static string? CodeFor(Input input, string slot) =>
+        input.Mapping.Accounts.TryGetValue(slot, out var accountId) ? Resolve(input, accountId) : null;
+
+    // The one place an account id becomes a code. An archived account
+    // resolves to nothing: Xero rejects a line coded to it.
+    private static string? Resolve(Input input, string? accountId)
     {
-        if (!input.Mapping.Accounts.TryGetValue(slot, out var accountId)) return null;
         if (string.IsNullOrWhiteSpace(accountId)) return null;
+        if (input.ArchivedAccounts.ContainsKey(accountId)) return null;
 
         return input.AccountCodeById.TryGetValue(accountId, out var code) ? code : null;
     }
+
+    // "code · name" when the slot is mapped to an archived account.
+    private static string? ArchivedFor(Input input, string slot) =>
+        input.Mapping.Accounts.TryGetValue(slot, out var accountId)
+        && !string.IsNullOrWhiteSpace(accountId)
+        && input.ArchivedAccounts.TryGetValue(accountId, out var label)
+            ? label
+            : null;
 
     // A per-category override WINS whatever the mode is, so an admin can stay
     // on UNIFIED and still pin one category — overtime, say — to its own
@@ -469,8 +526,7 @@ public static class PayrollJournal
     {
         if (category is not null
             && overrides.TryGetValue(category, out var overrideId)
-            && !string.IsNullOrWhiteSpace(overrideId)
-            && input.AccountCodeById.TryGetValue(overrideId, out var overrideCode))
+            && Resolve(input, overrideId) is { } overrideCode)
         {
             return overrideCode;
         }
@@ -488,18 +544,20 @@ public static class PayrollJournal
     }
 
     private static string? Unmapped(
-        SortedSet<string> allowances, SortedSet<string> deductions, List<string> claims)
+        Input input, SortedSet<string> allowances, SortedSet<string> deductions, List<string> claims)
     {
         var problems = new List<string>();
 
         if (allowances.Count > 0)
         {
-            problems.Add("allowance categories with no Xero account: " + string.Join(", ", allowances));
+            problems.Add("allowance categories with no Xero account: " + string.Join(", ", allowances)
+                + ArchivedNote(input, PayrollXeroAccounts.Allowance, input.Mapping.AllowanceAccounts));
         }
 
         if (deductions.Count > 0)
         {
-            problems.Add("deduction categories with no Xero account: " + string.Join(", ", deductions));
+            problems.Add("deduction categories with no Xero account: " + string.Join(", ", deductions)
+                + ArchivedNote(input, PayrollXeroAccounts.Deduction, input.Mapping.DeductionAccounts));
         }
 
         if (claims.Count > 0)
@@ -511,6 +569,23 @@ public static class PayrollJournal
         return problems.Count == 0
             ? null
             : "This run cannot post to Xero yet — " + string.Join("; ", problems) + ".";
+    }
+
+    // Why a category that looks mapped is not: its account, or the unified
+    // one it falls back to, is archived.
+    private static string ArchivedNote(
+        Input input, string unifiedSlot, IReadOnlyDictionary<string, string?> overrides)
+    {
+        var archived = overrides.Values
+            .Append(input.Mapping.Accounts.GetValueOrDefault(unifiedSlot))
+            .Where(id => !string.IsNullOrWhiteSpace(id) && input.ArchivedAccounts.ContainsKey(id))
+            .Select(id => input.ArchivedAccounts[id!])
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return archived.Count == 0
+            ? string.Empty
+            : $" (mapped to {string.Join(", ", archived)}, archived or no longer in Xero)";
     }
 
     // ─── Small helpers ──────────────────────────────────────────────────

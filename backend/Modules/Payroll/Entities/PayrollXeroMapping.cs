@@ -47,7 +47,8 @@ public sealed record PayrollXeroMapping
     // the admin has not picked one and lines carry no tracking.
     public string? TrackingCategoryId { get; init; }
 
-    // Xero account IDs, keyed by the slot names in PayrollXeroAccounts.
+    // Local ChartOfAccount ids (what the settings page saves), keyed by the
+    // slot names in PayrollXeroAccounts. The sync also accepts a Xero AccountID.
     public IReadOnlyDictionary<string, string?> Accounts { get; init; }
         = new Dictionary<string, string?>();
 
@@ -93,4 +94,25 @@ public static class PayrollXeroAccounts
         EpfEmployer, SocsoEmployer, EisEmployer, HrdfEmployer,
         AccrualEpf, AccrualSocso, AccrualEis, AccrualPcb, AccrualHrdf, AccrualSalary,
     ];
+
+    // What the settings page calls each slot (XERO_EXPENSE_SLOTS /
+    // XERO_ACCRUAL_SLOTS in the frontend), so a refusal names the dropdown
+    // the admin has to change rather than a JSON key.
+    public static string Label(string slot) => slot switch
+    {
+        Salary => "Salary",
+        Allowance => "Allowances",
+        Deduction => "Deductions",
+        EpfEmployer => "EPF — employer contribution",
+        SocsoEmployer => "SOCSO — employer contribution",
+        EisEmployer => "EIS — employer contribution",
+        HrdfEmployer => "HRD Corp levy",
+        AccrualSalary => "Net pay payable",
+        AccrualEpf => "EPF payable",
+        AccrualSocso => "SOCSO payable",
+        AccrualEis => "EIS payable",
+        AccrualPcb => "PCB payable",
+        AccrualHrdf => "HRD Corp levy payable",
+        _ => slot,
+    };
 }

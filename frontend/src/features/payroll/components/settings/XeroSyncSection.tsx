@@ -168,28 +168,51 @@ function AccountGroup({
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {slots.map((slot) => (
-          <div key={slot.key}>
-            <label className={LABEL} htmlFor={`xero-${slot.key}`}>
-              {slot.label}
-            </label>
-            {/* Unset is a real state, not an error: an org with no HRDF never
-                needs the HRDF slots, and the sync only requires the accounts a
-                given run actually uses. */}
-            <PayrollSelect
-              id={`xero-${slot.key}`}
-              value={mapping.accounts[slot.key] ?? null}
-              emptyLabel="Not mapped"
-              onChange={(next) => onPick(slot.key, next)}
-              options={accounts.map((account) => ({
-                value: account.id,
-                // An account with no code must not render as "· Name" — the
-                // separator only earns its place between two things.
-                label: [account.code, account.name].filter(Boolean).join(" · "),
-              }))}
-            />
-          </div>
-        ))}
+        {slots.map((slot) => {
+          const selected = mapping.accounts[slot.key] ?? null;
+          // Archived accounts (inactive in Xero, or retired because the
+          // connected org no longer has them) can't take a journal line, so
+          // they aren't offered — except the one already picked, which stays
+          // visible and says so. Hiding it would render the slot as "Not
+          // mapped" while the sync refuses over an account nobody can see.
+          const options = accounts.filter(
+            (account) => !account.isArchived || account.id === selected,
+          );
+          const selectedArchived = options.some(
+            (account) => account.id === selected && account.isArchived,
+          );
+
+          return (
+            <div key={slot.key}>
+              <label className={LABEL} htmlFor={`xero-${slot.key}`}>
+                {slot.label}
+              </label>
+              {/* Unset is a real state, not an error: an org with no HRDF never
+                  needs the HRDF slots, and the sync only requires the accounts a
+                  given run actually uses. */}
+              <PayrollSelect
+                id={`xero-${slot.key}`}
+                value={selected}
+                emptyLabel="Not mapped"
+                onChange={(next) => onPick(slot.key, next)}
+                options={options.map((account) => ({
+                  value: account.id,
+                  // An account with no code must not render as "· Name" — the
+                  // separator only earns its place between two things.
+                  label:
+                    [account.code, account.name].filter(Boolean).join(" · ") +
+                    (account.isArchived ? " (archived)" : ""),
+                }))}
+              />
+              {selectedArchived ? (
+                <p className="mt-1.5 text-xs text-destructive">
+                  Archived or no longer in Xero — the journal can't post to it. Pick a
+                  current account.
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

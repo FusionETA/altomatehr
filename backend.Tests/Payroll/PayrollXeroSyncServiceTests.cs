@@ -49,9 +49,10 @@ public class PayrollXeroSyncServiceTests : IDisposable
 
     // ─── Fixtures ───────────────────────────────────────────────────────
 
-    // Every slot mapped, and a chart of accounts where each mapped Xero id
-    // resolves to a code.
-    private async Task SeedMappingAsync(bool syncOnApproval = false)
+    // Every slot mapped, and a chart of accounts where each mapped id resolves
+    // to a code. `byLocalId` stores the local ChartOfAccount id, which is what
+    // the settings page actually saves.
+    private async Task SeedMappingAsync(bool syncOnApproval = false, bool byLocalId = false)
     {
         foreach (var slot in PayrollXeroAccounts.All)
         {
@@ -68,7 +69,9 @@ public class PayrollXeroSyncServiceTests : IDisposable
         var mapping = new PayrollXeroMapping
         {
             Accounts = PayrollXeroAccounts.All.ToDictionary(
-                slot => slot, slot => (string?)$"xero-{slot}", StringComparer.Ordinal),
+                slot => slot,
+                slot => (string?)(byLocalId ? $"local-{slot}" : $"xero-{slot}"),
+                StringComparer.Ordinal),
         };
 
         _db.PayrollSettings.Add(new PayrollSettings
@@ -143,6 +146,21 @@ public class PayrollXeroSyncServiceTests : IDisposable
         Assert.Equal(Modules.Claims.Entities.XeroSyncStatus.SYNCED, run.XeroSyncStatus);
         Assert.NotNull(run.XeroSyncedAt);
         Assert.Null(run.XeroSyncError);
+    }
+
+    // Regression: the settings page saves the LOCAL account id, and the sync
+    // used to look ids up by XeroAccountId only — so a fully mapped org was
+    // refused with "No Xero account is mapped for Salary".
+    [Fact]
+    public async Task AMappingSavedWithLocalAccountIds_Posts()
+    {
+        await SeedMappingAsync(byLocalId: true);
+        await SeedRunAsync();
+
+        var result = await _service.SyncAsync("run-1");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Contains($"CODE-{PayrollXeroAccounts.Salary}", _xero.Posted.Single().AccountCodes);
     }
 
     // The journal belongs to the period, and the narration is how an
@@ -381,7 +399,8 @@ public class PayrollXeroSyncServiceTests : IDisposable
     // ─── Doubles ────────────────────────────────────────────────────────
 
     private sealed record PostedJournal(
-        string Narration, DateTime Date, string IdempotencyKey, int LineCount);
+        string Narration, DateTime Date, string IdempotencyKey, int LineCount,
+        IReadOnlyList<string?> AccountCodes);
 
     private sealed class RecordingXeroService : IXeroService
     {
@@ -397,7 +416,8 @@ public class PayrollXeroSyncServiceTests : IDisposable
             if (ThrowUnexpected) throw new InvalidOperationException("boom");
 
             Posted.Add(new PostedJournal(
-                journal.Narration, journal.Date, journal.IdempotencyKey, journal.Lines.Count));
+                journal.Narration, journal.Date, journal.IdempotencyKey, journal.Lines.Count,
+                [.. journal.Lines.Select(l => l.AccountCode)]));
 
             if (FailWith is not null) throw new XeroConnectionException(FailWith);
 
