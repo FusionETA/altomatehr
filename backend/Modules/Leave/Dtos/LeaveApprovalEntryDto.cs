@@ -11,7 +11,7 @@ public class LeaveApprovalEntryDto
     public int Step { get; set; }
     public string ApproverId { get; set; } = string.Empty;
 
-    // APPROVED | REJECTED | ADMIN_APPLIED
+    // APPROVED | REJECTED | ADMIN_APPLIED | ADMIN_CANCELLED
     public string Decision { get; set; } = string.Empty;
 
     public DateTime DecidedAt { get; set; }

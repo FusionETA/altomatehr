@@ -78,6 +78,7 @@ const DECISION_LABELS: Record<string, string> = {
   AUTO_APPROVED: "Auto-approved",
   REJECTED: "Rejected",
   ADMIN_APPLIED: "Applied by admin",
+  ADMIN_CANCELLED: "Cancelled by admin",
   IMPORTED: "Imported",
 };
 

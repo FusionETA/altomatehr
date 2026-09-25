@@ -459,6 +459,16 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _leave.CancelAsync(id, GetUserId()));
 
+    // POST /leave/{id}/admin-cancel — an admin/owner withdraws leave that was
+    // already approved; the days go back into the employee's balance.
+    // leave:write so an API key can't withdraw approved leave by holding the
+    // Admin role alone; people signing in are unaffected by scopes.
+    [RequireScope("leave:write")]
+    [HttpPost("{id}/admin-cancel")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> AdminCancel(string id, AdminCancelLeaveDto dto) =>
+        ToTransitionResponse(await _leave.AdminCancelApprovedAsync(id, GetUserId(), dto.Reason));
+
     // ---- Scheduled-job triggers -------------------------------------------
     // Force a run now instead of waiting for the background service's next
     // tick. The jobs normally run in-process via LeaveRolloverBackgroundService

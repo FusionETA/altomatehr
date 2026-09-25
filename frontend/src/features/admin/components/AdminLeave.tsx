@@ -57,6 +57,7 @@ import {
 import { SearchInput } from "@/shared/components/SearchInput";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { EmployeeLeaveModal } from "./EmployeeLeaveModal";
+import { AdminCancelLeaveDialog } from "./AdminCancelLeaveDialog";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { CardHead, EmptyState } from "./DashboardCard";
 import {
@@ -87,6 +88,9 @@ export function AdminLeave() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
+  // Whether the "cancel this approved leave" confirmation is open over the
+  // selected application's details.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLeaveBalances | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   // Which pill is open, if any — only ever one at a time.
@@ -360,6 +364,9 @@ export function AdminLeave() {
 
       {selectedApplication ? (
         <LeaveDetailsModal
+          // Re-keyed on status so the approval trail re-reads after a cancel
+          // and shows the "Cancelled by admin" entry.
+          key={`${selectedApplication.id}-${selectedApplication.status}`}
           application={selectedApplication}
           typeName={typeName(selectedApplication.leaveTypeId)}
           employeeLabel={
@@ -367,6 +374,39 @@ export function AdminLeave() {
           }
           showAudit
           onClose={() => setSelectedApplication(null)}
+          footer={
+            // Only APPROVED: pending leave is the approver's to reject or the
+            // employee's to withdraw, and nothing else holds any days.
+            selectedApplication.status === "APPROVED" ? (
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(true)}
+                className="inline-flex h-12 items-center justify-center rounded-[18px] border border-destructive/30 bg-destructive/5 px-6 text-sm font-bold text-destructive transition hover:bg-destructive/10"
+              >
+                Cancel this leave
+              </button>
+            ) : null
+          }
+        />
+      ) : null}
+
+      {selectedApplication && confirmingCancel ? (
+        <AdminCancelLeaveDialog
+          application={selectedApplication}
+          employeeLabel={
+            selectedApplication.employeeName?.trim() || selectedApplication.employeeEmail || "the employee"
+          }
+          typeName={typeName(selectedApplication.leaveTypeId)}
+          unpaid={types.find((t) => t.id === selectedApplication.leaveTypeId)?.paid === false}
+          onKeep={() => setConfirmingCancel(false)}
+          onCancelled={(updated) => {
+            setConfirmingCancel(false);
+            setAllApplications((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+            setSelectedApplication(updated);
+            // The overview's counts and every balance include this leave's days.
+            overviewQuery.refresh();
+            balancesQuery.refresh();
+          }}
         />
       ) : null}
 

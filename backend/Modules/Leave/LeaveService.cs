@@ -1541,6 +1541,41 @@ public class LeaveService : ILeaveService
         return new LeaveTransitionResult(true, true, ToDto(application));
     }
 
+    public async Task<LeaveTransitionResult> AdminCancelApprovedAsync(string id, string adminId, string? reason)
+    {
+        var application = await _apps.GetByIdAsync(id);
+        if (application is null)
+            return new LeaveTransitionResult(false, false, null, "Application not found");
+
+        if (application.Status == LeaveStatus.CANCELLED)
+            return new LeaveTransitionResult(true, true, ToDto(application));   // idempotent
+
+        // Pending leave has its own paths — the applicant withdraws it, the
+        // approver rejects it — and a rejected one never took any days.
+        if (application.Status != LeaveStatus.APPROVED)
+            return new LeaveTransitionResult(true, false, ToDto(application),
+                "Only approved leave can be cancelled here");
+
+        var note = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+
+        application.Status = LeaveStatus.CANCELLED;
+        application.UpdatedAt = DateTime.UtcNow;
+        // On the trail rather than in ReviewNotes: that field holds the
+        // approver's last word, which should survive the cancellation.
+        AppendTrail(application, application.CurrentStep, adminId, "ADMIN_CANCELLED", note);
+        await _apps.UpdateAsync(application);
+
+        // Unpaid leave feeds payroll's deductions, so an open draft covering
+        // these dates was built from days that no longer count. Same sweep an
+        // approval triggers — paid leave changes no payslip figure.
+        var type = await _types.GetByIdAsync(application.LeaveTypeId);
+        if (_drafts is not null && type is { Paid: false })
+            await _drafts.MarkDraftsCoveringAsync(application.StartDate, application.EndDate);
+
+        await NotifyAsync(application, RealtimeAction.CANCELLED, notifyApplicant: true, reason: note);
+        return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
     // Live nudge for one leave request. Approvers are resolved from the row's
     // CURRENT step, so a multi-step chain notifies exactly the people who now
     // have to act — and nobody who doesn't.
@@ -1552,7 +1587,8 @@ public class LeaveService : ILeaveService
         LeaveApplication app,
         RealtimeAction action,
         bool notifyApplicant,
-        bool notifyApprovers = false)
+        bool notifyApprovers = false,
+        string? reason = null)
     {
         var targets = new List<string?>();
         if (notifyApplicant) targets.Add(app.EmployeeId);
@@ -1597,6 +1633,19 @@ public class LeaveService : ILeaveService
                     action == RealtimeAction.APPROVED
                         ? $"Your {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was approved."
                         : $"Your {typeName} request ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was rejected.{(string.IsNullOrEmpty(app.ReviewNotes) ? "" : $" Reason: {app.ReviewNotes}")}",
+                    "/leave");
+                break;
+            }
+
+            // Only an admin withdrawing APPROVED leave notifies the applicant:
+            // their own cancel is something they already know about.
+            case RealtimeAction.CANCELLED when notifyApplicant:
+            {
+                var typeName = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
+                await _notifications.NotifyAsync(
+                    app.OrganizationId, app.EmployeeId, NotificationType.LEAVE_REVIEWED,
+                    "Leave cancelled",
+                    $"Your approved {typeName} ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was cancelled by an admin. The {app.TotalDays:0.#} day(s) are back in your balance.{(string.IsNullOrEmpty(reason) ? "" : $" Reason: {reason}")}",
                     "/leave");
                 break;
             }
