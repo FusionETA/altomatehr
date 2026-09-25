@@ -29,6 +29,12 @@ import { Skeleton, SkeletonPanels } from "@/shared/components/Skeleton";
 import { UnsavedChangesBar } from "@/shared/components/UnsavedChangesBar";
 import { CheckBox } from "./PayrollCheckbox";
 import { DISBURSEMENT_BANKS } from "../lib/disbursement";
+import {
+  CP8D_FURNISH_TYPE_OPTIONS,
+  EMPLOYER_CATEGORY_OPTIONS,
+  EMPLOYER_STATUS_OPTIONS,
+  REFERENCE_TYPE_OPTIONS,
+} from "../lib/company-info-options";
 import { PayrollSelect } from "./PayrollSelect";
 import { PortalCredentialsSection } from "./settings/PortalCredentialsSection";
 import { XeroSyncSection } from "./settings/XeroSyncSection";
@@ -596,6 +602,27 @@ export function PayrollSettingsForm() {
               placeholder="e.g. 202001012345"
               required
             />
+            {/* The employer's own income-tax file (Form E). Carried over from
+                the previous system, which asked for it here. */}
+            <div>
+              <label className={LABEL} htmlFor="referenceType">
+                Income tax reference type
+              </label>
+              <PayrollSelect
+                id="referenceType"
+                value={info.referenceType}
+                emptyLabel="Not set"
+                onChange={(referenceType) => patchInfo({ referenceType })}
+                options={REFERENCE_TYPE_OPTIONS}
+              />
+            </div>
+            <Field
+              id="referenceNo"
+              label="Income tax reference no."
+              value={info.referenceNo}
+              onChange={(referenceNo) => patchInfo({ referenceNo })}
+              placeholder="e.g. 1234567890"
+            />
             <Field
               id="perkesoEmployerCode"
               label="PERKESO employer code"
@@ -632,6 +659,46 @@ export function PayrollSettingsForm() {
               value={info.phone}
               onChange={(phone) => patchInfo({ phone })}
             />
+          </div>
+
+          {/* How LHDN classifies the employer on Form E and CP8D. */}
+          <div className="mt-5 grid gap-5 border-t border-border/60 pt-5 sm:grid-cols-2">
+            <div>
+              <label className={LABEL} htmlFor="employerCategory">
+                Employer category
+              </label>
+              <PayrollSelect
+                id="employerCategory"
+                value={info.employerCategory}
+                emptyLabel="Not set"
+                onChange={(employerCategory) => patchInfo({ employerCategory })}
+                options={EMPLOYER_CATEGORY_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className={LABEL} htmlFor="employerStatus">
+                Employer status
+              </label>
+              <PayrollSelect
+                id="employerStatus"
+                value={info.employerStatus}
+                emptyLabel="Not set"
+                onChange={(employerStatus) => patchInfo({ employerStatus })}
+                options={EMPLOYER_STATUS_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className={LABEL} htmlFor="cp8dFurnishType">
+                CP8D furnish type
+              </label>
+              <PayrollSelect
+                id="cp8dFurnishType"
+                value={info.cp8dFurnishType}
+                emptyLabel="Not set"
+                onChange={(cp8dFurnishType) => patchInfo({ cp8dFurnishType })}
+                options={CP8D_FURNISH_TYPE_OPTIONS}
+              />
+            </div>
           </div>
 
           <div className="mt-5 grid gap-5 border-t border-border/60 pt-5 sm:grid-cols-2">
@@ -767,6 +834,46 @@ export function PayrollSettingsForm() {
               type="email"
               value={info.taxAgentEmail}
               onChange={(taxAgentEmail) => patchInfo({ taxAgentEmail })}
+            />
+          </div>
+
+          {/* The agent's firm — Form E asks for it apart from the agent. */}
+          <div className="mt-5 grid gap-5 border-t border-border/60 pt-5 sm:grid-cols-2">
+            <Field
+              id="taxAgentFirmName"
+              label="Tax agent firm name"
+              value={info.taxAgentFirmName}
+              onChange={(taxAgentFirmName) => patchInfo({ taxAgentFirmName })}
+            />
+            <Field
+              id="taxAgentFirmAddressLine1"
+              label="Firm address line 1"
+              value={info.taxAgentFirmAddressLine1}
+              onChange={(taxAgentFirmAddressLine1) => patchInfo({ taxAgentFirmAddressLine1 })}
+            />
+            <Field
+              id="taxAgentFirmAddressLine2"
+              label="Firm address line 2"
+              value={info.taxAgentFirmAddressLine2}
+              onChange={(taxAgentFirmAddressLine2) => patchInfo({ taxAgentFirmAddressLine2 })}
+            />
+            <Field
+              id="taxAgentFirmPostcode"
+              label="Firm postcode"
+              value={info.taxAgentFirmPostcode}
+              onChange={(taxAgentFirmPostcode) => patchInfo({ taxAgentFirmPostcode })}
+            />
+            <Field
+              id="taxAgentFirmCity"
+              label="Firm city"
+              value={info.taxAgentFirmCity}
+              onChange={(taxAgentFirmCity) => patchInfo({ taxAgentFirmCity })}
+            />
+            <Field
+              id="taxAgentFirmState"
+              label="Firm state"
+              value={info.taxAgentFirmState}
+              onChange={(taxAgentFirmState) => patchInfo({ taxAgentFirmState })}
             />
           </div>
         </section>

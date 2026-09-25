@@ -69,6 +69,13 @@ export type PayrollCompanyInfo = {
   employerName: string | null;
   employerTin: string | null;
   registrationNo: string | null;
+  // The employer's own income-tax file: type code ("03 - C") and number.
+  referenceType: string | null;
+  referenceNo: string | null;
+  // Form E / CP8D particulars, stored in LHDN's coded wording.
+  employerCategory: string | null;
+  employerStatus: string | null;
+  cp8dFurnishType: string | null;
   perkesoEmployerCode: string | null;
   epfEmployerNo: string | null;
   hrdfEmployerNo: string | null;
@@ -87,6 +94,12 @@ export type PayrollCompanyInfo = {
   taxAgentLicenceNo: string | null;
   taxAgentPhone: string | null;
   taxAgentEmail: string | null;
+  taxAgentFirmName: string | null;
+  taxAgentFirmAddressLine1: string | null;
+  taxAgentFirmAddressLine2: string | null;
+  taxAgentFirmPostcode: string | null;
+  taxAgentFirmCity: string | null;
+  taxAgentFirmState: string | null;
   declarantName: string | null;
   declarantIdType: IdType | null;
   declarantIdNumber: string | null;
