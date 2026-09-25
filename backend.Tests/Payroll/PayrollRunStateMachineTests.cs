@@ -369,6 +369,78 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Equal(profile.Id, Assert.Single(await _payslips.GetForRunAsync(run.Id)).EmployeeProfileId);
     }
 
+    // ---- A dated input changes while the run is locked ----
+    //
+    // Unpaid leave cancelled (or OT approved) for a month whose run is awaiting
+    // approval or already approved. Nothing changes for that run as it stands —
+    // approval goes ahead, a filed run is left alone — but the moment it is
+    // back in draft it must say "re-run", because its payslips predate it.
+
+    private Task UnpaidLeaveCancelledIn(int year, int month) =>
+        new PayrollDraftStaleness(
+                _runs, _currentUser,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<PayrollDraftStaleness>.Instance)
+            .MarkDraftsCoveringAsync(new DateTime(year, month, 10), new DateTime(year, month, 11));
+
+    private async Task<bool> IsStale(string runId) => (await _service.GetAsync(runId))!.Run.IsStale;
+
+    [Fact]
+    public async Task LeaveCancelledWhilePending_NotStaleUntilSentBack_ThenNeedsARerun()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await GeneratedRunAsync();
+        Assert.True((await _service.SubmitForApprovalAsync(run.Id)).Ok);
+
+        await UnpaidLeaveCancelledIn(2026, 1);
+        Assert.False(await IsStale(run.Id));   // awaiting approval: nothing shown
+
+        Assert.True((await _service.RejectAsync(run.Id, "Check the leave")).Ok);
+
+        Assert.True(await IsStale(run.Id));
+        var resubmit = await _service.SubmitForApprovalAsync(run.Id);
+        Assert.False(resubmit.Ok);
+        Assert.Contains("Re-run payroll", resubmit.Error);
+    }
+
+    [Fact]
+    public async Task LeaveCancelledWhilePending_ApprovalStillGoesAhead_AndTheFiledRunIsLeftAlone()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await GeneratedRunAsync();
+        Assert.True((await _service.SubmitForApprovalAsync(run.Id)).Ok);
+
+        await UnpaidLeaveCancelledIn(2026, 1);
+
+        Assert.True((await _service.ApproveAsync(run.Id)).Ok);
+        Assert.False(await IsStale(run.Id));
+    }
+
+    [Fact]
+    public async Task LeaveCancelledAfterApproval_FlagsTheRunOnceRevertedToDraft()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync();
+
+        await UnpaidLeaveCancelledIn(2026, 1);
+        Assert.False(await IsStale(run.Id));   // filed: left as it is
+
+        Assert.True((await _service.RevertToDraftAsync(run.Id)).Ok);
+
+        Assert.True(await IsStale(run.Id));
+    }
+
+    [Fact]
+    public async Task LeaveCancelledInAnotherMonth_DoesNotFlagThisRunOnRevert()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync();
+
+        await UnpaidLeaveCancelledIn(2026, 3);
+        Assert.True((await _service.RevertToDraftAsync(run.Id)).Ok);
+
+        Assert.False(await IsStale(run.Id));
+    }
+
     [Fact]
     public async Task SubmitForApprovalAsync_AcceptsARunRegeneratedAfterTheChange()
     {

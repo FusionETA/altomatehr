@@ -43,7 +43,8 @@ public interface IPayrollRunRepository
     Task MarkMutatedAsync(string runId);
 
     // The same stamp on every GENERATED draft of one org — all of them, or only
-    // those whose period is in `periods`. For inputs that live outside a run
+    // those whose period is in `periods` (then also that month's pending and
+    // submitted runs, so a later send-back or revert comes back stale). For inputs that live outside a run
     // (an employee's profile, a loan, unpaid leave, payroll settings): a draft
     // built before they changed is showing yesterday's numbers. The org is
     // explicit, not left to the tenant filter, because that filter is a no-op

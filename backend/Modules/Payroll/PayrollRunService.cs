@@ -1152,8 +1152,12 @@ public class PayrollRunService : IPayrollRunService
         SubmittedAt = r.SubmittedAt,
         SubmittedById = r.SubmittedById,
         ApprovalRejectionReason = r.ApprovalRejectionReason,
-        // Stale = the inputs moved after the payslips were built.
-        IsStale = r.LastMutatedAt is not null
+        // Stale = the inputs moved after the payslips were built. DRAFT only: a
+        // run awaiting approval or filed can carry the stamp (see
+        // MarkDraftsMutatedAsync) but isn't asked to re-run until it's back
+        // in draft.
+        IsStale = r.Status == PayrollRunStatus.DRAFT
+                  && r.LastMutatedAt is not null
                   && (r.GeneratedAt is null || r.LastMutatedAt > r.GeneratedAt),
         CreatedAt = r.CreatedAt,
         UpdatedAt = r.UpdatedAt,

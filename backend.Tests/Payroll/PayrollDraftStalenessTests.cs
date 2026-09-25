@@ -86,6 +86,27 @@ public class PayrollDraftStalenessTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkCovering_AlsoStampsThatMonthsPendingAndSubmittedRuns()
+    {
+        var pending = Run(9, PayrollRunStatus.PENDING_APPROVAL);
+        var submitted = Run(10, PayrollRunStatus.SUBMITTED);
+        var otherMonth = Run(8, PayrollRunStatus.SUBMITTED);
+        await _db.SaveChangesAsync();
+        var submittedUpdatedAt = (await Reload(submitted.Id)).UpdatedAt;
+
+        // Unpaid leave 30 Sep – 2 Oct cancelled.
+        await _staleness.MarkDraftsCoveringAsync(
+            new DateTime(2026, 9, 30), new DateTime(2026, 10, 2));
+
+        // Stamped, so a send-back or revert to draft comes back needing a re-run.
+        Assert.NotNull((await Reload(pending.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(submitted.Id)).LastMutatedAt);
+        // A filed run's own record didn't change.
+        Assert.Equal(submittedUpdatedAt, (await Reload(submitted.Id)).UpdatedAt);
+        Assert.Null((await Reload(otherMonth.Id)).LastMutatedAt);
+    }
+
+    [Fact]
     public async Task NeverTouchesAnotherCompanysDrafts()
     {
         var mine = Run(9);

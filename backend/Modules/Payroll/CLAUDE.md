@@ -130,6 +130,14 @@ fact is why:
 A status change never touches `LastMutatedAt` — submitting a run does not make
 its payslips any fresher.
 
+A **dated** input (unpaid leave approved or cancelled, overtime) stamps
+`LastMutatedAt` on that month's run whatever its status — draft, pending or
+submitted. `IsStale` only reads true for a DRAFT, so a pending run is approved
+and a filed one left alone as normal; but when either goes back to draft (sent
+back by the approver, or reverted) the stamp makes it ask for a re-run, because
+its payslips predate the change. The org-wide sweep (`MarkAllDraftsAsync`, for
+profile/settings edits) stays drafts-only.
+
 ## Statutory files
 
 KWSP, PERKESO and LHDN parse by **byte position**. A field one character short
