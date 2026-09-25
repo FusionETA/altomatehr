@@ -27,23 +27,22 @@ public static class ProjectTrackingVisibility
     // to reconcile it against. Once Xero is actually providing the list, a
     // project with NEITHER Xero id has no place in it.
     //
-    // A Xero Projects-API row (xeroProjectId set, no tracking option) is a
-    // different case — it demonstrably IS Xero's, just via the legacy sync —
-    // so it stays, same as a tracked row whose category is unknown.
+    // Once a category is picked it is the WHOLE list, as in the previous
+    // system: a Xero Projects-API row (xeroProjectId set, no tracking option)
+    // is Xero's, but not the list the admin chose, so it hides too. Only a
+    // tracked row whose category was never recorded stays — hiding a project
+    // whose category is unknown could hide a current one.
     public static bool IsHidden(
-        string? xeroProjectId, string? trackingOptionId, string? trackingCategoryId,
-        string? activeCategoryId)
+        string? trackingOptionId, string? trackingCategoryId, string? activeCategoryId)
     {
         if (activeCategoryId is null) return false;   // Xero isn't connected/configured yet.
 
-        if (xeroProjectId is null && trackingOptionId is null) return true;   // truly hand-made
+        // Hand-made, or from Xero Projects rather than the picked category.
+        if (trackingOptionId is null) return true;
 
-        // Hidden only when it demonstrably came from a DIFFERENT category. A
-        // legacy Projects-API row and one synced before the category was
-        // recorded (null category) both stay — hiding a project whose
-        // category is unknown could hide a current one.
-        return trackingOptionId is not null
-            && trackingCategoryId is not null
-            && !string.Equals(trackingCategoryId, activeCategoryId, StringComparison.Ordinal);
+        // Synced before the category was recorded: unknown, so it stays.
+        if (trackingCategoryId is null) return false;
+
+        return !string.Equals(trackingCategoryId, activeCategoryId, StringComparison.Ordinal);
     }
 }
