@@ -117,6 +117,23 @@ export function PayrollAnnualTab() {
         </p>
       </section>
 
+      {/* The forms declare the full January–December year, so downloads stay
+          off until every month is approved — as in the previous system. */}
+      {payload && !payload.canGenerate ? (
+        <div className={WARN_PANEL}>
+          <p className="font-semibold">
+            {payload.submittedMonths.length}/12 monthly runs approved for {year}
+          </p>
+          <p className="mt-1">
+            The annual forms cover the full January–December year. Approve every month to
+            enable the downloads.
+          </p>
+          <p className="mt-1 text-xs">
+            Missing: {payload.missingMonths.map(monthShort).join(", ")}
+          </p>
+        </div>
+      ) : null}
+
       {error ? <section className={ERROR_PANEL}>Error: {error}</section> : null}
 
       {/* Both LHDN TXT files are named after the E-number and refuse without
@@ -215,6 +232,7 @@ export function PayrollAnnualTab() {
             subtitle="What the employer keeps and hands out."
             items={kinds.filter((k) => k.group === "FORMS")}
             busy={busy}
+            disabled={!payload?.canGenerate}
             onPick={get}
           />
           <Group
@@ -222,6 +240,7 @@ export function PayrollAnnualTab() {
             subtitle="The pipe-delimited pair the portal expects. Upload both."
             items={kinds.filter((k) => k.group === "LHDN_TXT")}
             busy={busy}
+            disabled={!payload?.canGenerate}
             onPick={get}
           />
 
@@ -283,17 +302,23 @@ function Total({
   );
 }
 
+const monthShort = (month: number) =>
+  new Date(2000, month - 1, 1).toLocaleString("en-MY", { month: "short" });
+
 function Group({
   title,
   subtitle,
   items,
   busy,
+  disabled,
   onPick,
 }: {
   title: string;
   subtitle: string;
   items: PayrollAnnualReportMeta[];
   busy: string | null;
+  // Off until the year is complete; the panel above says which months.
+  disabled: boolean;
   onPick: (meta: PayrollAnnualReportMeta) => void;
 }) {
   if (items.length === 0) return null;
@@ -311,7 +336,7 @@ function Group({
             <button
               type="button"
               className={`${BUTTON_GHOST} h-auto w-full items-start justify-start gap-3 rounded-2xl p-3 text-left`}
-              disabled={busy !== null}
+              disabled={disabled || busy !== null}
               onClick={() => onPick(meta)}
             >
               <span className="mt-0.5 shrink-0 text-muted-foreground">

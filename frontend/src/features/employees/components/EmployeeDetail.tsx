@@ -628,8 +628,11 @@ export function EmployeeDetail({
   }
 
   const name = placement.name.trim() || profile?.name?.trim() || employee.email;
-  const ready = profile ? isReadyForPayroll(profile) : false;
-  const sectionGaps = profile ? missingFields(profile, section) : [];
+  // The employee number is on the membership, not the profile — pass the
+  // value as typed so its required mark clears as soon as it is filled.
+  const profileContext = { employeeNumber: placement.employeeNumber };
+  const ready = profile ? isReadyForPayroll(profile, profileContext) : false;
+  const sectionGaps = profile ? missingFields(profile, section, profileContext) : [];
 
   // Statutory branch detection — drives the locked EPF rate display and the
   // SOCSO recommendation hint. Kept at this level (not just inside the tab's
@@ -749,7 +752,7 @@ export function EmployeeDetail({
             items={SECTIONS.map((sec) => ({
               id: sec.id,
               label: sec.label,
-              badge: missingFields(profile, sec.id).length,
+              badge: missingFields(profile, sec.id, profileContext).length,
             }))}
             value={section}
             onChange={setSection}
@@ -834,7 +837,10 @@ export function EmployeeDetail({
                       options={ID_TYPES.map((t) => ({ value: t, label: ID_TYPE_LABELS[t] }))}
                     />
                   </Field>
-                  <Field label="ID number">
+                  <Field
+                    label="ID number"
+                    hint="A Malaysian IC is 12 digits. For a passport, set the ID type to Passport — LHDN rejects a passport filed as an IC."
+                  >
                     <Text value={profile.idNumber} onChange={(v) => set("idNumber", v)} />
                   </Field>
                   <Field label="Nationality">
@@ -1374,7 +1380,13 @@ export function EmployeeDetail({
                 </Group>
 
                 <Group title="Income tax">
-                  <Field label="Income tax number">
+                  {/* Not required to send payroll for approval (as before — a new
+                      joiner may not have a TIN yet), but the PCB file needs it for
+                      anyone who has tax deducted, and exactly 11 digits. */}
+                  <Field
+                    label="Income tax number"
+                    hint="Needed for the PCB file once tax is deducted — 11 digits including any leading zero, e.g. IG 0123456789 0."
+                  >
                     <Text
                       value={profile.incomeTaxNumber}
                       onChange={(v) => set("incomeTaxNumber", v)}
