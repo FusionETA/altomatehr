@@ -28,4 +28,9 @@ public sealed record PcbDetailsEmployee
     // recomputed: the snapshot is the month's law, and running today's engine
     // over a historical payslip is how a filed figure quietly changes.
     public PcbBreakdown? Breakdown { get; init; }
+
+    // Additional PCB (Employment Income) off the payslip. Not part of the
+    // formula above — a manual top-up printed after it, so the page ends on
+    // the figure that was actually withheld and filed.
+    public decimal VoluntaryPcb { get; init; }
 }

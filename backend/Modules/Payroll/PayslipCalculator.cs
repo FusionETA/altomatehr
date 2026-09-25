@@ -217,6 +217,10 @@ public static class PayslipCalculator
         // formula that produced THIS month's deduction, not today's.
         public required PcbBreakdown PcbCalculation { get; init; }
         public required decimal Cp38 { get; init; }
+
+        // Additional PCB (Employment Income). Already inside TotalDeductions;
+        // kept off Pcb so next month's X excludes it. CP39 files Pcb + this.
+        public required decimal VoluntaryPcb { get; init; }
         public required decimal Zakat { get; init; }
         public required decimal Hrdf { get; init; }
         public required decimal HrdfWage { get; init; }
@@ -523,6 +527,7 @@ public static class PayslipCalculator
             PcbAdditional = pcbResult.PcbAdditional,
             PcbCalculation = pcbResult,
             Cp38 = buckets.Cp38,
+            VoluntaryPcb = buckets.VoluntaryPcb,
             Zakat = buckets.Zakat,
             Hrdf = hrdf,
             HrdfWage = hrdfWage,
@@ -568,6 +573,7 @@ public static class PayslipCalculator
         public decimal Zakat;
         public decimal Tp1Relief;
         public decimal Cp38;
+        public decimal VoluntaryPcb;
     }
 
     private static Buckets RouteFixedAllowances(Input input, decimal prorationRatio)
@@ -636,6 +642,7 @@ public static class PayslipCalculator
         b.Zakat = Money.Round2(b.Zakat);
         b.Tp1Relief = Money.Round2(b.Tp1Relief);
         b.Cp38 = Money.Round2(b.Cp38);
+        b.VoluntaryPcb = Money.Round2(b.VoluntaryPcb);
 
         return b;
     }
@@ -752,6 +759,10 @@ public static class PayslipCalculator
 
         if (meta.OffsetsPcb) b.Zakat += amount;
         if (meta.AddsToCp38Field) b.Cp38 += amount;
+
+        // The net-pay reduction already happened above (it is not cash-neutral);
+        // this only records it for the CP39 PCB field.
+        if (meta.AddsToStandardPcb) b.VoluntaryPcb += amount;
 
         if (meta.FeedsLp1Relief)
         {

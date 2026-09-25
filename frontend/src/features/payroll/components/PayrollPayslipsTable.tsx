@@ -411,7 +411,8 @@ function Row({
 
       <td className={`${CELL} font-semibold text-foreground`}>{rm(payslip.grossPay)}</td>
 
-      <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.pcb)}</td>
+      {/* Includes Additional PCB — withheld and filed as PCB. */}
+      <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.pcb + payslip.voluntaryPcb)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.epfEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.socsoEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.eisEmployee)}</td>
@@ -492,7 +493,7 @@ function sum(payslips: Payslip[]) {
       gross: acc.gross + p.grossPay,
       net: acc.net + p.netPay,
       cost: acc.cost + p.totalCostToEmployer,
-      pcb: acc.pcb + p.pcb,
+      pcb: acc.pcb + p.pcb + p.voluntaryPcb,
       cp38: acc.cp38 + p.cp38,
       zakat: acc.zakat + p.zakat,
       epfEmp: acc.epfEmp + p.epfEmployee,

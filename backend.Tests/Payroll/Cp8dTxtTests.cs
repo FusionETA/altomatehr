@@ -65,7 +65,7 @@ public class Cp8dTxtTests
         };
 
     private static string Text(StatutoryFileResult result) =>
-        Encoding.ASCII.GetString(result.Content!);
+        Encoding.UTF8.GetString(result.Content!);
 
     private static string[] FirstRow(StatutoryFileResult result) =>
         Text(result).Split("\r\n")[0].Split('|');
@@ -151,7 +151,7 @@ public class Cp8dTxtTests
         Assert.Equal("2", cols[4]);                     // 5  tax borne by employer: no
         Assert.Equal("2", cols[5]);                     // 6  qualifying children
         Assert.Equal("4000", cols[6]);                  // 7  child relief
-        Assert.Equal("66000", cols[7]);                 // 8  gross + bonus + BIK
+        Assert.Equal("65000", cols[7]);                 // 8  gross pay (bonus in, BIK out)
         Assert.Equal("6600", cols[13]);                 // 14 EPF
         Assert.Equal("1320.00", cols[15]);              // 16 PCB, two decimals
     }
@@ -169,14 +169,15 @@ public class Cp8dTxtTests
         }
     }
 
-    // The income column is the whole reportable income, not the salary line.
+    // The year's gross pay, bonus included and benefits in kind not — the
+    // figure the previous system filed in column 8.
     [Fact]
-    public void TheIncomeColumnIncludesBonusAndBenefitsInKind()
+    public void TheIncomeColumnIsTheYearsGrossPay()
     {
         var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
             [Employee(gross: 50000m, bonus: 8000m, bik: 2000m)])));
 
-        Assert.Equal("60000", cols[7]);
+        Assert.Equal("58000", cols[7]);
     }
 
     // Rounded, not truncated: this declares income, and rounding every
@@ -209,9 +210,8 @@ public class Cp8dTxtTests
     [InlineData(MaritalStatus.MARRIED, false, 0, "2")]
     // Married with a working spouse.
     [InlineData(MaritalStatus.MARRIED, true, 0, "3")]
-    // Married but the spouse's status is unknown — NOT category 2, which
-    // would claim a relief nobody has established.
-    [InlineData(MaritalStatus.MARRIED, null, 0, "3")]
+    // Married, spouse's status unanswered — 2, as the previous system filed it.
+    [InlineData(MaritalStatus.MARRIED, null, 0, "2")]
     [InlineData(MaritalStatus.DIVORCED, null, 0, "3")]
     [InlineData(MaritalStatus.WIDOWED, null, 0, "3")]
     // Single but claiming a child.
@@ -245,15 +245,25 @@ public class Cp8dTxtTests
         Assert.Equal(expected, PayrollAnnualReports.NormaliseTaxRef(input));
     }
 
-    // A passport is not an IC. Coercing one into the IC column files a wrong
-    // identifier against a real person.
+    // Column 3 is the digits of whatever ID is on file, as the previous
+    // system wrote it — a passport included.
     [Fact]
-    public void APassportDoesNotBecomeAnIc()
+    public void TheIdColumnIsTheDigitsOfTheIdOnFile()
     {
         var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
             [Employee(ic: "A12345678", idType: IdType.PASSPORT)])));
 
-        Assert.Equal(string.Empty, cols[2]);
+        Assert.Equal("12345678", cols[2]);
+    }
+
+    // UTF-8, so an accented name survives instead of becoming "?".
+    [Fact]
+    public void AnAccentedNameIsWrittenAsUtf8()
+    {
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
+            [Employee(name: "José Ramírez")])));
+
+        Assert.Equal("JOSÉ RAMÍREZ", cols[0]);
     }
 
     // ─── Who appears ────────────────────────────────────────────────────

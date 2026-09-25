@@ -43,12 +43,14 @@ public static class Cp8dTxt
     //
     //    1  Name, uppercase, as on the IC or passport
     //    2  Income tax reference, digits only
-    //    3  New IC, 12 digits, no dashes
+    //    3  ID number, digits only (whatever ID is on file, as before)
     //    4  Tax category (1 / 2 / 3)
     //    5  Tax borne by employer (1 = yes, 2 = no)
     //    6  Qualifying children
     //    7  Annual child relief, whole ringgit
-    //    8  Annual gross remuneration, whole ringgit
+    //    8  Annual gross remuneration, whole ringgit — the year's gross pay
+    //       (bonus included, benefits in kind not), as the previous system
+    //       filed it
     //  9–13  Reserved by LHDN, left empty
     //   14  EPF employee contribution, whole ringgit
     //   15  Reserved, left empty
@@ -70,7 +72,9 @@ public static class Cp8dTxt
             // nothing for LHDN to match against and nothing to report. Filing
             // an empty row for them invites a rejection on a record that
             // should not have been sent.
-            if (string.IsNullOrWhiteSpace(employee.IncomeTaxNumber) && employee.TotalPcb == 0m)
+            // Empty, not blank: a whitespace-only reference is still filed, as
+            // the previous system filed it.
+            if (string.IsNullOrEmpty(employee.IncomeTaxNumber) && employee.TotalPcb == 0m)
             {
                 continue;
             }
@@ -79,14 +83,14 @@ public static class Cp8dTxt
             [
                 employee.EmployeeName.ToUpperInvariant(),
                 PayrollAnnualReports.NormaliseTaxRef(employee.IncomeTaxNumber),
-                PayrollAnnualReports.NormaliseNewIc(employee.IdNumber, employee.IdType),
+                StatutoryFileFields.DigitsOnly(employee.IdNumber),
                 employee.Cp8dCategoryOverride
                     ?? PayrollAnnualReports.TaxCategory(
                         employee.MaritalStatus, employee.SpouseWorking, employee.QualifyingChildren),
                 employee.PcbBorneByEmployer ? "1" : "2",
                 employee.QualifyingChildren.ToString(CultureInfo.InvariantCulture),
                 Ringgit(employee.AnnualChildRelief),
-                Ringgit(employee.TotalIncome),
+                Ringgit(employee.GrossSalary + employee.BonusAndCommission),
                 string.Empty, string.Empty, string.Empty, string.Empty, string.Empty,
                 Ringgit(employee.TotalEpfEmployee),
                 string.Empty,
@@ -114,9 +118,10 @@ public static class Cp8dTxt
         return new StatutoryFileResult(
             true,
             PayrollAnnualReports.FileName(kind, payload.Year, payload.EmployerNo),
-            // ASCII, not UTF-8 with a BOM: a byte-order mark at the head of
-            // the first field is read as part of the employer number.
-            Encoding.ASCII.GetBytes(content),
+            // UTF-8 without a BOM, as the previous system wrote it: a byte-order
+            // mark at the head of the first field is read as part of the
+            // employer number, and ASCII would turn an accented name into "?".
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(content),
             meta.MimeType,
             null);
     }

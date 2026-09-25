@@ -129,8 +129,9 @@ public static class PayslipPdf
                     PayrollPdfShared.AmountRow(deductions, "Employee EPF", p.EpfEmployee);
 
                     // Post-zakat: the calculator has already offset it, so this
-                    // is what is actually withheld.
-                    PayrollPdfShared.AmountRow(deductions, "PCB / MTD", p.Pcb);
+                    // is what is actually withheld. Includes Additional PCB —
+                    // remitted in the same CP39 field, so shown as one figure.
+                    PayrollPdfShared.AmountRow(deductions, "PCB / MTD", p.Pcb + p.VoluntaryPcb);
 
                     if (p.Cp38 > 0m)
                         PayrollPdfShared.AmountRow(deductions, "CP38 arrears", p.Cp38);
@@ -144,10 +145,10 @@ public static class PayslipPdf
 
                     if (p.Zakat > 0m) PayrollPdfShared.AmountRow(deductions, "Zakat", p.Zakat);
 
-                    // Zakat and CP38 are inside TotalDeductions and have their
-                    // own rows above, so the catch-all nets them off rather
-                    // than counting them twice.
-                    var other = p.TotalDeductions - p.Zakat - p.Cp38;
+                    // Zakat, CP38 and Additional PCB are inside TotalDeductions
+                    // and already shown above, so the catch-all nets them off
+                    // rather than counting them twice.
+                    var other = p.TotalDeductions - p.Zakat - p.Cp38 - p.VoluntaryPcb;
                     if (other > 0m) PayrollPdfShared.AmountRow(deductions, "Other deductions", other);
 
                     PayrollPdfShared.TotalRow(deductions, "Total deductions", TotalDeductions(p));

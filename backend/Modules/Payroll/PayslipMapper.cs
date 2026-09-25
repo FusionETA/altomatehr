@@ -60,6 +60,7 @@ public static class PayslipMapper
         PcbAdditional = p.PcbAdditional,
         PcbCalculationJson = p.PcbCalculationJson,
         Cp38 = p.Cp38,
+        VoluntaryPcb = p.VoluntaryPcb,
         Zakat = p.Zakat,
         Hrdf = p.Hrdf,
         HrdfWage = p.HrdfWage,

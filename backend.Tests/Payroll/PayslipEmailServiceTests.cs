@@ -204,6 +204,7 @@ public class PayslipEmailServiceTests : IDisposable
 
         public Task<StatutoryFileResult> RenderEpfCsvAsync(string runId) => throw new NotSupportedException();
         public Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId) => throw new NotSupportedException();
+        public Task<StatutoryFileResult> RenderPerkesoSkbbkTxtAsync(string runId) => throw new NotSupportedException();
         public Task<StatutoryFileResult> RenderPcbTxtAsync(string runId) => throw new NotSupportedException();
         public Task<PayrollRunReadiness.Result?> GetReadinessAsync(string runId) =>
             throw new NotSupportedException();

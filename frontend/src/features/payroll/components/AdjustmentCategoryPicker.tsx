@@ -107,6 +107,7 @@ export function StatutoryStrip({
     category.cashNeutral && "Already paid by the employee — lowers PCB only",
     category.feedsLp1Relief && "A TP1 relief",
     category.addsToCp38Field && "Filed in CP39's CP38 column",
+    category.addsToStandardPcb && "Added to the month's PCB and filed in CP39's PCB field",
     category.offsetsPcb && "Offsets PCB ringgit for ringgit",
     category.taxExemptLimit !== null &&
       `Tax exempt up to RM ${rm(category.taxExemptLimit)} a year`,

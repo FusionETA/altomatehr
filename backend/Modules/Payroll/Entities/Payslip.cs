@@ -121,6 +121,13 @@ public class Payslip : ITenantScoped
     // through CP39's own CP38 column.
     [Precision(12, 2)] public decimal Cp38 { get; set; }
 
+    // Additional PCB (Employment Income), from `deduct_additional_pcb` rows.
+    // Held apart from Pcb because the MTD spec's X excludes "additional Monthly
+    // Tax Deduction requested by the employee" — folding it in would suppress
+    // next month's withholding. CP39 has no column for it: the PCB field
+    // carries Pcb + VoluntaryPcb.
+    [Precision(12, 2)] public decimal VoluntaryPcb { get; set; }
+
     [Precision(12, 2)] public decimal Zakat { get; set; }
 
     [Precision(12, 2)] public decimal Hrdf { get; set; }

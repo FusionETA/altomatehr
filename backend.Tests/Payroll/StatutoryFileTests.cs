@@ -37,6 +37,7 @@ public class StatutoryFileTests
         decimal skbbk = 0m,
         decimal pcb = 110m,
         decimal cp38 = 0m,
+        decimal voluntaryPcb = 0m,
         string name = "Aisyah Binti Rahman") => new()
     {
         OrganizationId = "org-1",
@@ -54,6 +55,7 @@ public class StatutoryFileTests
         SkbbkEmployee = skbbk,
         Pcb = pcb,
         Cp38 = cp38,
+        VoluntaryPcb = voluntaryPcb,
     };
 
     private static StatutoryEmployeeRow Row(
@@ -112,10 +114,21 @@ public class StatutoryFileTests
 
     // ─── EPF CSV ────────────────────────────────────────────────────────
 
+    // Only names the file.
+    private static readonly DateOnly GeneratedOn = new(2026, 4, 5);
+
+    // {DDMMYYYY generated}-EPF_iAkaun-{YYYY}_{MM}.csv, as before.
+    [Fact]
+    public void EpfCsv_IsNamedAsThePreviousSystemNamedIt()
+    {
+        Assert.Equal("05042026-EPF_iAkaun-2026_03.csv",
+            EpfContributionCsv.Render(Payload(), GeneratedOn).FileName);
+    }
+
     [Fact]
     public void EpfCsv_WritesTheHeaderAndOneRowPerContributingEmployee()
     {
-        var lines = Lines(EpfContributionCsv.Render(Payload()));
+        var lines = Lines(EpfContributionCsv.Render(Payload(), GeneratedOn));
 
         Assert.Equal(
             "Member EPF No.,Member IC No.,Member Name,Member Wage,"
@@ -135,7 +148,7 @@ public class StatutoryFileTests
         var lines = Lines(EpfContributionCsv.Render(Payload([
             Row(name: "Has EPF"),
             Row(name: "No EPF", epfNumber: null),
-        ])));
+        ]), GeneratedOn));
 
         Assert.Equal(2, lines.Length);          // header + one row
         Assert.Contains("Has EPF", lines[1]);
@@ -147,9 +160,20 @@ public class StatutoryFileTests
     {
         var lines = Lines(EpfContributionCsv.Render(Payload([
             Row(name: "Zero", payslip: Payslip(epfEmployee: 0m, epfEmployer: 0m)),
-        ])));
+        ]), GeneratedOn));
 
         Assert.Single(lines);                   // header only
+    }
+
+    // Written as stored, as the previous system wrote it.
+    [Fact]
+    public void EpfCsv_WritesTheEpfNumberUntrimmed()
+    {
+        var payload = Payload([Row(epfNumber: " 12345678")]);
+
+        var row = Lines(EpfContributionCsv.Render(payload, GeneratedOn))[1];
+
+        Assert.StartsWith(" 12345678,", row);
     }
 
     [Fact]
@@ -157,7 +181,7 @@ public class StatutoryFileTests
     {
         var lines = Lines(EpfContributionCsv.Render(Payload([
             Row(name: "Rahman, Aisyah"),
-        ])));
+        ]), GeneratedOn));
 
         Assert.Contains("\"Rahman, Aisyah\"", lines[1]);
     }
@@ -167,7 +191,7 @@ public class StatutoryFileTests
     [Fact]
     public void PerkesoTxt_LaysEveryFieldOutAtItsSpecifiedPosition()
     {
-        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(Payload())));
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(Payload(), PerkesoLayout.SocsoEis)));
 
         Assert.Equal(278, line.Length);
 
@@ -184,30 +208,94 @@ public class StatutoryFileTests
         Assert.Equal("   990", line[232..238]);          // 233-238 EIS employee
     }
 
-    // SKBBK began 1 Jun 2026. Before then the column does not exist and those
-    // bytes are filler — a rerun of an earlier month has to produce the layout
-    // that month was actually filed under.
+    // Two files, as before: the v1 layout never carries SKBBK, whatever the
+    // period — those bytes are filler.
     [Fact]
-    public void PerkesoTxt_OmitsTheSkbbkColumnForPeriodsBeforeItExisted()
+    public void PerkesoTxt_V1LayoutLeavesTheSkbbkBytesAsFiller()
     {
-        var line = Assert.Single(Lines(
-            PerkesoContributionTxt.Render(Payload(year: 2026, month: 5))));
+        var payload = Payload([Row(payslip: Payslip(skbbk: 0.90m))], year: 2026, month: 6);
+
+        var result = PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis);
+        var line = Assert.Single(Lines(result));
 
         Assert.Equal(278, line.Length);
         Assert.Equal(new string(' ', 40), line[238..278]);   // all filler
+        Assert.Equal("SOCSO_EIS_062026.txt", result.FileName);
     }
 
     [Fact]
-    public void PerkesoTxt_WritesTheSkbbkColumnFromJune2026()
+    public void PerkesoTxt_SkbbkLayoutWritesTheSkbbkColumn()
     {
         var payload = Payload(
             [Row(payslip: Payslip(skbbk: 0.90m))], year: 2026, month: 6);
 
-        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload)));
+        var result = PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEisSkbbk);
+        var line = Assert.Single(Lines(result));
 
         Assert.Equal(278, line.Length);
-        Assert.Equal("    90", line[238..244]);              // 239-244 SKBBK, in sen
+        Assert.Equal("   090", line[238..244]);              // 239-244 SKBBK, in sen
         Assert.Equal(new string(' ', 34), line[244..278]);   // filler, 6 bytes shorter
+        Assert.Equal("SOCSO_EIS_SKBBK_062026.txt", result.FileName);
+    }
+
+    // The two tests above each check ONE layout against the spec. This one
+    // checks them against EACH OTHER: one renderer produces both files, and
+    // the promise (module CLAUDE.md, "One PERKESO renderer, not two") is that
+    // they cannot drift apart because there is only one code path to edit.
+    // Bytes 000-238 (everything before the SKBBK column) must come out
+    // byte-for-byte identical from both layouts, for every row — not just
+    // "the same shape", but the same characters.
+    [Fact]
+    public void PerkesoTxt_V1AndV2AreByteIdenticalOutsideTheSkbbkColumn()
+    {
+        var payload = Payload([
+            Row(name: "Aisyah Binti Rahman", payslip: Payslip(name: "Aisyah Binti Rahman", skbbk: 0.90m)),
+            Row(
+                name: "Muthu A/L Samy",
+                idNumber: null,
+                socsoNumber: "F0099887766",
+                nationality: "Indian",
+                payslip: Payslip(name: "Muthu A/L Samy", skbbk: 1.35m)),
+        ], year: 2026, month: 6);
+
+        var v1Lines = Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis));
+        var v2Lines = Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEisSkbbk));
+
+        Assert.Equal(v1Lines.Length, v2Lines.Length);
+
+        for (var i = 0; i < v1Lines.Length; i++)
+        {
+            Assert.Equal(278, v1Lines[i].Length);
+            Assert.Equal(278, v2Lines[i].Length);
+            Assert.Equal(v1Lines[i][..238], v2Lines[i][..238]);
+        }
+    }
+
+    // The ASSIST parser rejects a bare "0": every money field keeps its two
+    // cents digits, so a zero share is "000" and 50 sen is "050".
+    [Fact]
+    public void PerkesoTxt_MoneyFieldsAlwaysCarryTheirCentsDigits()
+    {
+        var payload = Payload([Row(payslip: Payslip(eisEmployee: 0m, eisEmployer: 0.5m))]);
+
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
+
+        Assert.Equal("   050", line[226..232]);   // EIS employer
+        Assert.Equal("   000", line[232..238]);   // EIS employee
+    }
+
+    // The previous system's spellings of Malaysian all route to the IC.
+    [Theory]
+    [InlineData("Malaysia")]
+    [InlineData("MY")]
+    [InlineData("Warganegara Malaysia")]
+    public void PerkesoTxt_KeysEverySpellingOfMalaysianByIc(string nationality)
+    {
+        var payload = Payload([Row(nationality: nationality, socsoNumber: "F0099887766")]);
+
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
+
+        Assert.Equal("900101145567", line[32..44]);
     }
 
     // Foreigners have no NRIC, so PERKESO keys them by their SOCSO number.
@@ -219,9 +307,26 @@ public class StatutoryFileTests
             idNumber: "P1234567",
             socsoNumber: "F0099887766")]);
 
-        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload)));
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
 
         Assert.Equal("F0099887766 ", line[32..44]);
+    }
+
+    // Null-coalescing, as the previous system chose: a SOCSO number stored as
+    // an empty string is still "the SOCSO number", so the foreign-worker
+    // number behind it is not reached.
+    [Fact]
+    public void PerkesoTxt_TakesAnEmptySocsoNumberAsThePreviousSystemDid()
+    {
+        var payload = Payload([Row(
+            nationality: "Nepalese",
+            idNumber: "P1234567",
+            socsoNumber: "",
+            ssfwNumber: "F0099887766")]);
+
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
+
+        Assert.Equal(new string(' ', 12), line[32..44]);
     }
 
     // A PR is treated as local for identification even though they are not
@@ -231,7 +336,7 @@ public class StatutoryFileTests
     {
         var payload = Payload([Row(nationality: "Indonesian", hasPr: true)]);
 
-        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload)));
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
 
         Assert.Equal("900101145567", line[32..44]);
     }
@@ -243,7 +348,7 @@ public class StatutoryFileTests
             socsoEmployee: 0m, socsoEmployer: 0m,
             eisEmployee: 0m, eisEmployer: 0m, skbbk: 0m))]);
 
-        Assert.Empty(Lines(PerkesoContributionTxt.Render(payload)));
+        Assert.Empty(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
     }
 
     [Fact]
@@ -251,7 +356,7 @@ public class StatutoryFileTests
     {
         var payload = Payload(companyInfo: new PayrollCompanyInfo { OrganizationId = "org-1" });
 
-        var result = PerkesoContributionTxt.Render(payload);
+        var result = PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis);
 
         Assert.False(result.Ok);
         Assert.Contains("PERKESO Employer Code", result.Error);
@@ -263,13 +368,19 @@ public class StatutoryFileTests
     {
         var payload = Payload([Row(name: new string('X', 200))]);
 
-        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload)));
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
 
         Assert.Equal(278, line.Length);
         Assert.Equal("032026", line[194..200]);   // the month is still where it belongs
     }
 
     // ─── LHDN CP39 PCB TXT ──────────────────────────────────────────────
+
+    [Fact]
+    public void PcbTxt_IsNamedAsThePreviousSystemNamedIt()
+    {
+        Assert.Equal("PCB_032026.txt", PcbCp39Txt.Render(Payload()).FileName);
+    }
 
     [Fact]
     public void PcbTxt_WritesAHeaderCarryingTheTotalsOfTheRowsBelow()
@@ -308,6 +419,7 @@ public class StatutoryFileTests
         Assert.Equal(new string(' ', 12), detail[72..84]);   // 073-084 Old IC — always blank
         Assert.Equal("900101145567", detail[84..96]);        // 085-096 New IC
         Assert.Equal(new string(' ', 12), detail[96..108]);  // 097-108 passport
+        Assert.Equal("  ", detail[108..110]);                // 109-110 country — blank for a local
         Assert.Equal("00011000", detail[110..118]);          // 111-118 PCB in sen
         Assert.Equal("00000000", detail[118..126]);          // 119-126 CP38
         Assert.Equal("E-001     ", detail[126..136]);        // 127-136 employee number
@@ -464,6 +576,49 @@ public class StatutoryFileTests
         Assert.Equal("00030000", lines[1][118..126]);
     }
 
+    // Additional PCB has no CP39 column of its own. The previous system filed
+    // it inside the standard PCB field (pcb + voluntaryPcb), and the header
+    // total follows.
+    [Fact]
+    public void PcbTxt_FoldsAdditionalPcbIntoThePcbField()
+    {
+        var payload = Payload([Row(payslip: Payslip(pcb: 110m, voluntaryPcb: 50m))]);
+
+        var lines = Lines(PcbCp39Txt.Render(payload));
+
+        Assert.Equal("0000016000", lines[0][27..37]);   // PCB total
+        Assert.Equal("00001", lines[0][37..42]);
+        Assert.Equal("0000000000", lines[0][42..52]);   // no CP38
+        Assert.Equal("00016000", lines[1][110..118]);
+        Assert.Equal("00000000", lines[1][118..126]);
+    }
+
+    // Someone whose only withholding is Additional PCB is still filed.
+    [Fact]
+    public void PcbTxt_FilesARowWhoseOnlyWithholdingIsAdditionalPcb()
+    {
+        var payload = Payload([Row(payslip: Payslip(pcb: 0m, voluntaryPcb: 40m))]);
+
+        var lines = Lines(PcbCp39Txt.Render(payload));
+
+        Assert.Equal(2, lines.Length);
+        Assert.Equal("00004000", lines[1][110..118]);
+    }
+
+    // The previous system's PCB rule compared the nationality to "malaysian"
+    // WITHOUT trimming, so a padded value went down the passport branch. Kept
+    // so the file's bytes match what was filed before.
+    [Fact]
+    public void PcbTxt_ComparesTheNationalityUntrimmedAsThePreviousSystemDid()
+    {
+        var payload = Payload([Row(nationality: "Malaysian ", idNumber: "A1234567")]);
+
+        var detail = Lines(PcbCp39Txt.Render(payload))[1];
+
+        Assert.Equal(new string(' ', 12), detail[84..96]);   // no New IC
+        Assert.Equal("A1234567    ", detail[96..108]);        // passport
+    }
+
     [Fact]
     public void PcbTxt_OmitsEmployeesWithNothingWithheld()
     {
@@ -514,6 +669,18 @@ public class StatutoryFileTests
     }
 
     // ─── Readiness ──────────────────────────────────────────────────────
+
+    // The previous system's normaliseTaxRef: ASCII letters, whitespace and
+    // - _ ( ) go; anything else stays and counts toward the 11.
+    [Theory]
+    [InlineData("SG 1234-5678(90)1", "12345678901")]
+    [InlineData("OG_12345678901", "12345678901")]
+    [InlineData("12345/678901", "12345/678901")]
+    [InlineData(null, "")]
+    public void NormaliseTaxRef_StripsWhatThePreviousSystemStripped(string? input, string expected)
+    {
+        Assert.Equal(expected, StatutoryFileFields.NormaliseTaxRef(input));
+    }
 
     [Fact]
     public void Readiness_IsOkWhenEveryRequiredFieldIsPresent()

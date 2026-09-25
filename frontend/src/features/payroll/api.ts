@@ -235,6 +235,9 @@ export type Payslip = {
   pcbAdditional: number;
   pcbCalculationJson: string | null;
   cp38: number;
+  // Additional PCB (Employment Income). Kept off `pcb` so next month's
+  // formula ignores it, but withheld and filed WITH it — show `pcb + voluntaryPcb`.
+  voluntaryPcb: number;
   zakat: number;
   hrdf: number;
   hrdfWage: number;
@@ -866,6 +869,7 @@ export type AdjustmentCategory = {
   cashNeutral: boolean;
   feedsLp1Relief: boolean;
   addsToCp38Field: boolean;
+  addsToStandardPcb: boolean;
   isAdditionalRemuneration: boolean;
   offsetsPcb: boolean;
   // A benefit in kind: never reaches cash, still taxable income on Form EA.

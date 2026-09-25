@@ -150,6 +150,16 @@ does the loading.
   6-byte column carved out of filler. Which one is produced is decided by the
   PERIOD — SKBBK began Jun 2026 — so a rerun of an earlier month gets the
   layout it was actually filed under.
+- **Additional PCB rides in CP39's PCB field.** `deduct_additional_pcb` lands
+  in `Payslip.VoluntaryPcb`, never `Payslip.Pcb` (the MTD spec's X excludes
+  it, so next month's formula must not see it). `PcbCp39Txt` files
+  `Pcb + VoluntaryPcb`; CP38 keeps its own column. Run totals and the annual
+  EA/CP8D figures use `Pcb` alone, as the previous system did.
+- **Names and bytes match the previous system.** File names, run-document
+  names (`Payroll_Summary_January_2026.pdf`, `Payslips_2026_01_All.zip`,
+  `{id}_{name}_{MM-YYYY}.pdf`) and the edge-case field rules (untrimmed EPF
+  number, null-coalescing SOCSO id, its tax-ref normaliser) are ported as
+  they were, deliberately — "tidying" one changes what gets filed.
 - **A missing IC is a refusal, not an exception.** It is an admin's data
   problem with a specific fix, so it returns a message naming the person and
   the controller answers 409.
@@ -174,6 +184,8 @@ Rules the documents keep:
   arithmetic exactly, and is tested against it.
 - **Zakat and CP38 are inside `TotalDeductions`** and also have their own
   rows, so the catch-all "Other" nets them off rather than counting twice.
+  **Additional PCB** (`VoluntaryPcb`) is too, but is shown INSIDE the
+  "PCB / MTD" row (`Pcb + VoluntaryPcb`) rather than as its own row.
 - **Every deduction needs a column on the summary.** A statutory item with
   nowhere to go makes every row silently short — SKBBK was exactly that.
 - **A payslip masks the bank account; the payment schedule shows it in full.**

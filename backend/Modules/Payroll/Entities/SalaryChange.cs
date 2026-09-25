@@ -59,8 +59,8 @@ public class SalaryChange : ITenantScoped
     public string? Notes { get; set; }
 
     // Who recorded it. Null on rows created before this was captured, or by
-    // a migration.
-    [MaxLength(40)]
+    // a migration. 64 fits an API-key caller's "apikey:<guid>".
+    [MaxLength(64)]
     public string? ChangedByUserId { get; set; }
 
     public DateTime CreatedAt { get; set; }

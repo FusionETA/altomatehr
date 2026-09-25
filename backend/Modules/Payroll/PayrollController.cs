@@ -59,6 +59,7 @@ public class PayrollController : ControllerBase
             CashNeutral = meta.CashNeutral,
             FeedsLp1Relief = meta.FeedsLp1Relief,
             AddsToCp38Field = meta.AddsToCp38Field,
+            AddsToStandardPcb = meta.AddsToStandardPcb,
             IsAdditionalRemuneration = meta.IsAdditionalRemuneration,
             OffsetsPcb = meta.OffsetsPcb,
             NonCash = meta.NonCash,

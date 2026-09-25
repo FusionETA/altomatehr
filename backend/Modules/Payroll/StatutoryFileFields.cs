@@ -45,6 +45,26 @@ public static class StatutoryFileFields
     public static long ToSen(decimal ringgit) =>
         (long)Math.Round(ringgit * 100m, 0, MidpointRounding.AwayFromZero);
 
+    // A PERKESO money field: sen with the two cents digits ALWAYS present, so
+    // at least three digits — RM0.00 is "000", RM0.50 is "050". The ASSIST
+    // parser rejects a bare "0", which is what a foreign worker's zero EIS
+    // share used to come out as. Space-padding to the column is separate.
+    public static string SenDigits(decimal ringgit) =>
+        ToSen(ringgit).ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(3, '0');
+
+    // The nationality spellings the previous system treated as Malaysian.
+    // PERKESO routes on this (IC vs SOCSO number), so the set must match the
+    // one the files were filed under: "Malaysia", "MY", "MYS" and the Malay
+    // forms appear in imported profiles.
+    public static bool IsMalaysianNationality(string? nationality)
+    {
+        var v = (nationality ?? string.Empty).Trim().ToLowerInvariant();
+        if (v.Length == 0) return false;
+        return v is "malaysian" or "malaysia" or "my" or "mys"
+            || v.Contains("warganegara malaysia")
+            || v.Contains("rakyat malaysia");
+    }
+
     // Digits only. An IC typed as 900101-14-5567 and one typed as
     // 900101145567 are the same person, and only one of them is submittable.
     public static string DigitsOnly(string? value) =>
@@ -95,9 +115,18 @@ public static class StatutoryFileFields
     public static string CountryCodeForNationality(string? nationality) =>
         NationalityCountryCodes.ForNationality(nationality);
 
-    // An LHDN tax reference with its SG / OG / C prefix and separators removed,
-    // leaving the digits ready to pad.
-    public static string NormaliseTaxRef(string? taxRef) => DigitsOnly(taxRef);
+    // An LHDN tax reference with its SG / OG / C prefix and separators removed.
+    //
+    // Exactly the previous system's rule: drop ASCII letters, whitespace, and
+    // - _ ( ). Anything else ("/", ".") is KEPT, so it counts toward the
+    // 11-character check and reaches the file as the previous system sent it.
+    public static string NormaliseTaxRef(string? taxRef) =>
+        taxRef is null
+            ? string.Empty
+            : new string(taxRef
+                .Where(c => !char.IsAsciiLetter(c) && !char.IsWhiteSpace(c)
+                            && c is not ('-' or '_' or '(' or ')'))
+                .ToArray());
 
     // LHDN splits the tax reference into a 10-digit number plus a trailing
     // "wife code". A reference of 11 digits or more already carries it.
@@ -134,4 +163,8 @@ public static class StatutoryFileFields
 
     // Every one of these formats is CRLF, regardless of the host OS.
     public const string LineEnding = "\r\n";
+
+    // Period stamp the previous system put in statutory file names: MMYYYY.
+    public static string PeriodMmYyyy(int year, int month) =>
+        $"{month:D2}{year:D4}";
 }
