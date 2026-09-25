@@ -254,9 +254,28 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
         if (RefuseIfImported(model.Run) is { } imported) return imported;
 
+        if (model.Rows.Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "Run payroll before downloading the summary — there are no payslips on this run.");
+        }
+
+        // The summary itemises every payslip's lines under the employee's name.
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(model.Run.Id))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+
+        var summary = model with
+        {
+            LineItems = lineItems,
+            GeneratedAt = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(
+                DateTime.UtcNow, Attendance.AttendanceTime.DefaultTimeZone),
+        };
+
         var fileName = $"Payroll_Summary_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
-            true, fileName, PayrollSummaryPdf.Render(model), PayrollSummaryPdf.ContentType, null);
+            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
     }
 
     public async Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId)
