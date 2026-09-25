@@ -20,14 +20,30 @@ public interface IProjectTrackingScope
 
 public static class ProjectTrackingVisibility
 {
-    // Hidden only when it demonstrably came from a DIFFERENT category. Manual
-    // projects, Xero Projects-API ones (no tracking option) and rows synced
-    // before the category was recorded (null category) all stay visible —
-    // hiding a project whose category is unknown could hide a current one.
+    // Connecting Xero archives every hand-created project that exists AT THAT
+    // MOMENT (XeroService.ArchiveManualProjectsAsync) — but that is a one-time
+    // sweep, not a standing rule, so a manual project made afterwards (or one
+    // the sweep missed) would otherwise sit in the picker forever with nothing
+    // to reconcile it against. Once Xero is actually providing the list, a
+    // project with NEITHER Xero id has no place in it.
+    //
+    // A Xero Projects-API row (xeroProjectId set, no tracking option) is a
+    // different case — it demonstrably IS Xero's, just via the legacy sync —
+    // so it stays, same as a tracked row whose category is unknown.
     public static bool IsHidden(
-        string? trackingOptionId, string? trackingCategoryId, string? activeCategoryId) =>
-        activeCategoryId is not null
-        && trackingOptionId is not null
-        && trackingCategoryId is not null
-        && !string.Equals(trackingCategoryId, activeCategoryId, StringComparison.Ordinal);
+        string? xeroProjectId, string? trackingOptionId, string? trackingCategoryId,
+        string? activeCategoryId)
+    {
+        if (activeCategoryId is null) return false;   // Xero isn't connected/configured yet.
+
+        if (xeroProjectId is null && trackingOptionId is null) return true;   // truly hand-made
+
+        // Hidden only when it demonstrably came from a DIFFERENT category. A
+        // legacy Projects-API row and one synced before the category was
+        // recorded (null category) both stay — hiding a project whose
+        // category is unknown could hide a current one.
+        return trackingOptionId is not null
+            && trackingCategoryId is not null
+            && !string.Equals(trackingCategoryId, activeCategoryId, StringComparison.Ordinal);
+    }
 }
