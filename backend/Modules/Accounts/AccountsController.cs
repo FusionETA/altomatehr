@@ -2,11 +2,13 @@ using AltomateHR.Api.Modules.Accounts.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Accounts;
 
 [ApiController]
 [Route("[controller]")]        // → /accounts
+[RequireModule(OrgModules.Accounts)]
 [Authorize]
 public class AccountsController : ControllerBase
 {
@@ -15,9 +17,12 @@ public class AccountsController : ControllerBase
     public AccountsController(IChartOfAccountService accounts) => _accounts = accounts;
 
     // GET /accounts — any authenticated user (employees pick a selectable account when filing a claim).
+    // ?includeLiabilities=true adds the liability accounts, which only the
+    // payroll Xero mapping needs (the credit side of the journal).
     [RequireScope("accounts:read")]
     [HttpGet]
-    public async Task<IActionResult> GetAll() => Ok(await _accounts.GetAllAsync());
+    public async Task<IActionResult> GetAll([FromQuery] bool includeLiabilities = false) =>
+        Ok(await _accounts.GetAllAsync(includeLiabilities));
 
     // 409, not 400: the input is fine, the org's state forbids it — Xero owns
     // the chart of accounts while it is connected.

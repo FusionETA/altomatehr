@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -13,6 +14,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // payslip, not here.
 [ApiController]
 [Route("payroll/loans")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollLoansController : ControllerBase
 {

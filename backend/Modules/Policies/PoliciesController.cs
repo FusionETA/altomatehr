@@ -2,11 +2,13 @@ using AltomateHR.Api.Modules.Policies.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Policies;
 
 [ApiController]
 [Route("policies")]
+[RequireModule(OrgModules.Policies)]
 [Authorize(Roles = "Admin,Owner")]   // policies are an admin/owner concern
 public class PoliciesController : ControllerBase
 {
@@ -14,6 +16,9 @@ public class PoliciesController : ControllerBase
 
     public PoliciesController(IPolicyService policies) => _policies = policies;
 
+    // A lookup other admin screens borrow (claims / attendance filters, the
+    // employee form), so it is held to the plan only. See ModuleGrantExempt.
+    [ModuleGrantExempt]
     [RequireScope("policies:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _policies.GetAllAsync());

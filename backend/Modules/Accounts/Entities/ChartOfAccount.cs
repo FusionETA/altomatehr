@@ -20,7 +20,7 @@ public class ChartOfAccount : ITenantScoped
     public string Name { get; set; } = string.Empty;             // e.g. "Travel Expenses"
 
     [MaxLength(20)]
-    public string Type { get; set; } = "EXPENSE";                // EXPENSE | BANK (loose string, like the real app)
+    public string Type { get; set; } = ChartOfAccountTypes.Expense; // see ChartOfAccountTypes (loose string, like the real app)
 
     [MaxLength(80)]
     public string? XeroAccountId { get; set; }                   // Xero AccountID, when synced from Xero
@@ -50,4 +50,24 @@ public class ChartOfAccount : ITenantScoped
     public bool IsArchived { get; set; }
 
     public DateTime CreatedAt { get; set; }
+}
+
+// The local account types. Xero has a dozen; these are the only three this app
+// has a use for, and each has exactly one job:
+//
+//   EXPENSE    — what a claim is coded to, and the debit side of the payroll
+//                journal. Xero's whole expense family collapses into it.
+//   BANK       — what a company-paid claim was spent FROM.
+//   LIABILITY  — the credit side of the payroll journal: EPF / SOCSO / EIS /
+//                PCB / net salary payable. Never offered for a claim, and not
+//                listed on the claims chart of accounts — only the payroll
+//                Xero mapping asks for these.
+public static class ChartOfAccountTypes
+{
+    public const string Expense = "EXPENSE";
+    public const string Bank = "BANK";
+    public const string Liability = "LIABILITY";
+
+    public static bool IsLiability(string? type) =>
+        string.Equals(type, Liability, StringComparison.OrdinalIgnoreCase);
 }

@@ -3,6 +3,7 @@ using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -13,6 +14,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // employee-facing read here.
 [ApiController]
 [Route("payroll/runs")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollRunsController : ControllerBase
 {

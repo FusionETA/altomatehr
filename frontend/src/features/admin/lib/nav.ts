@@ -16,33 +16,38 @@ import {
 // `built: false` items render a "Coming next" placeholder for now —
 // the structure matches the real system so the shape is faithful even
 // before every admin surface is rebuilt.
-export type AdminChild = { id: string; label: string; ownerOnly?: boolean };
+//
+// `module` is the grant key (OrgModules on the backend) an entry needs. An
+// Admin whose "Manage access" grant leaves it out does not see the entry, and
+// the endpoints behind it 403. No module = every admin sees it.
+export type AdminChild = { id: string; label: string; ownerOnly?: boolean; module?: string };
 
 export type AdminNavItem = {
   id: string;
   label: string;
   icon: LucideIcon;
   built?: boolean;
+  module?: string;
   children?: AdminChild[];
 };
 
 export const adminNav: AdminNavItem[] = [
   { id: "overview", label: "Executive Overview", icon: LayoutDashboard, built: true },
-  { id: "attendance", label: "Attendance", icon: CalendarClock },
-  { id: "claims", label: "Claims", icon: Receipt, built: true },
-  { id: "payroll", label: "Payroll", icon: Banknote, built: true },
-  { id: "leave", label: "Leave", icon: CalendarDays },
+  { id: "attendance", label: "Attendance", icon: CalendarClock, module: "attendance" },
+  { id: "claims", label: "Claims", icon: Receipt, built: true, module: "claims" },
+  { id: "payroll", label: "Payroll", icon: Banknote, built: true, module: "payroll" },
+  { id: "leave", label: "Leave", icon: CalendarDays, module: "leave" },
   {
     id: "company",
     label: "Company/Employee",
     icon: Network,
     built: true,
     children: [
-      { id: "company-structure", label: "Company Structure" },
-      { id: "manage-employee", label: "Manage Employee" },
+      { id: "company-structure", label: "Company Structure", module: "teams" },
+      { id: "manage-employee", label: "Manage Employee", module: "employees" },
     ],
   },
-  { id: "audit", label: "Activity Log", icon: History },
+  { id: "audit", label: "Activity Log", icon: History, module: "audit" },
   {
     id: "settings",
     label: "System Settings",
@@ -50,10 +55,10 @@ export const adminNav: AdminNavItem[] = [
     built: true,
     children: [
       { id: "settings-organization", label: "Organization" },
-      { id: "settings-accounts", label: "Accounts" },
-      { id: "settings-projects", label: "Projects" },
+      { id: "settings-accounts", label: "Accounts", module: "accounts" },
+      { id: "settings-projects", label: "Projects", module: "projects" },
       { id: "settings-work-schedule", label: "Work Schedule" },
-      { id: "settings-policies", label: "Policies" },
+      { id: "settings-policies", label: "Policies", module: "policies" },
       // Owner-only: an Admin cannot edit their own or a peer's access.
       { id: "settings-admins", label: "Admins", ownerOnly: true },
     ],
@@ -68,6 +73,30 @@ export function defaultChildOf(item: AdminNavItem): string {
 
 export function findNavItem(id: string): AdminNavItem {
   return adminNav.find((item) => item.id === id) ?? adminNav[0];
+}
+
+// The nav as the signed-in admin may see it. `enabled` is their effective
+// module set (org plan ∩ their grant), or null while it is still loading — in
+// which case nothing is hidden: the backend refuses regardless, and hiding
+// everything until it lands would blink the sidebar for every admin.
+//
+// A parent with children is kept only while at least one child survives, so
+// Company/Employee disappears for an admin granted neither of its pages.
+export function visibleAdminNav(
+  isOwner: boolean,
+  enabled: ReadonlySet<string> | null,
+): AdminNavItem[] {
+  const allowed = (module?: string) => !module || enabled === null || enabled.has(module);
+
+  return adminNav.flatMap((item) => {
+    if (!allowed(item.module)) return [];
+    if (!item.children) return [item];
+
+    const children = item.children.filter(
+      (child) => (!child.ownerOnly || isOwner) && allowed(child.module),
+    );
+    return children.length === 0 ? [] : [{ ...item, children }];
+  });
 }
 
 // ─── URL navigation ───────────────────────────────────────────────────
@@ -88,11 +117,19 @@ export const NAV_FALLBACK: UrlNav = { parent: "overview", child: "overview" };
 //     `[Authorize(Roles = "Owner")]`, so nothing could be CHANGED either way —
 //     but rendering it would still show a list they were not meant to see, and
 //     then 403 on everything.)
-export function normaliseAdminNav({ parent, child }: UrlNav, isOwner: boolean): UrlNav {
-  const item = adminNav.find((entry) => entry.id === parent);
+//
+//   · a module the admin's grant leaves out is refused the same way, so a
+//     bookmark to Payroll lands a Payroll-less admin on Overview rather than a
+//     page of 403s.
+export function normaliseAdminNav(
+  { parent, child }: UrlNav,
+  isOwner: boolean,
+  enabled: ReadonlySet<string> | null = null,
+): UrlNav {
+  const item = visibleAdminNav(isOwner, enabled).find((entry) => entry.id === parent);
   if (!item) return NAV_FALLBACK;
 
-  const children = (item.children ?? []).filter((c) => !c.ownerOnly || isOwner);
+  const children = item.children ?? [];
   if (children.length === 0) return { parent: item.id, child: item.id };
 
   const match = children.find((c) => c.id === child);

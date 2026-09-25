@@ -152,6 +152,34 @@ public class ClaimsServiceMileageTests
         Assert.Equal(nameof(dto.ChartOfAccountId), ex.Field);
     }
 
+    // A liability is a payroll payable. Refused by TYPE, so even one somehow
+    // flagged selectable and mileage-enabled cannot be claimed against.
+    [Fact]
+    public async Task CreateAsync_RefusesCodingAClaimToALiability()
+    {
+        var service = CreateService(
+            [],
+            accounts: new FakeChartOfAccountService(new ChartOfAccountDto
+            {
+                Id = "acct-payable",
+                Code = "825",
+                Name = "EPF Payable",
+                Type = "LIABILITY",
+                IsSelectable = true,
+                AllowMileageClaim = true,
+                MileageRate = 0.8m,
+            }));
+
+        var expense = ExpenseDto();
+        expense.ChartOfAccountId = "acct-payable";
+        var ex = await Assert.ThrowsAsync<ClaimValidationException>(
+            () => service.CreateAsync(expense, "usr-emp"));
+        Assert.Equal(nameof(expense.ChartOfAccountId), ex.Field);
+
+        await Assert.ThrowsAsync<ClaimValidationException>(
+            () => service.CreateAsync(MileageDto(chartOfAccountId: "acct-payable"), "usr-emp"));
+    }
+
     private static CreateClaimDto ExpenseDto() => new()
     {
         Title = "Fuel",

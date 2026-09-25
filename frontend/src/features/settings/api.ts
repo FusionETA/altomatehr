@@ -107,6 +107,8 @@ export type ChartOfAccount = {
   id: string;
   code: string;
   name: string;
+  // EXPENSE | BANK | LIABILITY. LIABILITY only comes back from
+  // getAccountsWithLiabilities.
   type: string;
   isSelectable: boolean;
   limitAmount: number | null;
@@ -226,6 +228,10 @@ export const restoreProject = (id: string) => apiPost<Project>(`/projects/${id}/
 
 // --- Chart of Accounts ---
 export const getAccounts = () => apiGet<ChartOfAccount[]>("/accounts");
+// The claims chart plus the LIABILITY accounts — only the payroll Xero mapping
+// wants those (the payables on the journal's credit side).
+export const getAccountsWithLiabilities = () =>
+  apiGet<ChartOfAccount[]>("/accounts?includeLiabilities=true");
 export const createAccount = (body: SaveAccount) => apiPost<ChartOfAccount>("/accounts", body);
 export const updateAccount = (id: string, body: SaveAccount) =>
   apiPut<ChartOfAccount>(`/accounts/${id}`, body);

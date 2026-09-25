@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -11,6 +12,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // and how much every employee is paid, so there is no employee-facing read.
 [ApiController]
 [Route("payroll")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollController : ControllerBase
 {
@@ -29,6 +31,9 @@ public class PayrollController : ControllerBase
     // categories below: a bank picked from a second list that drifted would be
     // refused by the very file it was picked for, and one unmatched name
     // refuses the whole run's bank file.
+    // A lookup other admin screens borrow (claims / attendance filters, the
+    // employee form), so it is held to the plan only. See ModuleGrantExempt.
+    [ModuleGrantExempt]
     [RequireScope("payroll:read")]
     [HttpGet("banks")]
     public IActionResult Banks() =>

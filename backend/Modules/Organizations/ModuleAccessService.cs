@@ -25,27 +25,37 @@ public class ModuleAccessService : IModuleAccessService
 
     public async Task<IReadOnlyCollection<string>> GetEnabledModulesAsync()
     {
+        var ceiling = await GetOrgModulesAsync();
+        if (ceiling.Count == 0) return ceiling;
+
+        // Admin grant only applies to a real member whose role IS Admin. A wp_live
+        // key's synthetic userId ("apikey:...") has no membership → full ceiling
+        // (keys are scope-gated separately). An Owner has full access. And a grant
+        // left on someone later moved to Employee or Supervisor (the employee form
+        // can set the column for any role) must not narrow them — they have no
+        // admin surface for it to narrow, only their own claims and approvals.
+        IReadOnlyCollection<string>? grant = null;
+        var userId = _currentUser.UserId;
+        if (userId is not null)
+        {
+            var membership = await _directory.GetMembershipForUserAsync(userId);
+            if (membership?.Modules is not null
+                && string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+                grant = OrgModules.Split(membership.Modules);
+        }
+
+        return OrgModules.Effective(ceiling, grant);
+    }
+
+    public async Task<IReadOnlyCollection<string>> GetOrgModulesAsync()
+    {
         var orgId = _currentUser.OrganizationId;
         if (orgId is null) return Array.Empty<string>();
 
         var org = await _orgs.GetByIdAsync(orgId);
         if (org is null) return Array.Empty<string>();
 
-        var ceiling = OrgModules.DeriveOrgEnabledModules(
+        return OrgModules.DeriveOrgEnabledModules(
             org.Plan, org.Tier, OrgModules.Split(org.Addons));
-
-        // Admin grant only applies to a real member. A wp_live key's synthetic userId
-        // ("apikey:...") has no membership → null grant → full ceiling (keys are scope-gated
-        // separately). An Owner's grant is null → full ceiling too.
-        IReadOnlyCollection<string>? grant = null;
-        var userId = _currentUser.UserId;
-        if (userId is not null)
-        {
-            var membership = await _directory.GetMembershipForUserAsync(userId);
-            if (membership?.Modules is not null)
-                grant = OrgModules.Split(membership.Modules);
-        }
-
-        return OrgModules.Effective(ceiling, grant);
     }
 }

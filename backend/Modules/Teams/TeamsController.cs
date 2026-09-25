@@ -3,11 +3,13 @@ using AltomateHR.Api.Modules.Teams.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Teams;
 
 [ApiController]
 [Route("teams")]
+[RequireModule(OrgModules.Teams)]
 [Authorize(Roles = "Admin,Owner")]   // org structure is an admin/owner concern
 public class TeamsController : ControllerBase
 {
@@ -27,6 +29,9 @@ public class TeamsController : ControllerBase
     }
 
     // GET /teams — every team in the org, each with its roster.
+    // A lookup other admin screens borrow (claims / attendance filters, the
+    // employee form), so it is held to the plan only. See ModuleGrantExempt.
+    [ModuleGrantExempt]
     [RequireScope("teams:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _teams.GetAllAsync());

@@ -22,6 +22,8 @@ const MODULE_LABELS: Record<string, string> = {
   overtime: "Overtime",
   claims: "Claims",
   attendance: "Attendance",
+  payroll: "Payroll",
+  audit: "Activity log",
 };
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 
@@ -34,7 +36,12 @@ export function AdminsSettings() {
   const [editing, setEditing] = useState<AdminAccess | null>(null);
   const [tab, setTab] = useState<"manage" | "add">("manage");
 
-  const admins = adminsQuery.data ?? [];
+  // The list carries Owners too, so the page does not read "no admins" while an
+  // Owner runs the org. They are shown read-only: an Owner's access cannot be
+  // narrowed, and the backend refuses a grant for one. The count is Admins only.
+  const members = adminsQuery.data ?? [];
+  const owners = members.filter((m) => m.role === "Owner");
+  const admins = members.filter((m) => m.role !== "Owner");
   const allModules = modulesQuery.data?.all ?? [];
 
   return (
@@ -84,6 +91,27 @@ export function AdminsSettings() {
         <>
           {adminsQuery.error ? (
             <p className="text-sm font-medium text-destructive">{adminsQuery.error}</p>
+          ) : null}
+
+          {!adminsQuery.loading && owners.length > 0 ? (
+            <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-muted/30">
+              {owners.map((owner) => (
+                <li key={owner.userId} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">
+                      {owner.name || owner.email}
+                    </p>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <ShieldCheck className="h-3 w-3" />
+                      Owner · full access
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                    Can't be restricted
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
 
           {adminsQuery.loading ? (

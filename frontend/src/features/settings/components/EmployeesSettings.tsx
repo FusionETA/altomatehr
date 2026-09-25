@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { PayrollBulkFillPanel } from "@/features/payroll/components/PayrollBulkFillPanel";
+import { useEnabledModules } from "../lib/module-access";
 import {
   CLAIMS_PAGE_SIZE,
   PaginationControls,
@@ -117,8 +118,14 @@ export function EmployeesSettings() {
   // includeArchived, so that being ABSENT from this roster means exactly one
   // thing: no payroll profile exists yet. Without it an archived profile would
   // look identical to a missing one.
-  const payrollQuery = useCachedQuery("/payroll/employees?all", () =>
-    getPayrollEmployees(true),
+  //
+  // Only read for an admin whose grant includes Payroll: for anyone else the
+  // roster 403s, and the badges and the bulk-fill panel below are payroll's.
+  const enabledModules = useEnabledModules();
+  const canPayroll = enabledModules?.has("payroll") ?? false;
+  const payrollQuery = useCachedQuery(
+    canPayroll ? "/payroll/employees?all" : null,
+    () => getPayrollEmployees(true),
   );
 
   const readiness = useMemo(() => {
@@ -407,7 +414,9 @@ export function EmployeesSettings() {
             its own: it is the fastest way to empty the box below, so it
             belongs with the roster's other controls — and this page has
             enough boxes already. */}
-        <PayrollBulkFillPanel onImported={() => void payrollQuery.refresh()} />
+        {canPayroll ? (
+          <PayrollBulkFillPanel onImported={() => void payrollQuery.refresh()} />
+        ) : null}
       </div>
 
       {loading ? (

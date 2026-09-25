@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Xero.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Xero;
 
@@ -64,11 +65,13 @@ public class XeroController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireModule(OrgModules.Accounts)]
     [HttpPost("sync-accounts")]
     public async Task<ActionResult<XeroSyncAccountsResultDto>> SyncAccounts() =>
         Ok(await _xero.SyncAccountsAsync());
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireModule(OrgModules.Projects)]
     [HttpPost("sync-projects")]
     public async Task<ActionResult<XeroSyncProjectsResultDto>> SyncProjects() =>
         Ok(await _xero.SyncProjectsAsync());
@@ -77,11 +80,13 @@ public class XeroController : ControllerBase
     // Only asked when Xero offers more than one — with a single category the
     // sync adopts it itself.
     [Authorize(Roles = "Admin,Owner")]
+    [RequireModule(OrgModules.Projects)]
     [HttpGet("project-tracking")]
     public async Task<ActionResult<XeroProjectTrackingDto>> ProjectTracking() =>
         Ok(await _xero.GetProjectTrackingAsync());
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireModule(OrgModules.Projects)]
     [HttpPut("project-tracking")]
     public async Task<IActionResult> SetProjectTracking([FromBody] XeroSetProjectTrackingDto dto)
     {

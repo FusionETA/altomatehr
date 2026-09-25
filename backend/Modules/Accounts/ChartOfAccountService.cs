@@ -19,8 +19,13 @@ public class ChartOfAccountService : IChartOfAccountService
         _audit = audit;
     }
 
-    public async Task<IEnumerable<ChartOfAccountDto>> GetAllAsync() =>
-        (await _repo.GetAllAsync()).Select(ToDto);
+    // Excluding liabilities here, rather than in each caller, is what keeps
+    // them out of the claim form, the claims import/export and the receipt
+    // OCR's candidates at once — every one of them reads through this.
+    public async Task<IEnumerable<ChartOfAccountDto>> GetAllAsync(bool includeLiabilities = false) =>
+        (await _repo.GetAllAsync())
+            .Where(a => includeLiabilities || !ChartOfAccountTypes.IsLiability(a.Type))
+            .Select(ToDto);
 
     public async Task<ChartOfAccountDto?> GetByIdAsync(string id)
     {
@@ -74,8 +79,18 @@ public class ChartOfAccountService : IChartOfAccountService
 
         account.Code = dto.Code;
         account.Name = dto.Name;
-        account.Type = dto.Type;
-        account.IsSelectable = dto.IsSelectable;
+        // A liability stays one, and stays unselectable: the DTO only knows
+        // EXPENSE and BANK, so saving one through the editor would otherwise
+        // turn a payroll payable into a claimable expense account.
+        if (ChartOfAccountTypes.IsLiability(account.Type))
+        {
+            account.IsSelectable = false;
+        }
+        else
+        {
+            account.Type = dto.Type;
+            account.IsSelectable = dto.IsSelectable;
+        }
         account.LimitAmount = dto.LimitAmount;
         account.AllowMileageClaim = dto.AllowMileageClaim;
         account.MileageRate = dto.MileageRate;

@@ -3,6 +3,7 @@ using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -12,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // there is no employee-facing read of any kind here.
 [ApiController]
 [Route("payroll/portal-credentials")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PortalCredentialsController : ControllerBase
 {

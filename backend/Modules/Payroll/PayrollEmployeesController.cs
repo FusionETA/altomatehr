@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Common.Tabular;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -11,6 +12,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // these fields decide what everyone is paid and what is filed for them.
 [ApiController]
 [Route("payroll/employees")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollEmployeesController : ControllerBase
 {
