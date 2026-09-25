@@ -33,6 +33,7 @@ public class PayrollRunStateMachineTests : IDisposable
     private readonly StubPayrollLeave _leave = new();
     private readonly PayrollRunService _service;
     private readonly StatutoryFileService _statutory;
+    private readonly PayrollAnnualReportService _annual;
     private readonly PayrollRunAdjustmentRepository _adjustments;
     private readonly PayrollRunClaimRepository _runClaims;
     private readonly PayslipRepository _payslips;
@@ -92,6 +93,14 @@ public class PayrollRunStateMachineTests : IDisposable
             _xeroSync,
             _loanService,
             _approvedOt);
+
+        _annual = new PayrollAnnualReportService(
+            new PayrollRunRepository(_db),
+            new PayslipRepository(_db),
+            new PayrollCompanyInfoRepository(_db),
+            directory,
+            new StubPayrollOrganizations(),
+            _currentUser);
     }
 
     public void Dispose() => _db.Dispose();
@@ -260,6 +269,39 @@ public class PayrollRunStateMachineTests : IDisposable
         var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
         Assert.Equal("E-001_Aisyah_Binti_Rahman_01-2026.pdf",
             (await _statutory.RenderPayslipPdfAsync(run.Id, profileId)).FileName);
+    }
+
+    // The annual forms declare the whole January–December year. As in the
+    // previous system, none is produced until all twelve months are approved
+    // — a return built on part of the year would under-declare.
+    [Fact]
+    public async Task AnnualForms_AreRefusedUntilEveryMonthIsApproved()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        for (var month = 1; month <= 3; month++) await SubmittedRunAsync(2026, month);
+
+        var payload = await _annual.LoadAsync(2026);
+        Assert.False(payload.CanGenerate);
+        Assert.Equal([1, 2, 3], payload.SubmittedMonths);
+        Assert.Equal(9, payload.MissingMonths.Count);
+
+        foreach (var kind in Enum.GetValues<PayrollAnnualReportKind>())
+        {
+            var result = await _annual.RenderAsync(kind, 2026);
+            Assert.False(result.Ok);
+            Assert.Contains("3/12", result.Error!);
+            Assert.Contains("Apr", result.Error!);
+        }
+    }
+
+    [Fact]
+    public async Task AnnualForms_AreProducedOnceTheWholeYearIsApproved()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        for (var month = 1; month <= 12; month++) await SubmittedRunAsync(2026, month);
+
+        Assert.True((await _annual.LoadAsync(2026)).CanGenerate);
+        Assert.True((await _annual.RenderAsync(PayrollAnnualReportKind.FORM_EA_BULK_PDF, 2026)).Ok);
     }
 
     // Reverting takes the month back to draft, so the files it could produce

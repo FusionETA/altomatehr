@@ -42,6 +42,19 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
     {
         var payload = await LoadAsync(year);
 
+        // The year gate, enforced here and not only on the page, so no direct
+        // URL or API caller gets a partial-year return either.
+        if (!payload.CanGenerate)
+        {
+            var missing = string.Join(", ", payload.MissingMonths.Select(m =>
+                System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(m)));
+
+            return StatutoryFileResult.Refused(
+                $"{payload.SubmittedMonths.Count}/12 monthly runs approved for {year}. The annual "
+                + $"forms cover the full January–December year, so approve every month first "
+                + $"(missing: {missing}).");
+        }
+
         return kind switch
         {
             PayrollAnnualReportKind.CP8D_EMPLOYER_TXT => Cp8dTxt.RenderEmployer(payload),
@@ -85,6 +98,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             OrganizationName = org?.Name ?? string.Empty,
             CompanyInfo = info,
             EmployerNo = PayrollAnnualReports.EmployerNumber(info?.EmployerTin),
+            SubmittedMonths = [.. runs.Select(r => r.PeriodMonth).Distinct().Order()],
         };
 
         if (runs.Count == 0) return payload;
