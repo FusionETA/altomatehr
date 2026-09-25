@@ -133,10 +133,11 @@ export function AddEmployeeModal({
                 </label>
                 <input
                   id="add-employee-number"
+                  required
                   className={INPUT}
                   value={employeeNumber}
                   onChange={(e) => setEmployeeNumber(e.target.value)}
-                  placeholder="Optional"
+                  placeholder="EMP-001"
                 />
               </div>
               <div className="space-y-2">

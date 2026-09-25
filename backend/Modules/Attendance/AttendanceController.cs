@@ -446,7 +446,7 @@ public class AttendanceController : ControllerBase
         return File(file.Content, file.ContentType, file.FileName);
     }
 
-    // GET /attendance/photos/{fileName} — serve a photo (owner or admin only).
+    // GET /attendance/photos/{fileName} — serve a photo (owner, admin, or someone overseeing them).
     [RequireScope("attendance:read")]
     [HttpGet("photos/{fileName}")]
     public async Task<IActionResult> GetPhoto(string fileName)

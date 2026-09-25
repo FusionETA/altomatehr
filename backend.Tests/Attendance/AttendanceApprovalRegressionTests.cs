@@ -979,6 +979,88 @@ public class AttendanceApprovalRegressionTests
         return (service, approvals);
     }
 
+    // ---- Photo access ----
+    //
+    // Only the owner or an admin could open a clock-in/out photo, so every
+    // supervisor's photo button failed. Anyone who oversees the employee — a
+    // team they supervise, or any step of the approval chain — may now open it;
+    // someone unrelated still may not.
+
+    private static AttendanceService PhotoService(FakeTeamService? teams = null)
+    {
+        var record = new AttendanceRecord
+        {
+            Id = "rec-1",
+            EmployeeId = "emp-1",
+            Date = DateTime.UtcNow.Date,
+            ClockOutPhotoUrl = "/attendance/photos/out.jpg",
+            Status = AttendanceStatus.CLOCKED_OUT,
+        };
+
+        return new AttendanceService(
+            repo: new FakeAttendanceRepository([record]),
+            sessions: new FakeAttendanceSessionRepository([]),
+            breaks: new FakeAttendanceBreakRepository(),
+            approvalRequests: new FakeAttendanceApprovalRequestRepository([]),
+            projects: new FakeProjectService(),
+            organizations: new FakeOrganizationService(),
+            shifts: new FakeShiftService(),
+            currentUser: new FakeCurrentUser(),
+            photos: new FakeAttendancePhotoStorage(),
+            policies: new FakePolicyService(),
+            supervision: new FakeSupervisionService(),
+            // Two layers: sup-1 decides first, mgr-1 above them.
+            router: new FakeApprovalRouter(new() { ["emp-1"] = [["sup-1"], ["mgr-1"]] }),
+            directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
+            realtime: new FakeRealtimeService(),
+            notifications: new FakeNotificationService(),
+            employees: new FakeEmployeeDirectory(),
+            hours: new FakeHoursSummaryService(),
+            teams: teams ?? new FakeTeamService(),
+            holidays: new FakeHolidayService(),
+            xero: new StubXeroForAttendance(),
+            leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
+            leaveTypes: new FakeLeaveTypeService());
+    }
+
+    [Theory]
+    [InlineData("emp-1", false)]   // the employee themselves
+    [InlineData("usr-admin", true)] // an admin
+    [InlineData("sup-1", false)]   // first approval step
+    [InlineData("mgr-1", false)]   // a layer above — oversees them, not their turn
+    public async Task Photo_opens_for_the_owner_an_admin_and_their_approval_chain(string userId, bool isAdmin)
+    {
+        var photo = await PhotoService().GetPhotoForUserAsync("out.jpg", userId, isAdmin);
+
+        Assert.NotNull(photo);
+    }
+
+    [Fact]
+    public async Task Photo_opens_for_a_supervisor_of_a_team_the_employee_is_on()
+    {
+        var teams = new FakeTeamService
+        {
+            SupervisedBy = { ["lead-1"] = [new SupervisedTeamDto { TeamId = "t-1", MemberIds = ["emp-1"] }] },
+        };
+
+        var photo = await PhotoService(teams).GetPhotoForUserAsync("out.jpg", "lead-1", isAdmin: false);
+
+        Assert.NotNull(photo);
+    }
+
+    [Fact]
+    public async Task Photo_stays_hidden_from_someone_who_does_not_oversee_the_employee()
+    {
+        var teams = new FakeTeamService
+        {
+            SupervisedBy = { ["lead-2"] = [new SupervisedTeamDto { TeamId = "t-2", MemberIds = ["emp-9"] }] },
+        };
+
+        var photo = await PhotoService(teams).GetPhotoForUserAsync("out.jpg", "lead-2", isAdmin: false);
+
+        Assert.Null(photo);
+    }
+
     // ---- Export scope ----
     //
     // Who may pull whose hours. The export used to be Admin/Owner only, so an
@@ -1118,7 +1200,9 @@ public class AttendanceApprovalRegressionTests
     private sealed class FakeAttendancePhotoStorage : IAttendancePhotoStorage
     {
         public Task<AttendancePhotoUploadResult> StoreAsync(AttendancePhotoUpload upload) => throw new NotImplementedException();
-        public Task<AttendancePhotoFileResult?> GetAsync(string fileName) => throw new NotImplementedException();
+        // Photo-access tests only care WHETHER the file is handed over.
+        public Task<AttendancePhotoFileResult?> GetAsync(string fileName) =>
+            Task.FromResult<AttendancePhotoFileResult?>(new($"/tmp/{fileName}", "image/jpeg", fileName));
         public Task<bool> DeleteAsync(string fileName) => throw new NotImplementedException();
     }
 
@@ -1215,8 +1299,11 @@ public class AttendanceApprovalRegressionTests
             Task.FromResult<IEnumerable<ApprovalStepDto>>([]);
         public Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
             Task.FromResult<IReadOnlyList<string>>([]);
+        // Teams each user supervises. Empty unless a test is about team access.
+        public Dictionary<string, List<SupervisedTeamDto>> SupervisedBy { get; init; } = [];
+
         public Task<IReadOnlyList<SupervisedTeamDto>> GetSupervisedTeamsAsync(string userId) =>
-            Task.FromResult<IReadOnlyList<SupervisedTeamDto>>([]);
+            Task.FromResult<IReadOnlyList<SupervisedTeamDto>>(SupervisedBy.GetValueOrDefault(userId, []));
         // Who reports to whom. Empty for every test that doesn't care, which
         // is all of them except the export-scope ones.
         public Dictionary<string, List<string>> ReportsOf { get; init; } = [];

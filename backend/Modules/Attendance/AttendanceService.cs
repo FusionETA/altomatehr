@@ -1246,15 +1246,15 @@ public class AttendanceService : IAttendanceService
         if (record is null)
             return null;
 
-        if (!isAdmin && record.EmployeeId != userId)
+        if (!await CanViewPhotoAsync(record, userId, isAdmin))
             return null;
 
         return await _photos.GetAsync(fileName);
     }
 
     // The same question for a photo held in Xero Files: same lookup by photo
-    // url, same owner-or-admin rule, then the bytes come from Xero rather than
-    // disk so the OAuth token never reaches the browser.
+    // url, same access rule (CanViewPhotoAsync), then the bytes come from Xero
+    // rather than disk so the OAuth token never reaches the browser.
     //
     // Null covers "no such photo", "not yours" and "Xero no longer has it" —
     // one answer, because telling them apart would confirm a photo exists to
@@ -1269,9 +1269,24 @@ public class AttendanceService : IAttendanceService
             $"/attendance/photos/{AttendancePhotoStorage.XeroSegment}/{xeroFileId}");
         if (record is null) return null;
 
-        if (!isAdmin && record.EmployeeId != userId) return null;
+        if (!await CanViewPhotoAsync(record, userId, isAdmin)) return null;
 
         return await _xero.GetFileContentAsync(xeroFileId);
+    }
+
+    // Who may open a clock-in/out photo: the employee, an admin/owner, or anyone
+    // who oversees the employee — a supervisor of a team they're on (the team
+    // board shows them the photo) or anyone at any step of their approval chain
+    // for the day's project (the approvals card does). Owner-or-admin alone left
+    // every supervisor with photo buttons that always failed.
+    private async Task<bool> CanViewPhotoAsync(AttendanceRecord record, string userId, bool isAdmin)
+    {
+        if (isAdmin || record.EmployeeId == userId) return true;
+
+        var supervised = await _teams.GetSupervisedTeamsAsync(userId);
+        if (supervised.Any(t => t.MemberIds.Contains(record.EmployeeId))) return true;
+
+        return await _router.IsInChainAsync(Module, record.EmployeeId, userId, record.ProjectId);
     }
 
     // Background-safe policy resolution: mirrors PolicyService.GetEffectivePolicy

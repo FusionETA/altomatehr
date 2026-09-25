@@ -26,9 +26,24 @@ public class AttendanceRepository : IAttendanceRepository
             .Where(r => employeeIds.Contains(r.EmployeeId) && r.Date == date)
             .ToListAsync();
 
-    public Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl) =>
-        _db.AttendanceRecords.FirstOrDefaultAsync(
+    // The record only mirrors the day's FIRST clock-in photo and LAST clock-out
+    // photo, so on a multi-shift day every other shift's photo lives only on
+    // its session. Fall back to the sessions and return the day they belong
+    // to — otherwise those photos were unreachable for everyone, admin included.
+    public async Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl)
+    {
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(
             r => r.ClockInPhotoUrl == photoUrl || r.ClockOutPhotoUrl == photoUrl);
+        if (record is not null) return record;
+
+        var recordId = await _db.AttendanceSessions
+            .Where(s => s.ClockInPhotoUrl == photoUrl || s.ClockOutPhotoUrl == photoUrl)
+            .Select(s => s.AttendanceRecordId)
+            .FirstOrDefaultAsync();
+        return recordId is null
+            ? null
+            : await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
+    }
 
     public Task<List<AttendanceRecord>> GetByEmployeeAsync(string employeeId) =>
         _db.AttendanceRecords
