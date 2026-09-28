@@ -28,7 +28,17 @@ public static class PayslipPdf
             PayrollPdfShared.Frame(page);
             page.Content().Element(c => Body(c, model));
             page.Footer().Element(c => PayrollPdfShared.Footer(
-                c, "Computer-generated payslip — no signature required."));
+                c, model.DraftLabel is null
+                    ? "Computer-generated payslip — no signature required."
+                    : "DRAFT PREVIEW — not a payslip. Figures change until the run is approved."));
+
+            // A preview must not pass for the real thing if it is printed or
+            // forwarded, so the mark is across the page, not only in a banner.
+            if (model.DraftLabel is not null)
+            {
+                page.Foreground().AlignCenter().AlignMiddle().Rotate(-30)
+                    .Text("DRAFT").FontSize(110).Bold().FontColor("#e2e8f0");
+            }
         }));
 
     private static void Body(IContainer container, PayslipPdfModel model)
@@ -37,6 +47,14 @@ public static class PayslipPdf
 
         container.Column(col =>
         {
+            if (model.DraftLabel is { } draft)
+            {
+                col.Item().PaddingBottom(8).Background("#fef3c7").Border(1).BorderColor("#f59e0b")
+                    .PaddingHorizontal(8).PaddingVertical(5)
+                    .Text($"PREVIEW · {draft}. Re-running payroll can change every figure below.")
+                    .FontSize(8).SemiBold().FontColor("#92400e");
+            }
+
             // ---- Header ----
             col.Item().PaddingBottom(6).Row(row =>
             {
@@ -358,4 +376,8 @@ public sealed record PayslipPdfModel
     public string? BankName { get; init; }
     public string? BankAccountNumber { get; init; }
     public DateTime? JoinDate { get; init; }
+
+    // Set while the run is not yet approved ("Draft — not yet approved"): the
+    // PDF is then a watermarked preview, not a payslip.
+    public string? DraftLabel { get; init; }
 }

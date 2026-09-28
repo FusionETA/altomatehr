@@ -386,7 +386,13 @@ function Row({
           <button
             type="button"
             aria-label={`Download ${payslip.snapshotName}'s payslip`}
-            title="Download this payslip"
+            // Email is offered only once the run is approved, so its absence
+            // is what marks this as a draft: the PDF comes back watermarked.
+            title={
+              onEmail
+                ? "Download this payslip"
+                : "Preview this payslip — marked DRAFT until the run is approved"
+            }
             className={ROW_ACTION}
             disabled={busy}
             onClick={onPdf}

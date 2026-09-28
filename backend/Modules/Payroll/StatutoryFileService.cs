@@ -114,8 +114,11 @@ public class StatutoryFileService : IStatutoryFileService
     {
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
-        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
 
+        // The one document a draft may produce: a single payslip, as a
+        // watermarked PREVIEW so an admin can check the layout and figures
+        // before approving. Everything that is filed, paid or sent — the zip,
+        // the bank file, the statutory files, emails — still waits for approval.
         var row = model.Rows.FirstOrDefault(r =>
             string.Equals(r.Payslip.EmployeeProfileId, employeeProfileId, StringComparison.Ordinal));
 
@@ -127,7 +130,8 @@ public class StatutoryFileService : IStatutoryFileService
         var (payslip, _) = await BuildPayslipAsync(model, row);
 
         return new StatutoryFileResult(
-            true, PayslipFileName(model, row), PayslipPdf.Render(payslip),
+            true, PayslipFileName(model, row, preview: IsPreview(model.Run)),
+            PayslipPdf.Render(payslip with { DraftLabel = IsPreview(model.Run) ? model.StatusLabel : null }),
             PayslipPdf.ContentType, null);
     }
 
@@ -437,14 +441,20 @@ public class StatutoryFileService : IStatutoryFileService
     // {employeeId}_{name}_{MM-YYYY}.pdf, the previous system's pattern, off the
     // payslip's SNAPSHOT identity as it did — so the file an employee was
     // emailed keeps its name after they are renamed.
-    private static string PayslipFileName(PayrollDocumentModel model, StatutoryEmployeeRow row)
+    private static string PayslipFileName(
+        PayrollDocumentModel model, StatutoryEmployeeRow row, bool preview = false)
     {
         var id = SanitiseFileName(row.Payslip.SnapshotEmployeeNumber ?? string.Empty);
         var name = SanitiseFileName(row.Payslip.SnapshotName);
         var period = $"{model.Run.PeriodMonth:D2}-{model.Run.PeriodYear}";
 
-        return $"{(id.Length == 0 ? "Employee" : id)}_{(name.Length == 0 ? "Unnamed" : name)}_{period}.pdf";
+        // A preview is named as one, so it cannot be mistaken for the filed
+        // payslip in someone's downloads folder.
+        return $"{(id.Length == 0 ? "Employee" : id)}_{(name.Length == 0 ? "Unnamed" : name)}_{period}"
+               + (preview ? "_DRAFT" : "") + ".pdf";
     }
+
+    private static bool IsPreview(Entities.PayrollRun run) => run.Status != Entities.PayrollRunStatus.SUBMITTED;
 
     // Drop the characters Windows rejects, turn whitespace runs into "_",
     // collapse repeated "_", trim them off the ends, cap at 80 — exactly the
