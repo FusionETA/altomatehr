@@ -52,6 +52,10 @@ export function TeamEditor({
   }, [team, defaultProjectId]);
   const [name, setName] = useState(team?.name ?? "");
   const [layerCount, setLayerCount] = useState(team?.layerCount ?? 1);
+  // What's in the Layers box while typing — kept apart from layerCount so the
+  // box can be empty for a moment. Clamping every keystroke meant backspace
+  // snapped straight back to 1, and typing "2" after it made "12" → 6.
+  const [layerDraft, setLayerDraft] = useState(String(team?.layerCount ?? 1));
   const [labels, setLabels] = useState<string[]>(() =>
     Array.from({ length: team?.layerCount ?? 1 }, (_, i) => team?.layerLabels[i] ?? ""),
   );
@@ -172,12 +176,29 @@ export function TeamEditor({
                 <span className="text-sm font-semibold text-foreground">Layers</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   max="6"
                   className={INPUT}
-                  value={layerCount}
-                  onChange={(e) => setCount(Number(e.target.value))}
+                  value={layerDraft}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setLayerDraft(raw);
+                    // A whole number in range applies at once, so the layer
+                    // labels below follow as you type; anything else waits.
+                    const n = Number(raw);
+                    if (raw !== "" && Number.isInteger(n) && n >= 1 && n <= 6) setCount(n);
+                  }}
+                  // Leaving the box with nothing usable puts back the count
+                  // that's actually in effect, rather than guessing.
+                  onBlur={() => setLayerDraft(String(layerCount))}
+                  aria-describedby="layers-hint"
                 />
+                {layerDraft !== String(layerCount) ? (
+                  <p id="layers-hint" className="text-xs text-muted-foreground">
+                    Enter a number from 1 to 6.
+                  </p>
+                ) : null}
               </label>
             </div>
 

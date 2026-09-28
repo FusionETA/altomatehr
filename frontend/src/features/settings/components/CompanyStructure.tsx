@@ -324,6 +324,9 @@ export function CompanyStructure() {
               />
             ) : selectedTeam ? (
               <TeamEditor
+                // Its fields are read from `team` once, on mount — without a
+                // key, picking another team showed the first team's values.
+                key={selectedTeam.id}
                 team={selectedTeam}
                 projects={projects}
                 onCancel={() => setSelectedTeamId(null)}
