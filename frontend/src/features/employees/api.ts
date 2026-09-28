@@ -242,7 +242,6 @@ export type EmployeeProfile = {
   specialTaxTo: string | null;
   pcbBorneByEmployer: boolean;
   ssfwNumber: string | null;
-  reportedToLhdn: boolean;
 
   // Bank / payment
   paymentMethod: PaymentMethod;

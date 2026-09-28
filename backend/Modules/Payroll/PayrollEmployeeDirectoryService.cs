@@ -101,9 +101,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
 
             // The period-dependent reasons (joined after, left before) are
             // deliberately not here — this list belongs to no month. Only the
-            // two that hold whatever period is being run. (ReportedToLhdn is
-            // informational, as in the previous system — see
-            // PayrollRunService.SkipReasonFor.)
+            // two that hold whatever period is being run.
             NotPayableReason = existing is null
                 ? "No payroll details yet"
                 : profile.IsArchived

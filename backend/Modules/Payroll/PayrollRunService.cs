@@ -699,10 +699,10 @@ public class PayrollRunService : IPayrollRunService
     {
         if (profile.IsArchived) return "Archived";
 
-        // ReportedToLhdn is deliberately NOT a reason. The previous system only
-        // stored it (import/export column) and kept paying — and orgs migrated
-        // from it have the box ticked on current staff, so skipping on it left
-        // a whole company's month with no payslips. A leaver is already left
+        // There is deliberately no "reported to LHDN" reason. The previous
+        // system stored such a flag and kept paying; orgs migrated from it had
+        // it ticked on current staff, and skipping on it left a whole company's
+        // month with no payslips — so the flag was dropped. A leaver is left
         // out by their leave date below.
 
         // NOTE: incomplete profiles are excluded at SELECTION, not here — the
