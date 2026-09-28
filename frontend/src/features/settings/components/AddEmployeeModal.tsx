@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
 import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
+import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,12 @@ export function AddEmployeeModal({
   const [sendWelcome, setSendWelcome] = useState(false);
   const [role, setRole] = useState<string>("Employee");
   const [policyId, setPolicyId] = useState<string>(NONE);
+  // The list holds real policies only, the default tagged, and starts on the
+  // default — there is no separate "default policy" entry to pick. Until the
+  // admin picks one, the org's default is what is shown and what is saved.
+  const activePolicies = policies.filter((p) => !p.isArchived);
+  const defaultPolicyId = activePolicies.find((p) => p.isDefault)?.id ?? NONE;
+  const chosenPolicyId = policyId === NONE ? defaultPolicyId : policyId;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -68,7 +75,7 @@ export function AddEmployeeModal({
         dateOfBirth: dateOfBirth || undefined,
         sendWelcomeEmail: sendWelcome,
         role,
-        policyId: policyId === NONE ? null : policyId,
+        policyId: chosenPolicyId === NONE ? null : chosenPolicyId,
       });
       onCreated(created);
     } catch (err) {
@@ -286,17 +293,15 @@ export function AddEmployeeModal({
                 </label>
                 {/* NONE is already a non-empty sentinel, which Radix needs —
                     it reserves the empty string for "nothing selected". */}
-                <Select value={policyId} onValueChange={setPolicyId}>
+                <Select value={chosenPolicyId} onValueChange={setPolicyId}>
                   <SelectTrigger id="add-policy">
-                    <SelectValue />
+                    <SelectValue placeholder="No policies yet" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE}>Default policy</SelectItem>
-                    {policies
-                      .filter((p) => !p.isArchived)
-                      .map((p) => (
+                    {activePolicies.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
+                          {p.isDefault ? <DefaultPolicyTag /> : null}
                         </SelectItem>
                       ))}
                   </SelectContent>

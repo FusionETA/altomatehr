@@ -43,6 +43,7 @@ import {
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
+import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import { getProjects } from "@/features/settings/api";
 import { getMalaysianBanks } from "@/features/payroll/api";
 import { matchBank } from "../lib/malaysian-bank";
@@ -543,6 +544,7 @@ export function EmployeeDetail({
     JSON.stringify(placement) !== JSON.stringify(placementBase);
 
   const activePolicies = useMemo(() => policies.filter((p) => !p.isArchived), [policies]);
+  const defaultPolicyId = activePolicies.find((p) => p.isDefault)?.id ?? null;
 
   function set<K extends keyof EmployeeProfile>(key: K, value: EmployeeProfile[K]) {
     setProfile((current) => (current ? { ...current, [key]: value } : current));
@@ -1532,14 +1534,23 @@ export function EmployeeDetail({
                     />
                   </Field>
                   <Field label="Policy">
+                    {/* Real policies only, the default tagged. Someone with no
+                        policy saved follows the default, so that is what they
+                        show — and they keep following it unless a different
+                        one is picked here (saving untouched sends null again). */}
                     <Picker
-                      value={placement.policyId}
+                      value={placement.policyId === NONE ? defaultPolicyId : placement.policyId}
                       onChange={(v) => setPlacement((p) => ({ ...p, policyId: v ?? NONE }))}
-                      placeholder="Default"
-                      options={[
-                        { value: NONE, label: "Default policy" },
-                        ...activePolicies.map((p) => ({ value: p.id, label: p.name })),
-                      ]}
+                      placeholder="No policies yet"
+                      options={activePolicies.map((p) => ({
+                        value: p.id,
+                        label: (
+                          <>
+                            {p.name}
+                            {p.isDefault ? <DefaultPolicyTag /> : null}
+                          </>
+                        ),
+                      }))}
                     />
                   </Field>
                   <Field label="Department">

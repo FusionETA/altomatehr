@@ -223,7 +223,8 @@ export function Picker<T extends string>({
 }: {
   value: T | null;
   onChange: (value: T | null) => void;
-  options: { value: T; label: string; disabled?: boolean }[];
+  // A node, not only text, so an option can carry a tag (the default policy).
+  options: { value: T; label: ReactNode; disabled?: boolean }[];
   placeholder?: string;
   allowNone?: boolean;
   noneLabel?: string;
