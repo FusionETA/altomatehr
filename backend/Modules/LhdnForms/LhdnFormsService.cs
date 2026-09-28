@@ -49,7 +49,7 @@ public class LhdnFormsService : ILhdnFormsService
         var today = DateTime.UtcNow;
         return LhdnFormMeta.All.Values.Select(meta =>
         {
-            var available = LhdnFormMeta.IsAvailable(meta.Kind, profile.IsArchived);
+            var available = LhdnFormMeta.IsAvailable(meta.Kind, profile.IsArchived, profile.LeaveDate);
             var dto = new LhdnFormDescriptorDto
             {
                 Kind = meta.Kind.ToString(),
@@ -60,14 +60,16 @@ public class LhdnFormsService : ILhdnFormsService
                 Enabled = available,
                 DisabledReason = available ? null : meta.Requires switch
                 {
-                    LhdnFormAvailability.ArchivedOnly => "Available after archiving",
+                    LhdnFormAvailability.Leaving => "Available once a leave date is set",
                     LhdnFormAvailability.ActiveOnly => "Available only for active employees",
                     _ => null,
                 },
             };
-            if (meta.Kind == LhdnFormKind.CP22 && available)
+            if (available && meta.Kind is LhdnFormKind.CP22 or LhdnFormKind.CP22A or LhdnFormKind.CP21)
             {
-                var badge = LhdnFormMeta.Cp22DeadlineBadge(profile.JoinDate, today);
+                var badge = meta.Kind == LhdnFormKind.CP22
+                    ? LhdnFormMeta.Cp22DeadlineBadge(profile.JoinDate, today)
+                    : LhdnFormMeta.CessationDeadlineBadge(profile.LeaveDate, today);
                 if (badge is { } b)
                 {
                     dto.Badge = b.Text;
@@ -84,10 +86,10 @@ public class LhdnFormsService : ILhdnFormsService
         var profile = await _profiles.GetAsync(userId);
         if (profile is null) return (false, null, null, null);
 
-        if (!LhdnFormMeta.IsAvailable(kind, profile.IsArchived))
+        if (!LhdnFormMeta.IsAvailable(kind, profile.IsArchived, profile.LeaveDate))
         {
-            var reason = LhdnFormMeta.All[kind].Requires == LhdnFormAvailability.ArchivedOnly
-                ? "Archive the employee first (with a last-working-day date) before generating this form."
+            var reason = LhdnFormMeta.All[kind].Requires == LhdnFormAvailability.Leaving
+                ? "Set the employee's leave date (their last working day) before generating this form."
                 : "This form is only available for active employees.";
             return (false, null, null, reason);
         }
