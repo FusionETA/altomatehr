@@ -545,8 +545,15 @@ public class StatutoryFileService : IStatutoryFileService
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
             .ToDictionary(m => m.UserId, StringComparer.Ordinal);
 
+        // Who had PCB withheld in the year's other filed months — they stay on
+        // the CP39 file in a month the formula takes to RM 0.00.
+        var ytd = await _payslips.GetYtdByEmployeeAsync(run.PeriodYear, excludeRunId: run.Id);
+
         var rows = payslips
-            .Select(p => ToRow(p, profiles.GetValueOrDefault(p.EmployeeProfileId), users, memberships))
+            .Select(p => ToRow(p, profiles.GetValueOrDefault(p.EmployeeProfileId), users, memberships) with
+            {
+                HadMtdThisYear = ytd.GetValueOrDefault(p.EmployeeProfileId)?.Pcb > 0m,
+            })
             // Stable order so regenerating a file produces the same bytes.
             // Culture-aware like the previous system's localeCompare, so the
             // rows come out in the order it filed them ("emp2" beside "EMP1").

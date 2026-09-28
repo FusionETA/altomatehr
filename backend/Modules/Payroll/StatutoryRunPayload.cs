@@ -59,6 +59,12 @@ public sealed record StatutoryEmployeeRow
 
     public DateTime? JoinDate { get; init; }
 
+    // PCB was withheld from them in another SUBMITTED month this year. Such an
+    // employee stays "subject to MTD" in a month where the formula gives
+    // RM 0.00, and LHDN wants that row in the CP39 file (MTD Testing 2026 Q4:
+    // "must be in text file even the amount is 0").
+    public bool HadMtdThisYear { get; init; }
+
     // PERKESO and LHDN both route on this: locals and PRs are keyed by IC,
     // everyone else by their SOCSO/foreign-worker number or passport.
     //

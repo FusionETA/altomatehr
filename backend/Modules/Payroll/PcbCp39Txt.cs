@@ -88,13 +88,22 @@ public static class PcbCp39Txt
             var pcbSen = StatutoryFileFields.ToSen(row.Payslip.Pcb + row.Payslip.VoluntaryPcb);
             var cp38Sen = StatutoryFileFields.ToSen(row.Payslip.Cp38);
 
-            // Nothing withheld from this person — LHDN does not want the row.
-            if (pcbSen <= 0 && cp38Sen <= 0) continue;
+            // Nothing withheld this month. Still filed — as RM 0.00 — for
+            // someone who had MTD earlier in the year (a non-resident turned
+            // resident whose X now covers the year's tax): LHDN's answer on
+            // the 2026 MTD test is that the row "must be in text file even the
+            // amount is 0". Someone never taxed this year is not subject to
+            // MTD and stays out.
+            if (pcbSen <= 0 && cp38Sen <= 0 && !row.HadMtdThisYear) continue;
 
             var refusal = Validate(row, out var taxRef, out var newIc, out var passport);
             if (refusal is not null) { problems.Add(refusal); continue; }
 
-            if (pcbSen > 0) { pcbTotalSen += pcbSen; pcbCount++; }
+            // "Total MTD Records … must be tally with employees whom subject to
+            // MTD" (Exhibit 5, item 7) — so a RM 0.00 row counts too.
+            // A CP38-only row is not an MTD record, as before.
+            var zeroMtdRow = pcbSen <= 0 && cp38Sen <= 0;
+            if (pcbSen > 0 || zeroMtdRow) { pcbTotalSen += pcbSen; pcbCount++; }
             if (cp38Sen > 0) { cp38TotalSen += cp38Sen; cp38Count++; }
 
             var detail = new StringBuilder(DetailWidth)
