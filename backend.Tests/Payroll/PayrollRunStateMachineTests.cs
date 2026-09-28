@@ -244,6 +244,27 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.True((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
     }
 
+    // A draft's single payslip may be PREVIEWED — watermarked and named as a
+    // draft — so the layout and figures can be checked before approval.
+    // Everything filed, paid or sent in bulk still waits for approval.
+    [Fact]
+    public async Task ADraftsPayslip_CanBePreviewed_ButNothingElseIsProduced()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await GeneratedRunAsync(2026, 1);
+        var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
+
+        var preview = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
+
+        Assert.True(preview.Ok, preview.Error);
+        Assert.Equal("E-001_Aisyah_Binti_Rahman_01-2026_DRAFT.pdf", preview.FileName);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(preview.Content!, 0, 4));
+
+        Assert.False((await _statutory.RenderAllPayslipsZipAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderPcbTxtAsync(run.Id)).Ok);
+    }
+
     // Every document carries the previous system's file name, so an admin's
     // folders and the payslips already emailed to staff line up with it.
     [Fact]
