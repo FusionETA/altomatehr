@@ -255,6 +255,83 @@ public class PayslipCalculatorTests
         Assert.Equal(7000m, Granted(r, "deduct_tp1_voluntary_epf"));
     }
 
+    // MTD Spec p.25 example vi, reproduced to the published P: a monthly
+    // director's fee of RM 40,000 with no compulsory EPF and RM 7,000
+    // voluntary EPF on TP1, in January (n = 11).
+    //   P = (40,000 − 0) + (40,000 × 11) − (9,000 + 7,000) = 464,000
+    [Fact]
+    public void Lhdn_ExampleVi_VoluntaryEpfWithNoCompulsoryEpf_MatchesThePublishedP()
+    {
+        var r = PayslipCalculator.Calculate(Make(
+            month: 1,
+            monthlySalary: 40000m,
+            allowances: [Allowance("deduct_tp1_voluntary_epf", 7000m)]) with
+        {
+            ContributeToEpf = false,
+            // The example has no SOCSO/EIS line; a director is outside both.
+            SocsoScheme = null,
+            ContributeToEis = false,
+        });
+
+        Assert.Equal(11, r.PcbCalculation.N);
+        Assert.Equal(7000m, r.PcbCalculation.Lp1);
+        Assert.Equal(464000m, r.PcbCalculation.P);
+    }
+
+    // The 2026 MTD test's Employee B, March: a one-off RM 100,000 director's
+    // fee (additional remuneration — "director's fee (not paid monthly)",
+    // spec p.11), no salary, RM 12,000 zakat through salary, four TP1 claims,
+    // and four children: two in diploma-or-above study in Malaysia (RM 8,000
+    // each) and two under 18 not claimed by this parent. The form prints
+    // QC 16,000 as "Q 2,000 × C 8" — C is QC ÷ Q, not a head count.
+    // Worked by hand from the spec:
+    //   LP1 = 850 + 450 + 1,200 + 1,000 (voluntary EPF, example vi) = 3,500
+    //   P   = 100,000 − (9,000 + 2 × 8,000 + 3,500)                   = 71,500
+    //   CS  = (71,500 − 70,000) × 19% + 3,700                          = 3,985
+    //   PCB = 3,985 − 12,000 zakat → 0.00
+    // PayrollPanda's worksheet for the same month leaves the voluntary EPF
+    // out (LP1 2,500 → P 72,500, CS 4,175) and also lands on PCB 0.00; the
+    // second half of this test pins that that line is the only difference.
+    [Fact]
+    public void MtdTest_EmployeeB_March_MatchesTheSpecByHand()
+    {
+        PayslipCalculator.Result Run(bool withVoluntaryEpf) => PayslipCalculator.Calculate(Make(
+            month: 3,
+            monthlySalary: 0m,
+            allowances:
+            [
+                Allowance("wages_director_fee", 100000m),
+                Allowance("deduct_zakat", 12000m),
+                Allowance("deduct_tp1_medical_exam", 850m),
+                Allowance("deduct_tp1_vaccination", 450m),
+                Allowance("deduct_tp1_lifestyle", 1200m),
+                .. withVoluntaryEpf ? [Allowance("deduct_tp1_voluntary_epf", 1000m)] : Array.Empty<FixedAllowance>(),
+            ]) with
+        {
+            Children =
+            [
+                new ChildRelief { CurrentlyStudying = ChildStudyingLevel.DIPLOMA_MALAYSIA, PcbDeduction = ChildPcbDeductionLevel.FULL },
+                new ChildRelief { CurrentlyStudying = ChildStudyingLevel.DIPLOMA_MALAYSIA, PcbDeduction = ChildPcbDeductionLevel.FULL },
+                new ChildRelief { CurrentlyStudying = ChildStudyingLevel.UNDER_18, PcbDeduction = ChildPcbDeductionLevel.NONE },
+                new ChildRelief { CurrentlyStudying = ChildStudyingLevel.UNDER_18, PcbDeduction = ChildPcbDeductionLevel.NONE },
+            ],
+            SpouseWorking = true,
+        });
+
+        var ours = Run(withVoluntaryEpf: true);
+        Assert.Equal(9, ours.PcbCalculation.N);
+        Assert.Equal(16000m, ours.PcbCalculation.QC);
+        Assert.Equal(3500m, ours.PcbCalculation.Lp1);
+        Assert.Equal(3985m, ours.PcbCalculation.Ar!.Cs);
+        Assert.Equal(0m, ours.Pcb);
+        Assert.Equal(12000m, ours.Zakat);
+
+        var withoutVoluntaryEpf = Run(withVoluntaryEpf: false);
+        Assert.Equal(2500m, withoutVoluntaryEpf.PcbCalculation.Lp1);
+        Assert.Equal(4175m, withoutVoluntaryEpf.PcbCalculation.Ar!.Cs);   // PayrollPanda's figure
+        Assert.Equal(0m, withoutVoluntaryEpf.Pcb);
+    }
+
     // Example iv: a modest salary leaves room under RM 4,000, so a small
     // voluntary top-up counts in full.
     [Fact]
