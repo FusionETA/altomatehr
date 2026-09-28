@@ -80,7 +80,6 @@ public class EmployeeProfileDto
     public string? IncomeTaxNumber { get; set; }
     public bool PcbBorneByEmployer { get; set; }
     public string? SsfwNumber { get; set; }
-    public bool ReportedToLhdn { get; set; }
 
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;

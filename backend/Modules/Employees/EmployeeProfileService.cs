@@ -141,7 +141,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.ContributeToEis = d.ContributeToEis; e.ContributeToSkbbk = d.ContributeToSkbbk;
 
         e.IncomeTaxNumber = d.IncomeTaxNumber; e.PcbBorneByEmployer = d.PcbBorneByEmployer;
-        e.SsfwNumber = d.SsfwNumber; e.ReportedToLhdn = d.ReportedToLhdn;
+        e.SsfwNumber = d.SsfwNumber;
 
         e.PaymentMethod = d.PaymentMethod; e.BankName = d.BankName;
         e.BankAccountHolderName = d.BankAccountHolderName; e.BankAccountNumber = d.BankAccountNumber;
@@ -203,7 +203,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         ContributeToEis = e.ContributeToEis, ContributeToSkbbk = e.ContributeToSkbbk,
 
         IncomeTaxNumber = e.IncomeTaxNumber, PcbBorneByEmployer = e.PcbBorneByEmployer,
-        SsfwNumber = e.SsfwNumber, ReportedToLhdn = e.ReportedToLhdn,
+        SsfwNumber = e.SsfwNumber,
 
         PaymentMethod = e.PaymentMethod, BankName = e.BankName,
         BankAccountHolderName = e.BankAccountHolderName, BankAccountNumber = e.BankAccountNumber,

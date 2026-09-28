@@ -1441,12 +1441,6 @@ export function EmployeeDetail({
                     checked={profile.pcbBorneByEmployer}
                     onChange={(v) => set("pcbBorneByEmployer", v)}
                   />
-                  <Toggle
-                    label="Reported to LHDN"
-                    hint="For your records — it does not take them off payroll."
-                    checked={profile.reportedToLhdn}
-                    onChange={(v) => set("reportedToLhdn", v)}
-                  />
                 </Group>
 
                 {/* One choice rather than an on/off switch: REP and knowledge
