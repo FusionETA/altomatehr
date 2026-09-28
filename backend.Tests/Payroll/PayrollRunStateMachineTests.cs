@@ -471,7 +471,7 @@ public class PayrollRunStateMachineTests : IDisposable
     // Deductions larger than someone's pay is a data-entry mistake far more
     // often than a real month — and once submitted the payslip is immutable.
     [Fact]
-    public async Task SubmitForApprovalAsync_RefusesWhenAnyoneTakesHomeNothing()
+    public async Task SubmitForApprovalAsync_RefusesWhenAnyoneTakesHomeLessThanNothing()
     {
         var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2000m);
         AddEmployee("usr-2", "Bala");
@@ -494,6 +494,20 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.False(result.Ok);
         // Names the person, so the admin knows whose row to fix.
         Assert.Contains("Aisyah", result.Error);
+    }
+
+    // A RM 0 base salary is a real month (a director paid nothing), and the
+    // previous system submitted it — only a NEGATIVE net pay is refused.
+    [Fact]
+    public async Task SubmitForApprovalAsync_AllowsSomeoneOnARm0Salary()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 0m);
+        AddEmployee("usr-2", "Bala");
+        var run = await GeneratedRunAsync();
+
+        var result = await _service.SubmitForApprovalAsync(run.Id);
+
+        Assert.True(result.Ok, result.Error);
     }
 
     // ---- Chronology ----
