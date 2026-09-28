@@ -301,45 +301,68 @@ export function EmployeesSettings() {
           controls that change it. Everything below is a consequence of this
           card, which is why it carries no rows of its own. */}
       <div className={`${CARD} space-y-5`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-foreground">Employees</h2>
-              {/* Hidden until the roster is in. A count of 0 next to a table of
-                  skeleton rows reads as "this company has no employees", which is
-                  a different and alarming statement. */}
-              {loading ? null : (
-                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-                  <Users className="h-3 w-3" />
-                  {narrowed ? `${filtered.length} of ${statusTotal}` : statusTotal}
-                </span>
-              )}
+        {/* Two rows, split by what the controls DO: the title with the two
+            actions that change the roster, then the filters that only change
+            what you're looking at. One wrapping row of five controls left
+            Add employee stranded on a line of its own. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="text-lg font-black text-foreground">Employees</h2>
+            {/* Hidden until the roster is in. A count of 0 next to a table of
+                skeleton rows reads as "this company has no employees", which is
+                a different and alarming statement. */}
+            {loading ? null : (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {narrowed ? `${filtered.length} of ${statusTotal}` : statusTotal}
+              </span>
+            )}
 
-              {/* The total, so "is anyone unpayable?" is answerable without
-                  scanning every row — the box below then says who. */}
-              {!loading && needsSetupCount > 0 ? (
-                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
-                  <CircleAlert className="h-3 w-3" />
-                  {needsSetupCount} need setup
-                </span>
-              ) : null}
-            </div>
+            {/* The total, so "is anyone unpayable?" is answerable without
+                scanning every row — the box below then says who. */}
+            {!loading && needsSetupCount > 0 ? (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold text-warning-foreground">
+                <CircleAlert className="h-3 w-3" />
+                {needsSetupCount} need setup
+              </span>
+            ) : null}
           </div>
-          {/* Wraps rather than holding its width: three controls pinned in one
-              row pushed Add employee off the card's right edge on a phone, and
-              off the page entirely at 1024px. */}
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <SearchInput
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Search employees"
-              className="w-full sm:w-56"
-              inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
-            />
 
-            {/* A filter, not a tab row. Three roles is not a navigation
-                decision — it sits with the search box because it does the same
-                job, and it leaves the card a row shorter. */}
+          {/* Import beside Add employee, quieter than it: onboarding a batch is
+              the rarer act. It is also the one bulk path — adding people and
+              updating every field, payroll details included. */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowImport(true)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+            >
+              <Upload className="h-4 w-4" />
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Add employee
+            </button>
+          </div>
+        </div>
+
+        {/* The filters: search takes the room, the two dropdowns keep a fixed
+            width beside it. Role is a filter, not a tab row — three roles is
+            not a navigation decision. */}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search employees"
+            className="w-full sm:flex-1"
+            inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
+          />
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <Select
               value={roleFilter}
               onValueChange={(next) => setRoleFilter(next as RoleFilter)}
@@ -376,27 +399,6 @@ export function EmployeesSettings() {
                 <SelectItem value={ALL}>All statuses</SelectItem>
               </SelectContent>
             </Select>
-            {/* Beside Add employee, quieter than it: onboarding a batch is the
-                rarer act, and the single-add button is what most visits want.
-                The one bulk path — adding people and updating every field,
-                payroll details included, through a single spreadsheet. */}
-            <button
-              type="button"
-              onClick={() => setShowImport(true)}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
-            >
-              <Upload className="h-4 w-4" />
-              Import employees
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowAdd(true)}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
-            >
-              <Plus className="h-4 w-4" />
-              Add employee
-            </button>
           </div>
         </div>
 
@@ -461,7 +463,7 @@ export function EmployeesSettings() {
                 </h3>
                 <p className="mt-0.5 text-xs text-warning-foreground/80">
                   Missing statutory or compensation details. Open anyone to complete their profile,
-                  or fill everyone in at once with the panel above.
+                  or update everyone at once with Import above.
                 </p>
               </header>
               <EmployeeRows
