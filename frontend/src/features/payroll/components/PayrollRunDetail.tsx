@@ -115,7 +115,8 @@ export function PayrollRunDetailView({
   // One number for the tab: everything an admin has to look at before this
   // month can be filed.
   const attentionCount =
-    payslips.filter((payslip) => payslip.netPay <= 0).length +
+    // Negative net only: a RM 0 month submits, so it is noted, not counted.
+    payslips.filter((payslip) => payslip.netPay < 0).length +
     (readiness && !readiness.ok ? readiness.totalMissingCount : 0) +
     skipped.length;
   const generated = run.generatedAt !== null;

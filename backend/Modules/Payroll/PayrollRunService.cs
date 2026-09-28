@@ -430,22 +430,27 @@ public class PayrollRunService : IPayrollRunService
                 + "Re-run payroll before submitting.");
         }
 
-        // Guard 3 — nobody may take home nothing. Deductions larger than
-        // someone's pay is a data-entry mistake far more often than it is a
-        // real month, and once submitted the payslip is immutable.
+        // Guard 3 — nobody may take home LESS than nothing. Deductions larger
+        // than someone's pay is a data-entry mistake far more often than it is
+        // a real month, and once submitted the payslip is immutable.
+        //
+        // Exactly RM 0 is allowed, as the previous system allowed it
+        // (`netPay < 0`): a RM 0 base salary — a director or a placeholder
+        // paid nothing this month — is a real case, and the bank files
+        // already skip a zero-pay row rather than paying it.
         //
         // Note this is a SUBMIT-time guard, not a floor inside the calculator:
         // the calculator lets net go negative (as the reference's does), and
         // whether EA 1955 s.24 requires a floor is still an open question — see
         // MIGRATION.md. Refusing here is the protection that exists today.
-        var nonPositive = payslips.Where(p => p.NetPay <= 0m).ToList();
-        if (nonPositive.Count > 0)
+        var negative = payslips.Where(p => p.NetPay < 0m).ToList();
+        if (negative.Count > 0)
         {
-            var names = string.Join(", ", nonPositive.Take(5).Select(p => p.SnapshotName));
-            var more = nonPositive.Count > 5 ? $" and {nonPositive.Count - 5} more" : string.Empty;
+            var names = string.Join(", ", negative.Take(5).Select(p => p.SnapshotName));
+            var more = negative.Count > 5 ? $" and {negative.Count - 5} more" : string.Empty;
 
             return Refused(
-                $"Cannot submit — net pay is zero or negative for: {names}{more}. "
+                $"Cannot submit — net pay is negative for: {names}{more}. "
                 + "Reduce their deductions, then re-run payroll.");
         }
 

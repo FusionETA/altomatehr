@@ -1,14 +1,15 @@
-import { CircleSlash, TriangleAlert, UserX } from "lucide-react";
+import { CircleSlash, Info, TriangleAlert, UserX } from "lucide-react";
 import type { PayrollReadiness, Payslip, SkippedEmployee } from "../api";
 import { rm } from "../lib/payroll-format";
 import { CARD, HINT, TD, TH } from "../lib/ui";
 
 // Everything standing between this run and a filing, in one place.
 //
-// Three different problems, kept apart because the fix differs: a zero net
-// pay is a salary or a deduction to correct, a missing field is data entry,
-// and an excluded employee may be correct. Pooling them into one list would
-// make the admin work out which is which.
+// Three different problems, kept apart because the fix differs: a negative
+// net pay is a deduction to correct, a missing field is data entry, and an
+// excluded employee may be correct. Pooling them into one list would make the
+// admin work out which is which. A RM 0 net pay is noted but not a problem —
+// it submits (as the previous system allowed) and the bank file skips it.
 export function PayrollRunAttention({
   readiness,
   payslips,
@@ -18,25 +19,26 @@ export function PayrollRunAttention({
   payslips: Payslip[];
   skipped: SkippedEmployee[];
 }) {
-  // Generation produces a payslip either way, so a zero net is only visible
-  // here — and it is the one that blocks submission outright.
-  const zeroNet = payslips.filter((payslip) => payslip.netPay <= 0);
+  // Generation produces a payslip either way, so a negative net is only
+  // visible here — and it is the one that blocks submission outright.
+  const negativeNet = payslips.filter((payslip) => payslip.netPay < 0);
+  const zeroNet = payslips.filter((payslip) => payslip.netPay === 0);
 
   return (
     <div className="space-y-4">
-      {zeroNet.length > 0 ? (
+      {negativeNet.length > 0 ? (
         <section className="rounded-[28px] border border-destructive/25 bg-destructive/5 p-5 sm:p-6">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-destructive">
             <CircleSlash className="size-4" aria-hidden />
-            {zeroNet.length} employee(s) would take home nothing
+            {negativeNet.length} employee(s) would take home less than nothing
           </h3>
           <p className="mt-1 text-xs text-destructive/80">
-            The run cannot be submitted while anyone is on zero or less. Either the
-            salary is missing from their profile, or their deductions exceed their pay.
+            The run cannot be submitted while anyone's net pay is negative — their
+            deductions exceed their pay.
           </p>
 
           <ul className="mt-3 space-y-1">
-            {zeroNet.map((payslip) => (
+            {negativeNet.map((payslip) => (
               <li
                 key={payslip.id}
                 className="flex items-baseline justify-between gap-3 text-sm"
@@ -47,6 +49,30 @@ export function PayrollRunAttention({
                 <span className="tabular-nums text-muted-foreground">
                   gross {rm(payslip.grossPay)} · net {rm(payslip.netPay)}
                 </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* Not a blocker: a RM 0 month is real (a director paid nothing). Said
+          anyway, because it is also what a salary missing from a profile
+          looks like. */}
+      {zeroNet.length > 0 ? (
+        <section className={CARD}>
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+            <Info className="size-4 text-muted-foreground" aria-hidden />
+            {zeroNet.length} employee(s) on RM 0.00 net pay
+          </h3>
+          <p className={HINT}>
+            They can be submitted, and the bank file leaves them out. Check the salary
+            on their profile if they should have been paid.
+          </p>
+          <ul className="mt-3 space-y-1">
+            {zeroNet.map((payslip) => (
+              <li key={payslip.id} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="font-medium text-foreground">{payslip.snapshotName}</span>
+                <span className="tabular-nums text-muted-foreground">gross {rm(payslip.grossPay)}</span>
               </li>
             ))}
           </ul>

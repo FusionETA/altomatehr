@@ -74,7 +74,7 @@ export function PayrollRunActions({
       return await action();
     } catch (err) {
       // Every refusal from this endpoint group is a business rule with a
-      // written reason — stale figures, someone on zero net, a prior month
+      // written reason — stale figures, someone on negative net, a prior month
       // still open. Showing it verbatim is more use than a generic failure.
       setError(err instanceof Error ? err.message : "That action did not go through.");
       return null;
