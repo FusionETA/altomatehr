@@ -216,6 +216,19 @@ export function ImportEmployeesDialog({
                 </ul>
               ) : null}
 
+              {/* Imported, but kept as typed or skipped on purpose — listed
+                  apart from the errors so it doesn't read as a failed row. */}
+              {result.warnings?.length ? (
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
+                  {result.warnings.map((w) => (
+                    <li key={`${w.row}-${w.message}`}>
+                      <span className="font-bold">{w.row === 1 ? "File" : `Row ${w.row}`}:</span>{" "}
+                      {w.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
               {accounts.length > 0 ? (
                 <div className={CARD}>
                   <div className="mb-2 flex items-start justify-between gap-3">

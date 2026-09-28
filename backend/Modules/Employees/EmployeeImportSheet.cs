@@ -39,6 +39,23 @@ public static class EmployeeImportSheet
         NameKey, RoleKey, EmployeeNumberKey, "salaryType", "contributeToEpf", "contributeToEis",
     };
 
+    // Salary, statutory, bank and identity details — what the Payroll module
+    // guards. An admin whose grant leaves out Payroll gets a sheet without
+    // these columns, and any in an uploaded file are ignored: Manage Employee
+    // hides the payroll roster from them, and a spreadsheet must not be the
+    // side door around that.
+    public static readonly IReadOnlySet<string> PayrollKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "idNumber", "idType", "maritalStatus", "hasPr", "isResident", "isOku",
+        "spouseWorking", "spouseDisabled", "spouseIdNumber", "spousePcbNumber",
+        "salaryType", "monthlySalary", "hourlyRate",
+        "epfNumber", "epfEmployeeRate", "contributeToEpf", "epfEmployeeVoluntary",
+        "epfEmployerVoluntary", "epfMemberBefore1998",
+        "socsoNumber", "socsoScheme", "contributeToEis", "contributeToSkbbk",
+        "incomeTaxNumber", "pcbBorneByEmployer",
+        "paymentMethod", "bankName", "bankAccountNumber", "bankAccountHolderName",
+    };
+
     // Column → one line of help for the Columns sheet. Kept beside the column
     // list so a new column cannot ship without saying what goes in it.
     private static readonly List<(TabularColumn Column, string Help)> Definitions =
@@ -145,17 +162,20 @@ public static class EmployeeImportSheet
 
     public static readonly IReadOnlyList<TabularColumn> Columns = [.. Definitions.Select(d => d.Column)];
 
+    public static IReadOnlyList<TabularColumn> ColumnsFor(bool includePayroll) =>
+        includePayroll ? Columns : [.. Columns.Where(c => !PayrollKeys.Contains(c.Key))];
+
     // The Employees sheet, then the guides. The template leads with READ ME so
     // Excel opens on the warning; the import finds the data by sheet name.
-    public static IReadOnlyList<TabularSheet> Workbook(TabularSheet employees) =>
-        [ReadMe(), employees, ColumnGuide()];
+    public static IReadOnlyList<TabularSheet> Workbook(TabularSheet employees, bool includePayroll = true) =>
+        [ReadMe(includePayroll), employees, ColumnGuide(includePayroll)];
 
-    public static TabularSheet BuildTemplate() =>
-        TabularTemplate.Build(SheetName, Columns);
+    public static TabularSheet BuildTemplate(bool includePayroll = true) =>
+        TabularTemplate.Build(SheetName, ColumnsFor(includePayroll));
 
     // Plain sentences, one per row, under a header that is itself the warning
     // — the first thing anyone sees on opening the file.
-    public static TabularSheet ReadMe()
+    public static TabularSheet ReadMe(bool includePayroll = true)
     {
         var sheet = new TabularSheet(ReadMeSheetName, ["READ THIS BEFORE IMPORTING"]) { Filterable = false };
 
@@ -181,14 +201,17 @@ public static class EmployeeImportSheet
         sheet.AddRow("• The template's example row is recognised and skipped — leave it, or delete it.");
         sheet.AddRow("• Dates are YYYY-MM-DD. Yes/No columns take Yes or No. The Columns sheet lists what every column accepts.");
         sheet.AddRow("• This file holds personal and bank details. Keep it somewhere safe and delete it when you're done.");
+        if (!includePayroll)
+            sheet.AddRow("• Salary, IC, bank and EPF/SOCSO/tax columns aren't in this file: your admin access doesn't include Payroll.");
         return sheet;
     }
 
-    public static TabularSheet ColumnGuide()
+    public static TabularSheet ColumnGuide(bool includePayroll = true)
     {
         var sheet = new TabularSheet(ColumnsSheetName, ["Column", "Required", "What to enter"]) { Filterable = false };
         foreach (var (column, help) in Definitions)
         {
+            if (!includePayroll && PayrollKeys.Contains(column.Key)) continue;
             var required = column.Key == EmailKey
                 ? "Always"
                 : column.Key is NameKey or EmployeeNumberKey or DateOfBirthKey

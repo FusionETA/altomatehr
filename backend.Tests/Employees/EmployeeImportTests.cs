@@ -72,7 +72,8 @@ public class EmployeeImportTests
     private static Harness Make(
         IEnumerable<EmployeeDto>? existing = null,
         IEnumerable<EmployeeProfile>? profiles = null,
-        IEnumerable<string>? accountsInOtherCompanies = null)
+        IEnumerable<string>? accountsInOtherCompanies = null,
+        bool payrollAccess = true)
     {
         var members = existing?.ToList() ?? [];
         var employees = new FakeEmployeeService(members);
@@ -82,7 +83,9 @@ public class EmployeeImportTests
             [.. members.Select(m => new User { Id = m.Id, Email = m.Email }),
              .. (accountsInOtherCompanies ?? []).Select(e => new User { Id = $"other-{e}", Email = e })]);
         return new Harness(
-            new EmployeeImportService(employees, store, directory, new FakePolicyService(), new FakeShiftService()),
+            new EmployeeImportService(
+                employees, store, directory, new FakePolicyService(), new FakeShiftService(),
+                new FakeModuleAccess(payrollAccess)),
             employees, store);
     }
 
@@ -452,7 +455,7 @@ public class EmployeeImportTests
     public async Task TheTemplatesExampleRowIsNotImported()
     {
         var h = Make();
-        var template = h.Service.BuildTemplate(TabularFormat.Csv);
+        var template = await h.Service.BuildTemplateAsync(TabularFormat.Csv);
 
         var result = await h.Service.ImportAsync(template.Content, TabularFormat.Csv);
 
@@ -467,7 +470,7 @@ public class EmployeeImportTests
     public async Task TheXlsxTemplateLeadsWithTheGuide_AndStillImports()
     {
         var h = Make();
-        var template = h.Service.BuildTemplate(TabularFormat.Xlsx);
+        var template = await h.Service.BuildTemplateAsync(TabularFormat.Xlsx);
 
         var sheets = TabularReader.ReadAllSheets(template.Content, TabularFormat.Xlsx);
         Assert.Equal(
@@ -537,7 +540,88 @@ public class EmployeeImportTests
         Assert.DoesNotContain("assword", Encoding.UTF8.GetString(export.Content));
     }
 
+    // ─── Payroll access ─────────────────────────────────────────────────
+
+    // Manage Employee hides payroll from an admin whose grant leaves it out;
+    // the spreadsheet must not be the way around that.
+    [Fact]
+    public async Task WithoutPayrollAccess_TheTemplateAndExportLeaveOutPayrollColumns()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")], payrollAccess: false);
+
+        var template = Encoding.UTF8.GetString((await h.Service.BuildTemplateAsync(TabularFormat.Csv)).Content);
+        var export = Encoding.UTF8.GetString((await h.Service.ExportAsync(TabularFormat.Csv)).Content);
+
+        foreach (var text in new[] { template, export })
+        {
+            Assert.Contains("Employee No", text);
+            Assert.Contains("Phone", text);
+            Assert.DoesNotContain("Monthly Salary", text);
+            Assert.DoesNotContain("Bank Account No", text);
+            Assert.DoesNotContain("IC / Passport No", text);
+        }
+        Assert.DoesNotContain("112233445566", export);
+    }
+
+    [Fact]
+    public async Task WithoutPayrollAccess_PayrollColumnsInAFileAreIgnoredAndSaidSo()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")], payrollAccess: false);
+
+        // A full file (someone else's export), in Erase mode — the payroll
+        // columns must neither be written nor erased.
+        var result = await Erase(h.Service, Csv(Row(
+            "aisyah@example.com", "Aisyah", "Employee", "E-001",
+            extra: [("monthlySalary", "9999"), ("phone", "012-000 0000")])));
+
+        Assert.True(result.Ok, string.Join(" | ", result.Errors.Select(e => e.Message)));
+        var saved = Assert.Single(h.Profiles.Saves).Dto;
+        Assert.Equal(5000m, saved.MonthlySalary);        // untouched, not 9999, not erased
+        Assert.Equal("Maybank", saved.BankName);
+        Assert.Equal("012-000 0000", saved.Phone);        // non-payroll still applies
+        Assert.Contains(result.Warnings, w => w.Row == 1 && w.Message.Contains("doesn't include Payroll"));
+    }
+
+    // ─── Nationality ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnUnrecognisedNationalityImportsAsTypedWithAWarning()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")]);
+
+        var result = await h.Service.ImportAsync(Csv(
+            Row("aisyah@example.com", extra: [("nationality", "Atlantean")])), TabularFormat.Csv);
+
+        Assert.True(result.Ok);
+        Assert.Equal(1, result.Updated);
+        var warning = Assert.Single(result.Warnings);
+        Assert.Equal(2, warning.Row);
+        Assert.Contains("Atlantean", warning.Message);
+    }
+
+    [Fact]
+    public async Task ARecognisedNationalityRaisesNoWarning()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")]);
+
+        var result = await h.Service.ImportAsync(Csv(
+            Row("aisyah@example.com", extra: [("nationality", "Malaysia")])), TabularFormat.Csv);
+
+        Assert.Empty(result.Warnings);
+    }
+
     // ─── Doubles ────────────────────────────────────────────────────────
+
+    private sealed class FakeModuleAccess(bool payroll) : AltomateHR.Api.Modules.Organizations.IModuleAccessService
+    {
+        private static readonly string[] Base = ["employees", "leave", "teams", "policies", "overtime"];
+
+        public Task<IReadOnlyCollection<string>> GetEnabledModulesAsync() =>
+            Task.FromResult<IReadOnlyCollection<string>>(payroll ? [.. Base, "payroll"] : Base);
+
+        public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() =>
+            Task.FromResult<IReadOnlyCollection<string>>([.. Base, "payroll"]);
+    }
 
     private sealed class FakeEmployeeService : IEmployeeService
     {

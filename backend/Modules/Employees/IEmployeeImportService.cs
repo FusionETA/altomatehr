@@ -4,7 +4,9 @@ namespace AltomateHR.Api.Modules.Employees;
 
 public interface IEmployeeImportService
 {
-    TabularExportResult BuildTemplate(TabularFormat format);
+    // Without Payroll access, the template and export leave out the payroll
+    // columns and the import ignores them (see EmployeeImportSheet.PayrollKeys).
+    Task<TabularExportResult> BuildTemplateAsync(TabularFormat format);
 
     // The current roster in exactly the import's column order, so an admin
     // edits what is there instead of retyping it. Without this the import can
@@ -41,6 +43,10 @@ public sealed class EmployeeImportResult
     public int Updated { get; init; }
 
     public IReadOnlyList<TabularImportError> Errors { get; init; } = [];
+
+    // Imported, but worth a look — a nationality kept as typed, payroll
+    // columns ignored for an admin without Payroll. Not failures.
+    public IReadOnlyList<TabularImportError> Warnings { get; init; } = [];
 
     // The accounts this import brought into being, with the password each was
     // given. Returned ONCE, in this response, and stored nowhere — the admin

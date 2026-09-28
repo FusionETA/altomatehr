@@ -440,6 +440,9 @@ export type EmployeeImportResult = {
   created: number;
   updated: number;
   errors: { row: number; message: string }[];
+  // Imported, but worth a look — a nationality kept as typed, or payroll
+  // columns ignored because this admin has no Payroll access.
+  warnings: { row: number; message: string }[];
 
   // Shown ONCE and stored nowhere. Existing people — and anyone whose account
   // already existed in another company — are absent: they keep the password

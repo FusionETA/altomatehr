@@ -175,9 +175,9 @@ public class EmployeesController : ControllerBase
 
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
-    public IActionResult ImportTemplate([FromQuery] TabularFormat format = TabularFormat.Xlsx)
+    public async Task<IActionResult> ImportTemplate([FromQuery] TabularFormat format = TabularFormat.Xlsx)
     {
-        var result = _import.BuildTemplate(format);
+        var result = await _import.BuildTemplateAsync(format);
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);
     }

@@ -28,23 +28,35 @@ public class EmployeeImportService : IEmployeeImportService
     private readonly IDirectoryService _directory;
     private readonly IPolicyService _policies;
     private readonly IShiftService _shifts;
+    private readonly Organizations.IModuleAccessService _access;
 
     public EmployeeImportService(
         IEmployeeService employees,
         IEmployeeProfileService profiles,
         IDirectoryService directory,
         IPolicyService policies,
-        IShiftService shifts)
+        IShiftService shifts,
+        Organizations.IModuleAccessService access)
     {
         _employees = employees;
         _profiles = profiles;
         _directory = directory;
         _policies = policies;
         _shifts = shifts;
+        _access = access;
     }
 
-    public TabularExportResult BuildTemplate(TabularFormat format) =>
-        From(EmployeeImportSheet.BuildTemplate(), format, "employees-import-template");
+    // Whether this admin may see and write the payroll columns. An Owner, or an
+    // Admin whose grant includes Payroll; the org's plan always includes it.
+    private async Task<bool> CanPayrollAsync() =>
+        (await _access.GetEnabledModulesAsync())
+            .Contains(Organizations.OrgModules.Payroll, StringComparer.OrdinalIgnoreCase);
+
+    public async Task<TabularExportResult> BuildTemplateAsync(TabularFormat format)
+    {
+        var payroll = await CanPayrollAsync();
+        return From(EmployeeImportSheet.BuildTemplate(payroll), format, "employees-import-template", payroll);
+    }
 
     // Every column, filled from the live record, in the import's order — so an
     // admin edits what is there instead of retyping it. Date of Birth IS
@@ -52,9 +64,9 @@ public class EmployeeImportService : IEmployeeImportService
     // left blank here would wipe every birthday on re-import.
     public async Task<TabularExportResult> ExportAsync(TabularFormat format)
     {
-        var sheet = new TabularSheet(
-            EmployeeImportSheet.SheetName,
-            [.. EmployeeImportSheet.Columns.Select(c => c.Label)]);
+        var payroll = await CanPayrollAsync();
+        var columns = EmployeeImportSheet.ColumnsFor(payroll);
+        var sheet = new TabularSheet(EmployeeImportSheet.SheetName, [.. columns.Select(c => c.Label)]);
 
         var policies = (await _policies.GetAllAsync())
             .ToDictionary(p => p.Id, p => p.Name, StringComparer.Ordinal);
@@ -130,10 +142,10 @@ public class EmployeeImportService : IEmployeeImportService
 
             // Keyed, then laid out by the column list, so the export cannot
             // drift out of step with the order the import reads.
-            sheet.AddRow(EmployeeImportSheet.Columns.Select(c => values.GetValueOrDefault(c.Key)));
+            sheet.AddRow(columns.Select(c => values.GetValueOrDefault(c.Key)));
         }
 
-        return From(sheet, format, "employees");
+        return From(sheet, format, "employees", payroll);
     }
 
     public async Task<EmployeeImportResult> ImportAsync(
@@ -154,12 +166,30 @@ public class EmployeeImportService : IEmployeeImportService
         var rows = PickDataSheet(sheets);
         if (rows is null || rows.Count == 0) return EmployeeImportResult.FileError("The file is empty.");
 
-        var (map, missing) = TabularHeaderMap.Build(rows[0], EmployeeImportSheet.Columns);
+        // Without Payroll access the payroll columns are simply not read: to
+        // the rest of the import they are columns that aren't in the file, so
+        // those fields are left exactly as they are.
+        var payroll = await CanPayrollAsync();
+        var columns = EmployeeImportSheet.ColumnsFor(payroll);
+        var (map, missing) = TabularHeaderMap.Build(rows[0], columns);
         if (map is null)
             return EmployeeImportResult.FileError(
                 $"Missing required column(s): {string.Join(", ", missing)}.");
         if (rows.Count == 1)
             return EmployeeImportResult.FileError("The file has a header row but no data rows.");
+
+        var warnings = new List<TabularImportError>();
+        if (!payroll && TabularHeaderMap.Build(rows[0], EmployeeImportSheet.Columns).Map is { } full)
+        {
+            var ignored = EmployeeImportSheet.Columns
+                .Where(c => EmployeeImportSheet.PayrollKeys.Contains(c.Key) && full.Has(c.Key))
+                .Select(c => c.Label)
+                .ToList();
+            if (ignored.Count > 0)
+                warnings.Add(new TabularImportError(1,
+                    $"Ignored {ignored.Count} payroll column(s) ({string.Join(", ", ignored.Take(4))}"
+                    + $"{(ignored.Count > 4 ? ", …" : "")}): your admin access doesn't include Payroll."));
+        }
 
         // Names, not ids, because that is what an admin types. Resolved once.
         var policies = (await _policies.GetAllAsync())
@@ -185,7 +215,7 @@ public class EmployeeImportService : IEmployeeImportService
             var rowNumber = i + 1;   // header is row 1, as the admin sees it
             var row = rows[i];
 
-            if (TabularTemplate.IsExampleRow(map, row, EmployeeImportSheet.Columns)) continue;
+            if (TabularTemplate.IsExampleRow(map, row, columns)) continue;
             if (row.All(TabularCell.IsBlank)) continue;   // a spacer line, not an error
 
             var email = TabularCell.Text(map.Cell(row, EmployeeImportSheet.EmailKey));
@@ -196,6 +226,16 @@ public class EmployeeImportService : IEmployeeImportService
             }
 
             var cells = new RowReader(map, row, erase);
+
+            // Mapped onto the dropdown's spelling by the profile save
+            // ("Malaysia" → "Malaysian"); one it can't match is kept as typed
+            // and said here, so the row still lands but somebody looks.
+            var nationality = map.Has("nationality") ? TabularCell.Text(map.Cell(row, "nationality")) : null;
+            var nationalityWarning = nationality is not null && !Payroll.Nationalities.Resolve(nationality).Recognised
+                ? new TabularImportError(rowNumber,
+                    $"Nationality \"{nationality}\" is not one we recognise, so it was saved as typed. "
+                    + "Pick the right one on the employee's profile.")
+                : null;
 
             if (existing.TryGetValue(email, out var member))
             {
@@ -222,6 +262,7 @@ public class EmployeeImportService : IEmployeeImportService
                 }
 
                 if (cells.TouchesProfile) await _profiles.SaveAsync(member.Id, profile);
+                if (nationalityWarning is not null) warnings.Add(nationalityWarning);
                 updated++;
                 continue;
             }
@@ -281,6 +322,7 @@ public class EmployeeImportService : IEmployeeImportService
             }
 
             created++;
+            if (nationalityWarning is not null) warnings.Add(nationalityWarning);
             existing[email] = create.Employee;   // a repeated email further down updates, not re-adds
             if (!knownEmails.Contains(email))
                 createdAccounts.Add(new CreatedAccount(email, name!, password!));
@@ -295,6 +337,7 @@ public class EmployeeImportService : IEmployeeImportService
             Created = created,
             Updated = updated,
             Errors = errors,
+            Warnings = warnings,
             CreatedAccounts = createdAccounts,
         };
     }
@@ -419,9 +462,10 @@ public class EmployeeImportService : IEmployeeImportService
 
     // XLSX carries the READ ME and Columns guides around the data. A CSV can
     // hold one sheet only, and a labelled multi-sheet CSV would not re-import.
-    private static TabularExportResult From(TabularSheet data, TabularFormat format, string fileName) =>
+    private static TabularExportResult From(
+        TabularSheet data, TabularFormat format, string fileName, bool includePayroll) =>
         format == TabularFormat.Xlsx
-            ? TabularExportResult.From(EmployeeImportSheet.Workbook(data), format, fileName)
+            ? TabularExportResult.From(EmployeeImportSheet.Workbook(data, includePayroll), format, fileName)
             : TabularExportResult.From(data, format, fileName);
 
     private static string Percent(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
