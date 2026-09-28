@@ -43,6 +43,39 @@ const VISIBLE_ROWS = 7;
 // form grows a layer. Each pane scrolls its own overflow instead.
 const PANE_H = "lg:h-[36.5rem]";
 
+// The one header both list panes use: icon and title on a row (with an
+// optional action beside them), then a single-line caption. Built once so the
+// two lists below always start at the same height.
+function PaneHeader({
+  icon: Icon,
+  title,
+  caption,
+  action,
+}: {
+  icon: typeof Users;
+  title: string;
+  caption: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-3">
+      <div className="flex h-8 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="truncate text-base font-black text-foreground">{title}</h3>
+        </div>
+        {action}
+      </div>
+      <p
+        title={caption}
+        className="mt-1 truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        {caption}
+      </p>
+    </div>
+  );
+}
+
 // Same seven-row rule for a layer section in the members card, and the same
 // arithmetic: a member row is 36px (email, layer select, Remove) with the 6px
 // space-y-1.5 gaps, so 7×36 + 6×6 = 288px.
@@ -180,13 +213,7 @@ export function CompanyStructure() {
         <div className="grid gap-4 lg:grid-cols-[260px_minmax(220px,1fr)_minmax(0,2fr)]">
           {/* Pane 1 — Projects */}
           <section className={`${CARD} ${PANE_H} flex flex-col p-4`}>
-            <div className="mb-1 flex items-center gap-2">
-              <FolderKanban className="h-4 w-4 text-primary" />
-              <h3 className="text-base font-black text-foreground">Projects</h3>
-            </div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {projects.length} total
-            </p>
+            <PaneHeader icon={FolderKanban} title="Projects" caption={`${projects.length} total`} />
             {projects.length > VISIBLE_ROWS ? (
               <SearchInput
                 value={projectSearch}
@@ -241,28 +268,28 @@ export function CompanyStructure() {
 
           {/* Pane 2 — Teams in the selected project */}
           <section className={`${CARD} ${PANE_H} flex flex-col p-4`}>
-            <div className="mb-3 flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-primary" />
-                <div>
-                  <h3 className="text-base font-black text-foreground">Teams</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedProjectId ? projectName(selectedProjectId) : "—"}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedTeamId(null);
-                  setCreating(true);
-                }}
-                disabled={!selectedProjectId}
-                className="inline-flex shrink-0 items-center gap-1 rounded-2xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-              >
-                <Plus className="h-3.5 w-3.5" /> New
-              </button>
-            </div>
+            <PaneHeader
+              icon={Users}
+              title="Teams"
+              caption={
+                selectedProjectId
+                  ? `${teamsInProject.length} in ${projectName(selectedProjectId)}`
+                  : "No project selected"
+              }
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeamId(null);
+                    setCreating(true);
+                  }}
+                  disabled={!selectedProjectId}
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" /> New
+                </button>
+              }
+            />
             {teamsInProject.length > VISIBLE_ROWS ? (
               <SearchInput
                 value={teamSearch}
@@ -290,7 +317,12 @@ export function CompanyStructure() {
                         active ? "border-primary/40 bg-primary/5" : "border-border/60 hover:bg-muted"
                       }`}
                     >
-                      <p className="text-sm font-bold text-foreground">{t.name}</p>
+                      <p
+                        title={t.name}
+                        className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-foreground"}`}
+                      >
+                        {t.name}
+                      </p>
                       <p className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                         <span>
                           {t.layerCount} layer{t.layerCount === 1 ? "" : "s"}
