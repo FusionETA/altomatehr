@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.LhdnForms;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Employees;
 
 [ApiController]
 [Route("employees")]
+[RequireModule(OrgModules.Employees)]
 [Authorize(Roles = "Admin,Owner")]   // employee admin is admin/owner only
 public class EmployeesController : ControllerBase
 {
@@ -33,6 +35,9 @@ public class EmployeesController : ControllerBase
     }
 
     // GET /employees — everyone in the org, with their role + assigned supervisor.
+    // A lookup other admin screens borrow (claims / attendance filters, the
+    // employee form), so it is held to the plan only. See ModuleGrantExempt.
+    [ModuleGrantExempt]
     [RequireScope("employees:read")]
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _employees.GetAllAsync());

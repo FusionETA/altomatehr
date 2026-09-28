@@ -52,8 +52,13 @@ public class OrganizationService : IOrganizationService
         var users = (await _directory.GetUsersAsync())
             .ToDictionary(u => u.Id, StringComparer.Ordinal);
 
+        // Owners are listed too, so the page does not read "no admins" while an
+        // Owner runs the org. They come back with Role "Owner" and a null grant
+        // (full access), and SetAdminModulesAsync still refuses them — the page
+        // shows them read-only, never with a grant to edit.
         return memberships
-            .Where(m => string.Equals(m.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            .Where(m => string.Equals(m.Role, "Admin", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(m.Role, "Owner", StringComparison.OrdinalIgnoreCase))
             .Select(m =>
             {
                 users.TryGetValue(m.UserId, out var user);
@@ -63,7 +68,10 @@ public class OrganizationService : IOrganizationService
                     Name = user?.Name ?? string.Empty,
                     Email = user?.Email ?? string.Empty,
                     Role = m.Role,
-                    Modules = m.Modules is null ? null : OrgModules.Split(m.Modules).ToList(),
+                    Modules = m.Modules is null
+                        || string.Equals(m.Role, "Owner", StringComparison.OrdinalIgnoreCase)
+                        ? null
+                        : OrgModules.Split(m.Modules).ToList(),
                 };
             })
             .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)

@@ -208,7 +208,20 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         string? Text(string key, int max) => TabularCell.Text(map.Cell(row, key), max);
 
         profile.IdNumber = Text("idNumber", 40) ?? profile.IdNumber;
-        profile.Nationality = Text("nationality", 60) ?? profile.Nationality;
+        // Mapped onto the dropdown's spelling ("Malaysia" → "Malaysian"): the
+        // CP39 file and the LHDN country code both key on it. Anything not
+        // recognised is kept as typed and reported, never guessed at.
+        if (Text("nationality", 60) is { } nationality)
+        {
+            var (value, recognised) = Nationalities.Resolve(nationality);
+            profile.Nationality = value;
+            if (!recognised)
+            {
+                result.Warn(rowNumber,
+                    $"Nationality \"{nationality}\" is not one we recognise, so it was saved as typed. "
+                    + "Pick the right one on the employee's profile.");
+            }
+        }
         profile.Department = Text("department", 120) ?? profile.Department;
         profile.EpfNumber = Text("epfNumber", 40) ?? profile.EpfNumber;
         profile.SocsoNumber = Text("socsoNumber", 40) ?? profile.SocsoNumber;

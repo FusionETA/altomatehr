@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Audit.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Audit;
 
@@ -9,6 +10,7 @@ namespace AltomateHR.Api.Modules.Audit;
 // No API or partner key may use this — see HumanOnlyAttribute.
 [HumanOnly]
 [Route("audit")]
+[RequireModule(OrgModules.Audit)]
 // Admin-only throughout: the log records who changed the org's configuration,
 // which is oversight, not something an employee needs.
 [Authorize(Roles = "Admin,Owner")]

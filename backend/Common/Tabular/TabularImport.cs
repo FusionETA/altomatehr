@@ -33,6 +33,10 @@ public sealed class TabularImportResult
     public int Failed { get; private set; }
     public List<TabularImportError> Errors { get; } = [];
 
+    // Imported, but worth a look — a value kept as typed because it could not
+    // be matched to a known one. Not counted as failed: the row DID land.
+    public List<TabularImportError> Warnings { get; } = [];
+
     // Row numbers are 1-based AS THE ADMIN SEES THEM in their spreadsheet
     // (header = row 1, first data row = row 2). Row 1 is also where file-level
     // problems land — a missing column is a header problem.
@@ -47,6 +51,11 @@ public sealed class TabularImportResult
         // Cap the error list: a wholly mismatched file would otherwise return one
         // error per row, and nobody reads 20,000 of them.
         if (Errors.Count < 200) Errors.Add(new TabularImportError(row, message));
+    }
+
+    public void Warn(int row, string message)
+    {
+        if (Warnings.Count < 200) Warnings.Add(new TabularImportError(row, message));
     }
 
     // A problem with the file itself (empty, no header, missing column) — nothing

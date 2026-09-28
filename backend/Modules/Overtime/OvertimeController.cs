@@ -5,11 +5,13 @@ using AltomateHR.Api.Modules.Overtime.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Overtime;
 
 [ApiController]
 [Route("overtime")]
+[RequireModule(OrgModules.Overtime)]
 [Authorize]
 public class OvertimeController : ControllerBase
 {

@@ -24,6 +24,13 @@ public static class AuditActions
     public const string PayrollLoanCreate = "payroll.loan.create";
     public const string PayrollLoanUpdate = "payroll.loan.update";
     public const string PayrollLoanDelete = "payroll.loan.delete";
+    // Changes to a loan already repaying: the balance re-spread, months
+    // skipped, a pause and its resumption. Metadata carries the schedule
+    // before and after.
+    public const string PayrollLoanReplan = "payroll.loan.replan";
+    public const string PayrollLoanSkip = "payroll.loan.skip";
+    public const string PayrollLoanPause = "payroll.loan.pause";
+    public const string PayrollLoanResume = "payroll.loan.resume";
 
     // A salary change is read back by LHDN, by an IR dispute, and by a
     // retrenchment payout turning on "last drawn salary".

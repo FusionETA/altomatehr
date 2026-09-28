@@ -1,5 +1,6 @@
 using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Auth.Entities;
+using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -57,7 +58,10 @@ public class EmployeeLoanServiceTests : IDisposable
         _db.SaveChanges();
     }
 
-    private void SeedSubmittedRun(int year, int month)
+    private void SeedSubmittedRun(int year, int month) =>
+        SeedRun(year, month, PayrollRunStatus.SUBMITTED);
+
+    private void SeedRun(int year, int month, PayrollRunStatus status)
     {
         _db.PayrollRuns.Add(new PayrollRun
         {
@@ -65,7 +69,7 @@ public class EmployeeLoanServiceTests : IDisposable
             OrganizationId = "org-1",
             PeriodYear = year,
             PeriodMonth = month,
-            Status = PayrollRunStatus.SUBMITTED,
+            Status = status,
         });
         _db.SaveChanges();
     }
@@ -271,4 +275,208 @@ public class EmployeeLoanServiceTests : IDisposable
         Assert.Null(await _service.UpdateAsync("nope", Save()));
         Assert.False(await _service.DeleteAsync("nope"));
     }
+
+    // ─── Changing a loan that has started ───────────────────────────────
+
+    // RM 1,200 over 12 months from Jan 2026 (RM 100 a month), Jan–Mar filed.
+    private async Task<EmployeeLoanDto> StartedLoanAsync()
+    {
+        var created = await _service.CreateAsync(Save());
+        SeedSubmittedRun(2026, 1);
+        SeedSubmittedRun(2026, 2);
+        SeedSubmittedRun(2026, 3);
+        return (await _service.GetAsync(created.Id))!;
+    }
+
+    [Fact]
+    public async Task AStartedLoan_ShowsWhatIsLeftToPlan()
+    {
+        var loan = await StartedLoanAsync();
+
+        Assert.Equal(2026, loan.FirstEditableYear);
+        Assert.Equal(4, loan.FirstEditableMonth);
+        Assert.Equal(900m, loan.RemainingToPlan);
+        Assert.All(loan.Schedule.Take(3), i => Assert.True(i.Locked));
+    }
+
+    // Longer: the RM 900 left over 18 months instead of 9. The filed months
+    // stay, the end moves out, and "over N months" no longer describes it.
+    [Fact]
+    public async Task ReplanningAStartedLoan_KeepsTheFiledMonthsAndMakesItCustom()
+    {
+        var loan = await StartedLoanAsync();
+
+        var replanned = (await _service.ReplanAsync(loan.Id, new ReplanLoanDto
+        {
+            Mode = LoanRepaymentMode.FIXED,
+            InstallmentCount = 18,
+        }))!;
+
+        Assert.Equal(LoanRepaymentMode.CUSTOM, replanned.Mode);
+        Assert.Equal(21, replanned.InstallmentCount);
+        Assert.Equal([100m, 100m, 100m], replanned.Schedule.Take(3).Select(i => i.Amount));
+        Assert.Equal(50m, replanned.InstallmentAmount);
+        Assert.Equal(3, replanned.PaidInstallments);
+        Assert.Equal((2027, 9), (replanned.EndYear, replanned.EndMonth));
+        Assert.Equal(1200m, replanned.Schedule.Sum(i => i.Amount));
+
+        var audit = _audit.Written.Single(e => e.Action == AuditActions.PayrollLoanReplan);
+        Assert.Contains("900.00", audit.Summary);
+    }
+
+    // An approver is looking at April's payslips, loan deduction included —
+    // it must not move under them.
+    [Fact]
+    public async Task AMonthAwaitingApproval_IsLockedToo()
+    {
+        var created = await _service.CreateAsync(Save());
+        SeedRun(2026, 1, PayrollRunStatus.PENDING_APPROVAL);
+
+        var replanned = (await _service.ReplanAsync(created.Id, new ReplanLoanDto
+        {
+            Mode = LoanRepaymentMode.FIXED,
+            InstallmentCount = 2,
+        }))!;
+
+        Assert.Equal([100m, 550m, 550m], replanned.Schedule.Select(i => i.Amount));
+    }
+
+    // The old "cancel and record a new one" dead end now points to Re-plan.
+    [Fact]
+    public async Task EditingAStartedLoanWholesale_PointsToReplan()
+    {
+        var loan = await StartedLoanAsync();
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() =>
+            _service.UpdateAsync(loan.Id, Save(principal: 2400m)));
+
+        Assert.Contains("Re-plan", ex.Message);
+    }
+
+    [Fact]
+    public async Task SkippingMonths_PushesTheLoanLater()
+    {
+        var loan = await StartedLoanAsync();
+
+        var skipped = (await _service.SkipMonthsAsync(loan.Id, new SkipLoanMonthsDto
+        {
+            FromYear = 2026, FromMonth = 5, Months = 2,
+        }))!;
+
+        Assert.Equal(0m, await RepaymentAsync(2026, 5));
+        Assert.Equal(0m, await RepaymentAsync(2026, 6));
+        Assert.Equal(100m, await RepaymentAsync(2026, 7));
+        Assert.Equal((2027, 2), (skipped.EndYear, skipped.EndMonth));
+        Assert.Equal(LoanRepaymentMode.CUSTOM, skipped.Mode);
+    }
+
+    [Fact]
+    public async Task AFiledMonth_CannotBeSkipped()
+    {
+        var loan = await StartedLoanAsync();
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() =>
+            _service.SkipMonthsAsync(loan.Id, new SkipLoanMonthsDto
+            {
+                FromYear = 2026, FromMonth = 2, Months = 1,
+            }));
+
+        Assert.Contains("Apr 2026", ex.Message);   // the earliest that can change
+    }
+
+    // Paused from April, April and May run while paused, resumed from June:
+    // those two months become RM 0 and the loan ends two months later.
+    [Fact]
+    public async Task PausingThenResuming_WritesThePauseInAndEndsLater()
+    {
+        var loan = await StartedLoanAsync();
+
+        var paused = (await _service.PauseAsync(loan.Id, new PauseLoanDto { FromYear = 2026, FromMonth = 4 }))!;
+        Assert.Equal(LoanStatus.PAUSED, paused.Status);
+        Assert.Equal(100m, await RepaymentAsync(2026, 3));
+        Assert.Equal(0m, await RepaymentAsync(2026, 4));
+
+        SeedSubmittedRun(2026, 4);
+        SeedSubmittedRun(2026, 5);
+        var whilePaused = (await _service.GetAsync(loan.Id))!;
+        Assert.Equal(3, whilePaused.PaidInstallments);   // April and May took nothing
+
+        var resumed = (await _service.ResumeAsync(loan.Id, new ResumeLoanDto { Year = 2026, Month = 6 }))!;
+
+        Assert.Equal(LoanStatus.ACTIVE, resumed.Status);
+        Assert.Null(resumed.PausedFromYear);
+        Assert.Equal(0m, resumed.Schedule[3].Amount);
+        Assert.Equal(0m, resumed.Schedule[4].Amount);
+        Assert.Equal(100m, await RepaymentAsync(2026, 6));
+        Assert.Equal((2027, 2), (resumed.EndYear, resumed.EndMonth));
+        Assert.Equal(900m, resumed.RemainingAmount);
+    }
+
+    [Fact]
+    public async Task ResumingIntoAFiledMonth_IsRefused()
+    {
+        var loan = await StartedLoanAsync();
+        await _service.PauseAsync(loan.Id, new PauseLoanDto { FromYear = 2026, FromMonth = 4 });
+        SeedSubmittedRun(2026, 4);
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() =>
+            _service.ResumeAsync(loan.Id, new ResumeLoanDto { Year = 2026, Month = 4 }));
+
+        Assert.Contains("May 2026", ex.Message);
+    }
+
+    // "Reactivate" would silently resume from whenever — Resume asks which month.
+    [Fact]
+    public async Task APausedLoan_IsResumedNotReactivated()
+    {
+        var loan = await StartedLoanAsync();
+        await _service.PauseAsync(loan.Id, new PauseLoanDto { FromYear = 2026, FromMonth = 4 });
+
+        await Assert.ThrowsAsync<PayrollLoanException>(() =>
+            _service.SetStatusAsync(loan.Id, LoanStatus.ACTIVE));
+    }
+
+    // Cancelled while paused: the paused months already filed took nothing,
+    // so they are written in as RM 0 rather than read back as repaid.
+    [Fact]
+    public async Task CancellingAPausedLoan_DoesNotCountThePausedMonthsAsRepaid()
+    {
+        var loan = await StartedLoanAsync();
+        await _service.PauseAsync(loan.Id, new PauseLoanDto { FromYear = 2026, FromMonth = 4 });
+        SeedSubmittedRun(2026, 4);
+
+        var cancelled = (await _service.SetStatusAsync(loan.Id, LoanStatus.CANCELLED))!;
+
+        Assert.Equal(300m, cancelled.PaidAmount);
+        Assert.Equal(0m, cancelled.Schedule[3].Amount);
+        Assert.Equal(900m, cancelled.RemainingAmount);
+    }
+
+    [Fact]
+    public async Task APausedLoan_CannotBeReplannedUntilResumed()
+    {
+        var loan = await StartedLoanAsync();
+        await _service.PauseAsync(loan.Id, new PauseLoanDto { FromYear = 2026, FromMonth = 4 });
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() =>
+            _service.ReplanAsync(loan.Id, new ReplanLoanDto { InstallmentCount = 3 }));
+
+        Assert.Contains("Resume", ex.Message);
+    }
+
+    // The payroll roster lists members without a saved profile under a
+    // stand-in id. A loan against one would never deduct.
+    [Fact]
+    public async Task ALoanForSomeoneWithNoPayrollProfile_IsRefused()
+    {
+        var dto = Save();
+        dto.EmployeeProfileId = "stand-in-guid";
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() => _service.CreateAsync(dto));
+
+        Assert.Contains("no payroll profile", ex.Message);
+    }
+
+    private async Task<decimal> RepaymentAsync(int year, int month) =>
+        (await _service.GetRepaymentsForPeriodAsync(year, month)).GetValueOrDefault("emp-1");
 }

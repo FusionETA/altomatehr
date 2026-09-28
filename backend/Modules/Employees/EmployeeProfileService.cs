@@ -104,7 +104,8 @@ public class EmployeeProfileService : IEmployeeProfileService
     {
         e.Phone = d.Phone; e.AlternateEmail = d.AlternateEmail;
         e.Gender = d.Gender; e.DateOfBirth = d.DateOfBirth;
-        e.Nationality = d.Nationality; e.Race = d.Race; e.HasPr = d.HasPr;
+        // "Malaysia" from a partner system saves as the dropdown's "Malaysian".
+        e.Nationality = Payroll.Nationalities.Normalise(d.Nationality); e.Race = d.Race; e.HasPr = d.HasPr;
         e.IdType = d.IdType; e.IdNumber = d.IdNumber;
         e.MaritalStatus = d.MaritalStatus; e.IsResident = d.IsResident; e.IsOku = d.IsOku;
         e.AddressLine1 = d.AddressLine1; e.AddressLine2 = d.AddressLine2;

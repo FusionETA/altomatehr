@@ -183,8 +183,15 @@ public class AdminOverviewServiceTests
 internal sealed class FakeModuleAccessService : IModuleAccessService
 {
     private readonly IReadOnlyCollection<string> _modules;
+    private readonly IReadOnlyCollection<string> _ceiling;
 
-    public FakeModuleAccessService(IReadOnlyCollection<string> modules) => _modules = modules;
+    // `ceiling` is the org's plan alone; defaults to the same set as enabled.
+    public FakeModuleAccessService(IReadOnlyCollection<string> modules, IReadOnlyCollection<string>? ceiling = null)
+    {
+        _modules = modules;
+        _ceiling = ceiling ?? modules;
+    }
 
     public Task<IReadOnlyCollection<string>> GetEnabledModulesAsync() => Task.FromResult(_modules);
+    public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => Task.FromResult(_ceiling);
 }

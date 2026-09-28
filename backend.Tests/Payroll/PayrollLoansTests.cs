@@ -244,13 +244,26 @@ public class PayrollLoansTests
         Assert.Throws<PayrollLoanException>(() => PayrollLoans.ValidateSchedule([], 1000m));
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-50)]
-    public void AnInstallmentOfNothing_IsRefused(decimal bad)
+    [Fact]
+    public void ANegativeInstallment_IsRefused()
     {
         Assert.Throws<PayrollLoanException>(() =>
-            PayrollLoans.ValidateSchedule([600m, bad, 600m], 1200m));
+            PayrollLoans.ValidateSchedule([650m, -50m, 600m], 1200m));
+    }
+
+    // RM 0 in the middle is a skipped or paused month — the loan just ends
+    // later. On the END it would report a last month nothing is taken in.
+    [Fact]
+    public void AZeroMonthInTheMiddle_IsASkip()
+    {
+        PayrollLoans.ValidateSchedule([600m, 0m, 600m], 1200m);
+    }
+
+    [Fact]
+    public void AZeroLastMonth_IsRefused()
+    {
+        Assert.Throws<PayrollLoanException>(() =>
+            PayrollLoans.ValidateSchedule([600m, 600m, 0m], 1200m));
     }
 
     [Fact]
@@ -360,5 +373,164 @@ public class PayrollLoansTests
     {
         Assert.Equal("Jan 2026", PayrollLoans.PeriodLabel(2026, 1));
         Assert.Equal("Dec 2027", PayrollLoans.PeriodLabel(2027, 12));
+    }
+
+    // ─── Changing a loan that has started ───────────────────────────────
+
+    private static PayrollLoans.Period P(int year, int month) => new(year, month);
+
+    // Locked = submitted or awaiting approval. The first month after the last
+    // locked one is where changes may start.
+    [Fact]
+    public void TheFirstEditableMonth_FollowsTheLastLockedOne()
+    {
+        var loan = Loan();   // Jan–Dec 2026
+
+        Assert.Equal(0, PayrollLoans.FirstEditableIndex(loan, []));
+        Assert.Equal(3, PayrollLoans.FirstEditableIndex(loan, [P(2026, 1), P(2026, 2), P(2026, 3)]));
+        // A run from before the loan began locks nothing of it.
+        Assert.Equal(0, PayrollLoans.FirstEditableIndex(loan, [P(2025, 12)]));
+    }
+
+    // RM 1,200 over 12 months, three repaid: RM 900 left, re-spread over three
+    // more months instead of nine. The three repaid months do not move.
+    [Fact]
+    public void Replan_KeepsTheLockedMonthsAndSpreadsTheBalance()
+    {
+        var before = PayrollLoans.BuildEqualSchedule(1200m, 100m, 12);
+
+        var after = PayrollLoans.Replan(before, 1200m, 3, LoanRepaymentMode.FIXED, 3, null, null);
+
+        Assert.Equal([100m, 100m, 100m, 300m, 300m, 300m], after);
+    }
+
+    // Longer, the other way: the same RM 900 at RM 50 a month.
+    [Fact]
+    public void Replan_AtAMonthlyAmount_WorksOutHowManyMonths()
+    {
+        var before = PayrollLoans.BuildEqualSchedule(1200m, 100m, 12);
+
+        var after = PayrollLoans.Replan(before, 1200m, 3, LoanRepaymentMode.CUSTOM, null, 50m, null);
+
+        Assert.Equal(3 + 18, after.Count);
+        Assert.Equal(1200m, after.Sum());
+    }
+
+    [Fact]
+    public void Replan_TypedAmountsMustAddUpToTheBalance()
+    {
+        var before = PayrollLoans.BuildEqualSchedule(1200m, 100m, 12);
+
+        var ok = PayrollLoans.Replan(before, 1200m, 3, LoanRepaymentMode.CUSTOM, null, null, [500m, 400m]);
+        Assert.Equal([100m, 100m, 100m, 500m, 400m], ok);
+
+        var ex = Assert.Throws<PayrollLoanException>(() =>
+            PayrollLoans.Replan(before, 1200m, 3, LoanRepaymentMode.CUSTOM, null, null, [500m, 300m]));
+        Assert.Contains("900.00", ex.Message);
+    }
+
+    [Fact]
+    public void Replan_WithEverythingFiled_IsRefused()
+    {
+        var before = PayrollLoans.BuildEqualSchedule(1200m, 100m, 12);
+
+        Assert.Throws<PayrollLoanException>(() =>
+            PayrollLoans.Replan(before, 1200m, 12, LoanRepaymentMode.FIXED, 3, null, null));
+    }
+
+    [Fact]
+    public void Skipping_PushesTheRestBackWithoutForgivingAnything()
+    {
+        var after = PayrollLoans.InsertSkipped([100m, 100m, 100m, 100m], 2, 2);
+
+        Assert.Equal([100m, 100m, 0m, 0m, 100m, 100m], after);
+    }
+
+    // Nov–Dec already skipped; now Oct–Dec too. Only October's installment
+    // was still due in that window, so the loan ends ONE month later — and
+    // the Nov–Dec skip stays in November and December rather than moving on.
+    [Fact]
+    public void SkippingOverAnEarlierSkip_DisplacesOnlyTheMoneyStillDue()
+    {
+        //                 Oct   Nov  Dec  Jan   Feb
+        decimal[] before = [100m, 0m, 0m, 100m, 100m];
+
+        var after = PayrollLoans.InsertSkipped(before, 0, 3);
+
+        Assert.Equal([0m, 0m, 0m, 100m, 100m, 100m], after);
+    }
+
+    // A later skip does not drag an earlier one along either.
+    [Fact]
+    public void ALaterSkip_LeavesAnEarlierOneInItsMonth()
+    {
+        //                 Oct   Nov  Dec   Jan
+        decimal[] before = [100m, 0m, 100m, 100m];
+
+        var after = PayrollLoans.InsertSkipped(before, 0, 1);
+
+        Assert.Equal([0m, 0m, 100m, 100m, 100m], after);
+    }
+
+    // Paused from April: January–March still deduct; April onwards takes
+    // nothing, and a submitted April run is not a repayment.
+    [Fact]
+    public void APausedLoan_DeductsBeforeThePauseOnly()
+    {
+        var loan = Loan(status: LoanStatus.PAUSED);
+        loan.PausedFromYear = 2026;
+        loan.PausedFromMonth = 4;
+
+        Assert.Equal(100m, PayrollLoans.InstallmentForPeriod(loan, 2026, 3));
+        Assert.Equal(0m, PayrollLoans.InstallmentForPeriod(loan, 2026, 4));
+        Assert.Equal(0m, PayrollLoans.InstallmentForPeriod(loan, 2026, 9));
+
+        var breakdown = PayrollLoans.Breakdown(loan, [P(2026, 3), P(2026, 4)]);
+        Assert.True(breakdown[2].Paid);
+        Assert.False(breakdown[3].Paid);
+        Assert.True(breakdown[3].Paused);
+    }
+
+    // ─── Warnings ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void AWarning_WhenRepaymentsRunPastTheLastDay()
+    {
+        var warnings = PayrollLoans.Warnings(Loan(), [], [], null, new DateTime(2026, 9, 30));
+
+        var warning = Assert.Single(warnings);
+        Assert.Contains("Dec 2026", warning);
+        Assert.Contains("RM 300.00", warning);   // Oct, Nov, Dec
+    }
+
+    // RM 1,200 a month from a RM 2,000 salary is more than half of it.
+    [Fact]
+    public void AWarning_WhenLoanDeductionsPassHalfTheSalary()
+    {
+        var big = Loan(principal: 2400m, installmentAmount: 1200m, installmentCount: 2);
+
+        var warning = Assert.Single(PayrollLoans.Warnings(big, [], [], 2000m, null));
+        Assert.Contains("Jan 2026", warning);
+        Assert.Contains("half", warning);
+    }
+
+    // Two loans that are fine alone can be too much together.
+    [Fact]
+    public void TheHalfSalaryWarning_CountsTheEmployeesOtherLoans()
+    {
+        var first = Loan(principal: 1800m, installmentAmount: 600m, installmentCount: 3);
+        var second = Loan(principal: 1800m, installmentAmount: 600m, installmentCount: 3);
+        second.Id = "loan-2";
+
+        Assert.Empty(PayrollLoans.Warnings(first, [], [], 2000m, null));
+        Assert.Single(PayrollLoans.Warnings(first, [second], [], 2000m, null));
+    }
+
+    [Fact]
+    public void ACancelledLoan_WarnsAboutNothing()
+    {
+        var loan = Loan(status: LoanStatus.CANCELLED);
+
+        Assert.Empty(PayrollLoans.Warnings(loan, [], [], 100m, new DateTime(2026, 1, 1)));
     }
 }

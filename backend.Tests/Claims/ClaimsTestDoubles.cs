@@ -165,8 +165,11 @@ internal sealed class FakeChartOfAccountService : IChartOfAccountService
                 },
             }.ToDictionary(a => a.Id);
 
-    public Task<IEnumerable<ChartOfAccountDto>> GetAllAsync() =>
-        Task.FromResult<IEnumerable<ChartOfAccountDto>>(_accounts.Values.ToList());
+    // Same rule as the real service: liabilities only when asked for.
+    public Task<IEnumerable<ChartOfAccountDto>> GetAllAsync(bool includeLiabilities = false) =>
+        Task.FromResult<IEnumerable<ChartOfAccountDto>>(_accounts.Values
+            .Where(a => includeLiabilities || a.Type != "LIABILITY")
+            .ToList());
 
     public Task<ChartOfAccountDto?> GetByIdAsync(string id) =>
         Task.FromResult(_accounts.GetValueOrDefault(id));

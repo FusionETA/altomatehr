@@ -8,6 +8,7 @@ import {
   downloadPayrollSummary,
   downloadPcbDetails,
   downloadPcbTxt,
+  downloadPerkesoSkbbkTxt,
   downloadPerkesoTxt,
   emailRunPayslips,
   getPayrollSettings,
@@ -108,11 +109,20 @@ const ITEMS: Item[] = [
   {
     key: "perkeso",
     group: "STATUTORY",
-    title: "SOCSO + EIS Contribution TXT",
+    title: "SOCSO + EIS Contribution TXT (v1)",
     description:
-      "The combined PERKESO upload, 278-char fixed width. Which layout it uses is decided by the PERIOD — SKBBK from June 2026 — so an older month files under the rules it was paid under.",
-    portal: "PERKESO ASSIST",
+      "Combined SOCSO + EIS upload (278-char fixed-width per PERKESO spec v1.0). Use this for periods before Jun 2026, or during the v1/v2 grace window (Jun-Sep 2026).",
+    portal: "PERKESO ASSIST Portal",
     download: (runId) => downloadPerkesoTxt(runId),
+  },
+  {
+    key: "perkeso-skbbk",
+    group: "STATUTORY",
+    title: "SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)",
+    description:
+      "Combined SOCSO + EIS + SKBBK (LINDUNG 24 Jam) upload (278-char fixed-width per PERKESO ASSIST 2.0 spec). Mandatory from Jun 2026 onward; until then PERKESO accepts either format.",
+    portal: "PERKESO ASSIST 2.0 Portal",
+    download: (runId) => downloadPerkesoSkbbkTxt(runId),
   },
   {
     key: "pcb",

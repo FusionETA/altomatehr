@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, LoaderCircle, Plus } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import {
   cancelEmployeeLoan,
   deleteEmployeeLoan,
@@ -28,6 +28,7 @@ import {
   TH,
   TH_NUM,
 } from "../lib/ui";
+import { LoanChangeForm, type LoanChangeKind } from "./LoanChangeForm";
 import { LoanForm } from "./LoanForm";
 import { TableSkeleton } from "./TableSkeleton";
 import { Skeleton } from "@/shared/components/Skeleton";
@@ -42,6 +43,9 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 export function PayrollLoansTab() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmployeeLoan | null>(null);
+  const [changing, setChanging] = useState<{ loan: EmployeeLoan; kind: LoanChangeKind } | null>(
+    null,
+  );
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +85,20 @@ export function PayrollLoansTab() {
     }
   }
 
+  if (changing) {
+    return (
+      <LoanChangeForm
+        loan={changing.loan}
+        kind={changing.kind}
+        onSaved={() => {
+          setChanging(null);
+          void load();
+        }}
+        onCancel={() => setChanging(null)}
+      />
+    );
+  }
+
   if (adding || editing) {
     return (
       <LoanForm
@@ -100,7 +118,8 @@ export function PayrollLoansTab() {
   }
 
   const outstanding = loans
-    .filter((loan) => loan.status === "ACTIVE")
+    // Paused is still owed — it is only waiting to restart.
+    .filter((loan) => loan.status === "ACTIVE" || loan.status === "PAUSED")
     .reduce((total, loan) => total + loan.remainingAmount, 0);
 
   return (
@@ -163,6 +182,7 @@ export function PayrollLoansTab() {
                   busy={busy}
                   onToggle={() => setExpanded(expanded === loan.id ? null : loan.id)}
                   onEdit={() => setEditing(loan)}
+                  onChange={(kind) => setChanging({ loan, kind })}
                   onCancel={() => void act(`cancel-${loan.id}`, () => cancelEmployeeLoan(loan.id))}
                   onReactivate={() =>
                     void act(`reactivate-${loan.id}`, () => reactivateEmployeeLoan(loan.id))
@@ -198,6 +218,7 @@ function Row({
   busy,
   onToggle,
   onEdit,
+  onChange,
   onCancel,
   onReactivate,
   onDelete,
@@ -207,12 +228,19 @@ function Row({
   busy: string | null;
   onToggle: () => void;
   onEdit: () => void;
+  onChange: (kind: LoanChangeKind) => void;
   onCancel: () => void;
   onReactivate: () => void;
   onDelete: () => void;
 }) {
   const spinner = (key: string) =>
     busy === key ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null;
+
+  // Started = some month is submitted or awaiting approval. From then on the
+  // whole loan cannot be re-termed, only what is still owed re-planned.
+  const started =
+    loan.firstEditableYear * 12 + loan.firstEditableMonth >
+    loan.startYear * 12 + loan.startMonth;
 
   return (
     <>
@@ -292,14 +320,49 @@ function Row({
           <span className={`${BADGE} ${loanStatusTone[loan.status]}`}>
             {loanStatusLabels[loan.status]}
           </span>
+          {loan.status === "PAUSED" && loan.pausedFromYear && loan.pausedFromMonth ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              from {shortPeriod(loan.pausedFromYear, loan.pausedFromMonth)}
+            </div>
+          ) : null}
         </td>
 
         <td className={`${TD} ${PINNED} text-right`}>
           <div className="flex justify-end gap-2">
             {loan.status === "ACTIVE" ? (
               <>
-                <button type="button" className={BUTTON_GHOST_SM} onClick={onEdit}>
-                  Edit
+                {started ? (
+                  <button
+                    type="button"
+                    className={BUTTON_GHOST_SM}
+                    onClick={() => onChange("replan")}
+                  >
+                    Re-plan
+                  </button>
+                ) : (
+                  <button type="button" className={BUTTON_GHOST_SM} onClick={onEdit}>
+                    Edit
+                  </button>
+                )}
+                <button type="button" className={BUTTON_GHOST_SM} onClick={() => onChange("pause")}>
+                  Pause
+                </button>
+                <button
+                  type="button"
+                  className={BUTTON_DANGER_SM}
+                  disabled={busy !== null}
+                  onClick={onCancel}
+                >
+                  {spinner(`cancel-${loan.id}`)}
+                  Cancel
+                </button>
+              </>
+            ) : null}
+
+            {loan.status === "PAUSED" ? (
+              <>
+                <button type="button" className={BUTTON_GHOST_SM} onClick={() => onChange("resume")}>
+                  Resume
                 </button>
                 <button
                   type="button"
@@ -345,6 +408,26 @@ function Row({
         </td>
       </tr>
 
+      {/* Advisory, so always visible rather than hidden in the schedule — an
+          admin should see it before the next payroll, not after. */}
+      {loan.warnings.length > 0 ? (
+        <tr className="border-b border-border/40 last:border-0">
+          <td colSpan={6} className="px-3 pb-3 pt-0">
+            <ul className="space-y-1">
+              {loan.warnings.map((warning) => (
+                <li
+                  key={warning}
+                  className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </td>
+        </tr>
+      ) : null}
+
       {expanded ? (
         <tr className="border-b border-border/40 bg-muted/30 last:border-0">
           <td colSpan={6} className="px-3 py-4">
@@ -364,8 +447,16 @@ function Row({
                     <span className="tabular-nums">{rm(installment.amount)}</span>
                     {installment.paid ? (
                       <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                        paid
+                        {installment.amount === 0 ? "skipped" : "paid"}
                       </span>
+                    ) : installment.paused ? (
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        paused
+                      </span>
+                    ) : installment.amount === 0 ? (
+                      <span className="text-xs text-muted-foreground">skipped</span>
+                    ) : installment.locked ? (
+                      <span className="text-xs text-muted-foreground">awaiting approval</span>
                     ) : null}
                   </span>
                 </li>

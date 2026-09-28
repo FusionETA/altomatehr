@@ -257,19 +257,30 @@ export function Toggle({
   hint,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3 transition hover:border-primary/30">
+    <label
+      className={`flex items-start justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3 transition ${
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:border-primary/30"
+      }`}
+    >
       <span className="min-w-0">
         <span className="block text-sm font-bold text-foreground">{label}</span>
         {hint ? <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span> : null}
       </span>
-      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5 shrink-0" />
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        disabled={disabled}
+        className="mt-0.5 shrink-0"
+      />
     </label>
   );
 }

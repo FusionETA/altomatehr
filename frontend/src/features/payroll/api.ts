@@ -519,13 +519,16 @@ export const downloadBankFile = (
 export type HlbChannel = "ConnectFirst" | "ConnectBiz";
 
 export const downloadEpfCsv = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/epf`, "epf.csv");
+  download(`/payroll/runs/${runId}/files/epf`, "EPF_iAkaun.csv");
 
 export const downloadPerkesoTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/socso-eis`, "socso-eis.txt");
+  download(`/payroll/runs/${runId}/files/socso-eis`, "SOCSO_EIS.txt");
+
+export const downloadPerkesoSkbbkTxt = (runId: string) =>
+  download(`/payroll/runs/${runId}/files/socso-eis-skbbk`, "SOCSO_EIS_SKBBK.txt");
 
 export const downloadPcbTxt = (runId: string) =>
-  download(`/payroll/runs/${runId}/files/pcb`, "pcb.txt");
+  download(`/payroll/runs/${runId}/files/pcb`, "PCB.txt");
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
@@ -604,6 +607,9 @@ export type TabularImportResult = {
   skipped: number;
   failed: number;
   errors: { row: number; message: string }[];
+  // Imported, but worth a look — e.g. a nationality kept as typed because it
+  // could not be matched to the list.
+  warnings?: { row: number; message: string }[];
 };
 
 
@@ -614,7 +620,8 @@ export type TabularImportResult = {
 // absorbs the rounding, so the schedule sums to the principal exactly.
 export type LoanRepaymentMode = "FIXED" | "CUSTOM";
 
-export type LoanStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
+// PAUSED deducts nothing from `pausedFrom` until an admin resumes it.
+export type LoanStatus = "ACTIVE" | "COMPLETED" | "CANCELLED" | "PAUSED";
 
 export type LoanInstallment = {
   index: number;
@@ -625,6 +632,10 @@ export type LoanInstallment = {
   // stored. Reverting a month therefore un-pays its installment for free.
   paid: boolean;
   amount: number;
+  // Under a pause not yet resumed — nothing is taken.
+  paused: boolean;
+  // Its month is submitted or awaiting approval, so it cannot change.
+  locked: boolean;
 };
 
 export type EmployeeLoan = {
@@ -649,6 +660,24 @@ export type EmployeeLoan = {
   // Editing the terms of a loan already repaying would restate months
   // already filed, so the form locks on this.
   hasStarted: boolean;
+  pausedFromYear: number | null;
+  pausedFromMonth: number | null;
+  // The earliest month a re-plan, skip or pause can touch.
+  firstEditableYear: number;
+  firstEditableMonth: number;
+  // What a re-plan spreads: the amount lent less every locked installment.
+  remainingToPlan: number;
+  // Advisory — repayments past the leaving date, loans over half the salary.
+  warnings: string[];
+};
+
+// Re-plan what a started loan still owes: over N months (FIXED), at RM X a
+// month (CUSTOM), or month by month (remainder). Filed months never change.
+export type ReplanLoan = {
+  mode: LoanRepaymentMode;
+  installmentCount?: number | null;
+  installmentAmount?: number | null;
+  remainder?: number[] | null;
 };
 
 export type SaveEmployeeLoan = {
@@ -686,6 +715,22 @@ export const reactivateEmployeeLoan = (id: string) =>
 
 export const deleteEmployeeLoan = (id: string) =>
   apiDelete<void>(`/payroll/loans/${id}`);
+
+export const replanEmployeeLoan = (id: string, body: ReplanLoan) =>
+  apiPost<EmployeeLoan>(`/payroll/loans/${id}/replan`, body);
+
+// RM 0 for `months` months from the given one; everything later moves back.
+export const skipEmployeeLoanMonths = (
+  id: string,
+  body: { fromYear: number; fromMonth: number; months: number },
+) => apiPost<EmployeeLoan>(`/payroll/loans/${id}/skip`, body);
+
+export const pauseEmployeeLoan = (id: string, body: { fromYear: number; fromMonth: number }) =>
+  apiPost<EmployeeLoan>(`/payroll/loans/${id}/pause`, body);
+
+// The given month deducts again; the paused months become RM 0.
+export const resumeEmployeeLoan = (id: string, body: { year: number; month: number }) =>
+  apiPost<EmployeeLoan>(`/payroll/loans/${id}/resume`, body);
 
 // ─── Annual filings ───────────────────────────────────────────────────
 

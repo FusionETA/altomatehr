@@ -8,8 +8,8 @@ public interface IEmployeeLoanRepository
 
     Task<EmployeeLoan?> GetByIdAsync(string id);
 
-    // Every ACTIVE loan in the org, for a generation pass. One query for the
-    // whole run rather than one per employee.
+    // Every ACTIVE or PAUSED loan in the org, for a generation pass. One query
+    // for the whole run rather than one per employee.
     Task<List<EmployeeLoan>> GetActiveAsync();
 
     Task<EmployeeLoan> AddAsync(EmployeeLoan loan);

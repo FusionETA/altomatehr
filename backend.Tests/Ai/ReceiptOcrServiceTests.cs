@@ -193,7 +193,7 @@ public class ReceiptOcrServiceTests
     {
         // One pickable account and one archived, so the gate has something to
         // reject as well as something to accept.
-        public Task<IEnumerable<ChartOfAccountDto>> GetAllAsync() =>
+        public Task<IEnumerable<ChartOfAccountDto>> GetAllAsync(bool includeLiabilities = false) =>
             Task.FromResult<IEnumerable<ChartOfAccountDto>>(
             [
                 new ChartOfAccountDto

@@ -28,21 +28,93 @@ public class XeroAccountSyncTests
             // filter, so a chart using it silently lost those accounts.
             Account("x-10", "6400", "Depreciation", "DEPRECIATN"),
             Account("x-4", "1000", "Business account", "BANK"),
-            // None of these belong in a claim's account picker.
+            // Imported for the payroll journal's payables, never claimable.
+            Account("x-7", "800", "Accounts Payable", "CURRLIAB"),
+            // None of these belong anywhere in this app.
             Account("x-5", "200", "Sales", "REVENUE"),
             Account("x-6", "610", "Accounts Receivable", "CURRENT"),
-            Account("x-7", "800", "Accounts Payable", "CURRLIAB"),
             Account("x-8", "960", "Retained Earnings", "EQUITY"),
             Account("x-9", "710", "Office Equipment", "FIXED"),
         ]);
 
         var result = await service.SyncAccountsAsync();
 
-        Assert.Equal(5, result.Imported);
-        Assert.Equal(5, result.Skipped);
+        Assert.Equal(6, result.Imported);
+        Assert.Equal(4, result.Skipped);
         Assert.Equal(
-            ["6100", "6200", "6300", "6400", "1000"],
+            ["6100", "6200", "6300", "6400", "1000", "800"],
             repo.Accounts.Select(a => a.Code));
+    }
+
+    // The payroll journal credits EPF / SOCSO / EIS / PCB / net salary to
+    // liability accounts. Without them the payables could only be mapped to
+    // expense accounts. All three of Xero's liability codes count.
+    [Fact]
+    public async Task SyncAccountsAsync_ImportsLiabilitiesAsUnselectableLiabilityAccounts()
+    {
+        var repo = new FakeXeroRepository();
+        var service = Create(repo, [
+            Account("x-1", "825", "EPF Payable", "CURRLIAB"),
+            Account("x-2", "900", "Director loan", "TERMLIAB"),
+            Account("x-3", "826", "SOCSO Payable", "LIABILITY"),
+        ]);
+
+        await service.SyncAccountsAsync();
+
+        Assert.Equal(3, repo.Accounts.Count);
+        Assert.All(repo.Accounts, a =>
+        {
+            Assert.Equal(ChartOfAccountTypes.Liability, a.Type);
+            Assert.False(a.IsSelectable);
+            Assert.False(a.IsArchived);
+        });
+    }
+
+    // An earlier sync skipped liabilities, and a row it had imported before
+    // that was archived as "not claimable". It comes back as a liability.
+    [Fact]
+    public async Task SyncAccountsAsync_RestoresALiabilityAnEarlierSyncArchived()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount
+        {
+            Code = "825", Name = "EPF Payable", XeroAccountId = "x-1",
+            Type = ChartOfAccountTypes.Expense, IsArchived = true, IsSelectable = false,
+        });
+        var service = Create(repo, [Account("x-1", "825", "EPF Payable", "CURRLIAB")]);
+
+        await service.SyncAccountsAsync();
+
+        var account = repo.Accounts.Single();
+        Assert.Equal(ChartOfAccountTypes.Liability, account.Type);
+        Assert.False(account.IsArchived);
+        Assert.False(account.IsSelectable);
+    }
+
+    // Xero's own accounts are skipped whatever their type — the manual journal
+    // API rejects a line coded to one — and one already imported is archived.
+    [Fact]
+    public async Task SyncAccountsAsync_SkipsXeroSystemAccountsAndArchivesOnesAlreadyImported()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount
+        {
+            Code = "497", Name = "Bank Revaluations", XeroAccountId = "x-sys-old", IsSelectable = true,
+        });
+        var service = Create(repo, [
+            Account("x-1", "6100", "Travel", "EXPENSE"),
+            Account("x-sys-old", "497", "Bank Revaluations", "EXPENSE") with { SystemAccount = true },
+            Account("x-sys-new", "498", "Unrealised Currency Gains", "EXPENSE") with { SystemAccount = true },
+        ]);
+
+        var result = await service.SyncAccountsAsync();
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(2, result.Skipped);
+        Assert.DoesNotContain(repo.Accounts, a => a.XeroAccountId == "x-sys-new");
+        var old = repo.Accounts.Single(a => a.XeroAccountId == "x-sys-old");
+        Assert.True(old.IsArchived);
+        Assert.False(old.IsSelectable);
     }
 
     // ---- accounts the connected Xero no longer has ----

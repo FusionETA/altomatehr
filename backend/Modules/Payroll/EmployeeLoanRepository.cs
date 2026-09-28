@@ -21,9 +21,11 @@ public class EmployeeLoanRepository : IEmployeeLoanRepository
     public Task<EmployeeLoan?> GetByIdAsync(string id) =>
         _db.EmployeeLoans.FirstOrDefaultAsync(l => l.Id == id);
 
+    // Paused loans too: a pause starts at a month, and the months before it
+    // still deduct.
     public Task<List<EmployeeLoan>> GetActiveAsync() =>
         _db.EmployeeLoans
-            .Where(l => l.Status == LoanStatus.ACTIVE)
+            .Where(l => l.Status == LoanStatus.ACTIVE || l.Status == LoanStatus.PAUSED)
             .ToListAsync();
 
     public async Task<EmployeeLoan> AddAsync(EmployeeLoan loan)

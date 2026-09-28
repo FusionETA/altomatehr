@@ -401,7 +401,8 @@ public class XeroClient : IXeroClient
                 a.Name ?? string.Empty,
                 a.Type ?? string.Empty,
                 a.Status ?? string.Empty,
-                a.EnablePaymentsToAccount))
+                a.EnablePaymentsToAccount,
+                !string.IsNullOrWhiteSpace(a.SystemAccount)))
             .ToList() ?? [];
     }
 
@@ -723,6 +724,9 @@ public class XeroClient : IXeroClient
         public string? Type { get; set; }
         public string? Status { get; set; }
         public bool? EnablePaymentsToAccount { get; set; }
+        // A code such as "BANKCURRENCYGAIN" on Xero's own accounts; absent on
+        // every account the org created.
+        public string? SystemAccount { get; set; }
     }
 
     private sealed class XeroProjectsPayload

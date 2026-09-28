@@ -96,6 +96,38 @@ public class PayrollEmployeeImportTests : IDisposable
         Assert.Equal("SG12345678901", profile.IncomeTaxNumber);
     }
 
+    // "Malaysia" is what a spreadsheet says; the CP39 file keys locals on an
+    // exact "Malaysian", so the import maps it onto the dropdown's spelling.
+    [Theory]
+    [InlineData("Malaysia", "Malaysian")]
+    [InlineData("CHINA", "Chinese")]
+    [InlineData("warganegara malaysia", "Malaysian")]
+    public async Task ANationalityIsMappedOntoTheList(string cell, string saved)
+    {
+        var result = await Import("Employee Email,Nationality", $"aisyah@x.com,{cell}");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(saved, Profile().Nationality);
+    }
+
+    // Never guessed at: kept as typed, and the row still lands, with a note
+    // naming it. (This exact text is the previous system's template hint,
+    // which that system imported as three people's nationality.)
+    [Fact]
+    public async Task AnUnrecognisedNationalityIsKeptAndReported()
+    {
+        var result = await Import(
+            "Employee Email,Nationality", "aisyah@x.com,\"Malaysian / Indonesian / etc.\"");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(0, result.Failed);
+        var warning = Assert.Single(result.Warnings);
+        Assert.Equal(2, warning.Row);
+        Assert.Contains("Malaysian / Indonesian / etc.", warning.Message);
+        Assert.Equal("Malaysian / Indonesian / etc.", Profile().Nationality);
+    }
+
     // The reason a partial sheet is safe: "here are everyone's bank details"
     // must not wipe the statutory numbers already on file.
     [Fact]

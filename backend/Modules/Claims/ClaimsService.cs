@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Accounts.Entities;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Common.Tabular;
@@ -1339,7 +1340,9 @@ public class ClaimsService : IClaimsService
         }
 
         var account = await _accounts.GetByIdAsync(dto.ChartOfAccountId);
-        if (account is null || account.IsArchived)
+        // A liability is a payroll payable, never something spent against —
+        // refused by type, not only by its selectable flag.
+        if (account is null || account.IsArchived || ChartOfAccountTypes.IsLiability(account.Type))
             throw new ClaimValidationException("Please choose one of the enabled chart of account options.", nameof(dto.ChartOfAccountId));
 
         if (dto.ClaimType == ClaimType.MILEAGE && !account.AllowMileageClaim)

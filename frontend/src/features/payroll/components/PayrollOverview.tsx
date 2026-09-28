@@ -109,7 +109,8 @@ export function PayrollOverview({
   );
 
   const outstanding = loans
-    .filter((loan) => loan.status === "ACTIVE")
+    // Paused is still owed — it is only waiting to restart.
+    .filter((loan) => loan.status === "ACTIVE" || loan.status === "PAUSED")
     .reduce((total, loan) => total + loan.remainingAmount, 0);
 
   if (error) return <section className={ERROR_PANEL}>Error: {error}</section>;

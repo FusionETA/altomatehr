@@ -17,10 +17,15 @@ public static class OrgModules
     public const string Overtime = "overtime";
     public const string Claims = "claims";        // addon: expense_claim
     public const string Attendance = "attendance"; // addon: clock
+    // Both were missing, so a grant could never withhold them: every Admin saw
+    // payroll (salaries, ICs, bank accounts) and the activity log whatever the
+    // Owner ticked. The previous system had both as grantable base modules.
+    public const string Payroll = "payroll";
+    public const string Audit = "audit";
 
     // Everyone gets these regardless of plan/tier/addons — core HR + admin tools.
     private static readonly string[] BaseModules =
-        { Employees, Leave, Projects, Teams, Accounts, Policies, Overtime };
+        { Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Payroll, Audit };
 
     // Addon key → the module(s) it unlocks. Claims + Attendance are the only paid ones.
     private static readonly Dictionary<string, string[]> AddonToModules = new(StringComparer.OrdinalIgnoreCase)

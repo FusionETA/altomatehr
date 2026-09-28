@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Common.Tabular;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -12,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // list first is how the wrong people get someone else's history.
 [ApiController]
 [Route("payroll/ytd-import")]
+[RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class YtdImportController : ControllerBase
 {

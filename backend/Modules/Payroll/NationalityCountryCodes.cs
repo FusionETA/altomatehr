@@ -205,6 +205,10 @@ public static class NationalityCountryCodes
         ["Zimbabwean"] = "ZW",
     };
 
+    // The 179 demonyms, as spelled on the dropdown. Nationalities resolves
+    // free text onto these.
+    public static IEnumerable<string> Demonyms => ByDemonym.Keys;
+
     public static string ForNationality(string? nationality)
     {
         var key = nationality?.Trim();

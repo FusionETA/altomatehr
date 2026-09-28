@@ -7,7 +7,7 @@ import {
   type XeroAggregationMode,
   type XeroTrackingCategory,
 } from "../../api";
-import { getAccounts, type ChartOfAccount } from "@/features/settings/api";
+import { getAccountsWithLiabilities, type ChartOfAccount } from "@/features/settings/api";
 import { CARD, HINT, LABEL, WARN_PANEL } from "../../lib/ui";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { PayrollSelect } from "../PayrollSelect";
@@ -34,8 +34,8 @@ export function XeroSyncSection({
   //
   // Read fresh on every mount, this section replaced itself with a skeleton
   // each time the settings page was opened — the same dropdowns, redrawn.
-  const accountsQuery = useCachedQuery("/accounts", () =>
-    getAccounts().catch(() => [] as ChartOfAccount[]),
+  const accountsQuery = useCachedQuery("/accounts?includeLiabilities=true", () =>
+    getAccountsWithLiabilities().catch(() => [] as ChartOfAccount[]),
   );
   const categoriesQuery = useCachedQuery("/payroll/runs/xero/tracking-categories", () =>
     getXeroTrackingCategories().catch(() => [] as XeroTrackingCategory[]),
@@ -128,6 +128,7 @@ export function XeroSyncSection({
         title="Expense accounts"
         subtitle="The debit side. Charged to the P&L when a run posts."
         slots={XERO_EXPENSE_SLOTS}
+        accountType="EXPENSE"
         mapping={mapping}
         accounts={accounts}
         onPick={setAccount}
@@ -137,6 +138,7 @@ export function XeroSyncSection({
         title="Accrual accounts"
         subtitle="The credit side — what is owed until it is paid out. One line per agency, always summed."
         slots={XERO_ACCRUAL_SLOTS}
+        accountType="LIABILITY"
         mapping={mapping}
         accounts={accounts}
         onPick={setAccount}
@@ -145,10 +147,21 @@ export function XeroSyncSection({
   );
 }
 
+// Which slots take which kind of account. A payable on the credit side has to
+// be a liability — an expense account there turns what the company OWES into a
+// reduction of its costs.
+type SlotAccountType = "EXPENSE" | "LIABILITY";
+
+const TYPE_NOUN: Record<SlotAccountType, string> = {
+  EXPENSE: "an expense account",
+  LIABILITY: "a liability account",
+};
+
 function AccountGroup({
   title,
   subtitle,
   slots,
+  accountType,
   mapping,
   accounts,
   onPick,
@@ -156,10 +169,15 @@ function AccountGroup({
   title: string;
   subtitle: string;
   slots: readonly { key: string; label: string }[];
+  accountType: SlotAccountType;
   mapping: PayrollXeroMapping;
   accounts: ChartOfAccount[];
   onPick: (slot: string, value: string | null) => void;
 }) {
+  const offered = accounts.filter(
+    (account) => account.type === accountType && !account.isArchived,
+  );
+
   return (
     <section className={CARD}>
       <header className="mb-4">
@@ -167,20 +185,28 @@ function AccountGroup({
         <p className={HINT}>{subtitle}</p>
       </header>
 
+      {accounts.length > 0 && offered.length === 0 ? (
+        <div className={`${WARN_PANEL} mb-4`}>
+          {accountType === "LIABILITY"
+            ? "No liability accounts have been synced from Xero yet. Sync the accounts under System Settings → Accounts to pick the payables."
+            : "No expense accounts have been synced from Xero yet. Sync the accounts under System Settings → Accounts first."}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         {slots.map((slot) => {
           const selected = mapping.accounts[slot.key] ?? null;
-          // Archived accounts (inactive in Xero, or retired because the
-          // connected org no longer has them) can't take a journal line, so
-          // they aren't offered — except the one already picked, which stays
-          // visible and says so. Hiding it would render the slot as "Not
-          // mapped" while the sync refuses over an account nobody can see.
-          const options = accounts.filter(
-            (account) => !account.isArchived || account.id === selected,
-          );
-          const selectedArchived = options.some(
-            (account) => account.id === selected && account.isArchived,
-          );
+          // Only accounts of the slot's type that can still take a journal
+          // line are offered. The one already picked stays visible whatever
+          // it is — archived (inactive in Xero, or retired because the
+          // connected org no longer has it) or the wrong type (saved before
+          // this filter existed) — and says so. Hiding it would render the
+          // slot as "Not mapped" while the journal posts to it anyway.
+          const current = accounts.find((account) => account.id === selected);
+          const options =
+            current && !offered.includes(current) ? [current, ...offered] : offered;
+          const selectedArchived = current?.isArchived ?? false;
+          const selectedWrongType = current != null && current.type !== accountType;
 
           return (
             <div key={slot.key}>
@@ -208,6 +234,10 @@ function AccountGroup({
                 <p className="mt-1.5 text-xs text-destructive">
                   Archived or no longer in Xero — the journal can't post to it. Pick a
                   current account.
+                </p>
+              ) : selectedWrongType ? (
+                <p className="mt-1.5 text-xs text-destructive">
+                  Not {TYPE_NOUN[accountType]}. Pick {TYPE_NOUN[accountType]} for this line.
                 </p>
               ) : null}
             </div>
