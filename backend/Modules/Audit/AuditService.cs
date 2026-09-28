@@ -12,13 +12,20 @@ public class AuditService : IAuditService
     private readonly ICurrentUser _currentUser;
     private readonly ILogger<AuditService> _logger;
     private readonly Employees.IDirectoryService _directory;
+    private readonly ISupportAuditRepository? _support;
+
+    // What the customer's log shows for a Fusioneta support action.
+    public const string SupportActorName = "System (Support)";
+    public const string SupportActorEmail = "support@altomatehr";
 
     public AuditService(
         IAuditRepository repo,
         ICurrentUser currentUser,
         ILogger<AuditService> logger,
-        Employees.IDirectoryService directory)
+        Employees.IDirectoryService directory,
+        ISupportAuditRepository? support = null)
     {
+        _support = support;
         _directory = directory;
         _repo = repo;
         _currentUser = currentUser;
@@ -43,18 +50,46 @@ public class AuditService : IAuditService
                 return;
             }
 
+            // Fusioneta support, as in the previous system: the customer's log
+            // says "System (Support)" — which member of staff is Fusioneta's
+            // business — and the real person goes to the internal support log.
+            var support = entry.Support
+                ?? (_currentUser.IsSupport && _currentUser.UserId is { } supportUserId
+                    ? new SupportActor(supportUserId, _currentUser.Email ?? string.Empty)
+                    : null);
+
+            if (support is not null && _support is not null)
+            {
+                await _support.AddAsync(new SupportAuditLog
+                {
+                    OrganizationId = organizationId,
+                    SupportUserId = support.UserId,
+                    SupportEmail = support.Email,
+                    Action = entry.Action,
+                    Summary = Truncate(entry.Summary, 500),
+                    TargetType = entry.TargetType,
+                    TargetId = entry.TargetId,
+                    IpAddress = _currentUser.IpAddress,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
+
             await _repo.AppendAsync(
                 new AuditLog
                 {
-                    ActorUserId = _currentUser.UserId,
-                    ActorRole = _currentUser.Role,
+                    ActorUserId = support is null ? _currentUser.UserId : null,
+                    ActorRole = support is null ? _currentUser.Role : "Support",
                     // Copied, not joined — see AuditLog. Falls back to the id so
                     // a row always names someone.
-                    ActorEmail = entry.ActorEmail ?? _currentUser.Email ?? "system@altomatehr",
+                    ActorEmail = support is not null
+                        ? SupportActorEmail
+                        : entry.ActorEmail ?? _currentUser.Email ?? "system@altomatehr",
                     // No display name on the token, so the address is the label.
                     // Better a real address than a GUID nobody can match to a
                     // person six months from now.
-                    ActorName = entry.ActorName ?? _currentUser.Email ?? "System",
+                    ActorName = support is not null
+                        ? SupportActorName
+                        : entry.ActorName ?? _currentUser.Email ?? "System",
                     Action = entry.Action,
                     Status = entry.Status,
                     Summary = entry.Summary,
@@ -64,7 +99,9 @@ public class AuditService : IAuditService
                     Metadata = entry.Metadata is null
                         ? null
                         : JsonSerializer.Serialize(entry.Metadata),
-                    IpAddress = _currentUser.IpAddress,
+                    // A support session's address identifies Fusioneta staff —
+                    // it stays in the internal log only.
+                    IpAddress = support is null ? _currentUser.IpAddress : null,
                     // Set here, not by the database: the timestamp is hashed, so
                     // a value we never saw would make the row unverifiable. And
                     // truncated to what datetime(6) can hold, so the value that
@@ -180,4 +217,7 @@ public class AuditService : IAuditService
         Metadata = row.Metadata,
         CreatedAt = row.CreatedAt,
     };
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max];
 }

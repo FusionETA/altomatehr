@@ -130,14 +130,28 @@ public class YtdImportParserTests
 
     // Withheld from the payout, but the earnings were still made.
     [Fact]
-    public void AnAdvanceComesOffNetOnly()
+    public void AMiscellaneousDeductionComesOffNetOnly()
     {
         var baseline = Baseline();
-        var month = WithColumn("Advance Deduction", "300");
+        var month = WithColumn("Miscellaneous / Other Deduction", "300");
 
         Assert.Equal(baseline.Gross, month.Gross);
         Assert.Equal(baseline.Net - 300m, month.Net);
         Assert.Equal(300m, month.NetOnlyDeductions);
+    }
+
+    // An advance repaid through payroll comes off GROSS, as in v1 — the same
+    // as a salary adjustment — so it is not in the net-only total.
+    [Fact]
+    public void AnAdvanceComesOffGross()
+    {
+        var baseline = Baseline();
+        var month = WithColumn("Advance Deduction", "300");
+
+        Assert.Equal(baseline.Gross - 300m, month.Gross);
+        Assert.Equal(baseline.Net - 300m, month.Net);
+        Assert.Equal(300m, month.GrossReducingDeductions);
+        Assert.Equal(0m, month.NetOnlyDeductions);
     }
 
     // Cash-neutral rows lower PCB but take nothing from the payslip — the

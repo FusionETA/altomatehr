@@ -35,6 +35,8 @@ public class AppDbContext : DbContext
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Claim> Claims => Set<Claim>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    // Not tenant-scoped on purpose — see SupportAuditLog.
+    public DbSet<SupportAuditLog> SupportAuditLogs => Set<SupportAuditLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PasswordResetOtp> PasswordResetOtps => Set<PasswordResetOtp>();
     public DbSet<User> Users => Set<User>();
@@ -239,6 +241,7 @@ public class AppDbContext : DbContext
         profile.Property(p => p.IdType).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.MaritalStatus).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SocsoScheme).HasConversion<string>().HasMaxLength(40);
+        profile.Property(p => p.SpecialTaxScheme).HasConversion<string>().HasMaxLength(30);
         profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
 
         // Payroll config — exactly one row per org, so the tenant column is the

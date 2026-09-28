@@ -146,7 +146,11 @@ public static class PcbCp39Txt
                    + StatutoryFileFields.LineEnding
                    + details;
 
-        var fileName = $"PCB_{StatutoryFileFields.PeriodMmYyyy(payload.Run.PeriodYear, payload.Run.PeriodMonth)}.txt";
+        // LHDN MTD Spec 2026, Exhibit 4: "xxxxxxxxxxmm_yyyy.txt" — the 10-digit
+        // employer number, the month, then the year. (v1 used PCB_MMYYYY.txt;
+        // certification is checked against the spec.)
+        var fileName =
+            $"{StatutoryFileFields.PadZero(employerNo, 10)}{payload.Run.PeriodMonth:D2}_{payload.Run.PeriodYear:D4}.txt";
         return StatutoryFileResult.Text(fileName, text, ContentType);
     }
 

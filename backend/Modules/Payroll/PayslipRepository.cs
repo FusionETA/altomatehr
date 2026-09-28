@@ -219,11 +219,18 @@ public class PayslipRepository : IPayslipRepository
                     byCategory[employeeId] = perCategory;
                 }
 
-                perCategory[li.Category] = Get(perCategory, li.Category) + li.Amount;
+                // A TP1 row counts what it was GRANTED, not what was claimed: an
+                // over-claim clamped to its limit in January must not show as
+                // relief in ΣLP all year, nor eat into its group's shared limit.
+                // (PcbTaxableAmount carries the granted figure when it differs.)
+                var isTp1 = li.Kind == PayslipLineKind.DEDUCTION && Tp1Categories.Contains(li.Category);
+                var counted = isTp1 ? li.PcbTaxableAmount ?? li.Amount : li.Amount;
 
-                if (li.Kind == PayslipLineKind.DEDUCTION && Tp1Categories.Contains(li.Category))
+                perCategory[li.Category] = Get(perCategory, li.Category) + counted;
+
+                if (isTp1)
                 {
-                    tp1[employeeId] = Get(tp1, employeeId) + li.Amount;
+                    tp1[employeeId] = Get(tp1, employeeId) + counted;
                 }
             }
         }

@@ -11,13 +11,16 @@ public class EmployeePayrollService : IEmployeePayrollService
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IStatutoryFileService _statutory;
     private readonly ICurrentUser _currentUser;
+    private readonly ITp1FormService? _tp1;
 
     public EmployeePayrollService(
         IPayslipRepository payslips,
         IEmployeeProfileRepository profiles,
         IStatutoryFileService statutory,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        ITp1FormService? tp1 = null)
     {
+        _tp1 = tp1;
         _payslips = payslips;
         _profiles = profiles;
         _statutory = statutory;
@@ -64,6 +67,14 @@ public class EmployeePayrollService : IEmployeePayrollService
         if (payslip is null) return new StatutoryFileResult(false, null, null, null, null);
 
         return await _statutory.RenderPayslipPdfAsync(payslip.PayrollRunId, payslip.EmployeeProfileId);
+    }
+
+    public async Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId)
+    {
+        var payslip = await MineAsync(payslipId);
+        if (payslip is null || _tp1 is null) return new StatutoryFileResult(false, null, null, null, null);
+
+        return await _tp1.RenderFormAsync(payslip.PayrollRunId, payslip.EmployeeProfileId);
     }
 
     // ─── Scoping ────────────────────────────────────────────────────────

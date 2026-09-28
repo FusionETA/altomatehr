@@ -14,6 +14,9 @@ public interface IOrganizationMembershipRepository
     // Memberships in the CURRENT (active) org — tenant-filtered.
     Task<List<OrganizationMembership>> GetForCurrentOrgAsync();
 
+    // Every org's memberships, ignoring the tenant filter. Support only.
+    Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync();
+
     // One user's membership in the CURRENT (active) org — tenant-filtered.
     Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId);
 

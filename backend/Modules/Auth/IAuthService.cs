@@ -10,6 +10,12 @@ public interface IAuthService
     // Re-mint the token for another org the user belongs to. Null = not a member.
     Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId);
 
+    // Support mode (Fusioneta superadmins only). Enter: null when the caller is
+    // not on SUPERADMIN_EMAILS or the org does not exist. Exit: back to the
+    // caller's own org; null when they have none.
+    Task<AuthResult?> EnterSupportAsync(string userId, string organizationId);
+    Task<AuthResult?> ExitSupportAsync(string userId);
+
     // Every org the user can switch into (id + their role there).
     Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId);
 

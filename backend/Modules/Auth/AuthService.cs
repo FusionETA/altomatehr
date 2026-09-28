@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.Security.Cryptography;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Email;
@@ -24,6 +25,7 @@ public class AuthService : IAuthService
     private readonly int _refreshDays;
     private readonly IAuditService _audit;
     private readonly IOrganizationRepository _organizations;
+    private readonly ISuperadminRegistry? _superadmins;
 
     public AuthService(
         ITokenService tokens,
@@ -35,8 +37,10 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         IConfiguration config,
         IAuditService audit,
-        IOrganizationRepository organizations)
+        IOrganizationRepository organizations,
+        ISuperadminRegistry? superadmins = null)
     {
+        _superadmins = superadmins;
         _tokens = tokens;
         _refreshRepo = refreshRepo;
         _userRepo = userRepo;
@@ -113,6 +117,50 @@ public class AuthService : IAuthService
         return await IssueTokensAsync(user.Id, user.Email, active.Role, active.OrganizationId);
     }
 
+    // ─── Support mode ───────────────────────────────────────────────────
+    //
+    // A Fusioneta superadmin (SUPERADMIN_EMAILS) can act as an Admin inside ANY
+    // org for support, without a membership there — as in the previous system.
+    // The token carries a "support" claim, so their actions are audited in the
+    // customer's log as "System (Support)", with the real person in the
+    // internal support log (AuditService).
+
+    public async Task<AuthResult?> EnterSupportAsync(string userId, string organizationId)
+    {
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user is null || _superadmins?.IsSuperadmin(user.Email) != true) return null;
+
+        var org = await _organizations.GetByIdAsync(organizationId);
+        if (org is null) return null;
+
+        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true);
+
+        // Written into the CUSTOMER's log — masked, like every support action —
+        // so a company can see that support was in, and when.
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SupportEnter,
+            "Fusioneta support opened this organization",
+            TargetType: "Organization",
+            TargetId: org.Id,
+            OrganizationId: org.Id,
+            Support: new SupportActor(user.Id, user.Email)));
+
+        return result;
+    }
+
+    // Back to the superadmin's own org (their first membership), as a normal
+    // session. Null when they belong to none — the caller signs them out.
+    public async Task<AuthResult?> ExitSupportAsync(string userId)
+    {
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user is null) return null;
+
+        var home = (await _directory.GetMembershipsByUserAsync(userId)).FirstOrDefault();
+        if (home is null) return null;
+
+        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId);
+    }
+
     public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId)
     {
         // Only if the account is actually a member of the target org.
@@ -150,6 +198,21 @@ public class AuthService : IAuthService
         // Rotate: revoke the used token, then issue a fresh pair for the SAME active org.
         stored.RevokedAt = DateTime.UtcNow;
         await _refreshRepo.UpdateAsync(stored);
+
+        // A support session survives a refresh only while the email is still
+        // on SUPERADMIN_EMAILS. Taken off it, they are returned to their own
+        // org instead — support access ends at the next refresh, as in the
+        // previous system (which re-read the list on every request).
+        if (stored.IsSupport)
+        {
+            if (_superadmins?.IsSuperadmin(stored.Email) == true)
+            {
+                return await IssueTokensAsync(
+                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true);
+            }
+
+            return await ExitSupportAsync(stored.UserId);
+        }
 
         return await IssueTokensAsync(stored.UserId, stored.Email, stored.Role, stored.OrganizationId);
     }
@@ -314,9 +377,10 @@ public class AuthService : IAuthService
             preheader: $"Your code is {code}. It expires in {minutes} minutes.");
     }
 
-    private async Task<AuthResult> IssueTokensAsync(string userId, string email, string role, string organizationId)
+    private async Task<AuthResult> IssueTokensAsync(
+        string userId, string email, string role, string organizationId, bool support = false)
     {
-        var accessToken = _tokens.CreateToken(userId, email, role, organizationId);
+        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support);
 
         var refresh = new RefreshToken
         {
@@ -325,6 +389,7 @@ public class AuthService : IAuthService
             Email = email,
             Role = role,
             OrganizationId = organizationId,
+            IsSupport = support,
             ExpiresAt = DateTime.UtcNow.AddDays(_refreshDays),
             CreatedAt = DateTime.UtcNow,
         };
@@ -333,7 +398,11 @@ public class AuthService : IAuthService
         // The real name for the header and greeting, which used to guess one
         // from the email — "admin@…" read as a person called "Admin".
         var name = (await _userRepo.GetByIdAsync(userId))?.Name;
+        var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
         return new AuthResult(accessToken, email, role, organizationId, refresh.Token, refresh.ExpiresAt,
-            string.IsNullOrWhiteSpace(name) ? null : name.Trim());
+            string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+            IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
+            SupportMode: support,
+            OrganizationName: orgName);
     }
 }

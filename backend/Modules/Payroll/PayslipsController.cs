@@ -41,4 +41,16 @@ public class PayslipsController : ControllerBase
 
         return File(result.Content!, result.ContentType!, result.FileName);
     }
+
+    // The caller's own Borang PCB/TP1 for this payslip's month.
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/tp1")]
+    public async Task<IActionResult> Tp1(string id)
+    {
+        var result = await _payroll.RenderMyTp1FormAsync(id);
+
+        if (!result.Ok) return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+
+        return File(result.Content!, result.ContentType!, result.FileName);
+    }
 }

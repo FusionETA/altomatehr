@@ -619,6 +619,191 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(400m, totals.AllowableDeductions);
     }
 
+    // An over-claim is clamped to its limit — RM 1,500 of sports against the
+    // RM 1,000 cap — and it is the RM 1,000 that counts in ΣLP and towards the
+    // limit afterwards, not the RM 1,500 typed in.
+    [Fact]
+    public async Task YearToDate_CountsTheReliefGranted_NotTheOverClaim()
+    {
+        var profile = AddEmployee(
+            "usr-1", "Aisyah",
+            monthlySalary: 9000m,
+            fixedAllowancesJson:
+            """[{"category":"deduct_tp1_sports_equipment","name":"Gym","amount":1500}]""");
+
+        var january = await CreateRunAsync(2026, 1);
+        await _service.GenerateAsync(january.Id);
+
+        var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == january.Id);
+        stored.Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var totals = (await _payslips.GetYtdByEmployeeAsync(2026, null))[profile.Id];
+
+        Assert.Equal(1000m, totals.AllowableDeductions);
+        Assert.Equal(1000m, totals.AllowanceByCategory[PayrollAdjustmentCategories.DeductTp1SportsEquipment]);
+    }
+
+    // ─── Borang TP1 and the claims list (MTD Spec 2026 item 16) ─────────
+
+    private Tp1FormService Tp1() => new(
+        new PayrollRunRepository(_db),
+        _payslips,
+        new PayrollCompanyInfoService(new PayrollCompanyInfoRepository(_db), _audit),
+        TestDirectory.Over(
+            new OrganizationMembershipRepository(_db),
+            new UserRepository(_db),
+            new EmployeeProfileRepository(_db)));
+
+    private async Task<PayrollRunDto> ApprovedMonthAsync(int month)
+    {
+        var run = await CreateRunAsync(2026, month);
+        await _service.GenerateAsync(run.Id);
+        var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id);
+        stored.Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        return run;
+    }
+
+    // February, after a January of the same claims: SEMASA is February's
+    // granted relief, TERKUMPUL the year's. The RM 1,500 sports claim was
+    // clamped to RM 1,000 in January and has no room left in February.
+    [Fact]
+    public async Task Tp1Form_ShowsThisMonthAndTheYearToDate_AsGranted()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m, fixedAllowancesJson: """
+            [{"category":"deduct_tp1_sports_equipment","name":"Gym","amount":1500},
+             {"category":"deduct_tp1_life_insurance","name":"Life","amount":200},
+             {"category":"deduct_zakat_tp1","name":"Zakat","amount":50}]
+            """);
+        await ApprovedMonthAsync(1);
+        var february = await ApprovedMonthAsync(2);
+
+        var (form, refusal) = await Tp1().BuildFormAsync(february.Id, profile.Id);
+
+        Assert.Null(refusal);
+        var c6 = form!.Deductions.Single(r => r.Ref == "C6");
+        Assert.Equal((0m, 1000m), (c6.Current, c6.Cumulative));
+        var c11 = form.Deductions.Single(r => r.Ref == "C11" && !r.IsPart);
+        Assert.Equal((200m, 400m), (c11.Current, c11.Cumulative));
+        var d1a = form.Rebates.Single(r => r.Ref == "D1a");
+        Assert.Equal((50m, 100m), (d1a.Current, d1a.Cumulative));
+        Assert.Equal(2, form.Month);
+    }
+
+    // Only claimants are listed; someone with no TP1 and no TP3 is not.
+    [Fact]
+    public async Task Tp1ClaimsList_ListsOnlyThoseWhoClaimed()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m, employeeNumber: "E-001", fixedAllowancesJson: """
+            [{"category":"deduct_tp1_life_insurance","name":"Life","amount":200},
+             {"category":"deduct_zakat_tp1","name":"Zakat","amount":50}]
+            """);
+        AddEmployee("usr-2", "Bala", monthlySalary: 6000m, employeeNumber: "E-002");
+        await ApprovedMonthAsync(1);
+        var february = await ApprovedMonthAsync(2);
+
+        var (list, _) = await Tp1().BuildClaimsListAsync(february.Id);
+
+        var row = Assert.Single(list!.Rows);
+        Assert.Equal("Aisyah", row.EmployeeName);
+        Assert.Equal(200m, row.Tp1Current);
+        Assert.Equal(400m, row.Tp1Cumulative);
+        Assert.Equal(50m, row.RebateCurrent);
+        Assert.Equal(["C11b", "D1a"], row.ItemsClaimed);
+    }
+
+    // A draft month's figures can still change, like every run document.
+    [Fact]
+    public async Task Tp1Form_IsRefusedForAMonthNotYetApproved()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah");
+        var run = await CreateRunAsync(2026, 1);
+        await _service.GenerateAsync(run.Id);
+
+        var result = await Tp1().RenderFormAsync(run.Id, profile.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains("not been approved", result.Error);
+    }
+
+    [Fact]
+    public async Task Tp1Documents_RenderAsPdf()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", fixedAllowancesJson: """
+            [{"category":"deduct_tp1_vaccination","name":"Flu","amount":150}]
+            """);
+        var january = await ApprovedMonthAsync(1);
+
+        var form = await Tp1().RenderFormAsync(january.Id, profile.Id);
+        var list = await Tp1().RenderClaimsListAsync(january.Id);
+
+        Assert.True(form.Ok);
+        Assert.Equal("TP1_E-001_01-2026.pdf", form.FileName);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(form.Content!, 0, 4));
+        Assert.True(list.Ok);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(list.Content!, 0, 4));
+    }
+
+    // ─── Who is on payroll ───────────────────────────────────────────────
+
+    private async Task SetRoleAsync(string userId, string role)
+    {
+        var membership = await _db.OrganizationMemberships.FirstAsync(m => m.UserId == userId);
+        membership.Role = role;
+        await _db.SaveChangesAsync();
+    }
+
+    // Employees and Supervisors, as in the previous system. An Admin or Owner
+    // administers the org and is not paid by its runs.
+    [Fact]
+    public async Task GenerateAsync_PaysEmployeesAndSupervisors_NotAdminsOrOwners()
+    {
+        AddEmployee("usr-1", "Aisyah", employeeNumber: "E-001");
+        AddEmployee("usr-2", "Bala", employeeNumber: "E-002");
+        AddEmployee("usr-3", "Chong", employeeNumber: "E-003");
+        AddEmployee("usr-4", "Devi", employeeNumber: "E-004");
+        await SetRoleAsync("usr-2", "Supervisor");
+        await SetRoleAsync("usr-3", "Admin");
+        await SetRoleAsync("usr-4", "Owner");
+
+        var run = await CreateRunAsync();
+        var payslips = (await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips;
+
+        Assert.Equal(["Aisyah", "Bala"], payslips.Select(p => p.SnapshotName).Order());
+    }
+
+    // The Payroll → Employees roster: an Admin or Owner is not listed.
+    [Fact]
+    public async Task TheRoster_ListsEmployeesAndSupervisors_Only()
+    {
+        AddEmployee("usr-1", "Aisyah", employeeNumber: "E-001");
+        AddEmployee("usr-2", "Bala", employeeNumber: "E-002");
+        AddEmployee("usr-3", "Chong", employeeNumber: "E-003");
+        await SetRoleAsync("usr-2", "Supervisor");
+        await SetRoleAsync("usr-3", "Owner");
+
+        var roster = await new PayrollEmployeeDirectoryService(TestDirectory.Over(
+            new OrganizationMembershipRepository(_db),
+            new UserRepository(_db),
+            new EmployeeProfileRepository(_db))).GetAllAsync();
+
+        Assert.Equal(["Aisyah", "Bala"], roster.Select(r => r.Name).Order());
+    }
+
+    [Fact]
+    public async Task ThePicker_LeavesAdminsAndOwnersOut()
+    {
+        AddEmployee("usr-1", "Aisyah", employeeNumber: "E-001");
+        AddEmployee("usr-2", "Chong", employeeNumber: "E-002");
+        await SetRoleAsync("usr-2", "Admin");
+
+        var picker = await _service.GetPickerAsync();
+
+        var names = picker.Policies.SelectMany(p => p.Members).Select(m => m.Name).ToList();
+        Assert.DoesNotContain("Chong", names);
+    }
+
     // A prior year's runs are a different tax year and must not leak in.
     [Fact]
     public async Task YearToDate_IsScopedToTheCalendarYear()
@@ -1093,11 +1278,31 @@ public class PayrollRunServiceTests : IDisposable
         var before = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
         await AddAdjustmentAsync(run.Id, profile.Id, manualJson: """
-            [{"category":"deduct_advance","label":"Salary advance","amount":200}]
+            [{"category":"deduct_miscellaneous","label":"Uniform","amount":200}]
             """);
         var after = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
         Assert.Equal(200m, after.TotalDeductions);
+        Assert.True(after.NetPay < before.NetPay);
+    }
+
+    // An advance repaid through payroll comes off GROSS (as in v1), so gross,
+    // statutory and net all show the reduced wage — not a net-only deduction.
+    [Fact]
+    public async Task GenerateAsync_TakesAnAdvanceOffGross()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah");
+        var run = await CreateRunAsync();
+
+        var before = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        await AddAdjustmentAsync(run.Id, profile.Id, manualJson: """
+            [{"category":"deduct_advance","label":"Salary advance","amount":200}]
+            """);
+        var after = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(before.GrossPay - 200m, after.GrossPay);
+        Assert.Equal(0m, after.TotalDeductions);
         Assert.True(after.NetPay < before.NetPay);
     }
 

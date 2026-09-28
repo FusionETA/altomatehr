@@ -20,6 +20,10 @@ public class RefreshToken
     [MaxLength(20)]  public string Role  { get; set; } = string.Empty;
     [MaxLength(40)]  public string OrganizationId { get; set; } = string.Empty;   // re-mint the token with its org
 
+    // Re-mint as a support session. Refresh re-checks SUPERADMIN_EMAILS, so
+    // removing someone from it ends their support access at the next refresh.
+    public bool IsSupport { get; set; }
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? RevokedAt { get; set; }             // null = still valid

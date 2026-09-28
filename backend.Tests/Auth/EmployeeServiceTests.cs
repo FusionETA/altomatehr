@@ -327,6 +327,8 @@ public class EmployeeServiceTests
 
     private sealed class FakeMembershipRepository : IOrganizationMembershipRepository
     {
+        public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
         private readonly List<OrganizationMembership> _m;
         public FakeMembershipRepository(List<OrganizationMembership> m) => _m = m;
 

@@ -8,18 +8,23 @@ namespace AltomateHR.Api.Modules.Auth;
 
 public class TokenService : ITokenService
 {
+    public const string SupportClaim = "support";
+
     private readonly IConfiguration _config;
 
     public TokenService(IConfiguration config) => _config = config;
 
     // The short-lived ACCESS token (a signed JWT).
-    public string CreateToken(string userId, string email, string role, string organizationId)
+    public string CreateToken(string userId, string email, string role, string organizationId) =>
+        CreateToken(userId, email, role, organizationId, support: false);
+
+    public string CreateToken(string userId, string email, string role, string organizationId, bool support)
     {
         var jwt = _config.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId),
             new Claim(ClaimTypes.NameIdentifier, userId),
@@ -28,6 +33,10 @@ public class TokenService : ITokenService
             new Claim("org", organizationId),   // the tenant — read back by ICurrentUser + the query filter
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
+
+        // A Fusioneta staff member acting inside a customer's org. ICurrentUser
+        // reads it; the audit log masks the actor on it.
+        if (support) claims.Add(new Claim(SupportClaim, "1"));
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],

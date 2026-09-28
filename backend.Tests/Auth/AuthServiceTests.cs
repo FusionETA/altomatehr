@@ -375,13 +375,89 @@ public class AuthServiceTests
         Assert.NotNull(error);
     }
 
+    // --- support mode (Fusioneta superadmins) ---
+
+    // A superadmin acts as an Admin inside a company they are not a member of.
+    [Fact]
+    public async Task EnterSupport_LetsASuperadminActAsAdminInAnyOrg()
+    {
+        var service = CreateService([CreateUser("pw")], out var refresh, superadminEmails: "admin@altomate.com");
+
+        var result = await service.EnterSupportAsync("usr-admin", "org-2");
+
+        Assert.NotNull(result);
+        Assert.Equal("org-2", result!.OrganizationId);
+        Assert.Equal("Admin", result.Role);
+        Assert.True(result.SupportMode);
+        Assert.True(result.IsSuperadmin);
+        Assert.True(refresh.Tokens.Single().IsSupport);
+    }
+
+    [Fact]
+    public async Task EnterSupport_IsRefusedForAnyoneNotOnTheList()
+    {
+        var service = CreateService([CreateUser("pw")], out _, superadminEmails: "someone.else@fusioneta.com");
+
+        Assert.Null(await service.EnterSupportAsync("usr-admin", "org-2"));
+    }
+
+    // Reloading the page keeps you in support mode — while you are still listed.
+    [Fact]
+    public async Task Refresh_KeepsASupportSession_WhileStillASuperadmin()
+    {
+        var service = CreateService([CreateUser("pw")], out var refresh, superadminEmails: "admin@altomate.com");
+        var entered = await service.EnterSupportAsync("usr-admin", "org-2");
+
+        var refreshed = await service.RefreshAsync(entered!.RefreshToken);
+
+        Assert.Equal("org-2", refreshed!.OrganizationId);
+        Assert.True(refreshed.SupportMode);
+    }
+
+    // Taken off SUPERADMIN_EMAILS, the next refresh returns them to their own
+    // company rather than keeping god-mode.
+    [Fact]
+    public async Task Refresh_EndsSupport_OnceRemovedFromTheList()
+    {
+        var supportToken = new RefreshToken
+        {
+            Token = "support-refresh",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            OrganizationId = "org-2",
+            IsSupport = true,
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+        };
+        var service = CreateService([CreateUser("pw")], out _, existingRefreshTokens: [supportToken],
+            superadminEmails: string.Empty);
+
+        var refreshed = await service.RefreshAsync("support-refresh");
+
+        Assert.Equal("org-1", refreshed!.OrganizationId);
+        Assert.False(refreshed.SupportMode);
+    }
+
+    [Fact]
+    public async Task ExitSupport_ReturnsToYourOwnCompany()
+    {
+        var service = CreateService([CreateUser("pw")], out _, superadminEmails: "admin@altomate.com");
+        await service.EnterSupportAsync("usr-admin", "org-2");
+
+        var home = await service.ExitSupportAsync("usr-admin");
+
+        Assert.Equal("org-1", home!.OrganizationId);
+        Assert.False(home.SupportMode);
+    }
+
     // --- helpers ---
 
     private static AuthService CreateService(
         IEnumerable<User> users,
         out FakeRefreshTokenRepository refreshTokens,
         IEnumerable<RefreshToken>? existingRefreshTokens = null,
-        IEnumerable<OrganizationMembership>? memberships = null)
+        IEnumerable<OrganizationMembership>? memberships = null,
+        string? superadminEmails = null)
     {
         refreshTokens = new FakeRefreshTokenRepository(existingRefreshTokens ?? []);
 
@@ -401,7 +477,13 @@ public class AuthServiceTests
                 })
                 .Build(),
             audit: new FakeAuditService(),
-            organizations: new FakeOrganizationRepository());
+            organizations: new FakeOrganizationRepository(),
+            superadmins: new SuperadminRegistry(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["SUPERADMIN_EMAILS"] = superadminEmails ?? string.Empty,
+                })
+                .Build()));
     }
 
     private static User CreateUser(string password) => new()
@@ -462,6 +544,8 @@ public class AuthServiceTests
 
     private sealed class FakeMembershipRepository : IOrganizationMembershipRepository
     {
+        public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
         private readonly List<OrganizationMembership> _m;
         public FakeMembershipRepository(IEnumerable<OrganizationMembership> m) => _m = m.ToList();
 

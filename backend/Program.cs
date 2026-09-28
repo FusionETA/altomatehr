@@ -307,6 +307,7 @@ builder.Services.AddScoped<IPayrollRunClaimRepository, PayrollRunClaimRepository
 builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
+builder.Services.AddScoped<ITp1FormService, Tp1FormService>();
 builder.Services.AddScoped<IPayslipEmailService, PayslipEmailService>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
@@ -320,6 +321,8 @@ builder.Services.AddScoped<IApprovalRouter, ApprovalRouter>();
 builder.Services.AddScoped<IApprovalReconciliationService, ApprovalReconciliationService>();
 builder.Services.AddScoped<IAdminAttendanceService, AdminAttendanceService>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+builder.Services.AddScoped<ISupportAuditRepository, SupportAuditRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Support.ISupportService, AltomateHR.Api.Modules.Support.SupportService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IApprovalDigestService, ApprovalDigestService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();

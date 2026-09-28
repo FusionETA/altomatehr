@@ -148,7 +148,7 @@ public class PayrollRunService : IPayrollRunService
     // is scoped through a policy, so they cannot be selected.
     public async Task<PayrollRunPickerDto> GetPickerAsync()
     {
-        var eligible = (await _directory.GetProfilesForCurrentOrgAsync())
+        var eligible = (await _directory.PayrollProfilesAsync())
             .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 
@@ -202,7 +202,7 @@ public class PayrollRunService : IPayrollRunService
     private async Task<List<string>> ResolveScopeAsync(
         List<string>? policyIds, List<string>? excludedProfileIds)
     {
-        var eligible = (await _directory.GetProfilesForCurrentOrgAsync())
+        var eligible = (await _directory.PayrollProfilesAsync())
             .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 
@@ -249,7 +249,9 @@ public class PayrollRunService : IPayrollRunService
 
         var settings = await _settings.GetEffectiveAsync();
 
-        var profiles = await _directory.GetProfilesForCurrentOrgAsync();
+        // Employees and Supervisors only. A draft created before this rule may
+        // list an admin as a member; they are simply not paid by it.
+        var profiles = await _directory.PayrollProfilesAsync();
 
         // Honour the roster the admin chose when the draft was created. A run
         // with no member rows predates the picker (or is an import), so it keeps
@@ -816,6 +818,9 @@ public class PayrollRunService : IPayrollRunService
             IsResident = profile.IsResident,
             IsOku = profile.IsOku,
             DateOfBirth = profile.DateOfBirth,
+            SpecialTaxScheme = PayslipCalculator.SpecialTaxSchemeFor(
+                profile.SpecialTaxScheme, profile.SpecialTaxFrom, profile.SpecialTaxTo,
+                run.PeriodYear, run.PeriodMonth),
 
             ContributeToEpf = profile.ContributeToEpf,
             EpfMemberBefore1998 = profile.EpfMemberBefore1998,

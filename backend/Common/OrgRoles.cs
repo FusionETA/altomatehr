@@ -33,6 +33,14 @@ public static class OrgRoles
     public static bool IsAdministrative(string? role) =>
         role is not null && Administrative.Contains(role, StringComparer.OrdinalIgnoreCase);
 
+    // Who payroll is for: Employees and Supervisors — the previous system's
+    // `role in [EMPLOYEE, SUPERVISOR]` on every payroll list and run. An Admin
+    // or Owner administers the org; they are not on its payroll roster, are
+    // not paid by its runs, and are not counted in it.
+    public static bool IsOnPayroll(string? role) =>
+        string.Equals(role, Employee, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(role, Supervisor, StringComparison.OrdinalIgnoreCase);
+
     // The same question asked of a signed-in caller.
     //
     // Controllers reached for User.IsInRole("Admin") for this, which silently

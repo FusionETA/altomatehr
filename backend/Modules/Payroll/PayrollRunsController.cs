@@ -26,6 +26,7 @@ public class PayrollRunsController : ControllerBase
     private readonly IPayrollXeroSyncService _xero;
     private readonly ISalaryChangeService _salaryChanges;
     private readonly IPayslipEmailService _payslipEmail;
+    private readonly ITp1FormService _tp1;
 
     public PayrollRunsController(
         IPayrollRunService runs,
@@ -35,8 +36,10 @@ public class PayrollRunsController : ControllerBase
         IStatutoryFileService statutory,
         IPayrollXeroSyncService xero,
         ISalaryChangeService salaryChanges,
-        IPayslipEmailService payslipEmail)
+        IPayslipEmailService payslipEmail,
+        ITp1FormService tp1)
     {
+        _tp1 = tp1;
         _salaryChanges = salaryChanges;
         _runs = runs;
         _adjustments = adjustments;
@@ -211,6 +214,19 @@ public class PayrollRunsController : ControllerBase
     [HttpGet("{id}/documents/payslip/{employeeProfileId}")]
     public Task<IActionResult> Payslip(string id, string employeeProfileId) =>
         File(_statutory.RenderPayslipPdfAsync(id, employeeProfileId));
+
+    // Borang PCB/TP1 for one employee: each item's limit, this month and the
+    // year to date, as LHDN's form lays it out.
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/documents/tp1/{employeeProfileId}")]
+    public Task<IActionResult> Tp1Form(string id, string employeeProfileId) =>
+        File(_tp1.RenderFormAsync(id, employeeProfileId));
+
+    // The month's list of employees who claimed TP1 or declared a previous
+    // employer on TP3 — printable, as the MTD spec requires.
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/documents/tp1-claims")]
+    public Task<IActionResult> Tp1Claims(string id) => File(_tp1.RenderClaimsListAsync(id));
 
     // Every payslip as a ZIP of individual PDFs — finance forwards them one
     // at a time, so a single concatenated document would need splitting.

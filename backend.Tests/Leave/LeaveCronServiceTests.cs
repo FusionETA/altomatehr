@@ -369,6 +369,8 @@ public class LeaveCronServiceTests
     private sealed class FakeMembershipRepo(IEnumerable<OrganizationMembership> rows)
         : IOrganizationMembershipRepository
     {
+        public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
         public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() => Task.FromResult(rows.ToList());
         public Task<List<OrganizationMembership>> GetByUserAsync(string userId) => throw new NotImplementedException();
         public Task<OrganizationMembership?> GetAsync(string o, string u) => throw new NotImplementedException();

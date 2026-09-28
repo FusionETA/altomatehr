@@ -41,9 +41,14 @@ export function CategoryPicker({
   disabled?: boolean;
   onChange: (code: string) => void;
 }) {
-  const offered = kind
-    ? categories.filter((category) => category.kind === kind)
-    : categories;
+  const offered = (
+    kind ? categories.filter((category) => category.kind === kind) : categories
+  ).filter(
+    // Unpaid leave is docked automatically from approved unpaid-leave
+    // applications, so adding it here too would deduct twice — v1 hides it for
+    // the same reason. A row already on it keeps it, or it would show blank.
+    (category) => category.code !== "deduct_unpaid_leave" || category.code === value,
+  );
 
   return (
     <PayrollSelect

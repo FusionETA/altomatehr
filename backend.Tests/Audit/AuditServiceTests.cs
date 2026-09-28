@@ -284,6 +284,46 @@ public class AuditServiceTests
         Assert.Equal("A row's contents were edited after it was written.", result.Reason);
         Assert.Null(result.Head);
     }
+
+    // ─── Fusioneta support ──────────────────────────────────────────────
+
+    // In the customer's log a support action is "System (Support)" — no name,
+    // no email, no IP. The real person is kept in the internal support log.
+    [Fact]
+    public async Task ASupportAction_IsMaskedInTheCustomersLog_AndKeptInternally()
+    {
+        var repo = new InMemoryAuditRepository();
+        var support = new InMemorySupportAuditRepository();
+        var service = new AuditService(repo,
+            new StubCurrentUser { UserId = "usr-staff", Email = "staff@fusioneta.com", IsSupport = true },
+            NullLogger<AuditService>.Instance, new UsersOnlyDirectory([]), support);
+
+        await service.WriteAsync(new AuditEvent("payroll.run.generate", "Ran payroll for September 2026"));
+
+        var entry = Assert.Single((await service.ListAsync(new AuditQueryDto())).Entries);
+        Assert.Equal(AuditService.SupportActorName, entry.ActorName);
+        Assert.DoesNotContain("staff@fusioneta.com", System.Text.Json.JsonSerializer.Serialize(entry));
+
+        var internalRow = Assert.Single(support.Rows);
+        Assert.Equal("staff@fusioneta.com", internalRow.SupportEmail);
+        Assert.Equal("org-1", internalRow.OrganizationId);
+        Assert.Equal("payroll.run.generate", internalRow.Action);
+    }
+
+    [Fact]
+    public async Task AnOrdinaryAction_IsNotMaskedOrCopied()
+    {
+        var repo = new InMemoryAuditRepository();
+        var support = new InMemorySupportAuditRepository();
+        var service = new AuditService(repo, new StubCurrentUser(),
+            NullLogger<AuditService>.Instance, new UsersOnlyDirectory([]), support);
+
+        await service.WriteAsync(new AuditEvent("payroll.run.generate", "Ran payroll"));
+
+        Assert.Equal("admin@altomate.com", Assert.Single((await service.ListAsync(new AuditQueryDto())).Entries).ActorName);
+        Assert.Empty(support.Rows);
+    }
+
 }
 
 // ---- Doubles ----
@@ -357,6 +397,18 @@ internal sealed class StubCurrentUser : ICurrentUser
     public string? IpAddress { get; set; } = "127.0.0.1";
     public bool IsAdmin => Role is "Admin" or "Owner";
     public bool IsAuthenticated => UserId is not null;
+    public bool IsSupport { get; set; }
+}
+
+internal sealed class InMemorySupportAuditRepository : ISupportAuditRepository
+{
+    public List<SupportAuditLog> Rows { get; } = [];
+
+    public Task AddAsync(SupportAuditLog entry)
+    {
+        Rows.Add(entry);
+        return Task.CompletedTask;
+    }
 }
 
 // The audit service reads only users from the directory, to name old entries.

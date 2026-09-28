@@ -19,4 +19,10 @@ public interface ICurrentUser
     // there's no request context (background jobs, seeding) — callers treat
     // null as "can't verify" rather than "allowed".
     string? IpAddress { get; }
+
+    // A Fusioneta superadmin in support mode: signed in as themselves but
+    // acting inside a customer's org they are not a member of. Their actions
+    // are audited as "System (Support)" there, with the real person recorded
+    // in the internal support log.
+    bool IsSupport => false;
 }

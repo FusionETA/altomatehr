@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -28,7 +29,10 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
         // row simply did not appear here before — which meant the screen whose
         // whole job is "who is not ready to file" silently omitted the people
         // furthest from ready, and an org of twelve showed four.
-        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
+        // Employees and Supervisors only — an Admin or Owner is not on payroll.
+        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .ToList();
 
         return
         [

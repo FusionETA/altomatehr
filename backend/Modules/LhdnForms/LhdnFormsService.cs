@@ -6,31 +6,39 @@ using AltomateHR.Api.Modules.Employees.Dtos;
 using AltomateHR.Api.Modules.LhdnForms.Dtos;
 using AltomateHR.Api.Modules.LhdnForms.Pdf;
 using AltomateHR.Api.Modules.Organizations;
+using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Policies.Entities;   // SalaryType
 
 namespace AltomateHR.Api.Modules.LhdnForms;
 
 // Assembles the per-employee LHDN form payload and dispatches to the matching
 // PDF renderer. Reads other modules only through their public service
-// surfaces (IEmployeeProfileService, IDirectoryService, IOrganizationService)
-// — never their repositories — per this codebase's module-isolation rule.
+// surfaces (IEmployeeProfileService, IDirectoryService, IOrganizationService,
+// and payroll's company info + annual figures) — never their repositories —
+// per this codebase's module-isolation rule.
 public class LhdnFormsService : ILhdnFormsService
 {
     private readonly IEmployeeProfileService _profiles;
     private readonly IDirectoryService _directory;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
+    private readonly IPayrollCompanyInfoService _companyInfo;
+    private readonly IPayrollAnnualReportService _annual;
 
     public LhdnFormsService(
         IEmployeeProfileService profiles,
         IDirectoryService directory,
         IOrganizationService organizations,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IPayrollCompanyInfoService companyInfo,
+        IPayrollAnnualReportService annual)
     {
         _profiles = profiles;
         _directory = directory;
         _organizations = organizations;
         _currentUser = currentUser;
+        _companyInfo = companyInfo;
+        _annual = annual;
     }
 
     public async Task<IEnumerable<LhdnFormDescriptorDto>?> GetDescriptorsAsync(string userId)
@@ -107,12 +115,45 @@ public class LhdnFormsService : ILhdnFormsService
 
         var (qualifyingChildren, annualChildRelief) = ComputeChildRelief(profile.ChildReliefJson);
 
+        // The employer block comes from Payroll Settings → Company Info; the
+        // money from the year's SUBMITTED runs (a draft month was not paid).
+        // Mid-year forms (CP22A, CP21, TP3, PCB 2(II)) use what is filed so far.
+        var info = await _companyInfo.GetEntityAsync();
+        var profileId = (await _directory.GetProfilesForCurrentOrgAsync())
+            .FirstOrDefault(p => string.Equals(p.UserId, userId, StringComparison.Ordinal))?.Id;
+        var annual = await _annual.LoadAsync(year);
+        var row = profileId is null
+            ? null
+            : annual.Employees.FirstOrDefault(e => string.Equals(e.EmployeeProfileId, profileId, StringComparison.Ordinal));
+
+        var perMonth = new LhdnFormMonthPcb?[12];
+        foreach (var month in row?.Months ?? [])
+        {
+            perMonth[month.Month - 1] = new LhdnFormMonthPcb
+            {
+                Month = month.Month, Mtd = month.Pcb, Cp38 = month.Cp38, Zakat = month.Zakat,
+            };
+        }
+
         return new LhdnFormPayload
         {
             OrganizationName = org?.Name ?? "",
-            // No company-level statutory config (tax number, address, declarant)
-            // exists in this rebuild yet — every field renders as "—" until it does.
-            Employer = new LhdnFormEmployer(),
+            Employer = info is null ? new LhdnFormEmployer() : new LhdnFormEmployer
+            {
+                EmployerName = Blank(info.EmployerName),
+                EmployerTin = Blank(info.EmployerTin),
+                FullAddress = Blank(string.Join(", ", new[]
+                    {
+                        info.AddressLine1, info.AddressLine2,
+                        string.Join(" ", new[] { info.Postcode, info.City }.Where(v => !string.IsNullOrWhiteSpace(v))),
+                        info.State,
+                    }.Where(v => !string.IsNullOrWhiteSpace(v)))),
+                Phone = Blank(info.Phone) ?? Blank(info.Handphone),
+                Email = Blank(info.Email),
+                DeclarantName = Blank(info.DeclarantName),
+                DeclarantPosition = Blank(info.DeclarantPosition),
+                DeclarantIdNumber = Blank(info.DeclarantIdNumber),
+            },
             Employee = new LhdnFormEmployee
             {
                 Name = profile.Name,
@@ -148,13 +189,23 @@ public class LhdnFormsService : ILhdnFormsService
                 PrevRemuneration = profile.PrevRemuneration,
                 PrevEpf = profile.PrevEpf,
             },
-            PerMonth = new LhdnFormMonthPcb?[12], // no payroll-run engine yet — every month unknown
+            PerMonth = perMonth,
             Year = year,
-            Ytd = new LhdnFormYtd(),               // same reason — every YTD figure unknown
-            HasPayrollHistory = false,
+            Ytd = row is null ? new LhdnFormYtd() : new LhdnFormYtd
+            {
+                GrossSalary = row.GrossSalary,
+                BonusAndCommission = row.BonusAndCommission,
+                TotalBik = row.TotalBik,
+                TotalPcb = row.TotalPcb,
+                TotalZakat = row.TotalZakat,
+                TotalEpfEmployee = row.TotalEpfEmployee,
+            },
+            HasPayrollHistory = row is not null,
             GeneratedAt = DateTime.UtcNow,
         };
     }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string FirstNonBlank(params string?[] candidates) =>
         candidates.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "employee";

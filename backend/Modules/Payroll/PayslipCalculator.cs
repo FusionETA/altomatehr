@@ -52,6 +52,10 @@ public static class PayslipCalculator
         public bool IsOku { get; init; }
         public DateTime? DateOfBirth { get; init; }
 
+        // A 15% approval in force THIS period — already checked against its
+        // from/to months by SpecialTaxSchemeFor. Null = normal resident rates.
+        public SpecialTaxScheme? SpecialTaxScheme { get; init; }
+
         public bool ContributeToEpf { get; init; } = true;
         public bool EpfMemberBefore1998 { get; init; }
         public decimal EpfEmployeeRate { get; init; }
@@ -119,7 +123,7 @@ public static class PayslipCalculator
         public decimal YtdAllowableDeductions { get; init; }
 
         // Per-category totals for the year, so the annual exemption ceilings
-        // (travel RM 6,000, childcare RM 2,400, award RM 2,000, the TP1 items)
+        // (travel RM 6,000, childcare RM 3,000, award RM 2,000, the TP1 items)
         // pick up where the last run left off.
         public IReadOnlyDictionary<string, decimal> YtdAllowanceByCategory { get; init; } =
             new Dictionary<string, decimal>();
@@ -139,7 +143,8 @@ public static class PayslipCalculator
 
         // Set only when an exemption ceiling actually clamped this row. Null
         // means "no clamp — use Amount", which is what the YTD read path needs
-        // so an exempt portion cannot leak into next month's taxable base.
+        // so an exempt portion cannot leak into next month's taxable base. On a
+        // TP1 relief row: the relief granted after its item and group limits.
         public decimal? PcbTaxableAmount { get; init; }
 
         public string? Category { get; init; }
@@ -425,6 +430,10 @@ public static class PayslipCalculator
             : 0m;
         var ytdSocsoEis = input.AutoApplySocsoEisRelief ? input.YtdSocsoEis : 0m;
 
+        // C11a voluntary EPF on TP1 could not be limited until now — its room
+        // depends on how much of the RM 4,000 EPF relief the EPF above uses.
+        ApplyVoluntaryEpfClaims(buckets, input, Money.Round2(epf.Employee), epfFromNormal);
+
         // Explain, not Calculate: the same one computation, with every
         // intermediate the LHDN form needs kept rather than discarded. The
         // deducted money reads off this, so the payslip's stored breakdown can
@@ -432,6 +441,7 @@ public static class PayslipCalculator
         var pcbResult = PcbCalculator.Explain(new PcbCalculator.Input
         {
             IsResident = input.IsResident,
+            SpecialTaxScheme = input.SpecialTaxScheme,
             PeriodMonth = input.PeriodMonth,
             ThisMonthTaxable = pcbWage,
             ThisMonthEpf = epfFromNormal,
@@ -572,6 +582,16 @@ public static class PayslipCalculator
 
         public decimal Zakat;
         public decimal Tp1Relief;
+
+        // C11a voluntary EPF rows, held until EPF is known — their limit
+        // depends on how much of the RM 4,000 EPF relief compulsory EPF uses.
+        // Index is the row's position in LineItems.
+        public List<(int LineIndex, decimal Amount)> PendingVoluntaryEpf { get; } = [];
+
+        // Relief granted this run per TP1 item, so a second row of the same
+        // item or group cannot claim the same headroom twice.
+        public Dictionary<string, decimal> Tp1Used { get; } = new(StringComparer.Ordinal);
+
         public decimal Cp38;
         public decimal VoluntaryPcb;
     }
@@ -584,7 +604,6 @@ public static class PayslipCalculator
         // Kept apart from the YTD figures so a single run with two rows in the
         // same category cannot claim the headroom twice.
         var exemptUsed = new Dictionary<string, decimal>(StringComparer.Ordinal);
-        var tp1Used = new Dictionary<string, decimal>(StringComparer.Ordinal);
 
         foreach (var a in input.FixedAllowances)
         {
@@ -605,9 +624,14 @@ public static class PayslipCalculator
 
             var pcbTaxable = PcbTaxablePortion(a, meta, amount, input.YtdAllowanceByCategory, exemptUsed);
 
+            // For a TP1 row: the relief it actually earned, once the item and
+            // group limits are applied. Recorded on the row (below) so next
+            // month's ΣLP and the limits read what COUNTED, not what was claimed.
+            decimal? reliefCounted = null;
+
             if (meta.Kind == PayslipLineKind.DEDUCTION)
             {
-                RouteDeduction(b, a, meta, amount, pcbTaxable, input.YtdAllowanceByCategory, tp1Used);
+                reliefCounted = RouteDeduction(b, a, meta, amount, pcbTaxable, input);
             }
             else if (meta.Kind == PayslipLineKind.REIMBURSEMENT)
             {
@@ -624,8 +648,11 @@ public static class PayslipCalculator
                 Label = string.IsNullOrWhiteSpace(a.Name) ? meta.Label : a.Name!,
                 Amount = amount,
                 // Only record the clamp when one happened; null means "use
-                // Amount", which is also what pre-existing rows imply.
-                PcbTaxableAmount = pcbTaxable < amount ? pcbTaxable : null,
+                // Amount", which is also what pre-existing rows imply. On a TP1
+                // row it is the relief that counted after its limits.
+                PcbTaxableAmount = reliefCounted is { } relief
+                    ? (relief < amount ? relief : null)
+                    : (pcbTaxable < amount ? pcbTaxable : null),
                 Category = a.Category,
                 SubjectToEpf = meta.SubjectToEpf,
                 SubjectToSocso = meta.SubjectToSocso,
@@ -726,14 +753,14 @@ public static class PayslipCalculator
         }
     }
 
-    private static void RouteDeduction(
+    // Returns the relief a TP1 row counted for (null for any other row).
+    private static decimal? RouteDeduction(
         Buckets b,
         FixedAllowance a,
         PayrollAdjustmentCategoryMeta meta,
         decimal amount,
         decimal pcbTaxable,
-        IReadOnlyDictionary<string, decimal> ytdByCategory,
-        Dictionary<string, decimal> tp1Used)
+        Input input)
     {
         if (meta.ReducesGross)
         {
@@ -764,24 +791,97 @@ public static class PayslipCalculator
         // this only records it for the CP39 PCB field.
         if (meta.AddsToStandardPcb) b.VoluntaryPcb += amount;
 
-        if (meta.FeedsLp1Relief)
-        {
-            // Clamp an over-claim to LHDN's per-item ceiling rather than letting
-            // it under-withhold. The admin-trusted catch-all has no ceiling.
-            if (meta.TaxExemptLimit is > 0m)
-            {
-                var used = Lookup(ytdByCategory, a.Category) + Lookup(tp1Used, a.Category);
-                var headroom = Math.Max(0m, meta.TaxExemptLimit.Value - used);
-                var eligible = Math.Min(amount, headroom);
+        if (!meta.FeedsLp1Relief) return null;
 
-                b.Tp1Relief += eligible;
-                tp1Used[a.Category] = Lookup(tp1Used, a.Category) + eligible;
-            }
-            else
-            {
-                b.Tp1Relief += amount;
-            }
+        // C11a: its limit depends on compulsory EPF, known only later.
+        if (a.Category == PayrollAdjustmentCategories.DeductTp1VoluntaryEpf)
+        {
+            b.PendingVoluntaryEpf.Add((b.LineItems.Count, amount));
+            return 0m;
         }
+
+        // C10: "not allowed in the case where the employee claimed deduction
+        // for wife" (MTD Spec 2026 p.32) — the wife relief applies exactly when
+        // the spouse is recorded as not working.
+        if (a.Category == PayrollAdjustmentCategories.DeductTp1Alimony && input.SpouseWorking == false)
+        {
+            return 0m;
+        }
+
+        // Clamp an over-claim to LHDN's limits rather than letting it
+        // under-withhold: the item's own, and the group's it shares. The
+        // admin-trusted catch-all has neither.
+        var eligible = Math.Min(amount, Tp1Headroom(meta, input.YtdAllowanceByCategory, b.Tp1Used, null));
+
+        b.Tp1Relief += eligible;
+        b.Tp1Used[a.Category] = Lookup(b.Tp1Used, a.Category) + eligible;
+        return eligible;
+    }
+
+    // What is left of a TP1 item's limits this year: the smaller of its own
+    // (item cap − granted so far) and its group's (group cap − granted to any
+    // item in the group). `groupCapOverride` is C11's variable limit.
+    private static decimal Tp1Headroom(
+        PayrollAdjustmentCategoryMeta meta,
+        IReadOnlyDictionary<string, decimal> ytdByCategory,
+        IReadOnlyDictionary<string, decimal> usedThisRun,
+        decimal? groupCapOverride)
+    {
+        var headroom = decimal.MaxValue;
+
+        if (meta.TaxExemptLimit is > 0m and var itemCap)
+        {
+            var used = Lookup(ytdByCategory, meta.Code) + Lookup(usedThisRun, meta.Code);
+            headroom = Math.Max(0m, itemCap - used);
+        }
+
+        if (meta.ReliefGroup is { } group
+            && (groupCapOverride ?? PayrollAdjustmentCategories.Tp1ReliefGroups.GetValueOrDefault(group)) is > 0m and var groupCap)
+        {
+            var usedInGroup = PayrollAdjustmentCategories.All.Values
+                .Where(m => m.ReliefGroup == group)
+                .Sum(m => Lookup(ytdByCategory, m.Code) + Lookup(usedThisRun, m.Code));
+            headroom = Math.Min(headroom, Math.Max(0m, groupCap - usedInGroup));
+        }
+
+        return headroom;
+    }
+
+    // C11a voluntary EPF claimed on TP1. The spec (p.24–25, examples iv–vi):
+    // voluntary EPF counts against the RM 4,000 EPF relief TOGETHER with
+    // compulsory EPF, and whatever does not fit there may use C11b's RM 3,000
+    // alongside life insurance (life insurance first). So C11 as a whole is
+    // RM 3,000 + the part of RM 4,000 compulsory EPF leaves unused — at most
+    // RM 7,000. The EPF relief is the year's projection, as PCB projects it:
+    // what was paid, this month, and this month's normal EPF for each month
+    // left. With RM 4,400 of compulsory EPF only life insurance fits; with none
+    // at all, RM 7,000 of voluntary EPF counts in full.
+    private static void ApplyVoluntaryEpfClaims(
+        Buckets b, Input input, decimal thisMonthEpf, decimal thisMonthNormalEpf)
+    {
+        if (b.PendingVoluntaryEpf.Count == 0) return;
+
+        var meta = PayrollAdjustmentCategories.Find(PayrollAdjustmentCategories.DeductTp1VoluntaryEpf)!;
+        var monthsLeft = Math.Max(0, 12 - input.PeriodMonth);
+        var epfRelief = Math.Min(
+            PcbReliefs.EpfCap,
+            Math.Max(0m, input.YtdEpf) + thisMonthEpf + thisMonthNormalEpf * monthsLeft);
+        var groupCap = PayrollAdjustmentCategories.Tp1ReliefGroups[PayrollAdjustmentCategories.ReliefGroupLifeInsuranceEpf]
+                       - PcbReliefs.EpfCap
+                       + Math.Max(0m, PcbReliefs.EpfCap - epfRelief);
+
+        foreach (var (lineIndex, amount) in b.PendingVoluntaryEpf)
+        {
+            var eligible = Math.Min(amount, Tp1Headroom(meta, input.YtdAllowanceByCategory, b.Tp1Used, groupCap));
+
+            b.Tp1Relief += eligible;
+            b.Tp1Used[meta.Code] = Lookup(b.Tp1Used, meta.Code) + eligible;
+
+            var line = b.LineItems[lineIndex];
+            b.LineItems[lineIndex] = line with { PcbTaxableAmount = eligible < amount ? eligible : null };
+        }
+
+        b.Tp1Relief = Money.Round2(b.Tp1Relief);
     }
 
     // ─── Snapshots and small helpers ────────────────────────────────────
@@ -871,6 +971,21 @@ public static class PayslipCalculator
         return value is "malaysian" or "malaysia" or "my" or "mys"
             || value.Contains("warganegara malaysia", StringComparison.Ordinal)
             || value.Contains("rakyat malaysia", StringComparison.Ordinal);
+    }
+
+    // The approval, if its months cover the period. A null end is open-ended;
+    // a null start means "from the beginning". Outside the range the employee
+    // is an ordinary resident again — REP, for one, lasts five years.
+    public static SpecialTaxScheme? SpecialTaxSchemeFor(
+        SpecialTaxScheme? scheme, DateTime? from, DateTime? to, int year, int month)
+    {
+        if (scheme is null) return null;
+
+        var period = year * 12 + month;
+        if (from is { } f && period < f.Year * 12 + f.Month) return null;
+        if (to is { } t && period > t.Year * 12 + t.Month) return null;
+
+        return scheme;
     }
 
     private static decimal Lookup(IReadOnlyDictionary<string, decimal> map, string key) =>

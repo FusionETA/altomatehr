@@ -36,6 +36,10 @@ public class PayslipLineItem : ITenantScoped
     // use `Amount` — which is also what legacy rows written before this column
     // existed require. Without it, an exempted portion would leak back into next
     // month's LHDN Y accumulation.
+    //
+    // On a TP1 relief row it is the relief GRANTED once the item and group
+    // limits applied — so ΣLP and next month's limits read what counted, not
+    // an over-claim.
     [Precision(12, 2)] public decimal? PcbTaxableAmount { get; set; }
 
     // The claim this reimbursement came from (phase 4). Null otherwise.

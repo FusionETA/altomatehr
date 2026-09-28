@@ -17,7 +17,15 @@ public sealed record AuditEvent(
     // from the email it was given, not from a token.
     string? OrganizationId = null,
     string? ActorEmail = null,
-    string? ActorName = null);
+    string? ActorName = null,
+    // A Fusioneta support action. Normally read off the session (the token's
+    // "support" claim); passed explicitly only for entering support mode,
+    // which happens before the support session exists.
+    SupportActor? Support = null);
+
+// The real person behind a support action — kept out of the customer's log
+// and written to the internal SupportAuditLog instead.
+public sealed record SupportActor(string UserId, string Email);
 
 public interface IAuditService
 {

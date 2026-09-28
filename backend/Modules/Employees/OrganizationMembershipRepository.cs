@@ -20,6 +20,11 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
         _db.OrganizationMemberships.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.OrganizationId == organizationId && m.UserId == userId);
 
+    // Every org's memberships — for Fusioneta support's company list only
+    // (owner and headcount per org). Superadmin-gated at the controller.
+    public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() =>
+        _db.OrganizationMemberships.IgnoreQueryFilters().ToListAsync();
+
     public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() =>
         _db.OrganizationMemberships.ToListAsync();
 

@@ -125,7 +125,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                     totals[payslip.EmployeeProfileId] = acc;
                 }
 
-                Accumulate(acc, payslip, lineItems.GetValueOrDefault(payslip.Id) ?? []);
+                Accumulate(acc, payslip, lineItems.GetValueOrDefault(payslip.Id) ?? [], run.PeriodMonth);
             }
         }
 
@@ -156,12 +156,17 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Epf { get; set; }
         public decimal Socso { get; set; }
         public decimal Eis { get; set; }
+
+        public SortedDictionary<int, (decimal Pcb, decimal Cp38, decimal Zakat)> Months { get; } = new();
     }
 
     private static void Accumulate(
-        Accumulator acc, Payslip payslip, IReadOnlyList<PayslipLineItem> lineItems)
+        Accumulator acc, Payslip payslip, IReadOnlyList<PayslipLineItem> lineItems, int month)
     {
         acc.Snapshot = payslip;
+
+        var m = acc.Months.GetValueOrDefault(month);
+        acc.Months[month] = (m.Pcb + payslip.Pcb + payslip.VoluntaryPcb, m.Cp38 + payslip.Cp38, m.Zakat + payslip.Zakat);
 
         acc.Pcb += payslip.Pcb;
         acc.Cp38 += payslip.Cp38;
@@ -243,6 +248,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             TotalEpfEmployee = Money.Round2(acc.Epf),
             TotalSocsoEmployee = Money.Round2(acc.Socso),
             TotalEisEmployee = Money.Round2(acc.Eis),
+            Months = [.. acc.Months.Select(kv => new AnnualMonth(
+                kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat)))],
         };
     }
 

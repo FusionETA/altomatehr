@@ -20,9 +20,8 @@ namespace AltomateHR.Api.Modules.Payroll;
 //   - TP1 items the employer cannot know (life insurance, lifestyle, parents'
 //     medical) are employee-declared and out of scope; pass them via
 //     ThisMonthAllowableDeductions if collected.
-//   - Returning Expert Programme, Knowledge Worker and the approved
-//     non-citizen C-suite category have special rates — not implemented, they
-//     compute as standard residents.
+//   (The 15% REP / knowledge-worker / C-suite approvals ARE implemented —
+//   `SpecialTaxScheme`; see PcbTaxBands.AnnualTax.)
 //   - `PcbBorneByEmployer` gross-up is NOT implemented; the figure is the same
 //     whoever legally pays it.
 //
@@ -34,6 +33,10 @@ public static class PcbCalculator
     {
         // Drives the whole formula — non-residents take the flat rate.
         public required bool IsResident { get; init; }
+
+        // A 15% approval in force this month (REP, knowledge worker, C-suite).
+        // Residents only; P is worked out as usual, only the tax on it changes.
+        public Employees.Entities.SpecialTaxScheme? SpecialTaxScheme { get; init; }
 
         // 1–12.
         public required int PeriodMonth { get; init; }
@@ -177,8 +180,8 @@ public static class PcbCalculator
         var chargeableNormal = Math.Max(0m,
             annualTaxable - epf.Normal - perkesoRelief - allowableDeductions - reliefs);
 
-        var annualTaxNormal = PcbTaxBands.ApplyResidentBands(chargeableNormal, spouseClaimable);
-        var (m, r, bandB) = PcbTaxBands.FindBand(chargeableNormal, spouseClaimable);
+        var annualTaxNormal = PcbTaxBands.AnnualTax(chargeableNormal, spouseClaimable, input.SpecialTaxScheme);
+        var (m, r, bandB) = PcbTaxBands.BandFor(chargeableNormal, spouseClaimable, input.SpecialTaxScheme);
 
         // MTD = [(P−M)R + B − (Z + X)] / (n+1): the year's balance owed, spread
         // across the months left.
@@ -213,6 +216,7 @@ public static class PcbCalculator
         return new PcbBreakdown
         {
             Formula = PcbFormula.Resident,
+            SpecialTaxScheme = input.SpecialTaxScheme,
 
             NormalTaxable = normalTaxable,
             AdditionalTaxable = arTaxable,
@@ -274,7 +278,7 @@ public static class PcbCalculator
             annualTaxable + arTaxable
                 - epf.WithAr - perkesoRelief - allowableDeductions - reliefs);
 
-        var (m2, r2, b2) = PcbTaxBands.FindBand(chargeableWithAr, spouseClaimable);
+        var (m2, r2, b2) = PcbTaxBands.BandFor(chargeableWithAr, spouseClaimable, input.SpecialTaxScheme);
 
         // CS — the yearly tax including the AR. Rounded to 2dp: it is a ringgit
         // figure, and it is what the form prints. Rounding it HERE, once, is
@@ -282,7 +286,7 @@ public static class PcbCalculator
         // printed PCB(C) — and, because the deduction reads the same value, on
         // the sum actually withheld.
         var cs = Money.Round2(
-            PcbTaxBands.ApplyResidentBands(chargeableWithAr, spouseClaimable));
+            PcbTaxBands.AnnualTax(chargeableWithAr, spouseClaimable, input.SpecialTaxScheme));
 
         // PCB(B) — the projected annual NORMAL deduction. Truncated monthly
         // figure, not the thresholded PCB(A); see the note on PcbArBreakdown.

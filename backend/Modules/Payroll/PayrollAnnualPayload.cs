@@ -97,4 +97,12 @@ public sealed record AnnualEmployeeRow
     // What the employee declares as employment income: salary plus the
     // additional remuneration plus the non-cash benefits.
     public decimal TotalIncome => GrossSalary + BonusAndCommission + TotalBik;
+
+    // Month by month, for PCB 2(II)'s table. Only months with a submitted run.
+    public IReadOnlyList<AnnualMonth> Months { get; init; } = [];
 }
+
+// One submitted month for one employee. `Pcb` is what went to LHDN in CP39's
+// PCB field — the formula PCB plus any Additional PCB the employee asked for;
+// CP38 arrears are remitted in their own column.
+public sealed record AnnualMonth(int Month, decimal Pcb, decimal Cp38, decimal Zakat);

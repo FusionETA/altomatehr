@@ -45,9 +45,11 @@ public sealed record PayrollAdjustmentCategoryMeta
     // twice for one absence.
     public bool ReducesGross { get; init; }
 
-    // Already expressed at the full daily rate, so the join/leave proration
-    // factor must not be applied a second time. Under-deducting a late joiner's
-    // unpaid leave is exactly the bug this prevents.
+    // A stated ringgit amount, not a monthly entitlement, so the join/leave
+    // proration factor must not touch it. A mid-month joiner's RM 1,000 bonus
+    // is RM 1,000, not RM 516; their RM 300 TP1 claim is still RM 300; unpaid
+    // leave is already at the daily rate. Only recurring monthly figures (the
+    // allowances) shrink with the days worked. Same 30 categories as v1.
     public bool SkipProration { get; init; }
 
     // The employee paid this to a third party themselves. It lowers the PCB the
@@ -58,6 +60,13 @@ public sealed record PayrollAdjustmentCategoryMeta
     // A Borang TP1 declaration. Feeds LP1 (this month) and ΣLP (the year) in the
     // LHDN formula, lowering chargeable income and so the month's PCB.
     public bool FeedsLp1Relief { get; init; }
+
+    // A Borang TP1 item that shares ONE annual limit with other items — e.g.
+    // C4 medical: vaccination, dental and a full medical exam are RM 1,000 each
+    // but all of C4 together is RM 10,000. `TaxExemptLimit` stays the item's
+    // own cap; `Tp1ReliefGroups` holds the shared one. Null = the item stands
+    // alone.
+    public string? ReliefGroup { get; init; }
 
     // Court-ordered tax arrears. Remitted through CP39's own CP38 column and
     // kept out of `Payslip.Pcb`, because the MTD spec's X — accumulated PCB paid
@@ -151,6 +160,48 @@ public static class PayrollAdjustmentCategories
     public const string DeductTp1SportsEquipment = "deduct_tp1_sports_equipment";
     public const string DeductTp1Other = "deduct_tp1_other";
 
+    // The rest of Borang TP1 (1/2026), LHDN MTD Spec 2026 pages 28–35 and 37–38.
+    public const string DeductTp1ParentsMedical = "deduct_tp1_parents_medical";            // C1a
+    public const string DeductTp1ParentsDental = "deduct_tp1_parents_dental";              // C1b
+    public const string DeductTp1ParentsMedicalExam = "deduct_tp1_parents_medical_exam";   // C1c
+    public const string DeductTp1SupportingEquipment = "deduct_tp1_supporting_equipment";  // C2
+    public const string DeductTp1EducationFees = "deduct_tp1_education_fees";              // C3a/b
+    public const string DeductTp1Upskilling = "deduct_tp1_upskilling";                     // C3c
+    public const string DeductTp1Vaccination = "deduct_tp1_vaccination";                   // C4c
+    public const string DeductTp1Dental = "deduct_tp1_dental";                             // C4d
+    public const string DeductTp1MedicalExam = "deduct_tp1_medical_exam";                  // C4e
+    public const string DeductTp1LearningDisability = "deduct_tp1_learning_disability";    // C4f
+    public const string DeductTp1Breastfeeding = "deduct_tp1_breastfeeding";               // C7
+    public const string DeductTp1ChildcareFees = "deduct_tp1_childcare_fees";              // C8
+    public const string DeductTp1Sspn = "deduct_tp1_sspn";                                 // C9
+    public const string DeductTp1Alimony = "deduct_tp1_alimony";                           // C10
+    public const string DeductTp1VoluntaryEpf = "deduct_tp1_voluntary_epf";                // C11a
+    public const string DeductTp1EvCharging = "deduct_tp1_ev_charging";                    // C15
+    public const string DeductTp1HousingLoan500k = "deduct_tp1_housing_loan_500k";         // C16a
+    public const string DeductTp1HousingLoan750k = "deduct_tp1_housing_loan_750k";         // C16b
+    public const string DeductTp1Tourism = "deduct_tp1_tourism";                           // C17
+    public const string DeductDepartureLevyTp1 = "deduct_departure_levy_tp1";              // D1b
+
+    // Borang TP1 groups whose items share one annual limit.
+    public const string ReliefGroupParents = "C1";
+    public const string ReliefGroupEducation = "C3";
+    public const string ReliefGroupMedical = "C4";
+    public const string ReliefGroupLifeInsuranceEpf = "C11";
+    public const string ReliefGroupHousingLoan = "C16";
+
+    // The shared limits. C11's is not a fixed figure: RM 3,000 plus whatever of
+    // the RM 4,000 EPF relief compulsory EPF leaves unused — see
+    // PayslipCalculator.ApplyVoluntaryEpfClaims. The value here is its ceiling.
+    public static readonly IReadOnlyDictionary<string, decimal> Tp1ReliefGroups =
+        new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [ReliefGroupParents] = 8000m,
+            [ReliefGroupEducation] = 7000m,
+            [ReliefGroupMedical] = 10000m,
+            [ReliefGroupLifeInsuranceEpf] = 7000m,
+            [ReliefGroupHousingLoan] = 7000m,
+        };
+
     public static PayrollAdjustmentCategoryMeta? Find(string? code) =>
         code is not null && All.TryGetValue(code, out var meta) ? meta : null;
 
@@ -221,7 +272,9 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = true,
-                TaxExemptLimit = 2400m,
+                // RM 3,000 a year, children up to 12 (LHDN MTD Spec 2026 p.21;
+                // was RM 2,400).
+                TaxExemptLimit = 3000m,
             },
 
             // Reimbursing an actual bill is exempt; a flat monthly phone
@@ -233,7 +286,12 @@ public static class PayrollAdjustmentCategories
                 Label = "Phone/Internet Bill Payment",
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
-                SubjectToPcb = false, SubjectToHrdf = true,
+                // Not HRDF wages: PSMB Act 2001 s.2(c) excludes "any sum payable
+                // to the employee to defray special expenses entailed on him by
+                // the nature of his employment", and reimbursing the actual
+                // bill is exactly that. The flat phone ALLOWANCE is wages and
+                // stays in. (v1 made this change on 2026-07-10.)
+                SubjectToPcb = false, SubjectToHrdf = false,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -259,6 +317,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -269,6 +328,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -279,6 +339,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -289,6 +350,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             // Back pay is wages for every agency — including HRDF, which names
@@ -301,6 +363,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = true,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             // Overtime is expressly outside the EPF definition of wages, inside
@@ -314,6 +377,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -324,6 +388,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -334,6 +399,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = true,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             // Gratuity on discharge or retirement is excluded from every
@@ -346,6 +412,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -356,6 +423,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -366,6 +434,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -376,6 +445,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             // A director who is not an employee has no contract of service, so
@@ -388,6 +458,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
+                SkipProration = true,
             },
 
             // Repaying an expense the employee fronted is not income at all — it
@@ -399,6 +470,7 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
+                SkipProration = true,
             },
 
             // ─── Benefits in kind / perquisites ─────────────────────────────
@@ -522,8 +594,12 @@ public static class PayrollAdjustmentCategories
                 ReducesBase = true, ReducesGross = true,
             },
 
-            // Recovering a cash advance. It shrinks the wage bases but the
-            // employee did earn the gross, so gross stands.
+            // Recovering a salary advance that was itself paid through payroll.
+            // As in v1, it comes off the displayed GROSS, not only take-home,
+            // so gross, statutory, cost and net all show the reduced wage —
+            // behaviourally the same as Salary Adjustment. An advance paid
+            // OUTSIDE payroll (never taxed) belongs in Miscellaneous instead,
+            // so statutory stays on the full salary.
             new PayrollAdjustmentCategoryMeta
             {
                 Code = DeductAdvance,
@@ -531,7 +607,8 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.DEDUCTION,
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
-                ReducesBase = true,
+                ReducesBase = true, ReducesGross = true,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -541,6 +618,7 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.DEDUCTION,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -550,6 +628,7 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.DEDUCTION,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -590,6 +669,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 OffsetsPcb = true,
+                SkipProration = true,
             },
 
             // Zakat the employee already paid directly, declared on Borang TP1
@@ -602,6 +682,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 OffsetsPcb = true, CashNeutral = true,
+                SkipProration = true,
             },
 
             // Uncapped catch-all kept for rows written before the TP1 items were
@@ -614,6 +695,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
+                SkipProration = true,
             },
 
             // The TP1 caps below are LHDN's per-item annual relief ceilings. An
@@ -626,7 +708,10 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
-                TaxExemptLimit = 3000m,
+                // C11b — self, spouse and (from 2026) children. Shares C11's
+                // RM 7,000 with voluntary EPF.
+                TaxExemptLimit = 3000m, ReliefGroup = ReliefGroupLifeInsuranceEpf,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -638,6 +723,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
                 TaxExemptLimit = 4000m,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -649,6 +735,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
                 TaxExemptLimit = 3000m,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -659,7 +746,10 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
-                TaxExemptLimit = 10000m,
+                // C4a serious disease + C4b fertility; the rest of C4 has its
+                // own rows below and shares this RM 10,000.
+                TaxExemptLimit = 10000m, ReliefGroup = ReliefGroupMedical,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -671,6 +761,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
                 TaxExemptLimit = 2500m,
+                SkipProration = true,
             },
 
             new PayrollAdjustmentCategoryMeta
@@ -682,6 +773,7 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
                 TaxExemptLimit = 1000m,
+                SkipProration = true,
             },
 
             // Deliberately uncapped — the admin has seen the receipts.
@@ -693,6 +785,250 @@ public static class PayrollAdjustmentCategories
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 FeedsLp1Relief = true, CashNeutral = true,
+                SkipProration = true,
+            },
+
+            // C1 parents / grandparents: RM 8,000 across treatment, dental and a full
+            // medical exam (the exam itself RM 1,000). They must be resident in Malaysia.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1ParentsMedical,
+                Label = "TP1 · Parents — Medical, Special Needs & Carer",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 8000m, ReliefGroup = ReliefGroupParents,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1ParentsDental,
+                Label = "TP1 · Parents — Dental Treatment",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 8000m, ReliefGroup = ReliefGroupParents,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1ParentsMedicalExam,
+                Label = "TP1 · Parents — Full Medical Exam & Vaccination",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m, ReliefGroup = ReliefGroupParents,
+                SkipProration = true,
+            },
+            // C2 — for a disabled self, spouse, child or parent. Not spectacles.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1SupportingEquipment,
+                Label = "TP1 · Basic Supporting Equipment (Disabled)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 6000m,
+                SkipProration = true,
+            },
+            // C3 education fees for self: RM 7,000, of which up-skilling courses RM 2,000.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1EducationFees,
+                Label = "TP1 · Education Fees (Self)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 7000m, ReliefGroup = ReliefGroupEducation,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Upskilling,
+                Label = "TP1 · Up-skilling / Self-enhancement Course",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 2000m, ReliefGroup = ReliefGroupEducation,
+                SkipProration = true,
+            },
+            // C4 medical sub-items, each inside C4's RM 10,000.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Vaccination,
+                Label = "TP1 · Vaccination (Self / Spouse / Child)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m, ReliefGroup = ReliefGroupMedical,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Dental,
+                Label = "TP1 · Dental Exam & Treatment (Self / Spouse / Child)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m, ReliefGroup = ReliefGroupMedical,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1MedicalExam,
+                Label = "TP1 · Full Medical Exam / Mental Health / Test Kits",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m, ReliefGroup = ReliefGroupMedical,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1LearningDisability,
+                Label = "TP1 · Learning Disability Diagnosis & Intervention (Child)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 10000m, ReliefGroup = ReliefGroupMedical,
+                SkipProration = true,
+            },
+            // C7 — a working mother, child aged 2 or under; once every 2 years.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Breastfeeding,
+                Label = "TP1 · Breastfeeding Equipment",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m,
+                SkipProration = true,
+            },
+            // C8 — registered centre, child aged 12 or under (2026). Either parent.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1ChildcareFees,
+                Label = "TP1 · Childcare / Kindergarten / After-school Centre Fees",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 3000m,
+                SkipProration = true,
+            },
+            // C9 — the year's deposits less withdrawals.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Sspn,
+                Label = "TP1 · SSPN Net Savings",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 8000m,
+                SkipProration = true,
+            },
+            // C10 — not allowed alongside the wife (spouse) relief; PayslipCalculator
+            // drops it when that relief applies.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Alimony,
+                Label = "TP1 · Alimony to Former Wife",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 4000m,
+                SkipProration = true,
+            },
+            // C11a — voluntary EPF the employee paid themselves (i-Saraan etc). Counts
+            // against the RM 4,000 EPF relief together with compulsory EPF, and any
+            // excess can use C11b's RM 3,000 if life insurance leaves room.
+            // Applied after EPF is known: PayslipCalculator.ApplyVoluntaryEpfClaims.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1VoluntaryEpf,
+                Label = "TP1 · Voluntary EPF (paid outside payroll)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 7000m, ReliefGroup = ReliefGroupLifeInsuranceEpf,
+                SkipProration = true,
+            },
+            // C15 — EV charger install, rental or subscription; composting machine or
+            // food-waste grinder; home CCTV.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1EvCharging,
+                Label = "TP1 · EV Charging / Food Waste Machine / Home CCTV",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 2500m,
+                SkipProration = true,
+            },
+            // C16 — first home, SPA dated 2025–2027, three years from the first year of
+            // interest. RM 7,000 up to RM 500k; RM 5,000 for RM 500,001–750,000.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1HousingLoan500k,
+                Label = "TP1 · First Home Loan Interest (Home up to RM500k)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 7000m, ReliefGroup = ReliefGroupHousingLoan,
+                SkipProration = true,
+            },
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1HousingLoan750k,
+                Label = "TP1 · First Home Loan Interest (Home RM500k–750k)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 5000m, ReliefGroup = ReliefGroupHousingLoan,
+                SkipProration = true,
+            },
+            // C17 — admission fees for domestic tourism (2026).
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductTp1Tourism,
+                Label = "TP1 · Tourist Attraction & Cultural Programme Fees",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                FeedsLp1Relief = true, CashNeutral = true,
+                TaxExemptLimit = 1000m,
+                SkipProration = true,
+            },
+            // D1b — departure levy for umrah or another religious pilgrimage. A
+            // REBATE like self-paid zakat (MTD Spec Section E item 5 treats the
+            // two together), not a relief. LHDN allows two claims in a lifetime;
+            // that is on the admin to check against the employee's history.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = DeductDepartureLevyTp1,
+                Label = "Departure Levy — Umrah / Religious Travel (TP1)",
+                Kind = PayslipLineKind.DEDUCTION,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = false, SubjectToHrdf = false,
+                OffsetsPcb = true, CashNeutral = true,
+                SkipProration = true,
             },
         }.ToDictionary(m => m.Code, StringComparer.Ordinal);
 }

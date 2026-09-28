@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Employees.Entities;   // SpecialTaxScheme
+
 namespace AltomateHR.Api.Modules.Payroll;
 
 // The resident progressive tax bands and the individual rebate.
@@ -34,6 +36,44 @@ public static class PcbTaxBands
     // Category 2 (married, spouse not working) claims the spouse rebate on top,
     // taking the total to RM 800.
     private const decimal RebateSpouse = 400m;
+
+    // ─── The 15% approvals (MTD Spec 2026, D.b.3–5, Tables 2–4) ─────────
+    //
+    //   REP / knowledge worker:  MTD = [(P × 15% − T) − (Z + X)] / (n + 1)
+    //   C-suite:                 MTD = [(P × 15%)     − (Z + X)] / (n + 1)
+    //
+    // T is the individual (+ spouse, category 2) rebate, only when P is
+    // RM 35,000 or less — Tables 2 and 3. Table 4 (C-suite) has no T. P itself
+    // is computed exactly as for any resident: same reliefs, EPF, TP1.
+    //
+    // So the special formula is the normal one with "(P − M)R + B" replaced by
+    // "P × 15% − T": M = 0, R = 15%, B = −T. These two helpers return that,
+    // and fall through to the resident bands when there is no approval.
+    public const decimal SpecialRate = 0.15m;
+
+    public static decimal AnnualTax(
+        decimal chargeableIncome, bool spouseClaimable, SpecialTaxScheme? scheme)
+    {
+        if (scheme is not { } special) return ApplyResidentBands(chargeableIncome, spouseClaimable);
+        if (chargeableIncome <= 0m) return 0m;
+
+        return Math.Max(0m,
+            chargeableIncome * SpecialRate - SpecialRebate(chargeableIncome, spouseClaimable, special));
+    }
+
+    public static (decimal M, decimal R, decimal B) BandFor(
+        decimal chargeableIncome, bool spouseClaimable, SpecialTaxScheme? scheme)
+    {
+        if (scheme is not { } special) return FindBand(chargeableIncome, spouseClaimable);
+        if (chargeableIncome <= 0m) return (0m, 0m, 0m);
+
+        return (0m, SpecialRate, -SpecialRebate(chargeableIncome, spouseClaimable, special));
+    }
+
+    private static decimal SpecialRebate(decimal chargeableIncome, bool spouseClaimable, SpecialTaxScheme scheme) =>
+        scheme != SpecialTaxScheme.C_SUITE && Math.Floor(chargeableIncome) <= RebateThreshold
+            ? RebateIndividual + (spouseClaimable ? RebateSpouse : 0m)
+            : 0m;
 
     // Annual tax on a chargeable income, net of rebate.
     //

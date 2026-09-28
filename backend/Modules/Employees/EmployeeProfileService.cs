@@ -134,6 +134,10 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.EpfMemberBefore1998 = d.EpfMemberBefore1998;
 
         e.SocsoNumber = d.SocsoNumber; e.SocsoScheme = d.SocsoScheme;
+        e.SpecialTaxScheme = d.SpecialTaxScheme;
+        // Stored as the first of the month — the approval is by month.
+        e.SpecialTaxFrom = d.SpecialTaxScheme is null ? null : FirstOfMonth(d.SpecialTaxFrom);
+        e.SpecialTaxTo = d.SpecialTaxScheme is null ? null : FirstOfMonth(d.SpecialTaxTo);
         e.ContributeToEis = d.ContributeToEis; e.ContributeToSkbbk = d.ContributeToSkbbk;
 
         e.IncomeTaxNumber = d.IncomeTaxNumber; e.PcbBorneByEmployer = d.PcbBorneByEmployer;
@@ -195,6 +199,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         EpfMemberBefore1998 = e.EpfMemberBefore1998,
 
         SocsoNumber = e.SocsoNumber, SocsoScheme = e.SocsoScheme,
+        SpecialTaxScheme = e.SpecialTaxScheme, SpecialTaxFrom = e.SpecialTaxFrom, SpecialTaxTo = e.SpecialTaxTo,
         ContributeToEis = e.ContributeToEis, ContributeToSkbbk = e.ContributeToSkbbk,
 
         IncomeTaxNumber = e.IncomeTaxNumber, PcbBorneByEmployer = e.PcbBorneByEmployer,
@@ -212,4 +217,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         IsArchived = e.IsArchived, ArchivedAt = e.ArchivedAt,
         ArchiveReason = e.ArchiveReason, TemporaryReviewDate = e.TemporaryReviewDate,
     };
+
+    private static DateTime? FirstOfMonth(DateTime? value) =>
+        value is { } v ? new DateTime(v.Year, v.Month, 1, 0, 0, 0, DateTimeKind.Unspecified) : null;
 }

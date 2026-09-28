@@ -10,4 +10,11 @@ public class AuthResponseDto
     public string? Name { get; set; }
     public string Role { get; set; } = string.Empty;
     public string ActiveOrganizationId { get; set; } = string.Empty;
+    public string? ActiveOrganizationName { get; set; }
+
+    // Fusioneta staff: the Support page is available.
+    public bool IsSuperadmin { get; set; }
+
+    // Support mode — acting inside a customer's org as Fusioneta support.
+    public bool SupportMode { get; set; }
 }
