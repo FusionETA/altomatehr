@@ -11,7 +11,8 @@ public class LhdnFormDescriptorDto
     public bool NeedsYearPicker { get; set; }
     public bool Enabled { get; set; }
     public string? DisabledReason { get; set; }
-    /// CP22 only: "Due in N days" / "Overdue by N days" / "Overdue — file late".
+    /// CP22 (from the join date) and CP22A / CP21 (30 days before the leave
+    /// date): "Due in N days" / "Overdue by N days".
     public string? Badge { get; set; }
     public string? BadgeVariant { get; set; }
 }
