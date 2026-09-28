@@ -142,6 +142,7 @@ public class ChartOfAccountService : IChartOfAccountService
         Type = a.Type,
         XeroAccountId = a.XeroAccountId,
         XeroStatus = a.XeroStatus,
+        XeroType = a.XeroType,
         XeroSyncedAt = a.XeroSyncedAt,
         IsSelectable = a.IsSelectable,
         LimitAmount = a.LimitAmount,

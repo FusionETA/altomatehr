@@ -118,6 +118,9 @@ export type ChartOfAccount = {
   // Set when the account came from Xero. Its code, name and type are Xero's;
   // everything else on the row is this app's.
   xeroAccountId?: string | null;
+  // Xero's own type: EXPENSE / DIRECTCOSTS / OVERHEADS / DEPRECIATN / BANK /
+  // CURRLIAB... Null for a hand-made account, or a Xero one not synced since.
+  xeroType?: string | null;
 };
 export type SaveAccount = {
   code: string;

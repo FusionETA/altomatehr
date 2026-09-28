@@ -28,6 +28,14 @@ public class ChartOfAccount : ITenantScoped
     [MaxLength(40)]
     public string? XeroStatus { get; set; }                      // ACTIVE | ARCHIVED | ...
 
+    // Xero's own type, as the sync last saw it: EXPENSE, DIRECTCOSTS, OVERHEADS,
+    // DEPRECIATN, BANK, CURRLIAB... `Type` collapses Xero's four expense types
+    // into EXPENSE, which is all a claim needs — this keeps which one it was, so
+    // the Expenses list can be filtered by it the way Xero's own chart is.
+    // Null for a hand-made account, and for a Xero one until its next sync.
+    [MaxLength(20)]
+    public string? XeroType { get; set; }
+
     public DateTime? XeroSyncedAt { get; set; }
 
     // Hand-made here rather than pulled from Xero. Provenance only — it changes
