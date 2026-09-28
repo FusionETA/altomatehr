@@ -633,6 +633,25 @@ public class StatutoryFileTests
         Assert.Single(lines);   // header only
     }
 
+    // LHDN, answering the 2026 MTD test (Q4, a non-resident turned resident
+    // whose Nov/Dec MTD is RM 0.00): the row "must be in text file even the
+    // amount is 0". Exhibit 5 item 7 counts it among the MTD records.
+    [Fact]
+    public void PcbTxt_FilesARm0RowForSomeoneWithMtdEarlierInTheYear()
+    {
+        var payload = Payload([
+            Row(name: "Withheld"),
+            Row(name: "Now resident", payslip: Payslip(pcb: 0m, name: "Now resident")) with { HadMtdThisYear = true },
+        ]);
+
+        var lines = Lines(PcbCp39Txt.Render(payload));
+
+        Assert.Equal(3, lines.Length);
+        var zeroRow = Assert.Single(lines, l => l.Contains("Now resident"));
+        Assert.Equal("00000000", zeroRow[110..118]);    // MTD RM 0.00
+        Assert.Equal("00002", lines[0][37..42]);        // both are MTD records
+    }
+
     // A new joiner whose TIN has not been issued only blocks the file if tax
     // was actually withheld from them.
     [Fact]
