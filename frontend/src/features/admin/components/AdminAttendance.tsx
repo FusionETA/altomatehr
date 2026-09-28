@@ -42,9 +42,10 @@ import { getProjects } from "@/features/settings/api";
 import { getTeams, type TeamMember } from "@/features/teams/api";
 import {
   getAllOvertime,
-  openOvertimePhoto,
+  type OvertimeAttachment,
   type OvertimeRequest,
 } from "@/features/overtime/api";
+import { OvertimeFileList } from "@/features/overtime/components/OvertimeFileList";
 import { overtimeStatusLabels } from "@/features/overtime/lib/overtime-status";
 import {
   archiveShift,
@@ -2586,7 +2587,8 @@ function OvertimeTab({
             </thead>
             <tbody>
               {paged.pageItems.map((r) => {
-                const attachments = [r.beforePhotoUrl, r.afterPhotoUrl].filter(Boolean).length;
+                const attachments =
+                  (r.beforeAttachments?.length ?? 0) + (r.afterAttachments?.length ?? 0);
                 const open = expanded === r.id;
                 return (
                   <Fragment key={r.id}>
@@ -2651,8 +2653,8 @@ function OvertimeTab({
                       <tr className="border-b border-border/60 bg-muted/30">
                         <td colSpan={6} className="px-6 py-4">
                           <div className="grid gap-6 sm:grid-cols-2">
-                            <PhotoSlot label="Before (justification)" url={r.beforePhotoUrl} />
-                            <PhotoSlot label="After (evidence)" url={r.afterPhotoUrl ?? null} />
+                            <PhotoSlot label="Before (justification)" files={r.beforeAttachments ?? []} />
+                            <PhotoSlot label="After (evidence)" files={r.afterAttachments ?? []} />
                           </div>
                           {r.reviewNotes ? (
                             <p className="mt-3 text-xs text-muted-foreground">
@@ -2682,23 +2684,16 @@ function otSubtitle(r: OvertimeRequest, projectNames: Map<string, string>): stri
 
 // One of the two OT photos. The photos are behind auth, so they open through
 // the API client rather than as a plain href — a bare src would 401.
-function PhotoSlot({ label, url }: { label: string; url: string | null }) {
+function PhotoSlot({ label, files }: { label: string; files: OvertimeAttachment[] }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label} · {files.length}
       </p>
-      {url ? (
-        <button
-          type="button"
-          onClick={() => void openOvertimePhoto(url)}
-          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-        >
-          <FileText className="h-3 w-3 shrink-0" aria-hidden />
-          <span className="max-w-[220px] truncate">{url.split("/").pop()}</span>
-        </button>
+      {files.length > 0 ? (
+        <OvertimeFileList files={files} />
       ) : (
-        <p className="mt-1 text-xs text-muted-foreground">None uploaded.</p>
+        <p className="text-xs text-muted-foreground">None uploaded.</p>
       )}
     </div>
   );

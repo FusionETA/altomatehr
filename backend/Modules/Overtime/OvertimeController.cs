@@ -75,6 +75,12 @@ public class OvertimeController : ControllerBase
     public async Task<IActionResult> DeleteAfterPhoto(string id) =>
         ToTransitionResponse(await _overtime.DeleteAfterPhotoAsync(id, GetUserId()));
 
+    // DELETE /overtime/{id}/attachments/{attachmentId} — remove ONE after-work
+    // file from a pending request (owner only). Before-work files are refused.
+    [HttpDelete("{id}/attachments/{attachmentId}")]
+    public async Task<IActionResult> DeleteAttachment(string id, string attachmentId) =>
+        ToTransitionResponse(await _overtime.DeleteAttachmentAsync(id, attachmentId, GetUserId()));
+
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
@@ -99,12 +105,16 @@ public class OvertimeController : ControllerBase
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _overtime.CancelAsync(id, GetUserId()));
 
+    // POST /overtime/photo — ONE before/after file (photo or PDF) per call;
+    // a client attaching several uploads each, then sends the urls. The
+    // request limit leaves room for multipart overhead around an 8 MB file,
+    // so the storage's own 8 MB check is the one that answers.
     [HttpPost("photo")]
-    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestSizeLimit(9 * 1024 * 1024)]
     public async Task<IActionResult> UploadPhoto(IFormFile? photo)
     {
         if (photo is null || photo.Length == 0)
-            return BadRequest(new { message = "Pick a photo to upload." });
+            return BadRequest(new { message = "Pick a photo or PDF to upload." });
 
         try
         {

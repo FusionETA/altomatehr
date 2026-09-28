@@ -19,6 +19,8 @@ public interface IOvertimeService
     Task<OvertimeSubmitResult> SubmitAsync(CreateOvertimeRequestDto dto, string employeeId);
     Task<OvertimeTransitionResult> AttachAfterPhotoAsync(string id, string userId, AttachOvertimeAfterPhotoDto dto);
     Task<OvertimeTransitionResult> DeleteAfterPhotoAsync(string id, string userId);
+    // One after-work file off a pending request (owner only).
+    Task<OvertimeTransitionResult> DeleteAttachmentAsync(string id, string attachmentId, string userId);
     Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId);
 
     // Sign off many requests at once, as the current-step approver of each.

@@ -19,9 +19,10 @@ internal sealed class FakeOvertimeRepository : IOvertimeRepository
     public Task<List<OvertimeRequest>> GetByEmployeeAsync(string employeeId) =>
         Task.FromResult(_requests.Where(r => r.EmployeeId == employeeId).ToList());
 
+    // Every file of each side, as the real repository searches.
     public Task<OvertimeRequest?> GetByPhotoUrlAsync(string photoUrl) =>
         Task.FromResult(_requests.FirstOrDefault(r =>
-            r.BeforePhotoUrl == photoUrl || r.AfterPhotoUrl == photoUrl));
+            r.BeforeAttachments.Any(a => a.Url == photoUrl) || r.AfterAttachments.Any(a => a.Url == photoUrl)));
 
     public Task<OvertimeRequest> AddAsync(OvertimeRequest request)
     {
@@ -35,7 +36,7 @@ internal sealed class FakeOvertimeRepository : IOvertimeRepository
 }
 
 // Neither the bulk-approve path nor the admin reads touch photo storage; they
-// only read AfterPhotoUrl off the request. Anything calling through here is a
+// only read the after-work files off the request. Anything calling through here is a
 // bug the test should show.
 internal sealed class UnusedPhotoStorage : IOvertimePhotoStorage
 {

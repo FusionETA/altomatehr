@@ -122,9 +122,13 @@ public class OvertimeService : IOvertimeService
         if (reason is null)
             return new OvertimeSubmitResult(false, null, "Enter the overtime reason.");
 
-        var beforePhotoUrl = Clean(dto.BeforePhotoUrl);
-        if (!IsOvertimePhotoUrl(beforePhotoUrl))
-            return new OvertimeSubmitResult(false, null, "Attach the before-work photo before submitting overtime.");
+        var (before, beforeError) = NormalizeAttachments(
+            dto.BeforeAttachments, dto.BeforePhotoUrl, existing: [], "before-work");
+        if (beforeError is not null)
+            return new OvertimeSubmitResult(false, null, beforeError);
+        if (before.Count == 0)
+            return new OvertimeSubmitResult(false, null,
+                "Attach at least one before-work photo or file before submitting overtime.");
 
         if (dto.WorkDate is null || dto.StartAt is null || dto.EndAt is null)
             return new OvertimeSubmitResult(false, null, "Enter the overtime date, start time, and end time.");
@@ -170,7 +174,9 @@ public class OvertimeService : IOvertimeService
             EndAt = endAt,
             RequestedMinutes = requestedMinutes,
             Reason = reason,
-            BeforePhotoUrl = beforePhotoUrl!,
+            // Sets BeforePhotoUrl too — the first file, for single-photo readers.
+            BeforeAttachments = before,
+            AfterAttachments = [],
             Status = OvertimeStatus.PENDING,
             CurrentStep = 0,
             SubmittedAt = now,
@@ -183,35 +189,78 @@ public class OvertimeService : IOvertimeService
         return new OvertimeSubmitResult(true, ToDto(request), null);
     }
 
-    // Removes the after-work photo from a request and deletes the underlying
-    // file. Same guards as attaching it: owner-only, and only while PENDING —
-    // once a supervisor has decided, the photo was part of what they reviewed,
-    // so it stays. The before-photo is deliberately NOT deletable: it's
-    // required on the entity, so removing it would leave the request invalid.
+    // Removes EVERY after-work file from a request (DELETE /after-photo, kept
+    // for older clients). Same guards as attaching: owner-only, and only while
+    // PENDING — once a supervisor has decided, the files were part of what they
+    // reviewed, so they stay. Before-work files are deliberately NOT removable:
+    // at least one is required, and they are what the request was filed on.
     public async Task<OvertimeTransitionResult> DeleteAfterPhotoAsync(string id, string userId)
     {
-        var request = await _requests.GetByIdAsync(id);
-        if (request is null || request.EmployeeId != userId)
-            return new OvertimeTransitionResult(false, false, null);
+        var (request, refusal) = await EditableByOwnerAsync(id, userId);
+        if (refusal is not null) return refusal;
 
-        if (request.Status != OvertimeStatus.PENDING)
+        var removed = request!.AfterAttachments;
+        if (removed.Count == 0)
             return new OvertimeTransitionResult(true, false, ToDto(request),
-                "Only pending overtime requests can be updated.");
-
-        if (string.IsNullOrEmpty(request.AfterPhotoUrl))
-            return new OvertimeTransitionResult(true, false, ToDto(request),
-                "There's no after-work photo to remove.");
+                "There's no after-work file to remove.");
 
         // Clear the reference first: if the file delete fails we'd rather have
-        // an orphaned file on disk than a request pointing at a missing photo.
-        var fileName = Path.GetFileName(request.AfterPhotoUrl);
-        request.AfterPhotoUrl = null;
+        // an orphaned file on disk than a request pointing at a missing one.
+        request.AfterAttachments = [];
         request.UpdatedAt = DateTime.UtcNow;
         await _requests.UpdateAsync(request);
 
-        try { await _photos.DeleteAsync(fileName); } catch { /* best-effort */ }
-
+        foreach (var file in removed) await DeleteStoredFileAsync(file.Url);
         return new OvertimeTransitionResult(true, true, ToDto(request));
+    }
+
+    // One after-work file, by its id. A before-work file is refused rather
+    // than removed — see DeleteAfterPhotoAsync.
+    public async Task<OvertimeTransitionResult> DeleteAttachmentAsync(string id, string attachmentId, string userId)
+    {
+        var (request, refusal) = await EditableByOwnerAsync(id, userId);
+        if (refusal is not null) return refusal;
+
+        if (request!.BeforeAttachments.Any(a => a.Id == attachmentId))
+            return new OvertimeTransitionResult(true, false, ToDto(request),
+                "Before-work files can't be removed once the request is submitted.");
+
+        var after = request.AfterAttachments;
+        var file = after.FirstOrDefault(a => a.Id == attachmentId);
+        if (file is null)
+            return new OvertimeTransitionResult(true, false, ToDto(request),
+                "That file isn't on this request any more.");
+
+        request.AfterAttachments = [.. after.Where(a => a.Id != attachmentId)];
+        request.UpdatedAt = DateTime.UtcNow;
+        await _requests.UpdateAsync(request);
+
+        await DeleteStoredFileAsync(file.Url);
+        return new OvertimeTransitionResult(true, true, ToDto(request));
+    }
+
+    private async Task<(OvertimeRequest? Request, OvertimeTransitionResult? Refusal)> EditableByOwnerAsync(
+        string id, string userId)
+    {
+        var request = await _requests.GetByIdAsync(id);
+        if (request is null || request.EmployeeId != userId)
+            return (null, new OvertimeTransitionResult(false, false, null));
+
+        if (request.Status != OvertimeStatus.PENDING)
+            return (null, new OvertimeTransitionResult(true, false, ToDto(request),
+                "Only pending overtime requests can be updated."));
+
+        return (request, null);
+    }
+
+    // Best-effort, and local files only. A Xero-hosted file's "name" is its
+    // Xero id, which the local store can't delete — asking it to was a silent
+    // no-op dressed as a delete. Those stay in Xero Files, as claim receipts do.
+    private async Task DeleteStoredFileAsync(string url)
+    {
+        if (url.StartsWith($"{PhotoRoutePrefix}{OvertimePhotoStorage.XeroSegment}/", StringComparison.Ordinal))
+            return;
+        try { await _photos.DeleteAsync(Path.GetFileName(url)); } catch { /* best-effort */ }
     }
 
     public async Task<OvertimeTransitionResult> AttachAfterPhotoAsync(
@@ -219,21 +268,20 @@ public class OvertimeService : IOvertimeService
         string userId,
         AttachOvertimeAfterPhotoDto dto)
     {
-        var request = await _requests.GetByIdAsync(id);
-        if (request is null || request.EmployeeId != userId)
-            return new OvertimeTransitionResult(false, false, null);
+        var (request, refusal) = await EditableByOwnerAsync(id, userId);
+        if (refusal is not null) return refusal;
 
-        if (request.Status != OvertimeStatus.PENDING)
+        // ADDS to what is there — several files can arrive over several visits.
+        var existing = request!.AfterAttachments;
+        var (added, error) = NormalizeAttachments(dto.Attachments, dto.AfterPhotoUrl, existing, "after-work");
+        if (error is not null)
+            return new OvertimeTransitionResult(true, false, ToDto(request), error);
+        if (added.Count == 0)
             return new OvertimeTransitionResult(true, false, ToDto(request),
-                "Only pending overtime requests can be updated.");
-
-        var afterPhotoUrl = Clean(dto.AfterPhotoUrl);
-        if (!IsOvertimePhotoUrl(afterPhotoUrl))
-            return new OvertimeTransitionResult(true, false, ToDto(request),
-                "Attach the after-work photo.");
+                "Attach an after-work photo or file.");
 
         var now = DateTime.UtcNow;
-        request.AfterPhotoUrl = afterPhotoUrl;
+        request.AfterAttachments = [.. existing, .. added];
 
         // Nobody above them to ask → this completes the request. Unlike the
         // other modules the decision can't happen at submit: ApproveAsync
@@ -248,6 +296,8 @@ public class OvertimeService : IOvertimeService
 
         request.UpdatedAt = now;
         await _requests.UpdateAsync(request);
+        // The auto-approval above pays these hours like any other approval.
+        await MarkPayrollIfApprovedAsync(request);
         return new OvertimeTransitionResult(true, true, ToDto(request));
     }
 
@@ -267,7 +317,7 @@ public class OvertimeService : IOvertimeService
 
         if (string.IsNullOrWhiteSpace(request!.AfterPhotoUrl))
             return new OvertimeTransitionResult(true, false, ToDto(request),
-                "The after-work photo must be attached before approval.");
+                "An after-work photo or file must be attached before approval.");
 
         var now = DateTime.UtcNow;
         var stepCount = await _router.StepCountAsync(Module, request.EmployeeId, request.ProjectId);
@@ -340,7 +390,7 @@ public class OvertimeService : IOvertimeService
             if (string.IsNullOrWhiteSpace(request!.AfterPhotoUrl))
             {
                 items.Add(new OvertimeBulkResultItem(id, false,
-                    "The after-work photo must be attached before approval."));
+                    "An after-work photo or file must be attached before approval."));
                 continue;
             }
 
@@ -588,6 +638,56 @@ public class OvertimeService : IOvertimeService
     private static bool IsOvertimePhotoUrl(string? url) =>
         !string.IsNullOrWhiteSpace(url) && url.StartsWith(PhotoRoutePrefix, StringComparison.Ordinal);
 
+    // The files a client sent, checked and turned into attachments. Only urls
+    // our own upload endpoint hands out are accepted; one already on the
+    // request (or twice in the batch) is quietly skipped rather than doubled;
+    // and the side is capped at OvertimeRequest.MaxAttachmentsPerSide.
+    private static (List<OvertimeAttachment> Added, string? Error) NormalizeAttachments(
+        IEnumerable<OvertimeAttachmentInputDto>? items,
+        string? singleUrl,
+        IReadOnlyList<OvertimeAttachment> existing,
+        string side)
+    {
+        var inputs = (items ?? []).ToList();
+        if (Clean(singleUrl) is { } legacy) inputs.Add(new OvertimeAttachmentInputDto { Url = legacy });
+
+        var seen = existing.Select(a => a.Url).ToHashSet(StringComparer.Ordinal);
+        var added = new List<OvertimeAttachment>();
+        var now = DateTime.UtcNow;
+
+        foreach (var input in inputs)
+        {
+            var url = Clean(input.Url);
+            if (!IsOvertimePhotoUrl(url))
+                return ([], $"One of the {side} files wasn't uploaded here. Remove it and attach it again.");
+            if (!seen.Add(url!)) continue;
+
+            var name = Clean(Path.GetFileName(input.FileName ?? string.Empty)) ?? url!.Split('/').Last();
+            added.Add(new OvertimeAttachment
+            {
+                Url = url!,
+                FileName = name.Length > 255 ? name[..255] : name,
+                AddedAt = now,
+            });
+        }
+
+        if (existing.Count + added.Count > OvertimeRequest.MaxAttachmentsPerSide)
+            return ([], existing.Count == 0
+                ? $"You can attach up to {OvertimeRequest.MaxAttachmentsPerSide} {side} files."
+                : $"You can attach up to {OvertimeRequest.MaxAttachmentsPerSide} {side} files — "
+                  + $"{existing.Count} {(existing.Count == 1 ? "is" : "are")} already on this request.");
+
+        return (added, null);
+    }
+
+    private static OvertimeAttachmentDto ToDto(OvertimeAttachment a) => new()
+    {
+        Id = a.Id,
+        Url = a.Url,
+        FileName = a.FileName,
+        AddedAt = Iso(a.AddedAt) ?? string.Empty,
+    };
+
     private static string? Clean(string? value)
     {
         var trimmed = value?.Trim();
@@ -609,6 +709,8 @@ public class OvertimeService : IOvertimeService
         Reason = request.Reason,
         BeforePhotoUrl = request.BeforePhotoUrl,
         AfterPhotoUrl = request.AfterPhotoUrl,
+        BeforeAttachments = [.. request.BeforeAttachments.Select(ToDto)],
+        AfterAttachments = [.. request.AfterAttachments.Select(ToDto)],
         Status = request.Status,
         CurrentStep = request.CurrentStep,
         ReviewNotes = request.ReviewNotes,

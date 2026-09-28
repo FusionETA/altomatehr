@@ -18,8 +18,12 @@ public class OvertimeRequestDto
     public string EndAt { get; set; } = string.Empty;
     public int RequestedMinutes { get; set; }
     public string Reason { get; set; } = string.Empty;
+    // The first before/after file — kept for older clients. New ones read the
+    // full lists below.
     public string BeforePhotoUrl { get; set; } = string.Empty;
     public string? AfterPhotoUrl { get; set; }
+    public List<OvertimeAttachmentDto> BeforeAttachments { get; set; } = [];
+    public List<OvertimeAttachmentDto> AfterAttachments { get; set; } = [];
     public OvertimeStatus Status { get; set; }
     public int CurrentStep { get; set; }
     public string? ReviewNotes { get; set; }
@@ -49,14 +53,41 @@ public class CreateOvertimeRequestDto
     [Required, MaxLength(1000)]
     public string Reason { get; set; } = string.Empty;
 
-    [Required, MaxLength(1000)]
-    public string BeforePhotoUrl { get; set; } = string.Empty;
+    // Up to OvertimeRequest.MaxAttachmentsPerSide before-work files, each
+    // uploaded first through POST /overtime/photo. At least one is required.
+    public List<OvertimeAttachmentInputDto>? BeforeAttachments { get; set; }
+
+    // The single-photo form older clients (and qa/) still send. Combined with
+    // BeforeAttachments when both are given.
+    [MaxLength(1000)]
+    public string? BeforePhotoUrl { get; set; }
 }
 
+// ADDS after-work files to a pending request — it no longer replaces the one
+// photo. Either field; both are combined.
 public class AttachOvertimeAfterPhotoDto
 {
+    [MaxLength(1000)]
+    public string? AfterPhotoUrl { get; set; }
+
+    public List<OvertimeAttachmentInputDto>? Attachments { get; set; }
+}
+
+public class OvertimeAttachmentInputDto
+{
     [Required, MaxLength(1000)]
-    public string AfterPhotoUrl { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+
+    [MaxLength(255)]
+    public string? FileName { get; set; }
+}
+
+public class OvertimeAttachmentDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string AddedAt { get; set; } = string.Empty;
 }
 
 public class RejectOvertimeDto

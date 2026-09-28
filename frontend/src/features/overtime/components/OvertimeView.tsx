@@ -3,15 +3,20 @@ import { createPortal } from "react-dom";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { FloatingActionButton } from "@/shared/components/FloatingActionButton";
 import { SkeletonCards } from "@/shared/components/Skeleton";
-import { CalendarClock, Camera, FileImage, Plus, Upload, X } from "lucide-react";
+import { CalendarClock, Camera, Plus, Upload, X } from "lucide-react";
 import {
-  attachOvertimeAfterPhoto,
+  attachOvertimeAfterFiles,
   createOvertime,
   getMyOvertime,
-  openOvertimePhoto,
-  uploadOvertimePhoto,
+  OVERTIME_FILE_ACCEPT,
+  OVERTIME_MAX_FILES,
+  removeOvertimeAttachment,
+  uploadOvertimeFiles,
+  type OvertimeAttachment,
   type OvertimeRequest,
 } from "../api";
+import { OvertimeFileList } from "./OvertimeFileList";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { OtRatePreview } from "./OtRatePreview";
 import { OvertimeStatusBadge } from "./OvertimeStatusBadge";
 import {
@@ -225,22 +230,53 @@ function OvertimeCard({
   onUpdated: (request: OvertimeRequest) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
-  async function attachAfter(file: File | null) {
-    if (!file) return;
+  const pending = request.status === "PENDING";
+  const after = request.afterAttachments ?? [];
+  const room = OVERTIME_MAX_FILES - after.length;
+
+  // Several at once, added to what's already there — the evidence often
+  // arrives as a handful of site photos plus a signed job sheet.
+  async function attachAfter(list: FileList | null) {
+    const files = Array.from(list ?? []);
+    if (files.length === 0) return;
+    if (files.length > room) {
+      setError(`You can add ${room} more after-work ${room === 1 ? "file" : "files"} (up to ${OVERTIME_MAX_FILES}).`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const upload = await uploadOvertimePhoto(file);
-      const updated = await attachOvertimeAfterPhoto(request.id, upload.photoUrl);
-      onUpdated(updated);
+      onUpdated(await attachOvertimeAfterFiles(request.id, await uploadOvertimeFiles(files)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not attach after photo.");
+      setError(e instanceof Error ? e.message : "Could not attach those files.");
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function removeAfter(file: OvertimeAttachment) {
+    const ok = await confirm({
+      title: "Remove this file?",
+      message: `"${file.fileName}" will be taken off this request and deleted.`,
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
+    setRemovingId(file.id);
+    setError(null);
+    try {
+      onUpdated(await removeOvertimeAttachment(request.id, file.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove that file.");
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -271,44 +307,54 @@ function OvertimeCard({
       <div>
         <p className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">{request.reason}</p>
 
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openOvertimePhoto(request.beforePhotoUrl)}
-            className="inline-flex h-7 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[11px] font-bold text-primary transition hover:bg-secondary"
-          >
-            <FileImage className="h-3 w-3" />
-            Before photo
-          </button>
-          {request.afterPhotoUrl ? (
-            <button
-              type="button"
-              onClick={() => openOvertimePhoto(request.afterPhotoUrl!)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[11px] font-bold text-primary transition hover:bg-secondary"
-            >
-              <FileImage className="h-3 w-3" />
-              After photo
-            </button>
-          ) : request.status === "PENDING" ? (
-            <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => attachAfter(event.target.files?.[0] ?? null)}
+        <div className="mt-3 space-y-2.5">
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              Before · {request.beforeAttachments?.length ?? 0}
+            </p>
+            <OvertimeFileList files={request.beforeAttachments ?? []} />
+          </div>
+
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              After · {after.length}
+            </p>
+            {after.length > 0 ? (
+              <OvertimeFileList
+                files={after}
+                onRemove={pending ? (file) => void removeAfter(file) : undefined}
+                removingId={removingId}
               />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => fileRef.current?.click()}
-                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-[11px] font-bold text-primary transition hover:bg-primary/15 disabled:opacity-50"
-              >
-                <Camera className="h-3 w-3" />
-                {busy ? "Uploading..." : "Attach after"}
-              </button>
-            </>
-          ) : null}
+            ) : pending ? (
+              <p className="text-[11px] text-muted-foreground">
+                None yet — at least one is needed before this can be approved.
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">None attached.</p>
+            )}
+
+            {pending && room > 0 ? (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept={OVERTIME_FILE_ACCEPT}
+                  className="hidden"
+                  onChange={(event) => void attachAfter(event.target.files)}
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => fileRef.current?.click()}
+                  className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-[11px] font-bold text-primary transition hover:bg-primary/15 disabled:opacity-50"
+                >
+                  <Camera className="h-3 w-3" />
+                  {busy ? "Uploading..." : after.length > 0 ? "Add more" : "Attach after"}
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -319,6 +365,7 @@ function OvertimeCard({
         </div>
       ) : null}
       {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
+      {confirmDialog}
     </article>
   );
 }
@@ -340,7 +387,8 @@ function NewOvertimeModal({
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
-  const [beforePhoto, setBeforePhoto] = useState<File | null>(null);
+  // Picked but not yet uploaded; uploaded together on submit.
+  const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -354,7 +402,7 @@ function NewOvertimeModal({
   const projectRequired = projectsLoading || projects.length > 0;
 
   async function submit() {
-    if (!workDate || !startTime || !endTime || !reason.trim() || !beforePhoto) return;
+    if (!workDate || !startTime || !endTime || !reason.trim() || beforeFiles.length === 0) return;
     if (projects.length > 0 && projectId === NO_PROJECT) {
       setError("Pick the project this overtime is for.");
       return;
@@ -362,14 +410,14 @@ function NewOvertimeModal({
     setBusy(true);
     setError(null);
     try {
-      const upload = await uploadOvertimePhoto(beforePhoto);
+      const beforeAttachments = await uploadOvertimeFiles(beforeFiles);
       const request = await createOvertime({
         projectId: projectId === NO_PROJECT ? undefined : projectId,
         workDate: `${workDate}T00:00:00`,
         startAt: `${workDate}T${startTime}:00`,
         endAt: `${workDate}T${endTime}:00`,
         reason: reason.trim(),
-        beforePhotoUrl: upload.photoUrl,
+        beforeAttachments,
       });
       onCreated(request);
     } catch (e) {
@@ -379,7 +427,21 @@ function NewOvertimeModal({
     }
   }
 
-  const canSubmit = Boolean(workDate && startTime && endTime && reason.trim() && beforePhoto && !busy);
+  const canSubmit = Boolean(
+    workDate && startTime && endTime && reason.trim() && beforeFiles.length > 0 && !busy,
+  );
+
+  // Choosing again ADDS to the list (a second trip to the gallery shouldn't
+  // drop the first pick); the same file twice is kept once.
+  function addBeforeFiles(list: FileList | null) {
+    const merged = [...beforeFiles];
+    for (const file of Array.from(list ?? [])) {
+      if (!merged.some((f) => f.name === file.name && f.size === file.size)) merged.push(file);
+    }
+    const over = merged.length > OVERTIME_MAX_FILES;
+    setError(over ? `You can attach up to ${OVERTIME_MAX_FILES} before-work files.` : null);
+    setBeforeFiles(over ? merged.slice(0, OVERTIME_MAX_FILES) : merged);
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 py-5 backdrop-blur-sm sm:items-center">
@@ -464,21 +526,58 @@ function NewOvertimeModal({
             />
           </label>
 
-          <label className="grid gap-1.5">
-            <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Before photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => setBeforePhoto(event.target.files?.[0] ?? null)}
-            />
-            <span className="flex h-12 cursor-pointer items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-sm text-muted-foreground shadow-sm transition hover:border-primary/40">
-              <Upload className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate">
-                {beforePhoto ? beforePhoto.name : "Choose before-work photo"}
+          <div className="grid gap-1.5">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                Before-work photos or files
               </span>
-            </span>
-          </label>
+              <input
+                type="file"
+                multiple
+                accept={OVERTIME_FILE_ACCEPT}
+                className="hidden"
+                disabled={beforeFiles.length >= OVERTIME_MAX_FILES}
+                onChange={(event) => {
+                  addBeforeFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+              <span className="flex h-12 cursor-pointer items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-sm text-muted-foreground shadow-sm transition hover:border-primary/40">
+                <Upload className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate">
+                  {beforeFiles.length === 0
+                    ? "Choose photos or PDFs"
+                    : beforeFiles.length >= OVERTIME_MAX_FILES
+                      ? `${OVERTIME_MAX_FILES} files — the most you can attach`
+                      : "Add more"}
+                </span>
+              </span>
+            </label>
+            {beforeFiles.length > 0 ? (
+              <ul className="flex flex-wrap gap-2">
+                {beforeFiles.map((file, index) => (
+                  <li
+                    key={`${file.name}-${file.size}`}
+                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted py-1 pl-3 pr-1 text-xs font-semibold text-foreground"
+                  >
+                    <span className="max-w-[12rem] truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.name}`}
+                      onClick={() => setBeforeFiles((cur) => cur.filter((_, i) => i !== index))}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-[11px] text-muted-foreground">
+              Photos (JPG, PNG, HEIC) or PDFs, up to {OVERTIME_MAX_FILES}, 8 MB each. They can't be
+              changed after you submit.
+            </p>
+          </div>
         </div>
 
         {error ? <p className="mt-4 text-sm font-medium text-destructive">{error}</p> : null}
