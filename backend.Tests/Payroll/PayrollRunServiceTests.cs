@@ -353,7 +353,6 @@ public class PayrollRunServiceTests : IDisposable
     {
         AddEmployee("usr-1", "Aisyah");
         AddEmployee("usr-2", "Archived", isArchived: true);
-        AddEmployee("usr-3", "Filed", reportedToLhdn: true);
         AddEmployee("usr-4", "Future", joinDate: new DateTime(2026, 2, 1));
         AddEmployee("usr-5", "Departed", leaveDate: new DateTime(2025, 12, 31));
 
@@ -361,9 +360,23 @@ public class PayrollRunServiceTests : IDisposable
         var result = (await _service.GenerateAsync(run.Id)).Result!;
 
         Assert.Equal(1, result.PayslipCount);
-        Assert.Equal(4, result.SkippedEmployees.Count);
+        Assert.Equal(3, result.SkippedEmployees.Count);
         Assert.Contains(result.SkippedEmployees, s => s.Name == "Archived");
-        Assert.Contains(result.SkippedEmployees, s => s.Reason.Contains("LHDN"));
+    }
+
+    // "Reported to LHDN" is a note, as in the previous system — it stored the
+    // flag and kept paying. Migrated orgs have it ticked on current staff, and
+    // skipping on it emptied a whole company's month.
+    [Fact]
+    public async Task GenerateAsync_StillPaysSomeoneMarkedReportedToLhdn()
+    {
+        AddEmployee("usr-1", "Filed", reportedToLhdn: true);
+
+        var run = await CreateRunAsync();
+        var result = (await _service.GenerateAsync(run.Id)).Result!;
+
+        Assert.Equal(1, result.PayslipCount);
+        Assert.Empty(result.SkippedEmployees);
     }
 
     // Someone who joined mid-period still belongs on the run — prorated.

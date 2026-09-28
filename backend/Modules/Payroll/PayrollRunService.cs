@@ -699,9 +699,11 @@ public class PayrollRunService : IPayrollRunService
     {
         if (profile.IsArchived) return "Archived";
 
-        // Their final payroll has already been reported to LHDN, so paying them
-        // again would contradict a filed Form E.
-        if (profile.ReportedToLhdn) return "Final payroll already reported to LHDN";
+        // ReportedToLhdn is deliberately NOT a reason. The previous system only
+        // stored it (import/export column) and kept paying — and orgs migrated
+        // from it have the box ticked on current staff, so skipping on it left
+        // a whole company's month with no payslips. A leaver is already left
+        // out by their leave date below.
 
         // NOTE: incomplete profiles are excluded at SELECTION, not here — the
         // "Start a payroll run" picker only lists payable (complete) employees,

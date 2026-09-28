@@ -1443,6 +1443,7 @@ export function EmployeeDetail({
                   />
                   <Toggle
                     label="Reported to LHDN"
+                    hint="For your records — it does not take them off payroll."
                     checked={profile.reportedToLhdn}
                     onChange={(v) => set("reportedToLhdn", v)}
                   />
