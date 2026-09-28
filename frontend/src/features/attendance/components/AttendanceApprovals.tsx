@@ -13,11 +13,11 @@ import {
   type AttendanceSession,
 } from "../api";
 import { dayOffsetLabel } from "../lib/attendance-time";
+import { OvertimeFileList } from "@/features/overtime/components/OvertimeFileList";
 import {
   approveOvertime,
   bulkApproveOvertime,
   getTeamOvertime,
-  openOvertimePhoto,
   rejectOvertime,
   type OvertimeBulkResult,
   type OvertimeRequest,
@@ -874,7 +874,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
   // would come back as a per-row failure — excluding it up front is the same
   // rule, applied before the approver taps rather than after.
   const isBulkable = (request: OvertimeRequest) =>
-    request.status === "PENDING" && !!request.afterPhotoUrl;
+    request.status === "PENDING" && (request.afterAttachments?.length ?? 0) > 0;
 
   const selection = useBulkSelection(filteredRequests, (request) => request.id, isBulkable);
   const selectedMinutes = selection.selected.reduce(
@@ -882,7 +882,7 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
     0,
   );
   const awaitingPhoto = filteredRequests.filter(
-    (request) => request.status === "PENDING" && !request.afterPhotoUrl,
+    (request) => request.status === "PENDING" && (request.afterAttachments?.length ?? 0) === 0,
   ).length;
 
   async function decide(id: string, fn: (id: string) => Promise<OvertimeRequest>) {
@@ -1002,8 +1002,8 @@ function OvertimeApprovals({ projectNames }: { projectNames: Map<string, string>
         {awaitingPhoto > 0 ? (
           <p className="flex items-start gap-2 px-1 text-xs text-muted-foreground">
             <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-            {awaitingPhoto} request{awaitingPhoto === 1 ? " is" : "s are"} still waiting on the
-            after-work photo and cannot be approved yet.
+            {awaitingPhoto} request{awaitingPhoto === 1 ? " is" : "s are"} still waiting on an
+            after-work photo or file and cannot be approved yet.
           </p>
         ) : null}
       </section>
@@ -1240,26 +1240,26 @@ function OvertimeApprovalDetailsModal({
           </section>
         ) : null}
 
-        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-5">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Photos</span>
-          <button
-            type="button"
-            onClick={() => openOvertimePhoto(request.beforePhotoUrl)}
-            className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
-          >
-            Before photo
-          </button>
-          {request.afterPhotoUrl ? (
-            <button
-              type="button"
-              onClick={() => openOvertimePhoto(request.afterPhotoUrl!)}
-              className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
-            >
-              After photo
-            </button>
-          ) : (
-            <span className="text-sm text-muted-foreground">No after photo attached</span>
-          )}
+        {/* Every file on each side — the evidence the decision rests on. */}
+        <div className="mt-5 grid gap-4 border-t border-border/60 pt-5 sm:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Before work · {request.beforeAttachments?.length ?? 0}
+            </p>
+            <OvertimeFileList files={request.beforeAttachments ?? []} />
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              After work · {request.afterAttachments?.length ?? 0}
+            </p>
+            {request.afterAttachments?.length ? (
+              <OvertimeFileList files={request.afterAttachments} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nothing attached yet — it can't be approved until there is.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

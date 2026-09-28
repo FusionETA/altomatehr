@@ -25,7 +25,9 @@ public interface IPayrollDraftStaleness
     Task MarkAllDraftsAsync();
 
     // Only drafts whose month overlaps [from, to], inclusive. For inputs that
-    // belong to dates — unpaid leave, an overtime claim.
+    // belong to dates — unpaid leave, an overtime claim. Also stamps that
+    // month's pending and submitted runs, which show nothing until they're
+    // sent back or reverted to draft — then they read as needing a re-run.
     Task MarkDraftsCoveringAsync(DateTime from, DateTime to);
 }
 

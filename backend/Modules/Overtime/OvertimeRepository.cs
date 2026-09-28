@@ -22,9 +22,23 @@ public class OvertimeRepository : IOvertimeRepository
             .OrderByDescending(r => r.WorkDate)
             .ToListAsync();
 
-    public Task<OvertimeRequest?> GetByPhotoUrlAsync(string photoUrl) =>
-        _db.OvertimeRequests.FirstOrDefaultAsync(r =>
-            r.BeforePhotoUrl == photoUrl || r.AfterPhotoUrl == photoUrl);
+    // The request a before/after file belongs to — how photo access decides
+    // who may open it. The single-photo columns hold only the FIRST file of
+    // each side, so the lists are searched too: a substring match narrows it
+    // in SQL, then the exact url is confirmed in memory (a url is never a
+    // prefix of another's JSON by accident, but "contains" alone isn't proof).
+    public async Task<OvertimeRequest?> GetByPhotoUrlAsync(string photoUrl)
+    {
+        var candidates = await _db.OvertimeRequests
+            .Where(r => r.BeforePhotoUrl == photoUrl
+                     || r.AfterPhotoUrl == photoUrl
+                     || (r.BeforeAttachmentsJson != null && r.BeforeAttachmentsJson.Contains(photoUrl))
+                     || (r.AfterAttachmentsJson != null && r.AfterAttachmentsJson.Contains(photoUrl)))
+            .ToListAsync();
+
+        return candidates.FirstOrDefault(r =>
+            r.BeforeAttachments.Any(a => a.Url == photoUrl) || r.AfterAttachments.Any(a => a.Url == photoUrl));
+    }
 
     public async Task<OvertimeRequest> AddAsync(OvertimeRequest request)
     {

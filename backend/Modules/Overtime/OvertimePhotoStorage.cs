@@ -2,15 +2,16 @@ using System.Security.Cryptography;
 
 namespace AltomateHR.Api.Modules.Overtime;
 
-// Before/after work photos on an overtime request — the evidence an approver
-// reviews, and the reason a request cannot be approved without one.
+// Before/after work files on an overtime request — photos, or a PDF such as a
+// signed job sheet — the evidence an approver reviews, and the reason a
+// request cannot be approved without one.
 //
 // Xero Files when the org has a connection, local disk otherwise: the same
 // order as attendance photos, claim receipts and leave attachments. The
 // fallback keeps someone able to file overtime when Xero is unreachable.
 //
-// No new columns. BeforePhotoUrl and AfterPhotoUrl each hold a url, and a
-// Xero-hosted photo carries its file id inside that url — so the id is
+// Each stored file is one url (kept in the request's attachment lists), and a
+// Xero-hosted file carries its file id inside that url — so the id is
 // recoverable without a second field to keep in step.
 public class OvertimePhotoStorage : IOvertimePhotoStorage
 {
@@ -24,6 +25,7 @@ public class OvertimePhotoStorage : IOvertimePhotoStorage
         ["image/webp"] = ".webp",
         ["image/heic"] = ".heic",
         ["image/heif"] = ".heif",
+        ["application/pdf"] = ".pdf",
     };
 
     // What an accountant sees this grouped under in Xero Files.
@@ -45,13 +47,13 @@ public class OvertimePhotoStorage : IOvertimePhotoStorage
     public async Task<OvertimePhotoUploadResult> StoreAsync(OvertimePhotoUpload upload)
     {
         if (upload.Length <= 0)
-            throw new ArgumentException("Photo file is empty.");
+            throw new ArgumentException("That file is empty.");
 
         if (upload.Length > MaxPhotoBytes)
-            throw new ArgumentException("Photo must be 8 MB or smaller.");
+            throw new ArgumentException("Each file must be 8 MB or smaller.");
 
         if (!AllowedContentTypes.TryGetValue(upload.ContentType, out var fallbackExtension))
-            throw new ArgumentException("Upload a JPG, PNG, WEBP, HEIC, or HEIF photo.");
+            throw new ArgumentException("Upload a photo (JPG, PNG, WEBP, HEIC or HEIF) or a PDF.");
 
         var extension = GetSafeExtension(upload.FileName, fallbackExtension);
 

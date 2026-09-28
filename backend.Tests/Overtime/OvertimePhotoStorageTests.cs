@@ -10,8 +10,8 @@ namespace AltomateHR.Api.Tests.Overtime;
 // Where an overtime before/after photo's bytes end up.
 //
 // Xero Files when the org is connected, local disk otherwise — the last of the
-// four modules on that path. No new columns: BeforePhotoUrl and AfterPhotoUrl
-// each carry a Xero-hosted photo's file id inside the url.
+// four modules on that path. A Xero-hosted file carries its file id inside
+// the url stored on the request.
 public class OvertimePhotoStorageTests : IDisposable
 {
     private readonly string _root =
@@ -70,15 +70,31 @@ public class OvertimePhotoStorageTests : IDisposable
         Assert.StartsWith("/overtime/photos/", result.PhotoUrl);
     }
 
+    // Photos and PDFs only — a Word file (or anything else) is refused before
+    // either destination sees it.
     [Fact]
-    public async Task RefusesANonImageWithoutUploading()
+    public async Task RefusesAFileThatIsNeitherAPhotoNorAPdf()
     {
-        var storage = Create(new XeroUploadedFile("file-1", "x.pdf"));
+        var storage = Create(new XeroUploadedFile("file-1", "x.docx"));
 
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => storage.StoreAsync(Upload("x.pdf", "application/pdf")));
+        await Assert.ThrowsAsync<ArgumentException>(() => storage.StoreAsync(Upload(
+            "x.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")));
 
         Assert.False(Directory.Exists(LocalDirectory));
+    }
+
+    // A signed job sheet is evidence too. Stored with its .pdf extension and
+    // served back as a PDF, so the browser opens it in its viewer.
+    [Fact]
+    public async Task AcceptsAPdf_AndServesItBackAsOne()
+    {
+        var storage = Create();
+
+        var result = await storage.StoreAsync(Upload("job-sheet.pdf", "application/pdf"));
+        var file = await storage.GetAsync(result.PhotoUrl.Split('/').Last());
+
+        Assert.EndsWith(".pdf", result.PhotoUrl);
+        Assert.Equal("application/pdf", file?.ContentType);
     }
 
     private sealed class StubUploader(XeroUploadedFile? uploaded) : IXeroFileUploader

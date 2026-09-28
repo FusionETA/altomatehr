@@ -85,22 +85,39 @@ public class PayrollRunRepository : IPayrollRunRepository
     public async Task MarkDraftsMutatedAsync(
         string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods)
     {
-        // Ungenerated drafts are skipped: with no payslips there is nothing to
+        // Ungenerated runs are skipped: with no payslips there is nothing to
         // be behind, and flagging one would show a stale banner on an empty run.
-        var drafts = await _db.PayrollRuns
+        //
+        // A dated input (unpaid leave, overtime) also stamps the month's run
+        // when it's AWAITING APPROVAL or APPROVED. Nothing shows for those —
+        // IsStale only reads true on a DRAFT, so approval goes ahead untouched —
+        // but if the run is later sent back or reverted to draft, the stamp is
+        // what makes it say "re-run": its payslips predate the change. The
+        // org-wide sweep (periods null) stays drafts-only; it fires on every
+        // profile or settings edit and would otherwise touch every filed month.
+        // Plain comparisons, not statuses.Contains(r.Status): against the
+        // string-converted enum that version stamped nothing in the tests, and
+        // the caller swallows errors by design — so it failed silently.
+        var includeLocked = periods is not null;
+        var runs = await _db.PayrollRuns
             .Where(r => r.OrganizationId == organizationId
-                        && r.Status == PayrollRunStatus.DRAFT
-                        && r.GeneratedAt != null)
+                        && r.GeneratedAt != null
+                        && (r.Status == PayrollRunStatus.DRAFT
+                            || (includeLocked
+                                && (r.Status == PayrollRunStatus.PENDING_APPROVAL
+                                    || r.Status == PayrollRunStatus.SUBMITTED))))
             .ToListAsync();
         if (periods is not null)
-            drafts = drafts.Where(r => periods.Contains((r.PeriodYear, r.PeriodMonth))).ToList();
-        if (drafts.Count == 0) return;
+            runs = runs.Where(r => periods.Contains((r.PeriodYear, r.PeriodMonth))).ToList();
+        if (runs.Count == 0) return;
 
         var now = DateTime.UtcNow;
-        foreach (var run in drafts)
+        foreach (var run in runs)
         {
             run.LastMutatedAt = now;
-            run.UpdatedAt = now;
+            // Only an editable run is "updated" by this. A locked or filed run's
+            // own record didn't change; the stamp just waits for a revert.
+            if (run.Status == PayrollRunStatus.DRAFT) run.UpdatedAt = now;
         }
         await _db.SaveChangesAsync();
     }

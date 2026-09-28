@@ -46,6 +46,10 @@ public class UpdateEmployeeDto
     // correcting it recomputes the employee's earned days for the year.
     public DateTime? JoinDate { get; set; }
 
+    // JoinDate null means "unchanged", so clearing needs saying out loud. Set
+    // by the spreadsheet import in "erase blank cells" mode; wins over JoinDate.
+    public bool ClearJoinDate { get; set; }
+
     [Required, MaxLength(20)]
     public string Role { get; set; } = "Employee";
 

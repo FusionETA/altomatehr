@@ -83,6 +83,23 @@ public sealed class TabularSheet
         return this;
     }
 
+    // Rows written bold and red in XLSX — for a warning on an instructions
+    // sheet that must not be skimmed past. Cosmetic, like MutedFrom: CSV and
+    // PDF ignore it. Keyed by index within Rows.
+    private readonly HashSet<int> _emphasized = [];
+
+    public IReadOnlySet<int> Emphasized => _emphasized;
+
+    // XLSX header row gets an auto-filter by default. Off for a sheet of prose
+    // (an instructions page), where a dropdown on the title is just noise.
+    public bool Filterable { get; init; } = true;
+
+    public TabularSheet EmphasizeLastRow()
+    {
+        if (_rows.Count > 0) _emphasized.Add(_rows.Count - 1);
+        return this;
+    }
+
     public TabularSheet SetTotals(params string?[] cells)
     {
         TotalsRow = cells.Select(c => c ?? string.Empty).ToList();

@@ -69,7 +69,7 @@ public static class TabularWriter
 
             var headerRow = worksheet.Row(1);
             headerRow.Style.Font.Bold = true;
-            headerRow.SetAutoFilter();
+            if (sheet.Filterable) headerRow.SetAutoFilter();
             worksheet.SheetView.FreezeRows(1);   // header stays put while HR scrolls
 
             var r = 2;
@@ -97,6 +97,12 @@ public static class TabularWriter
                     // whatever the reader's locale prefers — which then fails to
                     // re-import. SetValue(string) skips Excel's type inference.
                     worksheet.Cell(r, c + 1).SetValue(row[c]);
+                }
+
+                if (sheet.Emphasized.Contains(rowIndex))
+                {
+                    worksheet.Row(r).Style.Font.Bold = true;
+                    worksheet.Row(r).Style.Font.FontColor = XLColor.FromArgb(0xB4, 0x23, 0x18);
                 }
                 r++;
             }
