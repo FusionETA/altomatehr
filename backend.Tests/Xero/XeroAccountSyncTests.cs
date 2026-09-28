@@ -46,6 +46,29 @@ public class XeroAccountSyncTests
             repo.Accounts.Select(a => a.Code));
     }
 
+    // Locally Xero's four expense types all become EXPENSE; which one each was
+    // is kept for the Accounts page's type filter — including on an account an
+    // earlier sync imported before the column existed.
+    [Fact]
+    public async Task SyncAccountsAsync_KeepsXerosOwnTypeOnEachAccount()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Accounts.Add(new ChartOfAccount { Code = "6300", Name = "Rent", XeroAccountId = "x-3" });
+        var service = Create(repo, [
+            Account("x-1", "6100", "Travel", "EXPENSE"),
+            Account("x-2", "6200", "Cost of goods", "DirectCosts"),
+            Account("x-3", "6300", "Rent", "OVERHEADS"),
+            Account("x-4", "6400", "Depreciation", "DEPRECIATN"),
+        ]);
+
+        await service.SyncAccountsAsync();
+
+        Assert.All(repo.Accounts, a => Assert.Equal(ChartOfAccountTypes.Expense, a.Type));
+        Assert.Equal(
+            ["EXPENSE", "DIRECTCOSTS", "OVERHEADS", "DEPRECIATN"],
+            repo.Accounts.OrderBy(a => a.Code).Select(a => a.XeroType));
+    }
+
     // The payroll journal credits EPF / SOCSO / EIS / PCB / net salary to
     // liability accounts. Without them the payables could only be mapped to
     // expense accounts. All three of Xero's liability codes count.

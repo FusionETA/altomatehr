@@ -334,6 +334,7 @@ public class XeroService : IXeroService
                     Type = ToLocalAccountType(xeroAccount.Type),
                     XeroAccountId = xeroAccount.AccountId,
                     XeroStatus = xeroAccount.Status,
+                    XeroType = xeroAccount.Type.ToUpperInvariant(),
                     XeroSyncedAt = now,
                     IsSelectable = IsActive(xeroAccount.Status) && IsClaimable(xeroAccount.Type),
                     CreatedAt = now,
@@ -346,6 +347,7 @@ public class XeroService : IXeroService
             existing.Name = xeroAccount.Name;
             existing.Type = ToLocalAccountType(xeroAccount.Type);
             existing.XeroStatus = xeroAccount.Status;
+            existing.XeroType = xeroAccount.Type.ToUpperInvariant();
             existing.XeroSyncedAt = now;
             existing.IsArchived = !IsActive(xeroAccount.Status);
             // Anything a claim can't be coded to stops being selectable — except

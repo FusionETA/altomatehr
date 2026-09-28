@@ -16,6 +16,7 @@ import {
 } from "@/shared/components/ui/select";
 import { PayrollBulkFillPanel } from "@/features/payroll/components/PayrollBulkFillPanel";
 import { useEnabledModules } from "../lib/module-access";
+import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import {
   CLAIMS_PAGE_SIZE,
   PaginationControls,
@@ -173,8 +174,14 @@ export function EmployeesSettings() {
   // not change because someone typed in the search box.
   const needsSetupCount = staff.filter((e) => setupGap(e.id) !== null).length;
 
-  const policyName = (id: string | null) =>
-    id ? (policies.find((p) => p.id === id)?.name ?? "—") : "Default";
+  // No policy saved = the org's default, so it is named as that policy rather
+  // than a bare "Default" that says nothing about what they are on.
+  const defaultPolicy = policies.find((p) => p.isDefault && !p.isArchived) ?? null;
+  const policyOf = (id: string | null) =>
+    id ? (policies.find((p) => p.id === id) ?? null) : defaultPolicy;
+  const policyName = (id: string | null) => policyOf(id)?.name ?? "—";
+  const isDefaultPolicy = (id: string | null) =>
+    defaultPolicy !== null && policyOf(id)?.id === defaultPolicy.id;
 
   const filtered = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -468,6 +475,7 @@ export function EmployeesSettings() {
               <EmployeeRows
                 rows={setupSlice}
                 policyName={policyName}
+                isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
                 onOpen={setSelectedId}
@@ -496,6 +504,7 @@ export function EmployeesSettings() {
               <EmployeeRows
                 rows={readySlice}
                 policyName={policyName}
+                isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
                 onOpen={setSelectedId}
@@ -524,6 +533,7 @@ export function EmployeesSettings() {
               <EmployeeRows
                 rows={archivedSlice}
                 policyName={policyName}
+                isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
                 onOpen={setSelectedId}
@@ -571,12 +581,14 @@ export function EmployeesSettings() {
 function EmployeeRows({
   rows,
   policyName,
+  isDefaultPolicy,
   setupGap,
   isArchived,
   onOpen,
 }: {
   rows: Employee[];
   policyName: (id: string | null) => string;
+  isDefaultPolicy: (id: string | null) => boolean;
   setupGap: (userId: string) => string | null;
   isArchived: (userId: string) => boolean;
   onOpen: (id: string) => void;
@@ -628,7 +640,10 @@ function EmployeeRows({
                     {emp.role}
                   </span>
                 </td>
-                <td className={`${TD} text-muted-foreground`}>{policyName(emp.policyId)}</td>
+                <td className={`${TD} text-muted-foreground`}>
+                  {policyName(emp.policyId)}
+                  {isDefaultPolicy(emp.policyId) ? <DefaultPolicyTag /> : null}
+                </td>
                 <td className={TD}>
                   {/* The row's own answer to "can this person be paid?", in
                       words rather than an icon — it is the column an admin is

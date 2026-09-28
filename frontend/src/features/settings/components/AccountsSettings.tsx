@@ -24,6 +24,12 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import * as cache from "@/shared/lib/api-cache";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { OrgMileageDefaultsCard } from "./OrgFieldCards";
+import {
+  EXPENSE_TYPES,
+  expenseTypeLabel,
+  expenseTypeOf,
+  type ExpenseTypeId,
+} from "../lib/expense-types";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -86,6 +92,9 @@ export function AccountsSettings() {
   // coded TO versus what company money is spent FROM — and a Xero org has far
   // more of the former, so they get their own lists.
   const [tab, setTab] = useState<AccountTab>("EXPENSE");
+  // Xero's four expense types, as a filter within the Expenses tab. "ALL" is
+  // every one of them.
+  const [expenseType, setExpenseType] = useState<ExpenseTypeId | "ALL">("ALL");
   const [page, setPage] = useState(1);
 
   const query = useCachedQuery("/accounts", getAccounts);
@@ -160,7 +169,17 @@ export function AccountsSettings() {
     }
   }
 
-  const ofTab = accounts.filter((account) => account.type === tab);
+  const inTab = accounts.filter((account) => account.type === tab);
+  // Only the types this org actually has are offered, in Xero's order — an
+  // org with no Depreciation accounts gets no empty Depreciation filter.
+  const expenseTypesPresent =
+    tab === "EXPENSE"
+      ? EXPENSE_TYPES.filter((t) => inTab.some((account) => expenseTypeOf(account) === t.id))
+      : [];
+  const ofTab =
+    tab === "EXPENSE" && expenseType !== "ALL"
+      ? inTab.filter((account) => expenseTypeOf(account) === expenseType)
+      : inTab;
   const archivedCount = ofTab.filter((account) => account.isArchived).length;
   const visible = showArchived ? ofTab : ofTab.filter((account) => !account.isArchived);
 
@@ -345,6 +364,7 @@ export function AccountsSettings() {
         value={tab}
         onChange={(next) => {
           setTab(next);
+          setExpenseType("ALL");
           setPage(1);
           setShowArchived(false);
         }}
@@ -353,6 +373,32 @@ export function AccountsSettings() {
       />
 
       <div className={CARD}>
+        {expenseTypesPresent.length > 0 ? (
+          <div role="group" aria-label="Xero expense type" className="mb-4 flex flex-wrap gap-2">
+            {[{ id: "ALL" as const, label: "All" }, ...expenseTypesPresent].map((option) => {
+              const active = expenseType === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setExpenseType(option.id);
+                    setPage(1);
+                  }}
+                  className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         {archivedCount > 0 ? (
           <div className="mb-3 flex justify-end">
             <button
@@ -381,6 +427,7 @@ export function AccountsSettings() {
                 <tr className="border-b border-border/60">
                   <th className={TH}>Code</th>
                   <th className={TH}>Name</th>
+                  {tab === "EXPENSE" ? <th className={TH}>Type</th> : null}
                   <th className={TH}>Limit</th>
                   <th className={TH}>Flags</th>
                   <th className="h-11 px-3" />
@@ -397,6 +444,11 @@ export function AccountsSettings() {
                     >
                       {account.name}
                     </td>
+                    {tab === "EXPENSE" ? (
+                      <td className="px-3 py-3 text-xs text-muted-foreground">
+                        {expenseTypeLabel(expenseTypeOf(account))}
+                      </td>
+                    ) : null}
                     <td className="px-3 py-3">{account.limitAmount != null ? account.limitAmount : "—"}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {[

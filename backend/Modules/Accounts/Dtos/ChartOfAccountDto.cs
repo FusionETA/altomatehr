@@ -8,6 +8,8 @@ public class ChartOfAccountDto
     public string Type { get; set; } = string.Empty;
     public string? XeroAccountId { get; set; }
     public string? XeroStatus { get; set; }
+    // Xero's own type (EXPENSE / DIRECTCOSTS / OVERHEADS / DEPRECIATN / ...).
+    public string? XeroType { get; set; }
     public DateTime? XeroSyncedAt { get; set; }
     public bool IsSelectable { get; set; }
     public decimal? LimitAmount { get; set; }
