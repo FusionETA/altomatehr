@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Download, LoaderCircle, Mail, Sliders, TriangleAlert } from "lucide-react";
+import { Download, FileText, LoaderCircle, Mail, Sliders, TriangleAlert } from "lucide-react";
 import {
   downloadPayslipPdf,
+  downloadTp1Form,
   emailPayslip,
   type AdjustmentCategory,
   type Payslip,
@@ -91,6 +92,21 @@ export function PayrollPayslipsTable({
     setDownloading(payslip.id);
     try {
       saveFile(await downloadPayslipPdf(runId, payslip.employeeProfileId));
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function getTp1(payslip: Payslip) {
+    setDownloading(`tp1-${payslip.id}`);
+    setEmailError(null);
+    try {
+      saveFile(await downloadTp1Form(runId, payslip.employeeProfileId));
+    } catch (e: unknown) {
+      setEmailError({
+        id: payslip.id,
+        message: e instanceof Error ? e.message : "Could not download this TP1 form.",
+      });
     } finally {
       setDownloading(null);
     }
@@ -190,6 +206,9 @@ export function PayrollPayslipsTable({
                 emailBusy={emailing === payslip.id}
                 emailErrorMessage={emailError?.id === payslip.id ? emailError.message : null}
                 onEmail={canEmail ? () => void sendEmail(payslip) : undefined}
+                // Same gate as emailing: an approved month only.
+                tp1Busy={downloading === `tp1-${payslip.id}`}
+                onTp1={canEmail ? () => void getTp1(payslip) : undefined}
               />
             ))}
           </tbody>
@@ -272,6 +291,8 @@ function Row({
   onPdf,
   onAdjust,
   onEmail,
+  tp1Busy,
+  onTp1,
   emailBusy,
   emailErrorMessage,
 }: {
@@ -283,6 +304,8 @@ function Row({
   onAdjust?: (employeeProfileId: string) => void;
   // Absent on a run that isn't SUBMITTED yet.
   onEmail?: () => void;
+  tp1Busy?: boolean;
+  onTp1?: () => void;
   emailBusy: boolean;
   emailErrorMessage: string | null;
 }) {
@@ -374,6 +397,23 @@ function Row({
               <Download className="size-3" aria-hidden />
             )}
           </button>
+
+          {onTp1 ? (
+            <button
+              type="button"
+              aria-label={`Download ${payslip.snapshotName}'s TP1 form`}
+              title="Download Borang PCB/TP1 (reliefs claimed, this month and year to date)"
+              className={ROW_ACTION}
+              disabled={tp1Busy}
+              onClick={onTp1}
+            >
+              {tp1Busy ? (
+                <LoaderCircle className="size-3 animate-spin" aria-hidden />
+              ) : (
+                <FileText className="size-3" aria-hidden />
+              )}
+            </button>
+          ) : null}
 
           {onEmail ? (
             <button

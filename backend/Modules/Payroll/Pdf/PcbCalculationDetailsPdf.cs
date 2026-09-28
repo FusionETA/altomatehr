@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees.Entities;   // SpecialTaxScheme
 using System.Globalization;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -196,12 +197,29 @@ public static class PcbCalculationDetailsPdf
             "Other accumulated allowable deductions including from previous employment (if any).", b.SumLp);
         Variable(column, "LP₁", "Other allowable deductions for current month.", b.Lp1);
 
+        // A 15% approval swaps "(P − M)R + B" for "P × 15% − T" (MTD Spec
+        // D.b.3–5). Said plainly, so a reader does not look for a band.
+        if (b.SpecialTaxScheme is { } scheme)
+        {
+            column.Item().PaddingBottom(6).Text(
+                    $"Taxed at a flat 15% under {SchemeName(scheme)} (LHDN MTD specification, "
+                    + $"{SchemeSection(scheme)}): Monthly Tax Deduction = [(P × R − T) − (Z + X)] ÷ (n + 1). "
+                    + "M is 0 and B is −T, the individual and spouse rebate"
+                    + (scheme == SpecialTaxScheme.C_SUITE
+                        ? ", which does not apply to this category."
+                        : " allowed when P is RM35,000 or less."))
+                .FontSize(8.5f).FontColor(PayrollPdfShared.Muted);
+        }
+
         Variable(column, "P", ExpandP(b), b.P, bold: true);
         Variable(column, "M",
             "Amount of first chargeable income for every range of chargeable income a year.", b.M);
         Variable(column, "R", $"Percentage of tax rates. ({b.R * 100m:0.00}%)", b.R, raw: true);
         Variable(column, "B",
-            "Amount of tax on M less tax rebate for individual and spouse (if qualified).", b.B);
+            b.SpecialTaxScheme is null
+                ? "Amount of tax on M less tax rebate for individual and spouse (if qualified)."
+                : "−T: the individual and spouse rebate (if qualified).",
+            b.B);
         Variable(column, "Z",
             "Accumulated Zakat/Fitrah/Levy paid other than Zakat/Fitrah/Levy for current month.", b.Z);
         Variable(column, "X",
@@ -397,4 +415,18 @@ public static class PcbCalculationDetailsPdf
     // rate like 0.06, neither of which should be grouped or truncated.
     private static string Raw(decimal value) =>
         value.ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static string SchemeName(SpecialTaxScheme scheme) => scheme switch
+    {
+        SpecialTaxScheme.RETURNING_EXPERT => "the Returning Expert Programme (REP)",
+        SpecialTaxScheme.KNOWLEDGE_WORKER => "the knowledge worker (specified region) approval",
+        _ => "the resident non-citizen C-suite approval",
+    };
+
+    private static string SchemeSection(SpecialTaxScheme scheme) => scheme switch
+    {
+        SpecialTaxScheme.RETURNING_EXPERT => "D.b.3, Table 2",
+        SpecialTaxScheme.KNOWLEDGE_WORKER => "D.b.4, Table 3",
+        _ => "D.b.5, Table 4",
+    };
 }

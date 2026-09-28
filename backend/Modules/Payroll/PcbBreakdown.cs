@@ -26,6 +26,10 @@ public sealed record PcbBreakdown
 {
     public required PcbFormula Formula { get; init; }
 
+    // Set when a 15% approval applied (M = 0, R = 15%, B = −T). Null on every
+    // other breakdown, including snapshots written before this existed.
+    public Employees.Entities.SpecialTaxScheme? SpecialTaxScheme { get; init; }
+
     // ---- Both formulas ----
 
     // This month's normal taxable remuneration, and the one-off amount taxed

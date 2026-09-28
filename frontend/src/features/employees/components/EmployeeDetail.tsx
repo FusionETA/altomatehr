@@ -20,6 +20,8 @@ import {
   SALARY_TYPES,
   SOCSO_SCHEMES,
   SOCSO_SCHEME_LABELS,
+  SPECIAL_TAX_SCHEMES,
+  SPECIAL_TAX_SCHEME_LABELS,
   isAdultChild,
   deleteEmployeeDocument,
   downloadEmployeeDocument,
@@ -1442,6 +1444,48 @@ export function EmployeeDetail({
                     checked={profile.reportedToLhdn}
                     onChange={(v) => set("reportedToLhdn", v)}
                   />
+                </Group>
+
+                {/* One choice rather than an on/off switch: REP and knowledge
+                    workers keep the RM 400/800 rebate at or below RM 35,000 of
+                    chargeable income, C-suite does not. The months matter —
+                    approvals are time-limited (REP is five years) — and outside
+                    them PCB goes back to the normal resident rates. */}
+                <Group
+                  title="Special tax rate (15%)"
+                  hint="Only for an employee LHDN has approved for one of these. PCB then uses a flat 15% for the months below."
+                >
+                  <Field label="Approval" span>
+                    <Picker
+                      value={profile.specialTaxScheme}
+                      onChange={(v) => set("specialTaxScheme", v)}
+                      allowNone
+                      noneLabel="None — normal resident rates"
+                      placeholder="None — normal resident rates"
+                      options={SPECIAL_TAX_SCHEMES.map((s) => ({
+                        value: s,
+                        label: SPECIAL_TAX_SCHEME_LABELS[s],
+                      }))}
+                    />
+                  </Field>
+                  {profile.specialTaxScheme ? (
+                    <>
+                      <Field label="From month" hint="Leave empty to apply from the start.">
+                        <Text
+                          type="month"
+                          value={profile.specialTaxFrom}
+                          onChange={(v) => set("specialTaxFrom", v)}
+                        />
+                      </Field>
+                      <Field label="To month" hint="Leave empty if the approval has no end yet.">
+                        <Text
+                          type="month"
+                          value={profile.specialTaxTo}
+                          onChange={(v) => set("specialTaxTo", v)}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
                 </Group>
 
                 <Group title="Bank / payout" hint="Where the money goes once payroll has run.">

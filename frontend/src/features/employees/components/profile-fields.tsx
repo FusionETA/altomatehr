@@ -138,16 +138,25 @@ export function Text({
 }: {
   value: string | null;
   onChange: (value: string | null) => void;
-  type?: "text" | "email" | "date" | "tel";
+  type?: "text" | "email" | "date" | "tel" | "month";
   placeholder?: string;
 }) {
   return (
     <input
       type={type}
       placeholder={placeholder}
-      // Dates arrive as ISO datetimes; <input type="date"> wants yyyy-MM-dd.
-      value={type === "date" ? (value ?? "").slice(0, 10) : (value ?? "")}
-      onChange={(e) => onChange(e.target.value || null)}
+      // Dates arrive as ISO datetimes; <input type="date"> wants yyyy-MM-dd and
+      // <input type="month"> yyyy-MM. A month is saved as its first day.
+      value={
+        type === "date"
+          ? (value ?? "").slice(0, 10)
+          : type === "month"
+            ? (value ?? "").slice(0, 7)
+            : (value ?? "")
+      }
+      onChange={(e) =>
+        onChange(type === "month" && e.target.value ? `${e.target.value}-01` : e.target.value || null)
+      }
       className={INPUT}
     />
   );

@@ -4,7 +4,7 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { saveFile } from "@/shared/lib/api-client";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
-import { downloadMyPayslipPdf, getMyPayslips, type PayslipSummary } from "../api";
+import { downloadMyPayslipPdf, downloadMyTp1Form, getMyPayslips, type PayslipSummary } from "../api";
 import { PayslipDetailModal } from "./PayslipDetailModal";
 
 const CARD =
@@ -38,6 +38,20 @@ export function PayslipsView() {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not download that payslip.");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function downloadTp1(payslip: PayslipSummary) {
+    setDownloading(`tp1-${payslip.id}`);
+    setError(null);
+    try {
+      saveFile(
+        await downloadMyTp1Form(payslip.id, payslip.periodLabel.replace(/\s+/g, "-").toLowerCase()),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not download that TP1 form.");
     } finally {
       setDownloading(null);
     }
@@ -121,6 +135,20 @@ export function PayslipsView() {
                     <Download className="h-3.5 w-3.5" />
                   )}
                   PDF
+                </button>
+                {/* Borang PCB/TP1: the tax reliefs claimed for this month. */}
+                <button
+                  type="button"
+                  onClick={() => void downloadTp1(payslip)}
+                  disabled={downloading === `tp1-${payslip.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                >
+                  {downloading === `tp1-${payslip.id}` ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  TP1
                 </button>
               </div>
             </div>

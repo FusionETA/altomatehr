@@ -59,8 +59,43 @@ export const DEDUCTION_CATEGORIES: AdjustmentCategory[] = [
   { code: "deduct_advance", label: "Advance Deduction", group: "Deductions" },
   { code: "deduct_miscellaneous", label: "Miscellaneous / Other Deduction", group: "Deductions" },
   { code: "deduct_loan_repayment", label: "Loan Repayment", group: "Deductions" },
+  { code: "deduct_cp38", label: "CP38 Arrears (LHDN Order)", group: "Deductions" },
   { code: "deduct_additional_pcb", label: "Additional PCB", group: "Deductions" },
   { code: "deduct_zakat", label: "Zakat — via salary deduction (PZB)", group: "Deductions" },
+  { code: "deduct_zakat_tp1", label: "Zakat — self-paid (TP1)", group: "Deductions" },
+  // TP1 relief claims. Lower PCB, take nothing from pay — as in v1, a claim
+  // the employee makes every month (life insurance, PRS) can sit on the
+  // profile instead of being re-entered on each run.
+  // In Borang TP1 (1/2026) order, so an admin can key a paper form top to
+  // bottom. Labels match the server's catalogue.
+  { code: "deduct_tp1_parents_medical", label: "TP1 · Parents — Medical, Special Needs & Carer", group: "Deductions" },
+  { code: "deduct_tp1_parents_dental", label: "TP1 · Parents — Dental Treatment", group: "Deductions" },
+  { code: "deduct_tp1_parents_medical_exam", label: "TP1 · Parents — Full Medical Exam & Vaccination", group: "Deductions" },
+  { code: "deduct_tp1_supporting_equipment", label: "TP1 · Basic Supporting Equipment (Disabled)", group: "Deductions" },
+  { code: "deduct_tp1_education_fees", label: "TP1 · Education Fees (Self)", group: "Deductions" },
+  { code: "deduct_tp1_upskilling", label: "TP1 · Up-skilling / Self-enhancement Course", group: "Deductions" },
+  { code: "deduct_tp1_serious_disease_medical", label: "TP1 · Serious Disease / Fertility / Medical", group: "Deductions" },
+  { code: "deduct_tp1_vaccination", label: "TP1 · Vaccination (Self / Spouse / Child)", group: "Deductions" },
+  { code: "deduct_tp1_dental", label: "TP1 · Dental Exam & Treatment (Self / Spouse / Child)", group: "Deductions" },
+  { code: "deduct_tp1_medical_exam", label: "TP1 · Full Medical Exam / Mental Health / Test Kits", group: "Deductions" },
+  { code: "deduct_tp1_learning_disability", label: "TP1 · Learning Disability Diagnosis & Intervention (Child)", group: "Deductions" },
+  { code: "deduct_tp1_lifestyle", label: "TP1 · Lifestyle (Books / PC / Internet)", group: "Deductions" },
+  { code: "deduct_tp1_sports_equipment", label: "TP1 · Sports Equipment / Gym", group: "Deductions" },
+  { code: "deduct_tp1_breastfeeding", label: "TP1 · Breastfeeding Equipment", group: "Deductions" },
+  { code: "deduct_tp1_childcare_fees", label: "TP1 · Childcare / Kindergarten / After-school Centre Fees", group: "Deductions" },
+  { code: "deduct_tp1_sspn", label: "TP1 · SSPN Net Savings", group: "Deductions" },
+  { code: "deduct_tp1_alimony", label: "TP1 · Alimony to Former Wife", group: "Deductions" },
+  { code: "deduct_tp1_voluntary_epf", label: "TP1 · Voluntary EPF (paid outside payroll)", group: "Deductions" },
+  { code: "deduct_tp1_life_insurance", label: "TP1 · Life Insurance", group: "Deductions" },
+  { code: "deduct_tp1_prs", label: "TP1 · Private Retirement Scheme (PRS)", group: "Deductions" },
+  { code: "deduct_tp1_medical_insurance", label: "TP1 · Medical / Education Insurance", group: "Deductions" },
+  { code: "deduct_tp1_ev_charging", label: "TP1 · EV Charging / Food Waste Machine / Home CCTV", group: "Deductions" },
+  { code: "deduct_tp1_housing_loan_500k", label: "TP1 · First Home Loan Interest (Home up to RM500k)", group: "Deductions" },
+  { code: "deduct_tp1_housing_loan_750k", label: "TP1 · First Home Loan Interest (Home RM500k–750k)", group: "Deductions" },
+  { code: "deduct_tp1_tourism", label: "TP1 · Tourist Attraction & Cultural Programme Fees", group: "Deductions" },
+  { code: "deduct_tp1_other", label: "TP1 · Other (Admin-Trusted)", group: "Deductions" },
+  { code: "deduct_departure_levy_tp1", label: "Departure Levy — Umrah / Religious Travel (TP1)", group: "Deductions" },
+  { code: "deduct_tp1", label: "TP1/TP3 Deduction (legacy)", group: "Deductions" },
 ];
 
 export const categoriesFor = (kind: AdjustmentKind) =>

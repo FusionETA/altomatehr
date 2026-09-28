@@ -450,6 +450,14 @@ export const downloadPayslipPdf = (runId: string, employeeProfileId: string) =>
     "payslip.pdf",
   );
 
+// Borang PCB/TP1 for one employee, and the month's list of TP1 / TP3
+// claimants — both required by LHDN's MTD spec. Approved runs only.
+export const downloadTp1Form = (runId: string, employeeProfileId: string) =>
+  download(`/payroll/runs/${runId}/documents/tp1/${employeeProfileId}`, "TP1.pdf");
+
+export const downloadTp1Claims = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/tp1-claims`, "TP1_TP3_Claims.pdf");
+
 export const downloadAllPayslips = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/payslips`, "payslips.zip");
 

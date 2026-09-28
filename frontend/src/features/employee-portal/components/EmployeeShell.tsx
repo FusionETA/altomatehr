@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
-import { ExternalLink, KeyRound, LogOut, MoreVertical } from "lucide-react";
+import { ExternalLink, LifeBuoy, KeyRound, LogOut, MoreVertical } from "lucide-react";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
@@ -42,9 +42,12 @@ function CountBadge({ count, className = "" }: { count: number; className?: stri
 export function EmployeeShell({
   user,
   onLogout,
+  onOpenSupport,
 }: {
   user: SignedInUser;
   onLogout: () => void;
+  // Superadmins only: opens the Fusioneta support page.
+  onOpenSupport?: () => void;
 }) {
   const isSupervisor = user.role === "Supervisor";
   // Mirrors the admin shell: the view lives in the URL so Back steps through
@@ -318,6 +321,20 @@ export function EmployeeShell({
                     {/* Phones only — the header pill covers larger screens.
                         Replaces a permanently disabled placeholder row. */}
                     <OrgSwitcherMenuList className="sm:hidden" />
+
+                    {onOpenSupport ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onOpenSupport();
+                        }}
+                        className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                      >
+                        <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0" />
+                        Support
+                      </button>
+                    ) : null}
 
                     <button
                       type="button"

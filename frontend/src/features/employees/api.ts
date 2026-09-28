@@ -117,6 +117,21 @@ export const setEmployeePassword = (id: string, newPassword: string) =>
 export type Gender = "MALE" | "FEMALE";
 export type IdType = "NRIC" | "PASSPORT" | "ARMY_NO" | "POLICE_NO";
 export type MaritalStatus = "SINGLE" | "MARRIED" | "DIVORCED" | "WIDOWED";
+// The three approvals taxed at a flat 15% instead of the resident bands.
+export type SpecialTaxScheme = "RETURNING_EXPERT" | "KNOWLEDGE_WORKER" | "C_SUITE";
+
+export const SPECIAL_TAX_SCHEMES: SpecialTaxScheme[] = [
+  "RETURNING_EXPERT",
+  "KNOWLEDGE_WORKER",
+  "C_SUITE",
+];
+
+export const SPECIAL_TAX_SCHEME_LABELS: Record<SpecialTaxScheme, string> = {
+  RETURNING_EXPERT: "Returning Expert Programme (REP)",
+  KNOWLEDGE_WORKER: "Knowledge worker — specified region",
+  C_SUITE: "C-suite — resident non-citizen",
+};
+
 export type SocsoScheme = "EMPLOYMENT_INJURY_INVALIDITY" | "EMPLOYMENT_INJURY_ONLY";
 export type PaymentMethod = "BANK_TRANSFER" | "CASH" | "CHEQUE";
 export type SalaryType = "HOURLY" | "MONTHLY";
@@ -220,6 +235,11 @@ export type EmployeeProfile = {
 
   // Income tax
   incomeTaxNumber: string | null;
+  /** A 15% approval (LHDN MTD Spec 2026 D.b.3–5) and the months it covers —
+   * first-of-month dates; a null end is open. Outside the range, normal rates. */
+  specialTaxScheme: SpecialTaxScheme | null;
+  specialTaxFrom: string | null;
+  specialTaxTo: string | null;
   pcbBorneByEmployer: boolean;
   ssfwNumber: string | null;
   reportedToLhdn: boolean;

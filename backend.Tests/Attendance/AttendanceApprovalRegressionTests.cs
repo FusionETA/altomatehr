@@ -1273,6 +1273,8 @@ public class AttendanceApprovalRegressionTests
     // Not reached in the clock-out path.
     private sealed class FakeOrganizationMembershipRepository : IOrganizationMembershipRepository
     {
+        public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
         public Task<List<OrganizationMembership>> GetByUserAsync(string userId) => Task.FromResult(new List<OrganizationMembership>());
         public Task<OrganizationMembership?> GetAsync(string organizationId, string userId) => Task.FromResult<OrganizationMembership?>(null);
         public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() => Task.FromResult(new List<OrganizationMembership>());

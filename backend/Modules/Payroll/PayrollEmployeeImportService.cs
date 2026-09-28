@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Employees;
@@ -53,7 +54,10 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         // people with nothing on file — the ones this sheet exists for — were
         // the ones it left out, and the roster above listed them as unready
         // with no way to fix them in bulk.
-        var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
+        // Employees and Supervisors only, like the roster it fills in.
+        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .ToList();
 
         foreach (var membership in memberships
                      .OrderBy(m => users.GetValueOrDefault(m.UserId)?.Name ?? string.Empty,
@@ -134,6 +138,7 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
 
         var profilesByUser = (await _directory.GetProfilesForCurrentOrgAsync())
             .ToDictionary(p => p.UserId, p => p, StringComparer.Ordinal);
+        var notOnPayroll = await _directory.NotOnPayrollUserIdsAsync();
 
         var updated = 0;
 
@@ -164,6 +169,14 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
                 result.Fail(rowNumber,
                     $"No employee in this organization matches "
                     + $"'{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+
+            if (notOnPayroll.Contains(userId))
+            {
+                result.Fail(rowNumber,
+                    $"'{(email.Length > 0 ? email : name)}' is an Admin or Owner, and payroll is for "
+                    + "employees and supervisors only.");
                 continue;
             }
 

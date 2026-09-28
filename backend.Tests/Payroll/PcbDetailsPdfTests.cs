@@ -241,6 +241,19 @@ public class PcbDetailsPdfTests
             JsonSerializer.Deserialize<PcbBreakdown>(json, PayrollSnapshotJson.Options)!.Formula);
     }
 
+    // A 15% approval prints its own formula line rather than implying a band.
+    [Fact]
+    public void RendersAnEmployeeOnA15PercentApproval()
+    {
+        var breakdown = Resident() with
+        {
+            SpecialTaxScheme = AltomateHR.Api.Modules.Employees.Entities.SpecialTaxScheme.RETURNING_EXPERT,
+            M = 0m, R = 0.15m, B = 0m,
+        };
+
+        Assert.True(IsPdf(PcbCalculationDetailsPdf.Render(Model(Employee(breakdown)))));
+    }
+
     private static int PageCount(IDocument document) =>
         document.GenerateImages(new ImageGenerationSettings
         {

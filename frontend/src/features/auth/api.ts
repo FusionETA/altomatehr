@@ -4,6 +4,16 @@ import type { SignedInUser } from "@/shared/types/session";
 export type LoginRequest = { email: string; password: string };
 export type AuthResponse = SignedInUser & { token: string };
 
+// The session fields the app keeps from a login / refresh / switch.
+export const toSignedInUser = (res: AuthResponse): SignedInUser => ({
+  email: res.email,
+  role: res.role,
+  name: res.name,
+  isSuperadmin: res.isSuperadmin ?? false,
+  supportMode: res.supportMode ?? false,
+  activeOrganizationName: res.activeOrganizationName ?? null,
+});
+
 export const login = (body: LoginRequest) => apiPost<AuthResponse>("/auth/login", body);
 
 // Uses the httpOnly refresh cookie (sent automatically) to get a new access token.
@@ -21,6 +31,15 @@ export const getOrgs = () => apiGet<UserOrg[]>("/auth/orgs");
 // every screen re-fetching against it.
 export const switchOrg = (organizationId: string) =>
   apiPost<AuthResponse>(`/auth/switch-org/${organizationId}`);
+
+// Fusioneta support: act inside a customer's company as an Admin. Like a
+// switch, the server rotates the refresh cookie, so reload afterwards. What is
+// done there is logged in that company as "System (Support)".
+export const enterSupport = (organizationId: string) =>
+  apiPost<AuthResponse>(`/auth/support/enter/${organizationId}`);
+
+// Leave support mode, back to your own company. Reload afterwards.
+export const exitSupport = () => apiPost<AuthResponse>("/auth/support/exit");
 
 // Revokes the refresh token server-side + clears the cookie.
 export const logout = () => apiPost<void>("/auth/logout");

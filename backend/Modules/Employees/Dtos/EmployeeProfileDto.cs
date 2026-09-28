@@ -74,6 +74,9 @@ public class EmployeeProfileDto
     public bool ContributeToSkbbk { get; set; }
 
     // ---- Income tax ----
+    public SpecialTaxScheme? SpecialTaxScheme { get; set; }
+    public DateTime? SpecialTaxFrom { get; set; }
+    public DateTime? SpecialTaxTo { get; set; }
     public string? IncomeTaxNumber { get; set; }
     public bool PcbBorneByEmployer { get; set; }
     public string? SsfwNumber { get; set; }

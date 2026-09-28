@@ -376,10 +376,14 @@ public class StatutoryFileTests
 
     // ─── LHDN CP39 PCB TXT ──────────────────────────────────────────────
 
+    // Exhibit 4: "xxxxxxxxxxmm_yyyy.txt" — employer number, month, year.
     [Fact]
-    public void PcbTxt_IsNamedAsThePreviousSystemNamedIt()
+    public void PcbTxt_IsNamedAsLhdnsSpecNamesIt()
     {
-        Assert.Equal("PCB_032026.txt", PcbCp39Txt.Render(Payload()).FileName);
+        var result = PcbCp39Txt.Render(Payload());
+        var employerNo = Lines(result)[0][1..11];   // the header's HQ employer number
+
+        Assert.Equal($"{employerNo}03_2026.txt", result.FileName);
     }
 
     [Fact]

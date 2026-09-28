@@ -404,7 +404,9 @@ public class EmployeeLoanService : IEmployeeLoanService
     // deduct — no payslip carries that id — and would show no name.
     private async Task RequireProfileAsync(string employeeProfileId)
     {
-        var profiles = await _directory.GetProfilesForCurrentOrgAsync();
+        // Payroll profiles only: a loan is repaid through payroll, which an
+        // Admin or Owner is not on.
+        var profiles = await _directory.PayrollProfilesAsync();
         if (!profiles.Any(p => string.Equals(p.Id, employeeProfileId, StringComparison.Ordinal)))
         {
             throw new PayrollLoanException(

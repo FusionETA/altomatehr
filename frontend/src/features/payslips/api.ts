@@ -32,3 +32,8 @@ export const getMyPayslip = (id: string) => apiGet<Payslip>(`/payslips/${id}`);
 
 export const downloadMyPayslipPdf = (id: string, label: string) =>
   apiGetFile(`/payslips/${id}/pdf`, `payslip-${label}.pdf`);
+
+// The employee's own Borang PCB/TP1 for that month — the reliefs claimed,
+// this month and year to date. LHDN requires the employee can print and save it.
+export const downloadMyTp1Form = (id: string, label: string) =>
+  apiGetFile(`/payslips/${id}/tp1`, `TP1-${label}.pdf`);

@@ -585,6 +585,56 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Audit.Entities.SupportAuditLog", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("SupportEmail")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("SupportUserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("TargetType")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SupportAuditLogs");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Auth.Entities.PasswordResetOtp", b =>
                 {
                     b.Property<string>("Id")
@@ -641,6 +691,9 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsSupport")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("OrganizationId")
                         .IsRequired()
@@ -1102,6 +1155,16 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("SocsoScheme")
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("SpecialTaxFrom")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SpecialTaxScheme")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("SpecialTaxTo")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<bool?>("SpouseDisabled")
                         .HasColumnType("tinyint(1)");

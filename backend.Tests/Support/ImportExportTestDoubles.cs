@@ -105,6 +105,8 @@ internal sealed class FakeProjectServiceForExport : IProjectService
 
 internal sealed class StubMembershipRepository : IOrganizationMembershipRepository
 {
+        public Task<List<AltomateHR.Api.Modules.Employees.Entities.OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
     private readonly List<AltomateHR.Api.Modules.Employees.Entities.OrganizationMembership> _rows;
 
     public StubMembershipRepository(IEnumerable<EmployeeIdentity> members) =>

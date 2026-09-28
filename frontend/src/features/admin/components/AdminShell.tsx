@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
-import { ExternalLink, LogOut, MoreVertical } from "lucide-react";
+import { ExternalLink, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
@@ -35,9 +35,12 @@ import { AdminOverview } from "./AdminOverview";
 export function AdminShell({
   user,
   onLogout,
+  onOpenSupport,
 }: {
   user: SignedInUser;
   onLogout: () => void;
+  // Superadmins only: opens the Fusioneta support page.
+  onOpenSupport?: () => void;
 }) {
   // The view lives in the URL so Back steps through the app rather than out of
   // it. The shell still owns the state; the hook only keeps the two in step.
@@ -235,6 +238,20 @@ export function AdminShell({
                       onClose={() => setAccountMenuOpen(false)}
                       className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
                     />
+
+                    {onOpenSupport ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onOpenSupport();
+                        }}
+                        className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                      >
+                        <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0" />
+                        Support
+                      </button>
+                    ) : null}
 
                     <button
                       type="button"

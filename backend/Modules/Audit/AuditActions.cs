@@ -22,6 +22,10 @@ public static class AuditActions
     // Staff loans. What an employee repays each month comes off their pay, so
     // who recorded the loan and on what terms is an audit question.
     public const string PayrollLoanCreate = "payroll.loan.create";
+
+    // Fusioneta support: opening a customer's org, and provisioning a company.
+    public const string SupportEnter = "support.enter";
+    public const string SupportCompanyCreate = "support.company.create";
     public const string PayrollLoanUpdate = "payroll.loan.update";
     public const string PayrollLoanDelete = "payroll.loan.delete";
     // Changes to a loan already repaying: the balance re-spread, months

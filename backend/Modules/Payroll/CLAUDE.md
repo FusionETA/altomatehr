@@ -155,6 +155,9 @@ does the loading.
   it, so next month's formula must not see it). `PcbCp39Txt` files
   `Pcb + VoluntaryPcb`; CP38 keeps its own column. Run totals and the annual
   EA/CP8D figures use `Pcb` alone, as the previous system did.
+- **The PCB (CP39) file is named as LHDN's spec names it** (Exhibit 4,
+  `{10-digit employer no}{mm}_{yyyy}.txt`), not v1's `PCB_MMYYYY.txt` —
+  certification is checked against the spec. Everything else below holds.
 - **Names and bytes match the previous system.** File names, run-document
   names (`Payroll_Summary_January_2026.pdf`, `Payslips_2026_01_All.zip`,
   `{id}_{name}_{MM-YYYY}.pdf`) and the edge-case field rules (untrimmed EPF
@@ -222,6 +225,42 @@ The income tax number is deliberately **not** in the gate — PCB computes
 without one, and a new joiner waiting on a TIN must not hold up everyone
 else's pay. `PcbCp39Txt` checks it at generation time instead, and only for
 employees who actually had tax withheld.
+
+## 15% approvals (REP, knowledge worker, C-suite)
+
+`EmployeeProfile.SpecialTaxScheme` + `SpecialTaxFrom/To` (months). For a
+period inside the range (`PayslipCalculator.SpecialTaxSchemeFor`) PCB swaps
+"(P − M)R + B" for "P × 15% − T" via `PcbTaxBands.AnnualTax/BandFor` — M = 0,
+R = 15%, B = −T — in BOTH the normal and the additional-remuneration steps. P,
+reliefs, zakat, X and rounding are unchanged. T (RM 400, RM 800 in category 2)
+applies to REP and knowledge workers only when P ≤ RM 35,000; C-suite never
+(Table 4 lists only P above RM 35,000 — confirm the below-35,000 case with
+LHDN before relying on it). Residents only; the breakdown records the scheme
+and the details PDF says so.
+
+## TP1 reliefs
+
+Every Borang TP1 (1/2026) item C1–C17 is a `deduct_tp1_*` category
+(`FeedsLp1Relief`, `CashNeutral`, unprorated), plus the D1b departure-levy
+rebate beside self-paid zakat (`OffsetsPcb`).
+
+- **Two limits.** `TaxExemptLimit` is the item's own; `ReliefGroup` +
+  `Tp1ReliefGroups` is the one it shares (C1 parents 8,000, C3 education
+  7,000, C4 medical 10,000, C11 insurance+EPF 7,000, C16 housing 7,000). A
+  claim gets the smaller headroom (`PayslipCalculator.Tp1Headroom`).
+- **C11 is variable.** Voluntary EPF on TP1 counts against the RM 4,000 EPF
+  relief with compulsory EPF, so it is limited only after EPF is computed
+  (`ApplyVoluntaryEpfClaims`): C11 = 3,000 + what compulsory EPF leaves of
+  4,000. Life insurance takes C11b first (MTD Spec p.24–25 examples iv–vi).
+- **C10 alimony is dropped when the wife relief applies** (spouse not working).
+- **Borang TP1 and the claims list** (`Tp1Form`, `Tp1FormService`, MTD Spec
+  item 16): built from payroll, not typed twice — SEMASA from this run's TP1
+  lines, TERKUMPUL from it plus the year's earlier SUBMITTED months, both at
+  the GRANTED figure. Approved runs only, like every run document. The
+  employee downloads their own from their payslip (`GET /payslips/{id}/tp1`).
+- **ΣLP and the limits count what was GRANTED.** A clamped TP1 row stores the
+  granted figure in `PcbTaxableAmount`; the YTD read uses it, so an
+  over-claim does not relieve all year or eat its group's limit.
 
 ## Loans
 

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Entities;
 
@@ -140,6 +141,29 @@ public class PcbCalculatorTests
         Assert.Equal(110m, result.Normal);
         Assert.Equal(757.5m, result.Additional);
         Assert.Equal(867.5m, result.Total);
+    }
+
+    // Pages 48–51 as LHDN actually publishes them — the figure a certification
+    // is checked against. March's RM 300 TP1 (books + parents' medical) makes
+    // X = RM 328.20 and ΣLP = RM 300; April adds RM 300 more (sports equipment
+    // + SSPN) as LP1:
+    //   normal:     [(46,400 − 35,000) × 6% + 600 − 328.20] ÷ 9 = 106.20
+    //   additional: 2,011.50 − (328.20 + 106.20 × 9)        = 727.50
+    //   total:      833.70
+    [Fact]
+    public void Lhdn_AprilWithBonus_WithTp1_MatchesThePublishedFigure()
+    {
+        var input = LhdnExample(4, 16500m, 1815m, 328.20m, additionalRemuneration: 8250m, epfFromAr: 908m) with
+        {
+            YtdAllowableDeductions = 300m,
+            ThisMonthAllowableDeductions = 300m,
+        };
+
+        var result = PcbCalculator.Calculate(input);
+
+        Assert.Equal(106.20m, result.Normal);
+        Assert.Equal(727.50m, result.Additional);
+        Assert.Equal(833.70m, result.Total);
     }
 
     // ─── LHDN Category 1 — single, no children ──────────────────────────
@@ -443,5 +467,102 @@ public class PcbCalculatorTests
             thisMonthTaxable: 3800m, thisMonthEpf: 418m));
 
         Assert.Equal(10.66m, justAbove.Normal);
+    }
+
+    // ─── 15% approvals (MTD Spec 2026, D.b.3–5, Tables 2–4) ─────────────
+
+    // Tables 2 and 3: REP and knowledge workers keep the RM 400 (RM 800 in
+    // category 2) rebate at or below RM 35,000. Table 4: C-suite never has it.
+    [Theory]
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT, 30000, false, 4100)]    // 4,500 − 400
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT, 30000, true, 3700)]     // 4,500 − 800
+    [InlineData(SpecialTaxScheme.KNOWLEDGE_WORKER, 30000, false, 4100)]
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT, 50000, false, 7500)]    // over 35k: no T
+    [InlineData(SpecialTaxScheme.C_SUITE, 30000, true, 4500)]              // never a T
+    [InlineData(SpecialTaxScheme.C_SUITE, 50000, false, 7500)]
+    public void SpecialScheme_AnnualTaxIsFifteenPercentLessT(
+        SpecialTaxScheme scheme, decimal p, bool spouseClaimable, decimal expected)
+    {
+        Assert.Equal(expected, PcbTaxBands.AnnualTax(p, spouseClaimable, scheme));
+    }
+
+    // LHDN's January employee (P = 47,000.07) under an approval:
+    //   MTD = (47,000.07 × 15% − 0 − 0) / 12 = 587.50, where the resident
+    //   bands give 110.00. The form reads M = 0, R = 15%, B = −T = 0.
+    [Theory]
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT)]
+    [InlineData(SpecialTaxScheme.KNOWLEDGE_WORKER)]
+    [InlineData(SpecialTaxScheme.C_SUITE)]
+    public void SpecialScheme_LhdnJanuaryEmployee(SpecialTaxScheme scheme)
+    {
+        var b = PcbCalculator.Explain(LhdnExample(1, 0m, 0m, 0m) with { SpecialTaxScheme = scheme });
+
+        Assert.Equal(47000.07m, b.P);
+        Assert.Equal(0m, b.M);
+        Assert.Equal(0.15m, b.R);
+        Assert.Equal(0m, b.B);
+        Assert.Equal(scheme, b.SpecialTaxScheme);
+        Assert.Equal(587.50m, b.PcbTotal);
+    }
+
+    // A modest income: the rebate is what separates REP from C-suite.
+    [Fact]
+    public void SpecialScheme_BelowRm35000_OnlyRepAndKnowledgeWorkersGetTheRebate()
+    {
+        var input = Resident(thisMonthTaxable: 2500m, thisMonthEpf: 275m);
+
+        var rep = PcbCalculator.Explain(input with { SpecialTaxScheme = SpecialTaxScheme.RETURNING_EXPERT });
+        var csuite = PcbCalculator.Explain(input with { SpecialTaxScheme = SpecialTaxScheme.C_SUITE });
+
+        Assert.True(rep.P <= 35000m);
+        Assert.Equal(-400m, rep.B);
+        Assert.Equal(Ceil5Sen(Money.Trunc2((rep.P * 0.15m - 400m) / 12m)), rep.PcbTotal);
+        Assert.Equal(0m, csuite.B);
+        Assert.Equal(Ceil5Sen(Money.Trunc2(csuite.P * 0.15m / 12m)), csuite.PcbTotal);
+    }
+
+    // The bonus month follows the same five steps, with the year's tax at 15%.
+    [Fact]
+    public void SpecialScheme_BonusMonthTaxesTheYearAtFifteenPercent()
+    {
+        var b = PcbCalculator.Explain(
+            LhdnExample(4, 16500m, 1815m, 330m, additionalRemuneration: 8250m, epfFromAr: 908m)
+            with { SpecialTaxScheme = SpecialTaxScheme.RETURNING_EXPERT });
+
+        Assert.NotNull(b.Ar);
+        Assert.Equal(0.15m, b.Ar!.R2);
+        Assert.Equal(Money.Round2(b.Ar.ChargeableWithAr * 0.15m), b.Ar.Cs);
+    }
+
+    // The approvals are for residents; a non-resident stays at a flat 30%.
+    [Fact]
+    public void SpecialScheme_DoesNotTouchANonResident()
+    {
+        var input = Resident() with { IsResident = false };
+
+        Assert.Equal(
+            PcbCalculator.Calculate(input).Total,
+            PcbCalculator.Calculate(input with { SpecialTaxScheme = SpecialTaxScheme.C_SUITE }).Total);
+    }
+
+    // The approval covers months, not forever — REP is five years.
+    [Theory]
+    [InlineData(2026, 3, null)]                                    // before it starts
+    [InlineData(2026, 4, SpecialTaxScheme.RETURNING_EXPERT)]       // first month
+    [InlineData(2031, 3, SpecialTaxScheme.RETURNING_EXPERT)]       // last month
+    [InlineData(2031, 4, null)]                                    // after it ends
+    public void SpecialScheme_AppliesOnlyWithinItsMonths(int year, int month, SpecialTaxScheme? expected)
+    {
+        Assert.Equal(expected, PayslipCalculator.SpecialTaxSchemeFor(
+            SpecialTaxScheme.RETURNING_EXPERT,
+            new DateTime(2026, 4, 1), new DateTime(2031, 3, 1), year, month));
+    }
+
+    [Fact]
+    public void SpecialScheme_OpenEndsCoverEverything()
+    {
+        Assert.Equal(SpecialTaxScheme.C_SUITE,
+            PayslipCalculator.SpecialTaxSchemeFor(SpecialTaxScheme.C_SUITE, null, null, 2030, 1));
+        Assert.Null(PayslipCalculator.SpecialTaxSchemeFor(null, null, null, 2030, 1));
     }
 }

@@ -21,4 +21,8 @@ public interface IEmployeePayrollService
 
     // The same PDF the admin can download for them.
     Task<StatutoryFileResult> RenderMyPayslipPdfAsync(string payslipId);
+
+    // The caller's own Borang PCB/TP1 for that payslip's month — "employee
+    // also can print and save these TP Form" (MTD Spec 2026, item 16).
+    Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId);
 }

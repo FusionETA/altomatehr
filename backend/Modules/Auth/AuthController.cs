@@ -136,6 +136,37 @@ public class AuthController : ControllerBase
         return Ok(ToResponse(result));
     }
 
+    // POST /auth/support/enter/{organizationId} — Fusioneta support: act as an
+    // Admin inside ANY org. Superadmins only (SUPERADMIN_EMAILS).
+    [Authorize(Policy = AuthPolicies.Superadmin)]
+    [HttpPost("support/enter/{organizationId}")]
+    public async Task<ActionResult<AuthResponseDto>> EnterSupport(string organizationId)
+    {
+        var userId = _currentUser.UserId;
+        if (userId is null) return Unauthorized();
+
+        var result = await _auth.EnterSupportAsync(userId, organizationId);
+        if (result is null) return NotFound(new { message = "No such organization." });
+
+        SetRefreshCookie(result);
+        return Ok(ToResponse(result));
+    }
+
+    // POST /auth/support/exit — back to your own org.
+    [Authorize]
+    [HttpPost("support/exit")]
+    public async Task<ActionResult<AuthResponseDto>> ExitSupport()
+    {
+        var userId = _currentUser.UserId;
+        if (userId is null) return Unauthorized();
+
+        var result = await _auth.ExitSupportAsync(userId);
+        if (result is null) return Unauthorized(new { message = "You have no organization of your own to return to." });
+
+        SetRefreshCookie(result);
+        return Ok(ToResponse(result));
+    }
+
     // GET /auth/orgs — the orgs this account can switch into.
     [Authorize]
     [HttpGet("orgs")]
@@ -170,5 +201,8 @@ public class AuthController : ControllerBase
             Name = result.Name,
             Role = result.Role,
             ActiveOrganizationId = result.OrganizationId,
+            ActiveOrganizationName = result.OrganizationName,
+            IsSuperadmin = result.IsSuperadmin,
+            SupportMode = result.SupportMode,
         };
 }

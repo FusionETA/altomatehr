@@ -184,7 +184,7 @@ internal static class LhdnPdfShared
     /// plainly rather than letting a real-looking "0.00" pass as confirmed.
     public static void PayrollHistoryDisclaimer(IContainer container) =>
         container.PaddingBottom(10).Background(WarnBg).Padding(8).Text(
-            "This organisation has not yet run payroll in AltomateHR, so every year-to-date and monthly figure " +
-            "below is blank or zero — not a confirmed amount. Source the real figures from your previous payroll " +
-            "records before submitting this form.").FontSize(8.5f).FontColor(Warn).Bold();
+            "No approved payroll month for this employee in this year in AltomateHR, so every year-to-date and " +
+            "monthly figure below is blank or zero — not a confirmed amount. If they were paid through another " +
+            "system this year, source the figures from those records before submitting this form.").FontSize(8.5f).FontColor(Warn).Bold();
 }

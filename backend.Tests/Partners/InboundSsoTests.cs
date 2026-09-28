@@ -179,6 +179,9 @@ public class InboundSsoTests
 
     private sealed class StubAuth : IAuthService
     {
+        public Task<AuthResult?> EnterSupportAsync(string userId, string organizationId) => throw new NotSupportedException();
+        public Task<AuthResult?> ExitSupportAsync(string userId) => throw new NotSupportedException();
+
         public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId) =>
             Task.FromResult<AuthResult?>(new AuthResult(
                 "access", "admin@acme.com", "Admin", organizationId,

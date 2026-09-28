@@ -11,7 +11,12 @@ public record AuthResult(
     string OrganizationId,
     string RefreshToken,
     DateTime RefreshTokenExpiresAt,
-    string? Name = null);
+    string? Name = null,
+    // Fusioneta staff (SUPERADMIN_EMAILS) — shows the Support page.
+    bool IsSuperadmin = false,
+    // This session is support mode inside OrganizationId.
+    bool SupportMode = false,
+    string? OrganizationName = null);
 
 // An org the signed-in account can act in (drives the org switcher). Role is the
 // account's role IN THAT org — Employee here, Supervisor there, etc. Name is the

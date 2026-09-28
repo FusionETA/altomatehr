@@ -995,6 +995,8 @@ public class LeaveServiceTests
     // are the "members of the current org"; anything else resolves to null (→ 404).
     private sealed class FakeMembershipRepository : IOrganizationMembershipRepository
     {
+        public Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync() => throw new NotSupportedException();
+
         private readonly Dictionary<string, DateTime?> _members;
 
         public FakeMembershipRepository(params string[] memberIds) =>

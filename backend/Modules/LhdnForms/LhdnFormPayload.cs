@@ -81,18 +81,15 @@ public class LhdnFormPayload
     /// PCB 2(II)'s table prints a blank row rather than "0.00", so an admin
     /// doesn't mistake "never ran" for "ran, zero tax".
     ///
-    /// This rebuild has no payroll-run engine yet, so every entry is null
-    /// today; the array stays 12-wide so the column layout is ready the day
-    /// payroll runs land, rather than needing another schema change.
+    /// Filled from the year's SUBMITTED payroll runs.
     public LhdnFormMonthPcb?[] PerMonth { get; set; } = new LhdnFormMonthPcb?[12];
 
     public int Year { get; set; }
 
-    /// Year-to-date sums across submitted payslips. Always zero today, for
-    /// the same reason as PerMonth.
+    /// Year-to-date sums across submitted payslips.
     public LhdnFormYtd Ytd { get; set; } = new();
 
-    /// False while there is no payroll-run engine to source PerMonth/Ytd —
+    /// False when the employee has no submitted payroll month this year —
     /// drives the disclaimer banner on the four YTD-dependent forms so an
     /// admin can't mistake "no data yet" for "confirmed zero".
     public bool HasPayrollHistory { get; set; }

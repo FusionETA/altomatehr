@@ -107,6 +107,171 @@ public class PayslipCalculatorTests
         Assert.Equal(Money.Round2(5000m * 26m / 27m), r.ProratedPay);
     }
 
+    // A mid-month joiner: the monthly allowance shrinks with the days worked,
+    // but a stated amount does not — their RM 1,000 bonus is RM 1,000, their
+    // RM 300 TP1 claim is RM 300, and so is a RM 200 advance being recovered.
+    // v1 had this (30 categories); v2 used to prorate all of them.
+    [Fact]
+    public void Proration_ShrinksMonthlyAllowances_ButNotStatedAmounts()
+    {
+        var r = PayslipCalculator.Calculate(Make(
+            rule: WorkingDaysRule.CALENDAR,
+            joinDate: new DateTime(2026, 1, 17),
+            allowances:
+            [
+                Allowance("allowance_parking", 310m),
+                Allowance("wages_bonus_non_annual", 1000m),
+                Allowance("deduct_tp1_life_insurance", 300m),
+                Allowance("deduct_advance", 200m),
+                Allowance("deduct_zakat", 50m),
+            ]));
+
+        decimal Line(string category) => r.LineItems.Single(l => l.Category == category).Amount;
+
+        Assert.True(r.ProratedFactor < 1m);
+        Assert.Equal(Money.Round2(310m * r.ProratedFactor), Line("allowance_parking"));
+        Assert.Equal(1000m, Line("wages_bonus_non_annual"));
+        Assert.Equal(300m, Line("deduct_tp1_life_insurance"));
+        Assert.Equal(200m, Line("deduct_advance"));
+        Assert.Equal(50m, Line("deduct_zakat"));
+    }
+
+    // Every category v1 leaves unprorated is unprorated here too — and so is
+    // every TP1 item and rebate added since, being stated amounts as well.
+    [Fact]
+    public void TheUnproratedCategories_MatchV1()
+    {
+        string[] v1 =
+        [
+            "wages_bonus_annual", "wages_bonus_non_annual", "wages_commission", "wages_incentive",
+            "wages_arrears", "wages_overtime", "wages_service_charge", "wages_leave_pay",
+            "wages_gratuity", "wages_compensation_loss_employment", "wages_ex_gratia",
+            "wages_tax_borne_by_employer", "wages_director_fee", "wages_expense_claim",
+            "deduct_unpaid_leave", "deduct_advance", "deduct_miscellaneous", "deduct_loan_repayment",
+            "deduct_cp38", "deduct_additional_pcb", "deduct_zakat", "deduct_zakat_tp1", "deduct_tp1",
+            "deduct_tp1_life_insurance", "deduct_tp1_medical_insurance", "deduct_tp1_prs",
+            "deduct_tp1_serious_disease_medical", "deduct_tp1_lifestyle",
+            "deduct_tp1_sports_equipment", "deduct_tp1_other",
+        ];
+
+        var unprorated = PayrollAdjustmentCategories.All.Values.Where(c => c.SkipProration).Select(c => c.Code).ToHashSet();
+
+        Assert.Subset(unprorated, v1.ToHashSet());
+        Assert.All(
+            PayrollAdjustmentCategories.All.Values.Where(c => c.FeedsLp1Relief || c.OffsetsPcb),
+            c => Assert.Contains(c.Code, unprorated));
+        // Nothing else: allowances are the monthly figures proration is for.
+        Assert.All(
+            unprorated.Except(v1),
+            code => Assert.True(PayrollAdjustmentCategories.Find(code)!.FeedsLp1Relief
+                                || PayrollAdjustmentCategories.Find(code)!.OffsetsPcb));
+    }
+
+    // ─── TP1 limits (LHDN MTD Spec 2026, Borang TP1 C1–C17) ─────────────
+
+    private static PayslipCalculator.Result WithTp1(
+        decimal salary = 9000m, bool? spouseWorking = null, bool contributeToEpf = true,
+        params (string Category, decimal Amount)[] claims) =>
+        PayslipCalculator.Calculate(Make(
+            monthlySalary: salary,
+            allowances: [.. claims.Select(c => Allowance(c.Category, c.Amount))]) with
+        {
+            SpouseWorking = spouseWorking,
+            ContributeToEpf = contributeToEpf,
+        });
+
+    private static decimal Granted(PayslipCalculator.Result r, string category)
+    {
+        var line = r.LineItems.Single(l => l.Category == category);
+        return line.PcbTaxableAmount ?? line.Amount;
+    }
+
+    // C4: each sub-item has its own RM 1,000, and all of C4 shares RM 10,000.
+    [Fact]
+    public void Tp1_MedicalSubItems_HaveTheirOwnLimitsInsideTheGroupLimit()
+    {
+        var r = WithTp1(claims:
+        [
+            ("deduct_tp1_vaccination", 1500m),               // → 1,000 (own cap)
+            ("deduct_tp1_dental", 800m),                     // → 800
+            ("deduct_tp1_serious_disease_medical", 9000m),   // → 8,200 (group left)
+        ]);
+
+        Assert.Equal(1000m, Granted(r, "deduct_tp1_vaccination"));
+        Assert.Equal(800m, Granted(r, "deduct_tp1_dental"));
+        Assert.Equal(8200m, Granted(r, "deduct_tp1_serious_disease_medical"));
+    }
+
+    // C16: one first home — RM 7,000 up to RM 500k, RM 5,000 above, never both.
+    [Fact]
+    public void Tp1_HousingLoanInterest_IsOneRm7000Limit()
+    {
+        var r = WithTp1(claims:
+        [
+            ("deduct_tp1_housing_loan_750k", 6000m),   // → 5,000 (own cap)
+            ("deduct_tp1_housing_loan_500k", 4000m),   // → 2,000 (group left)
+        ]);
+
+        Assert.Equal(5000m, Granted(r, "deduct_tp1_housing_loan_750k"));
+        Assert.Equal(2000m, Granted(r, "deduct_tp1_housing_loan_500k"));
+    }
+
+    // C10: not allowed when the wife relief is claimed (spouse not working).
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 4000)]
+    public void Tp1_Alimony_IsDroppedAlongsideTheWifeRelief(bool spouseWorking, decimal expected)
+    {
+        var r = WithTp1(spouseWorking: spouseWorking, claims: [("deduct_tp1_alimony", 5000m)]);
+
+        Assert.Equal(expected, Granted(r, "deduct_tp1_alimony"));
+    }
+
+    // MTD Spec p.25 example v: compulsory EPF already fills the RM 4,000, so of
+    // RM 1,000 voluntary EPF + RM 3,000 life insurance only the insurance counts.
+    [Fact]
+    public void Tp1_VoluntaryEpf_HasNoRoomWhenCompulsoryEpfFillsTheRelief()
+    {
+        var r = WithTp1(salary: 40000m, claims:
+        [
+            ("deduct_tp1_voluntary_epf", 1000m),
+            ("deduct_tp1_life_insurance", 3000m),
+        ]);
+
+        Assert.Equal(3000m, Granted(r, "deduct_tp1_life_insurance"));
+        Assert.Equal(0m, Granted(r, "deduct_tp1_voluntary_epf"));
+    }
+
+    // Example vi: no compulsory EPF (a director's fee) — RM 7,000 voluntary EPF
+    // counts in full: RM 4,000 as EPF relief plus RM 3,000 in C11b.
+    [Fact]
+    public void Tp1_VoluntaryEpf_WithNoCompulsoryEpf_CountsUpToRm7000()
+    {
+        var r = WithTp1(salary: 40000m, contributeToEpf: false, claims:
+        [
+            ("deduct_tp1_voluntary_epf", 8000m),
+        ]);
+
+        Assert.Equal(7000m, Granted(r, "deduct_tp1_voluntary_epf"));
+    }
+
+    // Example iv: a modest salary leaves room under RM 4,000, so a small
+    // voluntary top-up counts in full.
+    [Fact]
+    public void Tp1_VoluntaryEpf_SmallTopUpCountsInFull()
+    {
+        var r = WithTp1(salary: 2500m, claims: [("deduct_tp1_voluntary_epf", 200m)]);
+
+        Assert.Equal(200m, Granted(r, "deduct_tp1_voluntary_epf"));
+    }
+
+    // The childcare ALLOWANCE exemption is RM 3,000 a year from 2026 (p.21).
+    [Fact]
+    public void ChildcareAllowance_IsExemptUpToRm3000()
+    {
+        Assert.Equal(3000m, PayrollAdjustmentCategories.Find("allowance_childcare")!.TaxExemptLimit);
+    }
+
     [Fact]
     public void Proration_OnTheCalendarRule_StillUsesCalendarDays()
     {
@@ -360,7 +525,7 @@ public class PayslipCalculatorTests
             allowances: [Allowance(PayrollAdjustmentCategories.AllowanceChildcare, 500m)],
             ytdByCategory: new Dictionary<string, decimal>
             {
-                [PayrollAdjustmentCategories.AllowanceChildcare] = 2300m,
+                [PayrollAdjustmentCategories.AllowanceChildcare] = 2900m,
             }));
 
         // RM 100 of headroom left, so RM 400 of the 500 is taxable.
@@ -378,11 +543,11 @@ public class PayslipCalculatorTests
             allowances:
             [
                 Allowance(PayrollAdjustmentCategories.AllowanceChildcare, 2000m),
-                Allowance(PayrollAdjustmentCategories.AllowanceChildcare, 1000m),
+                Allowance(PayrollAdjustmentCategories.AllowanceChildcare, 1600m),
             ]));
 
-        // Ceiling is 2,400: the first row is fully exempt, the second has only
-        // RM 400 of headroom left, so RM 600 of it is taxable.
+        // Ceiling is 3,000: the first row is fully exempt, the second has only
+        // RM 1,000 of headroom left, so RM 600 of it is taxable.
         Assert.Equal(0m, r.LineItems[0].PcbTaxableAmount);
         Assert.Equal(600m, r.LineItems[1].PcbTaxableAmount);
     }

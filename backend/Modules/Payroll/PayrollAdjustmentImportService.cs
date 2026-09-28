@@ -371,7 +371,7 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
     // generation does too.
     private async Task<IReadOnlyList<EmployeeProfile>> ScopeAsync(PayrollRun run)
     {
-        var payable = (await _directory.GetProfilesForCurrentOrgAsync())
+        var payable = (await _directory.PayrollProfilesAsync())
             .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 

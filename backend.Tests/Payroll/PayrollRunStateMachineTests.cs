@@ -294,6 +294,20 @@ public class PayrollRunStateMachineTests : IDisposable
         }
     }
 
+    // PCB 2(II) and the mid-year LHDN forms read the year so far, month by
+    // month — only the months actually approved, and each month's own PCB.
+    [Fact]
+    public async Task TheYearSoFar_IsBrokenDownByApprovedMonth()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        for (var month = 1; month <= 3; month++) await SubmittedRunAsync(2026, month);
+
+        var row = Assert.Single((await _annual.LoadAsync(2026)).Employees);
+
+        Assert.Equal([1, 2, 3], row.Months.Select(m => m.Month));
+        Assert.Equal(row.TotalPcb, row.Months.Sum(m => m.Pcb));
+    }
+
     [Fact]
     public async Task AnnualForms_AreProducedOnceTheWholeYearIsApproved()
     {

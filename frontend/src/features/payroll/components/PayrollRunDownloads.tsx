@@ -8,6 +8,7 @@ import {
   downloadPayrollSummary,
   downloadPcbDetails,
   downloadPcbTxt,
+  downloadTp1Claims,
   downloadPerkesoSkbbkTxt,
   downloadPerkesoTxt,
   emailRunPayslips,
@@ -131,6 +132,15 @@ const ITEMS: Item[] = [
     description: "Monthly tax deduction remittance, LHDN's CP39 fixed-width format.",
     portal: "LHDN e-PCB",
     download: (runId) => downloadPcbTxt(runId),
+  },
+  {
+    key: "tp1-claims",
+    group: "STATUTORY",
+    title: "TP1 / TP3 Claims List",
+    description:
+      "Every employee who claimed reliefs or rebates on Borang PCB/TP1 this month, with the month's and the year's totals, and anyone who declared a previous employer on TP3. Each employee's own TP1 form is on the payslip row.",
+    portal: null,
+    download: (runId) => downloadTp1Claims(runId),
   },
   {
     key: "payslips",

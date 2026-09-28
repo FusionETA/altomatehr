@@ -90,6 +90,13 @@ public class EmployeeProfile : ITenantScoped
 
     // ---- Income tax ----
     [MaxLength(40)] public string? IncomeTaxNumber { get; set; }
+
+    // A 15% approval, and the months it covers (first of the month; null ends
+    // mean open). Approvals are time-limited — REP runs five years — so a run
+    // outside the range computes at the normal resident rates.
+    public SpecialTaxScheme? SpecialTaxScheme { get; set; }
+    public DateTime? SpecialTaxFrom { get; set; }
+    public DateTime? SpecialTaxTo { get; set; }
     public bool PcbBorneByEmployer { get; set; }
     [MaxLength(40)] public string? SsfwNumber { get; set; }
     public bool ReportedToLhdn { get; set; }

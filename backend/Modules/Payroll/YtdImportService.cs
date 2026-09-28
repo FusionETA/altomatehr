@@ -380,7 +380,8 @@ public class YtdImportService : IYtdImportService
     private async Task<(List<EmployeeProfile> Profiles, Dictionary<string, Auth.Entities.User> Users)>
         RosterAsync()
     {
-        var profiles = await _directory.GetProfilesForCurrentOrgAsync();
+        // An Admin or Owner is not on payroll, so there is no YTD to import.
+        var profiles = await _directory.PayrollProfilesAsync();
         var users = (await _directory.GetUsersAsync())
             .ToDictionary(u => u.Id, u => u, StringComparer.Ordinal);
 
