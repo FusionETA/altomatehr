@@ -29,6 +29,8 @@ public class CurrentUser : ICurrentUser
 
     public bool IsSupport => Principal?.FindFirstValue("support") == "1";
 
+    public bool IsSso => Principal?.FindFirstValue("sso") == "1";
+
     // The caller's real remote IP, for the attendance IP-allowlist.
     //
     // We sit behind ONE reverse proxy (nginx on the droplet), which appends the

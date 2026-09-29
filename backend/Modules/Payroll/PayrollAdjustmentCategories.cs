@@ -763,7 +763,7 @@ public static class PayrollAdjustmentCategories
             new PayrollAdjustmentCategoryMeta
             {
                 Code = DeductTp1Lifestyle,
-                Label = "TP1 · Lifestyle (Books / PC / Internet)",
+                Label = "TP1 · Lifestyle (Books / Computer / Smartphone / Tablet / Internet / Courses)",
                 Kind = PayslipLineKind.DEDUCTION,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,

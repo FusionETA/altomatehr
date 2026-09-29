@@ -298,20 +298,23 @@ export function EmployeeShell({
                       ) : null}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        setChangePasswordOpen(true);
-                      }}
-                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:bg-muted"
-                    >
-                      <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>
-                        <span className="block font-semibold text-foreground">Change password</span>
-                        <span className="block text-xs">Signs out every device</span>
-                      </span>
-                    </button>
+                    {/* No password here for an Altomate (SSO) account. */}
+                    {user.viaSso ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          setChangePasswordOpen(true);
+                        }}
+                        className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                      >
+                        <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          <span className="block font-semibold text-foreground">Change password</span>
+                          <span className="block text-xs">Signs out every device</span>
+                        </span>
+                      </button>
+                    )}
 
                     <PushToggleMenuItem
                       onClose={() => setAccountMenuOpen(false)}
@@ -350,17 +353,21 @@ export function EmployeeShell({
                       Launch Appraisify
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        onLogout();
-                      }}
-                      className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
-                    >
-                      <LogOut className="h-4 w-4 shrink-0" />
-                      Log out
-                    </button>
+                    {/* An Altomate (SSO) session signs out from Altomate, not
+                        here — as in the previous system. */}
+                    {user.viaSso ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onLogout();
+                        }}
+                        className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+                      >
+                        <LogOut className="h-4 w-4 shrink-0" />
+                        Log out
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>

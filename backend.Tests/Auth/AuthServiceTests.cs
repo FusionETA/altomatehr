@@ -145,6 +145,62 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task RefreshAsync_KeepsAnSsoSession_MarkedAsSso()
+    {
+        // A refresh must not bring back the Log out an Altomate hand-off hides.
+        var existing = new RefreshToken
+        {
+            Token = "sso-refresh-token",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            OrganizationId = "org-1",
+            IsSso = true,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+        };
+        var service = CreateService(
+            users: [],
+            refreshTokens: out var refreshTokens,
+            existingRefreshTokens: [existing]);
+
+        var result = await service.RefreshAsync("sso-refresh-token");
+
+        Assert.NotNull(result);
+        Assert.True(result.ViaSso);
+        Assert.True(refreshTokens.Tokens.Single(t => t.Token == result.RefreshToken).IsSso);
+    }
+
+    [Fact]
+    public async Task SwitchOrgAsync_InAnSsoSession_StaysSso()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "x")],
+            refreshTokens: out _,
+            memberships:
+            [
+                Membership("usr-admin", "Admin", "org-1"),
+                Membership("usr-admin", "Admin", "org-2"),
+            ]);
+
+        Assert.True((await service.SwitchOrgAsync("usr-admin", "org-2", sso: true))!.ViaSso);
+        Assert.False((await service.SwitchOrgAsync("usr-admin", "org-2"))!.ViaSso);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_InAnSsoSession_IsRefused()
+    {
+        var user = CreateUser(password: "old-password");
+        var hash = user.PasswordHash;
+        var service = CreateService(users: [user], refreshTokens: out _);
+
+        var error = await service.ChangePasswordAsync("usr-admin", "old-password", "a-new-password-1", viaSso: true);
+
+        Assert.NotNull(error);
+        Assert.Equal(hash, user.PasswordHash);
+    }
+
+    [Fact]
     public async Task RefreshAsync_WithRevokedToken_ReturnsNull()
     {
         var existing = new RefreshToken

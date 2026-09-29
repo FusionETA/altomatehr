@@ -11,6 +11,7 @@ export const toSignedInUser = (res: AuthResponse): SignedInUser => ({
   name: res.name,
   isSuperadmin: res.isSuperadmin ?? false,
   supportMode: res.supportMode ?? false,
+  viaSso: res.viaSso ?? false,
   activeOrganizationName: res.activeOrganizationName ?? null,
 });
 

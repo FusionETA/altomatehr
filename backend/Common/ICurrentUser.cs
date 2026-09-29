@@ -25,4 +25,8 @@ public interface ICurrentUser
     // are audited as "System (Support)" there, with the real person recorded
     // in the internal support log.
     bool IsSupport => false;
+
+    // Arrived through the Altomate SSO hand-off (claim "sso") rather than a
+    // password sign-in here. The account is managed in Altomate.
+    bool IsSso => false;
 }

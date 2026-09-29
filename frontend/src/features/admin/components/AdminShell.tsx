@@ -200,7 +200,9 @@ export function AdminShell({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <OrgSwitcher />
+              {/* Altomate provisions an SSO customer's companies itself, so
+                  one made here would be unknown to it. */}
+              <OrgSwitcher allowCreate={!user.viaSso} />
 
               <div className="hidden sm:block">
                 <NotificationBell onNavigate={navigateFromNotification} />
@@ -267,17 +269,21 @@ export function AdminShell({
                       Launch Appraisify
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        onLogout();
-                      }}
-                      className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
-                    >
-                      <LogOut className="h-4 w-4 shrink-0" />
-                      Log out
-                    </button>
+                    {/* An Altomate (SSO) session signs out from Altomate, not
+                        here — as in the previous system. */}
+                    {user.viaSso ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onLogout();
+                        }}
+                        className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+                      >
+                        <LogOut className="h-4 w-4 shrink-0" />
+                        Log out
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>

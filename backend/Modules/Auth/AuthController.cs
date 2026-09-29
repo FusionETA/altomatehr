@@ -113,7 +113,7 @@ public class AuthController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
 
-        var error = await _auth.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword);
+        var error = await _auth.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword, viaSso: _currentUser.IsSso);
         if (error is not null) return BadRequest(new { message = error });
 
         Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = "/auth" });
@@ -128,7 +128,7 @@ public class AuthController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.SwitchOrgAsync(userId, organizationId);
+        var result = await _auth.SwitchOrgAsync(userId, organizationId, sso: _currentUser.IsSso);
         if (result is null)
             return Forbid();   // you're not a member of that org
 
@@ -204,5 +204,6 @@ public class AuthController : ControllerBase
             ActiveOrganizationName = result.OrganizationName,
             IsSuperadmin = result.IsSuperadmin,
             SupportMode = result.SupportMode,
+            ViaSso = result.ViaSso,
         };
 }
