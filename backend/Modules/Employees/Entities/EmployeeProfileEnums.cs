@@ -17,6 +17,18 @@ public enum IdType
     POLICE_NO,
 }
 
+// The terms someone is employed on — LHDN's C.P.8D "Status Pekerja" (field 5).
+// MANAGEMENT is company directors, principal officers, partners and the like.
+public enum EmploymentStatus
+{
+    MANAGEMENT,
+    PERMANENT,
+    CONTRACT,
+    PART_TIME,
+    INDUSTRIAL_TRAINEE,
+    OTHER,
+}
+
 public enum MaritalStatus
 {
     SINGLE,

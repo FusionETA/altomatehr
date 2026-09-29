@@ -149,6 +149,19 @@ public static class PayrollAnnualReports
         return qualifyingChildren > 0 ? "3" : "1";
     }
 
+    // CP8D field 5, "Status Pekerja". Null when the profile has none, which
+    // the file then reports as permanent (Cp8dTxt.DefaultStatus).
+    public static int? Cp8dStatus(EmploymentStatus? status) => status switch
+    {
+        Employees.Entities.EmploymentStatus.MANAGEMENT => 1,
+        Employees.Entities.EmploymentStatus.PERMANENT => 2,
+        Employees.Entities.EmploymentStatus.CONTRACT => 3,
+        Employees.Entities.EmploymentStatus.PART_TIME => 4,
+        Employees.Entities.EmploymentStatus.INDUSTRIAL_TRAINEE => 5,
+        Employees.Entities.EmploymentStatus.OTHER => 6,
+        _ => null,
+    };
+
     // The E-number reduced to the digits LHDN's filenames are built from.
     public static string EmployerNumber(string? employerTin) =>
         StatutoryFileFields.DigitsOnly(employerTin);

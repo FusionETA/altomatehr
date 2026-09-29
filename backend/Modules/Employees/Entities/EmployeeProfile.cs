@@ -56,6 +56,11 @@ public class EmployeeProfile : ITenantScoped
     [MaxLength(120)] public string? Location { get; set; }
     [MaxLength(120)] public string? WorkSchedule { get; set; }
 
+    // Employment terms, reported on CP8D (fields 5 and 6). Null status reads
+    // as permanent; a contract end is the date the contract runs to.
+    public EmploymentStatus? EmploymentStatus { get; set; }
+    public DateTime? ContractEndDate { get; set; }
+
     // ---- Spouse / tax relief ----
     public bool? SpouseWorking { get; set; }
     public bool? SpouseDisabled { get; set; }

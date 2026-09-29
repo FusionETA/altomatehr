@@ -332,6 +332,32 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Equal(row.TotalPcb, row.Months.Sum(m => m.Pcb));
     }
 
+    // CP8D fields 5 and 6 read the employee's recorded terms: a contract
+    // employee files as status 3 with their contract end; someone with
+    // nothing recorded files as permanent, retiring at 60.
+    [Fact]
+    public async Task Cp8d_ReadsTheProfilesEmploymentStatusAndContractEnd()
+    {
+        var contract = AddEmployee("usr-1", "Aisyah");
+        contract.EmploymentStatus = EmploymentStatus.CONTRACT;
+        contract.ContractEndDate = new DateTime(2027, 6, 30);
+        AddEmployee("usr-2", "Tan");
+        await _db.SaveChangesAsync();
+        for (var month = 1; month <= 12; month++) await SubmittedRunAsync(2026, month);
+
+        var file = await _annual.RenderAsync(PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT, 2026);
+        Assert.True(file.Ok, file.Error);
+        var rows = System.Text.Encoding.UTF8.GetString(file.Content!)
+            .Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
+            .Select(r => r.Split('|'))
+            .ToDictionary(c => c[0]);
+
+        Assert.Equal("3", rows["AISYAH"][4]);
+        Assert.Equal("30-06-2027", rows["AISYAH"][5]);
+        Assert.Equal("2", rows["TAN"][4]);
+        Assert.Equal("15-06-2050", rows["TAN"][5]);   // born 15 Jun 1990, retires at 60
+    }
+
     // PCB 2(II) is a statement of what has been deducted SO FAR, issued on
     // request mid-year — it must not wait for December like the returns do.
     [Fact]

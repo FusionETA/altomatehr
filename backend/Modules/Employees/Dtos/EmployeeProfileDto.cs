@@ -45,6 +45,8 @@ public class EmployeeProfileDto
     public string? Department { get; set; }
     public string? Location { get; set; }
     public string? WorkSchedule { get; set; }
+    public EmploymentStatus? EmploymentStatus { get; set; }
+    public DateTime? ContractEndDate { get; set; }
 
     // ---- Spouse / tax relief ----
     public bool? SpouseWorking { get; set; }

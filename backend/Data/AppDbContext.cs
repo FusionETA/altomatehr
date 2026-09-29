@@ -242,6 +242,7 @@ public class AppDbContext : DbContext
         profile.Property(p => p.Gender).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.IdType).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.MaritalStatus).HasConversion<string>().HasMaxLength(20);
+        profile.Property(p => p.EmploymentStatus).HasConversion<string>().HasMaxLength(30);
         profile.Property(p => p.SocsoScheme).HasConversion<string>().HasMaxLength(40);
         profile.Property(p => p.SpecialTaxScheme).HasConversion<string>().HasMaxLength(30);
         profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
