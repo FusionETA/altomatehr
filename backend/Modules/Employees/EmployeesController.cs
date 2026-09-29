@@ -182,14 +182,33 @@ public class EmployeesController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    // GET /employees/export — the whole roster in the import's layout, to edit
+    // and re-import. With ?fields=a,b,c only those columns, as a plain table
+    // to read or print (Excel or PDF); ?includeArchived=false leaves out
+    // archived employees.
     [HttpGet("export")]
     [Authorize(Roles = "Admin,Owner")]
-    public async Task<IActionResult> Export([FromQuery] TabularFormat format = TabularFormat.Xlsx)
+    public async Task<IActionResult> Export(
+        [FromQuery] TabularFormat format = TabularFormat.Xlsx,
+        [FromQuery] string? fields = null,
+        [FromQuery] bool includeArchived = true)
     {
-        var result = await _import.ExportAsync(format);
+        var result = string.IsNullOrWhiteSpace(fields)
+            ? await _import.ExportAsync(format)
+            : await _import.ExportSelectedAsync(
+                format,
+                fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                includeArchived);
+        if (result is null) return BadRequest(new { error = "Choose at least one field to export." });
+
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);
     }
+
+    // GET /employees/export/fields — what an export can include, grouped.
+    [HttpGet("export/fields")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ExportFields() => Ok(await _import.ExportFieldsAsync());
 
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]

@@ -162,6 +162,24 @@ public static class EmployeeImportSheet
 
     public static readonly IReadOnlyList<TabularColumn> Columns = [.. Definitions.Select(d => d.Column)];
 
+    // The columns in the sections the export dialog lists them under. Every
+    // column is in exactly one group (EmployeeExportTests pins it), so a new
+    // column cannot be added without deciding where people will find it.
+    public static readonly IReadOnlyList<(string Group, string[] Keys)> Groups =
+    [
+        ("Employee", [EmailKey, NameKey, RoleKey, EmployeeNumberKey, JobTitleKey, JoinDateKey, DateOfBirthKey, PolicyKey, ShiftKey]),
+        ("Personal", ["idNumber", "idType", "nationality", "gender", "race", "maritalStatus", "hasPr", "isResident", "isOku"]),
+        ("Contact & address", ["phone", "alternateEmail", "addressLine1", "addressLine2", "city", "postcode", "state"]),
+        ("Emergency contact", ["emergencyContactName", "emergencyContactPhone", "emergencyContactRelation"]),
+        ("Employment", ["leaveDate", "department", "location", "workSchedule"]),
+        ("Spouse", ["spouseWorking", "spouseDisabled", "spouseIdNumber", "spousePcbNumber"]),
+        ("Salary", ["salaryType", "monthlySalary", "hourlyRate"]),
+        ("Statutory", ["epfNumber", "epfEmployeeRate", "contributeToEpf", "epfEmployeeVoluntary", "epfEmployerVoluntary",
+            "epfMemberBefore1998", "socsoNumber", "socsoScheme", "contributeToEis", "contributeToSkbbk",
+            "incomeTaxNumber", "pcbBorneByEmployer"]),
+        ("Payment", ["paymentMethod", "bankName", "bankAccountNumber", "bankAccountHolderName"]),
+    ];
+
     public static IReadOnlyList<TabularColumn> ColumnsFor(bool includePayroll) =>
         includePayroll ? Columns : [.. Columns.Where(c => !PayrollKeys.Contains(c.Key))];
 

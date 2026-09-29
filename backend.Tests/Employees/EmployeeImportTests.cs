@@ -540,6 +540,91 @@ public class EmployeeImportTests
         Assert.DoesNotContain("assword", Encoding.UTF8.GetString(export.Content));
     }
 
+    // ─── Export with chosen fields ──────────────────────────────────────
+
+    // Every column is offered under exactly one heading in the export dialog,
+    // so none can be added without deciding where people will find it.
+    [Fact]
+    public void EveryColumnIsInExactlyOneExportGroup()
+    {
+        var grouped = EmployeeImportSheet.Groups.SelectMany(g => g.Keys).ToList();
+
+        Assert.Equal(grouped.Count, grouped.Distinct().Count());
+        Assert.Equal(
+            EmployeeImportSheet.Columns.Select(c => c.Key).OrderBy(k => k),
+            grouped.OrderBy(k => k));
+    }
+
+    // The chosen columns, in the sheet's own order whatever order they were
+    // ticked in, and nothing else.
+    [Fact]
+    public async Task AnExportOfChosenFields_HasOnlyThoseColumnsInSheetOrder()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")]);
+
+        var export = await h.Service.ExportSelectedAsync(
+            TabularFormat.Csv, ["monthlySalary", "name", "employeeNumber"], includeArchived: true);
+
+        var lines = Encoding.UTF8.GetString(export!.Content)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Equal("Name,Employee No,Monthly Salary", lines[0].TrimStart('\uFEFF'));
+        Assert.Equal(2, lines.Length);
+        Assert.EndsWith("5000.00", lines[1]);
+    }
+
+    // Asking for a payroll column without Payroll access gets nothing for it —
+    // the field list is a wish list, not a way round the grant.
+    [Fact]
+    public async Task AChosenPayrollField_IsDroppedWithoutPayrollAccess()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")], payrollAccess: false);
+
+        var fields = await h.Service.ExportFieldsAsync();
+        var export = await h.Service.ExportSelectedAsync(
+            TabularFormat.Csv, ["name", "monthlySalary", "bankAccountNumber"], includeArchived: true);
+        var onlyPayroll = await h.Service.ExportSelectedAsync(
+            TabularFormat.Csv, ["monthlySalary"], includeArchived: true);
+
+        Assert.DoesNotContain(fields, f => f.Key == "monthlySalary");
+        Assert.Contains(fields, f => f.Key == "phone" && f.Group == "Contact & address");
+        var text = Encoding.UTF8.GetString(export!.Content);
+        Assert.DoesNotContain("Monthly Salary", text);
+        Assert.DoesNotContain("112233445566", text);
+        Assert.Null(onlyPayroll);   // nothing left to export
+    }
+
+    [Fact]
+    public async Task AnExportCanLeaveOutArchivedEmployees()
+    {
+        var archived = Profile("usr-2");
+        archived.IsArchived = true;
+        var h = Make(
+            [Member("usr-1", "aisyah@example.com"), Member("usr-2", "chan@example.com")],
+            [Profile("usr-1"), archived]);
+
+        var active = Encoding.UTF8.GetString((await h.Service.ExportSelectedAsync(
+            TabularFormat.Csv, ["email"], includeArchived: false))!.Content);
+        var everyone = Encoding.UTF8.GetString((await h.Service.ExportSelectedAsync(
+            TabularFormat.Csv, ["email"], includeArchived: true))!.Content);
+
+        Assert.DoesNotContain("chan@example.com", active);
+        Assert.Contains("chan@example.com", everyone);
+    }
+
+    [Theory]
+    [InlineData(TabularFormat.Xlsx, "employee-details.xlsx")]
+    [InlineData(TabularFormat.Pdf, "employee-details.pdf")]
+    public async Task AChosenFieldExport_ComesAsExcelOrPdf(TabularFormat format, string fileName)
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")]);
+
+        var export = await h.Service.ExportSelectedAsync(format, ["name", "email", "phone"], includeArchived: true);
+
+        Assert.Equal(fileName, export!.FileName);
+        Assert.NotEmpty(export.Content);
+        if (format == TabularFormat.Pdf) Assert.Equal("%PDF", Encoding.ASCII.GetString(export.Content, 0, 4));
+    }
+
     // ─── Payroll access ─────────────────────────────────────────────────
 
     // Manage Employee hides payroll from an admin whose grant leaves it out;

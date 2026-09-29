@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiGetFile, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
+import type { SalaryChangeReason } from "@/features/payroll/api";
 
 export type Employee = {
   id: string;
@@ -170,8 +171,18 @@ export const ID_TYPE_LABELS: Record<IdType, string> = {
 export type EmployeeProfile = {
   // Read-only context, server-set.
   id: string;
+  /** The profile record's own id (payroll keys on it); null until first saved. */
+  employeeProfileId?: string | null;
   email: string;
   name: string;
+
+  // Sent with a save that changes the salary — never read back. A real change
+  // is recorded in the salary history with this reason and effective date; a
+  // correction (the old figure was a typo) is not.
+  salaryChangeIsCorrection?: boolean;
+  salaryChangeReason?: SalaryChangeReason | null;
+  salaryChangeEffectiveDate?: string | null;
+  salaryChangeNotes?: string | null;
 
   // Personal / demographic
   phone: string | null;
@@ -485,6 +496,35 @@ export const downloadEmployeeImportTemplate = () =>
 // for everyone is an edit rather than a retype.
 export const downloadEmployeeExport = () =>
   apiGetFile("/employees/export", "employees.xlsx");
+
+// ---- Employee details export ----
+
+/** One column an export can include, under the heading the dialog lists it. */
+export type EmployeeExportField = { key: string; label: string; group: string };
+
+export type EmployeeExportFormat = "Xlsx" | "Pdf";
+
+// What this admin may export — payroll columns only with Payroll access.
+export const getEmployeeExportFields = () =>
+  apiGet<EmployeeExportField[]>("/employees/export/fields");
+
+// The chosen columns as a plain table to read, share or print. (The roster
+// export above is the import's own workbook, for editing and re-importing.)
+export const downloadEmployeeDetails = (
+  format: EmployeeExportFormat,
+  fields: string[],
+  includeArchived: boolean,
+) => {
+  const query = new URLSearchParams({
+    format,
+    fields: fields.join(","),
+    includeArchived: String(includeArchived),
+  });
+  return apiGetFile(
+    `/employees/export?${query}`,
+    format === "Pdf" ? "employee-details.pdf" : "employee-details.xlsx",
+  );
+};
 
 // What a blank cell does to someone who already exists. A column missing from
 // the file is left alone either way.

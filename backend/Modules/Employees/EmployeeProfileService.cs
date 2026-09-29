@@ -69,14 +69,21 @@ public class EmployeeProfileService : IEmployeeProfileService
             Apply(dto, profile);
             await _profiles.UpdateAsync(profile);
 
-            // Only writes a row when the salary actually moved. A no-op
-            // change would fill the history an IR dispute reads with noise.
-            await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
+            // Only writes a row when the salary actually moved — a no-op
+            // change would fill the history an IR dispute reads with noise —
+            // and, as in the previous system, not for:
+            //   • a correction the admin marked as a typo, and
+            //   • a first salary (nothing, or RM 0, was set before): filling
+            //     in an empty field is not a change to anyone's pay.
+            if (!dto.SalaryChangeIsCorrection && HadASalary(before))
             {
-                EffectiveDate = dto.SalaryChangeEffectiveDate?.Date ?? DateTime.UtcNow.Date,
-                Reason = dto.SalaryChangeReason ?? Payroll.Entities.SalaryChangeReason.RAISE,
-                Notes = dto.SalaryChangeNotes,
-            });
+                await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
+                {
+                    EffectiveDate = dto.SalaryChangeEffectiveDate?.Date ?? DateTime.UtcNow.Date,
+                    Reason = dto.SalaryChangeReason ?? Payroll.Entities.SalaryChangeReason.RAISE,
+                    Notes = dto.SalaryChangeNotes,
+                });
+            }
         }
 
         // Any of ~30 fields here feeds the calculation (salary, EPF/SOCSO
@@ -88,6 +95,11 @@ public class EmployeeProfileService : IEmployeeProfileService
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
     }
+
+    private static bool HadASalary(EmployeeProfile before) =>
+        before.SalaryType == Policies.Entities.SalaryType.HOURLY
+            ? before.HourlyRate is > 0m
+            : before.MonthlySalary is > 0m;
 
     // Just the three salary fields, detached from the tracked entity.
     private static EmployeeProfile SalarySnapshot(EmployeeProfile profile) => new()
@@ -166,6 +178,7 @@ public class EmployeeProfileService : IEmployeeProfileService
     private static EmployeeProfileDto ToDto(EmployeeProfile e, User? user) => new()
     {
         Id = e.UserId,
+        EmployeeProfileId = e.Id,
         Email = user?.Email ?? "",
         Name = user?.Name ?? "",
 
