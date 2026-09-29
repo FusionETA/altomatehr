@@ -18,7 +18,9 @@ export function ModalPortal({
 }) {
   const escape = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      // An Escape an open dropdown already used (see DrawerPortal) is not
+      // also a request to close the modal around it.
+      if (event.key === "Escape" && !event.defaultPrevented) onClose();
     },
     [onClose],
   );
