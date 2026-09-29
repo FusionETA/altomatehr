@@ -338,6 +338,7 @@ builder.Services.AddScoped<IInboundSsoService, InboundSsoService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IMasterKeyRepository, MasterKeyRepository>();
 builder.Services.AddScoped<IProvisioningService, ProvisioningService>();
+builder.Services.AddScoped<IPartnerIdentityService, PartnerIdentityService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
