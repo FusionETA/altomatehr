@@ -5,7 +5,6 @@ using AltomateHR.Api.Modules.Leave;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using AltomateHR.Api.Modules.Auth;
 
 namespace AltomateHR.Api.Modules.ApiKeys;
 
@@ -27,15 +26,16 @@ public class PartnerApiController : ControllerBase
     private readonly IDirectoryService _directory;
     private readonly IClaimsService _claims;
     private readonly ILeaveService _leave;
-    private readonly IAuthService _auth;
+    private readonly IPartnerIdentityService _identity;
 
     public PartnerApiController(
-        IDirectoryService directory, IClaimsService claims, ILeaveService leave, IAuthService auth)
+        IDirectoryService directory, IClaimsService claims, ILeaveService leave,
+        IPartnerIdentityService identity)
     {
         _directory = directory;
         _claims = claims;
         _leave = leave;
-        _auth = auth;
+        _identity = identity;
     }
 
     // GET /whoami — what this credential is and what it may do.
@@ -43,19 +43,23 @@ public class PartnerApiController : ControllerBase
     // No scope required: a caller holding the key is entitled to know what the
     // key is, and refusing would make a key impossible to diagnose.
     [HttpGet("whoami")]
-    public IActionResult WhoAmI()
+    public async Task<IActionResult> WhoAmI()
     {
         var scopes = User.FindAll(ApiKeyAuthenticationDefaults.ScopeClaim)
             .Select(c => c.Value)
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToArray();
+        var apiKeyId = User.FindFirst(ApiKeyAuthenticationDefaults.ApiKeyIdClaim)?.Value;
 
         return Ok(new
         {
             organizationId = User.FindFirst("org")?.Value,
             // Present for a wp_live_ key, absent for a signed-in human — which
             // is itself the answer to "what kind of caller am I".
-            apiKeyId = User.FindFirst(ApiKeyAuthenticationDefaults.ApiKeyIdClaim)?.Value,
+            apiKeyId,
+            // The key's own label, so an integration holding several can tell
+            // which one it pasted.
+            tokenName = apiKeyId is null ? null : await _identity.KeyNameAsync(apiKeyId),
             role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value,
             scopes,
             // The deploy gate integrations probe before sending an optional
@@ -122,72 +126,83 @@ public class PartnerApiController : ControllerBase
             .Count(l => l.Status == Leave.Entities.LeaveStatus.PENDING);
 
     // POST /auth/verify — check an email and password, for an external platform
-    // that wants to authenticate someone before handing them over.
+    // that wants to authenticate someone before minting ITS OWN session. Only
+    // the password is checked: no session, refresh token or login entry here.
+    //
+    // Accepts an org key (answers only about that company) or a MASTER key
+    // (wp_master_) — a first-party companion app such as ABPay, whose owner
+    // runs several companies. A master key is not an auth scheme, hence
+    // [AllowAnonymous] and the explicit check; no data endpoint accepts it.
     //
     // Rate limited, because this is a password oracle for anyone holding a key:
     // without a limit it is an offline-speed guessing machine against real
     // accounts. Same policy the login endpoint uses.
     //
     // Admins and owners only, matching the SSO hand-off it exists to precede.
+    [AllowAnonymous]
     [EnableRateLimiting("auth-login")]
     [HttpPost("auth/verify")]
     public async Task<IActionResult> Verify(VerifyCredentialsDto dto)
     {
-        var organizationId = User.FindFirst("org")?.Value;
-        if (string.IsNullOrEmpty(organizationId))
-            return Unauthorized(new { message = "This credential is not scoped to an organization." });
+        var caller = await CallerAsync();
+        if (caller is null)
+            return Unauthorized(new { message = "Invalid or revoked API key." });
 
-        var result = await _auth.LoginAsync(dto.Email ?? string.Empty, dto.Password ?? string.Empty);
+        var identity = await _identity.VerifyAsync(caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty);
 
         // One answer for a wrong password, an unknown email, a non-admin, and
         // someone who administers a different company. Anything finer tells a
         // key holder which emails exist.
-        var membership = result is null || !OrgRoles.IsAdministrative(result.Role)
-            ? null
-            : await MembershipForEmailAsync(organizationId, result.Email);
-
-        if (membership is null)
+        if (identity is null)
             return Unauthorized(new { message = "Invalid credentials for this organization." });
 
-        return Ok(new { email = result.Email, role = result.Role, organizationId });
+        return Ok(new
+        {
+            id = identity.Id,
+            name = identity.Name,
+            email = identity.Email,
+            role = identity.Role,
+            organizationId = identity.OrganizationId,
+            organizationName = identity.OrganizationName,
+            organizations = identity.Organizations,
+        });
     }
 
-    // POST /auth/organizations — which organizations an account administers.
+    // POST /auth/organizations — which companies an account administers, by
+    // `userId` or `email` (no password: a companion's "refresh" button).
     //
-    // Scoped to what the CALLING KEY can see: an integration asking about a
-    // person gets back only the org its own key belongs to, never that person's
-    // other employers.
+    // Scoped to what the CALLER can see: an org key gets back only its own
+    // company, never that person's other employers; a master key gets them all.
+    [AllowAnonymous]
+    [EnableRateLimiting("auth-login")]
     [HttpPost("auth/organizations")]
     public async Task<IActionResult> Organizations(LookupOrganizationsDto dto)
     {
-        var organizationId = User.FindFirst("org")?.Value;
-        if (string.IsNullOrEmpty(organizationId))
-            return Unauthorized(new { message = "This credential is not scoped to an organization." });
+        var caller = await CallerAsync();
+        if (caller is null)
+            return Unauthorized(new { message = "Invalid or revoked API key." });
 
-        var users = await _directory.GetUsersAsync();
-        var user = users.FirstOrDefault(u =>
-            string.Equals(u.Email, (dto.Email ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(dto.UserId) && string.IsNullOrWhiteSpace(dto.Email))
+            return BadRequest(new { message = "Send a userId or an email." });
 
-        if (user is null) return Ok(new { organizations = Array.Empty<object>() });
-
-        var membership = await _directory.GetMembershipAsync(organizationId, user.Id);
-        var organizations = membership is not null && OrgRoles.IsAdministrative(membership.Role)
-            ? new[] { new { organizationId, role = membership.Role } }
-            : [];
-
-        return Ok(new { organizations });
+        return Ok(new { organizations = await _identity.AdminOrganizationsAsync(caller, dto.UserId, dto.Email) });
     }
 
-    // AuthResult carries the email, not the id, and memberships key on the id —
-    // so it is resolved here rather than widening AuthResult for one caller.
-    private async Task<Employees.Entities.OrganizationMembership?> MembershipForEmailAsync(
-        string organizationId, string email)
+    // A master key from the header, or the org of a wp_live_ key the normal
+    // scheme resolved. A signed-in human's session is not an integration
+    // credential, so it counts as neither.
+    private Task<PartnerCaller?> CallerAsync()
     {
-        var users = await _directory.GetUsersAsync();
-        var user = users.FirstOrDefault(u =>
-            string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase));
+        var header = Request.Headers.Authorization.ToString();
+        var bearer = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? header["Bearer ".Length..].Trim()
+            : header.Trim();
 
-        return user is null ? null : await _directory.GetMembershipAsync(organizationId, user.Id);
+        var keyOrganizationId = User.HasClaim(c => c.Type == ApiKeyAuthenticationDefaults.ApiKeyIdClaim)
+            ? User.FindFirst("org")?.Value
+            : null;
+
+        return _identity.ResolveCallerAsync(bearer, keyOrganizationId);
     }
 }
 
@@ -203,7 +218,9 @@ public class VerifyCredentialsDto
 
 public class LookupOrganizationsDto
 {
-    [System.ComponentModel.DataAnnotations.Required]
+    // Either one. userId is what a companion that already verified someone holds.
+    public string? UserId { get; set; }
+
     [System.ComponentModel.DataAnnotations.EmailAddress]
     public string? Email { get; set; }
 }

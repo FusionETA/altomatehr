@@ -5,6 +5,12 @@ namespace AltomateHR.Api.Modules.Auth;
 public interface IAuthService
 {
     Task<AuthResult?> LoginAsync(string email, string password);
+
+    // The password check alone — no session, no refresh token, no login entry.
+    // For a companion app that authenticates someone before minting ITS own
+    // session. Null for an unknown email or a wrong password (a failure is
+    // still audited, as a failed login is).
+    Task<Entities.User?> VerifyPasswordAsync(string email, string password);
     Task<AuthResult?> RefreshAsync(string refreshToken);
 
     // Re-mint the token for another org the user belongs to. Null = not a member.
