@@ -214,7 +214,14 @@ public static class PcbCalculationDetailsPdf
                 .FontSize(8.5f).FontColor(PayrollPdfShared.Muted);
         }
 
-        Variable(column, "P", ExpandP(b), b.P, bold: true);
+        var p = PBeforeFloor(b);
+        Variable(column, "P",
+            p < 0m
+                ? ExpandP(b) + " — negative: the reliefs exceed the normal remuneration, so no tax is due on it "
+                  + "and the yearly tax below takes P as 0.00. An additional remuneration is added to this figure "
+                  + "(Section 3)."
+                : ExpandP(b),
+            p, bold: true);
         Variable(column, "M",
             "Amount of first chargeable income for every range of chargeable income a year.", b.M);
         Variable(column, "R", $"Percentage of tax rates. ({b.R * 100m:0.00}%)", b.R, raw: true);
@@ -235,6 +242,21 @@ public static class PcbCalculationDetailsPdf
             $"Current Month PCB = (Yearly Tax - Z - X) ÷ (n + 1) = ({Amount(b.YearlyTax)} - {Amount(b.Z)} "
             + $"- {Amount(b.X)}) ÷ {b.N + 1}",
             b.CurrentMonthPcb, bold: true);
+    }
+
+    // P as the formula gives it, before the floor at zero — what Section 3 adds
+    // the additional remuneration to. Snapshots taken before PBeforeFloor was
+    // recorded only kept the floored P; for those, a floored (zero) P is shown
+    // as the arithmetic printed beside it evaluates, and only when that is
+    // negative, so the page still reads true without re-running the month.
+    public static decimal PBeforeFloor(PcbBreakdown b)
+    {
+        if (b.PBeforeFloor is { } recorded) return recorded;
+        if (b.P > 0m) return b.P;
+
+        var derived = (b.Y - b.K) + (b.Y1 - b.K1) + (b.Y2 - b.K2 * b.N)
+            - (b.D + b.S + b.Du + b.Su + b.Q * b.C + b.SumLp + b.Lp1);
+        return derived < 0m ? Money.Round2(derived) : b.P;
     }
 
     // The arithmetic for P, written out with the numbers substituted, so the
@@ -282,7 +304,7 @@ public static class PcbCalculationDetailsPdf
         // to anyone subtracting the figure printed on their payslip.
         Variable(section, "P",
             "Total chargeable income for a year including AR — Section 1's P with Yt added and Kt "
-            + $"deducted = {Amount(b.P)} + {Amount(ar.Yt)} - {Amount(ar.KtEffective)} "
+            + $"deducted = {Amount(PBeforeFloor(b))} + {Amount(ar.Yt)} - {Amount(ar.KtEffective)} "
             + $"(Kt {Amount(ar.Kt)} capped at the remaining RM 4,000 allowance = {Amount(ar.KtEffective)})",
             ar.ChargeableWithAr, bold: true);
 
@@ -341,7 +363,7 @@ public static class PcbCalculationDetailsPdf
     {
         var zakatOffset = Math.Min(formulaPcb, Math.Max(0m, zakat));
 
-        if (zakatOffset <= 0m && voluntaryPcb <= 0m)
+        if (zakat <= 0m && voluntaryPcb <= 0m)
         {
             return [new("PCB",
                 "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN.",
@@ -353,12 +375,23 @@ public static class PcbCalculationDetailsPdf
             new("PCB", "Formula PCB this month — before the adjustments below.", formulaPcb, false),
         };
 
-        if (zakatOffset > 0m)
+        if (zakat > 0m)
         {
+            // The whole amount paid, as on the payslip — not only the part the
+            // PCB could absorb.
             rows.Add(new("- Zakat",
                 "Zakat / fitrah / levy paid for the current month, taken off this month's PCB ringgit for "
-                + "ringgit (never below zero).",
-                zakatOffset, false));
+                + "ringgit. PCB cannot go below zero.",
+                zakat, false));
+
+            var carriedForward = zakat - zakatOffset;
+            if (carriedForward > 0m)
+            {
+                rows.Add(new("Zakat carried forward",
+                    $"The part of this month's zakat larger than the PCB ({Amount(zakat)} paid, {Amount(zakatOffset)} "
+                    + "used). It is not lost: it counts in Z, the accumulated zakat, from next month.",
+                    carriedForward, false));
+            }
         }
 
         if (voluntaryPcb > 0m)
