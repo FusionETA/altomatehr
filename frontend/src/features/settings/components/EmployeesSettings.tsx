@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Archive, ChevronRight, CircleAlert, CircleCheck, Download, Plus, Upload, Users } from "lucide-react";
+import { Archive, ChevronRight, CircleAlert, CircleCheck, Download, Plus, TrendingUp, Upload, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -23,6 +23,7 @@ import {
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { ImportEmployeesDialog } from "./ImportEmployeesDialog";
 import { ExportEmployeesDialog } from "@/features/employees/components/ExportEmployeesDialog";
+import { ImportSalaryAdjustmentsDialog } from "@/features/payroll/components/ImportSalaryAdjustmentsDialog";
 import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
 
 const CARD =
@@ -80,6 +81,7 @@ export function EmployeesSettings() {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showSalaryImport, setShowSalaryImport] = useState(false);
   // Which employee's full record is open. Null = the list.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -333,7 +335,7 @@ export function EmployeesSettings() {
           {/* Import beside Add employee, quieter than it: onboarding a batch is
               the rarer act. It is also the one bulk path — adding people and
               updating every field, payroll details included. */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setShowImport(true)}
@@ -350,6 +352,18 @@ export function EmployeesSettings() {
               <Download className="h-4 w-4" />
               Export
             </button>
+            {/* An increment round for many people at once — payroll's, so only
+                for an admin whose grant includes Payroll. */}
+            {canPayroll ? (
+              <button
+                type="button"
+                onClick={() => setShowSalaryImport(true)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                <TrendingUp className="h-4 w-4" />
+                Salary adjustments
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setShowAdd(true)}
@@ -568,6 +582,14 @@ export function EmployeesSettings() {
       ) : null}
 
       {showExport ? <ExportEmployeesDialog onClose={() => setShowExport(false)} /> : null}
+
+      {showSalaryImport ? (
+        <ImportSalaryAdjustmentsDialog
+          onClose={() => setShowSalaryImport(false)}
+          // New salaries change the payroll roster's figures.
+          onImported={() => void payrollQuery.refresh()}
+        />
+      ) : null}
 
       {showImport ? (
         <ImportEmployeesDialog

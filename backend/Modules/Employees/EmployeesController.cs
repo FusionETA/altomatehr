@@ -55,8 +55,15 @@ public class EmployeesController : ControllerBase
     [HttpPut("{id}/profile")]
     public async Task<IActionResult> SaveProfile(string id, EmployeeProfileDto dto)
     {
-        var saved = await _profiles.SaveAsync(id, dto);
-        return saved is null ? NotFound() : Ok(saved);
+        try
+        {
+            var saved = await _profiles.SaveAsync(id, dto);
+            return saved is null ? NotFound() : Ok(saved);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     // POST /employees — add a member to THIS org (the admin's active org). If the

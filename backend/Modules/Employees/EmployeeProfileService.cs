@@ -61,6 +61,18 @@ public class EmployeeProfileService : IEmployeeProfileService
         }
         else
         {
+            // v2 has one current salary, applied straight away: a raise dated
+            // next month would already be paid in this month's run. So the
+            // date a change took effect can be today or earlier, never later.
+            if (!dto.SalaryChangeIsCorrection
+                && dto.SalaryChangeEffectiveDate is { } effective
+                && effective.Date > TodayInMalaysia())
+            {
+                throw new ArgumentException(
+                    "The effective date can't be in the future — the new salary applies straight away. "
+                    + "Save it on or after the date it takes effect.");
+            }
+
             // The salary as it stood BEFORE this edit. Captured as a copy
             // because Apply mutates the tracked entity in place — reading it
             // afterwards would compare the new values with themselves.
@@ -95,6 +107,10 @@ public class EmployeeProfileService : IEmployeeProfileService
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
     }
+
+    private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
+
+    private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
 
     private static bool HadASalary(EmployeeProfile before) =>
         before.SalaryType == Policies.Entities.SalaryType.HOURLY

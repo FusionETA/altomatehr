@@ -13,7 +13,8 @@ export type SalaryClassification =
   | { kind: "CORRECTION" }
   | { kind: "CHANGE"; reason: SalaryChangeReason; effectiveDate: string; notes: string };
 
-const today = () => new Date().toISOString().slice(0, 10);
+// The browser's own date (Malaysia for this app's users), not UTC's.
+const today = () => new Date().toLocaleDateString("en-CA");
 
 const choice = (active: boolean) =>
   `block cursor-pointer rounded-2xl border p-4 text-sm transition ${
@@ -46,7 +47,8 @@ export function SalaryChangeDialog({
   const [effectiveDate, setEffectiveDate] = useState(today());
   const [notes, setNotes] = useState("");
 
-  const canSave = kind === "CORRECTION" || (kind === "CHANGE" && effectiveDate !== "");
+  const future = effectiveDate > today();
+  const canSave = kind === "CORRECTION" || (kind === "CHANGE" && effectiveDate !== "" && !future);
 
   function confirm() {
     if (kind === "CORRECTION") onConfirm({ kind: "CORRECTION" });
@@ -109,9 +111,12 @@ export function SalaryChangeDialog({
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <span className="text-xs font-semibold text-muted-foreground">Effective from</span>
+                  {/* Today or earlier: the new salary applies straight away, so
+                      a raise dated next month would already be paid this month. */}
                   <input
                     type="date"
                     value={effectiveDate}
+                    max={today()}
                     onChange={(e) => setEffectiveDate(e.target.value)}
                     className={input}
                   />
@@ -141,10 +146,17 @@ export function SalaryChangeDialog({
                   className={input}
                 />
               </label>
-              <p className="text-xs text-muted-foreground">
-                A date inside a month that is already on a payroll run is flagged on that run, with
-                the correction for the days at each rate.
-              </p>
+              {future ? (
+                <p className="text-xs font-medium text-destructive">
+                  The effective date can&apos;t be in the future — the new salary applies straight
+                  away. Save it on or after the day it takes effect.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  A date inside a month that is already on a payroll run is flagged on that run,
+                  with the correction for the days at each rate.
+                </p>
+              )}
             </div>
           ) : null}
         </div>

@@ -444,6 +444,33 @@ export const salaryHistoryPath = (employeeProfileId: string) =>
 export const getSalaryHistory = (employeeProfileId: string) =>
   apiGet<SalaryChange[]>(salaryHistoryPath(employeeProfileId));
 
+// ─── Salary adjustment import ─────────────────────────────────────────
+// New salaries for many employees at once (an increment round), each
+// recorded in the salary history with its effective date and reason.
+
+export type SalaryAdjustmentImportResult = {
+  ok: boolean;
+  // A whole-file problem: unreadable, a missing column.
+  message: string | null;
+  errors: { row: number; message: string }[];
+  // Recorded in the salary history.
+  changed: number;
+  // A salary set for the first time — not a change, so not recorded.
+  firstSalaries: number;
+  // New Salary equal to the current one.
+  unchanged: number;
+};
+
+// Pre-filled with every payroll employee's current salary.
+export const downloadSalaryAdjustmentTemplate = () =>
+  apiGetFile("/payroll/salary-changes/import/template", "salary-adjustments.xlsx");
+
+export function importSalaryAdjustments(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<SalaryAdjustmentImportResult>("/payroll/salary-changes/import", form);
+}
+
 // ─── Xero ─────────────────────────────────────────────────────────────
 
 export type XeroPreviewLine = {

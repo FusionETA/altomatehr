@@ -540,6 +540,23 @@ public class EmployeeImportTests
         Assert.DoesNotContain("assword", Encoding.UTF8.GetString(export.Content));
     }
 
+    // The employee spreadsheet is the bulk way to FIX records, and it has no
+    // effective date or reason — so a salary edited there is a correction,
+    // not a raise in the salary history.
+    [Fact]
+    public async Task ASalaryEditedByTheSpreadsheet_IsACorrection()
+    {
+        var h = Make([Member("usr-1", "aisyah@example.com")], [Profile("usr-1")]);
+
+        var result = await h.Service.ImportAsync(Csv(Row(
+            "aisyah@example.com", extra: [("monthlySalary", "6000")])), TabularFormat.Csv);
+
+        Assert.True(result.Ok, string.Join(" | ", result.Errors.Select(e => e.Message)));
+        var saved = Assert.Single(h.Profiles.Saves).Dto;
+        Assert.Equal(6000m, saved.MonthlySalary);
+        Assert.True(saved.SalaryChangeIsCorrection);
+    }
+
     // ─── Export with chosen fields ──────────────────────────────────────
 
     // Every column is offered under exactly one heading in the export dialog,

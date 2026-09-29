@@ -287,6 +287,7 @@ builder.Services.AddScoped<IPortalCredentialRepository, PortalCredentialReposito
 builder.Services.AddScoped<IPortalCredentialService, PortalCredentialService>();
 builder.Services.AddScoped<ISalaryChangeRepository, SalaryChangeRepository>();
 builder.Services.AddScoped<ISalaryChangeService, SalaryChangeService>();
+builder.Services.AddScoped<ISalaryAdjustmentImportService, SalaryAdjustmentImportService>();
 builder.Services.AddScoped<IPayrollAnnualReportService, PayrollAnnualReportService>();
 builder.Services.AddScoped<IEmployeePayrollService, EmployeePayrollService>();
 builder.Services.AddScoped<IEmployeeLoanRepository, EmployeeLoanRepository>();
