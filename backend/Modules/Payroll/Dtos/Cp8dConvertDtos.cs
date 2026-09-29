@@ -63,4 +63,26 @@ public class Cp8dConvertRowDto
 
     [Range(0, 100_000_000)]
     public decimal Pcb { get; set; }
+
+    // ─── CP8D Pin. 2025 ────────────────────────────────────────────────
+
+    // Field 5: 1 management · 2 permanent · 3 contract · 4 part-time ·
+    // 5 industrial trainee · 6 other.
+    [Range(1, 6, ErrorMessage = "Status must be 1 to 6.")]
+    public int Status { get; set; } = 2;
+
+    // Field 6: retirement date, contract end, or the cessation date for
+    // someone who left in the year. Mandatory for LHDN.
+    public DateTime? RetirementDate { get; set; }
+
+    // Fields 11–16, 18, 20, 22 — optional; nil is left empty in the file.
+    [Range(0, 100_000_000)] public decimal BenefitsInKind { get; set; }
+    [Range(0, 100_000_000)] public decimal LivingAccommodation { get; set; }
+    [Range(0, 100_000_000)] public decimal Esos { get; set; }
+    [Range(0, 100_000_000)] public decimal TaxExempt { get; set; }
+    [Range(0, 100_000_000)] public decimal Tp1Relief { get; set; }
+    [Range(0, 100_000_000)] public decimal Tp1Zakat { get; set; }
+    [Range(0, 100_000_000)] public decimal Zakat { get; set; }
+    [Range(0, 100_000_000)] public decimal Cp38 { get; set; }
+    [Range(0, 100_000_000)] public decimal Perkeso { get; set; }
 }

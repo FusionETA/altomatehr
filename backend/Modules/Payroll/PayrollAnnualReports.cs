@@ -64,14 +64,16 @@ public static class PayrollAnnualReports
                 PayrollAnnualReportKind.CP8D_EMPLOYER_TXT,
                 GroupLhdnTxt,
                 "CP8D employer master (M)",
-                "Pipe-delimited employer master record.",
+                "Pipe-delimited employer master record. No longer uploaded: since C.P.8D Pin. 2025 "
+                + "LHDN takes the employee file only.",
                 "LHDN e-CP8D upload", "txt", "text/plain"),
 
             [PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT] = new(
                 PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT,
                 GroupLhdnTxt,
                 "CP8D employee particulars (P)",
-                "Pipe-delimited per-employee rows.",
+                "Pipe-delimited per-employee rows in LHDN's C.P.8D Pin. 2025 layout (22 fields), "
+                + "matching each employee's Form EA. Upload through e-Data Praisi / e-CP8D.",
                 "LHDN e-CP8D upload", "txt", "text/plain"),
 
             [PayrollAnnualReportKind.PCB2II_BULK_PDF] = new(

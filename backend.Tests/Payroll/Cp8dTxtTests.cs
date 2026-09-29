@@ -14,7 +14,7 @@ namespace AltomateHR.Api.Tests.Payroll;
 // that a substring appears somewhere.
 public class Cp8dTxtTests
 {
-    private const int ExpectedColumns = 16;
+    private const int ExpectedColumns = 22;
 
     private static AnnualEmployeeRow Employee(
         string name = "Aisyah Binti Rahman",
@@ -30,7 +30,10 @@ public class Cp8dTxtTests
         decimal bonus = 0m,
         decimal bik = 0m,
         decimal epf = 6600m,
-        decimal pcb = 1320m) => new()
+        decimal pcb = 1320m,
+        FormEaFigures? ea = null,
+        DateTime? dateOfBirth = null,
+        DateTime? leaveDate = null) => new()
         {
             EmployeeProfileId = "emp-1",
             EmployeeName = name,
@@ -46,17 +49,21 @@ public class Cp8dTxtTests
             GrossSalary = gross,
             BonusAndCommission = bonus,
             TotalBik = bik,
+            Ea = ea ?? new FormEaFigures { B1a = gross, B1b = bonus, B3 = bik },
             TotalEpfEmployee = epf,
             TotalPcb = pcb,
+            TotalMtdRemitted = pcb,
+            DateOfBirth = dateOfBirth ?? new DateTime(1990, 1, 1),
+            LeaveDate = leaveDate,
         };
 
     private static PayrollAnnualPayload Payload(
         string? employerTin = "E 1234567890",
-        string? employerName = "Globe Engineering Sdn Bhd",
+        string? employerName = "Acme Engineering Sdn Bhd",
         AnnualEmployeeRow[]? employees = null) => new()
         {
             Year = 2026,
-            OrganizationName = "Globe Engineering",
+            OrganizationName = "Acme Engineering",
             CompanyInfo = employerName is null
                 ? null
                 : new PayrollCompanyInfo { OrganizationId = "org-1", EmployerName = employerName },
@@ -78,7 +85,7 @@ public class Cp8dTxtTests
         var result = Cp8dTxt.RenderEmployer(Payload());
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal("1234567890|GLOBE ENGINEERING SDN BHD|2026\r\n", Text(result));
+        Assert.Equal("1234567890|ACME ENGINEERING SDN BHD|2026\r\n", Text(result));
     }
 
     // LHDN parsers are Windows-era and reject a file whose last line has no
@@ -123,61 +130,76 @@ public class Cp8dTxtTests
     {
         var result = Cp8dTxt.RenderEmployer(Payload(employerName: null));
 
-        Assert.Contains("|GLOBE ENGINEERING|", Text(result));
+        Assert.Contains("|ACME ENGINEERING|", Text(result));
     }
 
-    // ─── P — the columns ────────────────────────────────────────────────
+    // ─── P — the columns (C.P.8D Pin. 2025) ────────────────────────────
 
     [Fact]
-    public void EveryRowHasSixteenColumnsAndATrailingPipe()
+    public void EveryRowHasTwentyTwoFieldsAndATrailingPipe()
     {
         var line = Text(Cp8dTxt.RenderEmployees(Payload())).Split("\r\n")[0];
 
         Assert.EndsWith("|", line);
-        // The trailing pipe produces a 17th, empty, element on split.
+        // The trailing pipe produces one more, empty, element on split.
         Assert.Equal(ExpectedColumns + 1, line.Split('|').Length);
     }
 
+    // LHDN's own worked example, field for field ("Contoh data txt 1").
     [Fact]
-    public void TheColumnsAreInLhdnsOrder()
+    public void TheFieldsAreInLhdnsOrder()
     {
-        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
-            [Employee(children: 2, childRelief: 4000m, gross: 60000m, bonus: 5000m, bik: 1000m)])));
+        var ea = new FormEaFigures
+        {
+            B1a = 50000m, B3 = 4200m, B4 = 12000m, B1e = 1300m, F = 445m,
+            D5aTp1Relief = 2200m, D5bZakatSelfPaid = 1400.30m, D3ZakatViaSalary = 1700.20m,
+        };
+        var row = Employee(name: "Ali bin Ahmad", taxNo: "03770324020", ic: "730510125580",
+            maritalStatus: MaritalStatus.MARRIED, spouseWorking: true, children: 1, childRelief: 2000m,
+            epf: 3600m, pcb: 2555.25m, ea: ea, dateOfBirth: new DateTime(1967, 12, 15)) with
+        {
+            TotalCp38 = 1822.63m,
+            TotalSocsoEmployee = 120m,
+            TotalEisEmployee = 30m,
+        };
 
-        Assert.Equal("AISYAH BINTI RAHMAN", cols[0]);   // 1  name, uppercase
-        Assert.Equal("12345678901", cols[1]);           // 2  tax ref, digits only
-        Assert.Equal("900101145567", cols[2]);          // 3  IC, no dashes
-        Assert.Equal("3", cols[3]);                     // 4  category — single with children
-        Assert.Equal("2", cols[4]);                     // 5  tax borne by employer: no
-        Assert.Equal("2", cols[5]);                     // 6  qualifying children
-        Assert.Equal("4000", cols[6]);                  // 7  child relief
-        Assert.Equal("65000", cols[7]);                 // 8  gross pay (bonus in, BIK out)
-        Assert.Equal("6600", cols[13]);                 // 14 EPF
-        Assert.Equal("1320.00", cols[15]);              // 16 PCB, two decimals
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [row])));
+
+        Assert.Equal(
+            ["ALI BIN AHMAD", "03770324020", "730510125580", "3", "2", "15-12-2027", "2", "1", "2000",
+             "50000", "4200", "12000", "1300", "445", "2200", "1400.30", "3600", "1700.20", "2555.25",
+             "1822.63", "", "150"],
+            cols[..ExpectedColumns]);
     }
 
-    // Columns 9–13 and 15 are reserved by LHDN. Putting anything in them
-    // shifts nothing but is read as data that was never meant to be sent.
+    // A nil optional amount is left empty, as in LHDN's "Contoh data txt 2";
+    // EPF and PCB are always written.
     [Fact]
-    public void TheReservedColumnsAreEmpty()
+    public void NilOptionalAmounts_AreLeftEmpty()
     {
-        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload()));
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [Employee(epf: 0m, pcb: 0m)])));
 
-        foreach (var i in new[] { 8, 9, 10, 11, 12, 14 })
+        foreach (var i in new[] { 10, 11, 12, 13, 14, 15, 17, 19, 20, 21 })
         {
             Assert.Equal(string.Empty, cols[i]);
         }
+        Assert.Equal("0", cols[16]);       // 17 EPF
+        Assert.Equal("0.00", cols[18]);    // 19 PCB
     }
 
-    // The year's gross pay, bonus included and benefits in kind not — the
-    // figure the previous system filed in column 8.
+    // Field 10 is the remuneration LESS what fields 11–13 declare, so a
+    // benefit in kind is never counted twice.
     [Fact]
-    public void TheIncomeColumnIsTheYearsGrossPay()
+    public void GrossRemuneration_LeavesOutWhatHasItsOwnField()
     {
-        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
-            [Employee(gross: 50000m, bonus: 8000m, bik: 2000m)])));
+        var ea = new FormEaFigures { B1a = 50000m, B1b = 8000m, B1c = 1200m, B3 = 2000m, B4 = 6000m, B1e = 900m, F = 3000m };
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [Employee(ea: ea)])));
 
-        Assert.Equal("58000", cols[7]);
+        Assert.Equal("59200", cols[9]);    // 10 gross: 50,000 + 8,000 + 1,200
+        Assert.Equal("2000", cols[10]);    // 11 BIK
+        Assert.Equal("6000", cols[11]);    // 12 accommodation
+        Assert.Equal("900", cols[12]);     // 13 ESOS
+        Assert.Equal("3000", cols[13]);    // 14 tax-exempt
     }
 
     // Rounded, not truncated: this declares income, and rounding every
@@ -188,8 +210,8 @@ public class Cp8dTxtTests
         var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
             [Employee(gross: 60000.60m, epf: 6600.40m)])));
 
-        Assert.Equal("60001", cols[7]);
-        Assert.Equal("6600", cols[13]);
+        Assert.Equal("60001", cols[9]);
+        Assert.Equal("6600", cols[16]);
     }
 
     [Fact]
@@ -198,7 +220,48 @@ public class Cp8dTxtTests
         var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
             [Employee(pcb: 1320.55m)])));
 
-        Assert.Equal("1320.55", cols[15]);
+        Assert.Equal("1320.55", cols[18]);
+    }
+
+    // Field 19 is every ringgit remitted as MTD in CP39 — the Additional PCB
+    // the employee asked for included — matching EA D1 and PCB 2(II).
+    [Fact]
+    public void Pcb_IsAllMtdRemitted_IncludingAdditionalPcb()
+    {
+        var row = Employee(pcb: 1200m) with { TotalMtdRemitted = 1500m };
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [row])));
+
+        Assert.Equal("1500.00", cols[18]);
+    }
+
+    // ─── Fields 5 and 6 ─────────────────────────────────────────────────
+
+    [Fact]
+    public void Status_IsPermanentUnlessRecorded()
+    {
+        Assert.Equal("2", FirstRow(Cp8dTxt.RenderEmployees(Payload()))[4]);
+
+        var contract = Employee() with { Cp8dStatusOverride = 3 };
+        Assert.Equal("3", FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [contract])))[4]);
+    }
+
+    // LHDN: someone who left in the year is filed with their cessation date.
+    [Fact]
+    public void TheDate_IsTheCessationForSomeoneWhoLeft()
+    {
+        var left = Employee(leaveDate: new DateTime(2026, 6, 30));
+        Assert.Equal("30-06-2026", FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [left])))[5]);
+    }
+
+    // Otherwise the contract end as typed, or the day they turn 60.
+    [Fact]
+    public void TheDate_IsTheContractEnd_OrTheStatutoryRetirementAge()
+    {
+        var contract = Employee() with { Cp8dRetirementDateOverride = new DateTime(2027, 3, 31) };
+        Assert.Equal("31-03-2027", FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [contract])))[5]);
+
+        var permanent = Employee(dateOfBirth: new DateTime(1985, 8, 9));
+        Assert.Equal("09-08-2045", FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [permanent])))[5]);
     }
 
     // ─── Tax category ───────────────────────────────────────────────────
@@ -229,7 +292,7 @@ public class Cp8dTxtTests
         var borne = FirstRow(Cp8dTxt.RenderEmployees(
             Payload(employees: [Employee(pcbBorneByEmployer: true)])));
 
-        Assert.Equal("1", borne[4]);
+        Assert.Equal("1", borne[6]);
     }
 
     // ─── Identifier normalisation ───────────────────────────────────────
@@ -245,15 +308,18 @@ public class Cp8dTxtTests
         Assert.Equal(expected, PayrollAnnualReports.NormaliseTaxRef(input));
     }
 
-    // Column 3 is the digits of whatever ID is on file, as the previous
-    // system wrote it — a passport included.
-    [Fact]
-    public void TheIdColumnIsTheDigitsOfTheIdOnFile()
+    // Field 3: the new IC as digits, a passport as written — digits alone
+    // would file someone else's number — and twelve zeros when there is none.
+    [Theory]
+    [InlineData("900101-14-5567", IdType.NRIC, "900101145567")]
+    [InlineData("A2855084", IdType.PASSPORT, "A2855084")]
+    [InlineData("a 2855084", IdType.PASSPORT, "A2855084")]
+    [InlineData(null, IdType.NRIC, "000000000000")]
+    public void TheIdField_IsTheIcDigits_OrThePassportAsWritten(string? id, IdType type, string expected)
     {
-        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees:
-            [Employee(ic: "A12345678", idType: IdType.PASSPORT)])));
+        var cols = FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [Employee(ic: id, idType: type)])));
 
-        Assert.Equal("12345678", cols[2]);
+        Assert.Equal(expected, cols[2]);
     }
 
     // UTF-8, so an accented name survives instead of becoming "?".
@@ -302,7 +368,7 @@ public class Cp8dTxtTests
         var result = Cp8dTxt.RenderEmployees(new PayrollAnnualPayload
         {
             Year = 2026,
-            OrganizationName = "Globe Engineering",
+            OrganizationName = "Acme Engineering",
             EmployerNo = "1234567890",
             Employees = [],
         });

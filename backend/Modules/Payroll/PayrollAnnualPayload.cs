@@ -105,6 +105,28 @@ public sealed record AnnualEmployeeRow
 
     // Month by month, for PCB 2(II)'s table. Only months with a submitted run.
     public IReadOnlyList<AnnualMonth> Months { get; init; } = [];
+
+    // Form EA's income, deduction and exemption lines (FormEaLines).
+    public FormEaFigures Ea { get; init; } = new();
+
+    // EA A9: printed only when the employment began or ended within the year.
+    public DateTime? JoinDate { get; init; }
+    public DateTime? LeaveDate { get; init; }
+
+    // Everything remitted to LHDN as MTD in CP39's PCB field: the formula
+    // PCB plus any Additional PCB the employee asked for. The MTD spec keeps
+    // the additional part out of next month's X, but it is still tax paid by
+    // the employee — LHDN credits what CP39 carried — so EA D1 and CP8D
+    // field 19 report this, as PCB 2(II)'s table does. `TotalPcb` stays the
+    // formula PCB alone.
+    public decimal TotalMtdRemitted { get; init; }
+
+    // CP8D field 6 falls back to the statutory retirement age from this.
+    public DateTime? DateOfBirth { get; init; }
+
+    // CP8D fields 5 and 6 as typed into the converter; null reads the defaults.
+    public int? Cp8dStatusOverride { get; init; }
+    public DateTime? Cp8dRetirementDateOverride { get; init; }
 }
 
 // One submitted month for one employee. `Pcb` is what went to LHDN in CP39's
