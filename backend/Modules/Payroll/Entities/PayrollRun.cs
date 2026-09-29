@@ -117,6 +117,20 @@ public class PayrollRun : ITenantScoped
 
     public DateTime? XeroSyncedAt { get; set; }
 
+    // ---- LHDN remittance receipts ----
+
+    // The receipt LHDN issued for this month's MTD (CP39) payment and for its
+    // CP38 payment. Printed on every employee's PCB 2(II). Recorded after the
+    // money is paid, so editable on a SUBMITTED run — none of it touches a
+    // payslip, and it does not make the run stale.
+    [MaxLength(60)]
+    public string? PcbReceiptNo { get; set; }
+    public DateTime? PcbReceiptDate { get; set; }
+
+    [MaxLength(60)]
+    public string? Cp38ReceiptNo { get; set; }
+    public DateTime? Cp38ReceiptDate { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

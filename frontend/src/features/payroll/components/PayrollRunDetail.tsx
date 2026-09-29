@@ -27,6 +27,7 @@ import { PayrollRunClaims } from "./PayrollRunClaims";
 import { PayrollRunTabs } from "./PayrollRunTabs";
 import { PayrollRunAttention } from "./PayrollRunAttention";
 import { PayrollRunDownloads } from "./PayrollRunDownloads";
+import { PayrollRunLhdnReceipts } from "./PayrollRunLhdnReceipts";
 import { PayrollPayslipsTable } from "./PayrollPayslipsTable";
 import { SalaryChangeHints } from "./SalaryChangeHints";
 
@@ -246,6 +247,8 @@ export function PayrollRunDetailView({
       />
 
       <PayrollRunDownloads run={run} generated={generated} />
+
+      <PayrollRunLhdnReceipts run={run} onSaved={() => void load()} />
 
       {/* ── What happens next ────────────────────────────────────────── */}
       {/* At the foot, not the head. This page is a review — the warnings,

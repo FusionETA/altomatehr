@@ -598,6 +598,42 @@ public class PayrollRunService : IPayrollRunService
         return new PayrollRunSaveResult(true, ToDto(run), null);
     }
 
+    // The LHDN receipts are paperwork about a payment already made, so only a
+    // SUBMITTED month takes them. They change no figure: no staleness, no
+    // regeneration, and a status change never clears them.
+    public async Task<PayrollRunSaveResult> SetLhdnReceiptsAsync(string id, SetLhdnReceiptsDto dto)
+    {
+        var run = await _runs.GetByIdAsync(id);
+        if (run is null) return NotFound();
+
+        if (run.Status != PayrollRunStatus.SUBMITTED)
+        {
+            return Refused("LHDN receipts can only be recorded on an approved run.");
+        }
+
+        run.PcbReceiptNo = Blank(dto.PcbReceiptNo);
+        run.PcbReceiptDate = dto.PcbReceiptDate?.Date;
+        run.Cp38ReceiptNo = Blank(dto.Cp38ReceiptNo);
+        run.Cp38ReceiptDate = dto.Cp38ReceiptDate?.Date;
+        await _runs.UpdateAsync(run);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.PayrollRunLhdnReceipts,
+            $"Recorded the LHDN receipts for the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
+            TargetType: "PayrollRun",
+            TargetId: run.Id,
+            Metadata: new
+            {
+                run.PeriodYear, run.PeriodMonth,
+                run.PcbReceiptNo, run.PcbReceiptDate, run.Cp38ReceiptNo, run.Cp38ReceiptDate,
+            }));
+
+        return new PayrollRunSaveResult(true, ToDto(run), null);
+    }
+
+    private static string? Blank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     public async Task<PayrollRunRevertResult> RevertToDraftAsync(string id)
     {
         var run = await _runs.GetByIdAsync(id);
@@ -1181,6 +1217,10 @@ public class PayrollRunService : IPayrollRunService
         IsStale = r.Status == PayrollRunStatus.DRAFT
                   && r.LastMutatedAt is not null
                   && (r.GeneratedAt is null || r.LastMutatedAt > r.GeneratedAt),
+        PcbReceiptNo = r.PcbReceiptNo,
+        PcbReceiptDate = r.PcbReceiptDate,
+        Cp38ReceiptNo = r.Cp38ReceiptNo,
+        Cp38ReceiptDate = r.Cp38ReceiptDate,
         CreatedAt = r.CreatedAt,
         UpdatedAt = r.UpdatedAt,
     };

@@ -130,6 +130,18 @@ public class PayrollRunsController : ControllerBase
         return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
     }
 
+    // PUT /payroll/runs/{id}/lhdn-receipts — LHDN's receipts for the month's
+    // MTD and CP38 payments, printed on each employee's PCB 2(II).
+    [RequireScope("payroll:write")]
+    [HttpPut("{id}/lhdn-receipts")]
+    public async Task<IActionResult> SetLhdnReceipts(string id, SetLhdnReceiptsDto dto)
+    {
+        var result = await _runs.SetLhdnReceiptsAsync(id, dto);
+
+        if (result.Ok) return Ok(result.Run);
+        return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+    }
+
     // Reverting cascades to every later submitted month in the same year, so
     // the response reports the whole set, not just the run asked for.
     [RequireScope("payroll:write")]
