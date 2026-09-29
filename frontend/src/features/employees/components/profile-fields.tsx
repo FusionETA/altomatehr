@@ -187,11 +187,13 @@ export function Money({
   );
 }
 
-// A rate stored as a FRACTION but entered as a percentage.
+// A rate in WHOLE percent: 9 means 9%.
 //
-// The wire carries 0.11 for 11%. Without this an admin types 11, the API
-// stores 11, and the employee's EPF becomes 1100% of salary — a mistake with
-// no visible symptom until payroll runs.
+// That is the unit the API stores and the EPF calculator reads (it divides by
+// 100 itself), the unit the employee import writes, and the unit the previous
+// system's data arrived in. Converting here to a fraction saved a typed 9% as
+// 0.09 — which the calculator then applied as 0.09% of wages — and showed a
+// migrated 9% as 900%.
 export function Percent({
   value,
   onChange,
@@ -206,8 +208,8 @@ export function Percent({
         min={0}
         max={100}
         step="0.5"
-        value={round2(value * 100)}
-        onChange={(e) => onChange(Number(e.target.value || 0) / 100)}
+        value={round2(value)}
+        onChange={(e) => onChange(Number(e.target.value || 0))}
         className={`${INPUT} pr-9 text-right tabular-nums`}
       />
       <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">
