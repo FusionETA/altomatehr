@@ -277,15 +277,55 @@ public class PcbDetailsPdfTests
         Assert.True(rows[^1].Bold);
     }
 
-    // Zakat offsets PCB ringgit for ringgit but never below zero — so the
-    // row shows only what was actually offset.
+    // The reported case (LHDN Q2, March): 3,985.00 formula PCB, RM 12,000
+    // zakat paid. The row shows what was PAID, PCB payable is 0.00, and the
+    // 8,015.00 the PCB could not absorb is named as carried forward.
     [Fact]
-    public void ZakatAboveThePcb_TakesItToZero_NotBelow()
+    public void ZakatAboveThePcb_ShowsWhatWasPaid_AndWhatCarriesForward()
     {
-        var rows = PcbCalculationDetailsPdf.NetPcbRows(300m, 1000m, 0m);
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(3985m, 12000m, 0m);
 
-        Assert.Equal(300m, rows[1].Amount);
+        Assert.Equal(["PCB", "- Zakat", "Zakat carried forward", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(12000m, rows[1].Amount);
+        Assert.Equal(8015m, rows[2].Amount);
         Assert.Equal(0m, rows[^1].Amount);
+    }
+
+    // Zakat paid in a month with no PCB at all still shows, all of it carried.
+    [Fact]
+    public void ZakatWithNoPcb_IsAllCarriedForward()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(0m, 500m, 0m);
+
+        Assert.Equal(500m, rows.Single(r => r.Label == "Zakat carried forward").Amount);
+        Assert.Equal(0m, rows[^1].Amount);
+    }
+
+    // ─── P before the floor ────────────────────────────────────────────
+
+    // Reliefs larger than the normal remuneration: P is floored to 0 for the
+    // tax, but the page shows the negative figure Section 3 builds on
+    // (reported case: 0 − (9,000 + 16,000 + 3,500) = −28,500).
+    [Fact]
+    public void ANegativeP_IsShownBeforeTheFloor()
+    {
+        var b = new PcbBreakdown { Formula = PcbFormula.Resident, P = 0m, PBeforeFloor = -28500m, D = 9000m, Q = 2000m, C = 8m, Lp1 = 3500m, N = 9 };
+        Assert.Equal(-28500m, PcbCalculationDetailsPdf.PBeforeFloor(b));
+    }
+
+    // A snapshot from before PBeforeFloor was recorded: the figure is the
+    // arithmetic printed beside P.
+    [Fact]
+    public void AnOlderSnapshot_DerivesPFromItsOwnComponents()
+    {
+        var b = new PcbBreakdown { Formula = PcbFormula.Resident, P = 0m, D = 9000m, Q = 2000m, C = 8m, Lp1 = 3500m, N = 9 };
+        Assert.Equal(-28500m, PcbCalculationDetailsPdf.PBeforeFloor(b));
+    }
+
+    [Fact]
+    public void APositiveP_IsUnchanged()
+    {
+        Assert.Equal(52000m, PcbCalculationDetailsPdf.PBeforeFloor(new PcbBreakdown { Formula = PcbFormula.Resident, P = 52000m }));
     }
 
     [Fact]
