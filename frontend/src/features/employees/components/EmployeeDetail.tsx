@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { SalaryChangeDialog, salaryText, type SalaryClassification } from "./SalaryChangeDialog";
+import { SalaryHistoryDialog } from "./SalaryHistoryDialog";
+import { ArrowLeft, Check, CircleAlert, History, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { UnsavedChangesBar } from "@/shared/components/UnsavedChangesBar";
 import {
   CHILD_ABILITY,
@@ -48,7 +50,12 @@ import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
 import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import { getProjects } from "@/features/settings/api";
-import { getAdjustmentCategories, getMalaysianBanks } from "@/features/payroll/api";
+import {
+  getAdjustmentCategories,
+  getMalaysianBanks,
+  getSalaryHistory,
+  salaryHistoryPath,
+} from "@/features/payroll/api";
 import { matchBank } from "../lib/malaysian-bank";
 import { NATIONALITIES } from "../lib/nationalities";
 import {
@@ -164,6 +171,9 @@ export function EmployeeDetail({
   onSaved: (updated: Employee) => void;
 }) {
   const [settingPassword, setSettingPassword] = useState(false);
+  // Save paused to ask whether a changed salary was a typo or a real change.
+  const [askingSalary, setAskingSalary] = useState(false);
+  const [salaryHistoryOpen, setSalaryHistoryOpen] = useState(false);
   const [passwordSetFor, setPasswordSetFor] = useState<string | null>(null);
   const [section, setSection] = useState<SectionId>("personal");
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
@@ -282,6 +292,13 @@ export function EmployeeDetail({
   // employer can already have used (PayrollAdjustmentCategories.
   // CarriesFromPreviousEmployer). Served by payroll, not restated here.
   const categoriesQuery = useCachedQuery("/payroll/adjustment-categories", getAdjustmentCategories);
+  // Real salary changes, newest first. Keyed on the profile record, so there
+  // is nothing to load until the profile has been saved once.
+  const employeeProfileId = profile?.employeeProfileId ?? null;
+  const salaryHistoryQuery = useCachedQuery(
+    employeeProfileId ? salaryHistoryPath(employeeProfileId) : null,
+    () => getSalaryHistory(employeeProfileId!),
+  );
   const banks = banksQuery.data ?? [];
   // Seeded from the cache so the first frame of a revisit is the real thing;
   // still state because editing a team patches one in place. The effect
@@ -611,8 +628,31 @@ export function EmployeeDetail({
     setError(null);
   }
 
-  async function handleSave() {
+  // A salary that was already set and is now different. Filling in a salary
+  // for the first time (nothing, or RM 0, before) is not a change and isn't
+  // asked about — the server records nothing for it either.
+  const salaryChanged =
+    profile !== null &&
+    baseline !== null &&
+    (profile.salaryType !== baseline.salaryType ||
+      (profile.salaryType === "HOURLY"
+        ? profile.hourlyRate !== baseline.hourlyRate
+        : profile.monthlySalary !== baseline.monthlySalary));
+  const hadSalary =
+    baseline !== null &&
+    (baseline.salaryType === "HOURLY"
+      ? (baseline.hourlyRate ?? 0) > 0
+      : (baseline.monthlySalary ?? 0) > 0);
+
+  async function handleSave(salary?: SalaryClassification) {
     if (!profile) return;
+    // As in the previous system: before a changed salary is saved, ask
+    // whether the old figure was a typo or the pay is really changing. Only
+    // a real change goes into the salary history, with its effective date.
+    if (!salary && salaryChanged && hadSalary) {
+      setAskingSalary(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -642,7 +682,18 @@ export function EmployeeDetail({
         // Whatever an older record holds, a citizen is saved as the locked
         // toggles show them.
         ...(isMalaysianCitizen ? { hasPr: false, isResident: true } : {}),
+        ...(salary?.kind === "CORRECTION"
+          ? { salaryChangeIsCorrection: true }
+          : salary?.kind === "CHANGE"
+            ? {
+                salaryChangeIsCorrection: false,
+                salaryChangeReason: salary.reason,
+                salaryChangeEffectiveDate: salary.effectiveDate,
+                salaryChangeNotes: salary.notes || null,
+              }
+            : {}),
       });
+      if (salary?.kind === "CHANGE") void salaryHistoryQuery.refresh();
 
       setProfile(savedProfile);
       setBaseline(savedProfile);
@@ -1146,6 +1197,21 @@ export function EmployeeDetail({
                       <Money value={profile.hourlyRate} onChange={(v) => set("hourlyRate", v)} />
                     </Field>
                   )}
+                  {/* Raises and promotions saved as salary adjustments, with
+                      when each took effect. Typo corrections are left out. */}
+                  {employeeProfileId ? (
+                    <div className="sm:col-span-full">
+                      <button
+                        type="button"
+                        onClick={() => setSalaryHistoryOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary transition hover:underline"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                        Salary history
+                        {salaryHistoryQuery.data?.length ? ` (${salaryHistoryQuery.data.length})` : ""}
+                      </button>
+                    </div>
+                  ) : null}
                 </Group>
 
                 <Stack
@@ -2156,6 +2222,28 @@ export function EmployeeDetail({
           saving={saving}
           onSave={() => void handleSave()}
           onDiscard={discard}
+        />
+      ) : null}
+
+      {askingSalary && profile && baseline ? (
+        <SalaryChangeDialog
+          from={salaryText(baseline.salaryType, baseline.monthlySalary, baseline.hourlyRate)}
+          to={salaryText(profile.salaryType, profile.monthlySalary, profile.hourlyRate)}
+          onCancel={() => setAskingSalary(false)}
+          onConfirm={(classification) => {
+            setAskingSalary(false);
+            void handleSave(classification);
+          }}
+        />
+      ) : null}
+
+      {salaryHistoryOpen ? (
+        <SalaryHistoryDialog
+          employeeName={employee.name || employee.email}
+          history={salaryHistoryQuery.data ?? []}
+          loading={salaryHistoryQuery.loading}
+          error={salaryHistoryQuery.error}
+          onClose={() => setSalaryHistoryOpen(false)}
         />
       ) : null}
 

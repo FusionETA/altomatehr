@@ -287,6 +287,7 @@ builder.Services.AddScoped<IPortalCredentialRepository, PortalCredentialReposito
 builder.Services.AddScoped<IPortalCredentialService, PortalCredentialService>();
 builder.Services.AddScoped<ISalaryChangeRepository, SalaryChangeRepository>();
 builder.Services.AddScoped<ISalaryChangeService, SalaryChangeService>();
+builder.Services.AddScoped<ISalaryAdjustmentImportService, SalaryAdjustmentImportService>();
 builder.Services.AddScoped<IPayrollAnnualReportService, PayrollAnnualReportService>();
 builder.Services.AddScoped<IEmployeePayrollService, EmployeePayrollService>();
 builder.Services.AddScoped<IEmployeeLoanRepository, EmployeeLoanRepository>();
@@ -338,6 +339,7 @@ builder.Services.AddScoped<IInboundSsoService, InboundSsoService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IMasterKeyRepository, MasterKeyRepository>();
 builder.Services.AddScoped<IProvisioningService, ProvisioningService>();
+builder.Services.AddScoped<IPartnerIdentityService, PartnerIdentityService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();

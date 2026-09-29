@@ -187,6 +187,8 @@ public class InboundSsoTests
                 "access", "admin@acme.com", "Admin", organizationId,
                 "refresh", DateTime.UtcNow.AddDays(7)));
 
+        public Task<AltomateHR.Api.Modules.Auth.Entities.User?> VerifyPasswordAsync(string email, string password) =>
+            Task.FromResult<AltomateHR.Api.Modules.Auth.Entities.User?>(null);
         public Task<AuthResult?> LoginAsync(string email, string password) =>
             throw new NotSupportedException();
         public Task<AuthResult?> RefreshAsync(string refreshToken) => throw new NotSupportedException();

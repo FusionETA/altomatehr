@@ -61,6 +61,18 @@ public class EmployeeProfileService : IEmployeeProfileService
         }
         else
         {
+            // v2 has one current salary, applied straight away: a raise dated
+            // next month would already be paid in this month's run. So the
+            // date a change took effect can be today or earlier, never later.
+            if (!dto.SalaryChangeIsCorrection
+                && dto.SalaryChangeEffectiveDate is { } effective
+                && effective.Date > TodayInMalaysia())
+            {
+                throw new ArgumentException(
+                    "The effective date can't be in the future — the new salary applies straight away. "
+                    + "Save it on or after the date it takes effect.");
+            }
+
             // The salary as it stood BEFORE this edit. Captured as a copy
             // because Apply mutates the tracked entity in place — reading it
             // afterwards would compare the new values with themselves.
@@ -69,14 +81,21 @@ public class EmployeeProfileService : IEmployeeProfileService
             Apply(dto, profile);
             await _profiles.UpdateAsync(profile);
 
-            // Only writes a row when the salary actually moved. A no-op
-            // change would fill the history an IR dispute reads with noise.
-            await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
+            // Only writes a row when the salary actually moved — a no-op
+            // change would fill the history an IR dispute reads with noise —
+            // and, as in the previous system, not for:
+            //   • a correction the admin marked as a typo, and
+            //   • a first salary (nothing, or RM 0, was set before): filling
+            //     in an empty field is not a change to anyone's pay.
+            if (!dto.SalaryChangeIsCorrection && HadASalary(before))
             {
-                EffectiveDate = dto.SalaryChangeEffectiveDate?.Date ?? DateTime.UtcNow.Date,
-                Reason = dto.SalaryChangeReason ?? Payroll.Entities.SalaryChangeReason.RAISE,
-                Notes = dto.SalaryChangeNotes,
-            });
+                await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
+                {
+                    EffectiveDate = dto.SalaryChangeEffectiveDate?.Date ?? DateTime.UtcNow.Date,
+                    Reason = dto.SalaryChangeReason ?? Payroll.Entities.SalaryChangeReason.RAISE,
+                    Notes = dto.SalaryChangeNotes,
+                });
+            }
         }
 
         // Any of ~30 fields here feeds the calculation (salary, EPF/SOCSO
@@ -88,6 +107,15 @@ public class EmployeeProfileService : IEmployeeProfileService
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
     }
+
+    private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
+
+    private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
+
+    private static bool HadASalary(EmployeeProfile before) =>
+        before.SalaryType == Policies.Entities.SalaryType.HOURLY
+            ? before.HourlyRate is > 0m
+            : before.MonthlySalary is > 0m;
 
     // Just the three salary fields, detached from the tracked entity.
     private static EmployeeProfile SalarySnapshot(EmployeeProfile profile) => new()
@@ -166,6 +194,7 @@ public class EmployeeProfileService : IEmployeeProfileService
     private static EmployeeProfileDto ToDto(EmployeeProfile e, User? user) => new()
     {
         Id = e.UserId,
+        EmployeeProfileId = e.Id,
         Email = user?.Email ?? "",
         Name = user?.Name ?? "",
 

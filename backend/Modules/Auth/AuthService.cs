@@ -53,7 +53,7 @@ public class AuthService : IAuthService
         _organizations = organizations;
     }
 
-    public async Task<AuthResult?> LoginAsync(string email, string password)
+    public async Task<User?> VerifyPasswordAsync(string email, string password)
     {
         var user = await _userRepo.GetByEmailAsync(email);
 
@@ -95,11 +95,20 @@ public class AuthService : IAuthService
             await _userRepo.UpdateAsync(user);
         }
 
+        return user;
+    }
+
+    public async Task<AuthResult?> LoginAsync(string email, string password)
+    {
+        var user = await VerifyPasswordAsync(email, password);
+        if (user is null) return null;
+
         // Log the account into its default (first) org. Role comes from that membership.
         var memberships = await _directory.GetMembershipsByUserAsync(user.Id);
         var active = memberships.FirstOrDefault();
         if (active is null)
             return null;   // valid credentials, but not a member of any org yet
+
 
         // Recorded with the role, because the question this answers is usually
         // "has anyone but the admins been in" — and the org comes from the

@@ -130,6 +130,47 @@ public class SalaryChangeServiceTests : IDisposable
         Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
     }
 
+    // The admin said the old figure was a typo: the salary is corrected, but
+    // it is not a change to anyone's pay, so no history — as in v1.
+    [Fact]
+    public async Task ATypoCorrection_FixesTheSalary_ButWritesNoHistory()
+    {
+        var edit = Edit(monthly: 5500m);
+        edit.SalaryChangeIsCorrection = true;
+
+        var saved = await _profiles.SaveAsync("usr-1", edit);
+
+        Assert.Equal(5500m, saved!.MonthlySalary);
+        Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
+    }
+
+    // Filling in a salary that was never set (or was RM 0) is not a change.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public async Task AFirstSalary_WritesNoHistory(int? previous)
+    {
+        var profile = _db.EmployeeProfiles.Single(p => p.Id == "emp-1");
+        profile.MonthlySalary = previous;
+        await _db.SaveChangesAsync();
+
+        await _profiles.SaveAsync("usr-1", Edit(monthly: 4000m, reason: SalaryChangeReason.RAISE));
+
+        Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
+    }
+
+    // One current salary, applied straight away: a change dated in the future
+    // would already be paid in this month's run, so it is refused.
+    [Fact]
+    public async Task AFutureEffectiveDate_IsRefused()
+    {
+        var edit = Edit(monthly: 6000m, effective: DateTime.UtcNow.Date.AddDays(40), reason: SalaryChangeReason.RAISE);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _profiles.SaveAsync("usr-1", edit));
+
+        Assert.Equal(5000m, _db.EmployeeProfiles.Single(p => p.Id == "emp-1").MonthlySalary);
+    }
+
     [Fact]
     public async Task ASalaryTypeSwitch_IsStillRecorded()
     {

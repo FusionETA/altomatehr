@@ -14,6 +14,16 @@ public interface IEmployeeImportService
     // ones would mean typing thirty rows from scratch.
     Task<TabularExportResult> ExportAsync(TabularFormat format);
 
+    // The columns an export can include, grouped for picking — the payroll
+    // ones only for someone with Payroll access.
+    Task<IReadOnlyList<EmployeeExportField>> ExportFieldsAsync();
+
+    // An export of the chosen columns only (in the sheet's own order), as a
+    // plain table — for reading or printing rather than re-importing. Null
+    // when none of the requested columns can be exported.
+    Task<TabularExportResult?> ExportSelectedAsync(
+        TabularFormat format, IReadOnlyCollection<string> fields, bool includeArchived);
+
     // `blanks` is the admin's choice at upload: what an empty cell does to
     // someone who already exists. A column missing from the file is left alone
     // either way.
@@ -60,3 +70,6 @@ public sealed class EmployeeImportResult
 }
 
 public sealed record CreatedAccount(string Email, string Name, string Password);
+
+// One column an export can include.
+public sealed record EmployeeExportField(string Key, string Label, string Group);

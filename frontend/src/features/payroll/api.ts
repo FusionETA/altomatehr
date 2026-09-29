@@ -396,6 +396,81 @@ export type SalaryChangeHint = {
 export const getSalaryChangeHints = (id: string) =>
   apiGet<SalaryChangeHint[]>(`/payroll/runs/${id}/salary-change-hints`);
 
+// ─── Salary history ───────────────────────────────────────────────────
+
+export type SalaryChangeReason = "RAISE" | "PROMOTION" | "DEMOTION" | "RESTRUCTURE" | "OTHER";
+
+export const SALARY_CHANGE_REASONS: SalaryChangeReason[] = [
+  "RAISE",
+  "PROMOTION",
+  "DEMOTION",
+  "RESTRUCTURE",
+  "OTHER",
+];
+
+export const SALARY_CHANGE_REASON_LABELS: Record<SalaryChangeReason, string> = {
+  RAISE: "Raise",
+  PROMOTION: "Promotion",
+  DEMOTION: "Demotion",
+  RESTRUCTURE: "Restructure",
+  OTHER: "Other",
+};
+
+// One real salary change (a raise, promotion …). Typo corrections are never
+// recorded — the admin says which it was when saving the new salary.
+export type SalaryChange = {
+  id: string;
+  employeeProfileId: string;
+  effectiveDate: string;
+  previousSalaryType: "MONTHLY" | "HOURLY";
+  previousMonthlySalary: number | null;
+  previousHourlyRate: number | null;
+  newSalaryType: "MONTHLY" | "HOURLY";
+  newMonthlySalary: number | null;
+  newHourlyRate: number | null;
+  reason: SalaryChangeReason;
+  reasonLabel: string;
+  // Null across a monthly ⇄ hourly switch.
+  raisePercent: number | null;
+  notes: string | null;
+  changedByName: string | null;
+  createdAt: string;
+};
+
+export const salaryHistoryPath = (employeeProfileId: string) =>
+  `/payroll/salary-changes/${employeeProfileId}`;
+
+// Newest first.
+export const getSalaryHistory = (employeeProfileId: string) =>
+  apiGet<SalaryChange[]>(salaryHistoryPath(employeeProfileId));
+
+// ─── Salary adjustment import ─────────────────────────────────────────
+// New salaries for many employees at once (an increment round), each
+// recorded in the salary history with its effective date and reason.
+
+export type SalaryAdjustmentImportResult = {
+  ok: boolean;
+  // A whole-file problem: unreadable, a missing column.
+  message: string | null;
+  errors: { row: number; message: string }[];
+  // Recorded in the salary history.
+  changed: number;
+  // A salary set for the first time — not a change, so not recorded.
+  firstSalaries: number;
+  // New Salary equal to the current one.
+  unchanged: number;
+};
+
+// Pre-filled with every payroll employee's current salary.
+export const downloadSalaryAdjustmentTemplate = () =>
+  apiGetFile("/payroll/salary-changes/import/template", "salary-adjustments.xlsx");
+
+export function importSalaryAdjustments(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<SalaryAdjustmentImportResult>("/payroll/salary-changes/import", form);
+}
+
 // ─── Xero ─────────────────────────────────────────────────────────────
 
 export type XeroPreviewLine = {

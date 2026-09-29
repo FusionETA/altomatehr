@@ -11,6 +11,9 @@ public class EmployeeProfileDto
 {
     // ---- Context (read-only; server-set) ----
     public string Id { get; set; } = string.Empty;        // the user id
+    // The profile record's own id — what payroll keys on (salary history,
+    // payslips). Null until the profile is first saved. Read-only.
+    public string? EmployeeProfileId { get; set; }
     public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 
@@ -105,6 +108,11 @@ public class EmployeeProfileDto
     public DateTime? SalaryChangeEffectiveDate { get; set; }
     public Payroll.Entities.SalaryChangeReason? SalaryChangeReason { get; set; }
     public string? SalaryChangeNotes { get; set; }
+
+    // The admin said the old figure was a TYPO: the salary is corrected but
+    // no history entry is written, as the previous system did. A real change
+    // (raise, promotion …) is recorded with the reason and date above.
+    public bool SalaryChangeIsCorrection { get; set; }
     public string? FixedAllowancesJson { get; set; }
 
     // ---- Payroll config ----
