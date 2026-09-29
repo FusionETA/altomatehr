@@ -245,6 +245,24 @@ public class Cp8dTxtTests
         Assert.Equal("3", FirstRow(Cp8dTxt.RenderEmployees(Payload(employees: [contract])))[4]);
     }
 
+    [Theory]
+    [InlineData(EmploymentStatus.MANAGEMENT, 1)]
+    [InlineData(EmploymentStatus.PERMANENT, 2)]
+    [InlineData(EmploymentStatus.CONTRACT, 3)]
+    [InlineData(EmploymentStatus.PART_TIME, 4)]
+    [InlineData(EmploymentStatus.INDUSTRIAL_TRAINEE, 5)]
+    [InlineData(EmploymentStatus.OTHER, 6)]
+    public void EmploymentStatus_MapsToLhdnsStatusCodes(EmploymentStatus status, int code)
+    {
+        Assert.Equal(code, PayrollAnnualReports.Cp8dStatus(status));
+    }
+
+    [Fact]
+    public void NoRecordedStatus_LeavesTheFileDefault()
+    {
+        Assert.Null(PayrollAnnualReports.Cp8dStatus(null));
+    }
+
     // LHDN: someone who left in the year is filed with their cessation date.
     [Fact]
     public void TheDate_IsTheCessationForSomeoneWhoLeft()

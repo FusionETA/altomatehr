@@ -141,6 +141,24 @@ export const GENDERS: Gender[] = ["MALE", "FEMALE"];
 export const ID_TYPES: IdType[] = ["NRIC", "PASSPORT", "ARMY_NO", "POLICE_NO"];
 export const MARITAL_STATUSES: MaritalStatus[] = ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"];
 
+// LHDN's C.P.8D "Status Pekerja". Management = directors, principal officers,
+// partners and the like.
+export type EmploymentStatus =
+  | "MANAGEMENT"
+  | "PERMANENT"
+  | "CONTRACT"
+  | "PART_TIME"
+  | "INDUSTRIAL_TRAINEE"
+  | "OTHER";
+export const EMPLOYMENT_STATUSES: { value: EmploymentStatus; label: string }[] = [
+  { value: "PERMANENT", label: "Permanent" },
+  { value: "CONTRACT", label: "Contract" },
+  { value: "PART_TIME", label: "Part-time" },
+  { value: "INDUSTRIAL_TRAINEE", label: "Industrial trainee (intern)" },
+  { value: "MANAGEMENT", label: "Management (director / principal officer)" },
+  { value: "OTHER", label: "Other" },
+];
+
 export const SOCSO_SCHEMES: SocsoScheme[] = [
   "EMPLOYMENT_INJURY_INVALIDITY",
   "EMPLOYMENT_INJURY_ONLY",
@@ -212,6 +230,9 @@ export type EmployeeProfile = {
   department: string | null;
   location: string | null;
   workSchedule: string | null;
+  // Reported on CP8D. Null status is treated as permanent.
+  employmentStatus: EmploymentStatus | null;
+  contractEndDate: string | null;
 
   // Spouse / tax relief
   spouseWorking: boolean | null;

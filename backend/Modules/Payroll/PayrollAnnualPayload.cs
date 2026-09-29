@@ -124,7 +124,8 @@ public sealed record AnnualEmployeeRow
     // CP8D field 6 falls back to the statutory retirement age from this.
     public DateTime? DateOfBirth { get; init; }
 
-    // CP8D fields 5 and 6 as typed into the converter; null reads the defaults.
+    // CP8D fields 5 and 6: the profile's employment status and contract end (or
+    // the converter's typed values). Null reads the defaults.
     public int? Cp8dStatusOverride { get; init; }
     public DateTime? Cp8dRetirementDateOverride { get; init; }
 }

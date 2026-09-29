@@ -275,6 +275,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             LeaveDate = profile?.LeaveDate,
             TotalMtdRemitted = Money.Round2(acc.Mtd),
             DateOfBirth = profile?.DateOfBirth,
+            Cp8dStatusOverride = PayrollAnnualReports.Cp8dStatus(profile?.EmploymentStatus),
+            Cp8dRetirementDateOverride = profile?.ContractEndDate,
         };
     }
 

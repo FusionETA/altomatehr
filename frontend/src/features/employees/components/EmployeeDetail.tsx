@@ -16,6 +16,7 @@ import {
   ID_TYPES,
   ID_TYPE_LABELS,
   MARITAL_STATUSES,
+  EMPLOYMENT_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
   STAFF_ROLES,
@@ -1298,7 +1299,6 @@ export function EmployeeDetail({
                 <Group
                   title="Employment dates"
                   hint="The join date pro-rates a partial first month. An end date belongs to Archive, below."
-                  columns={1}
                 >
                   <Field label="Join date">
                     <Text
@@ -1310,6 +1310,25 @@ export function EmployeeDetail({
                         setPlacement((p) => ({ ...p, joinDate: v ?? "" }));
                         set("joinDate", v);
                       }}
+                    />
+                  </Field>
+                  <Field label="Employment status" hint="Reported to LHDN on CP8D. Not set counts as permanent.">
+                    <Picker
+                      value={profile.employmentStatus}
+                      onChange={(v) => set("employmentStatus", v)}
+                      allowNone
+                      placeholder="Not set"
+                      options={EMPLOYMENT_STATUSES}
+                    />
+                  </Field>
+                  <Field
+                    label="Contract end date"
+                    hint="When the contract runs to. Reported on CP8D; left blank, retirement at 60 is used."
+                  >
+                    <Text
+                      type="date"
+                      value={profile.contractEndDate}
+                      onChange={(v) => set("contractEndDate", v)}
                     />
                   </Field>
                 </Group>
