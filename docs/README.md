@@ -18,6 +18,8 @@ a **Page** — copy the block under it into a OneNote page of the same name.
 | [05-architecture-decisions.md](05-architecture-decisions.md) | ADRs (one page per decision) + Deferred list |
 | [06-functional-test-plan.md](06-functional-test-plan.md) | End-to-end user flow · Pre-deployment findings · What still needs manual testing |
 | [07-v1-v2-parity.md](07-v1-v2-parity.md) | ClaimGuard (v1) vs AltomateHR (v2) module-by-module comparison · Lost-in-rebuild findings |
+| [08-launch-runbook.md](08-launch-runbook.md) | Open issues with workarounds · Fixed this week · Diagnostic playbooks · Go-live checklist |
+| [kb/](kb/README.md) | Support knowledge base — one user-facing entry per problem, for the in-app assistant and human support |
 
 ## Two-sentence overview
 
