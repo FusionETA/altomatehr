@@ -205,6 +205,14 @@ public static class PayrollAdjustmentCategories
     public static PayrollAdjustmentCategoryMeta? Find(string? code) =>
         code is not null && All.TryGetValue(code, out var meta) ? meta : null;
 
+    // What a previous employer's TP3 can declare item by item: everything whose
+    // limit runs for the whole YEAR, not per employer — a PCB-exempt allowance
+    // with a ceiling (travel for official duty, RM 6,000) and every TP1 relief.
+    // Items with no yearly limit have nothing to carry and stay in the totals.
+    public static bool CarriesFromPreviousEmployer(PayrollAdjustmentCategoryMeta meta) =>
+        meta.FeedsLp1Relief
+        || (meta.Kind == PayslipLineKind.ALLOWANCE && meta.SubjectToPcb && meta.TaxExemptLimit is > 0m);
+
     public static readonly IReadOnlyDictionary<string, PayrollAdjustmentCategoryMeta> All =
         new[]
         {

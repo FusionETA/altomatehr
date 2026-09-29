@@ -757,6 +757,13 @@ public class PayrollRunService : IPayrollRunService
         // Adding this org's own YTD on top would then double-count it.
         var carryOwnOrgYtd = !profile.PrevIncludesPriorThisOrgPeriod;
 
+        // The previous employer's items with a yearly limit, carried into the
+        // per-category YTD every exemption ceiling and TP1 limit reads.
+        var previousItems = PreviousEmployerItems.Carry(
+            carryApplies ? PreviousEmployerItems.Parse(profile.PrevByCategoryJson) : [],
+            ytd.AllowanceByCategory,
+            carryOwnOrgYtd);
+
         // Cash overtime needs hours — approved requests, or the admin's own
         // figure on the adjustment row (PayrollOvertimeHours decides which) —
         // and a policy that does not say otherwise.
@@ -892,10 +899,13 @@ public class PayrollRunService : IPayrollRunService
             YtdPcb = ytd.Pcb + Carry(carryApplies, profile.PrevPcb, carryOwnOrgYtd, ytd.Pcb),
             YtdZakat = ytd.Zakat + Carry(carryApplies, profile.PrevZakat, carryOwnOrgYtd, ytd.Zakat),
             YtdSocsoEis = ytd.SocsoEis,
+            // ΣLP: this org's granted TP1 reliefs, the previous employer's
+            // itemised ones, and whatever of theirs was declared only as a total.
             YtdAllowableDeductions = ytd.AllowableDeductions
                 + Carry(carryApplies, profile.PrevAllowableDeductions,
-                        carryOwnOrgYtd, ytd.AllowableDeductions),
-            YtdAllowanceByCategory = ytd.AllowanceByCategory,
+                        carryOwnOrgYtd, ytd.AllowableDeductions)
+                + previousItems.Tp1Relief,
+            YtdAllowanceByCategory = previousItems.ByCategory,
         };
     }
 

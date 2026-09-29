@@ -126,6 +126,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.PrevAllowableDeductions = d.PrevAllowableDeductions;
         e.PrevPcb = d.PrevPcb; e.PrevZakat = d.PrevZakat;
         e.PrevIncludesPriorThisOrgPeriod = d.PrevIncludesPriorThisOrgPeriod;
+        e.PrevByCategoryJson = d.PrevByCategoryJson;
 
         e.ContributeToEpf = d.ContributeToEpf; e.EpfNumber = d.EpfNumber;
         e.EpfEmployeeRate = d.EpfEmployeeRate;
@@ -191,6 +192,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         PrevAllowableDeductions = e.PrevAllowableDeductions,
         PrevPcb = e.PrevPcb, PrevZakat = e.PrevZakat,
         PrevIncludesPriorThisOrgPeriod = e.PrevIncludesPriorThisOrgPeriod,
+        PrevByCategoryJson = e.PrevByCategoryJson,
 
         ContributeToEpf = e.ContributeToEpf, EpfNumber = e.EpfNumber,
         EpfEmployeeRate = e.EpfEmployeeRate,

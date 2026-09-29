@@ -72,6 +72,13 @@ public class EmployeeProfile : ITenantScoped
     [Precision(12, 2)] public decimal? PrevZakat { get; set; }
     public bool PrevIncludesPriorThisOrgPeriod { get; set; }
 
+    // The previous employer's figures ITEM BY ITEM — [{category, amount}] —
+    // for what has a yearly limit: tax-exempt allowances (travel for official
+    // duty, RM 6,000) and TP1 reliefs (lifestyle, RM 2,500 …). The totals
+    // above cannot say how much of each limit is already used, so without
+    // this the whole limit was granted again here. Structure owned by payroll.
+    public string? PrevByCategoryJson { get; set; }
+
     // ---- EPF ----
     public bool ContributeToEpf { get; set; } = true;
     [MaxLength(40)] public string? EpfNumber { get; set; }

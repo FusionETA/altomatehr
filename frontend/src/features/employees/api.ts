@@ -216,6 +216,9 @@ export type EmployeeProfile = {
   prevPcb: number | null;
   prevZakat: number | null;
   prevIncludesPriorThisOrgPeriod: boolean;
+  /** JSON [{category, amount}]: the previous employer's figures item by item
+   *  for what has a yearly limit (exempt allowances, TP1 reliefs). */
+  prevByCategoryJson: string | null;
 
   // EPF. Rates are FRACTIONS on the wire (0.11), shown as percentages.
   contributeToEpf: boolean;
@@ -374,6 +377,12 @@ export const parseChildRelief = (json: string | null | undefined) =>
   parseList<Record<string, unknown>>(json).map(normalizeChildRelief);
 export const parseFixedAllowances = (json: string | null | undefined) =>
   parseList<FixedAllowance>(json);
+
+/** One previous-employer TP3 figure for an item with a yearly limit. */
+export type PreviousEmployerItem = { category: string; amount: number | null };
+
+export const parsePreviousEmployerItems = (json: string | null | undefined) =>
+  parseList<PreviousEmployerItem>(json);
 
 /** An empty list is stored as null, not "[]" — nothing there means nothing there. */
 export const serializeList = (rows: unknown[]) =>
