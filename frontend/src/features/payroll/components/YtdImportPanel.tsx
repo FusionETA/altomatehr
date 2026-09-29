@@ -9,6 +9,7 @@ import {
   type YtdImportResult,
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
+import { SearchInput } from "@/shared/components/SearchInput";
 import { PayrollSelect } from "./PayrollSelect";
 import { monthName, rm } from "../lib/payroll-format";
 import {
@@ -209,6 +210,14 @@ export function YtdImportPanel({ year, onImported }: { year: number; onImported:
 }
 
 function Preview({ preview }: { preview: YtdImportPreview }) {
+  // A whole company's year is a long list; finding one person to check their
+  // figures shouldn't mean scrolling for them.
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+  const employees = query
+    ? preview.employees.filter((row) => row.employeeName.toLowerCase().includes(query))
+    : preview.employees;
+
   return (
     <div className="space-y-3">
       {preview.errors.length > 0 ? (
@@ -248,30 +257,49 @@ function Preview({ preview }: { preview: YtdImportPreview }) {
       ) : null}
 
       {preview.employees.length > 0 ? (
-        <div className="overflow-x-auto rounded-2xl border border-border/70">
-          <table className="w-full min-w-[560px] border-collapse">
-            <thead>
-              <tr className="border-b border-border/70 bg-muted/40">
-                <th className={TH}>Employee</th>
-                <th className={TH}>Months</th>
-                <th className={TH_NUM}>Gross</th>
-                <th className={TH_NUM}>PCB</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.employees.map((row) => (
-                <tr key={row.employeeProfileId} className="border-b border-border/40 last:border-0">
-                  <td className={`${TD} font-medium`}>{row.employeeName}</td>
-                  <td className={`${TD} text-muted-foreground`}>
-                    {row.months.map((m) => monthName(m).slice(0, 3)).join(", ")}
-                  </td>
-                  <td className={TD_NUM}>{rm(row.totalGross)}</td>
-                  <td className={TD_NUM}>{rm(row.totalPcb)}</td>
+        <>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search employee"
+            inputClassName="h-10 rounded-xl border-border/70 bg-card/90 font-semibold focus-visible:border-primary focus-visible:ring-primary/15 focus-visible:ring-offset-0"
+          />
+          <p className="px-1 text-sm text-muted-foreground">
+            Showing <span className="font-semibold text-foreground">{employees.length}</span> of{" "}
+            <span className="font-semibold text-foreground">{preview.employees.length}</span> employees
+          </p>
+          <div className="overflow-x-auto rounded-2xl border border-border/70">
+            <table className="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr className="border-b border-border/70 bg-muted/40">
+                  <th className={TH}>Employee</th>
+                  <th className={TH}>Months</th>
+                  <th className={TH_NUM}>Gross</th>
+                  <th className={TH_NUM}>PCB</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {employees.map((row) => (
+                  <tr key={row.employeeProfileId} className="border-b border-border/40 last:border-0">
+                    <td className={`${TD} font-medium`}>{row.employeeName}</td>
+                    <td className={`${TD} text-muted-foreground`}>
+                      {row.months.map((m) => monthName(m).slice(0, 3)).join(", ")}
+                    </td>
+                    <td className={TD_NUM}>{rm(row.totalGross)}</td>
+                    <td className={TD_NUM}>{rm(row.totalPcb)}</td>
+                  </tr>
+                ))}
+                {employees.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className={`${TD} text-center text-muted-foreground`}>
+                      No employee matches “{search.trim()}”.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : preview.errors.length === 0 ? (
         <p className={NOTE_PANEL}>Nothing in this file matched an employee.</p>
       ) : null}
