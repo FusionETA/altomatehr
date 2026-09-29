@@ -501,9 +501,12 @@ public class EmployeeImportService : IEmployeeImportService
         c.Text("bankAccountNumber", 60, v => p.BankAccountNumber = v);
         c.Text("bankAccountHolderName", 120, v => p.BankAccountHolderName = v);
 
-        // Recorded on the salary history the profile service writes when pay moves.
-        p.SalaryChangeReason = Payroll.Entities.SalaryChangeReason.OTHER;
-        p.SalaryChangeNotes = "Updated by spreadsheet import";
+        // A salary edited here is a CORRECTION, not a pay change: this sheet
+        // is the bulk way to fix records, and it carries no reason or effective
+        // date, so recording each edit would fill the salary history with
+        // raises nobody gave. A real raise goes through the employee's salary
+        // prompt or the salary adjustment import, which ask for both.
+        p.SalaryChangeIsCorrection = true;
     }
 
     private static IReadOnlyList<IReadOnlyList<string>>? PickDataSheet(IReadOnlyList<TabularSheetContent> sheets)

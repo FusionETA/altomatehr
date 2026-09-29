@@ -159,6 +159,18 @@ public class SalaryChangeServiceTests : IDisposable
         Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
     }
 
+    // One current salary, applied straight away: a change dated in the future
+    // would already be paid in this month's run, so it is refused.
+    [Fact]
+    public async Task AFutureEffectiveDate_IsRefused()
+    {
+        var edit = Edit(monthly: 6000m, effective: DateTime.UtcNow.Date.AddDays(40), reason: SalaryChangeReason.RAISE);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _profiles.SaveAsync("usr-1", edit));
+
+        Assert.Equal(5000m, _db.EmployeeProfiles.Single(p => p.Id == "emp-1").MonthlySalary);
+    }
+
     [Fact]
     public async Task ASalaryTypeSwitch_IsStillRecorded()
     {
