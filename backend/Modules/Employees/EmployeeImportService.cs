@@ -29,6 +29,10 @@ public class EmployeeImportService : IEmployeeImportService
     private readonly IPolicyService _policies;
     private readonly IShiftService _shifts;
     private readonly Organizations.IModuleAccessService _access;
+    // For the PDF's heading. Optional so hand-built instances in tests need
+    // not supply them; the app always does.
+    private readonly Organizations.IOrganizationService? _organizations;
+    private readonly Common.ICurrentUser? _currentUser;
 
     public EmployeeImportService(
         IEmployeeService employees,
@@ -36,7 +40,9 @@ public class EmployeeImportService : IEmployeeImportService
         IDirectoryService directory,
         IPolicyService policies,
         IShiftService shifts,
-        Organizations.IModuleAccessService access)
+        Organizations.IModuleAccessService access,
+        Organizations.IOrganizationService? organizations = null,
+        Common.ICurrentUser? currentUser = null)
     {
         _employees = employees;
         _profiles = profiles;
@@ -44,6 +50,8 @@ public class EmployeeImportService : IEmployeeImportService
         _policies = policies;
         _shifts = shifts;
         _access = access;
+        _organizations = organizations;
+        _currentUser = currentUser;
     }
 
     // Whether this admin may see and write the payroll columns. An Owner, or an
@@ -65,7 +73,57 @@ public class EmployeeImportService : IEmployeeImportService
     public async Task<TabularExportResult> ExportAsync(TabularFormat format)
     {
         var payroll = await CanPayrollAsync();
-        var columns = EmployeeImportSheet.ColumnsFor(payroll);
+        var sheet = await BuildSheetAsync(EmployeeImportSheet.ColumnsFor(payroll), includeArchived: true);
+        return From(sheet, format, "employees", payroll);
+    }
+
+    public async Task<IReadOnlyList<EmployeeExportField>> ExportFieldsAsync()
+    {
+        var allowed = EmployeeImportSheet.ColumnsFor(await CanPayrollAsync())
+            .ToDictionary(c => c.Key, StringComparer.Ordinal);
+
+        return
+        [
+            .. EmployeeImportSheet.Groups.SelectMany(g => g.Keys
+                .Where(allowed.ContainsKey)
+                .Select(k => new EmployeeExportField(k, allowed[k].Label, g.Group))),
+        ];
+    }
+
+    public async Task<TabularExportResult?> ExportSelectedAsync(
+        TabularFormat format, IReadOnlyCollection<string> fields, bool includeArchived)
+    {
+        // The sheet's own column order, whatever order they were ticked in, and
+        // never a payroll column for someone without Payroll access — the
+        // request is a wish list, not a way round the grant.
+        var wanted = fields.ToHashSet(StringComparer.Ordinal);
+        var columns = EmployeeImportSheet.ColumnsFor(await CanPayrollAsync())
+            .Where(c => wanted.Contains(c.Key))
+            .ToList();
+        if (columns.Count == 0) return null;
+
+        var sheet = await BuildSheetAsync(columns, includeArchived);
+
+        // A plain table: it is for reading, sharing or printing, so none of the
+        // import workbook's READ ME and column-guide sheets.
+        var header = new TabularPdfHeader(
+            await OrganizationNameAsync(),
+            EmployeeImportSheet.SheetName,   // "Employees" — the sheet's own name, so the heading says it once
+            $"{sheet.Rows.Count} employee{(sheet.Rows.Count == 1 ? "" : "s")} · "
+            + $"{(includeArchived ? "including archived" : "active only")} · "
+            + $"exported {DateTime.UtcNow:d MMM yyyy}");
+
+        return TabularExportResult.From(sheet, format, "employee-details", header);
+    }
+
+    private async Task<string> OrganizationNameAsync() =>
+        _organizations is not null && _currentUser?.OrganizationId is { } orgId
+            ? (await _organizations.GetByIdAsync(orgId))?.Name ?? "Employees"
+            : "Employees";
+
+    // One row per employee, in the given columns.
+    private async Task<TabularSheet> BuildSheetAsync(IReadOnlyList<TabularColumn> columns, bool includeArchived)
+    {
         var sheet = new TabularSheet(EmployeeImportSheet.SheetName, [.. columns.Select(c => c.Label)]);
 
         var policies = (await _policies.GetAllAsync())
@@ -79,6 +137,7 @@ public class EmployeeImportService : IEmployeeImportService
                      .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
         {
             var p = profiles.GetValueOrDefault(employee.Id) ?? new EmployeeProfile();
+            if (!includeArchived && p.IsArchived) continue;
             var values = new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 [EmployeeImportSheet.EmailKey] = employee.Email,
@@ -145,7 +204,7 @@ public class EmployeeImportService : IEmployeeImportService
             sheet.AddRow(columns.Select(c => values.GetValueOrDefault(c.Key)));
         }
 
-        return From(sheet, format, "employees", payroll);
+        return sheet;
     }
 
     public async Task<EmployeeImportResult> ImportAsync(

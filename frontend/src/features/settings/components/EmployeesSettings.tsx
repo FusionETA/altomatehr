@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Archive, ChevronRight, CircleAlert, CircleCheck, Plus, Upload, Users } from "lucide-react";
+import { Archive, ChevronRight, CircleAlert, CircleCheck, Download, Plus, Upload, Users } from "lucide-react";
 import { getEmployees, type Employee } from "@/features/employees/api";
 import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -22,6 +22,7 @@ import {
 } from "@/features/claims/components/PaginationControls";
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { ImportEmployeesDialog } from "./ImportEmployeesDialog";
+import { ExportEmployeesDialog } from "@/features/employees/components/ExportEmployeesDialog";
 import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
 
 const CARD =
@@ -78,6 +79,7 @@ export function EmployeesSettings() {
   const [archivedPage, setArchivedPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   // Which employee's full record is open. Null = the list.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -342,6 +344,14 @@ export function EmployeesSettings() {
             </button>
             <button
               type="button"
+              onClick={() => setShowExport(true)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </button>
+            <button
+              type="button"
               onClick={() => setShowAdd(true)}
               className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
             >
@@ -556,6 +566,8 @@ export function EmployeesSettings() {
           }}
         />
       ) : null}
+
+      {showExport ? <ExportEmployeesDialog onClose={() => setShowExport(false)} /> : null}
 
       {showImport ? (
         <ImportEmployeesDialog

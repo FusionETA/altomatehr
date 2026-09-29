@@ -396,6 +396,54 @@ export type SalaryChangeHint = {
 export const getSalaryChangeHints = (id: string) =>
   apiGet<SalaryChangeHint[]>(`/payroll/runs/${id}/salary-change-hints`);
 
+// ─── Salary history ───────────────────────────────────────────────────
+
+export type SalaryChangeReason = "RAISE" | "PROMOTION" | "DEMOTION" | "RESTRUCTURE" | "OTHER";
+
+export const SALARY_CHANGE_REASONS: SalaryChangeReason[] = [
+  "RAISE",
+  "PROMOTION",
+  "DEMOTION",
+  "RESTRUCTURE",
+  "OTHER",
+];
+
+export const SALARY_CHANGE_REASON_LABELS: Record<SalaryChangeReason, string> = {
+  RAISE: "Raise",
+  PROMOTION: "Promotion",
+  DEMOTION: "Demotion",
+  RESTRUCTURE: "Restructure",
+  OTHER: "Other",
+};
+
+// One real salary change (a raise, promotion …). Typo corrections are never
+// recorded — the admin says which it was when saving the new salary.
+export type SalaryChange = {
+  id: string;
+  employeeProfileId: string;
+  effectiveDate: string;
+  previousSalaryType: "MONTHLY" | "HOURLY";
+  previousMonthlySalary: number | null;
+  previousHourlyRate: number | null;
+  newSalaryType: "MONTHLY" | "HOURLY";
+  newMonthlySalary: number | null;
+  newHourlyRate: number | null;
+  reason: SalaryChangeReason;
+  reasonLabel: string;
+  // Null across a monthly ⇄ hourly switch.
+  raisePercent: number | null;
+  notes: string | null;
+  changedByName: string | null;
+  createdAt: string;
+};
+
+export const salaryHistoryPath = (employeeProfileId: string) =>
+  `/payroll/salary-changes/${employeeProfileId}`;
+
+// Newest first.
+export const getSalaryHistory = (employeeProfileId: string) =>
+  apiGet<SalaryChange[]>(salaryHistoryPath(employeeProfileId));
+
 // ─── Xero ─────────────────────────────────────────────────────────────
 
 export type XeroPreviewLine = {
