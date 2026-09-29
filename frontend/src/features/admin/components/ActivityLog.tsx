@@ -34,6 +34,9 @@ const ACTIVITY_TYPES: { value: string; label: string }[] = [
   { value: "coa", label: "Accounts" },
   { value: "project", label: "Projects" },
   { value: "xero", label: "Xero" },
+  // Only leave CANCELLATIONS are logged here (see AuditActions) — taking back
+  // granted leave returns days and can change pay.
+  { value: "leave", label: "Leave cancellations" },
 ];
 const CONTROL =
   "h-11 w-full rounded-2xl border border-border/70 bg-card px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";

@@ -10,7 +10,7 @@ import {
   type OnLeaveToday,
 } from "../api";
 import { eachDateInRange, formatDate, formatDateRange, relativeDaysAgo, urgencyLabel } from "../lib/leave-formatters";
-import { LeaveStatusBadge } from "./LeaveStatusBadge";
+import { LeaveCancellationBadge, LeaveStatusBadge } from "./LeaveStatusBadge";
 import { Skeleton } from "@/shared/components/Skeleton";
 
 // Fetches who else has approved leave overlapping this application's dates,
@@ -77,8 +77,14 @@ const DECISION_LABELS: Record<string, string> = {
   APPROVED: "Approved",
   AUTO_APPROVED: "Auto-approved",
   REJECTED: "Rejected",
+  WITHDRAWN: "Withdrawn by applicant",
   ADMIN_APPLIED: "Applied by admin",
   ADMIN_CANCELLED: "Cancelled by admin",
+  CANCELLATION_REQUESTED: "Cancellation requested",
+  CANCELLATION_APPROVED: "Cancellation approved",
+  CANCELLATION_AUTO_APPROVED: "Cancelled (no approver above)",
+  CANCELLATION_REJECTED: "Cancellation declined",
+  CANCELLATION_WITHDRAWN: "Cancellation request withdrawn",
   IMPORTED: "Imported",
 };
 
@@ -141,6 +147,7 @@ export function LeaveDetailsModal({
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <LeaveStatusBadge status={application.status} />
+                <LeaveCancellationBadge application={application} />
                 {urgency ? (
                   <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-800">
                     {urgency}
@@ -157,6 +164,28 @@ export function LeaveDetailsModal({
             </div>
           </div>
         </section>
+
+        {/* The employee's own words for why they want it cancelled — what the
+            approver is actually deciding on. */}
+        {application.cancellationStatus && application.cancellationStatus !== "WITHDRAWN" ? (
+          <section className="mt-4 rounded-[22px] border border-warning/30 bg-warning/10 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warning-foreground">
+              {application.cancellationStatus === "PENDING"
+                ? "Cancellation requested"
+                : application.cancellationStatus === "REJECTED"
+                  ? "Cancellation declined"
+                  : "Cancelled at the employee's request"}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+              {application.cancellationReason || "No reason given."}
+            </p>
+            {application.cancellationStatus === "PENDING" ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                The leave still stands — and its days stay taken — until the last approver agrees.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {application.reason ? (
           <section className="mt-4 rounded-[22px] border border-border/70 bg-card/70 p-5">

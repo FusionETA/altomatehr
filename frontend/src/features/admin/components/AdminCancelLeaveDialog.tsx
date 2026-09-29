@@ -5,7 +5,7 @@ import { adminCancelLeave, type LeaveApplication } from "@/features/leave/api";
 import { formatDateRange } from "@/features/leave/lib/leave-formatters";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 
-// Confirms an admin withdrawing leave that was already APPROVED. Same shape as
+// Confirms an admin cancelling leave — pending, or already APPROVED. Same shape as
 // the employee's own cancel dialog — what is about to happen, then the
 // destructive action and the way out — plus an optional reason, because the
 // employee is notified and "cancelled by an admin" alone invites a question.
@@ -32,6 +32,7 @@ export function AdminCancelLeaveDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const days = `${application.totalDays} ${application.totalDays === 1 ? "day" : "days"}`;
+  const pending = application.status === "PENDING";
 
   async function confirm() {
     setBusy(true);
@@ -47,11 +48,21 @@ export function AdminCancelLeaveDialog({
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-5 backdrop-blur-md">
       <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
-        <h2 className="text-xl font-black text-foreground">Cancel this approved leave?</h2>
+        <h2 className="text-xl font-black text-foreground">
+          {pending ? "Cancel this leave request?" : "Cancel this approved leave?"}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The {days} go back into {employeeLabel}'s {typeName} balance, and they're notified.
-          This can't be undone — they would need to apply again.
+          {pending
+            ? `It's withdrawn from the approver's queue — nothing had been taken from ${employeeLabel}'s balance yet.`
+            : `The ${days} go back into ${employeeLabel}'s ${typeName} balance.`}{" "}
+          They're notified. This can't be undone — they would need to apply again.
         </p>
+        {application.status === "APPROVED" && application.cancellationStatus === "PENDING" ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            They've already asked to cancel it and it's waiting on an approver — cancelling here
+            completes it now.
+          </p>
+        ) : null}
 
         <div className="mt-4 rounded-2xl border border-border/60 bg-surface-low p-4">
           <p className="text-base font-black text-foreground">{typeName}</p>
@@ -60,7 +71,7 @@ export function AdminCancelLeaveDialog({
           </p>
         </div>
 
-        {unpaid ? (
+        {unpaid && !pending ? (
           <p className="mt-3 rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs leading-5 text-warning-foreground">
             Unpaid leave: an open payroll draft covering these dates will ask to be run again. A
             payroll that's already submitted is not changed.

@@ -132,11 +132,30 @@ public static class AuditActions
     // than a one-line audit row could carry — duplicating them into this feed
     // would bury the configuration changes it exists for and give two places to
     // read the same fact from.
+    //
+    // The one exception is CANCELLING leave. Taking back leave that was granted
+    // returns days and can change pay, and it happens after the approval the
+    // leave tab shows — so every step of it is recorded here as well as on the
+    // leave's own trail.
+    public const string LeaveCancelRequest = "leave.cancel.request";
+    public const string LeaveCancelApprove = "leave.cancel.approve";
+    public const string LeaveCancelReject = "leave.cancel.reject";
+    public const string LeaveCancelWithdraw = "leave.cancel.withdraw";
+    // The leave itself is now cancelled — by the chain, by nobody being above
+    // the employee, by the employee withdrawing a pending request, or by an admin.
+    public const string LeaveCancelled = "leave.cancelled";
+    public const string LeaveAdminCancel = "leave.admin-cancel";
 
     // Short sentences for the UI. The row keeps the code for forensics; this is
     // only what an admin reads.
     private static readonly Dictionary<string, string> Labels = new(StringComparer.Ordinal)
     {
+        [LeaveCancelRequest] = "Leave cancellation requested",
+        [LeaveCancelApprove] = "Leave cancellation approved (step)",
+        [LeaveCancelReject] = "Leave cancellation rejected",
+        [LeaveCancelWithdraw] = "Leave cancellation request withdrawn",
+        [LeaveCancelled] = "Leave cancelled",
+        [LeaveAdminCancel] = "Leave cancelled by admin",
         [SettingsOrgUpdate] = "Organisation settings updated",
         [SettingsClaimsUpdate] = "Claim settings updated",
         [AccountCreate] = "Account created",

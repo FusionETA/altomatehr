@@ -33,7 +33,7 @@ import {
   type TabularImportResult,
 } from "@/features/leave/api";
 import { personName } from "@/features/employee-portal/lib/employee-formatters";
-import { LeaveStatusBadge } from "@/features/leave/components/LeaveStatusBadge";
+import { LeaveCancellationBadge, LeaveStatusBadge } from "@/features/leave/components/LeaveStatusBadge";
 import { LeaveDetailsModal } from "@/features/leave/components/LeaveDetailsModal";
 import { formatDateRange, relativeDaysAgo } from "@/features/leave/lib/leave-formatters";
 import {
@@ -375,9 +375,10 @@ export function AdminLeave() {
           showAudit
           onClose={() => setSelectedApplication(null)}
           footer={
-            // Only APPROVED: pending leave is the approver's to reject or the
-            // employee's to withdraw, and nothing else holds any days.
-            selectedApplication.status === "APPROVED" ? (
+            // Any live leave: a pending request, approved leave, or approved
+            // leave with a cancellation still going up the chain. Rejected and
+            // cancelled leave hold nothing to cancel.
+            selectedApplication.status === "PENDING" || selectedApplication.status === "APPROVED" ? (
               <button
                 type="button"
                 onClick={() => setConfirmingCancel(true)}
@@ -728,7 +729,10 @@ function HistoryTab({
                     <td className="p-4 align-middle tabular-nums">{a.totalDays}</td>
                     <td className="p-4 align-middle">{relativeDaysAgo(a.createdAt)}</td>
                     <td className="p-4 align-middle">
-                      <LeaveStatusBadge status={a.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <LeaveStatusBadge status={a.status} />
+                        <LeaveCancellationBadge application={a} />
+                      </div>
                     </td>
                   </tr>
                 ))}

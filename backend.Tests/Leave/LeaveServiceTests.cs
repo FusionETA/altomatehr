@@ -827,7 +827,7 @@ public class LeaveServiceTests
         var apps = new[] { MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.APPROVED) };
         var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: apps);
 
-        var result = await service.AdminCancelApprovedAsync("a1", "usr-admin", "Trip called off");
+        var result = await service.AdminCancelAsync("a1", "usr-admin", "Trip called off");
 
         Assert.True(result.Transitioned);
         Assert.Equal(LeaveStatus.CANCELLED, result.Application!.Status);
@@ -843,7 +843,7 @@ public class LeaveServiceTests
         var notifications = new FakeNotificationService();
         var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app], notifications: notifications);
 
-        await service.AdminCancelApprovedAsync("a1", "usr-admin", "  Trip called off  ");
+        await service.AdminCancelAsync("a1", "usr-admin", "  Trip called off  ");
 
         Assert.Contains("\"ADMIN_CANCELLED\"", app.Approvals);
         Assert.Contains("Trip called off", app.Approvals);
@@ -853,25 +853,249 @@ public class LeaveServiceTests
         Assert.Contains("Reason: Trip called off", sent.Body);
     }
 
-    [Theory]
-    [InlineData(LeaveStatus.PENDING)]
-    [InlineData(LeaveStatus.REJECTED)]
-    public async Task AdminCancel_RefusesLeaveThatIsNotApproved(LeaveStatus status)
+    // Rejected leave never took a day, so there is nothing to cancel.
+    [Fact]
+    public async Task AdminCancel_RefusesRejectedLeave()
     {
-        var app = MakeApp("a1", "usr-emp", "t-al", 2, status);
+        var app = MakeApp("a1", "usr-emp", "t-al", 2, LeaveStatus.REJECTED);
         var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
 
-        var result = await service.AdminCancelApprovedAsync("a1", "usr-admin", null);
+        var result = await service.AdminCancelAsync("a1", "usr-admin", null);
 
         Assert.True(result.Found);
         Assert.False(result.Transitioned);
-        Assert.Equal(status, app.Status);
+        Assert.Equal(LeaveStatus.REJECTED, app.Status);
+    }
+
+    // "Admin can cancel any leave": a pending request too — it leaves the
+    // approver's queue, and nobody is told days came back (none were taken).
+    [Fact]
+    public async Task AdminCancel_APendingRequest_IsCancelledAndLogged()
+    {
+        var app = MakeApp("a1", "usr-emp", "t-al", 2, LeaveStatus.PENDING);
+        var notifications = new FakeNotificationService();
+        var audit = new AltomateHR.Api.Tests.Audit.FakeAuditService();
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }),
+            notifications: notifications, audit: audit);
+
+        var result = await service.AdminCancelAsync("a1", "usr-admin", "Duplicate");
+
+        Assert.True(result.Transitioned);
+        Assert.Equal(LeaveStatus.CANCELLED, app.Status);
+        Assert.DoesNotContain("back in your balance", Assert.Single(notifications.Sent).Body);
+        var logged = Assert.Single(audit.Written);
+        Assert.Equal(AltomateHR.Api.Modules.Audit.AuditActions.LeaveAdminCancel, logged.Action);
+        Assert.Equal("a1", logged.TargetId);
+    }
+
+    // ---- The employee asks to cancel approved leave ----
+    //
+    // Up the same chain the leave went through, layer by layer; the last
+    // layer's approval cancels it and the days come back. Every step is on the
+    // leave's trail AND in the activity log.
+
+    private static readonly DateTime Soon = DateTime.UtcNow.Date.AddDays(14);
+
+    private static LeaveApplication FutureApproved(double days = 3) =>
+        new()
+        {
+            Id = "a1", OrganizationId = "org-1", EmployeeId = "usr-emp", LeaveTypeId = "t-al",
+            StartDate = Soon, EndDate = Soon.AddDays(days - 1), TotalDays = days,
+            Status = LeaveStatus.APPROVED, CurrentStep = 1,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        };
+
+    private static (LeaveService Service, FakeNotificationService Notes, AltomateHR.Api.Tests.Audit.FakeAuditService Audit)
+        CancelService(LeaveApplication app, List<List<string>>? chain = null)
+    {
+        var notes = new FakeNotificationService();
+        var audit = new AltomateHR.Api.Tests.Audit.FakeAuditService();
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = chain ?? [["usr-super"], ["usr-mgr"]] }),
+            notifications: notes, audit: audit);
+        return (service, notes, audit);
+    }
+
+    private static string[] Trail(LeaveApplication app) =>
+        [.. System.Text.Json.JsonDocument.Parse(app.Approvals ?? "[]").RootElement
+            .EnumerateArray().Select(e => e.GetProperty("decision").GetString()!)];
+
+    [Fact]
+    public async Task Request_GoesToTheFirstLayer_AndTheLeaveStillCounts()
+    {
+        var app = FutureApproved();
+        var (service, notes, audit) = CancelService(app);
+
+        var result = await service.RequestCancellationAsync("a1", "usr-emp", "Trip postponed");
+
+        Assert.True(result.Transitioned, result.Error);
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);                    // still approved…
+        Assert.Equal(LeaveCancellationStatus.PENDING, app.CancellationStatus);
+        Assert.Equal(3, (await service.GetBalancesAsync("usr-emp", Soon.Year)).Single().TakenDays);  // …and still taken
+        Assert.Single(await service.GetTeamAsync("usr-super"));             // in the first layer's queue
+        Assert.Empty(await service.GetTeamAsync("usr-mgr"));                // not yet the second's
+        Assert.Contains(notes.Sent, n => n.UserId == "usr-super" && n.Title == "Leave cancellation to review");
+        Assert.Equal(AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelRequest, Assert.Single(audit.Written).Action);
+        Assert.Equal(["CANCELLATION_REQUESTED"], Trail(app));
+    }
+
+    [Fact]
+    public async Task EachLayerApproves_InTurn_AndTheLastOneCancelsAndReturnsTheDays()
+    {
+        var app = FutureApproved();
+        var (service, notes, audit) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        var first = await service.ApproveCancellationAsync("a1", "usr-super");
+        Assert.True(first.Transitioned, first.Error);
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);                    // one layer isn't enough
+        Assert.Empty(await service.GetTeamAsync("usr-super"));
+        Assert.Single(await service.GetTeamAsync("usr-mgr"));
+
+        var last = await service.ApproveCancellationAsync("a1", "usr-mgr");
+
+        Assert.True(last.Transitioned, last.Error);
+        Assert.Equal(LeaveStatus.CANCELLED, app.Status);
+        Assert.Equal(LeaveCancellationStatus.APPROVED, app.CancellationStatus);
+        var balance = (await service.GetBalancesAsync("usr-emp", Soon.Year)).Single();
+        Assert.Equal(0, balance.TakenDays);
+        Assert.Equal(14, balance.RemainingDays);
+        Assert.Contains(notes.Sent, n => n.UserId == "usr-emp" && n.Title == "Leave cancelled"
+            && n.Body.Contains("back in your balance"));
+        Assert.Equal(["CANCELLATION_REQUESTED", "CANCELLATION_APPROVED", "CANCELLATION_APPROVED"], Trail(app));
+        Assert.Equal(
+            [AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelRequest,
+             AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelApprove,
+             AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelApprove,
+             AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelled],
+            audit.Written.Select(w => w.Action));
+    }
+
+    [Fact]
+    public async Task OnlyTheCurrentLayerCanApprove()
+    {
+        var app = FutureApproved();
+        var (service, _, _) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        var skipAhead = await service.ApproveCancellationAsync("a1", "usr-mgr");
+
+        Assert.False(skipAhead.Transitioned);
+        Assert.Equal("You are not authorized to review this step", skipAhead.Error);
+        Assert.Equal(0, app.CancellationStep);
+    }
+
+    [Fact]
+    public async Task ARejectedRequest_LeavesTheLeaveStanding_AndTellsTheEmployee()
+    {
+        var app = FutureApproved();
+        var (service, notes, audit) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        var result = await service.RejectCancellationAsync("a1", "usr-super", "We need you that week");
+
+        Assert.True(result.Transitioned, result.Error);
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);
+        Assert.Equal(LeaveCancellationStatus.REJECTED, app.CancellationStatus);
+        Assert.Empty(await service.GetTeamAsync("usr-super"));
+        Assert.Contains(notes.Sent, n => n.UserId == "usr-emp" && n.Body.Contains("We need you that week"));
+        Assert.Equal(AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelReject, audit.Written.Last().Action);
+    }
+
+    [Fact]
+    public async Task WithNobodyAboveThem_TheLeaveIsCancelledAtOnce()
+    {
+        var app = FutureApproved();
+        var (service, _, audit) = CancelService(app, chain: []);
+
+        var result = await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        Assert.True(result.Transitioned, result.Error);
+        Assert.Equal(LeaveStatus.CANCELLED, app.Status);
+        Assert.Equal(["CANCELLATION_REQUESTED", "CANCELLATION_AUTO_APPROVED"], Trail(app));
+        Assert.Contains(audit.Written, w => w.Action == AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelled);
+    }
+
+    [Fact]
+    public async Task LeaveThatHasStarted_CantBeCancelledByTheEmployee()
+    {
+        var app = FutureApproved();
+        app.StartDate = DateTime.UtcNow.Date.AddDays(-1);
+        var (service, _, audit) = CancelService(app);
+
+        var result = await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        Assert.False(result.Transitioned);
+        Assert.Contains("already started", result.Error);
+        Assert.Null(app.CancellationStatus);
+        Assert.Empty(audit.Written);
+    }
+
+    [Fact]
+    public async Task OnlyTheApplicantCanAsk()
+    {
+        var app = FutureApproved();
+        var (service, _, _) = CancelService(app);
+
+        var result = await service.RequestCancellationAsync("a1", "usr-someone-else", null);
+
+        Assert.False(result.Transitioned);
+        Assert.Null(app.CancellationStatus);
+    }
+
+    [Fact]
+    public async Task TheEmployeeCanWithdrawTheRequest()
+    {
+        var app = FutureApproved();
+        var (service, _, audit) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        var result = await service.WithdrawCancellationAsync("a1", "usr-emp");
+
+        Assert.True(result.Transitioned, result.Error);
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);
+        Assert.Equal(LeaveCancellationStatus.WITHDRAWN, app.CancellationStatus);
+        Assert.Empty(await service.GetTeamAsync("usr-super"));
+        Assert.Equal(AltomateHR.Api.Modules.Audit.AuditActions.LeaveCancelWithdraw, audit.Written.Last().Action);
+    }
+
+    // An admin can step in while a cancellation is still going up the chain.
+    [Fact]
+    public async Task AnAdminCanCancelWhileARequestIsUnderReview()
+    {
+        var app = FutureApproved();
+        var (service, _, _) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+
+        var result = await service.AdminCancelAsync("a1", "usr-admin", null);
+
+        Assert.True(result.Transitioned);
+        Assert.Equal(LeaveStatus.CANCELLED, app.Status);
+        Assert.Empty(await service.GetTeamAsync("usr-super"));
+    }
+
+    // The unreachable-approver sweep treats a stranded cancellation the way it
+    // treats a stranded request: it goes through.
+    [Fact]
+    public async Task AStrandedCancellation_IsGrantedByTheReconcileSweep()
+    {
+        var app = FutureApproved();
+        var (service, _, _) = CancelService(app);
+        await service.RequestCancellationAsync("a1", "usr-emp", null);
+        app.CancellationStep = 5;   // past the top of the chain — nobody left to ask
+
+        var stuck = await service.ReconcileUnreachableApprovalsAsync(apply: true);
+
+        Assert.Equal(1, stuck);
+        Assert.Equal(LeaveStatus.CANCELLED, app.Status);
     }
 
     [Fact]
     public async Task AdminCancel_UnknownId_IsNotFound()
     {
-        var result = await MakeService().AdminCancelApprovedAsync("nope", "usr-admin", null);
+        var result = await MakeService().AdminCancelAsync("nope", "usr-admin", null);
 
         Assert.False(result.Found);
     }
@@ -887,7 +1111,7 @@ public class LeaveServiceTests
             apps: [MakeApp("a1", "usr-emp", "t-x", 2, LeaveStatus.APPROVED)],
             drafts: drafts);
 
-        await service.AdminCancelApprovedAsync("a1", "usr-admin", null);
+        await service.AdminCancelAsync("a1", "usr-admin", null);
 
         Assert.Equal(expectedSweeps, drafts.Covering.Count);
     }
@@ -915,7 +1139,8 @@ public class LeaveServiceTests
         IXeroService? xero = null,
         IEmployeeRowResolver? employees = null,
         FakeNotificationService? notifications = null,
-        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null) =>
+        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null,
+        AltomateHR.Api.Modules.Audit.IAuditService? audit = null) =>
         new(
             new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
@@ -933,7 +1158,8 @@ public class LeaveServiceTests
             employees ?? new FakeEmployeeDirectory(),
             new FakeTeamService(),
             new FakeProjectService(),
-            drafts);
+            drafts,
+            audit);
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {
