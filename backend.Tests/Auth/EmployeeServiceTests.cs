@@ -400,8 +400,16 @@ public class EmployeeServiceTests
         public Task<LeaveBulkResult> BulkApproveAsync(IReadOnlyList<string> ids, string a) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> RejectAsync(string i, string a, string? n) => throw new NotImplementedException();
         public Task<LeaveTransitionResult> CancelAsync(string i, string u) => throw new NotImplementedException();
-        public Task<LeaveTransitionResult> AdminCancelApprovedAsync(string i, string a, string? r) =>
-            throw new NotImplementedException();
+        public Task<LeaveTransitionResult> AdminCancelAsync(string i, string a, string? r) =>
+            throw new NotSupportedException();
+        public Task<LeaveTransitionResult> RequestCancellationAsync(string i, string u, string? r) =>
+            throw new NotSupportedException();
+        public Task<LeaveTransitionResult> WithdrawCancellationAsync(string i, string u) =>
+            throw new NotSupportedException();
+        public Task<LeaveTransitionResult> ApproveCancellationAsync(string i, string a) =>
+            throw new NotSupportedException();
+        public Task<LeaveTransitionResult> RejectCancellationAsync(string i, string a, string? n) =>
+            throw new NotSupportedException();
         public Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync() =>
             throw new NotImplementedException();
     }

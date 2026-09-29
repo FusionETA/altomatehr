@@ -66,6 +66,23 @@ public class LeaveApplication : ITenantScoped
     public string? ReviewNotes { get; set; }
     public DateTime? DecidedAt { get; set; }
 
+    // ---- A request to cancel APPROVED leave ----
+    // The leave stays APPROVED while this is reviewed — its days stay taken
+    // and payroll keeps docking them — and only becomes CANCELLED once the
+    // last layer of the chain agrees. So nothing that sums approved leave
+    // (balances, payroll, attendance, on-leave-today) needs to know about it.
+    // Null when none was ever asked for; the outcome of the latest otherwise.
+    public LeaveCancellationStatus? CancellationStatus { get; set; }
+
+    // The chain step the cancellation is waiting on — separate from
+    // CurrentStep, which records how far the leave itself got.
+    public int CancellationStep { get; set; }
+
+    [MaxLength(1000)]
+    public string? CancellationReason { get; set; }
+
+    public DateTime? CancellationRequestedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -3,6 +3,10 @@ import { apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "@/shared/lib/a
 
 export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
+// A request to cancel APPROVED leave. The leave stays APPROVED (days still
+// taken) while this is PENDING; APPROVED here means it has been cancelled.
+export type LeaveCancellationStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+
 export type LeaveType = {
   id: string;
   code: string;
@@ -43,6 +47,9 @@ export type LeaveApplication = {
   status: LeaveStatus;
   reviewNotes: string | null;
   decidedAt: string | null;
+  cancellationStatus?: LeaveCancellationStatus | null;
+  cancellationReason?: string | null;
+  cancellationRequestedAt?: string | null;
   createdAt: string;
   /** Supporting document (MC, hospital slip) when one was attached. */
   attachmentName: string | null;
@@ -146,7 +153,10 @@ export type LeaveSummaryReport = {
 export type LeaveApprovalEntry = {
   step: number;
   approverId: string;
-  decision: string; // "APPROVED" | "REJECTED" | "ADMIN_APPLIED" | "ADMIN_CANCELLED" | "IMPORTED"
+  // APPROVED | AUTO_APPROVED | REJECTED | WITHDRAWN | ADMIN_APPLIED | ADMIN_CANCELLED | IMPORTED
+  // | CANCELLATION_REQUESTED | CANCELLATION_APPROVED | CANCELLATION_AUTO_APPROVED
+  // | CANCELLATION_REJECTED | CANCELLATION_WITHDRAWN
+  decision: string;
   decidedAt: string;
   notes: string | null;
 };
@@ -206,10 +216,26 @@ export const bulkApproveLeave = (ids: string[]) =>
 export const rejectLeave = (id: string, reviewNotes?: string) =>
   apiPost<LeaveApplication>(`/leave/${id}/reject`, { reviewNotes });
 export const cancelLeave = (id: string) => apiPost<LeaveApplication>(`/leave/${id}/cancel`);
-// Admin/owner only: withdraw leave that was already APPROVED. The days return
-// to the employee's balance; `reason` goes on the trail and in their notification.
+// Admin/owner only: cancel any live leave — pending, approved, or approved
+// with a cancellation under review. Approved days return to the balance;
+// `reason` goes on the trail and in the employee's notification.
 export const adminCancelLeave = (id: string, reason?: string) =>
   apiPost<LeaveApplication>(`/leave/${id}/admin-cancel`, { reason });
+
+// ---- Cancelling APPROVED leave: the employee asks, the approval chain decides ----
+
+export const requestLeaveCancellation = (id: string, reason?: string) =>
+  apiPost<LeaveApplication>(`/leave/${id}/cancellation`, { reason });
+export const withdrawLeaveCancellation = (id: string) =>
+  apiPost<LeaveApplication>(`/leave/${id}/cancellation/withdraw`);
+export const approveLeaveCancellation = (id: string) =>
+  apiPost<LeaveApplication>(`/leave/${id}/cancellation/approve`);
+export const rejectLeaveCancellation = (id: string, reviewNotes?: string) =>
+  apiPost<LeaveApplication>(`/leave/${id}/cancellation/reject`, { reviewNotes });
+
+// An approved leave with a cancellation waiting on a reviewer.
+export const isCancellationUnderReview = (a: LeaveApplication) =>
+  a.status === "APPROVED" && a.cancellationStatus === "PENDING";
 
 // `date` is a yyyy-MM-dd string; omit for today.
 export const getOnLeaveToday = (date?: string) =>

@@ -87,7 +87,10 @@ export function useApprovalCounts(isSupervisor: boolean): ApprovalCounts {
     // canAct, not status: the team view includes the whole team's claims, so
     // counting every pending one would advertise another step's work.
     claims: (claims.data ?? []).filter((c) => c.canAct).length,
-    leave: (leave.data ?? []).filter((l) => l.status === "PENDING").length,
+    // New requests AND requests to cancel approved leave both wait on them.
+    leave: (leave.data ?? []).filter(
+      (l) => l.status === "PENDING" || (l.status === "APPROVED" && l.cancellationStatus === "PENDING"),
+    ).length,
     attendance:
       // Decisions, not days: one shift can have a clock-in AND a clock-out
       // waiting, which is two things to review.

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Audit;
 using System.Text.Json;
 using System.IO.Compression;
 using AltomateHR.Api.Common;
@@ -48,6 +49,9 @@ public class LeaveService : ILeaveService
     // Optional so hand-built instances in tests need not supply it; the app
     // always does.
     private readonly Payroll.IPayrollDraftStaleness? _drafts;
+    // Optional for the same reason. Records every step of cancelling leave —
+    // see AuditActions.LeaveCancelRequest.
+    private readonly Audit.IAuditService? _audit;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -66,9 +70,11 @@ public class LeaveService : ILeaveService
         IEmployeeRowResolver employees,
         ITeamService teams,
         IProjectService projects,
-        Payroll.IPayrollDraftStaleness? drafts = null)
+        Payroll.IPayrollDraftStaleness? drafts = null,
+        Audit.IAuditService? audit = null)
     {
         _drafts = drafts;
+        _audit = audit;
         _apps = apps;
         _types = types;
         _supervision = supervision;
@@ -119,18 +125,19 @@ public class LeaveService : ILeaveService
     public async Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string userId)
     {
         var all = await _apps.GetAllAsync();
-        var pending = all.Where(a => a.Status == LeaveStatus.PENDING).ToList();
+        // New requests and requests to cancel approved leave both wait here.
+        var pending = all.Where(a => ReviewStep(a) is not null).ToList();
 
         // Leave has no project of its own, so every key carries a null project
         // id and the chain falls back to the alphabetically-first project's
         // team — see ApprovalChainService.
         var approversByKey = await _router.CurrentApproversForManyAsync(
             Module,
-            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+            pending.Select(a => (a.EmployeeId, (string?)null, ReviewStep(a)!.Value)).ToList());
 
         var visible = pending
             .Where(a => approversByKey
-                .GetValueOrDefault((a.EmployeeId, null, a.CurrentStep), [])
+                .GetValueOrDefault((a.EmployeeId, null, ReviewStep(a)!.Value), [])
                 .Contains(userId))
             .ToList();
 
@@ -1239,20 +1246,28 @@ public class LeaveService : ILeaveService
     {
         var now = DateTime.UtcNow;
         var stuck = 0;
-        var pending = (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING).ToList();
+        var pending = (await _apps.GetAllAsync()).Where(a => ReviewStep(a) is not null).ToList();
 
         var approversByKey = await _router.CurrentApproversForManyAsync(
             Module,
-            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+            pending.Select(a => (a.EmployeeId, (string?)null, ReviewStep(a)!.Value)).ToList());
 
         foreach (var app in pending)
         {
             var approvers = approversByKey.GetValueOrDefault(
-                (app.EmployeeId, null, app.CurrentStep), []);
+                (app.EmployeeId, null, ReviewStep(app)!.Value), []);
             if (approvers.Count > 0) continue;
 
             stuck++;
             if (!apply) continue;
+
+            // Same rule as a new request with nobody to ask: it goes through.
+            if (IsCancellationUnderReview(app))
+            {
+                await CompleteCancellationAsync(app, app.EmployeeId, "CANCELLATION_AUTO_APPROVED",
+                    "No approver above the applicant.", byWhom: null);
+                continue;
+            }
 
             app.Status = LeaveStatus.APPROVED;
             app.DecidedAt = now;
@@ -1267,16 +1282,16 @@ public class LeaveService : ILeaveService
     public async Task<IReadOnlyList<OrgApprovalDigestEntryDto>> GetOrgApprovalDigestAsync()
     {
         var countByKey = new Dictionary<(string ReviewerId, string OrganizationId), int>();
-        var pending = (await _apps.GetAllAsync()).Where(a => a.Status == LeaveStatus.PENDING).ToList();
+        var pending = (await _apps.GetAllAsync()).Where(a => ReviewStep(a) is not null).ToList();
 
         var approversByKey = await _router.CurrentApproversForManyAsync(
             Module,
-            pending.Select(a => (a.EmployeeId, (string?)null, a.CurrentStep)).ToList());
+            pending.Select(a => (a.EmployeeId, (string?)null, ReviewStep(a)!.Value)).ToList());
 
         foreach (var app in pending)
         {
             var approvers = approversByKey.GetValueOrDefault(
-                (app.EmployeeId, null, app.CurrentStep), []);
+                (app.EmployeeId, null, ReviewStep(app)!.Value), []);
             foreach (var reviewerId in approvers)
             {
                 var key = (reviewerId, app.OrganizationId);
@@ -1532,16 +1547,24 @@ public class LeaveService : ILeaveService
 
         application.Status = LeaveStatus.CANCELLED;
         application.UpdatedAt = DateTime.UtcNow;
+        AppendTrail(application, application.CurrentStep, userId, "WITHDRAWN", null);
         await _apps.UpdateAsync(application);
 
         // The approvers are the ones who need this: a withdrawn request should
         // disappear from their queue rather than sit there until they reload.
         await NotifyAsync(application, RealtimeAction.CANCELLED,
             notifyApplicant: false, notifyApprovers: true);
+        await AuditAsync(application, AuditActions.LeaveCancelled,
+            $"{await PersonAsync(userId)} withdrew their pending {await TypeNameAsync(application)} request",
+            new { Before = "PENDING" });
         return new LeaveTransitionResult(true, true, ToDto(application));
     }
 
-    public async Task<LeaveTransitionResult> AdminCancelApprovedAsync(string id, string adminId, string? reason)
+    // An admin/owner cancels leave in any live state: a PENDING request nobody
+    // has decided, APPROVED leave (days return), or approved leave with a
+    // cancellation request still working its way up the chain. The controller
+    // gates the role.
+    public async Task<LeaveTransitionResult> AdminCancelAsync(string id, string adminId, string? reason)
     {
         var application = await _apps.GetByIdAsync(id);
         if (application is null)
@@ -1550,31 +1573,295 @@ public class LeaveService : ILeaveService
         if (application.Status == LeaveStatus.CANCELLED)
             return new LeaveTransitionResult(true, true, ToDto(application));   // idempotent
 
-        // Pending leave has its own paths — the applicant withdraws it, the
-        // approver rejects it — and a rejected one never took any days.
-        if (application.Status != LeaveStatus.APPROVED)
+        if (application.Status is not (LeaveStatus.PENDING or LeaveStatus.APPROVED))
             return new LeaveTransitionResult(true, false, ToDto(application),
-                "Only approved leave can be cancelled here");
+                "Rejected leave has nothing to cancel.");
 
         var note = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        var before = application.Status;
+        var wasUnderReview = IsCancellationUnderReview(application);
+        // Read BEFORE the change: whoever this was waiting on needs it gone
+        // from their queue, and once it is CANCELLED it waits on nobody.
+        var reviewers = await ReviewersAsync(application);
 
         application.Status = LeaveStatus.CANCELLED;
+        if (wasUnderReview) application.CancellationStatus = LeaveCancellationStatus.APPROVED;
         application.UpdatedAt = DateTime.UtcNow;
         // On the trail rather than in ReviewNotes: that field holds the
         // approver's last word, which should survive the cancellation.
-        AppendTrail(application, application.CurrentStep, adminId, "ADMIN_CANCELLED", note);
+        AppendTrail(application, ReviewStep(application) ?? application.CurrentStep, adminId, "ADMIN_CANCELLED", note);
         await _apps.UpdateAsync(application);
 
-        // Unpaid leave feeds payroll's deductions, so an open draft covering
-        // these dates was built from days that no longer count. Same sweep an
-        // approval triggers — paid leave changes no payslip figure.
-        var type = await _types.GetByIdAsync(application.LeaveTypeId);
-        if (_drafts is not null && type is { Paid: false })
-            await _drafts.MarkDraftsCoveringAsync(application.StartDate, application.EndDate);
+        // Unpaid APPROVED leave fed payroll's deductions, so an open draft
+        // covering these dates was built from days that no longer count.
+        if (before == LeaveStatus.APPROVED) await MarkPayrollIfUnpaidAsync(application);
 
-        await NotifyAsync(application, RealtimeAction.CANCELLED, notifyApplicant: true, reason: note);
+        await PublishAsync(application, RealtimeAction.CANCELLED, [application.EmployeeId, .. reviewers]);
+        await NotifyCancelledAsync(application, byWhom: "an admin", note, daysReturned: before == LeaveStatus.APPROVED);
+        await AuditAsync(application, AuditActions.LeaveAdminCancel,
+            $"Cancelled {await PersonAsync(application.EmployeeId)}'s {before.ToString().ToLowerInvariant()} "
+            + $"{await TypeNameAsync(application)} ({application.StartDate:d MMM}–{application.EndDate:d MMM yyyy})",
+            new { Before = before.ToString(), CancellationWasPending = wasUnderReview, Reason = note, application.TotalDays });
         return new LeaveTransitionResult(true, true, ToDto(application));
     }
+
+    // ---- The employee asks to cancel APPROVED leave ----
+    //
+    // Goes up the SAME chain the leave did, layer by layer; the last layer's
+    // yes cancels it and the days come back. Nobody above the employee → it
+    // cancels at once. Only before the leave starts: once it has begun the
+    // days are being (or were) taken, and undoing that is an admin's call.
+
+    public async Task<LeaveTransitionResult> RequestCancellationAsync(string id, string userId, string? reason)
+    {
+        var application = await _apps.GetByIdAsync(id);
+        if (application is null)
+            return new LeaveTransitionResult(false, false, null, "Application not found");
+
+        if (application.EmployeeId != userId)
+            return new LeaveTransitionResult(true, false, null, "Only the applicant can ask to cancel");
+
+        if (IsCancellationUnderReview(application))
+            return new LeaveTransitionResult(true, true, ToDto(application));   // already asked
+
+        if (application.Status != LeaveStatus.APPROVED)
+            return new LeaveTransitionResult(true, false, ToDto(application),
+                "Only approved leave needs a cancellation request — a pending one can be cancelled directly.");
+
+        var today = Attendance.AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+        if (application.StartDate.Date <= today.Date)
+            return new LeaveTransitionResult(true, false, ToDto(application),
+                "This leave has already started, so it can't be cancelled from here. Ask an admin.");
+
+        var note = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        var now = DateTime.UtcNow;
+        application.CancellationStatus = LeaveCancellationStatus.PENDING;
+        application.CancellationStep = 0;
+        application.CancellationReason = note;
+        application.CancellationRequestedAt = now;
+        application.UpdatedAt = now;
+        AppendTrail(application, 0, userId, "CANCELLATION_REQUESTED", note);
+
+        var who = await PersonAsync(userId);
+        var typeName = await TypeNameAsync(application);
+        await AuditAsync(application, AuditActions.LeaveCancelRequest,
+            $"{who} asked to cancel their approved {typeName} ({application.StartDate:d MMM}–{application.EndDate:d MMM yyyy})",
+            new { Reason = note, application.TotalDays });
+
+        if (await _router.StepCountAsync(Module, application.EmployeeId) == 0)
+        {
+            await CompleteCancellationAsync(application, userId, "CANCELLATION_AUTO_APPROVED",
+                "No approver above the applicant.", byWhom: null);
+            return new LeaveTransitionResult(true, true, ToDto(application));
+        }
+
+        await _apps.UpdateAsync(application);
+
+        var reviewers = await ReviewersAsync(application);
+        await PublishAsync(application, RealtimeAction.UPDATED, reviewers);
+        foreach (var reviewerId in reviewers)
+        {
+            await _notifications.NotifyAsync(
+                application.OrganizationId, reviewerId, NotificationType.LEAVE_SUBMITTED,
+                "Leave cancellation to review",
+                $"{who} wants to cancel their approved {typeName} ({application.StartDate:MMM d}–{application.EndDate:MMM d})."
+                + (note is null ? "" : $" Reason: {note}"),
+                "/leave");
+        }
+        return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
+    public async Task<LeaveTransitionResult> WithdrawCancellationAsync(string id, string userId)
+    {
+        var application = await _apps.GetByIdAsync(id);
+        if (application is null)
+            return new LeaveTransitionResult(false, false, null, "Application not found");
+
+        if (application.EmployeeId != userId)
+            return new LeaveTransitionResult(true, false, null, "Only the applicant can withdraw it");
+
+        if (!IsCancellationUnderReview(application))
+            return new LeaveTransitionResult(true, false, ToDto(application),
+                "There's no cancellation request waiting on this leave.");
+
+        var reviewers = await ReviewersAsync(application);
+        application.CancellationStatus = LeaveCancellationStatus.WITHDRAWN;
+        application.UpdatedAt = DateTime.UtcNow;
+        AppendTrail(application, application.CancellationStep, userId, "CANCELLATION_WITHDRAWN", null);
+        await _apps.UpdateAsync(application);
+
+        await PublishAsync(application, RealtimeAction.UPDATED, reviewers);
+        await AuditAsync(application, AuditActions.LeaveCancelWithdraw,
+            $"{await PersonAsync(userId)} withdrew their request to cancel {await TypeNameAsync(application)}",
+            null);
+        return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
+    public async Task<LeaveTransitionResult> ApproveCancellationAsync(string id, string approverId)
+    {
+        var (application, error) = await AuthorizeCancellationAsync(id, approverId);
+        if (error is not null) return error;
+
+        var steps = await _router.StepCountAsync(Module, application!.EmployeeId);
+        var isFinal = application.CancellationStep + 1 >= steps;
+        var who = await PersonAsync(application.EmployeeId);
+        var typeName = await TypeNameAsync(application);
+
+        await AuditAsync(application, AuditActions.LeaveCancelApprove,
+            $"Approved {who}'s request to cancel {typeName}"
+            + (isFinal ? " — final step, leave cancelled" : $" — step {application.CancellationStep + 1} of {steps}"),
+            new { Step = application.CancellationStep + 1, Steps = steps, Final = isFinal });
+
+        if (isFinal)
+        {
+            await CompleteCancellationAsync(application, approverId, "CANCELLATION_APPROVED", null, byWhom: "your approver");
+            return new LeaveTransitionResult(true, true, ToDto(application));
+        }
+
+        AppendTrail(application, application.CancellationStep, approverId, "CANCELLATION_APPROVED", null);
+        application.CancellationStep += 1;
+        application.UpdatedAt = DateTime.UtcNow;
+        await _apps.UpdateAsync(application);
+
+        // Off this approver's queue, onto the next layer's.
+        var next = await ReviewersAsync(application);
+        await PublishAsync(application, RealtimeAction.UPDATED, [approverId, .. next]);
+        foreach (var reviewerId in next)
+        {
+            await _notifications.NotifyAsync(
+                application.OrganizationId, reviewerId, NotificationType.LEAVE_SUBMITTED,
+                "Leave cancellation to review",
+                $"{who} wants to cancel their approved {typeName} ({application.StartDate:MMM d}–{application.EndDate:MMM d}).",
+                "/leave");
+        }
+        return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
+    public async Task<LeaveTransitionResult> RejectCancellationAsync(string id, string approverId, string? reviewNotes)
+    {
+        var (application, error) = await AuthorizeCancellationAsync(id, approverId);
+        if (error is not null) return error;
+
+        var note = string.IsNullOrWhiteSpace(reviewNotes) ? null : reviewNotes.Trim();
+        application!.CancellationStatus = LeaveCancellationStatus.REJECTED;
+        application.UpdatedAt = DateTime.UtcNow;
+        AppendTrail(application, application.CancellationStep, approverId, "CANCELLATION_REJECTED", note);
+        await _apps.UpdateAsync(application);
+
+        var typeName = await TypeNameAsync(application);
+        await PublishAsync(application, RealtimeAction.UPDATED, [application.EmployeeId, approverId]);
+        await _notifications.NotifyAsync(
+            application.OrganizationId, application.EmployeeId, NotificationType.LEAVE_REVIEWED,
+            "Cancellation declined",
+            $"Your request to cancel {typeName} ({application.StartDate:MMM d}–{application.EndDate:MMM d}) was declined — the leave still stands."
+            + (note is null ? "" : $" Reason: {note}"),
+            "/leave");
+        await AuditAsync(application, AuditActions.LeaveCancelReject,
+            $"Rejected {await PersonAsync(application.EmployeeId)}'s request to cancel {typeName}",
+            new { Step = application.CancellationStep + 1, Reason = note });
+        return new LeaveTransitionResult(true, true, ToDto(application));
+    }
+
+    // The leave is cancelled: by the last layer of the chain, by nobody being
+    // above the employee, or by the unreachable-approver sweep. The days come
+    // back on their own — "taken" only sums APPROVED leave.
+    private async Task CompleteCancellationAsync(
+        LeaveApplication application, string actorId, string decision, string? note, string? byWhom)
+    {
+        var reviewers = await ReviewersAsync(application);
+        AppendTrail(application, application.CancellationStep, actorId, decision, note);
+        application.Status = LeaveStatus.CANCELLED;
+        application.CancellationStatus = LeaveCancellationStatus.APPROVED;
+        application.UpdatedAt = DateTime.UtcNow;
+        await _apps.UpdateAsync(application);
+
+        await MarkPayrollIfUnpaidAsync(application);
+        await PublishAsync(application, RealtimeAction.CANCELLED, [application.EmployeeId, .. reviewers]);
+        await NotifyCancelledAsync(application, byWhom, application.CancellationReason, daysReturned: true);
+        await AuditAsync(application, AuditActions.LeaveCancelled,
+            $"{await PersonAsync(application.EmployeeId)}'s {await TypeNameAsync(application)} "
+            + $"({application.StartDate:d MMM}–{application.EndDate:d MMM yyyy}) cancelled — {application.TotalDays:0.#} day(s) returned",
+            new { Via = decision, application.TotalDays });
+    }
+
+    private async Task<(LeaveApplication? App, LeaveTransitionResult? Error)> AuthorizeCancellationAsync(
+        string id, string approverId)
+    {
+        var app = await _apps.GetByIdAsync(id);
+        if (app is null)
+            return (null, new LeaveTransitionResult(false, false, null, "Application not found"));
+
+        if (!IsCancellationUnderReview(app))
+            return (app, new LeaveTransitionResult(true, false, ToDto(app),
+                "There's no cancellation request waiting on this leave."));
+
+        var approvers = await _router.CurrentApproversAsync(Module, app.EmployeeId, app.CancellationStep);
+        if (!approvers.Contains(approverId))
+            return (null, new LeaveTransitionResult(true, false, null,
+                "You are not authorized to review this step"));
+
+        return (app, null);
+    }
+
+    // The step a leave waits on a reviewer at — a new request, or a request to
+    // cancel an approved one — or null when it waits on nobody.
+    private static int? ReviewStep(LeaveApplication a) =>
+        a.Status == LeaveStatus.PENDING ? a.CurrentStep
+        : IsCancellationUnderReview(a) ? a.CancellationStep
+        : null;
+
+    private static bool IsCancellationUnderReview(LeaveApplication a) =>
+        a.Status == LeaveStatus.APPROVED && a.CancellationStatus == LeaveCancellationStatus.PENDING;
+
+    private async Task<IReadOnlyList<string>> ReviewersAsync(LeaveApplication a) =>
+        ReviewStep(a) is { } step ? await _router.CurrentApproversAsync(Module, a.EmployeeId, step) : [];
+
+    private Task PublishAsync(LeaveApplication a, RealtimeAction action, IEnumerable<string?> targets) =>
+        _realtime.PublishAsync(a.OrganizationId, targets.Distinct().ToList(),
+            RealtimeEventDto.For(RealtimeScope.LEAVE, action, a.Id));
+
+    // `daysReturned`: false for a request that was only PENDING — nothing had
+    // been taken from the balance, so saying it came back would be untrue.
+    private async Task NotifyCancelledAsync(LeaveApplication a, string? byWhom, string? reason, bool daysReturned)
+    {
+        var typeName = await TypeNameAsync(a);
+        await _notifications.NotifyAsync(
+            a.OrganizationId, a.EmployeeId, NotificationType.LEAVE_REVIEWED,
+            "Leave cancelled",
+            $"Your {typeName} ({a.StartDate:MMM d}–{a.EndDate:MMM d}) was cancelled"
+            + (byWhom is null ? "." : $" by {byWhom}.")
+            + (daysReturned ? $" The {a.TotalDays:0.#} day(s) are back in your balance." : "")
+            + (string.IsNullOrEmpty(reason) ? "" : $" Reason: {reason}"),
+            "/leave");
+    }
+
+    // Unpaid leave feeds payroll's deductions, so an open draft covering these
+    // dates was built from days that no longer count. Paid leave changes no
+    // payslip figure.
+    private async Task MarkPayrollIfUnpaidAsync(LeaveApplication a)
+    {
+        if (_drafts is null) return;
+        var type = await _types.GetByIdAsync(a.LeaveTypeId);
+        if (type is { Paid: false }) await _drafts.MarkDraftsCoveringAsync(a.StartDate, a.EndDate);
+    }
+
+    private async Task<string> PersonAsync(string userId)
+    {
+        var name = (await _supervision.GetNamesAsync([userId])).GetValueOrDefault(userId);
+        if (!string.IsNullOrWhiteSpace(name)) return name;
+        return (await _supervision.GetEmailsAsync([userId])).GetValueOrDefault(userId) ?? "An employee";
+    }
+
+    private async Task<string> TypeNameAsync(LeaveApplication a) =>
+        (await _types.GetByIdAsync(a.LeaveTypeId))?.Name ?? "leave";
+
+    private Task AuditAsync(LeaveApplication a, string action, string summary, object? metadata) =>
+        _audit is null
+            ? Task.CompletedTask
+            : _audit.WriteAsync(new AuditEvent(action, summary,
+                TargetType: "LeaveApplication", TargetId: a.Id, Metadata: metadata,
+                // Explicit: the reconcile sweep can run without a request org.
+                OrganizationId: a.OrganizationId));
 
     // Live nudge for one leave request. Approvers are resolved from the row's
     // CURRENT step, so a multi-step chain notifies exactly the people who now
@@ -1587,8 +1874,7 @@ public class LeaveService : ILeaveService
         LeaveApplication app,
         RealtimeAction action,
         bool notifyApplicant,
-        bool notifyApprovers = false,
-        string? reason = null)
+        bool notifyApprovers = false)
     {
         var targets = new List<string?>();
         if (notifyApplicant) targets.Add(app.EmployeeId);
@@ -1637,18 +1923,6 @@ public class LeaveService : ILeaveService
                 break;
             }
 
-            // Only an admin withdrawing APPROVED leave notifies the applicant:
-            // their own cancel is something they already know about.
-            case RealtimeAction.CANCELLED when notifyApplicant:
-            {
-                var typeName = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
-                await _notifications.NotifyAsync(
-                    app.OrganizationId, app.EmployeeId, NotificationType.LEAVE_REVIEWED,
-                    "Leave cancelled",
-                    $"Your approved {typeName} ({app.StartDate:MMM d}–{app.EndDate:MMM d}) was cancelled by an admin. The {app.TotalDays:0.#} day(s) are back in your balance.{(string.IsNullOrEmpty(reason) ? "" : $" Reason: {reason}")}",
-                    "/leave");
-                break;
-            }
         }
     }
 
@@ -1700,6 +1974,9 @@ public class LeaveService : ILeaveService
         Status = a.Status,
         ReviewNotes = a.ReviewNotes,
         DecidedAt = Iso(a.DecidedAt),
+        CancellationStatus = a.CancellationStatus,
+        CancellationReason = a.CancellationReason,
+        CancellationRequestedAt = Iso(a.CancellationRequestedAt),
         CreatedAt = Iso(a.CreatedAt) ?? string.Empty,
         AttachmentName = a.AttachmentName,
         // DERIVED from the file id whenever there is one, rather than trusting
