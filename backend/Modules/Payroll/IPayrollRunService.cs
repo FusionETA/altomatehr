@@ -50,6 +50,9 @@ public interface IPayrollRunService
     // PENDING_APPROVAL → DRAFT, with a reason for the submitter.
     Task<PayrollRunSaveResult> RejectAsync(string id, string? reason);
 
+    // Record LHDN's MTD / CP38 payment receipts on a SUBMITTED run, for PCB 2(II).
+    Task<PayrollRunSaveResult> SetLhdnReceiptsAsync(string id, SetLhdnReceiptsDto dto);
+
     // SUBMITTED → DRAFT, CASCADING to every later submitted month in the same
     // year. Their YTD-cumulative figures depend on this one.
     Task<PayrollRunRevertResult> RevertToDraftAsync(string id);

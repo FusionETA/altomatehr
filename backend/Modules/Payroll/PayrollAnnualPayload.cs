@@ -30,6 +30,11 @@ public sealed record PayrollAnnualPayload
     // Which months of the year have an APPROVED (submitted) run, 1–12.
     public IReadOnlyList<int> SubmittedMonths { get; init; } = [];
 
+    // LHDN's MTD / CP38 payment receipts for each approved month, for PCB 2(II).
+    // A receipt belongs to the company's monthly remittance, not to a person.
+    public IReadOnlyDictionary<int, LhdnMonthReceipts> Receipts { get; init; } =
+        new Dictionary<int, LhdnMonthReceipts>();
+
     public IReadOnlyList<int> MissingMonths =>
         [.. Enumerable.Range(1, 12).Where(m => !SubmittedMonths.Contains(m))];
 
@@ -106,3 +111,7 @@ public sealed record AnnualEmployeeRow
 // PCB field — the formula PCB plus any Additional PCB the employee asked for;
 // CP38 arrears are remitted in their own column.
 public sealed record AnnualMonth(int Month, decimal Pcb, decimal Cp38, decimal Zakat);
+
+// The receipts LHDN issued for one month's MTD (CP39) and CP38 payments.
+public sealed record LhdnMonthReceipts(
+    string? PcbReceiptNo, DateTime? PcbReceiptDate, string? Cp38ReceiptNo, DateTime? Cp38ReceiptDate);

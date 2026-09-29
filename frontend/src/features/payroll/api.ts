@@ -167,6 +167,12 @@ export type PayrollRun = {
   xeroSyncStatus?: XeroSyncStatus;
   xeroSyncError?: string | null;
   xeroSyncedAt?: string | null;
+  // LHDN's receipts for this month's MTD (CP39) and CP38 payments, printed on
+  // each employee's PCB 2(II). Recorded once the month is approved and paid.
+  pcbReceiptNo?: string | null;
+  pcbReceiptDate?: string | null;
+  cp38ReceiptNo?: string | null;
+  cp38ReceiptDate?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -329,6 +335,17 @@ export const rejectPayrollRun = (id: string, reason: string | null) =>
 
 export const revertPayrollRun = (id: string) =>
   apiPost<PayrollRun>(`/payroll/runs/${id}/revert`);
+
+export type LhdnReceipts = {
+  pcbReceiptNo: string | null;
+  pcbReceiptDate: string | null;
+  cp38ReceiptNo: string | null;
+  cp38ReceiptDate: string | null;
+};
+
+// Approved runs only. A blank field clears it.
+export const setPayrollRunLhdnReceipts = (id: string, body: LhdnReceipts) =>
+  apiPut<PayrollRun>(`/payroll/runs/${id}/lhdn-receipts`, body);
 
 // Reverting a month also reverts every later submitted month in the same
 // year, because their year-to-date figures were computed off it. This names
@@ -821,7 +838,8 @@ export type PayrollAnnualReportKind =
   | "FORM_EA_BULK_PDF"
   | "FORM_E_CP8D_PDF"
   | "CP8D_EMPLOYER_TXT"
-  | "CP8D_EMPLOYEE_TXT";
+  | "CP8D_EMPLOYEE_TXT"
+  | "PCB2II_BULK_PDF";
 
 export type PayrollAnnualReportMeta = {
   kind: PayrollAnnualReportKind;
@@ -833,6 +851,9 @@ export type PayrollAnnualReportMeta = {
   portal: string | null;
   extension: string;
   mimeType: string;
+  // False for PCB 2(II): a statement of deductions so far, issued mid-year.
+  // The returns declare the whole year and wait for all twelve months.
+  requiresFullYear: boolean;
 };
 
 // One employee's whole year, summed across the SUBMITTED runs only. A draft

@@ -563,6 +563,7 @@ public class YtdImportService : IYtdImportService
         run.TotalEmployeeSkbbk = payslips.Sum(p => p.SkbbkEmployee);
         run.TotalEmployerEis = payslips.Sum(p => p.EisEmployer);
         run.TotalPcb = payslips.Sum(p => p.Pcb);
+        run.TotalCp38 = payslips.Sum(p => p.Cp38);
         run.TotalZakat = payslips.Sum(p => p.Zakat);
         run.TotalHrdf = payslips.Sum(p => p.Hrdf);
         run.TotalCostToEmployer = payslips.Sum(p => p.TotalCostToEmployer);

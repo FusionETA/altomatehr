@@ -131,9 +131,14 @@ public class LhdnFormsService : ILhdnFormsService
         var perMonth = new LhdnFormMonthPcb?[12];
         foreach (var month in row?.Months ?? [])
         {
+            var receipt = annual.Receipts.GetValueOrDefault(month.Month);
             perMonth[month.Month - 1] = new LhdnFormMonthPcb
             {
                 Month = month.Month, Mtd = month.Pcb, Cp38 = month.Cp38, Zakat = month.Zakat,
+                MtdReceiptNo = receipt?.PcbReceiptNo,
+                MtdReceiptDate = receipt?.PcbReceiptDate,
+                Cp38ReceiptNo = receipt?.Cp38ReceiptNo,
+                Cp38ReceiptDate = receipt?.Cp38ReceiptDate,
             };
         }
 

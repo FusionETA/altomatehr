@@ -43,8 +43,12 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         var payload = await LoadAsync(year);
 
         // The year gate, enforced here and not only on the page, so no direct
-        // URL or API caller gets a partial-year return either.
-        if (!payload.CanGenerate)
+        // URL or API caller gets a partial-year return either. PCB 2(II) is a
+        // statement of deductions so far, and is exempt.
+        var meta = PayrollAnnualReports.All.GetValueOrDefault(kind);
+        if (meta is null) return StatutoryFileResult.Refused("Unknown annual report.");
+
+        if (meta.RequiresFullYear && !payload.CanGenerate)
         {
             var missing = string.Join(", ", payload.MissingMonths.Select(m =>
                 System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(m)));
@@ -61,6 +65,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT => Cp8dTxt.RenderEmployees(payload),
             PayrollAnnualReportKind.FORM_EA_BULK_PDF => Pdf(
                 kind, payload, FormEaPdf.Render(payload), FormEaPdf.ContentType),
+            PayrollAnnualReportKind.PCB2II_BULK_PDF => Pdf(
+                kind, payload,
+                LhdnForms.Pdf.Pcb2IiPdf.Render([.. payload.Employees
+                    .Select(e => LhdnForms.Pdf.Pcb2IiStatement.From(payload, e, DateTime.UtcNow))]),
+                LhdnForms.Pdf.Pcb2IiPdf.ContentType),
             PayrollAnnualReportKind.FORM_E_CP8D_PDF => Pdf(
                 kind, payload,
                 FormECp8dPdf.Render(payload, await PartAAsync(year)),
@@ -99,6 +108,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             CompanyInfo = info,
             EmployerNo = PayrollAnnualReports.EmployerNumber(info?.EmployerTin),
             SubmittedMonths = [.. runs.Select(r => r.PeriodMonth).Distinct().Order()],
+            Receipts = runs
+                .GroupBy(r => r.PeriodMonth)
+                .ToDictionary(g => g.Key, g => new LhdnMonthReceipts(
+                    g.First().PcbReceiptNo, g.First().PcbReceiptDate,
+                    g.First().Cp38ReceiptNo, g.First().Cp38ReceiptDate)),
         };
 
         if (runs.Count == 0) return payload;

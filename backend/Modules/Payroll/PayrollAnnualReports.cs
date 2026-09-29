@@ -15,6 +15,11 @@ public enum PayrollAnnualReportKind
     // The two pipe-delimited files LHDN's e-CP8D upload expects.
     CP8D_EMPLOYER_TXT,
     CP8D_EMPLOYEE_TXT,
+
+    // One PCB 2(II) per employee, concatenated — the statement of the MTD and
+    // CP38 deducted from them. Issued on request at any point in the year, so
+    // unlike the others it does not wait for all twelve months.
+    PCB2II_BULK_PDF,
 }
 
 public static class PayrollAnnualReports
@@ -28,7 +33,10 @@ public static class PayrollAnnualReports
         // the documents an employer keeps or distributes itself.
         string? Portal,
         string Extension,
-        string MimeType);
+        string MimeType,
+        // False for a statement of what has been deducted SO FAR (PCB 2(II)),
+        // which is issued mid-year; the returns declare the whole year.
+        bool RequiresFullYear = true);
 
     public const string GroupForms = "FORMS";
     public const string GroupLhdnTxt = "LHDN_TXT";
@@ -65,6 +73,14 @@ public static class PayrollAnnualReports
                 "CP8D employee particulars (P)",
                 "Pipe-delimited per-employee rows.",
                 "LHDN e-CP8D upload", "txt", "text/plain"),
+
+            [PayrollAnnualReportKind.PCB2II_BULK_PDF] = new(
+                PayrollAnnualReportKind.PCB2II_BULK_PDF,
+                GroupForms,
+                "PCB 2(II) (bulk)",
+                "One PCB 2(II) statement per employee: the MTD and CP38 deducted from them in each "
+                + "approved month, with LHDN's receipt numbers. Available at any point in the year.",
+                null, "pdf", "application/pdf", RequiresFullYear: false),
         };
 
     // LHDN's own filename convention for the upload pair: the employer number
@@ -80,6 +96,7 @@ public static class PayrollAnnualReports
             PayrollAnnualReportKind.FORM_E_CP8D_PDF => $"Form_E_CP8D_{year}.pdf",
             PayrollAnnualReportKind.CP8D_EMPLOYER_TXT => $"M{stem}_{year}.TXT",
             PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT => $"P{stem}_{year}.TXT",
+            PayrollAnnualReportKind.PCB2II_BULK_PDF => $"PCB2II_{year}_Bulk.pdf",
             _ => $"payroll-annual-{year}.txt",
         };
     }
