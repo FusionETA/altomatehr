@@ -225,7 +225,8 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunAdjustmentSave,
-            "Saved a payroll adjustment",
+            $"{await DescribeSubjectAsync(run, employeeProfileId)}: "
+            + DescribeAdjustment(dto, items, overrides),
             TargetType: "PayrollRunAdjustment",
             TargetId: saved.Id,
             Metadata: new
@@ -240,6 +241,53 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             }));
 
         return new PayrollRunAdjustmentSaveResult(true, true, ToDto(saved), null);
+    }
+
+    // "Aisyah — September 2026 payroll". The audit feed has no other way to
+    // say whose pay moved; the profile id means nothing to a reader.
+    private async Task<string> DescribeSubjectAsync(PayrollRun run, string employeeProfileId)
+    {
+        var profile = (await _directory.GetProfilesForCurrentOrgAsync())
+            .FirstOrDefault(p => p.Id == employeeProfileId);
+        var user = profile is null ? null : await _directory.GetUserAsync(profile.UserId);
+        var who = user?.Name is { Length: > 0 } name ? name : user?.Email ?? "an employee";
+
+        return $"{who} — {PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth)} payroll";
+    }
+
+    // Says what was entered, not just that something was: "OT 4h normal,
+    // Bonus RM 500.00, skipped 1 fixed allowance".
+    private static string DescribeAdjustment(
+        SavePayrollRunAdjustmentDto dto,
+        List<ManualLineItem> items,
+        Dictionary<string, FixedAllowanceOverride> overrides)
+    {
+        var parts = new List<string>();
+
+        var ot = new List<string>();
+        if (dto.OtNormalHours > 0) ot.Add($"{dto.OtNormalHours:0.##}h normal");
+        if (dto.OtRestHours > 0) ot.Add($"{dto.OtRestHours:0.##}h rest day");
+        if (dto.OtPublicHours > 0) ot.Add($"{dto.OtPublicHours:0.##}h public holiday");
+        if (ot.Count > 0) parts.Add($"OT {string.Join(" + ", ot)}");
+
+        foreach (var item in items)
+        {
+            var label = item.Label
+                ?? PayrollAdjustmentCategories.Find(item.Category)?.Label
+                ?? item.Category;
+            var sign = item.Kind == PayslipLineKind.DEDUCTION ? "−" : "+";
+            parts.Add($"{label} {sign}RM {item.Amount:N2}");
+        }
+
+        var skipped = overrides.Values.Count(o => o.Skip);
+        var changed = overrides.Values.Count(o => !o.Skip && o.Amount is not null);
+        if (skipped > 0) parts.Add($"skipped {skipped} fixed allowance(s)");
+        if (changed > 0) parts.Add($"changed {changed} fixed allowance amount(s)");
+
+        if (dto.WorkedHours is not null && dto.ExpectedHours is not null)
+            parts.Add($"worked {dto.WorkedHours:0.##} of {dto.ExpectedHours:0.##}h");
+
+        return parts.Count == 0 ? "saved with no adjustments" : string.Join(", ", parts);
     }
 
     public async Task<PayrollRunAdjustmentSaveResult> ClearAsync(string runId, string employeeProfileId)
@@ -265,7 +313,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunAdjustmentClear,
-            "Cleared a payroll adjustment",
+            $"{await DescribeSubjectAsync(run, employeeProfileId)}: cleared all adjustments",
             TargetType: "PayrollRun",
             TargetId: runId,
             Metadata: new { PayrollRunId = runId, EmployeeProfileId = employeeProfileId }));

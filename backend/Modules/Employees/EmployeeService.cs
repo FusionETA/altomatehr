@@ -144,7 +144,7 @@ public class EmployeeService : IEmployeeService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.EmployeeCreate,
-            $"{dto.Email} as {membership.Role}",
+            $"Added {user.Name} ({user.Email}) as {membership.Role}",
             TargetType: "Employee",
             TargetId: membership.UserId,
             Metadata: new { dto.Email, membership.Role }));
@@ -188,13 +188,54 @@ public class EmployeeService : IEmployeeService
 
     // Names the change rather than saying "updated": a feed of twenty identical
     // "Employee updated" lines is a feed nobody reads.
-    // A sentence an admin can read in the activity log. This used to be the
-    // user's GUID (plus "— role X → Y"), which named nobody: the id is already
-    // on the entry as TargetId for anything that needs to follow it.
-    private static string DescribeEmployeeChange(string who, string? fromRole, string toRole) =>
-        string.Equals(fromRole, toRole, StringComparison.Ordinal)
-            ? $"Updated {who}'s details"
-            : $"Changed {who}'s role from {fromRole ?? "none"} to {toRole}";
+    // The subject is the person's name, not their id — nobody reading the log
+    // can match "cmtv06qzi…" to a colleague.
+    private static string DescribeEmployeeChange(
+        string who, EmployeeSnapshot before, EmployeeSnapshot after)
+    {
+        var parts = new List<string>();
+
+        void Text(string field, string? from, string? to)
+        {
+            if (string.Equals(from ?? "", to ?? "", StringComparison.Ordinal)) return;
+            parts.Add(string.IsNullOrEmpty(to)
+                ? $"cleared {field}"
+                : string.IsNullOrEmpty(from)
+                    ? $"set {field} to {to}"
+                    : $"{field} {from} → {to}");
+        }
+
+        // Ids mean nothing in a sentence, so these only say that they moved;
+        // the metadata keeps the actual values.
+        void Changed(string field, string? from, string? to)
+        {
+            if (!string.Equals(from ?? "", to ?? "", StringComparison.Ordinal))
+                parts.Add($"changed {field}");
+        }
+
+        Text("role", before.Role, after.Role);
+        Text("name", before.Name, after.Name);
+        Text("email", before.Email, after.Email);
+        Text("employee no.", before.EmployeeNumber, after.EmployeeNumber);
+        Text("job title", before.JobTitle, after.JobTitle);
+        Text("join date", before.JoinDate?.ToString("d MMM yyyy"), after.JoinDate?.ToString("d MMM yyyy"));
+        Changed("leave policy", before.PolicyId, after.PolicyId);
+        Changed("shift", before.ShiftId, after.ShiftId);
+        Changed("module access", before.Modules, after.Modules);
+
+        return parts.Count == 0
+            ? $"Saved {who}'s details (no changes)"
+            : $"Updated {who}: {string.Join(", ", parts)}";
+    }
+
+    private sealed record EmployeeSnapshot(
+        string? Role, string? Name, string? Email, string? EmployeeNumber,
+        string? JobTitle, DateTime? JoinDate, string? PolicyId, string? ShiftId,
+        string? Modules);
+
+    private static EmployeeSnapshot Snapshot(OrganizationMembership m, User? u) => new(
+        m.Role, u?.Name, u?.Email, m.EmployeeNumber, m.JobTitle, m.JoinDate,
+        m.PolicyId, m.ShiftId, m.Modules);
 
     public async Task<EmployeeSaveResult> UpdateAsync(string id, UpdateEmployeeDto dto)
     {
@@ -249,9 +290,13 @@ public class EmployeeService : IEmployeeService
 
         // Name and email live on the global User. Patch semantics: null → leave
         // unchanged (so an update that omits them can't wipe the person's identity).
+        // Loaded unconditionally now: the audit line names the person, and
+        // "before" has to be captured before anything below overwrites it.
+        var user = await _users.GetByIdAsync(id);
+        var before = Snapshot(membership, user);
+
         if (dto.Name is not null || dto.Email is not null)
         {
-            var user = await _users.GetByIdAsync(id);
             if (user is not null)
             {
                 if (dto.Name is not null) user.Name = dto.Name.Trim();
@@ -310,13 +355,12 @@ public class EmployeeService : IEmployeeService
         // approve.
         var roleChanged = !string.Equals(previousRole, membership.Role, StringComparison.Ordinal);
 
-        var target = await _users.GetByIdAsync(membership.UserId);
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.EmployeeUpdate,
             DescribeEmployeeChange(
-                PersonName.Display(target?.Name, target?.Email, "an employee"),
-                previousRole,
-                membership.Role),
+                PersonName.Display(user?.Name, user?.Email, "an employee"),
+                before,
+                Snapshot(membership, user)),
             TargetType: "Employee",
             TargetId: membership.UserId,
             Metadata: new
