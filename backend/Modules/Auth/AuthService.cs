@@ -170,7 +170,7 @@ public class AuthService : IAuthService
         return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId);
     }
 
-    public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId)
+    public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false)
     {
         // Only if the account is actually a member of the target org.
         var membership = await _directory.GetMembershipAsync(organizationId, userId);
@@ -179,7 +179,7 @@ public class AuthService : IAuthService
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId);
+        return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso);
     }
 
     public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId)
@@ -223,7 +223,8 @@ public class AuthService : IAuthService
             return await ExitSupportAsync(stored.UserId);
         }
 
-        return await IssueTokensAsync(stored.UserId, stored.Email, stored.Role, stored.OrganizationId);
+        return await IssueTokensAsync(
+            stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso);
     }
 
     public async Task LogoutAsync(string refreshToken)
@@ -332,8 +333,14 @@ public class AuthService : IAuthService
     // ResetPasswordAsync. The wrong-password message is specific here, unlike
     // the reset path: the caller is already authenticated, so telling them the
     // current password is wrong reveals nothing they don't know.
-    public async Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+    public async Task<string?> ChangePasswordAsync(
+        string userId, string currentPassword, string newPassword, bool viaSso = false)
     {
+        // As the previous system did: an SSO session belongs to an account that
+        // signs in through Altomate, so there is no password here to change.
+        if (viaSso)
+            return "This account signs in via Altomate and has no password here to change.";
+
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return "Account not found.";
 
@@ -387,9 +394,9 @@ public class AuthService : IAuthService
     }
 
     private async Task<AuthResult> IssueTokensAsync(
-        string userId, string email, string role, string organizationId, bool support = false)
+        string userId, string email, string role, string organizationId, bool support = false, bool sso = false)
     {
-        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support);
+        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support, sso);
 
         var refresh = new RefreshToken
         {
@@ -399,6 +406,7 @@ public class AuthService : IAuthService
             Role = role,
             OrganizationId = organizationId,
             IsSupport = support,
+            IsSso = sso,
             ExpiresAt = DateTime.UtcNow.AddDays(_refreshDays),
             CreatedAt = DateTime.UtcNow,
         };
@@ -412,6 +420,7 @@ public class AuthService : IAuthService
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
             SupportMode: support,
-            OrganizationName: orgName);
+            OrganizationName: orgName,
+            ViaSso: sso);
     }
 }

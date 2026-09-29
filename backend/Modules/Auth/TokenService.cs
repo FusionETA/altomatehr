@@ -9,6 +9,7 @@ namespace AltomateHR.Api.Modules.Auth;
 public class TokenService : ITokenService
 {
     public const string SupportClaim = "support";
+    public const string SsoClaim = "sso";
 
     private readonly IConfiguration _config;
 
@@ -18,7 +19,7 @@ public class TokenService : ITokenService
     public string CreateToken(string userId, string email, string role, string organizationId) =>
         CreateToken(userId, email, role, organizationId, support: false);
 
-    public string CreateToken(string userId, string email, string role, string organizationId, bool support)
+    public string CreateToken(string userId, string email, string role, string organizationId, bool support, bool sso = false)
     {
         var jwt = _config.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
@@ -37,6 +38,11 @@ public class TokenService : ITokenService
         // A Fusioneta staff member acting inside a customer's org. ICurrentUser
         // reads it; the audit log masks the actor on it.
         if (support) claims.Add(new Claim(SupportClaim, "1"));
+
+        // Signed in through the Altomate SSO hand-off. Carried in the token so
+        // switching company keeps it; the shells hide New company, Change
+        // password and Log out on it — the account is managed in Altomate.
+        if (sso) claims.Add(new Claim(SsoClaim, "1"));
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],

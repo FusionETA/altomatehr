@@ -17,4 +17,9 @@ public class AuthResponseDto
 
     // Support mode — acting inside a customer's org as Fusioneta support.
     public bool SupportMode { get; set; }
+
+    // Signed in through Altomate (SSO): the account is managed there, so the
+    // app hides New company, Change password and Log out — as the previous
+    // system did.
+    public bool ViaSso { get; set; }
 }

@@ -14,7 +14,8 @@ public interface IAuthService
     Task<AuthResult?> RefreshAsync(string refreshToken);
 
     // Re-mint the token for another org the user belongs to. Null = not a member.
-    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId);
+    // `sso`: keep the session marked as an Altomate SSO hand-off.
+    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false);
 
     // Support mode (Fusioneta superadmins only). Enter: null when the caller is
     // not on SUPERADMIN_EMAILS or the org does not exist. Exit: back to the
@@ -37,5 +38,5 @@ public interface IAuthService
 
     // Change your own password using the current one. Null on success,
     // otherwise a message safe to show the caller.
-    Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
+    Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword, bool viaSso = false);
 }
