@@ -153,8 +153,10 @@ const SelectContent = React.forwardRef<
     searchPlaceholder?: string;
   }
 >(({ className, children, position = "popper", searchable, searchPlaceholder = "Search…", ...props }, ref) => {
-  // Content is unmounted while the dropdown is closed, so the query resets
-  // itself every time the menu reopens.
+  // Radix keeps this component mounted while the dropdown is closed (it
+  // renders into a detached fragment), so the query would survive into the
+  // next opening — pick "Phone…", reopen, type "meal", and it searches
+  // "phonemeal". It is cleared on close instead (onCloseAutoFocus below).
   const [query, setQuery] = React.useState("");
   const trimmedQuery = query.trim().toLowerCase();
 
@@ -168,20 +170,41 @@ const SelectContent = React.forwardRef<
 
   const hasMatches = !showSearch || !trimmedQuery || (visibleChildren as React.ReactNode[]).length > 0;
 
-  // Radix's SelectPrimitive.Content re-asserts DOM focus onto a list item
-  // every time the visible item set changes. As the query filters the list
-  // that yanks the caret out of the search box after the very first
-  // keystroke (you type one char, then the cursor vanishes). Once the
-  // filtered list has re-rendered, put focus back on the search input —
-  // but only while a query is active, and only if focus actually left it,
-  // so arrow-key navigation (which doesn't change the query) is never
-  // disturbed.
+  // Radix moves DOM focus onto the selected item on its own schedule: when
+  // the menu is positioned, and again whenever filtering remounts the items
+  // (each remount re-registers the selected item, and Radix focuses it in an
+  // effect one render LATER). That second move is what swallowed the second
+  // keystroke — type "e", the list filters, focus lands on "Standard
+  // Allowance", and "ex" never happens. An effect here runs before Radix's,
+  // so it can't win; catching the focus move itself can.
+  //
+  // `typingRef` is the user's intent. It starts true (the box is autofocused
+  // to be typed in) and turns false the moment they navigate the list with
+  // the arrow keys or the mouse, so choosing an option is never fought.
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => {
-    if (!showSearch || !trimmedQuery) return;
-    const el = searchInputRef.current;
-    if (el && document.activeElement !== el) el.focus();
-  }, [visibleChildren, showSearch, trimmedQuery]);
+  const typingRef = React.useRef(true);
+
+  const keepFocusInSearch = (event: React.FocusEvent<HTMLDivElement>) => {
+    const input = searchInputRef.current;
+    if (!showSearch || !typingRef.current || !input || event.target === input) return;
+    input.focus({ preventScroll: true });
+  };
+
+  // Focus can still sit on an item — after hovering one, say — when the user
+  // starts typing again. Send the keystroke to the search box instead of to
+  // Radix's typeahead, which would move focus again. Focusing during keydown
+  // is enough: the character lands in the newly focused input. Space is left
+  // alone on an empty query, since on an item it means "select this one".
+  const redirectTyping = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const input = searchInputRef.current;
+    if (!showSearch || !input || event.target === input) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const printable = event.key.length === 1 && !(event.key === " " && query === "");
+    if (!printable && event.key !== "Backspace") return;
+    typingRef.current = true;
+    event.stopPropagation();
+    input.focus({ preventScroll: true });
+  };
 
   return (
     <SelectPrimitive.Portal>
@@ -202,6 +225,19 @@ const SelectContent = React.forwardRef<
           className,
         )}
         {...props}
+        onFocusCapture={(event) => {
+          props.onFocusCapture?.(event);
+          keepFocusInSearch(event);
+        }}
+        onKeyDownCapture={(event) => {
+          props.onKeyDownCapture?.(event);
+          redirectTyping(event);
+        }}
+        onCloseAutoFocus={(event) => {
+          props.onCloseAutoFocus?.(event);
+          setQuery("");
+          typingRef.current = true;
+        }}
       >
         {showSearch ? (
           <div className="border-b border-border/60 px-2 py-2">
@@ -213,8 +249,13 @@ const SelectContent = React.forwardRef<
                 type="text"
                 value={query}
                 placeholder={searchPlaceholder}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  typingRef.current = true;
+                  setQuery(event.target.value);
+                }}
                 onKeyDown={(event) => {
+                  // Arrowing into the list is a deliberate move off the box.
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") typingRef.current = false;
                   if (!PASSTHROUGH_KEYS.has(event.key)) event.stopPropagation();
                 }}
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -224,6 +265,11 @@ const SelectContent = React.forwardRef<
         ) : null}
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          // Pointing at an option is choosing, not typing: let Radix's hover
+          // focus through from here on.
+          onPointerMove={() => {
+            typingRef.current = false;
+          }}
           className={cn(
             "p-1",
             position === "popper" &&
