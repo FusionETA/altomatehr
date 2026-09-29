@@ -58,6 +58,7 @@ public class EmployeeProfileDto
     public decimal? PrevPcb { get; set; }
     public decimal? PrevZakat { get; set; }
     public bool PrevIncludesPriorThisOrgPeriod { get; set; }
+    public string? PrevByCategoryJson { get; set; }
 
     // ---- EPF ----
     public bool ContributeToEpf { get; set; } = true;

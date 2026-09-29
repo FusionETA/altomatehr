@@ -31,6 +31,7 @@ import {
   getLhdnForms,
   parseChildRelief,
   parseFixedAllowances,
+  parsePreviousEmployerItems,
   saveEmployeeProfile,
   serializeList,
   toUpdateEmployee,
@@ -47,7 +48,7 @@ import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
 import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import { getProjects } from "@/features/settings/api";
-import { getMalaysianBanks } from "@/features/payroll/api";
+import { getAdjustmentCategories, getMalaysianBanks } from "@/features/payroll/api";
 import { matchBank } from "../lib/malaysian-bank";
 import { NATIONALITIES } from "../lib/nationalities";
 import {
@@ -277,6 +278,10 @@ export function EmployeeDetail({
   const projectsQuery = useCachedQuery("/projects", getProjects);
   // The register the bank file matches against — the Bank field picks from it.
   const banksQuery = useCachedQuery("/payroll/banks", getMalaysianBanks);
+  // For the TP3 item list: which categories have a YEARLY limit a previous
+  // employer can already have used (PayrollAdjustmentCategories.
+  // CarriesFromPreviousEmployer). Served by payroll, not restated here.
+  const categoriesQuery = useCachedQuery("/payroll/adjustment-categories", getAdjustmentCategories);
   const banks = banksQuery.data ?? [];
   // Seeded from the cache so the first frame of a revisit is the real thing;
   // still state because editing a team patches one in place. The effect
@@ -582,6 +587,15 @@ export function EmployeeDetail({
     set("fixedAllowancesJson", serializeList(rows));
   const patchAllowance = (index: number, patch: Partial<FixedAllowance>) =>
     setAllowances(allowances.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+
+  const previousItems = parsePreviousEmployerItems(profile?.prevByCategoryJson);
+  const setPreviousItems = (rows: typeof previousItems) =>
+    set("prevByCategoryJson", serializeList(rows));
+  const carryableCategories = (categoriesQuery.data ?? []).filter(
+    (c) =>
+      c.feedsLp1Relief ||
+      (c.kind === "ALLOWANCE" && c.subjectToPcb && (c.taxExemptLimit ?? 0) > 0),
+  );
 
   function addAdjustment(kind: AdjustmentKind) {
     const category = DEFAULT_CATEGORY[kind];
@@ -1257,7 +1271,10 @@ export function EmployeeDetail({
                   <Field label="PCB paid">
                     <Money value={profile.prevPcb} onChange={(v) => set("prevPcb", v)} />
                   </Field>
-                  <Field label="Allowable deductions">
+                  <Field
+                    label="Other allowable deductions"
+                    hint="Only reliefs not listed item by item below."
+                  >
                     <Money
                       value={profile.prevAllowableDeductions}
                       onChange={(v) => set("prevAllowableDeductions", v)}
@@ -1275,6 +1292,76 @@ export function EmployeeDetail({
                     />
                   </Field>
                 </Group>
+
+                {/* Yearly limits are the employee's, not each employer's: a
+                    previous employer's RM 3,600 of travel allowance leaves
+                    RM 2,400 of the RM 6,000 exemption here. The totals above
+                    cannot say that, so these are entered one by one. */}
+                <Stack
+                  title="Previous employment (TP3) — items with a yearly limit"
+                  hint="What the previous employer already paid or gave for each tax-exempt allowance or TP1 relief this year. Uses up that item's yearly limit here; TP1 items also count as relief already given. Leave pay and other deductions in the totals above."
+                  action={
+                    <button
+                      type="button"
+                      disabled={carryableCategories.length === 0}
+                      onClick={() =>
+                        setPreviousItems([
+                          ...previousItems,
+                          { category: carryableCategories[0]?.code ?? "", amount: null },
+                        ])
+                      }
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add item
+                    </button>
+                  }
+                >
+                  {previousItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      None. Add one when the previous employer paid an exempt allowance (e.g. travel
+                      for official duty) or gave a TP1 relief this year.
+                    </p>
+                  ) : (
+                    previousItems.map((row, index) => (
+                      <RepeaterRow
+                        key={index}
+                        removeLabel="Remove this item"
+                        onRemove={() => setPreviousItems(previousItems.filter((_, i) => i !== index))}
+                      >
+                        <Field label="Item" span>
+                          <Picker
+                            value={row.category}
+                            onChange={(v) =>
+                              setPreviousItems(
+                                previousItems.map((r, i) =>
+                                  i === index ? { ...r, category: v ?? r.category } : r,
+                                ),
+                              )
+                            }
+                            options={carryableCategories.map((c) => ({
+                              value: c.code,
+                              label:
+                                c.taxExemptLimit != null
+                                  ? `${c.label} (RM ${c.taxExemptLimit.toLocaleString("en-MY")} a year)`
+                                  : c.label,
+                            }))}
+                          />
+                        </Field>
+                        <Field label="Amount this year at the previous employer">
+                          <Money
+                            value={row.amount}
+                            onChange={(v) =>
+                              setPreviousItems(
+                                previousItems.map((r, i) => (i === index ? { ...r, amount: v } : r)),
+                              )
+                            }
+                          />
+                        </Field>
+                      </RepeaterRow>
+                    ))
+                  )}
+                </Stack>
 
 
                 <Group

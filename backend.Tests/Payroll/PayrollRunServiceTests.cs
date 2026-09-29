@@ -1825,4 +1825,86 @@ public class PayrollRunServiceTests : IDisposable
 
         return (await _service.GetAsync(run.Id))!.Payslips.Single();
     }
+
+    // ─── The previous employer, item by item (TP3) ──────────────────────
+
+    private PcbBreakdown TP3Breakdown(PayslipDto payslip) =>
+        System.Text.Json.JsonSerializer.Deserialize<PcbBreakdown>(
+            payslip.PcbCalculationJson!,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+            })!;
+
+    private async Task<PayslipDto> JulyJoinerAsync(string prevByCategoryJson, string fixedAllowancesJson)
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 20000m,
+            joinDate: new DateTime(2026, 7, 1), fixedAllowancesJson: fixedAllowancesJson);
+        profile.PrevEmploymentYear = 2026;
+        profile.PrevRemuneration = 60000m;
+        profile.PrevByCategoryJson = prevByCategoryJson;
+        await _db.SaveChangesAsync();
+
+        var run = await CreateRunAsync(2026, 7);
+        return Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+    }
+
+    // The 2026 MTD test's Employee A: the previous employer already paid
+    // RM 3,600 of the RM 6,000 travel exemption. That is not pay and not a
+    // relief — July's RM 500 is still exempt, and ΣLP stays empty.
+    [Fact]
+    public async Task APreviousEmployersExemptAllowance_UsesUpTheCeiling_ButIsNotARelief()
+    {
+        var payslip = await JulyJoinerAsync(
+            """[{"category":"allowance_travel_official","amount":3600}]""",
+            """[{"category":"allowance_travel_official","name":"Travel","amount":500}]""");
+
+        var pcb = TP3Breakdown(payslip);
+        Assert.Equal(20000m, pcb.Y1);      // the RM 500 is inside what is left
+        Assert.Equal(0m, pcb.SumLp);
+    }
+
+    // Once the previous employer's use is counted, the ceiling runs out here:
+    // RM 5,800 used there leaves RM 200, so RM 300 of July's RM 500 is taxed.
+    [Fact]
+    public async Task APreviousEmployersExemptAllowance_CanExhaustTheCeiling()
+    {
+        var payslip = await JulyJoinerAsync(
+            """[{"category":"allowance_travel_official","amount":5800}]""",
+            """[{"category":"allowance_travel_official","name":"Travel","amount":500}]""");
+
+        Assert.Equal(20300m, TP3Breakdown(payslip).Y1);
+    }
+
+    // A TP1 relief the previous employer already gave counts in ΣLP AND uses
+    // up its yearly limit: RM 2,500 of lifestyle there leaves nothing here.
+    [Fact]
+    public async Task APreviousEmployersTp1Relief_IsInSumLp_AndUsesUpTheLimit()
+    {
+        var payslip = await JulyJoinerAsync(
+            """[{"category":"deduct_tp1_lifestyle","amount":2500}]""",
+            """[{"category":"deduct_tp1_lifestyle","name":"Lifestyle","amount":800}]""");
+
+        var pcb = TP3Breakdown(payslip);
+        Assert.Equal(2500m, pcb.SumLp);
+        var lifestyle = Assert.Single(payslip.LineItems, l => l.Category == "deduct_tp1_lifestyle");
+        Assert.Equal(0m, lifestyle.PcbTaxableAmount);   // nothing left to grant
+    }
+
+    // A TP3 is for ONE year: the items are ignored in any other.
+    [Fact]
+    public async Task PreviousEmployerItems_ApplyOnlyInTheirYear()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 20000m,
+            fixedAllowancesJson: """[{"category":"allowance_travel_official","name":"Travel","amount":500}]""");
+        profile.PrevEmploymentYear = 2025;
+        profile.PrevByCategoryJson = """[{"category":"allowance_travel_official","amount":6000}]""";
+        await _db.SaveChangesAsync();
+
+        var run = await CreateRunAsync(2026, 1);
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(20000m, TP3Breakdown(payslip).Y1);   // 2026's own RM 6,000 is untouched
+    }
 }

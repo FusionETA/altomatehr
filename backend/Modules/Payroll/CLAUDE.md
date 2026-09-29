@@ -266,6 +266,15 @@ rebate beside self-paid zakat (`OffsetsPcb`).
   lines, TERKUMPUL from it plus the year's earlier SUBMITTED months, both at
   the GRANTED figure. Approved runs only, like every run document. The
   employee downloads their own from their payslip (`GET /payslips/{id}/tp1`).
+- **Yearly limits include the previous employer.** TP3's totals cannot say
+  how much of an exemption or relief limit is used, so
+  `EmployeeProfile.PrevByCategoryJson` holds the previous employer's figures
+  item by item (`PreviousEmployerItems`; eligible =
+  `PayrollAdjustmentCategories.CarriesFromPreviousEmployer`). They join the
+  per-category YTD every limit reads. An exempt allowance only uses up its
+  ceiling (not pay, not relief); a TP1 item is also relief already given, so
+  it adds to ΣLP, capped at its own limit. Never put a previous employer's
+  exempt allowance in `PrevAllowableDeductions` — that makes it a relief.
 - **ΣLP and the limits count what was GRANTED.** A clamped TP1 row stores the
   granted figure in `PcbTaxableAmount`; the YTD read uses it, so an
   over-claim does not relieve all year or eat its group's limit.
