@@ -43,8 +43,20 @@ function newRow(): Row {
     annualGross: 0,
     epf: 0,
     pcb: 0,
+    status: 2,
+    retirementDate: null,
+    perkeso: 0,
   };
 }
+
+const STATUSES: [string, string][] = [
+  ["1", "1 — Management"],
+  ["2", "2 — Permanent"],
+  ["3", "3 — Contract"],
+  ["4", "4 — Part-time"],
+  ["5", "5 — Industrial trainee"],
+  ["6", "6 — Other"],
+];
 
 const CELL =
   "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-xs text-foreground outline-none focus:border-border focus:bg-background";
@@ -95,6 +107,12 @@ export function Cp8dConverterModal({
     const incomplete = populated.findIndex((r) => !r.name.trim() || !r.taxRef.trim() || !r.newIc.trim());
     if (incomplete !== -1) {
       setError(`Row ${incomplete + 1} needs a name, tax reference and IC.`);
+      return;
+    }
+    // Mandatory in C.P.8D Pin. 2025 — LHDN's upload rejects a row without it.
+    const undated = populated.findIndex((r) => !r.retirementDate);
+    if (undated !== -1) {
+      setError(`Row ${undated + 1} needs a retirement / contract end date (or the date they left).`);
       return;
     }
 
@@ -201,10 +219,13 @@ export function Cp8dConverterModal({
                   <th className={TH}>New IC *</th>
                   <th className={`${TH} w-28`}>Category *</th>
                   <th className={`${TH} w-24`}>Tax borne</th>
+                  <th className={`${TH} w-32`}>Status *</th>
+                  <th className={`${TH} w-36`}>Retire / contract end *</th>
                   <th className={`${TH} w-20 text-right`}>Children</th>
                   <th className={`${TH} text-right`}>Child relief</th>
                   <th className={`${TH} text-right`}>Gross *</th>
                   <th className={`${TH} text-right`}>EPF</th>
+                  <th className={`${TH} text-right`}>PERKESO</th>
                   <th className={`${TH} text-right`}>PCB</th>
                   <th className={`${TH} w-10`}>
                     <span className="sr-only">Remove</span>
@@ -279,6 +300,32 @@ export function Cp8dConverterModal({
                         </SelectContent>
                       </Select>
                     </td>
+                    <td className="px-2 py-1.5">
+                      <Select
+                        value={String(row.status)}
+                        onValueChange={(next) => patch(row.id, { status: Number(next) })}
+                      >
+                        <SelectTrigger className={CELL_SELECT} aria-label={`Row ${index + 1} status`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUSES.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="date"
+                        className={CELL}
+                        value={row.retirementDate ?? ""}
+                        onChange={(e) => patch(row.id, { retirementDate: e.target.value || null })}
+                        aria-label={`Row ${index + 1} retirement or contract end date`}
+                      />
+                    </td>
                     <NumberCell
                       label={`Row ${index + 1} children`}
                       value={row.children}
@@ -298,6 +345,11 @@ export function Cp8dConverterModal({
                       label={`Row ${index + 1} EPF`}
                       value={row.epf}
                       onChange={(v) => patch(row.id, { epf: v })}
+                    />
+                    <NumberCell
+                      label={`Row ${index + 1} PERKESO`}
+                      value={row.perkeso}
+                      onChange={(v) => patch(row.id, { perkeso: v })}
                     />
                     <NumberCell
                       label={`Row ${index + 1} PCB`}
@@ -322,8 +374,11 @@ export function Cp8dConverterModal({
 
           <p className="text-[11px] leading-snug text-muted-foreground">
             Category 1 = single · 2 = married, sole earner · 3 = both spouses working, divorced,
-            widowed, or single with children. Amounts go out as whole ringgit except PCB, which
-            keeps two decimals. Rows with no name and no tax reference are skipped.
+            widowed, or single with children. Retire / contract end: the retirement date, the
+            contract end, or the date they left if they left in the year. PERKESO is the employee's
+            SOCSO and EIS together. Amounts go out as whole ringgit except PCB, which keeps two
+            decimals (LHDN's C.P.8D Pin. 2025 layout). Rows with no name and no tax reference are
+            skipped.
           </p>
         </section>
 

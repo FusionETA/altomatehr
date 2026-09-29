@@ -332,6 +332,7 @@ public class StatutoryFileService : IStatutoryFileService
         EmployeeCode = row.EmployeeCode,
         Breakdown = DeserialiseBreakdown(row.Payslip.PcbCalculationJson),
         VoluntaryPcb = row.Payslip.VoluntaryPcb,
+        CurrentMonthZakat = row.Payslip.Zakat,
     };
 
     // A snapshot that will not parse is a missing working, not a crash. The

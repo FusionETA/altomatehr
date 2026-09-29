@@ -165,6 +165,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Bonus { get; set; }
         public decimal Bik { get; set; }
         public decimal Pcb { get; set; }
+        public decimal Mtd { get; set; }
         public decimal Cp38 { get; set; }
         public decimal Zakat { get; set; }
         public decimal Epf { get; set; }
@@ -172,6 +173,9 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Eis { get; set; }
 
         public SortedDictionary<int, (decimal Pcb, decimal Cp38, decimal Zakat)> Months { get; } = new();
+
+        // Form EA, line by line (FormEaLines).
+        public FormEaFigures Ea { get; } = new();
     }
 
     private static void Accumulate(
@@ -183,6 +187,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         acc.Months[month] = (m.Pcb + payslip.Pcb + payslip.VoluntaryPcb, m.Cp38 + payslip.Cp38, m.Zakat + payslip.Zakat);
 
         acc.Pcb += payslip.Pcb;
+        acc.Mtd += payslip.Pcb + payslip.VoluntaryPcb;
         acc.Cp38 += payslip.Cp38;
         acc.Zakat += payslip.Zakat;
         acc.Epf += payslip.EpfEmployee;
@@ -210,6 +215,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
         acc.Bonus += bonus;
         acc.Bik += bik;
+        acc.Ea.Add(FormEaLines.For(payslip, lineItems));
 
         // Gross on the payslip already includes the bonus and excludes BIK,
         // so the salary line is gross less what is reported separately.
@@ -264,6 +270,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             TotalEisEmployee = Money.Round2(acc.Eis),
             Months = [.. acc.Months.Select(kv => new AnnualMonth(
                 kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat)))],
+            Ea = acc.Ea.Rounded(),
+            JoinDate = profile?.JoinDate,
+            LeaveDate = profile?.LeaveDate,
+            TotalMtdRemitted = Money.Round2(acc.Mtd),
+            DateOfBirth = profile?.DateOfBirth,
         };
     }
 
@@ -338,17 +349,34 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                 EmployeeName = row.Name.Trim(),
                 IncomeTaxNumber = row.TaxRef,
                 IdNumber = row.NewIc,
-                IdType = IdType.NRIC,
+                // A number with letters in it is a passport (or police / army
+                // number), which CP8D files as written rather than as digits.
+                IdType = row.NewIc.Any(char.IsLetter) ? IdType.PASSPORT : IdType.NRIC,
                 Cp8dCategoryOverride = row.Category,
+                Cp8dStatusOverride = row.Status,
+                Cp8dRetirementDateOverride = row.RetirementDate,
                 PcbBorneByEmployer = row.TaxBorneByEmployer,
                 QualifyingChildren = row.Children,
                 AnnualChildRelief = row.ChildRelief,
-                // TotalIncome is salary + additional remuneration + BIK, so the
-                // single figure the admin typed goes in as salary and the other
-                // two stay zero — the sum is what CP8D column 8 reports.
+                // The typed gross is field 10 as it stands: the remuneration
+                // other than what fields 11–14 report separately.
                 GrossSalary = row.AnnualGross,
+                Ea = new FormEaFigures
+                {
+                    B1a = row.AnnualGross,
+                    B3 = row.BenefitsInKind,
+                    B4 = row.LivingAccommodation,
+                    B1e = row.Esos,
+                    F = row.TaxExempt,
+                    D5aTp1Relief = row.Tp1Relief,
+                    D5bZakatSelfPaid = row.Tp1Zakat,
+                    D3ZakatViaSalary = row.Zakat,
+                },
                 TotalEpfEmployee = row.Epf,
                 TotalPcb = row.Pcb,
+                TotalMtdRemitted = row.Pcb,
+                TotalCp38 = row.Cp38,
+                TotalSocsoEmployee = row.Perkeso,
             }).ToList(),
         };
 

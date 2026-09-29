@@ -1330,6 +1330,22 @@ export type Cp8dConvertRow = {
   annualGross: number;
   epf: number;
   pcb: number;
+  // CP8D Pin. 2025. Status: 1 management · 2 permanent · 3 contract ·
+  // 4 part-time · 5 industrial trainee · 6 other.
+  status: number;
+  // Retirement date, contract end, or the cessation date for someone who left
+  // in the year (yyyy-mm-dd). Mandatory for LHDN.
+  retirementDate: string | null;
+  perkeso: number;
+  // Optional amounts with fields of their own; nil is left empty in the file.
+  benefitsInKind?: number;
+  livingAccommodation?: number;
+  esos?: number;
+  taxExempt?: number;
+  tp1Relief?: number;
+  tp1Zakat?: number;
+  zakat?: number;
+  cp38?: number;
 };
 
 export type Cp8dConvertRequest = {

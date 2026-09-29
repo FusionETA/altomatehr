@@ -260,4 +260,61 @@ public class PcbDetailsPdfTests
             ImageFormat = ImageFormat.Png,
             RasterDpi = 40,
         }).Count();
+
+    // ─── 5. From the formula to the payslip ────────────────────────────
+
+    // The formula's PCB is before this month's zakat; the payslip's is after
+    // it. The page must end on the payslip's figure (the reported case:
+    // 2,944.05 formula PCB, RM 1,000 zakat, 1,944.05 on the payslip).
+    [Fact]
+    public void ThisMonthsZakat_IsTakenOff_SoThePageEndsOnThePayslipPcb()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 1000m, 0m);
+
+        Assert.Equal(["PCB", "- Zakat", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(1000m, rows[1].Amount);
+        Assert.Equal(1944.05m, rows[^1].Amount);
+        Assert.True(rows[^1].Bold);
+    }
+
+    // Zakat offsets PCB ringgit for ringgit but never below zero — so the
+    // row shows only what was actually offset.
+    [Fact]
+    public void ZakatAboveThePcb_TakesItToZero_NotBelow()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(300m, 1000m, 0m);
+
+        Assert.Equal(300m, rows[1].Amount);
+        Assert.Equal(0m, rows[^1].Amount);
+    }
+
+    [Fact]
+    public void WithNoZakatAndNoAdditionalPcb_ThereIsOneRow()
+    {
+        var row = Assert.Single(PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 0m, 0m));
+        Assert.Equal(2944.05m, row.Amount);
+        Assert.True(row.Bold);
+    }
+
+    [Fact]
+    public void ZakatAndAdditionalPcb_BothShow()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 1000m, 200m);
+
+        Assert.Equal(["PCB", "- Zakat", "+ Add. PCB", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(2144.05m, rows[^1].Amount);
+    }
+
+    [Fact]
+    public void APageWithZakat_StillRenders()
+    {
+        var model = new PcbDetailsModel
+        {
+            OrganizationName = "Acme Engineering",
+            PeriodLabel = "November 2026",
+            Employees = [new PcbDetailsEmployee { Name = "Employee A", Breakdown = Resident(), CurrentMonthZakat = 1000m }],
+        };
+
+        Assert.True(PcbCalculationDetailsPdf.Render(model).Length > 0);
+    }
 }

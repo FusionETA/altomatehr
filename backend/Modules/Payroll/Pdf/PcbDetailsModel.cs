@@ -33,4 +33,9 @@ public sealed record PcbDetailsEmployee
     // formula above — a manual top-up printed after it, so the page ends on
     // the figure that was actually withheld and filed.
     public decimal VoluntaryPcb { get; init; }
+
+    // This month's zakat off the payslip (via salary, self-paid on TP1, and the
+    // departure levy — everything that offsets PCB). The formula's PCB is
+    // before it; the payslip's PCB is after it, so the page shows the step.
+    public decimal CurrentMonthZakat { get; init; }
 }

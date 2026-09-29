@@ -107,7 +107,7 @@ public static class PcbCalculationDetailsPdf
 
             if (breakdown.Formula == PcbFormula.NonResident)
             {
-                NonResident(column, breakdown, employee.VoluntaryPcb);
+                NonResident(column, breakdown, employee.CurrentMonthZakat, employee.VoluntaryPcb);
                 return;
             }
 
@@ -124,14 +124,14 @@ public static class PcbCalculationDetailsPdf
                 SectionArPcb(column, ar, breakdown.Z);
             }
 
-            SectionNetPcb(column, breakdown, employee.VoluntaryPcb);
+            SectionNetPcb(column, breakdown, employee.CurrentMonthZakat, employee.VoluntaryPcb);
             SectionAllowableDeductions(column, breakdown);
         });
 
     // Non-residents are a flat withholding with no reliefs and no bands.
     // Printing an M, an R or a relief here would imply the 30% came from
     // somewhere it did not.
-    private static void NonResident(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb)
+    private static void NonResident(ColumnDescriptor column, PcbBreakdown b, decimal zakat, decimal voluntaryPcb)
     {
         SectionTitle(column, "Non-resident — flat-rate withholding");
 
@@ -147,7 +147,10 @@ public static class PcbCalculationDetailsPdf
             "Bonus, commission, arrears and other one-off payments this month.", b.AdditionalTaxable);
         Variable(column, "PCB — additional",
             "Flat-rate withholding on additional remuneration.", b.PcbAdditional);
-        NetPcbRows(column, b.PcbTotal, voluntaryPcb);
+        foreach (var row in NetPcbRows(b.PcbTotal, zakat, voluntaryPcb))
+        {
+            Variable(column, row.Label, row.Description, row.Amount, bold: row.Bold);
+        }
     }
 
     // ─── 1. PCB(A) — the normal monthly deduction ───────────────────────
@@ -314,7 +317,7 @@ public static class PcbCalculationDetailsPdf
 
     // ─── 5. What was actually deducted ──────────────────────────────────
 
-    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb) =>
+    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b, decimal zakat, decimal voluntaryPcb) =>
         column.Item().ShowEntire().Column(section =>
         {
         SectionTitle(section, "5. PCB Current Month");
@@ -322,34 +325,56 @@ public static class PcbCalculationDetailsPdf
         Formula(section, "PCB (A) + PCB (C)");
         Formula(section, $"{Amount(b.PcbNormal)} + {Amount(b.PcbAdditional)}");
 
-        NetPcbRows(section, b.PcbTotal, voluntaryPcb);
+        foreach (var row in NetPcbRows(b.PcbTotal, zakat, voluntaryPcb))
+        {
+            Variable(section, row.Label, row.Description, row.Amount, bold: row.Bold);
+        }
     });
 
-    // The formula's PCB, then — only when there is one — the manual Additional
-    // PCB and their sum, so the bold figure is always what left the employee's
-    // pay and went into CP39's PCB field.
-    private static void NetPcbRows(ColumnDescriptor column, decimal formulaPcb, decimal voluntaryPcb)
+    public sealed record NetPcbRow(string Label, string Description, decimal Amount, bool Bold);
+
+    // From the formula's PCB to what actually left the employee's pay: less
+    // this month's zakat (ringgit for ringgit, never below zero — as the
+    // payslip computes it), plus any manual Additional PCB. The bold last row
+    // is always the payslip's PCB and what went into CP39's PCB field.
+    public static IReadOnlyList<NetPcbRow> NetPcbRows(decimal formulaPcb, decimal zakat, decimal voluntaryPcb)
     {
-        if (voluntaryPcb <= 0m)
+        var zakatOffset = Math.Min(formulaPcb, Math.Max(0m, zakat));
+
+        if (zakatOffset <= 0m && voluntaryPcb <= 0m)
         {
-            Variable(column, "PCB",
+            return [new("PCB",
                 "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN.",
-                formulaPcb, bold: true);
-            return;
+                formulaPcb, true)];
         }
 
-        Variable(column, "PCB",
-            "Formula PCB this month — before the manual Additional PCB added below.",
-            formulaPcb);
-        Variable(column, "+ Add. PCB",
-            "Additional PCB (Employment Income) — a manual top-up added directly to this month's PCB, "
-            + "remitted via the standard PCB field of the CP39 file. NOT part of the LHDN MTD formula, so "
-            + "it does not carry into next month's calculation.",
-            voluntaryPcb);
-        Variable(column, "PCB payable",
-            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN "
-            + "(formula PCB + Additional PCB).",
-            formulaPcb + voluntaryPcb, bold: true);
+        var rows = new List<NetPcbRow>
+        {
+            new("PCB", "Formula PCB this month — before the adjustments below.", formulaPcb, false),
+        };
+
+        if (zakatOffset > 0m)
+        {
+            rows.Add(new("- Zakat",
+                "Zakat / fitrah / levy paid for the current month, taken off this month's PCB ringgit for "
+                + "ringgit (never below zero).",
+                zakatOffset, false));
+        }
+
+        if (voluntaryPcb > 0m)
+        {
+            rows.Add(new("+ Add. PCB",
+                "Additional PCB (Employment Income) — a manual top-up added directly to this month's PCB, "
+                + "remitted via the standard PCB field of the CP39 file. NOT part of the LHDN MTD formula, so "
+                + "it does not carry into next month's calculation.",
+                voluntaryPcb, false));
+        }
+
+        rows.Add(new("PCB payable",
+            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN, "
+            + "as on the payslip.",
+            Money.Round2(formulaPcb - zakatOffset + voluntaryPcb), true));
+        return rows;
     }
 
     private static void SectionAllowableDeductions(ColumnDescriptor column, PcbBreakdown b) =>

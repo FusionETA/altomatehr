@@ -238,7 +238,7 @@ export function PayrollAnnualTab() {
           />
           <Group
             title="LHDN e-CP8D upload"
-            subtitle="The pipe-delimited pair the portal expects. Upload both."
+            subtitle="LHDN's C.P.8D Pin. 2025 layout. e-Data Praisi / e-CP8D takes the employee file (P) only; the employer master (M) is kept for reference."
             items={kinds.filter((k) => k.group === "LHDN_TXT")}
             busy={busy}
             disabled={!payload?.canGenerate}
