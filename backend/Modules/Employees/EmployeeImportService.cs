@@ -507,6 +507,12 @@ public class EmployeeImportService : IEmployeeImportService
         // raises nobody gave. A real raise goes through the employee's salary
         // prompt or the salary adjustment import, which ask for both.
         p.SalaryChangeIsCorrection = true;
+
+        // A blank SOCSO number takes the IC / passport, as in the previous
+        // system: in Malaysia most employees' SOCSO number IS their IC. Only
+        // fills a blank — a SOCSO number already on file is never replaced.
+        if (string.IsNullOrWhiteSpace(p.SocsoNumber) && !string.IsNullOrWhiteSpace(p.IdNumber))
+            p.SocsoNumber = p.IdNumber;
     }
 
     private static IReadOnlyList<IReadOnlyList<string>>? PickDataSheet(IReadOnlyList<TabularSheetContent> sheets)

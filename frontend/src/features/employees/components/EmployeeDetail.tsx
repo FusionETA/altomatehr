@@ -1541,7 +1541,27 @@ export function EmployeeDetail({
 
                 <Group title="SOCSO, EIS & SKBBK">
                   <Field label="SOCSO number">
-                    <Text value={profile.socsoNumber} onChange={(v) => set("socsoNumber", v)} />
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Text value={profile.socsoNumber} onChange={(v) => set("socsoNumber", v)} />
+                      </div>
+                      {/* Quick-fill, as in the previous system: in Malaysia most
+                          employees' SOCSO number IS their IC. Reads the ID
+                          number as typed on the Personal section. */}
+                      <button
+                        type="button"
+                        disabled={!profile.idNumber?.trim()}
+                        onClick={() => set("socsoNumber", profile.idNumber?.trim() ?? null)}
+                        title={
+                          profile.idNumber?.trim()
+                            ? "Copy the IC / passport number from the Personal section into this field."
+                            : "Fill in the IC / passport number on the Personal section first."
+                        }
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-foreground"
+                      >
+                        Use ID number
+                      </button>
+                    </div>
                   </Field>
                   <Field label="Scheme">
                     <Picker
