@@ -200,17 +200,19 @@ public static class PcbCalculationDetailsPdf
             "Other accumulated allowable deductions including from previous employment (if any).", b.SumLp);
         Variable(column, "LP₁", "Other allowable deductions for current month.", b.Lp1);
 
-        // A 15% approval swaps "(P − M)R + B" for "P × 15% − T" (MTD Spec
-        // D.b.3–5). Said plainly, so a reader does not look for a band.
+        // A 15% approval swaps "(P − M)R + B" for a flat 15% of P (MTD Spec
+        // D.b.3–5), each category in its own spec's words so a reviewer sees
+        // the formula for the approval actually on file. REP and knowledge
+        // workers keep the rebate T when P is RM35,000 or less; C-suite
+        // (Table 4) has no rebate at all, so its formula has no T.
         if (b.SpecialTaxScheme is { } scheme)
         {
             column.Item().PaddingBottom(6).Text(
                     $"Taxed at a flat 15% under {SchemeName(scheme)} (LHDN MTD specification, "
-                    + $"{SchemeSection(scheme)}): Monthly Tax Deduction = [(P × R − T) − (Z + X)] ÷ (n + 1). "
-                    + "M is 0 and B is −T, the individual and spouse rebate"
+                    + $"{SchemeSection(scheme)}): Monthly Tax Deduction = {SchemeFormula(scheme)}. "
                     + (scheme == SpecialTaxScheme.C_SUITE
-                        ? ", which does not apply to this category."
-                        : " allowed when P is RM35,000 or less."))
+                        ? "M is 0 and B is 0: no individual or spouse rebate applies to this category."
+                        : "M is 0 and B is −T, the individual and spouse rebate allowed when P is RM35,000 or less."))
                 .FontSize(8.5f).FontColor(PayrollPdfShared.Muted);
         }
 
@@ -226,9 +228,12 @@ public static class PcbCalculationDetailsPdf
             "Amount of first chargeable income for every range of chargeable income a year.", b.M);
         Variable(column, "R", $"Percentage of tax rates. ({b.R * 100m:0.00}%)", b.R, raw: true);
         Variable(column, "B",
-            b.SpecialTaxScheme is null
-                ? "Amount of tax on M less tax rebate for individual and spouse (if qualified)."
-                : "−T: the individual and spouse rebate (if qualified).",
+            b.SpecialTaxScheme switch
+            {
+                null => "Amount of tax on M less tax rebate for individual and spouse (if qualified).",
+                SpecialTaxScheme.C_SUITE => "No individual or spouse rebate for the C-suite category.",
+                _ => "−T: the individual and spouse rebate (if qualified).",
+            },
             b.B);
         Variable(column, "Z",
             "Accumulated Zakat/Fitrah/Levy paid other than Zakat/Fitrah/Levy for current month.", b.Z);
@@ -474,14 +479,19 @@ public static class PcbCalculationDetailsPdf
     private static string Raw(decimal value) =>
         value.ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static string SchemeName(SpecialTaxScheme scheme) => scheme switch
+    public static string SchemeName(SpecialTaxScheme scheme) => scheme switch
     {
         SpecialTaxScheme.RETURNING_EXPERT => "the Returning Expert Programme (REP)",
         SpecialTaxScheme.KNOWLEDGE_WORKER => "the knowledge worker (specified region) approval",
         _ => "the resident non-citizen C-suite approval",
     };
 
-    private static string SchemeSection(SpecialTaxScheme scheme) => scheme switch
+    // The MTD formula as each approval's own table states it.
+    public static string SchemeFormula(SpecialTaxScheme scheme) => scheme == SpecialTaxScheme.C_SUITE
+        ? "[(P × R) − (Z + X)] ÷ (n + 1)"
+        : "[(P × R − T) − (Z + X)] ÷ (n + 1)";
+
+    public static string SchemeSection(SpecialTaxScheme scheme) => scheme switch
     {
         SpecialTaxScheme.RETURNING_EXPERT => "D.b.3, Table 2",
         SpecialTaxScheme.KNOWLEDGE_WORKER => "D.b.4, Table 3",

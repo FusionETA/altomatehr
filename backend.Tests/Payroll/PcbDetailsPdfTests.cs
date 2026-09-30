@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Pdf;
 using QuestPDF.Fluent;
@@ -356,5 +357,27 @@ public class PcbDetailsPdfTests
         };
 
         Assert.True(PcbCalculationDetailsPdf.Render(model).Length > 0);
+    }
+
+    // ─── 15% approvals: each in its own spec's words ───────────────────
+
+    // Q1 is the C-suite case: a reviewer must see D.b.5 / Table 4 and a
+    // formula with no rebate, not the REP wording.
+    [Fact]
+    public void CSuite_CitesTable4_WithNoRebate()
+    {
+        Assert.Equal("D.b.5, Table 4", PcbCalculationDetailsPdf.SchemeSection(SpecialTaxScheme.C_SUITE));
+        Assert.Contains("C-suite", PcbCalculationDetailsPdf.SchemeName(SpecialTaxScheme.C_SUITE));
+        Assert.Equal("[(P × R) − (Z + X)] ÷ (n + 1)", PcbCalculationDetailsPdf.SchemeFormula(SpecialTaxScheme.C_SUITE));
+    }
+
+    [Theory]
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT, "D.b.3, Table 2", "Returning Expert")]
+    [InlineData(SpecialTaxScheme.KNOWLEDGE_WORKER, "D.b.4, Table 3", "knowledge worker")]
+    public void RepAndKnowledgeWorkers_KeepTheRebate(SpecialTaxScheme scheme, string section, string name)
+    {
+        Assert.Equal(section, PcbCalculationDetailsPdf.SchemeSection(scheme));
+        Assert.Contains(name, PcbCalculationDetailsPdf.SchemeName(scheme));
+        Assert.Equal("[(P × R − T) − (Z + X)] ÷ (n + 1)", PcbCalculationDetailsPdf.SchemeFormula(scheme));
     }
 }
