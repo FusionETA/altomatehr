@@ -20,6 +20,10 @@ public interface IAttendanceService
     // approvals. Members with no record yet are included.
     Task<IEnumerable<TeamAttendanceMemberDto>> GetTeamTodayAsync(string userId);
     Task<AttendanceActionResult> ClockInAsync(string employeeId, ClockInDto dto);
+
+    // The caller against a project's geofence right now — the clock card's
+    // live on-site / off-site line. Same evaluation the clock-in runs.
+    Task<GeofenceCheckDto> CheckGeofenceAsync(string employeeId, string? projectId, double? lat, double? lng);
     Task<AttendanceActionResult> ClockOutAsync(string employeeId, ClockOutDto dto);
     Task<AttendanceTransitionResult> ApproveAsync(string id, string approverId);
     Task<AttendanceTransitionResult> RejectAsync(string id, string approverId, string? reviewNotes);

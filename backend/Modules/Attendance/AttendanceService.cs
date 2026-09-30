@@ -161,8 +161,9 @@ public class AttendanceService : IAttendanceService
             .GroupBy(x => x.AttendanceRecordId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
 
-        return records.Select(r =>
-            ToDto(r, byRecord.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])));
+        var radius = await GetRadiusAsync();
+        return records.Select(r => WithOffSite(
+            ToDto(r, byRecord.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])), radius));
     }
 
     // The RECORDS awaiting the caller as current-step approver — the day, its
@@ -227,8 +228,10 @@ public class AttendanceService : IAttendanceService
             .OrderByDescending(r => r.Date)
             .Select(r => ToDto(r, approvals.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])))
             .ToList();
+        var radius = await GetRadiusAsync();
         foreach (var dto in dtos)
         {
+            WithOffSite(dto, radius);
             dto.EmployeeEmail = emails.GetValueOrDefault(dto.EmployeeId);
             dto.EmployeeName = names.GetValueOrDefault(dto.EmployeeId);
         }
@@ -257,6 +260,7 @@ public class AttendanceService : IAttendanceService
         var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
         var records = await _repo.GetForEmployeesOnDateAsync(employeeIds, today);
         var byEmployee = records.ToDictionary(r => r.EmployeeId);
+        var radius = await GetRadiusAsync();
 
         var approvals = (await _approvalRequests.GetByRecordIdsAsync(records.Select(r => r.Id)))
             .GroupBy(a => a.AttendanceRecordId)
@@ -279,7 +283,7 @@ public class AttendanceService : IAttendanceService
                     ProjectName = projectNames.GetValueOrDefault(team.ProjectId),
                     TeamId = team.TeamId,
                     TeamName = team.TeamName,
-                    Record = record is null ? null : ToDto(record, approvals.GetValueOrDefault(record.Id, [])),
+                    Record = record is null ? null : WithOffSite(ToDto(record, approvals.GetValueOrDefault(record.Id, [])), radius),
                 };
             }))
             .OrderBy(m => m.ProjectName)
@@ -1401,6 +1405,33 @@ public class AttendanceService : IAttendanceService
         if (string.IsNullOrEmpty(orgId)) return Geo.DefaultRadiusMeters;
         var org = await _organizations.GetByIdAsync(orgId);
         return org?.GeofenceRadiusMeters ?? Geo.DefaultRadiusMeters;
+    }
+
+    public async Task<GeofenceCheckDto> CheckGeofenceAsync(string employeeId, string? projectId, double? lat, double? lng)
+    {
+        // Clocking out checks the day's own project, as ClockOutAsync does.
+        var effectiveProjectId = projectId;
+        if (string.IsNullOrEmpty(effectiveProjectId))
+            effectiveProjectId = (await _repo.GetOpenForEmployeeAsync(employeeId))?.ProjectId;
+
+        var (geofenced, distance, offSite) = await EvaluateGeofenceAsync(employeeId, effectiveProjectId, lat, lng);
+        var radius = await GetRadiusAsync();
+        return new GeofenceCheckDto
+        {
+            Geofenced = geofenced,
+            DistanceMeters = distance is { } d ? Math.Round(d) : null,
+            WithinRadius = distance is { } m && m <= radius,
+            RadiusMeters = radius,
+            Enforced = geofenced && await _policies.RequiresGeofenceAsync(employeeId),
+        };
+    }
+
+    // Off-site by the org's own radius — the rule EvaluateGeofenceAsync applies
+    // at clock-in. The previous system's admin board used the same radius.
+    private static AttendanceRecordDto WithOffSite(AttendanceRecordDto dto, double radius)
+    {
+        dto.OffSite = dto.ClockInDistanceMeters is { } d && d > radius;
+        return dto;
     }
 
     private static bool OffSiteProofMissing(string? remark, string? photoUrl) =>

@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { BreakControl } from "@/features/attendance/components/BreakControl";
+import { GeofenceIndicator } from "@/features/attendance/components/GeofenceIndicator";
 import {
   ClockOutDialog,
   type ClockOutChoice,
@@ -466,6 +467,13 @@ export function DashboardView({
                 ))}
               </SelectContent>
             </Select>
+            {/* Where they stand against the site before they tap — so an
+                off-site clock asking for a reason and photo is no surprise. */}
+            {statusKnown && projects.length > 0 ? (
+              <div className="mt-1.5">
+                <GeofenceIndicator projectId={projectId || undefined} />
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-[24px] border border-border/60 bg-surface-low/50 p-5 sm:p-6">
