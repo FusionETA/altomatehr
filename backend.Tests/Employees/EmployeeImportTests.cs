@@ -162,6 +162,32 @@ public class EmployeeImportTests
         Assert.Equal("CIMB", saved.Dto.BankName);
     }
 
+    // As in the previous system: a blank SOCSO number takes the IC, since in
+    // Malaysia most employees' SOCSO number IS their IC.
+    [Fact]
+    public async Task ABlankSocsoNumber_TakesTheIc()
+    {
+        var h = Make();
+
+        await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("idNumber", "900101-14-5567")])),
+            TabularFormat.Csv);
+
+        Assert.Equal("900101-14-5567", Assert.Single(h.Profiles.Saves).Dto.SocsoNumber);
+    }
+
+    [Fact]
+    public async Task ASocsoNumberInTheSheet_IsKept()
+    {
+        var h = Make();
+
+        await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("idNumber", "900101-14-5567"), ("socsoNumber", "A1234567")])),
+            TabularFormat.Csv);
+
+        Assert.Equal("A1234567", Assert.Single(h.Profiles.Saves).Dto.SocsoNumber);
+    }
+
     // The whole point of returning them: they are shown once and stored nowhere.
     [Fact]
     public async Task ReturnsThePasswordForEachAccountItCreated()

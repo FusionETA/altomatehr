@@ -79,6 +79,9 @@ export type AttendanceRecord = {
   clockInLat: number | null;
   clockInLng: number | null;
   clockInDistanceMeters: number | null;
+  // Beyond the org's geofence radius at clock-in — decided by the server with
+  // the same radius the clock-in check used.
+  offSite?: boolean;
   clockOutLat: number | null;
   clockOutLng: number | null;
   clockOutDistanceMeters: number | null;
@@ -163,6 +166,23 @@ export const clockIn = (body: ClockInRequest = {}) =>
   apiPost<AttendanceRecord>("/attendance/clock-in", body);
 export const clockOut = (body: ClockOutRequest = {}) =>
   apiPost<AttendanceRecord>("/attendance/clock-out", body);
+
+// Where the caller stands against a project's geofence right now — the same
+// evaluation the clock-in runs, so the clock card's line can't disagree with it.
+export type GeofenceCheck = {
+  geofenced: boolean;
+  distanceMeters: number | null;
+  withinRadius: boolean;
+  radiusMeters: number;
+  enforced: boolean;
+};
+
+// No projectId checks today's open shift (for clocking out).
+export const checkGeofence = (projectId: string | undefined, lat: number, lng: number) => {
+  const q = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  if (projectId) q.set("projectId", projectId);
+  return apiGet<GeofenceCheck>(`/attendance/geofence-check?${q.toString()}`);
+};
 // Server code returned when a clock is refused for being off-site.
 // Worked-minutes totals for a date range, computed server-side. The rule lives
 // in AttendanceHoursMath: a working day counts at most the shift length, real

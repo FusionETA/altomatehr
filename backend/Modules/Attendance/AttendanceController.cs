@@ -299,6 +299,14 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> ClockIn(ClockInDto dto) =>
         ToResponse(await _attendance.ClockInAsync(GetUserId(), dto));
 
+    // GET /attendance/geofence-check?projectId=&lat=&lng= — where the caller
+    // stands against the project's geofence right now (the clock card's live
+    // "On site · 45 m away" line). No projectId checks today's open shift.
+    [HttpGet("geofence-check")]
+    public async Task<IActionResult> CheckGeofence(
+        [FromQuery] string? projectId, [FromQuery] double? lat, [FromQuery] double? lng) =>
+        Ok(await _attendance.CheckGeofenceAsync(GetUserId(), projectId, lat, lng));
+
     // POST /attendance/clock-out
     [HttpPost("clock-out")]
     public async Task<IActionResult> ClockOut(ClockOutDto dto) =>

@@ -455,6 +455,91 @@ public class AttendanceApprovalRegressionTests
         Assert.Null(result.Record!.ProjectId);
     }
 
+    // --- off-site is the organization's radius, everywhere ---
+    //
+    // The reported case: a 500 m geofence, staff clocking in 244 m and 636 m
+    // from the site. The clock-in, the admin board and the clock card's live
+    // line must all draw the line at 500 m — the board once used a fixed 200 m
+    // and called the 244 m person off-site, though they were never asked for
+    // the reason and photo an off-site clock needs.
+
+    private const double MetresPerDegreeLat = 111_320;
+
+    private static AttendanceService GeofencedSite(int radius = 500)
+    {
+        var projects = new FakeProjectService();
+        projects.Sites["proj-site"] = (ClockLat, ClockLng);
+        var teams = new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-site"] } };
+        var org = new FakeOrganizationService(new AltomateHR.Api.Modules.Organizations.Dtos.OrganizationDto
+        {
+            Id = "org-demo", Name = "Acme Engineering", GeofenceRadiusMeters = radius,
+        });
+        return BuildService([], teams: teams, projects: projects, organizations: org,
+            policies: new FakePolicyService { EnforceGeofence = true });
+    }
+
+    private static double LatAt(double metresNorth) => ClockLat + metresNorth / MetresPerDegreeLat;
+
+    [Fact]
+    public async Task InsideTheOrgRadius_ClocksInWithoutProof_AndIsNotOffSite()
+    {
+        var service = GeofencedSite();
+
+        var result = await service.ClockInAsync("emp-1",
+            new ClockInDto { ProjectId = "proj-site", Lat = LatAt(244), Lng = ClockLng });
+        Assert.True(result.Ok);
+
+        var day = Assert.Single(await service.GetHistoryAsync("emp-1", isAdmin: true));
+        Assert.False(day.OffSite);
+        Assert.InRange(day.ClockInDistanceMeters!.Value, 240, 248);
+    }
+
+    [Fact]
+    public async Task BeyondTheOrgRadius_NeedsProof_AndIsOffSiteOnTheBoard()
+    {
+        var service = GeofencedSite();
+
+        var refused = await service.ClockInAsync("emp-1",
+            new ClockInDto { ProjectId = "proj-site", Lat = LatAt(636), Lng = ClockLng });
+        Assert.False(refused.Ok);
+
+        var withProof = await service.ClockInAsync("emp-1", new ClockInDto
+        {
+            ProjectId = "proj-site", Lat = LatAt(636), Lng = ClockLng,
+            Remark = "Site visit", PhotoUrl = "/attendance/photos/x.jpg",
+        });
+        Assert.True(withProof.Ok);
+        Assert.True(Assert.Single(await service.GetHistoryAsync("emp-1", isAdmin: true)).OffSite);
+    }
+
+    // The clock card's live line reads the very same evaluation.
+    [Theory]
+    [InlineData(244, true)]
+    [InlineData(636, false)]
+    public async Task TheLiveCheck_AgreesWithTheClockIn(double metres, bool inside)
+    {
+        var service = GeofencedSite();
+
+        var check = await service.CheckGeofenceAsync("emp-1", "proj-site", LatAt(metres), ClockLng);
+
+        Assert.True(check.Geofenced);
+        Assert.Equal(inside, check.WithinRadius);
+        Assert.Equal(500, check.RadiusMeters);
+        Assert.True(check.Enforced);
+        Assert.InRange(check.DistanceMeters!.Value, metres - 5, metres + 5);
+    }
+
+    [Fact]
+    public async Task TheLiveCheck_OnAProjectWithNoGeofence_SaysSo()
+    {
+        var service = BuildService([], teams: new FakeTeamService { ProjectsOf = { ["emp-1"] = ["proj-plain"] } });
+
+        var check = await service.CheckGeofenceAsync("emp-1", "proj-plain", ClockLat, ClockLng);
+
+        Assert.False(check.Geofenced);
+        Assert.Null(check.DistanceMeters);
+    }
+
     // --- several shifts in one day ---
     //
     // A day is a record; each stint is a session under it. The record's totals
@@ -690,7 +775,10 @@ public class AttendanceApprovalRegressionTests
         FakeApprovalRouter? router = null,
         FakeTeamService? teams = null,
         FakeAttendanceRepository? repo = null,
-        FakeAttendanceSessionRepository? sessions = null) =>
+        FakeAttendanceSessionRepository? sessions = null,
+        FakeProjectService? projects = null,
+        FakeOrganizationService? organizations = null,
+        FakePolicyService? policies = null) =>
         new(
             repo: repo ?? new FakeAttendanceRepository(records),
             // Sessions derived from the records, exactly as the multi-shift
@@ -700,12 +788,12 @@ public class AttendanceApprovalRegressionTests
             sessions: sessions ?? new FakeAttendanceSessionRepository(SessionsFor(records)),
             breaks: new FakeAttendanceBreakRepository(),
             approvalRequests: approvals ?? new FakeAttendanceApprovalRequestRepository([]),
-            projects: new FakeProjectService(),
-            organizations: new FakeOrganizationService(),
+            projects: projects ?? new FakeProjectService(),
+            organizations: organizations ?? new FakeOrganizationService(),
             shifts: new FakeShiftService(),
             currentUser: new FakeCurrentUser(),
             photos: new FakeAttendancePhotoStorage(),
-            policies: new FakePolicyService(),
+            policies: policies ?? new FakePolicyService(),
             supervision: new FakeSupervisionService(),
             router: router ?? new FakeApprovalRouter(),
             directory: TestDirectory.Over(new FakeOrganizationMembershipRepository()),
@@ -1206,9 +1294,11 @@ public class AttendanceApprovalRegressionTests
         public Task<bool> DeleteAsync(string fileName) => throw new NotImplementedException();
     }
 
-    // Never reached — the record has no project, so the geofence check short-circuits.
+    // No project is geofenced unless a test places one in Sites.
     private sealed class FakeProjectService : IProjectService
     {
+        public Dictionary<string, (double Lat, double Lng)> Sites { get; } = [];
+
         // Read by the attendance clock-in gate; nothing under test here uses them.
         public Task<IReadOnlyList<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) =>
             Task.FromResult<IReadOnlyList<ProjectGeofencePoint>>([]);
@@ -1218,7 +1308,10 @@ public class AttendanceApprovalRegressionTests
         public Task<IEnumerable<ProjectDto>> GetForMemberAsync(string userId) =>
             throw new NotSupportedException();
         public Task<IEnumerable<ProjectDto>> GetAllAsync() => Task.FromResult(Enumerable.Empty<ProjectDto>());
-        public Task<ProjectDto?> GetByIdAsync(string id) => Task.FromResult<ProjectDto?>(null);
+        public Task<ProjectDto?> GetByIdAsync(string id) => Task.FromResult<ProjectDto?>(
+            Sites.TryGetValue(id, out var site)
+                ? new ProjectDto { Id = id, Name = id, Latitude = site.Lat, Longitude = site.Lng }
+                : null);
         public Task<ProjectDto> CreateAsync(SaveProjectDto dto) => throw new NotImplementedException();
         public Task<ProjectDto?> UpdateAsync(string id, SaveProjectDto dto) => throw new NotImplementedException();
         public Task<ProjectDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
@@ -1237,7 +1330,8 @@ public class AttendanceApprovalRegressionTests
             GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds) =>
             Task.FromResult<IReadOnlyDictionary<string, EmployeePolicy>>(
                 new Dictionary<string, EmployeePolicy>());
-        public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(false);
+        public bool EnforceGeofence { get; init; }
+        public Task<bool> RequiresGeofenceAsync(string employeeId) => Task.FromResult(EnforceGeofence);
         public Task<IReadOnlyDictionary<string, double>> GetLeaveEntitlementsAsync(string employeeId) =>
             Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
         public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>>>
