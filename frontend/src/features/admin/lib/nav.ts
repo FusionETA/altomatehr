@@ -20,7 +20,15 @@ import {
 // `module` is the grant key (OrgModules on the backend) an entry needs. An
 // Admin whose "Manage access" grant leaves it out does not see the entry, and
 // the endpoints behind it 403. No module = every admin sees it.
-export type AdminChild = { id: string; label: string; ownerOnly?: boolean; module?: string };
+// `superadminOnly`: Fusioneta staff (SUPERADMIN_EMAILS) only — hidden from a
+// customer's own Owner and Admins, and refused if typed into the URL.
+export type AdminChild = {
+  id: string;
+  label: string;
+  ownerOnly?: boolean;
+  superadminOnly?: boolean;
+  module?: string;
+};
 
 export type AdminNavItem = {
   id: string;
@@ -61,6 +69,7 @@ export const adminNav: AdminNavItem[] = [
       { id: "settings-policies", label: "Policies", module: "policies" },
       // Owner-only: an Admin cannot edit their own or a peer's access.
       { id: "settings-admins", label: "Admins", ownerOnly: true },
+      { id: "settings-api", label: "API integrations", superadminOnly: true },
     ],
   },
 ];
@@ -85,6 +94,7 @@ export function findNavItem(id: string): AdminNavItem {
 export function visibleAdminNav(
   isOwner: boolean,
   enabled: ReadonlySet<string> | null,
+  isSuperadmin = false,
 ): AdminNavItem[] {
   const allowed = (module?: string) => !module || enabled === null || enabled.has(module);
 
@@ -93,7 +103,10 @@ export function visibleAdminNav(
     if (!item.children) return [item];
 
     const children = item.children.filter(
-      (child) => (!child.ownerOnly || isOwner) && allowed(child.module),
+      (child) =>
+        (!child.ownerOnly || isOwner)
+        && (!child.superadminOnly || isSuperadmin)
+        && allowed(child.module),
     );
     return children.length === 0 ? [] : [{ ...item, children }];
   });
@@ -125,8 +138,9 @@ export function normaliseAdminNav(
   { parent, child }: UrlNav,
   isOwner: boolean,
   enabled: ReadonlySet<string> | null = null,
+  isSuperadmin = false,
 ): UrlNav {
-  const item = visibleAdminNav(isOwner, enabled).find((entry) => entry.id === parent);
+  const item = visibleAdminNav(isOwner, enabled, isSuperadmin).find((entry) => entry.id === parent);
   if (!item) return NAV_FALLBACK;
 
   const children = item.children ?? [];

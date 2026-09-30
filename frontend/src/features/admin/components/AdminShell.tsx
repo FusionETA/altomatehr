@@ -9,6 +9,7 @@ import { EmployeesSettings } from "@/features/settings/components/EmployeesSetti
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
+import { ApiIntegrationsSettings } from "@/features/settings/components/ApiIntegrationsSettings";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { WorkScheduleSettings } from "@/features/settings/components/WorkScheduleSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
@@ -53,18 +54,19 @@ export function AdminShell({
   // typing its id into the address bar. Captured once, which is fine: a role
   // does not change for the life of a mounted shell.
   const isOwner = user.role === "Owner";
+  const isSuperadmin = user.isSuperadmin === true;
   // What this admin's grant (and the org's plan) lets them see. The URL is
   // normalised against it at mount, and the view is re-checked on every render
   // below: the modules usually land AFTER the first read of the URL, and a
   // bookmark to a module the grant leaves out must not stay open once they do.
   const enabledModules = useEnabledModules();
   const visibleNav = useMemo(
-    () => visibleAdminNav(isOwner, enabledModules),
-    [isOwner, enabledModules],
+    () => visibleAdminNav(isOwner, enabledModules, isSuperadmin),
+    [isOwner, enabledModules, isSuperadmin],
   );
   const normalise = useCallback(
-    (candidate: UrlNav) => normaliseAdminNav(candidate, isOwner, enabledModules),
-    [isOwner, enabledModules],
+    (candidate: UrlNav) => normaliseAdminNav(candidate, isOwner, enabledModules, isSuperadmin),
+    [isOwner, enabledModules, isSuperadmin],
   );
   const [urlNav, go] = useUrlNav(NAV_FALLBACK, normalise);
   const nav = normalise(urlNav);
@@ -394,6 +396,8 @@ function AdminContent({
       return <PoliciesSettings />;
     case "settings-admins":
       return <AdminsSettings />;
+    case "settings-api":
+      return <ApiIntegrationsSettings organizationName={user.activeOrganizationName} />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.
