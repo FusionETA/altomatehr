@@ -329,3 +329,26 @@ export const getXeroProjectTracking = () =>
 // the sync did; clearing it returns nothing.
 export const setXeroProjectTrackingCategory = (categoryId: string | null) =>
   apiPut<XeroSyncProjectsResult | undefined>("/xero/project-tracking", { categoryId });
+
+// ─── API integrations (Fusioneta superadmins only) ────────────────────
+//
+// wp_live_ keys for the organization the session is in — in support mode, the
+// customer's. The server refuses anyone not on SUPERADMIN_EMAILS.
+
+export type ApiKey = {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scopes: string[];
+  active: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+// Returned once, on creation — the only time the full token is visible.
+export type CreatedApiKey = ApiKey & { token: string };
+
+export const getApiKeys = () => apiGet<ApiKey[]>("/api-keys");
+export const createApiKey = (body: { name: string; scopes: string[] }) =>
+  apiPost<CreatedApiKey>("/api-keys", body);
+export const revokeApiKey = (id: string) => apiDelete<void>(`/api-keys/${id}`);
