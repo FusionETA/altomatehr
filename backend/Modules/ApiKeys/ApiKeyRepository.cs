@@ -13,8 +13,14 @@ public class ApiKeyRepository : IApiKeyRepository
     // The auth handler calls this BEFORE any org is on the request (no "current org"
     // yet), and a key isn't found by its own org anyway — so IgnoreQueryFilters. The
     // matched key then TELLS us which org the request belongs to.
+    // A key whose company no longer exists is treated as unknown. Deleting a
+    // company removes its keys today, but an integration (ABPay) decides a
+    // company is gone by its key being rejected — so a key left behind must
+    // never still authenticate. One query: the company check is an EXISTS.
     public Task<ApiKey?> GetByHashAsync(string tokenHash) =>
-        _db.ApiKeys.IgnoreQueryFilters().FirstOrDefaultAsync(k => k.TokenHash == tokenHash);
+        _db.ApiKeys.IgnoreQueryFilters().FirstOrDefaultAsync(k =>
+            k.TokenHash == tokenHash
+            && _db.Organizations.Any(o => o.Id == k.OrganizationId));
 
     // Management reads run under a JWT Owner, so the tenant filter scopes these to the
     // Owner's active org automatically.
