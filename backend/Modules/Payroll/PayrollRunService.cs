@@ -1013,8 +1013,10 @@ public class PayrollRunService : IPayrollRunService
     private static IReadOnlyList<FixedAllowance> ParseFixedAllowances(string? json) =>
         Parse<FixedAllowance>(json);
 
+    // Lenient on purpose: migrated profiles carry v1's legacy values, and a
+    // strict read drops every child (see ChildReliefJson).
     private static IReadOnlyList<ChildRelief> ParseChildRelief(string? json) =>
-        Parse<ChildRelief>(json);
+        ChildReliefJson.Parse(json);
 
     // Malformed JSON reads as an empty list. These columns are free-form and
     // written by another system: one bad row must not take a month's payroll
