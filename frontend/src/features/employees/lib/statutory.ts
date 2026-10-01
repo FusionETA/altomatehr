@@ -18,11 +18,26 @@ export function calculateAge(dateOfBirth: string | null | undefined): number {
   return Math.max(0, age);
 }
 
-/** Accepts "Malaysian" / "Malaysia" / "MY" / "MYS" variants, case-insensitively. */
+// Every spelling the backend's Nationalities treats as Malaysian
+// (backend/Modules/Payroll/Nationalities.cs). Keep the two in step: payroll
+// taxes a Malaysian as a resident, and this decides whether the screen shows
+// them as one — two lists let the screen and PCB disagree.
+const MALAYSIAN_SPELLINGS = new Set([
+  "malaysian",
+  "malaysia",
+  "my",
+  "mys",
+  "warganegara malaysia",
+  "rakyat malaysia",
+  "malaysian citizen",
+  "malaysia citizen",
+  "warganegara",
+]);
+
+/** True for any accepted spelling of Malaysian, case- and space-insensitively. */
 export function isMalaysianNationality(nationality: string | null | undefined): boolean {
-  const v = (nationality ?? "").toLowerCase().trim();
-  if (v === "") return false;
-  return v === "malaysian" || v === "malaysia" || v === "my" || v === "mys";
+  const v = (nationality ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+  return MALAYSIAN_SPELLINGS.has(v);
 }
 
 /**

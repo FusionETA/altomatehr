@@ -37,7 +37,8 @@ public class ApprovalsController : ControllerBase
     // waiting for ApprovalDigestBackgroundService's next 06:00 MYT window.
     // Same shape as POST /attendance/cron/auto-clockout/run and
     // POST /leave/cron/monthly-accrual: an operator/testing escape hatch, not
-    // gated by a shared secret since it already requires an Admin/Owner JWT.
+    // gated by a shared secret: it needs an Admin/Owner JWT of a superadmin
+    // (a superadmin outside an admin role enters support mode first).
     // Runs system-wide (every org) and sends real notifications — there's no
     // dry-run mode, since "what would be sent" is exactly what this returns.
     [HumanOnly]

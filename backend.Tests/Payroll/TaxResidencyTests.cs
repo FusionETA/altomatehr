@@ -10,6 +10,9 @@ public class TaxResidencyTests
     [InlineData(false, "Malaysian")]
     [InlineData(false, "malaysia")]
     [InlineData(false, "Warganegara Malaysia")]
+    [InlineData(false, "Malaysian Citizen")]
+    [InlineData(false, "warganegara")]
+    [InlineData(false, "MY")]
     [InlineData(true, "Malaysian")]
     public void A_Malaysian_is_always_a_tax_resident(bool stored, string nationality) =>
         Assert.True(PayslipCalculator.IsTaxResident(stored, nationality));

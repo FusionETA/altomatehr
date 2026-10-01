@@ -963,15 +963,12 @@ public static class PayslipCalculator
     // every way there is. Getting this wrong routes a citizen into the wrong EPF
     // branch and silently drops them out of the HRDF levy, so the variants are
     // accepted deliberately rather than demanding one exact string.
-    public static bool IsMalaysianNationality(string? nationality)
-    {
-        var value = (nationality ?? string.Empty).Trim().ToLowerInvariant();
-        if (value.Length == 0) return false;
-
-        return value is "malaysian" or "malaysia" or "my" or "mys"
-            || value.Contains("warganegara malaysia", StringComparison.Ordinal)
-            || value.Contains("rakyat malaysia", StringComparison.Ordinal);
-    }
+    public static bool IsMalaysianNationality(string? nationality) =>
+        // One list of spellings for the whole app: Nationalities' aliases
+        // (Malaysia, MY, Warganegara, Malaysian Citizen, …), which the profile
+        // screen mirrors. Two lists let the screen and PCB disagree about who
+        // is a citizen.
+        Nationalities.Normalise(nationality) == "Malaysian";
 
     // A Malaysian is taxed as a resident whatever the stored flag says — the
     // profile screen shows a citizen as resident and doesn't let it be turned
