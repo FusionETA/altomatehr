@@ -10,6 +10,16 @@ public enum LeaveStatus
     CANCELLED,
 }
 
+// An employee's request to cancel leave that was already approved. APPROVED
+// means the chain agreed and the leave is now CANCELLED.
+public enum LeaveCancellationStatus
+{
+    PENDING,
+    APPROVED,
+    REJECTED,
+    WITHDRAWN,
+}
+
 // How a year's entitlement becomes available.
 //   LUMP_SUM  — the whole entitlement from day one of the year.
 //   PRO_RATED — EntitledDays/12 accrues each month (the monthly cron).

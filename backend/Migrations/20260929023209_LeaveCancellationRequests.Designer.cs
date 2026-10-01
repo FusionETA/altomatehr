@@ -4,6 +4,7 @@ using AltomateHR.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260929023209_LeaveCancellationRequests")]
+    partial class LeaveCancellationRequests
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -696,9 +699,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<bool>("IsSso")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<bool>("IsSupport")
                         .HasColumnType("tinyint(1)");
 
@@ -975,9 +975,6 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
-                    b.Property<DateTime?>("ContractEndDate")
-                        .HasColumnType("datetime(6)");
-
                     b.Property<bool>("ContributeToEis")
                         .HasColumnType("tinyint(1)");
 
@@ -1008,10 +1005,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("EmergencyContactRelation")
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
-
-                    b.Property<string>("EmploymentStatus")
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
 
                     b.Property<decimal>("EpfEmployeeRate")
                         .HasPrecision(6, 4)
@@ -2156,13 +2149,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("ApprovalRejectionReason")
                         .HasColumnType("longtext");
 
-                    b.Property<DateTime?>("Cp38ReceiptDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Cp38ReceiptNo")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -2182,13 +2168,6 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
-
-                    b.Property<DateTime?>("PcbReceiptDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("PcbReceiptNo")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
 
                     b.Property<int>("PeriodMonth")
                         .HasColumnType("int");

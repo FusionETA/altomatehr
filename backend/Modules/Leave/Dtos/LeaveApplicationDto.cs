@@ -23,6 +23,12 @@ public class LeaveApplicationDto
     public LeaveStatus Status { get; set; }
     public string? ReviewNotes { get; set; }
     public string? DecidedAt { get; set; }
+
+    // A request to cancel this (approved) leave, if one was made. PENDING
+    // puts it in the approver's queue as a cancellation, not a new request.
+    public LeaveCancellationStatus? CancellationStatus { get; set; }
+    public string? CancellationReason { get; set; }
+    public string? CancellationRequestedAt { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
 
     // The supporting document, when there is one — the approver needs to see
@@ -66,6 +72,14 @@ public class RejectLeaveDto
 {
     [MaxLength(1000)]
     public string? ReviewNotes { get; set; }
+}
+
+// Why the employee wants their approved leave cancelled. Optional; shown to
+// the approvers and kept on the trail.
+public class RequestLeaveCancellationDto
+{
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
 }
 
 // Optional: why an admin is withdrawing approved leave. Shown in the approval

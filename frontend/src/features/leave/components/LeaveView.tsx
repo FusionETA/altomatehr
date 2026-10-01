@@ -11,13 +11,17 @@ import {
   getLeaveBalances,
   getLeaveTypes,
   getMyLeave,
+  isCancellationUnderReview,
+  requestLeaveCancellation,
+  withdrawLeaveCancellation,
   type LeaveApplication,
   type LeaveBalance,
   type LeaveType,
 } from "../api";
+import { businessToday } from "@/shared/lib/business-day";
 import { leaveMatchesStatus, type LeaveStatusFilter } from "../lib/leave-status";
 import { formatDateRange, relativeDaysAgo } from "../lib/leave-formatters";
-import { LeaveStatusBadge } from "./LeaveStatusBadge";
+import { LeaveCancellationBadge, LeaveStatusBadge } from "./LeaveStatusBadge";
 import { LeaveStatusTabs } from "./LeaveStatusTabs";
 import { LeaveDetailsModal } from "./LeaveDetailsModal";
 import { ApplyLeaveModal } from "./ApplyLeaveModal";
@@ -52,6 +56,8 @@ export function LeaveView() {
   // (re-applying is a new request that has to be approved again), so the button
   // opens this instead of acting.
   const [confirming, setConfirming] = useState<LeaveApplication | null>(null);
+  // Approved leave the employee is asking to cancel — goes to their approver.
+  const [requesting, setRequesting] = useState<LeaveApplication | null>(null);
 
   // Three independent reads rather than one Promise.all: leave types and
   // balances rarely change and stay cached across visits, so only the
@@ -136,24 +142,59 @@ export function LeaveView() {
     }
   }
 
+  function replace(updated: LeaveApplication) {
+    setMine((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+    setSelected((cur) => (cur?.id === updated.id ? updated : cur));
+  }
+
+  async function withdrawRequest(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      replace(await withdrawLeaveCancellation(id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not withdraw the request.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // The one action a row offers, by where the leave stands:
+  //   pending               → Cancel (it's withdrawn straight away)
+  //   approved, not started → Request cancellation (goes to the approver)
+  //   cancellation pending  → Withdraw request
   function cancelButton(application: LeaveApplication, variant: "compact" | "detail" = "compact") {
-    if (application.status !== "PENDING") return null;
     const isDetail = variant === "detail";
+    const className = isDetail
+      ? "inline-flex h-12 items-center justify-center rounded-[18px] border border-border/70 bg-card px-6 text-sm font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+      : "rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50";
+
+    let label: string;
+    let onClick: () => void;
+    if (application.status === "PENDING") {
+      label = "Cancel";
+      onClick = () => setConfirming(application);
+    } else if (isCancellationUnderReview(application)) {
+      label = "Withdraw request";
+      onClick = () => void withdrawRequest(application.id);
+    } else if (application.status === "APPROVED" && application.startDate > businessToday()) {
+      label = "Request cancellation";
+      onClick = () => setRequesting(application);
+    } else {
+      return null;
+    }
+
     return (
       <button
         type="button"
         disabled={busyId === application.id}
         onClick={(event) => {
           event.stopPropagation();
-          setConfirming(application);
+          onClick();
         }}
-        className={
-          isDetail
-            ? "inline-flex h-12 items-center justify-center rounded-[18px] border border-border/70 bg-card px-6 text-sm font-bold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-            : "rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-        }
+        className={className}
       >
-        Cancel
+        {busyId === application.id && !isDetail ? "…" : label}
       </button>
     );
   }
@@ -315,7 +356,10 @@ export function LeaveView() {
                     <p className="text-base font-black">{typeName(a.leaveTypeId)}</p>
                     <p className="text-sm text-muted-foreground">{formatDateRange(a.startDate, a.endDate)}</p>
                   </div>
-                  <LeaveStatusBadge status={a.status} />
+                  <div className="flex flex-col items-end gap-1">
+                    <LeaveStatusBadge status={a.status} />
+                    <LeaveCancellationBadge application={a} />
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">
@@ -358,7 +402,10 @@ export function LeaveView() {
                       <td className="p-4 align-middle">{a.totalDays}</td>
                       <td className="p-4 align-middle">{relativeDaysAgo(a.createdAt)}</td>
                       <td className="p-4 align-middle">
-                        <LeaveStatusBadge status={a.status} />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <LeaveStatusBadge status={a.status} />
+                          <LeaveCancellationBadge application={a} />
+                        </div>
                       </td>
                       <td className="p-4 pr-6 align-middle">
                         {cancelButton(a) ?? <span className="text-xs text-muted-foreground">—</span>}
@@ -413,6 +460,20 @@ export function LeaveView() {
           typeName={typeName(selected.leaveTypeId)}
           onClose={() => setSelected(null)}
           footer={cancelButton(selected, "detail")}
+        />
+      ) : null}
+
+      {requesting ? (
+        <RequestCancellationDialog
+          application={requesting}
+          typeName={typeName(requesting.leaveTypeId)}
+          onKeep={() => setRequesting(null)}
+          onSent={(updated) => {
+            replace(updated);
+            setRequesting(null);
+            // Cancelled at once when nobody is above them — the days are back.
+            if (updated.status === "CANCELLED") void getLeaveBalances().then(setBalances);
+          }}
         />
       ) : null}
 
@@ -481,6 +542,93 @@ function CancelLeaveDialog({
             className="h-11 rounded-full border border-border bg-card text-sm font-bold text-foreground transition hover:bg-secondary/50 disabled:opacity-60"
           >
             Keep it
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+// Asking to cancel APPROVED leave. Unlike withdrawing a pending request this
+// goes to the approver(s) — the leave, and its days, stand until they agree —
+// so it says that, and lets the employee say why.
+function RequestCancellationDialog({
+  application,
+  typeName,
+  onKeep,
+  onSent,
+}: {
+  application: LeaveApplication;
+  typeName: string;
+  onKeep: () => void;
+  onSent: (updated: LeaveApplication) => void;
+}) {
+  useBodyScrollLock();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      onSent(await requestLeaveCancellation(application.id, reason.trim() || undefined));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send the request.");
+      setBusy(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-5 backdrop-blur-md">
+      <section className="max-h-[calc(100vh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_70px_rgba(32,10,55,0.24)] sm:p-6">
+        <h2 className="text-xl font-black text-foreground">Ask to cancel this leave?</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your approver reviews it, just like the original request. The leave stays booked until
+          they agree — then it's cancelled and the days go back into your balance.
+        </p>
+
+        <div className="mt-4 rounded-2xl border border-border/60 bg-surface-low p-4">
+          <p className="text-base font-black text-foreground">{typeName}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {formatDateRange(application.startDate, application.endDate)} ·{" "}
+            {application.totalDays} {application.totalDays === 1 ? "day" : "days"}
+          </p>
+        </div>
+
+        <label className="mt-4 block space-y-2">
+          <span className="text-sm font-bold text-foreground">
+            Reason <span className="font-medium text-muted-foreground">(optional)</span>
+          </span>
+          <textarea
+            value={reason}
+            disabled={busy}
+            maxLength={1000}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="e.g. Trip postponed"
+            className="min-h-24 w-full resize-none rounded-[18px] border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
+          />
+        </label>
+        {error ? <p className="mt-2 text-sm font-semibold text-destructive">{error}</p> : null}
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void send()}
+            className="flex h-11 items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+          >
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            Send request
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onKeep}
+            className="h-11 rounded-full border border-border bg-card text-sm font-bold text-foreground transition hover:bg-secondary/50 disabled:opacity-60"
+          >
+            Keep my leave
           </button>
         </div>
       </section>

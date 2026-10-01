@@ -3,10 +3,13 @@ import type { KeyboardEvent } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import {
   approveLeave,
+  approveLeaveCancellation,
   bulkApproveLeave,
   getLeaveTypes,
   getTeamLeave,
+  isCancellationUnderReview,
   rejectLeave,
+  rejectLeaveCancellation,
   type LeaveApplication,
   type LeaveBulkResult,
   type LeaveType,
@@ -43,7 +46,13 @@ export function LeaveApprovals() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<LeaveBulkResult | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
-  const [rejecting, setRejecting] = useState<{ ids: string[]; label: string } | null>(null);
+  const [rejecting, setRejecting] = useState<{
+    ids: string[];
+    label: string;
+    // Declining a cancellation leaves the approved leave standing — a
+    // different call, and different words, from rejecting a new request.
+    cancellation: boolean;
+  } | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -113,7 +122,9 @@ export function LeaveApprovals() {
   // /leave/team already returns only what is awaiting THIS approver, so every
   // row here is theirs to decide. The status check is a belt-and-braces guard:
   // a row that somehow arrives decided must not be selectable, because the
-  // server would refuse it and the approver would never learn why.
+  // server would refuse it and the approver would never learn why. It also
+  // keeps cancellation requests (APPROVED leave) out of bulk approve: giving
+  // back leave someone was granted is decided one at a time.
   const isBulkable = (a: LeaveApplication) => a.status === "PENDING";
 
   const selection = useBulkSelection(filtered, (a) => a.id, isBulkable);
@@ -162,8 +173,13 @@ export function LeaveApprovals() {
   }
 
   // One row at a time, always: the remark has to be about THAT request.
-  function openReject(id: string) {
-    setRejecting({ ids: [id], label: "Reject leave request" });
+  function openReject(a: LeaveApplication) {
+    const cancellation = isCancellationUnderReview(a);
+    setRejecting({
+      ids: [a.id],
+      label: cancellation ? "Decline cancellation request" : "Reject leave request",
+      cancellation,
+    });
     setRejectNotes("");
     setRejectError(null);
   }
@@ -177,11 +193,15 @@ export function LeaveApprovals() {
     if (!rejecting) return;
     const notes = rejectNotes.trim();
     if (!notes) {
-      setRejectError("Remark is required when rejecting leave.");
+      setRejectError(rejecting.cancellation
+        ? "Remark is required when declining a cancellation."
+        : "Remark is required when rejecting leave.");
       return;
     }
     setDialogBusy(true);
-    const ok = await processIds(rejecting.ids, (id) => rejectLeave(id, notes));
+    const ok = await processIds(rejecting.ids, (id) =>
+      rejecting.cancellation ? rejectLeaveCancellation(id, notes) : rejectLeave(id, notes),
+    );
     setDialogBusy(false);
     if (ok) setRejecting(null);
   }
@@ -196,7 +216,7 @@ export function LeaveApprovals() {
           disabled={busy}
           onClick={(event) => {
             event.stopPropagation();
-            processIds([a.id], approveLeave);
+            processIds([a.id], isCancellationUnderReview(a) ? approveLeaveCancellation : approveLeave);
           }}
           className={
             isDetail
@@ -205,14 +225,14 @@ export function LeaveApprovals() {
           }
         >
           {busy ? <LoaderCircle className={isDetail ? "h-4 w-4 animate-spin" : "h-3 w-3 animate-spin"} /> : null}
-          Approve
+          {isCancellationUnderReview(a) ? "Approve cancellation" : "Approve"}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={(event) => {
             event.stopPropagation();
-            openReject(a.id);
+            openReject(a);
           }}
           className={
             isDetail
@@ -220,7 +240,7 @@ export function LeaveApprovals() {
               : "rounded-full bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
           }
         >
-          Reject
+          {isCancellationUnderReview(a) ? "Decline" : "Reject"}
         </button>
       </div>
     );
@@ -234,6 +254,14 @@ export function LeaveApprovals() {
   }
 
   function urgencyPill(a: LeaveApplication) {
+    // A cancellation request isn't new leave to plan around — say what it is.
+    if (isCancellationUnderReview(a)) {
+      return (
+        <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
+          Cancellation request
+        </span>
+      );
+    }
     const label = urgencyLabel(a.startDate);
     if (!label) return null;
     return (
@@ -505,7 +533,10 @@ export function LeaveApprovals() {
           application={selectedApplication}
           typeName={typeName(selectedApplication.leaveTypeId)}
           employeeLabel={employeeName(selectedApplication)}
-          showWhoElseIsOff
+          showWhoElseIsOff={!isCancellationUnderReview(selectedApplication)}
+          // A cancellation comes after a decision; the approver needs to see
+          // who granted it and what's happened since.
+          showAudit={isCancellationUnderReview(selectedApplication)}
           onClose={() => setSelectedApplication(null)}
           footer={actions(selectedApplication, "detail")}
         />
@@ -568,7 +599,9 @@ function RejectRemarkDialog({
             value={value}
             disabled={busy}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="Explain why this leave is rejected."
+            placeholder={label.startsWith("Decline")
+              ? "Explain why the leave should still go ahead."
+              : "Explain why this leave is rejected."}
             className="min-h-32 w-full resize-none rounded-[18px] border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
           />
         </label>

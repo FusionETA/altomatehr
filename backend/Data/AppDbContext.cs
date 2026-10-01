@@ -180,6 +180,8 @@ public class AppDbContext : DbContext
         entitlement.Property(e => e.AccrualMethod).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<LeaveApplication>()
             .Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<LeaveApplication>()
+            .Property(a => a.CancellationStatus).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<LeaveApplication>().HasIndex(a => a.EmployeeId);
 
         var overtime = modelBuilder.Entity<OvertimeRequest>();

@@ -474,15 +474,42 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _leave.CancelAsync(id, GetUserId()));
 
-    // POST /leave/{id}/admin-cancel — an admin/owner withdraws leave that was
-    // already approved; the days go back into the employee's balance.
+    // POST /leave/{id}/admin-cancel — an admin/owner cancels any live leave
+    // (pending, approved, or with a cancellation under review); approved days
+    // go back into the employee's balance.
     // leave:write so an API key can't withdraw approved leave by holding the
     // Admin role alone; people signing in are unaffected by scopes.
     [RequireScope("leave:write")]
     [HttpPost("{id}/admin-cancel")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> AdminCancel(string id, AdminCancelLeaveDto dto) =>
-        ToTransitionResponse(await _leave.AdminCancelApprovedAsync(id, GetUserId(), dto.Reason));
+        ToTransitionResponse(await _leave.AdminCancelAsync(id, GetUserId(), dto.Reason));
+
+    // ---- Cancelling APPROVED leave: the employee asks, the chain decides ----
+
+    // POST /leave/{id}/cancellation — the applicant asks to cancel their
+    // approved leave (before it starts). Nobody above them → cancelled at once.
+    [HttpPost("{id}/cancellation")]
+    public async Task<IActionResult> RequestCancellation(string id, RequestLeaveCancellationDto dto) =>
+        ToTransitionResponse(await _leave.RequestCancellationAsync(id, GetUserId(), dto.Reason));
+
+    // POST /leave/{id}/cancellation/withdraw — the applicant takes the request back.
+    [HttpPost("{id}/cancellation/withdraw")]
+    public async Task<IActionResult> WithdrawCancellation(string id) =>
+        ToTransitionResponse(await _leave.WithdrawCancellationAsync(id, GetUserId()));
+
+    // POST /leave/{id}/cancellation/approve — the current-step approver. The
+    // last layer's approval cancels the leave and returns the days.
+    [HttpPost("{id}/cancellation/approve")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> ApproveCancellation(string id) =>
+        ToTransitionResponse(await _leave.ApproveCancellationAsync(id, GetUserId()));
+
+    // POST /leave/{id}/cancellation/reject — the leave still stands.
+    [HttpPost("{id}/cancellation/reject")]
+    [Authorize(Roles = "Supervisor,Admin,Owner")]
+    public async Task<IActionResult> RejectCancellation(string id, RejectLeaveDto dto) =>
+        ToTransitionResponse(await _leave.RejectCancellationAsync(id, GetUserId(), dto.ReviewNotes));
 
     // ---- Scheduled-job triggers -------------------------------------------
     // Force a run now instead of waiting for the background service's next
