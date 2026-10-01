@@ -88,8 +88,12 @@
         <a href="#scopes">scopes</a>.</li>
       <li>An unknown or revoked key, or one whose company no longer exists, gets
         <code>401</code>. The response doesn't say which, deliberately.</li>
-      <li>Some endpoints are for people only (signing in, managing API keys, the activity log,
-        accounting connections) and answer <code>403</code> to any key.</li>
+      <li>Some endpoints are for people only and answer <code>403</code> to any key: a
+        person's own actions (clocking in, applying for leave, filing a claim or overtime,
+        notifications), account actions (passwords, switching company) and platform settings
+        (managing API keys and admin access, the activity log, accounting connections).</li>
+      <li>Every other endpoint needs a scope, listed on its page. Only <code>GET /whoami</code>
+        and <code>GET /pending</code> work with any key.</li>
     </ul>
     <div class="callout warn">
       Treat a key like a password: keep it on your server, never in a browser or app bundle.
