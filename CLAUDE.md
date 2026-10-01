@@ -129,6 +129,21 @@ short **"Changed files"** section listing each path touched **in that response**
 (repo-relative) with a one-word note (added / edited / deleted). This lets the user
 review exactly what moved before accepting it. Only list files changed in that turn.
 
+## Merging to main: run the agents first (one PR, one merge)
+
+When asked to merge a branch to main, do this **on the branch, before the
+merge**, so their output ships in the same PR:
+
+1. Commit the change on the branch.
+2. Bring the branch up to date with main, so teammates' merged work is in it.
+3. Run **bug-check** (`.claude/agents/bug-check.md`) on the branch's own
+   changes. Fix confirmed bugs, or show them to the user, before going on.
+4. Run **whats-new**. It writes up everything after its bookmark in
+   `frontend/src/features/whats-new/lib/entries.ts`, from any branch.
+5. If anything under `backend/Modules` changed since the bookmark in
+   `api-docs/index.html`, run **api-docs**.
+6. Commit their edits on the branch, push, open the PR, merge once.
+
 ## Verify before saying done
 
 - Backend: `cd backend && dotnet build` (0 errors).

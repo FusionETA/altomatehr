@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Projects</title>
+  <meta name="description" content="Create, update, archive and look up projects: the work sites used for attendance geofencing, claims and payroll/Xero integration." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Projects/ProjectsController.cs,
+  ProjectService.cs, Dtos/ProjectDto.cs, Dtos/SaveProjectDto.cs,
+  Entities/Project.cs, Entities/ProjectGeofencePoint.cs,
+  Entities/ProjectAllowedIp.cs, Common/IpAllowlist.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html" aria-current="page">Projects</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Projects</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Projects</h1>
+    <p class="lead">
+      A project is a work site or place of work inside a company — an office, a client
+      site, a gate. Projects give attendance its geofence (and, optionally, an IP
+      allowlist) for clock-ins, are what an employee's claims are filed against, and can
+      be synced from Xero as a tracking category option, so each site's costs can be
+      split out when work is posted to the accounting system.
+    </p>
+    </div>
+
+    <section class="section" id="projects">
+      <h2>Projects</h2>
+      <p>
+        Needs the <code>projects</code> module on the company's plan — every endpoint below
+        answers <code>403</code> with
+        <code>This organization's plan does not include the 'projects' module.</code> otherwise.
+      </p>
+
+      <h3>The project object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Project id.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Display name.</td></tr>
+            <tr><td><code>location</code></td><td>string | null</td><td>Free-text street address, shown to people. Never parsed or geocoded.</td></tr>
+            <tr><td><code>latitude</code>, <code>longitude</code></td><td>number | null</td><td>Legacy single geofence centre. Kept as a fallback for a project with no rows in <code>geofencePoints</code>.</td></tr>
+            <tr><td><code>geofencePoints</code></td><td>array</td><td>Geofenced sites, each <code>{ id, label, latitude, longitude }</code>, in the order the clock-in distance check walks them — the first site inside its radius wins. Populated on every single-project response (<a href="#get-project">get</a>, <a href="#create-project">create</a>, <a href="#update-project">update</a>, archive, restore); empty on the list endpoint.</td></tr>
+            <tr><td><code>geofenceSiteCount</code></td><td>integer</td><td>Number of geofence sites. Set to the array's length wherever <code>geofencePoints</code> is populated; on the list endpoint it's the only one of the two that's filled in.</td></tr>
+            <tr><td><code>allowedIps</code></td><td>string | null</td><td>Legacy comma-separated IPv4 allowlist. Kept as a fallback for a project with no rows in <code>allowedIpEntries</code>.</td></tr>
+            <tr><td><code>allowedIpEntries</code></td><td>array</td><td>Labelled IP allowlist entries, each <code>{ id, label, cidr }</code>. Only enforced for employees whose policy has "require IP allowlist" on. Populated on every single-project response (<a href="#get-project">get</a>, <a href="#create-project">create</a>, <a href="#update-project">update</a>, archive, restore); empty on the list endpoint.</td></tr>
+            <tr><td><code>allowedIpCount</code></td><td>integer</td><td>Number of allowlist entries. Set to the array's length wherever <code>allowedIpEntries</code> is populated; on the list endpoint it's the only one of the two that's filled in.</td></tr>
+            <tr><td><code>workingHoursStart</code>, <code>workingHoursEnd</code></td><td>string | null</td><td>Local <code>"HH:mm"</code>, e.g. <code>"09:00"</code>. Both null means no schedule.</td></tr>
+            <tr><td><code>workingDays</code></td><td>string | null</td><td>CSV of ISO weekday numbers, <code>1</code> (Monday) – <code>7</code> (Sunday), e.g. <code>"1,2,3,4,5"</code>.</td></tr>
+            <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>Deducted from the schedule span when computing expected working minutes.</td></tr>
+            <tr><td><code>isArchived</code></td><td>boolean</td><td>Soft-archived — the row still exists for past claims/attendance to reference.</td></tr>
+            <tr><td><code>xeroProjectId</code></td><td>string | null</td><td>Set when this project came from Xero's Projects API.</td></tr>
+            <tr><td><code>xeroTrackingOptionId</code>, <code>xeroTrackingCategoryId</code></td><td>string | null</td><td>Set instead when the project came from an option on a Xero tracking category. A project has at most one of <code>xeroProjectId</code> / <code>xeroTrackingOptionId</code>; either one means Xero owns this row.</td></tr>
+            <tr><td><code>xeroStatus</code></td><td>string | null</td><td>Status as last synced from Xero.</td></tr>
+            <tr><td><code>xeroSyncedAt</code></td><td>string (ISO 8601) | null</td><td>When Xero last synced this row.</td></tr>
+            <tr><td><code>hiddenByTrackingCategory</code></td><td>boolean</td><td>True when this project came from a Xero tracking category the company has since switched away from — kept for past records, but should be left out of a project picker. Only populated by <a href="#get-projects">GET /projects</a> (the list); always <code>false</code> elsewhere.</td></tr>
+            <tr><td><code>createdAt</code></td><td>string (ISO 8601)</td><td>When the project was created.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <code>geofencePoints</code>/<code>allowedIpEntries</code> are only populated on a
+        single-project response; the list endpoint reports just their counts, so the two
+        responses can report the same project differently — see the notes on each endpoint
+        below.
+      </div>
+
+      <section class="endpoint" id="get-projects">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/projects</span>
+          <span class="tag scope">projects:read</span>
+        </div>
+        <p>
+          Every project in the company, archived included — admin screens need to see and
+          restore what's been retired. Each project includes
+          <code>geofenceSiteCount</code>/<code>allowedIpCount</code> and
+          <code>hiddenByTrackingCategory</code>, but not the full <code>geofencePoints</code> /
+          <code>allowedIpEntries</code> rows (see the callout above).
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#projects">project objects</a>.</p>
+<pre><code>[
+  {
+    "id": "prj_123",
+    "name": "Kuala Lumpur HQ",
+    "location": "Level 10, Jalan Example, 50450 Kuala Lumpur",
+    "latitude": 3.15,
+    "longitude": 101.7,
+    "geofencePoints": [],
+    "geofenceSiteCount": 2,
+    "allowedIps": null,
+    "allowedIpEntries": [],
+    "allowedIpCount": 1,
+    "workingHoursStart": "09:00",
+    "workingHoursEnd": "18:00",
+    "workingDays": "1,2,3,4,5",
+    "lunchBreakMinutes": 60,
+    "isArchived": false,
+    "xeroProjectId": null,
+    "xeroTrackingOptionId": null,
+    "xeroTrackingCategoryId": null,
+    "xeroStatus": null,
+    "xeroSyncedAt": null,
+    "hiddenByTrackingCategory": false,
+    "createdAt": "2025-01-10T02:00:00Z"
+  }
+]</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/projects \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-project">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/projects/{id}</span>
+          <span class="tag scope">projects:read</span>
+        </div>
+        <p>
+          One project, with its full <code>geofencePoints</code> and
+          <code>allowedIpEntries</code> rows — the list endpoint omits both, since drawing a
+          grid of names doesn't need a query per project for data it never shows.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          A <a href="#projects">project object</a>, with <code>geofencePoints</code> and
+          <code>allowedIpEntries</code> filled in and <code>geofenceSiteCount</code>/
+          <code>allowedIpCount</code> set to their lengths. <code>hiddenByTrackingCategory</code>
+          is always <code>false</code> here.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/projects/prj_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no project with that id in this company.</p>
+      </section>
+
+      <section class="endpoint" id="get-projects-mine">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/projects/mine</span>
+          <span class="tag scope">projects:read</span>
+        </div>
+        <p>
+          The caller's own projects, via their team memberships — what a clock-in picker
+          should offer, since clocking into a project the caller isn't on is refused.
+          Archived projects and ones hidden by a Xero tracking-category switch (see
+          <code>hiddenByTrackingCategory</code> above) are left out.
+        </p>
+        <div class="callout warn">
+          This endpoint identifies "the caller" from the signed-in employee's own user id.
+          An API key has no employee or team membership behind it, so calling this with a
+          key always returns an empty array — it's built for the employee-portal UI, not
+          for integrations.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#projects">project objects</a>, shaped like the list endpoint above.</p>
+<pre><code>curl https://&lt;api-host&gt;/projects/mine \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+    </section>
+
+    <section class="section" id="creating-updating">
+      <h2>Creating &amp; updating</h2>
+      <p>
+        Both require the <code>Admin</code> role, which an API key always holds in its own
+        company, so a key may call either once it has the <code>projects</code> module.
+      </p>
+
+      <section class="endpoint" id="create-project">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/projects</span>
+          <span class="tag scope">projects:write</span>
+        </div>
+        <p>Creates a project, geofence sites and IP allowlist included.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>max 160 chars</td><td>Display name.</td></tr>
+              <tr><td><code>location</code></td><td>string</td><td>No</td><td>max 400 chars</td><td>Free-text street address.</td></tr>
+              <tr><td><code>latitude</code></td><td>number</td><td>No</td><td>-90 to 90</td><td>Geofence centre. Both null → not geofenced.</td></tr>
+              <tr><td><code>longitude</code></td><td>number</td><td>No</td><td>-180 to 180</td><td>Geofence centre.</td></tr>
+              <tr><td><code>allowedIps</code></td><td>string</td><td>No</td><td>max 1000 chars</td><td>Legacy comma-separated IPv4 allowlist.</td></tr>
+              <tr><td><code>workingHoursStart</code></td><td>string</td><td>No</td><td>max 5 chars</td><td>Local <code>"HH:mm"</code>.</td></tr>
+              <tr><td><code>workingHoursEnd</code></td><td>string</td><td>No</td><td>max 5 chars</td><td>Local <code>"HH:mm"</code>.</td></tr>
+              <tr><td><code>workingDays</code></td><td>string</td><td>No</td><td>max 20 chars</td><td>CSV of ISO weekday numbers 1–7.</td></tr>
+              <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>No</td><td>0–480, default 60</td><td>Deducted from the schedule span.</td></tr>
+              <tr><td><code>geofencePoints[].label</code></td><td>string</td><td>Yes (per row)</td><td>max 160 chars</td><td>Shown to an employee who's off-site.</td></tr>
+              <tr><td><code>geofencePoints[].latitude</code></td><td>number</td><td>Yes (per row)</td><td>-90 to 90</td><td></td></tr>
+              <tr><td><code>geofencePoints[].longitude</code></td><td>number</td><td>Yes (per row)</td><td>-180 to 180</td><td></td></tr>
+              <tr><td><code>allowedIpEntries[].label</code></td><td>string</td><td>Yes (per row)</td><td>max 160 chars</td><td></td></tr>
+              <tr><td><code>allowedIpEntries[].cidr</code></td><td>string</td><td>Yes (per row)</td><td>max 64 chars</td><td>A bare IPv4 address or an IPv4 CIDR range, e.g. <code>"203.0.113.0/24"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <code>allowedIpEntries</code> is validated before anything is written: a bad
+          <code>cidr</code> fails the whole call with <code>400</code> and nothing is saved —
+          not even <code>name</code>/<code>location</code>/etc. <code>geofencePoints</code>
+          order is behaviour, not presentation: the clock-in distance check walks the array in
+          order and the first site inside its radius wins.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          A <a href="#projects">project object</a> (status is <code>200</code>, not
+          <code>201</code>), with <code>geofencePoints</code>/<code>allowedIpEntries</code>
+          filled in from what was just saved and their counts set to the saved lengths.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li>
+            <code>400</code> — a bad <code>allowedIpEntries[].cidr</code> is rejected before
+            anything is written:
+            <code>{ "errors": { "allowedIpEntries": ["\"10.0.0.999\" is not a valid IPv4 address or CIDR range."] } }</code>
+          </li>
+          <li><code>400</code> — <code>{ "errors": { "Name": ["..."] } }</code> for other field validation failures.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/projects \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Penang Site",
+    "location": "12 Jalan Example, Penang",
+    "latitude": 5.4,
+    "longitude": 100.3,
+    "lunchBreakMinutes": 60,
+    "geofencePoints": [
+      { "label": "Main gate", "latitude": 5.4, "longitude": 100.3 }
+    ],
+    "allowedIpEntries": [
+      { "label": "Site office wifi", "cidr": "203.0.113.0/24" }
+    ]
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-project">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/projects/{id}</span>
+          <span class="tag scope">projects:write</span>
+        </div>
+        <p>
+          Renames and/or updates a project. This is a full replace, not a merge: every
+          scalar field is overwritten with what's sent, and <code>geofencePoints</code> /
+          <code>allowedIpEntries</code> are each replaced wholesale — what you send IS the
+          list afterwards, so an empty array clears it.
+        </p>
+        <h3>Request</h3>
+        <p>Same body as <a href="#create-project">create</a>, geofence sites and allowlist included.</p>
+        <div class="callout">
+          <code>geofencePoints</code> order is behaviour, not presentation: the clock-in
+          distance check walks the array in order and the first site inside its radius
+          wins, so reordering it changes which site an employee is judged against.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The updated <a href="#projects">project object</a>, with
+          <code>geofencePoints</code>/<code>allowedIpEntries</code> filled in from what was
+          just saved.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — no project with that id in this company.</li>
+          <li>
+            <code>400</code> — a bad <code>allowedIpEntries[].cidr</code> is rejected before
+            anything is written:
+            <code>{ "errors": { "allowedIpEntries": ["\"10.0.0.999\" is not a valid IPv4 address or CIDR range."] } }</code>
+          </li>
+          <li><code>400</code> — other field validation failures, same shape as create.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/projects/prj_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Kuala Lumpur HQ",
+    "latitude": 3.15,
+    "longitude": 101.7,
+    "lunchBreakMinutes": 60,
+    "geofencePoints": [
+      { "label": "Main entrance", "latitude": 3.15, "longitude": 101.7 }
+    ],
+    "allowedIpEntries": [
+      { "label": "HQ office wifi", "cidr": "203.0.113.0/24" }
+    ]
+  }'</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="archiving">
+      <h2>Archiving</h2>
+      <p>
+        Soft-archive, not delete: an archived project is kept so past claims and
+        attendance records still resolve its name, it just stops being offered where a
+        project is picked (<a href="#get-projects-mine">GET /projects/mine</a>) and is
+        excluded from the clock-in/claim pickers. Both endpoints also clear
+        <code>archivedByXeroConnect</code>, so a later Xero disconnect won't silently
+        reverse an admin's own choice.
+      </p>
+      <section class="endpoint" id="archive-project">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/projects/{id}/archive</span>
+          <span class="tag scope">projects:write</span>
+        </div>
+        <p>Archives a project.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The updated <a href="#projects">project object</a>, with <code>isArchived: true</code>
+          and its <code>geofencePoints</code>/<code>allowedIpEntries</code> filled in, same as
+          <a href="#get-project">GET /projects/{id}</a>.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/projects/prj_123/archive \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no project with that id in this company.</p>
+      </section>
+
+      <section class="endpoint" id="restore-project">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/projects/{id}/restore</span>
+          <span class="tag scope">projects:write</span>
+        </div>
+        <p>Un-archives a project.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The updated <a href="#projects">project object</a>, with <code>isArchived: false</code>
+          and its <code>geofencePoints</code>/<code>allowedIpEntries</code> filled in, same as
+          <a href="#get-project">GET /projects/{id}</a>.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/projects/prj_123/restore \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no project with that id in this company.</p>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>GET /projects/my-ip</code> is marked <code>[HumanOnly]</code> — a key can never
+        call it. It reports the IP address the server sees for the current request, meant to
+        let a signed-in admin drop "the machine I'm on right now" into a project's allowlist;
+        called with a key it would only report the integration's own outbound address.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>
