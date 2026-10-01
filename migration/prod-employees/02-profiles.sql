@@ -6,7 +6,11 @@
 -- settings migration treated every other child row.
 --
 -- Columns v2 declares NOT NULL are defaulted here rather than left to fail:
---   PaymentMethod -> BANK_TRANSFER, SalaryType -> MONTHLY, flags -> 0, EpfEmployeeRate -> 0
+--   PaymentMethod -> BANK_TRANSFER, SalaryType -> MONTHLY, EpfEmployeeRate -> 0,
+--   flags -> v1's own schema defaults: IsResident, ContributeToEpf and ContributeToEis
+--   -> 1 (v1 @default(true)), every other flag -> 0. A person with no v1 PayrollProfile
+--   row was a resident with EPF and EIS in v1; defaulting those to 0 made migrated
+--   citizens non-resident (taxed at 30%).
 -- EpfEmployeeRate is carried VERBATIM as a percentage (v1 holds 11.00 / 2.00), which is
 -- what PayslipCalculator expects -- EpfCalculator clamps upward from 11m, so a 0 here
 -- means "statutory rate", not "no contribution".
@@ -34,17 +38,17 @@ SELECT
   IF(m.remapped, CONCAT('prod-', ep.id), ep.id), m.v2_id, p.v2_user_id,
   pp.phone, pp.alternateEmail, pp.gender, pp.dateOfBirth, pp.nationality, pp.race,
   COALESCE(pp.hasPr, 0),
-  pp.idType, pp.idNumber, pp.maritalStatus, COALESCE(pp.isResident, 0), COALESCE(pp.isOku, 0),
+  pp.idType, pp.idNumber, pp.maritalStatus, COALESCE(pp.isResident, 1), COALESCE(pp.isOku, 0),
   pp.addressLine1, pp.addressLine2, pp.city, pp.postcode, pp.state,
   pp.emergencyContactName, pp.emergencyContactPhone, pp.emergencyContactRelation,
   pp.joinDate, pp.leaveDate, pp.department, pp.location, pp.workSchedule,
   pp.spouseWorking, pp.spouseDisabled, pp.spousePcbNumber, pp.spouseIdNumber, pp.childRelief,
   pp.prevEmploymentYear, pp.prevRemuneration, pp.prevEpf, pp.prevAllowableDeductions,
   pp.prevPcb, pp.prevZakat, COALESCE(pp.prevIncludesPriorThisOrgPeriod, 0),
-  COALESCE(pp.contributeToEpf, 0), pp.epfNumber, COALESCE(pp.epfEmployeeRate, 0),
+  COALESCE(pp.contributeToEpf, 1), pp.epfNumber, COALESCE(pp.epfEmployeeRate, 0),
   COALESCE(pp.epfEmployeeVoluntary, 0), COALESCE(pp.epfEmployerVoluntary, 0),
   COALESCE(pp.epfMemberBefore1998, 0), pp.socsoNumber, pp.socsoScheme,
-  COALESCE(pp.contributeToEis, 0), COALESCE(pp.contributeToSkbbk, 0),
+  COALESCE(pp.contributeToEis, 1), COALESCE(pp.contributeToSkbbk, 0),
   pp.incomeTaxNumber, COALESCE(pp.pcbBorneByEmployer, 0), pp.ssfwNumber,
   COALESCE(pp.reportedToLhdn, 0),
   COALESCE(pp.paymentMethod, 'BANK_TRANSFER'), pp.bankName, pp.bankAccountHolderName,

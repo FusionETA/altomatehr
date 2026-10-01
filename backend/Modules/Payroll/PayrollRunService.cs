@@ -865,7 +865,7 @@ public class PayrollRunService : IPayrollRunService
 
             Nationality = profile.Nationality,
             HasPr = profile.HasPr,
-            IsResident = profile.IsResident,
+            IsResident = PayslipCalculator.IsTaxResident(profile.IsResident, profile.Nationality),
             IsOku = profile.IsOku,
             DateOfBirth = profile.DateOfBirth,
             SpecialTaxScheme = PayslipCalculator.SpecialTaxSchemeFor(
@@ -1053,7 +1053,7 @@ public class PayrollRunService : IPayrollRunService
             SnapshotEmployeeNumber = membership?.EmployeeNumber,
             SnapshotPosition = membership?.JobTitle,
             SnapshotNationality = profile.Nationality,
-            SnapshotIsResident = profile.IsResident,
+            SnapshotIsResident = PayslipCalculator.IsTaxResident(profile.IsResident, profile.Nationality),
 
             SnapshotSalaryType = profile.SalaryType,
             SnapshotMonthlySalary = profile.MonthlySalary,

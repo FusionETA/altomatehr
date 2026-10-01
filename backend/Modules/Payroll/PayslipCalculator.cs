@@ -973,6 +973,15 @@ public static class PayslipCalculator
             || value.Contains("rakyat malaysia", StringComparison.Ordinal);
     }
 
+    // A Malaysian is taxed as a resident whatever the stored flag says — the
+    // profile screen shows a citizen as resident and doesn't let it be turned
+    // off. Profiles migrated from v1 can carry `IsResident = false` for a
+    // citizen (v1 defaulted a missing payroll profile to resident; the import
+    // wrote false), which silently taxed them at the 30% non-resident rate
+    // while the screen said resident. Non-citizens keep their stored flag.
+    public static bool IsTaxResident(bool storedIsResident, string? nationality) =>
+        storedIsResident || IsMalaysianNationality(nationality);
+
     // The approval, if its months cover the period. A null end is open-ended;
     // a null start means "from the beginning". Outside the range the employee
     // is an ordinary resident again — REP, for one, lasts five years.
