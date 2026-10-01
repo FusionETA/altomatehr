@@ -2,6 +2,7 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Notifications.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Notifications;
 
@@ -21,11 +22,13 @@ public class PushController : ControllerBase
 
     // GET /push/public-key — the client passes this straight into
     // PushManager.subscribe({ applicationServerKey: ... }).
+    [HumanOnly]
     [HttpGet("public-key")]
     public ActionResult<VapidPublicKeyDto> GetPublicKey() =>
         Ok(new VapidPublicKeyDto { PublicKey = _push.PublicKey });
 
     // POST /push/subscribe — registers (or refreshes) the caller's device.
+    [HumanOnly]
     [HttpPost("subscribe")]
     public async Task<IActionResult> Subscribe(SavePushSubscriptionDto dto)
     {
@@ -37,6 +40,7 @@ public class PushController : ControllerBase
     }
 
     // POST /push/unsubscribe — removes one device, scoped to the caller.
+    [HumanOnly]
     [HttpPost("unsubscribe")]
     public async Task<IActionResult> Unsubscribe(UnsubscribePushDto dto)
     {

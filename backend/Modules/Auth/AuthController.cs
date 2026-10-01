@@ -4,6 +4,7 @@ using AltomateHR.Api.Modules.Auth.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Auth;
 
@@ -106,6 +107,7 @@ public class AuthController : ControllerBase
     // server has already thrown away, and the next silent refresh would fail
     // for no visible reason.
     [Authorize]
+    [HumanOnly]
     [HttpPost("change-password")]
     [EnableRateLimiting("auth-forgot-password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
@@ -122,6 +124,7 @@ public class AuthController : ControllerBase
 
     // POST /auth/switch-org/{organizationId} — re-mint the token for another org you belong to.
     [Authorize]
+    [HumanOnly]
     [HttpPost("switch-org/{organizationId}")]
     public async Task<ActionResult<AuthResponseDto>> SwitchOrg(string organizationId)
     {
@@ -139,6 +142,7 @@ public class AuthController : ControllerBase
     // POST /auth/support/enter/{organizationId} — Fusioneta support: act as an
     // Admin inside ANY org. Superadmins only (SUPERADMIN_EMAILS).
     [Authorize(Policy = AuthPolicies.Superadmin)]
+    [HumanOnly]
     [HttpPost("support/enter/{organizationId}")]
     public async Task<ActionResult<AuthResponseDto>> EnterSupport(string organizationId)
     {
@@ -154,6 +158,7 @@ public class AuthController : ControllerBase
 
     // POST /auth/support/exit — back to your own org.
     [Authorize]
+    [HumanOnly]
     [HttpPost("support/exit")]
     public async Task<ActionResult<AuthResponseDto>> ExitSupport()
     {
@@ -169,6 +174,7 @@ public class AuthController : ControllerBase
 
     // GET /auth/orgs — the orgs this account can switch into.
     [Authorize]
+    [HumanOnly]
     [HttpGet("orgs")]
     public async Task<ActionResult<IReadOnlyList<UserOrgDto>>> Orgs()
     {

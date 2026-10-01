@@ -45,14 +45,14 @@ public class PayslipEmailService : IPayslipEmailService
     public async Task<PayslipEmailResult> EmailPayslipAsync(string runId, string employeeProfileId)
     {
         var run = await _runs.GetByIdAsync(runId);
-        if (run is null) return new PayslipEmailResult(false, "Run not found.");
+        if (run is null) return new PayslipEmailResult(false, "Run not found.", NotFound: true);
         if (run.Status != PayrollRunStatus.SUBMITTED)
             return new PayslipEmailResult(false, NotSubmittedMessage);
 
         var payslip = (await _payslips.GetForRunAsync(runId))
             .FirstOrDefault(p => p.EmployeeProfileId == employeeProfileId);
         if (payslip is null)
-            return new PayslipEmailResult(false, "That employee has no payslip on this run.");
+            return new PayslipEmailResult(false, "That employee has no payslip on this run.", NotFound: true);
 
         var directory = await _employees.GetSnapshotAsync();
         var (ok, reason) = await SendOneAsync(payslip, run, directory);
@@ -62,7 +62,7 @@ public class PayslipEmailService : IPayslipEmailService
     public async Task<PayslipEmailBulkResult> EmailPayslipsForRunAsync(string runId)
     {
         var run = await _runs.GetByIdAsync(runId);
-        if (run is null) return new PayslipEmailBulkResult(0, [], "Run not found.");
+        if (run is null) return new PayslipEmailBulkResult(0, [], "Run not found.", NotFound: true);
         if (run.Status != PayrollRunStatus.SUBMITTED)
             return new PayslipEmailBulkResult(0, [], NotSubmittedMessage);
 

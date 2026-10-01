@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Notifications.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Notifications;
 
@@ -15,6 +16,7 @@ public class NotificationsController : ControllerBase
 
     // GET /notifications — the current user's own notifications + unread
     // count, for the header bell. Any authenticated role.
+    [HumanOnly]
     [HttpGet]
     public async Task<ActionResult<NotificationListDto>> Get() =>
         Ok(await _notifications.GetForCurrentUserAsync());
@@ -22,6 +24,7 @@ public class NotificationsController : ControllerBase
     // POST /notifications/read — { id } marks one read, { all: true } marks
     // every unread one read. Scoped to the caller, so a forged id can't
     // acknowledge another user's notification.
+    [HumanOnly]
     [HttpPost("read")]
     public async Task<IActionResult> MarkRead(MarkNotificationsReadDto dto)
     {

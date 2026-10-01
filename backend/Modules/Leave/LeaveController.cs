@@ -65,6 +65,7 @@ public class LeaveController : ControllerBase
 
     // PUT /leave/entitlements/{employeeId}/{leaveTypeId}?year=YYYY
     // Override one employee's entitlement. Admin/Owner: it grants days.
+    [RequireScope("leave:write")]
     [HttpPut("entitlements/{employeeId}/{leaveTypeId}")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SetEntitlement(
@@ -75,6 +76,7 @@ public class LeaveController : ControllerBase
             employeeId, leaveTypeId, year ?? DateTime.UtcNow.Year, dto));
 
     // POST /leave/entitlements/{employeeId}/{leaveTypeId}/reset?year=YYYY
+    [RequireScope("leave:write")]
     [HttpPost("entitlements/{employeeId}/{leaveTypeId}/reset")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ResetEntitlement(
@@ -85,6 +87,7 @@ public class LeaveController : ControllerBase
 
     // POST /leave/entitlements/{employeeId}/seed?year=YYYY — opens the year
     // for someone who joined after the rollover ran.
+    [RequireScope("leave:write")]
     [HttpPost("entitlements/{employeeId}/seed")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SeedEntitlements(
@@ -288,6 +291,7 @@ public class LeaveController : ControllerBase
     }
 
     // GET /leave/import/template?format=csv|xlsx — the leave-history template.
+    [RequireScope("leave:read")]
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
     public IActionResult ImportTemplate([FromQuery] string? format)
@@ -309,6 +313,7 @@ public class LeaveController : ControllerBase
     // POST /leave/import — multipart upload of historical leave applications.
     // 200 with a per-row report even when some rows failed; only an unusable
     // FILE is a 400.
+    [RequireScope("leave:write")]
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     [RequestSizeLimit(8 * 1024 * 1024)]
@@ -346,6 +351,7 @@ public class LeaveController : ControllerBase
     // apply call so a failed upload costs the form nothing but a retry, and so
     // the application itself stays plain JSON.
     [RequirePolicyModule(PolicyModules.Leave)]
+    [HumanOnly]
     [HttpPost("attachments")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     public async Task<IActionResult> UploadAttachment(IFormFile? file)
@@ -392,6 +398,7 @@ public class LeaveController : ControllerBase
 
     // POST /leave — apply.
     [RequirePolicyModule(PolicyModules.Leave)]
+    [HumanOnly]
     [HttpPost]
     public async Task<IActionResult> Apply(CreateLeaveApplicationDto dto)
     {
@@ -400,6 +407,7 @@ public class LeaveController : ControllerBase
     }
 
     // PUT /leave/{id} — edit your own pending request.
+    [HumanOnly]
     [HttpPut("{id}")]
     public async Task<IActionResult> Edit(string id, CreateLeaveApplicationDto dto)
     {
@@ -412,6 +420,7 @@ public class LeaveController : ControllerBase
 
     // POST /leave/on-behalf/{employeeId} — an admin files leave for someone.
     // Lands APPROVED and records who did it.
+    [RequireScope("leave:write")]
     [HttpPost("on-behalf/{employeeId}")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ApplyOnBehalf(string employeeId, CreateLeaveApplicationDto dto)
@@ -435,6 +444,7 @@ public class LeaveController : ControllerBase
     }
 
     // POST /leave/{id}/approve — the current-step approver in the applicant's chain.
+    [RequireScope("leave:write")]
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
@@ -445,18 +455,21 @@ public class LeaveController : ControllerBase
     // because a run where eighteen of twenty landed is not a failed request.
     //
     // No bulk reject counterpart on purpose — see BulkApproveLeaveDto.
+    [RequireScope("leave:write")]
     [HttpPost("bulk/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> BulkApprove(BulkApproveLeaveDto dto) =>
         Ok(await _leave.BulkApproveAsync(dto.Ids, GetUserId()));
 
     // POST /leave/{id}/reject — the current-step approver in the applicant's chain.
+    [RequireScope("leave:write")]
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectLeaveDto dto) =>
         ToTransitionResponse(await _leave.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 
     // POST /leave/{id}/cancel — the owner cancels their own pending request.
+    [HumanOnly]
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _leave.CancelAsync(id, GetUserId()));
@@ -488,6 +501,7 @@ public class LeaveController : ControllerBase
     // `year` defaults to the current UTC year; pass it explicitly to re-open a
     // past year or to pre-open the next one. Safe to re-run: existing rows are
     // skipped, never duplicated (the DB unique index backs that up).
+    [RequireScope("leave:write")]
     [HttpPost("cron/year-rollover")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> YearRollover([FromQuery, Range(2000, 2100)] int? year)
@@ -507,6 +521,7 @@ public class LeaveController : ControllerBase
     }
 
     // POST /leave/cron/monthly-accrual — force a monthly accrual + expiry sweep.
+    [RequireScope("leave:write")]
     [HttpPost("cron/monthly-accrual")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> MonthlyAccrual()

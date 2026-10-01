@@ -1,6 +1,8 @@
 using AltomateHR.Api.Modules.Approvals.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Auth;
 
 namespace AltomateHR.Api.Modules.Approvals;
 
@@ -26,6 +28,7 @@ public class ApprovalsController : ControllerBase
     // applies the system's own "nobody above them" rule to rows that predate it,
     // rather than making a judgement on any individual request. Admins remain
     // outside every approval chain (see OrgRoles).
+    [HumanOnly]
     [HttpPost("reconcile")]
     public async Task<ActionResult<ApprovalReconciliationDto>> Reconcile([FromQuery] bool apply = false) =>
         Ok(await _reconciliation.RunAsync(apply));
@@ -37,6 +40,10 @@ public class ApprovalsController : ControllerBase
     // gated by a shared secret since it already requires an Admin/Owner JWT.
     // Runs system-wide (every org) and sends real notifications — there's no
     // dry-run mode, since "what would be sent" is exactly what this returns.
+    [HumanOnly]
+    // System-wide (every org) and it sends real notifications, so an admin of
+    // one company must not be able to fire it at all the others.
+    [Authorize(Policy = AuthPolicies.Superadmin)]
     [HttpPost("cron/digest/run")]
     public async Task<ActionResult<ApprovalDigestRunResultDto>> RunDigest() =>
         Ok(await _digest.RunAsync());

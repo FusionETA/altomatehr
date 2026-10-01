@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Dashboard;
 
@@ -13,6 +14,7 @@ public class AdminOverviewController : ControllerBase
 
     public AdminOverviewController(IAdminOverviewService service) => _service = service;
 
+    [HumanOnly]
     [HttpGet]
     public async Task<IActionResult> Get() => Ok(await _service.GetAsync());
 }

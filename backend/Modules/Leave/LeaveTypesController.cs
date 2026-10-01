@@ -22,6 +22,7 @@ public class LeaveTypesController : ControllerBase
     public async Task<IActionResult> GetAll() => Ok(await _types.GetAllAsync());
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("leave:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveLeaveTypeDto dto)
     {
@@ -38,11 +39,13 @@ public class LeaveTypesController : ControllerBase
         Ok(new { active = await _types.CountActiveTypesAsync() });
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("leave:write")]
     [HttpPost("defaults")]
     public async Task<IActionResult> EnsureDefaults() =>
         Ok(new { added = await _types.EnsureDefaultsAsync() });
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("leave:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveLeaveTypeDto dto)
     {
@@ -52,11 +55,13 @@ public class LeaveTypesController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("leave:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id) =>
         ToResponse(await _types.SetArchivedAsync(id, true));
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("leave:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id) =>
         ToResponse(await _types.SetArchivedAsync(id, false));

@@ -32,6 +32,7 @@ public class OrganizationsController : ControllerBase
     // org plan ceiling ∩ their per-admin grant) plus every grantable key. Drives
     // nav visibility and the Owner's access picker. Any authenticated user reads
     // their own access.
+    [RequireScope("organizations:read")]
     [HttpGet("modules")]
     public async Task<IActionResult> GetModules([FromServices] IModuleAccessService access) =>
         Ok(new ModuleAccessDto
@@ -43,12 +44,14 @@ public class OrganizationsController : ControllerBase
     // GET /organizations/admins — the org's admins with their module grant.
     // Owners only: controlling who sees what is the Owner's call, not an admin's.
     [Authorize(Roles = "Owner")]
+    [HumanOnly]
     [HttpGet("admins")]
     public async Task<IActionResult> ListAdmins() => Ok(await _organizations.ListAdminsAsync());
 
     // PUT /organizations/admins/{userId}/access — set one admin's module grant
     // (null = full access). Owners only.
     [Authorize(Roles = "Owner")]
+    [HumanOnly]
     [HttpPut("admins/{userId}/access")]
     public async Task<IActionResult> SetAdminAccess(string userId, SetAdminAccessDto dto)
     {
@@ -65,6 +68,7 @@ public class OrganizationsController : ControllerBase
 
     // PUT /organizations/current — update org settings (Admins only).
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
     [HttpPut("current")]
     public async Task<IActionResult> UpdateCurrent(UpdateOrganizationDto dto)
     {
@@ -84,6 +88,7 @@ public class OrganizationsController : ControllerBase
     // billing action, never something a customer Owner can do to their own org. The target
     // org is explicit, so a superadmin can provision ANY org (not just their active one).
     [Authorize(Policy = AuthPolicies.Superadmin)]
+    [HumanOnly]
     [HttpPut("{organizationId}/plan")]
     public async Task<IActionResult> UpdatePlan(string organizationId, UpdateOrgPlanDto dto)
     {
@@ -102,6 +107,7 @@ public class OrganizationsController : ControllerBase
     // creator becomes the Owner of the new org, so it appears in their org
     // switcher (GET /auth/orgs).
     [Authorize(Roles = "Admin,Owner")]
+    [HumanOnly]
     [HttpPost]
     public async Task<IActionResult> Create(CreateOrganizationDto dto)
     {

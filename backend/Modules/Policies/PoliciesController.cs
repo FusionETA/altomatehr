@@ -23,6 +23,7 @@ public class PoliciesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _policies.GetAllAsync());
 
+    [RequireScope("policies:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SavePolicyDto dto)
     {
@@ -30,6 +31,7 @@ public class PoliciesController : ControllerBase
         return result.Ok ? Ok(result.Policy) : BadRequest(new { message = result.Error });
     }
 
+    [RequireScope("policies:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SavePolicyDto dto)
     {
@@ -38,6 +40,7 @@ public class PoliciesController : ControllerBase
         return result.Ok ? Ok(result.Policy) : BadRequest(new { message = result.Error });
     }
 
+    [RequireScope("policies:write")]
     [HttpPost("{id}/default")]
     public async Task<IActionResult> SetDefault(string id)
     {
@@ -45,6 +48,7 @@ public class PoliciesController : ControllerBase
         return policy is null ? NotFound() : Ok(policy);
     }
 
+    [RequireScope("policies:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
@@ -52,6 +56,7 @@ public class PoliciesController : ControllerBase
         return policy is null ? NotFound() : Ok(policy);
     }
 
+    [RequireScope("policies:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {

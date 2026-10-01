@@ -510,7 +510,7 @@ public class PayrollRunsController : ControllerBase
     [HttpDelete("{id}/claims/{claimId}")]
     public async Task<IActionResult> DetachClaim(string id, string claimId)
     {
-        var result = await _claims.DetachAsync(claimId);
+        var result = await _claims.DetachAsync(id, claimId);
 
         if (!result.Found) return NotFound();
         return result.Ok ? NoContent() : Conflict(new { error = result.Error });
@@ -526,6 +526,7 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> EmailPayslip(string id, string employeeProfileId)
     {
         var result = await _payslipEmail.EmailPayslipAsync(id, employeeProfileId);
+        if (result.NotFound) return NotFound(new { error = result.Error });
         return result.Ok ? Ok(result) : Conflict(new { error = result.Error });
     }
 
@@ -534,6 +535,7 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> EmailRunPayslips(string id)
     {
         var result = await _payslipEmail.EmailPayslipsForRunAsync(id);
+        if (result.NotFound) return NotFound(new { error = result.Error });
         return result.Error is null ? Ok(result) : Conflict(new { error = result.Error });
     }
 }

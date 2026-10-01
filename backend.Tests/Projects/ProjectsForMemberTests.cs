@@ -236,7 +236,11 @@ internal sealed class FakeProjectRepository : IProjectRepository
     public Task<List<Project>> GetAllAsync() => Task.FromResult(_projects);
     public Task<Project?> GetByIdAsync(string id) =>
         Task.FromResult(_projects.FirstOrDefault(p => p.Id == id));
-    public Task<Project> AddAsync(Project project) => throw new NotSupportedException();
+    public Task<Project> AddAsync(Project project)
+    {
+        _projects.Add(project);
+        return Task.FromResult(project);
+    }
     public Task UpdateAsync(Project project) => Task.CompletedTask;
 }
 

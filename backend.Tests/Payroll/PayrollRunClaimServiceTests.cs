@@ -287,7 +287,7 @@ public class PayrollRunClaimServiceTests : IDisposable
         var run = await AddRunAsync();
         await _service.AttachAsync(run.Id, "clm-1");
 
-        var result = await _service.DetachAsync("clm-1");
+        var result = await _service.DetachAsync(run.Id, "clm-1");
 
         Assert.True(result.Ok);
         Assert.Empty(await _service.GetForRunAsync(run.Id));
@@ -309,17 +309,33 @@ public class PayrollRunClaimServiceTests : IDisposable
         submitted!.Status = PayrollRunStatus.SUBMITTED;
         await _runs.UpdateAsync(submitted);
 
-        var result = await _service.DetachAsync("clm-1");
+        var result = await _service.DetachAsync(run.Id, "clm-1");
 
         Assert.True(result.Found);
         Assert.False(result.Ok);
         Assert.Single(await _service.GetForRunAsync(run.Id));
     }
 
+    // The route names the run: a claim held by another run is not this run's
+    // to detach, so it reads as not found and stays where it is.
+    [Fact]
+    public async Task DetachAsync_ReportsAClaimOnADifferentRunAsNotFound()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        AddClaim("clm-1", "usr-1");
+        var run = await AddRunAsync();
+        await _service.AttachAsync(run.Id, "clm-1");
+
+        var result = await _service.DetachAsync("some-other-run", "clm-1");
+
+        Assert.False(result.Found);
+        Assert.Single(await _service.GetForRunAsync(run.Id));
+    }
+
     [Fact]
     public async Task DetachAsync_ReportsAnUnattachedClaimAsNotFound()
     {
-        var result = await _service.DetachAsync("clm-1");
+        var result = await _service.DetachAsync("run-x", "clm-1");
 
         Assert.False(result.Found);
     }
@@ -425,7 +441,7 @@ public class PayrollRunClaimServiceTests : IDisposable
         var run = await AddRunAsync();
         await _service.AttachAsync(run.Id, "clm-1");
 
-        await _service.DetachAsync("clm-1");
+        await _service.DetachAsync(run.Id, "clm-1");
 
         Assert.Equal(ClaimSettlement.XERO_BILL, claim.Settlement);
     }
