@@ -56,14 +56,8 @@ public static class StatutoryFileFields
     // PERKESO routes on this (IC vs SOCSO number), so the set must match the
     // one the files were filed under: "Malaysia", "MY", "MYS" and the Malay
     // forms appear in imported profiles.
-    public static bool IsMalaysianNationality(string? nationality)
-    {
-        var v = (nationality ?? string.Empty).Trim().ToLowerInvariant();
-        if (v.Length == 0) return false;
-        return v is "malaysian" or "malaysia" or "my" or "mys"
-            || v.Contains("warganegara malaysia")
-            || v.Contains("rakyat malaysia");
-    }
+    public static bool IsMalaysianNationality(string? nationality) =>
+        PayslipCalculator.IsMalaysianNationality(nationality);
 
     // Digits only. An IC typed as 900101-14-5567 and one typed as
     // 900101145567 are the same person, and only one of them is submittable.

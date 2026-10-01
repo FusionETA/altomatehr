@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Payroll</title>
+  <meta name="description" content="Payroll employees, salary changes, pay items, payslips, loans, settings, annual forms, YTD import and portal credentials over the AltomateHR API." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  This page covers everything under Modules/Payroll EXCEPT PayrollRunsController
+  (payroll runs, generation, approval, statutory files, documents — see
+  payroll-runs.html).
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="payroll.html" aria-current="page">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Payroll</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Payroll</h1>
+    <p class="lead">
+      Everything in payroll except running payroll itself: each employee's payroll details,
+      their salary history, the pay-item catalogue, their payslips, staff loans, org-level
+      settings and company info, the year-end LHDN forms, year-to-date history import, and
+      saved statutory-portal logins. Creating, generating, submitting and approving a run —
+      and its statutory files and documents — are on the
+      <a href="payroll-runs.html">Payroll runs</a> page.
+    </p>
+    <p>
+      Every endpoint here needs the org's plan to include the <strong>Payroll</strong> module
+      (otherwise <code>403</code>) and acts with <strong>Admin</strong> rights, which a key
+      always has. All money is MYR, two decimal places; all dates ISO&nbsp;8601.
+    </p>
+    </div>
+
+    <section class="section">
+      <h2>Payroll employees</h2>
+      <p>
+        The roster payroll sees: what each person is paid, which statutory numbers are on
+        file, and where their money goes. Read-only here — every field is edited on the
+        employee's own profile or through the bulk import.
+      </p>
+      <div class="callout warn">
+        <strong>Two ids, two systems.</strong> This list returns <code>employeeProfileId</code>
+        (what every other payroll endpoint — loans, salary changes, adjustments — takes) AND
+        <code>userId</code> (what <code>GET /employees</code> calls <code>id</code>). They are
+        not interchangeable. A row with <code>hasPayrollProfile: false</code> is an org member
+        who has never had payroll details saved — its <code>employeeProfileId</code> is a
+        placeholder and must not be used to create a loan or record a salary change; fill in
+        their details first (via the import, or in the app).
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/employees</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The whole payroll roster for employees and supervisors (an Admin or Owner is never on payroll).</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>includeArchived</code></td><td>boolean</td><td>Default <code>false</code>. Include archived employees.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeProfileId</code></td><td>string</td><td>The id every other payroll endpoint takes.</td></tr>
+              <tr><td><code>userId</code></td><td>string</td><td>The id <code>/employees</code> calls <code>id</code>.</td></tr>
+              <tr><td><code>name</code>, <code>email</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeNumber</code>, <code>department</code>, <code>jobTitle</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>salaryType</code></td><td>string</td><td><code>"MONTHLY"</code> or <code>"HOURLY"</code>.</td></tr>
+              <tr><td><code>monthlySalary</code>, <code>hourlyRate</code></td><td>decimal?</td><td>Only one applies, per <code>salaryType</code>.</td></tr>
+              <tr><td><code>contributeToEpf</code>, <code>contributeToEis</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>epfNumber</code>, <code>epfEmployeeRate</code></td><td>string?, decimal</td><td></td></tr>
+              <tr><td><code>socsoNumber</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>incomeTaxNumber</code></td><td>string?</td><td>Not required for a run to include someone — see Readiness below.</td></tr>
+              <tr><td><code>paymentMethod</code></td><td>string</td><td><code>"BANK_TRANSFER"</code>, <code>"CASH"</code> or <code>"CHEQUE"</code>.</td></tr>
+              <tr><td><code>bankName</code>, <code>bankAccountNumber</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>idNumber</code>, <code>idType</code></td><td>string?</td><td><code>idType</code> one of <code>NRIC</code>, <code>PASSPORT</code>, <code>ARMY_NO</code>, <code>POLICE_NO</code>.</td></tr>
+              <tr><td><code>nationality</code>, <code>hasPr</code>, <code>isResident</code></td><td></td><td></td></tr>
+              <tr><td><code>joinDate</code>, <code>leaveDate</code></td><td>string?</td><td>ISO date.</td></tr>
+              <tr><td><code>isArchived</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>notPayableReason</code></td><td>string?</td><td><code>"No payroll details yet"</code>, <code>"Archived"</code>, or null when payable.</td></tr>
+              <tr><td><code>missing</code></td><td>string[]</td><td>Statutory gaps a run's readiness check would also report (e.g. a missing IC).</td></tr>
+              <tr><td><code>profileIncompleteSections</code></td><td>string[]</td><td>Which of <code>Personal</code>, <code>Employment</code>, <code>Statutory</code> is short of what a run needs to include this person at all.</td></tr>
+              <tr><td><code>hasPayrollProfile</code></td><td>boolean</td><td><code>false</code> = no payroll details saved yet; <code>employeeProfileId</code> is a placeholder.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payroll/employees?includeArchived=false \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/employees/template</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>A blank import workbook with one example row (skipped on import).</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string</td><td><code>Xlsx</code> (default) or <code>Csv</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The file (<code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code> or <code>text/csv</code>) named <code>payroll-employees-template.&lt;ext&gt;</code>.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/employees/export</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The same sheet, pre-filled with every current employee and supervisor — including anyone with <code>hasPayrollProfile: false</code>, as a blank row. Edit it and re-upload to <code>/import</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string</td><td><code>Xlsx</code> (default) or <code>Csv</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The file, named <code>payroll-employees.&lt;ext&gt;</code>.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/employees/import</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Bulk-fill statutory and salary details. <strong>Updates existing employees only</strong> —
+          it never creates a user or a login, so a row must match someone already in the org.
+        </p>
+        <h3>Request — <code>multipart/form-data</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>Required. <code>.csv</code> or <code>.xlsx</code> (anything else is read as xlsx).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Columns (identified by header text; aliases accepted; <code>*</code> = effectively required — a row with neither email nor name cannot be matched):</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Aliases</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>Employee Email</code> *</td><td>—</td><td>Matches an existing member. Email or Name is required to identify the row.</td></tr>
+              <tr><td><code>Employee Name</code> *</td><td>—</td><td>Used when email is blank; refused if ambiguous.</td></tr>
+              <tr><td><code>IC / Passport No</code></td><td>ic, ic no, nric, passport, personal id</td><td></td></tr>
+              <tr><td><code>ID Type</code></td><td>id type</td><td><code>NRIC</code>, <code>PASSPORT</code>, <code>ARMY_NO</code>, <code>POLICE_NO</code>.</td></tr>
+              <tr><td><code>Nationality</code></td><td>—</td><td>Mapped to the app's own spelling (e.g. "Malaysia" → "Malaysian"); unrecognised values are kept as typed and reported as a warning.</td></tr>
+              <tr><td><code>Gender</code></td><td>—</td><td></td></tr>
+              <tr><td><code>Marital Status</code></td><td>marital status</td><td></td></tr>
+              <tr><td><code>Spouse Working</code></td><td>spouse working</td><td>Yes/No. Leave blank for "unknown" — drives the PCB spouse-relief branch; do not default to No.</td></tr>
+              <tr><td><code>Date of Birth</code></td><td>dob, birth date</td><td>Date.</td></tr>
+              <tr><td><code>Join Date</code></td><td>date joined, start date</td><td>Date.</td></tr>
+              <tr><td><code>Leave Date</code></td><td>date left, resignation date</td><td>Date.</td></tr>
+              <tr><td><code>Department</code></td><td>—</td><td></td></tr>
+              <tr><td><code>Salary Type</code></td><td>pay type</td><td><code>MONTHLY</code> or <code>HOURLY</code>.</td></tr>
+              <tr><td><code>Monthly Salary</code></td><td>basic salary, salary</td><td>Tolerant of "RM 5,000.00"; negative or unparseable fails the row.</td></tr>
+              <tr><td><code>Hourly Rate</code></td><td>—</td><td>Same parsing as Monthly Salary.</td></tr>
+              <tr><td><code>EPF No</code></td><td>kwsp, kwsp no, epf</td><td></td></tr>
+              <tr><td><code>EPF Employee Rate %</code></td><td>epf rate</td><td></td></tr>
+              <tr><td><code>Contribute to EPF</code></td><td>—</td><td>Yes/No.</td></tr>
+              <tr><td><code>SOCSO No</code></td><td>perkeso, socso</td><td>Blank defaults to the IC/passport number, matching the app.</td></tr>
+              <tr><td><code>SOCSO Scheme</code></td><td>socso scheme, perkeso scheme</td><td><code>EMPLOYMENT_INJURY_INVALIDITY</code> or <code>EMPLOYMENT_INJURY_ONLY</code>.</td></tr>
+              <tr><td><code>Contribute to EIS</code></td><td>—</td><td>Yes/No.</td></tr>
+              <tr><td><code>Income Tax No</code></td><td>lhdn, tax no, pcb no</td><td></td></tr>
+              <tr><td><code>Bank Name</code></td><td>bank</td><td></td></tr>
+              <tr><td><code>Bank Account No</code></td><td>account no, bank account</td><td></td></tr>
+              <tr><td><code>Bank Account Holder</code></td><td>—</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <strong>A blank cell leaves that field unchanged</strong> — this is not an
+          all-or-nothing import. Every row is applied independently and reported with its own
+          success or failure, so a partial sheet ("here are everyone's bank details") is safe
+          to upload over a roster that already has statutory numbers on it. A member who is an
+          Admin or Owner is rejected (payroll is for employees and supervisors only).
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>imported</code>, <code>skipped</code>, <code>failed</code></td><td>int</td><td>Row counts. <code>skipped</code> counts the example row.</td></tr>
+              <tr><td><code>errors</code></td><td>array of <code>{ row, message }</code></td><td>Row is 1-based including the header; capped at 200.</td></tr>
+              <tr><td><code>warnings</code></td><td>array of <code>{ row, message }</code></td><td>Row imported, but worth a look (e.g. an unrecognised nationality).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "error": "No file was uploaded." }</code> or <code>{ "error": "Missing required column(s): …" }</code> for a file missing both identity columns.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/employees/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F file=@payroll-employees.xlsx</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Salary changes</h2>
+      <p>
+        One employee's salary history. A change is recorded only as a side effect of editing
+        the salary itself — through the bulk import below, or an employee's profile in the
+        app — so the history can never disagree with what is actually on file. There is no
+        endpoint to write a history row directly.
+      </p>
+      <div class="callout warn">
+        Recording a salary change (including via import) marks every draft payroll run stale —
+        re-run (regenerate) any affected draft before submitting it, or it will still reflect
+        the old salary.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/salary-changes/import/template</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>An xlsx workbook pre-filled with every active payroll employee and their current salary, plus a "How to fill" sheet.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>, named <code>salary-adjustments-&lt;yyyy-MM-dd&gt;.xlsx</code>.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/salary-changes/import</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>New salaries for many employees at once — an annual increment round. <strong>All or nothing:</strong> if any row has a problem, nothing is saved and every problem is listed.</p>
+        <h3>Request — <code>multipart/form-data</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>Required. <code>.csv</code> or <code>.xlsx</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Columns — identified by Employee No or Email; a row with a blank <code>New Salary</code> is skipped (that person's pay isn't changing):</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>Employee No</code></td><td>One of No/Email</td><td>Aliases: employee number, staff id, employee id.</td></tr>
+              <tr><td><code>Email</code></td><td>One of No/Email</td><td></td></tr>
+              <tr><td><code>Name</code>, <code>Salary Type</code>, <code>Current Salary</code></td><td>No</td><td>Read-only, for reference — never written back.</td></tr>
+              <tr><td><code>New Salary</code></td><td>Yes (to act on the row)</td><td>A monthly salary for MONTHLY staff, an hourly rate for HOURLY staff. Must be &gt; 0.</td></tr>
+              <tr><td><code>Effective Date</code></td><td>No</td><td>Blank = today. <strong>Cannot be in the future</strong> — the new salary applies immediately, since there is one current salary per employee.</td></tr>
+              <tr><td><code>Reason</code></td><td>No</td><td><code>RAISE</code> (default), <code>PROMOTION</code>, <code>DEMOTION</code>, <code>RESTRUCTURE</code>, <code>OTHER</code>.</td></tr>
+              <tr><td><code>Notes</code></td><td>No</td><td>Max 500 characters.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>changed</code></td><td>int</td><td>Recorded in the salary history.</td></tr>
+              <tr><td><code>firstSalaries</code></td><td>int</td><td>Salary set for the first time — no history entry, since there was nothing to change from.</td></tr>
+              <tr><td><code>unchanged</code></td><td>int</td><td>New Salary equalled the current one.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> on any row problem: <code>{ "ok": false, "message": "…file-level…" }</code>
+          or <code>{ "ok": false, "errors": [{ "row": 4, "message": "Jane Tan: New Salary must be an amount above 0." }] }</code>.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/salary-changes/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F file=@salary-adjustments.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/salary-changes/{employeeProfileId}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>One employee's salary history, newest activity included, oldest-to-current recorded as it happened.</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code>, <code>employeeProfileId</code></td><td>string</td><td></td></tr>
+              <tr><td><code>effectiveDate</code></td><td>string</td><td>ISO date.</td></tr>
+              <tr><td><code>previousSalaryType</code>, <code>newSalaryType</code></td><td>string</td><td><code>MONTHLY</code> / <code>HOURLY</code>.</td></tr>
+              <tr><td><code>previousMonthlySalary</code>, <code>previousHourlyRate</code></td><td>decimal?</td><td></td></tr>
+              <tr><td><code>newMonthlySalary</code>, <code>newHourlyRate</code></td><td>decimal?</td><td></td></tr>
+              <tr><td><code>reason</code>, <code>reasonLabel</code></td><td>string</td><td></td></tr>
+              <tr><td><code>raisePercent</code></td><td>decimal?</td><td>Null across a MONTHLY↔HOURLY switch, where a percentage is meaningless.</td></tr>
+              <tr><td><code>notes</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>changedByUserId</code>, <code>changedByName</code></td><td>string?</td><td>Null for a change recorded by an automated process.</td></tr>
+              <tr><td><code>createdAt</code></td><td>string</td><td>ISO timestamp.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payroll/salary-changes/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Pay items (adjustment categories)</h2>
+      <p>
+        The catalogue every one-off and recurring payslip line is coded against — allowances,
+        deductions, benefits-in-kind and remuneration — served rather than hardcoded because
+        the calculator dispatches on these exact codes.
+      </p>
+      <div class="callout warn">
+        <strong>Codes are case-sensitive</strong> and only the ones this endpoint returns are
+        valid on a run adjustment (documented on the Payroll runs page). Fetch this list rather
+        than hardcoding codes — the catalogue can grow.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/adjustment-categories</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every adjustment category this org's payroll engine understands.</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>code</code></td><td>string</td><td>The exact, case-sensitive key used on a run adjustment.</td></tr>
+              <tr><td><code>label</code></td><td>string</td><td>Display name.</td></tr>
+              <tr><td><code>kind</code></td><td>string</td><td><code>ALLOWANCE</code>, <code>DEDUCTION</code>, or <code>REIMBURSEMENT</code>.</td></tr>
+              <tr><td><code>group</code></td><td>string</td><td><code>ALLOWANCE</code>, <code>REMUNERATION</code>, <code>BENEFIT_IN_KIND</code> or <code>DEDUCTION</code> — derived from the code's prefix, for grouping a picker.</td></tr>
+              <tr><td><code>subjectToEpf</code>, <code>subjectToSocso</code>, <code>subjectToEis</code>, <code>subjectToPcb</code>, <code>subjectToHrdf</code></td><td>boolean</td><td>Which wage bases this row feeds.</td></tr>
+              <tr><td><code>taxExemptLimit</code></td><td>decimal?</td><td>Annual ringgit ceiling under which the row is PCB-exempt (allowance), or the item's yearly cap (TP1 deduction).</td></tr>
+              <tr><td><code>reducesBase</code>, <code>reducesGross</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>cashNeutral</code></td><td>boolean</td><td>Doesn't move take-home pay (e.g. a TP1 relief).</td></tr>
+              <tr><td><code>feedsLp1Relief</code></td><td>boolean</td><td>Counts toward the TP1 relief total (ΣLP).</td></tr>
+              <tr><td><code>addsToCp38Field</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>addsToStandardPcb</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>isAdditionalRemuneration</code></td><td>boolean</td><td>Bonus/commission-style — taxed via the AR step, reported apart from salary on EA/CP8D.</td></tr>
+              <tr><td><code>offsetsPcb</code></td><td>boolean</td><td>e.g. self-paid zakat, the D1b departure-levy rebate.</td></tr>
+              <tr><td><code>nonCash</code></td><td>boolean</td><td>A benefit in kind: taxable but never part of gross or net pay.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payroll/adjustment-categories \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Payslips</h2>
+      <p>The caller's own payslips. There is deliberately no employee-id parameter here — WHOSE payslips these are comes from the caller's own identity.</p>
+      <div class="callout warn">
+        <strong>An API key has no payslips of its own.</strong> A key authenticates as a
+        synthetic machine identity in its org, not as any one employee, so it has no
+        <code>EmployeeProfile</code> to resolve "me" against. <code>GET /payslips</code> always
+        returns an empty array for a key, and <code>GET /payslips/{id}</code>,
+        <code>/pdf</code> and <code>/tp1</code> always <code>404</code>. To read or file a
+        specific employee's payslips as an integrator, use the admin endpoints on the
+        <a href="payroll-runs.html">Payroll runs</a> page. These endpoints also need the
+        org's plan to include <strong>Payroll</strong>, like the rest of this page.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The caller's own payslip list, one row per submitted month.</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td></td></tr>
+              <tr><td><code>periodYear</code>, <code>periodMonth</code></td><td>int</td><td></td></tr>
+              <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>.</td></tr>
+              <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>epfEmployee</code>, <code>socsoEmployee</code>, <code>eisEmployee</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually withheld — includes any Additional PCB.</td></tr>
+              <tr><td><code>submittedAt</code></td><td>string?</td><td>ISO timestamp the run went live.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips/{id}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The full payslip: identity and salary as snapshotted at generation, every statutory figure, and the line items.</p>
+        <div class="callout">
+          The detail object does <strong>not</strong> repeat <code>periodYear</code> /
+          <code>periodMonth</code> / <code>submittedAt</code> — read those off the list
+          endpoint above, matched by <code>id</code>.
+        </div>
+        <h3>Response <code>200</code> (selected fields — the full payslip has ~40)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code>, <code>employeeProfileId</code>, <code>userId</code></td><td>string</td><td></td></tr>
+              <tr><td><code>snapshotName</code>, <code>snapshotEmployeeNumber</code>, <code>snapshotPosition</code></td><td>string?</td><td>As they were when the run was generated.</td></tr>
+              <tr><td><code>snapshotSalaryType</code>, <code>snapshotMonthlySalary</code>, <code>snapshotHourlyRate</code></td><td></td><td></td></tr>
+              <tr><td><code>basicPay</code>, <code>proratedPay</code>, <code>otPay</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>totalAllowances</code>, <code>totalReimbursements</code>, <code>totalDeductions</code>, <code>totalBenefitsInKind</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>epfEmployee</code>, <code>epfEmployer</code>, <code>socsoEmployee</code>, <code>socsoEmployer</code>, <code>eisEmployee</code>, <code>eisEmployer</code>, <code>skbbkEmployee</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>pcb</code>, <code>pcbNormal</code>, <code>pcbAdditional</code>, <code>voluntaryPcb</code>, <code>cp38</code>, <code>zakat</code>, <code>hrdf</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>pcbCalculationJson</code></td><td>string?</td><td>The LHDN formula decomposition, as a JSON string. Null for payslips generated before this feature shipped.</td></tr>
+              <tr><td><code>grossPay</code>, <code>netPay</code>, <code>totalCostToEmployer</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
+              <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> empty body — no such payslip, it isn't the caller's, or its run isn't submitted. The three cases are deliberately indistinguishable.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips/{id}/pdf</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The payslip as a PDF (bank account masked).</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/pdf</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> empty — not found/not the caller's/not submitted. <code>409</code> <code>{ "error": "…" }</code> if the document can't be rendered (e.g. a data problem naming the employee).</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips/{id}/tp1</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The caller's own Borang PCB/TP1 for this payslip's month (reliefs claimed this month and year-to-date).</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/pdf</code>.</p>
+        <h3>Errors</h3>
+        <p>Same as the payslip PDF above.</p>
+<pre><code>curl https://&lt;api-host&gt;/payslips/pay_123/pdf \
+  -H "Authorization: Bearer wp_live_xxx" -o payslip.pdf</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Loans</h2>
+      <p>Staff loans and salary advances, repaid by deduction from payroll. Admin-only — an employee sees their own repayments on their payslip, not here.</p>
+      <div class="callout warn">
+        <strong>Needs a real payroll profile.</strong> Creating a loan against an
+        <code>employeeProfileId</code> with <code>hasPayrollProfile: false</code> (a placeholder)
+        is refused — fill in that person's payroll details first.
+        <strong>Locked months never change:</strong> once a month is submitted or awaiting
+        approval, its installment is fixed; use Replan to re-spread what's left, not Update.
+        A loan that has started repaying cannot be deleted — cancel it instead, so the
+        repayments already filed stay explained.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/loans</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeProfileId</code></td><td>string</td><td>Optional — narrow to one person.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code>, <code>employeeProfileId</code>, <code>employeeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>principalAmount</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>mode</code></td><td>string</td><td><code>FIXED</code> ("over N months") or <code>CUSTOM</code> ("RM X a month"); always <code>CUSTOM</code> after a re-plan.</td></tr>
+              <tr><td><code>installmentAmount</code>, <code>installmentCount</code></td><td>decimal, int</td><td></td></tr>
+              <tr><td><code>startYear</code>, <code>startMonth</code></td><td>int</td><td></td></tr>
+              <tr><td><code>status</code></td><td>string</td><td><code>ACTIVE</code>, <code>COMPLETED</code>, <code>CANCELLED</code>, <code>PAUSED</code>.</td></tr>
+              <tr><td><code>schedule</code></td><td>array</td><td><code>{ index, year, month, periodLabel, amount, paid, paused, locked }</code> per installment.</td></tr>
+              <tr><td><code>paidInstallments</code>, <code>paidAmount</code>, <code>remainingAmount</code></td><td></td><td></td></tr>
+              <tr><td><code>endYear</code>, <code>endMonth</code>, <code>fullyRepaid</code></td><td></td><td></td></tr>
+              <tr><td><code>hasStarted</code></td><td>boolean</td><td>At least one installment is locked; Update is refused, use Replan.</td></tr>
+              <tr><td><code>pausedFromYear</code>, <code>pausedFromMonth</code></td><td>int?</td><td>Set only while <code>PAUSED</code>.</td></tr>
+              <tr><td><code>firstEditableYear</code>, <code>firstEditableMonth</code></td><td>int</td><td>Earliest month Replan/Skip/Pause can touch.</td></tr>
+              <tr><td><code>remainingToPlan</code></td><td>decimal</td><td>What a re-plan has to spread: principal less every locked installment.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Advisory (e.g. deductions past the leaving date). The plan saves regardless.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/loans/{id}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Same shape as above, one loan. <code>404</code> if not found.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Record a new loan.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeProfileId</code></td><td>string</td><td>Yes</td><td>Must already have a payroll profile.</td></tr>
+              <tr><td><code>principalAmount</code></td><td>decimal</td><td>Yes</td><td>0.01–10,000,000.</td></tr>
+              <tr><td><code>mode</code></td><td>string</td><td>No (default <code>FIXED</code>)</td><td><code>FIXED</code> or <code>CUSTOM</code>.</td></tr>
+              <tr><td><code>installmentCount</code></td><td>int</td><td>If <code>mode=FIXED</code></td><td>1–600.</td></tr>
+              <tr><td><code>installmentAmount</code></td><td>decimal</td><td>If <code>mode=CUSTOM</code></td><td>0.01–10,000,000.</td></tr>
+              <tr><td><code>startYear</code>, <code>startMonth</code></td><td>int</td><td>Yes</td><td>Year 2000–2100, month 1–12.</td></tr>
+              <tr><td><code>notes</code></td><td>string</td><td>No</td><td>Max 500.</td></tr>
+              <tr><td><code>schedule</code></td><td>decimal[]</td><td>No</td><td>A hand-varied schedule; must sum to <code>principalAmount</code>. Omitted = equal split.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The created <code>EmployeeLoanDto</code> (same shape as the list row).</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "error": "This employee has no payroll profile yet. Open them under Payroll → Employees, save their details, then record the loan." }</code> — and similarly for terms that don't resolve to a repayable schedule.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/loans \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"employeeProfileId":"emp_123","principalAmount":1200.00,"mode":"FIXED","installmentCount":6,"startYear":2026,"startMonth":2}'</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/loans/{id}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Replaces the loan's terms. Refused once the loan has started repaying (<code>hasStarted: true</code>) — use Replan — or while it is <code>PAUSED</code> (resume first).</p>
+        <h3>Request</h3>
+        <p>Same body as Create (<code>employeeProfileId</code> here reassigns the loan).</p>
+        <h3>Response</h3>
+        <p><code>200</code> with the updated loan, or <code>404</code>.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "error": "This loan has already started repaying, so the amount lent and the months already deducted are fixed. Use Re-plan to change what is still owed." }</code></p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/cancel</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Stops future deductions; repayments already taken stay explained on their payslips. No body. <code>200</code> with the updated loan, or <code>404</code>.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/reactivate</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>No body. <code>200</code>/<code>404</code>. <code>400</code> if the loan isn't currently cancellable back to active (e.g. it's <code>PAUSED</code> — resume instead).</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/replan</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Re-spread what a started loan still owes. Locked (submitted/awaiting-approval) months are untouched; re-planning always sets <code>mode</code> to <code>CUSTOM</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>mode</code></td><td>string</td><td><code>FIXED</code> or <code>CUSTOM</code>, for how the remainder is spread.</td></tr>
+              <tr><td><code>installmentCount</code></td><td>int?</td><td>1–600, if <code>FIXED</code>.</td></tr>
+              <tr><td><code>installmentAmount</code></td><td>decimal?</td><td>If <code>CUSTOM</code>.</td></tr>
+              <tr><td><code>remainder</code></td><td>decimal[]?</td><td>Typed month by month from <code>firstEditableYear</code>/<code>Month</code> onwards; must sum to <code>remainingToPlan</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>200</code> with the updated loan, or <code>404</code>. <code>400</code> on terms that don't add up.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/skip</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Make a run of months deduct RM 0 each; every later installment moves back so the balance still repays in full.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>fromYear</code>, <code>fromMonth</code></td><td>int</td><td></td></tr>
+              <tr><td><code>months</code></td><td>int</td><td>1–24, default 1.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>200</code>/<code>404</code>. <code>400</code> <code>{ "error": "… is already submitted or awaiting approval. The earliest month that can change is …" }</code> if the start falls before <code>firstEditableYear</code>/<code>Month</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/loans/loan_123/skip \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"fromYear":2026,"fromMonth":3,"months":1}'</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/pause</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Deducts nothing from the given month onward until resumed.</p>
+        <h3>Request</h3>
+        <p><code>{ fromYear, fromMonth }</code> (int, int).</p>
+        <p><code>200</code>/<code>404</code>. <code>400</code> if the loan isn't <code>ACTIVE</code>.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/loans/{id}/resume</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Deductions restart from the given month; the paused months are written in as RM 0 and the rest moves later.</p>
+        <h3>Request</h3>
+        <p><code>{ year, month }</code> (int, int) — must be on or after the pause started, and on or after the first editable month.</p>
+        <p><code>200</code>/<code>404</code>. <code>400</code> <code>{ "error": "Only a paused loan can be resumed." }</code> or a month-ordering message.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/payroll/loans/{id}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p><code>204</code> on success, <code>404</code> if not found.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "error": "This loan has already been deducted from at least one submitted run, so it cannot be deleted. Cancel it instead — the repayments stay explained." }</code></p>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Settings &amp; company info</h2>
+      <p>
+        Org-level payroll configuration. Both GETs return defaults rather than <code>404</code>
+        for an org that hasn't configured payroll yet (<code>isConfigured: false</code>).
+      </p>
+      <div class="callout warn">
+        <strong>Both PUTs replace the whole row</strong> — every field in the body is written,
+        including ones you omit (bound as empty/null and saved as such). Read the current
+        value with the matching GET first and send the fields back unchanged if you only mean
+        to update a few.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/banks</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          The bank register the bank-file generators match an employee's <code>bankName</code>
+          against. An unrecognised name refuses the whole payment-schedule/bank file, so pick
+          from here rather than free text.
+        </p>
+        <div class="callout">
+          This endpoint is exempt from an org admin's own module grant (it's borrowed by other
+          screens) but still needs the org's plan to include Payroll.
+        </div>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>e.g. <code>"Maybank"</code>.</td></tr>
+              <tr><td><code>aliases</code></td><td>string[]</td><td>Other names that match the same bank.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/settings</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>workingDaysRule</code></td><td>string</td><td><code>CALENDAR</code> or <code>TWENTY_SIX</code> — the ÷ divisor for the ordinary rate of pay.</td></tr>
+              <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
+              <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
+              <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td></td></tr>
+              <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file.</td></tr>
+              <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>false</code> = these are statutory defaults, never saved.</td></tr>
+              <tr><td><code>updatedAt</code></td><td>string?</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/settings</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>workingDaysRule</code></td><td>string</td><td>Yes</td><td><code>CALENDAR</code> / <code>TWENTY_SIX</code>.</td></tr>
+              <tr><td><code>defaultEpfEmployeeRate</code></td><td>decimal</td><td>No (default 11)</td><td>0–100.</td></tr>
+              <tr><td><code>defaultEpfEmployerRate</code></td><td>decimal</td><td>No (default 13)</td><td>0–100.</td></tr>
+              <tr><td><code>hrdfEnabled</code></td><td>boolean</td><td>No</td><td></td></tr>
+              <tr><td><code>hrdfRate</code></td><td>decimal?</td><td>No</td><td>0–100. Cleared server-side when <code>hrdfEnabled</code> is false.</td></tr>
+              <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td>No (default true)</td><td></td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td>No</td><td></td></tr>
+              <tr><td><code>payrollBankName</code></td><td>string?</td><td>No</td><td>Max 120.</td></tr>
+              <tr><td><code>payorAccountHolderName</code></td><td>string?</td><td>No</td><td>Max 160.</td></tr>
+              <tr><td><code>payorOrganisationCode</code></td><td>string?</td><td>No</td><td>Max 60.</td></tr>
+              <tr><td><code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>No</td><td>Max 20.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response</h3>
+        <p><code>200</code> with the saved <code>PayrollSettingsDto</code>.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"workingDaysRule":"TWENTY_SIX","defaultEpfEmployeeRate":11,"defaultEpfEmployerRate":13,"autoApplySocsoEisRelief":true}'</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/company-info</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The employer's registration and filing identity — LHDN, SSM, PERKESO, EPF, HRDF, zakat, address, and the declarant used on statutory forms.</p>
+        <h3>Response <code>200</code> (selected fields)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employerName</code>, <code>employerTin</code></td><td>string?</td><td>LHDN E-number.</td></tr>
+              <tr><td><code>registrationNo</code></td><td>string?</td><td>SSM number.</td></tr>
+              <tr><td><code>perkesoEmployerCode</code>, <code>epfEmployerNo</code>, <code>hrdfEmployerNo</code>, <code>zakatNumber</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>addressLine1</code>, <code>addressLine2</code>, <code>postcode</code>, <code>city</code>, <code>state</code>, <code>country</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>phone</code>, <code>handphone</code>, <code>email</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>taxAgentName</code>, <code>taxAgentTin</code>, <code>taxAgentLicenceNo</code>, <code>taxAgentPhone</code>, <code>taxAgentEmail</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>taxAgentFirmName</code>, <code>taxAgentFirmAddressLine1/2</code>, <code>taxAgentFirmPostcode</code>, <code>taxAgentFirmCity</code>, <code>taxAgentFirmState</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>declarantName</code>, <code>declarantIdType</code>, <code>declarantIdNumber</code>, <code>declarantPosition</code></td><td></td><td>The person named on Form E / CP8D.</td></tr>
+              <tr><td><code>isConfigured</code>, <code>updatedAt</code></td><td></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Company Info needs employer name, LHDN E-number, SSM number and PERKESO code all filled before a run can be submitted (the readiness gate) — the income tax number is not required.</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/company-info</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Same fields as the GET response (minus <code>isConfigured</code>/<code>updatedAt</code>), each with a max length; <code>email</code> and <code>taxAgentEmail</code> are validated as email addresses. A blank <code>country</code> is saved as <code>"Malaysia"</code>.</p>
+        <h3>Response</h3>
+        <p><code>200</code> with the saved <code>PayrollCompanyInfoDto</code>.</p>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Annual forms</h2>
+      <p>Year-end filings: Form EA, Form E + CP8D, the LHDN e-CP8D upload pair, and PCB 2(II). An employee's own EA reaches them through the payslips surface, not here.</p>
+      <div class="callout warn">
+        Form EA, Form E + CP8D and the two CP8D TXT files all cover a full January–December
+        year: none can be produced until all twelve months of that year are <code>SUBMITTED</code>.
+        PCB 2(II) is the one exception — a statement of what has been deducted so far — and is
+        available at any point in the year.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/annual/reports</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>What can be produced, independent of year.</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>kind</code></td><td>string</td><td><code>FORM_EA_BULK_PDF</code>, <code>FORM_E_CP8D_PDF</code>, <code>CP8D_EMPLOYER_TXT</code>, <code>CP8D_EMPLOYEE_TXT</code>, <code>PCB2II_BULK_PDF</code>.</td></tr>
+              <tr><td><code>group</code></td><td>string</td><td><code>FORMS</code> or <code>LHDN_TXT</code>.</td></tr>
+              <tr><td><code>title</code>, <code>description</code></td><td>string</td><td></td></tr>
+              <tr><td><code>portal</code></td><td>string?</td><td>Where the file is uploaded, if anywhere (e.g. <code>"LHDN e-CP8D upload"</code>).</td></tr>
+              <tr><td><code>extension</code>, <code>mimeType</code></td><td>string</td><td></td></tr>
+              <tr><td><code>requiresFullYear</code></td><td>boolean</td><td><code>false</code> only for PCB 2(II).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/annual/{year}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The year aggregated from every <code>SUBMITTED</code> run — what the forms will say, before downloading one. Large: one row per employee.</p>
+        <h3>Response <code>200</code> (selected fields)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code>, <code>organizationName</code>, <code>employerNo</code></td><td></td><td><code>employerNo</code> is the TIN with letters/punctuation stripped.</td></tr>
+              <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved.</td></tr>
+              <tr><td><code>missingMonths</code></td><td>int[]</td><td>1–12 not yet approved.</td></tr>
+              <tr><td><code>canGenerate</code></td><td>boolean</td><td><code>missingMonths</code> is empty — the full-year forms would succeed.</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat }</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/annual/{year}/reports/{kind}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p><code>kind</code> is one of the values from <code>/payroll/annual/reports</code> above, in the path.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The file, content type and filename per that report's <code>mimeType</code>/<code>extension</code> (e.g. <code>Form_EA_2026_Bulk.pdf</code>, <code>P{employerNo}_2026.TXT</code>).</p>
+        <h3>Errors</h3>
+        <p>
+          <code>409</code> <code>{ "error": "x/12 monthly runs approved for 2026. The annual forms cover the full January–December year, so approve every month first (missing: …)." }</code>
+          for a full-year report with gaps; <code>409</code> naming a missing Company Info field for the forms that need one.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/annual/2026/reports/FORM_EA_BULK_PDF \
+  -H "Authorization: Bearer wp_live_xxx" -o form-ea-2026.pdf</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/annual/cp8d/convert</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Hand-typed CP8D rows in, the zipped employer (M) + employee (P) TXT pair out. For
+          years this system did not run payroll — nothing is read from or written to payroll
+          data.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>employerNo</code></td><td>string</td><td>Yes</td><td>Max 40; digits are extracted for the filenames.</td></tr>
+              <tr><td><code>employerName</code></td><td>string</td><td>Yes</td><td>Max 200.</td></tr>
+              <tr><td><code>year</code></td><td>int</td><td>Yes</td><td>2000–2100.</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td>Yes, ≥1</td><td>See below.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each row of <code>employees</code>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Max 200.</td></tr>
+              <tr><td><code>taxRef</code></td><td>string</td><td>Yes</td><td>Max 40. LHDN income tax reference.</td></tr>
+              <tr><td><code>newIc</code></td><td>string</td><td>Yes</td><td>Max 40. A value with letters is filed as a passport, not padded into an IC.</td></tr>
+              <tr><td><code>category</code></td><td>string</td><td>No (default "1")</td><td><code>"1"</code> single, <code>"2"</code> married/sole earner, <code>"3"</code> both working / divorced / widowed / single with children.</td></tr>
+              <tr><td><code>taxBorneByEmployer</code></td><td>boolean</td><td>No</td><td></td></tr>
+              <tr><td><code>children</code></td><td>int</td><td>No</td><td>0–50.</td></tr>
+              <tr><td><code>childRelief</code>, <code>annualGross</code>, <code>epf</code>, <code>pcb</code></td><td>decimal</td><td>No</td><td>0–100,000,000.</td></tr>
+              <tr><td><code>status</code></td><td>int</td><td>No (default 2)</td><td>1 management · 2 permanent · 3 contract · 4 part-time · 5 industrial trainee · 6 other.</td></tr>
+              <tr><td><code>retirementDate</code></td><td>string?</td><td>No</td><td>Retirement, contract end, or cessation date.</td></tr>
+              <tr><td><code>benefitsInKind</code>, <code>livingAccommodation</code>, <code>esos</code>, <code>taxExempt</code>, <code>tp1Relief</code>, <code>tp1Zakat</code>, <code>zakat</code>, <code>cp38</code>, <code>perkeso</code></td><td>decimal</td><td>No</td><td>0–100,000,000; blank is filed as nil.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/zip</code> named <code>CP8D_{employerNo}_{year}.zip</code>, containing the M and P TXT files.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> standard validation errors; <code>409</code> <code>{ "error": "The employer's LHDN E-number must contain digits." }</code>.</p>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Year-to-date import</h2>
+      <p>
+        Seed payroll history when an org migrates mid-year, so the PCB engine has the
+        year-to-date figures it needs to tax the remaining months correctly. Deliberately
+        two-step: preview shows the match list and writes nothing, then import commits it.
+      </p>
+      <div class="callout warn">
+        A month already <code>COMPUTED</code> by this system is <strong>never</strong>
+        overwritten (silently skipped — see <code>skippedMonths</code>); a month previously
+        <code>IMPORTED</code> is replaced. Imported months land as <code>SUBMITTED</code>
+        immediately — there is no draft step — because only submitted runs count toward
+        year-to-date.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/ytd-import/template/{year}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>int, path</td><td></td></tr>
+              <tr><td><code>format</code></td><td>string, query</td><td><code>Xlsx</code> (default, a 3-sheet workbook pre-filled with the roster) or <code>Csv</code> (flat).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Columns — <code>Full Name</code> and <code>Personal ID</code>, then twelve month rows per employee with:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mandatory</th><th>Optional (add/remove as needed)</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Basic Salary, PCB, Employee EPF, Employee SOCSO, Employee EIS, Employer EPF, Employer SOCSO, Employer EIS, HRDF</td>
+                <td>Bonus, Commission, Overtime, Service Charge, Travel/Petrol Allowance, Parking Allowance, Phone/Broadband Allowance, Other Allowance, Unpaid Leave, Net Salary Deduction, Zakat, Employee SKBBK (June 2026 onwards only)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Any adjustment-category label from <code>/payroll/adjustment-categories</code> also works as a column header — the amount is routed through that category's statutory rules (a benefit in kind lands as non-cash, a deduction comes off net).</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/ytd-import/{year}/preview</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Parses the file and reports what WOULD happen. Writes nothing.</p>
+        <h3>Request — <code>multipart/form-data</code></h3>
+        <p><code>file</code> (required).</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, months that will be skipped or replaced.</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person.</td></tr>
+              <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> with the same body shape when <code>ok: false</code> (e.g. an unreadable file).</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/ytd-import/{year}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Commits the import. Matches by IC first, then by name (never guessed at if ambiguous).</p>
+        <h3>Request</h3>
+        <p>Same as preview.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>errors</code></td><td>string[]</td><td></td></tr>
+              <tr><td><code>monthsImported</code>, <code>payslipsImported</code></td><td>int</td><td></td></tr>
+              <tr><td><code>unmatchedNames</code></td><td>string[]</td><td></td></tr>
+              <tr><td><code>skippedMonths</code></td><td>string[]</td><td>Period labels left alone because this system already computed them.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "ok": false, "errors": ["None of the names in the sheet matched an employee in this organisation."] }</code> or similar.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/ytd-import/2026 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F file=@ytd-2026.xlsx</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Portal credentials</h2>
+      <p>Saved logins for KWSP i-Akaun, PERKESO ASSIST and LHDN e-PCB, so whoever is filing doesn't have to hunt for them every deadline.</p>
+      <div class="callout warn">
+        <strong>Every field except <code>password</code> is replaced wholesale</strong> on a
+        PUT — omit one and it is cleared, not left alone. <code>password</code> alone is
+        three-way: omit/<code>null</code> to leave the stored password untouched, send
+        <code>""</code> to clear it, send anything else to replace it.
+      </div>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/portal-credentials</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>All three portals, configured or not, passwords always masked here.</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>portal</code></td><td>string</td><td><code>KWSP</code>, <code>PERKESO</code>, or <code>LHDN</code>.</td></tr>
+              <tr><td><code>portalLabel</code></td><td>string</td><td>e.g. <code>"KWSP i-Akaun"</code>.</td></tr>
+              <tr><td><code>loginId</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>password</code></td><td>null</td><td>Always null on the list — fetch <code>/reveal</code> for the value.</td></tr>
+              <tr><td><code>hasPassword</code></td><td>boolean</td><td>Whether one is stored.</td></tr>
+              <tr><td><code>image</code>, <code>secretCode</code>, <code>securityPhrase</code>, <code>passwordReminder</code>, <code>notes</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>false</code> = nothing saved for this portal yet.</td></tr>
+              <tr><td><code>updatedAt</code></td><td>string?</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/portal-credentials/{portal}/reveal</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p><code>portal</code> in the path is <code>KWSP</code>, <code>PERKESO</code> or <code>LHDN</code>. Returns the password in clear. Reading it is audited.</p>
+        <h3>Response</h3>
+        <p><code>200</code> — same shape as the list row, with <code>password</code> populated. <code>404</code> if nothing is saved for that portal.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/portal-credentials/LHDN/reveal \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/portal-credentials/{portal}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>loginId</code></td><td>string?</td><td>Max 120.</td></tr>
+              <tr><td><code>password</code></td><td>string?</td><td>Omit/null = unchanged; <code>""</code> = clear; else replaced.</td></tr>
+              <tr><td><code>image</code></td><td>string?</td><td>Max 120.</td></tr>
+              <tr><td><code>secretCode</code>, <code>securityPhrase</code>, <code>passwordReminder</code></td><td>string?</td><td>Max 200 each.</td></tr>
+              <tr><td><code>notes</code></td><td>string?</td><td>Max 2000.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response</h3>
+        <p><code>200</code> with the saved credential (password masked).</p>
+      </section>
+
+      <section class="endpoint">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/payroll/portal-credentials/{portal}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p><code>204</code> on success, <code>404</code> if nothing was saved for that portal.</p>
+      </section>
+    </section>
+
+    <p class="lead" style="font-size:14px">
+      Not available to API keys (human-only, omitted above): none in this module — every
+      Payroll action documented here is reachable with a key. (Payroll run generation,
+      submission, approval and statutory-file/document downloads are on
+      <a href="payroll-runs.html">Payroll runs</a>, a separate page.)
+    </p>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

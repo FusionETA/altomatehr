@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Realtime;
 
@@ -34,6 +35,7 @@ public class RealtimeController : ControllerBase
     //
     // Returns void (not IActionResult) because the response body is written
     // incrementally: MVC must not buffer it or append anything after us.
+    [HumanOnly]
     [HttpGet("stream")]
     public async Task Stream(CancellationToken cancellationToken)
     {
@@ -89,6 +91,7 @@ public class RealtimeController : ControllerBase
 
     // GET /realtime/status — how many streams this process is holding open.
     // Admin-only: a connection count is a cheap oracle for "who is online".
+    [HumanOnly]
     [HttpGet("status")]
     [Authorize(Roles = "Admin,Owner")]
     public IActionResult Status() => Ok(new { connections = _realtime.ConnectionCount });

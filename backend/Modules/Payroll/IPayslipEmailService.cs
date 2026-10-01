@@ -14,9 +14,11 @@ public interface IPayslipEmailService
     Task<PayslipEmailBulkResult> EmailPayslipsForRunAsync(string runId);
 }
 
-public sealed record PayslipEmailResult(bool Ok, string? Error);
+// NotFound: the run (or the employee's payslip on it) doesn't exist → 404,
+// as opposed to a run that exists but can't be emailed yet → 409.
+public sealed record PayslipEmailResult(bool Ok, string? Error, bool NotFound = false);
 
 public sealed record PayslipEmailFailure(string EmployeeName, string Reason);
 
 public sealed record PayslipEmailBulkResult(
-    int Sent, IReadOnlyList<PayslipEmailFailure> Failed, string? Error);
+    int Sent, IReadOnlyList<PayslipEmailFailure> Failed, string? Error, bool NotFound = false);

@@ -1,0 +1,1356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Payroll runs</title>
+  <meta name="description" content="Create, run, approve and file a month of Malaysian payroll with the AltomateHR API: runs, adjustments, statutory files and documents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Documents backend/Modules/Payroll/PayrollRunsController.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html" aria-current="page">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Payroll runs</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+      <h1>Payroll runs</h1>
+      <p class="lead">
+        One month of Malaysian payroll: create a run, generate payslips, adjust them,
+        route them through approval, then file and pay. Every route on this page needs
+        the <strong>Payroll</strong> module on the org's plan (<code>403</code> otherwise)
+        and either <code>payroll:read</code> or <code>payroll:write</code> — see
+        <a href="index.html#scopes">Scopes</a>.
+      </p>
+    </div>
+
+    <section class="section" id="lifecycle">
+      <h2>The run lifecycle</h2>
+      <p>A run moves through three statuses, one direction at a time (reject and revert step back):</p>
+<pre><code>DRAFT ──submit──&gt; PENDING_APPROVAL ──approve──&gt; SUBMITTED
+  ^                      |                          |
+  └───────reject─────────┘                          |
+  └──────────────────revert───────────────────────────┘</code></pre>
+      <ul>
+        <li><strong>Only a DRAFT run can be generated, adjusted, or have claims attached or detached.</strong>
+          Once it moves to <code>PENDING_APPROVAL</code> or <code>SUBMITTED</code> those writes answer
+          <code>409</code>.</li>
+        <li><strong>SUBMITTED is final.</strong> It is the only status that feeds next month's
+          year-to-date figures, so getting there is guarded (see
+          <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
+          also reverts every later <em>submitted</em> month in the same year.</li>
+        <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
+          SUBMITTED.</strong> The single payslip PDF is the one exception — it can be downloaded from a
+          draft too, as a watermarked preview.</li>
+        <li><strong>A run is unique per period.</strong> <code>POST /payroll/runs</code> for a month that
+          already has a run answers <code>409</code> — open the existing run instead of retrying.</li>
+        <li><strong>Two employee ids.</strong> Every id on this page is an
+          <code>employeeProfileId</code> from <code>GET /payroll/employees</code> or the
+          <a href="#picker">picker</a> below — <strong>not</strong> the user id <code>GET /employees</code>
+          returns. Passing the wrong one reads back as "not found".</li>
+        <li><strong>Generation is destructive.</strong> Pressing
+          <a href="#generate"><code>POST /{id}/generate</code></a> discards the run's payslips and
+          rebuilds them from the employees' current profiles. Adjustments and attached claims survive a
+          regeneration; anything typed directly onto a payslip would not, which is why there is no such
+          thing.</li>
+        <li><strong>Staleness.</strong> The run object's <code>isStale</code> field is <code>true</code>
+          when something an adjustment, a claim attachment or a profile edit touched has changed since the
+          payslips were last generated. Submission is refused while it is true — re-run payroll first.</li>
+      </ul>
+      <div class="callout warn">
+        Writes here move money and file paperwork with Malaysian authorities. Grant
+        <code>payroll:write</code> only to a system that genuinely needs to run payroll, not just to read it.
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Runs ───────────────────────── -->
+
+    <section class="section" id="runs">
+      <h2>Runs</h2>
+
+      <section class="endpoint" id="list">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every payroll run in the org, newest first by period. Totals only — no payslips.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#run-object">run objects</a>.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="picker">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/picker</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          The "Start a payroll run" picker: every non-archived policy, each carrying the employees under
+          it whose payroll profile is complete enough to be paid. Use this to build
+          <code>policyIds</code> / <code>excludedEmployeeProfileIds</code> for
+          <a href="#create">create</a> — an employee with an incomplete profile never appears here, so
+          they cannot be scoped into a run.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>policies[].id</code></td><td>string</td><td>Policy id.</td></tr>
+              <tr><td><code>policies[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].isDefault</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>policies[].members[].employeeProfileId</code></td><td>string</td><td>What <a href="#create">create</a> and every adjustment/claim route take as the employee id.</td></tr>
+              <tr><td><code>policies[].members[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].members[].employeeId</code></td><td>string</td><td>The org's own employee number.</td></tr>
+              <tr><td><code>policies[].members[].jobTitle</code></td><td>string</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/picker \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="detail">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>One run with every payslip it has generated.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>run</code></td><td>object</td><td>A <a href="#run-object">run object</a>.</td></tr>
+              <tr><td><code>payslips</code></td><td><a href="#payslip-object">payslip</a>[]</td><td>Empty until <a href="#generate">generate</a> has run.</td></tr>
+              <tr><td><code>memberEmployeeProfileIds</code></td><td>string[]</td><td>The roster chosen when the run was created. Empty means "everyone payable" (a run created before the picker existed, or one created with no <code>policyIds</code>/<code>excludedEmployeeProfileIds</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run in this org (empty body).</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="create">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Start a DRAFT run for a period. The id, status, totals and timestamps are the server's to set.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>periodYear</code></td><td>number</td><td>yes</td><td>2000–2100.</td></tr>
+              <tr><td><code>periodMonth</code></td><td>number</td><td>yes</td><td>1–12.</td></tr>
+              <tr><td><code>policyIds</code></td><td>string[] or null</td><td>no</td><td>Policy ids from the <a href="#picker">picker</a>. Null or omitted means every policy — the whole eligible roster.</td></tr>
+              <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>201</code></h3>
+        <p>A <a href="#run-object">run object</a>, with <code>Location</code> pointing at <code>GET /payroll/runs/{id}</code>.</p>
+        <h3>Errors</h3>
+        <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "periodYear": 2026, "periodMonth": 1 }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/payroll/runs/{id}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Delete a DRAFT run along with its payslips, adjustments and claim attachments. Attached claims
+          themselves survive and become free to attach to another run.</p>
+        <h3>Response</h3>
+        <p><code>204</code> No Content.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "Only a draft run can be deleted. Revert it to draft first." }</code></li>
+        </ul>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/payroll/runs/run_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <h3 id="run-object">The run object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td></td></tr>
+            <tr><td><code>periodYear</code> / <code>periodMonth</code></td><td>number</td><td></td></tr>
+            <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>, rendered server-side.</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td><code>"DRAFT"</code> · <code>"PENDING_APPROVAL"</code> · <code>"SUBMITTED"</code>.</td></tr>
+            <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
+            <tr><td><code>employeeCount</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalGross</code> / <code>totalNet</code></td><td>number</td><td>MYR, run totals.</td></tr>
+            <tr><td><code>totalEmployeeEpf</code> / <code>totalEmployerEpf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalEmployeeSocso</code> / <code>totalEmployerSocso</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalEmployeeEis</code> / <code>totalEmployerEis</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalEmployeeSkbbk</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalPcb</code> / <code>totalCp38</code> / <code>totalZakat</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalHrdf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalWagesSubjectToHrdf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>generatedAt</code></td><td>string or null</td><td>ISO 8601. Null until <a href="#generate">generate</a> has run.</td></tr>
+            <tr><td><code>submittedForApprovalAt</code> / <code>submittedForApprovalById</code></td><td>string or null</td><td>Who proposed the month, and when.</td></tr>
+            <tr><td><code>submittedAt</code> / <code>submittedById</code></td><td>string or null</td><td>Who approved it, and when — a different person from the above by design.</td></tr>
+            <tr><td><code>approvalRejectionReason</code></td><td>string or null</td><td>Set by <a href="#reject">reject</a>, cleared on the next submission.</td></tr>
+            <tr><td><code>isStale</code></td><td>boolean</td><td>True only for a DRAFT whose inputs changed since it was last generated. See <a href="#lifecycle">the lifecycle note</a> above.</td></tr>
+            <tr><td><code>pcbReceiptNo</code> / <code>pcbReceiptDate</code></td><td>string / string or null</td><td>Set by <a href="#lhdn-receipts">LHDN receipts</a>.</td></tr>
+            <tr><td><code>cp38ReceiptNo</code> / <code>cp38ReceiptDate</code></td><td>string / string or null</td><td></td></tr>
+            <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>string</td><td>ISO 8601.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="payslip-object">The payslip object</h3>
+      <p>One per employee on a run, returned inside <a href="#detail">run detail</a> and
+        <a href="#generate">generate</a>'s response.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code> / <code>employeeProfileId</code> / <code>userId</code></td><td>string</td><td><code>userId</code> is the <code>/employees</code> id — not what the rest of this page takes.</td></tr>
+            <tr><td><code>snapshotName</code> / <code>snapshotEmployeeNumber</code> / <code>snapshotPosition</code> / <code>snapshotNationality</code> / <code>snapshotIsResident</code></td><td>mixed</td><td>Identity as it was AT GENERATION — a later rename does not move a filed payslip.</td></tr>
+            <tr><td><code>snapshotSalaryType</code></td><td>string</td><td><code>"MONTHLY"</code> or <code>"HOURLY"</code>.</td></tr>
+            <tr><td><code>snapshotMonthlySalary</code> / <code>snapshotHourlyRate</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>totalWorkingDays</code> / <code>proratedDays</code> / <code>prorationDaysInPeriod</code> / <code>proratedFactor</code></td><td>number</td><td>Three separate day figures on purpose — the ordinary-rate basis and the proration divisor are not the same thing.</td></tr>
+            <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>Display-only for MONTHLY staff; for HOURLY staff <code>workedHours</code> is the paid quantity.</td></tr>
+            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>basicPay</code> / <code>proratedPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalAllowances</code> / <code>totalReimbursements</code> / <code>totalDeductions</code> / <code>totalBenefitsInKind</code></td><td>number</td><td></td></tr>
+            <tr><td><code>epfEmployee</code> / <code>epfEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>socsoEmployee</code> / <code>socsoEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>eisEmployee</code> / <code>eisEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>skbbkEmployee</code> / <code>skbbkWage</code></td><td>number</td><td></td></tr>
+            <tr><td><code>pcb</code> / <code>pcbNormal</code> / <code>pcbAdditional</code></td><td>number</td><td><code>pcb</code> is what was actually withheld; the <a href="#doc-pcb-details">PCB details</a> document explains the breakdown behind it.</td></tr>
+            <tr><td><code>pcbCalculationJson</code></td><td>string or null</td><td>The raw LHDN-form decomposition, as stored — JSON-encoded text, not a nested object. Null only on payslips generated before this field existed.</td></tr>
+            <tr><td><code>cp38</code></td><td>number</td><td>Court-ordered arrears instalment, filed separately from PCB.</td></tr>
+            <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
+            <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
+            <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
+            <tr><td><code>grossPay</code> / <code>netPay</code> / <code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
+            <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
+            <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
+            <tr><td><code>lineItems[].label</code> / <code>.amount</code> / <code>.category</code></td><td>mixed</td><td></td></tr>
+            <tr><td><code>lineItems[].pcbTaxableAmount</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>lineItems[].claimId</code></td><td>string or null</td><td>Set when the line came from an <a href="#claims">attached claim</a>.</td></tr>
+            <tr><td><code>lineItems[].subjectToEpf</code> / <code>.subjectToSocso</code> / <code>.subjectToEis</code> / <code>.subjectToPcb</code></td><td>boolean</td><td>Which wage bases this line fed, as the category defines it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Running payroll ───────────────────────── -->
+
+    <section class="section" id="running-payroll">
+      <h2>Running payroll</h2>
+
+      <section class="endpoint" id="generate">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/generate</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          "Run payroll": build every payslip on the run from the employees' current profiles. Safe to call
+          repeatedly on a draft — each call <strong>discards</strong> the previous payslips and line items
+          and rebuilds from scratch, folding in whatever adjustments and claims are on the run.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>detail</code></td><td>object</td><td>The run <a href="#detail">detail</a> shape (<code>run</code> + <code>payslips</code> + <code>memberEmployeeProfileIds</code>).</td></tr>
+              <tr><td><code>payslipCount</code></td><td>number</td><td></td></tr>
+              <tr><td><code>skippedEmployees[].employeeProfileId</code></td><td>string</td><td></td></tr>
+              <tr><td><code>skippedEmployees[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>skippedEmployees[].reason</code></td><td>string</td><td>e.g. <code>"Archived"</code> or <code>"Not employed during this period"</code> — not an error, a legitimate absence.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "Payroll can only be run on a draft." }</code> — a submitted month's figures are filed and never rebuilt.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/generate \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="readiness">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/readiness</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          What the statutory files below still need. <a href="#submit">Submit</a> refuses while this is
+          not <code>ok</code> — check it first rather than guessing from a 409.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>totalMissingCount</code></td><td>number</td><td></td></tr>
+              <tr><td><code>orgIssues</code></td><td>string[]</td><td>Missing Company Info fields, e.g. <code>"Employer LHDN E-number"</code>.</td></tr>
+              <tr><td><code>employeeIssues[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeIssues[].employeeCode</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeIssues[].missing</code></td><td>string[]</td><td><code>"Employee number"</code>, <code>"IC number"</code> or <code>"Passport number"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The income tax number is deliberately not checked here — PCB computes without one.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/readiness \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="salary-change-hints">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/salary-change-hints</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          Where this run's payslips disagree with a salary change that took effect part-way through the
+          month. Advisory only — the engine pays one salary for the whole month, and whether a raise was
+          meant to be backdated is a human decision; nothing here is applied automatically. Applying a hint
+          means saving its suggested line through <a href="#save-adjustment">Save adjustment</a>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of hints (empty when the run has no payslips yet, or no salary change fell inside the period).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>payslipId</code> / <code>employeeProfileId</code> / <code>employeeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>salaryChangeId</code></td><td>string</td><td></td></tr>
+              <tr><td><code>effectiveDate</code></td><td>string</td><td>ISO 8601.</td></tr>
+              <tr><td><code>previousMonthlySalary</code> / <code>newMonthlySalary</code></td><td>number</td><td></td></tr>
+              <tr><td><code>reasonLabel</code></td><td>string</td><td>e.g. <code>"Raise"</code>.</td></tr>
+              <tr><td><code>payslipSnapshotMonthlySalary</code></td><td>number</td><td>What the payslip was actually generated against.</td></tr>
+              <tr><td><code>outcome</code></td><td>string</td><td><code>"OVERPAID"</code> (paid the new rate all month, pre-change days to claw back) · <code>"UNDERPAID"</code> (paid the old rate all month, post-change days owed) · <code>"MATCHED"</code> (effective on day one, nothing to do) · <code>"UNKNOWN"</code> (snapshot matches neither rate — no figure suggested).</td></tr>
+              <tr><td><code>totalDaysInPeriod</code> / <code>daysAtOldRate</code> / <code>daysAtNewRate</code></td><td>number</td><td></td></tr>
+              <tr><td><code>delta</code></td><td>number</td><td>Always non-negative; the direction is in <code>outcome</code>.</td></tr>
+              <tr><td><code>suggestedLineItem</code></td><td>object or null</td><td><code>{ kind, category, label, amount }</code> — the adjustment row to add. Null when there is nothing to do, or it was already applied.</td></tr>
+              <tr><td><code>alreadyApplied</code></td><td>boolean</td><td>True when a line carrying this hint's marker is already on the run's adjustment.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/salary-change-hints \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Approval ───────────────────────── -->
+
+    <section class="section" id="approval">
+      <h2>Approval</h2>
+
+      <section class="endpoint" id="submit">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/submit</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>DRAFT → PENDING_APPROVAL. Most of this endpoint's value is in what it refuses:</p>
+        <ul>
+          <li>The run has no payslips yet (press <a href="#generate">generate</a> first).</li>
+          <li>The run is <code>isStale</code> — something changed after the last generation.</li>
+          <li>Any payslip's net pay is negative (exactly RM 0 is allowed).</li>
+          <li>The previous calendar month has no run, or has a run that is not yet SUBMITTED — months must
+            submit in order, because year-to-date figures compound off each filed month.</li>
+          <li><a href="#readiness">Readiness</a> is not <code>ok</code>.</li>
+        </ul>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#run-object">run object</a>, now <code>PENDING_APPROVAL</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — one of: already awaiting approval / already submitted / the guards above, each with its own message (e.g.
+            <code>"Submit December 2025 first — payroll runs are submitted in order, and that month's run is still a draft."</code> or
+            <code>"Cannot submit — fix these first: …"</code>).</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/submit \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/approve</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          PENDING_APPROVAL → SUBMITTED, by a different actor than the one who submitted (both are recorded
+          on the run). If the org has opted into automatic Xero posting, this also posts the run's journal —
+          best effort: a Xero failure here never un-approves the run.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#run-object">run object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "Only a run awaiting approval can be approved." }</code></li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="reject">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/reject</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>PENDING_APPROVAL → DRAFT, with a reason for whoever submitted it.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>reason</code></td><td>string or null</td><td>no</td><td>Max 1000 characters. Stored on the run as <code>approvalRejectionReason</code> until the next submission.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#run-object">run object</a>, back to <code>DRAFT</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "Only a run awaiting approval can be sent back." }</code></li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reason": "SOCSO number missing for one employee" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="revert">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/revert</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED month in the same year is
+          reverted too, because their year-to-date figures were computed off this one. Check
+          <a href="#revert-impact">revert-impact</a> first to see what else will move.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>run</code></td><td>object</td><td>The <a href="#run-object">run object</a> that was asked for, reverted.</td></tr>
+              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Period labels of the other months reverted with it, e.g. <code>["February 2026", "March 2026"]</code>. Empty is the common case.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "Only a submitted run can be reverted to draft." }</code></li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/revert \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="revert-impact">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/revert-impact</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>{ "alsoReverted": string[] }</code> — period labels. Empty if the run is not SUBMITTED (not an error — there is simply nothing to cascade).</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="lhdn-receipts">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/runs/{id}/lhdn-receipts</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Record LHDN's receipt numbers for this month's MTD and CP38 payments, printed on each employee's
+          PCB 2(II). <strong>Replaces the whole set</strong> — every field is optional, and a blank one
+          clears it (the payment may not have been made yet).
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>pcbReceiptNo</code></td><td>string or null</td><td>no</td><td>Max 60 characters.</td></tr>
+              <tr><td><code>pcbReceiptDate</code></td><td>string or null</td><td>no</td><td>ISO 8601 date.</td></tr>
+              <tr><td><code>cp38ReceiptNo</code></td><td>string or null</td><td>no</td><td>Max 60 characters.</td></tr>
+              <tr><td><code>cp38ReceiptDate</code></td><td>string or null</td><td>no</td><td>ISO 8601 date.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#run-object">run object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "LHDN receipts can only be recorded on an approved run." }</code></li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/runs/run_123/lhdn-receipts \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "pcbReceiptNo": "CP39-000123", "pcbReceiptDate": "2026-02-10" }'</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Adjustments ───────────────────────── -->
+
+    <section class="section" id="adjustments">
+      <h2>Adjustments</h2>
+      <p>
+        What an admin types for one employee on one run — overtime hours, one-off allowances or
+        deductions, fixed-allowance overrides, worked/expected hours. These outlive a regeneration; the
+        payslip line items they produce do not. <strong>Draft-only</strong> on every route below.
+      </p>
+
+      <section class="endpoint" id="adjustment-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/adjustments/template</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          A spreadsheet pre-filled with the run's payable employees and whatever manual lines they already
+          have, for bulk editing. Right for forty employees; the per-employee routes below are right for
+          one or two.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>,
+          filename <code>payroll-adjustments-{year}-{month}.xlsx</code> (e.g.
+          <code>payroll-adjustments-2026-01.xlsx</code>), <code>Cache-Control: no-store</code>. Two sheets:
+          <strong>Adjustments</strong> (columns: Full Name, Category, Label, Amount, Treat as recurring,
+          Current Salary — reference only, New Basic Salary, Salary Change Reason, Salary Effective Date,
+          Salary Change Notes) and a read-only <strong>Categories</strong> catalogue to copy a code from.
+        </p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/template \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o adjustments.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="adjustment-import">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/adjustments/import</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Upload the filled-in template back (<code>.xlsx</code> or <code>.csv</code>,
+          <code>multipart/form-data</code>, field name <code>file</code>). All-or-nothing — on any row
+          error nothing is written.
+        </p>
+        <div class="callout warn">
+          The Adjustments sheet's manual lines use <strong>replace</strong> semantics across the whole run:
+          an employee the file says nothing about has their existing manual lines <em>deleted</em>, which
+          is why the template arrives pre-filled. The salary columns are the opposite — blank means
+          "leave this salary alone".
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code> on a 200.</td></tr>
+              <tr><td><code>employeesAffected</code></td><td>number</td><td></td></tr>
+              <tr><td><code>linesWritten</code></td><td>number</td><td></td></tr>
+              <tr><td><code>employeesCleared</code></td><td>number</td><td>Had manual lines, and the file said nothing about them.</td></tr>
+              <tr><td><code>salaryChangesApplied</code></td><td>number</td><td></td></tr>
+              <tr><td><code>salarySkippedNotMonthly</code></td><td>string[]</td><td>Names of employees with a New Basic Salary that was ignored because they are paid hourly.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "error": "No file was uploaded." }</code> — no file in the request.</li>
+          <li><code>400</code> <code>{ "error": "The file has errors.", "errors": [{ "row": 4, "message": "…" }] }</code> — one or more rows could not be parsed (unknown employee name, unknown category, negative amount, etc). Row numbers match the spreadsheet (header is row 1).</li>
+          <li><code>404</code> — no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — a whole-file problem: the run is not a draft, the file is empty or unreadable, a required column is missing, or two rows disagree on one employee's new salary.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@adjustments.xlsx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-adjustments">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/adjustments</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every adjustment typed on this run (one per employee who has one).</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#adjustment-object">adjustment objects</a>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/adjustments \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-adjustment">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/adjustments/{employeeProfileId}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>One employee's adjustment on this run.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An <a href="#adjustment-object">adjustment object</a>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run, <em>or</em> no adjustment has been typed for this employee yet (there is no empty-object response; absence is a 404 either way).</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="adjustment-context">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/adjustments/{employeeProfileId}/context</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Everything an adjustment editor needs for one employee, in one read: what is already saved, their profile's fixed allowances, what attendance derived for the period, and what approved overtime would otherwise be paid.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeProfileId</code> / <code>employeeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>salaryType</code></td><td>string</td><td><code>"MONTHLY"</code> or <code>"HOURLY"</code>.</td></tr>
+              <tr><td><code>adjustment</code></td><td>object or null</td><td>An <a href="#adjustment-object">adjustment object</a>, or null if nothing is saved yet.</td></tr>
+              <tr><td><code>fixedAllowances[].index</code></td><td>number</td><td>The key <code>fixedAllowanceOverrides</code> uses, as a string.</td></tr>
+              <tr><td><code>fixedAllowances[].category</code> / <code>.name</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td>The profile's own recurring row.</td></tr>
+              <tr><td><code>autoWorkedHours</code> / <code>autoExpectedHours</code></td><td>number or null</td><td>Derived from attendance for the period; null when attendance does not apply (see <code>attendanceApplies</code>) rather than a confident zero.</td></tr>
+              <tr><td><code>attendanceApplies</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>cashOvertime</code></td><td>boolean</td><td>False when the employee's policy banks overtime as time off, or disables it — typed OT hours are then ignored at generation.</td></tr>
+              <tr><td><code>overtimeDisabledReason</code></td><td>string or null</td><td>Explains a false <code>cashOvertime</code>.</td></tr>
+              <tr><td><code>approvedOtNormalHours</code> / <code>approvedOtRestHours</code> / <code>approvedOtPublicHours</code></td><td>number</td><td>What generation pays by default, before any typed override.</td></tr>
+              <tr><td><code>loanInstallments[].loanId</code> / <code>.label</code> / <code>.amount</code></td><td>mixed</td><td>Read-only here — loans are managed elsewhere.</td></tr>
+              <tr><td><code>editable</code></td><td>boolean</td><td>False once the run has left DRAFT.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run, or no such employee in this org.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123/context \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="save-adjustment">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/runs/{id}/adjustments/{employeeProfileId}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          <strong>Replaces the whole row.</strong> This is a full save, not a patch: send every field you
+          want to keep, including manual line items already on it — omitting one clears it. A partial
+          update would make "I cleared the overtime" indistinguishable from "I did not mention it".
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td>no (default 0)</td><td>0–999.99.</td></tr>
+              <tr><td><code>manualLineItems[].category</code></td><td>string</td><td>yes (per row)</td><td>Max 60 chars. A code from the Categories sheet / <code>GET /payroll/runs/{id}/adjustments/template</code>'s Categories sheet. Unrecognised → <code>400</code>.</td></tr>
+              <tr><td><code>manualLineItems[].label</code></td><td>string or null</td><td>no</td><td>Max 200 chars.</td></tr>
+              <tr><td><code>manualLineItems[].amount</code></td><td>number</td><td>yes (per row)</td><td>0–99999999.99. Always non-negative — the category already decides whether it adds or deducts.</td></tr>
+              <tr><td><code>manualLineItems[].treatAsRecurring</code></td><td>boolean</td><td>no</td><td>Only meaningful on an additional-remuneration category.</td></tr>
+              <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>no</td><td>Keyed by the profile fixed-allowance's array index as a string, e.g. <code>{ "0": { "amount": 500, "skip": false } }</code>. <code>amount: null</code> keeps the profile's figure; <code>skip: true</code> zeroes that row out for this run only.</td></tr>
+              <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>no</td><td>0–9999.99. Overrides what attendance derived.</td></tr>
+              <tr><td><code>notes</code></td><td>string or null</td><td>no</td><td>Max 2000 chars.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The saved <a href="#adjustment-object">adjustment object</a>. Saving marks the run <code>isStale</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "error": "Unknown adjustment category 'xyz'." }</code></li>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before editing adjustments." }</code></li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "otNormalHours": 4,
+    "otRestHours": 0,
+    "otPublicHours": 0,
+    "manualLineItems": [
+      { "category": "allowance_travel", "label": "February site travel", "amount": 250.00, "treatAsRecurring": false }
+    ],
+    "fixedAllowanceOverrides": {}
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="clear-adjustment">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/payroll/runs/{id}/adjustments/{employeeProfileId}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Remove the whole adjustment row for this employee on this run.</p>
+        <h3>Response</h3>
+        <p><code>204</code> No Content — whether or not there was an adjustment to remove. The run is only marked <code>isStale</code> when something actually existed to clear.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before clearing adjustments." }</code></li>
+        </ul>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <h3 id="adjustment-object">The adjustment object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code> / <code>payrollRunId</code> / <code>employeeProfileId</code></td><td>string</td><td></td></tr>
+            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td></td></tr>
+            <tr><td><code>manualLineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code> — derived from the category, never trusted from input.</td></tr>
+            <tr><td><code>manualLineItems[].category</code> / <code>.label</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td></td></tr>
+            <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>Same shape as the request.</td></tr>
+            <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>notes</code></td><td>string or null</td><td></td></tr>
+            <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>string</td><td>ISO 8601.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Attached claims ───────────────────────── -->
+
+    <section class="section" id="claims">
+      <h2>Attached claims</h2>
+      <p>
+        Approved, personal-paid expense claims reimbursed through an employee's pay instead of through
+        Xero. The attachment is durable; the reimbursement line item it produces on the payslip is rebuilt
+        on every <a href="#generate">generation</a>.
+      </p>
+
+      <section class="endpoint" id="get-claims">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/claims</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Claims currently attached to this run.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code> / <code>payrollRunId</code> / <code>claimId</code> / <code>employeeProfileId</code></td><td>string</td><td></td></tr>
+              <tr><td><code>label</code> / <code>amount</code></td><td>string / number</td><td>Snapshotted at attach time — editing the claim afterwards does not move these.</td></tr>
+              <tr><td><code>employeeName</code> / <code>employeeNumber</code> / <code>claimNumber</code></td><td>string</td><td></td></tr>
+              <tr><td><code>createdAt</code></td><td>string</td><td>ISO 8601.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/claims \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="attachable-claims">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/claims/attachable</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          Claims that could go on <em>any</em> run — approved, personal-paid, and routed to payroll
+          settlement — not scoped to this one. The <code>{id}</code> is only used to confirm the run
+          exists; rows already attached elsewhere are included and flagged rather than omitted.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>claimId</code> / <code>claimNumber</code> / <code>title</code></td><td>string</td><td></td></tr>
+              <tr><td><code>category</code> / <code>claimType</code></td><td>string</td><td>Claim enums.</td></tr>
+              <tr><td><code>amount</code> / <code>spentAt</code></td><td>number / string</td><td>ISO 8601 date.</td></tr>
+              <tr><td><code>userId</code> / <code>employeeProfileId</code> / <code>employeeName</code> / <code>employeeNumber</code></td><td>string</td><td></td></tr>
+              <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach.</td></tr>
+              <tr><td><code>blockedReason</code></td><td>string or null</td><td>Why it cannot be attached right now (e.g. the claimant has no payroll profile). Null means it can.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/claims/attachable \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="attach-claim">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/claims</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Attach one approved claim to a draft run.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>claimId</code></td><td>string</td><td>yes</td><td>Max 40 chars.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The created claim-attachment object (see <a href="#get-claims">above</a>).</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — one of: the run is no longer a draft; the claim id does not resolve in this org; it is already attached to another run (names which one); or it is blocked (e.g. the claimant has no payroll profile).</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/claims \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "claimId": "claim_123" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="detach-claim">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/payroll/runs/{id}/claims/{claimId}</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Detach a claim. It becomes free to attach elsewhere; the claim itself is untouched.</p>
+        <h3>Response</h3>
+        <p><code>204</code> No Content.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — this claim id is not currently attached to <em>this</em> run (whether it isn't attached to anything, or it's attached to a different run).</li>
+          <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before detaching reimbursements." }</code> — this run is not a draft.</li>
+        </ul>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/payroll/runs/run_123/claims/claim_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Statutory files ───────────────────────── -->
+
+    <section class="section" id="statutory-files">
+      <h2>Statutory files</h2>
+      <p>
+        The monthly submissions, generated on demand from the run's payslips — those are the filed
+        figures and never move. Identifiers (EPF number, IC, etc.) are read live from the employee's
+        current profile, so a corrected typo reaches the next download.
+      </p>
+      <div class="callout warn">
+        Every route in this section requires the run to be <code>SUBMITTED</code> and
+        <code>source: "COMPUTED"</code> (not <code>"IMPORTED"</code>). Otherwise:
+        <code>409</code> <code>{ "error": "This run has not been approved yet, so its figures can still change. Submit and approve it before producing files." }</code>
+        or, for an imported run, a message explaining the previous system already filed it. Both are
+        omitted below to avoid repetition.
+      </div>
+
+      <section class="endpoint" id="file-epf">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/epf</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>EPF contribution CSV for KWSP i-Akaun Majikan bulk upload. Rows with no EPF number, or nothing to remit, are omitted.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: text/csv</code>, filename <code>{ddMMyyyy}-EPF_iAkaun-{yyyy}_{mm}.csv</code> (date = today, UTC) — e.g. <code>01102026-EPF_iAkaun-2026_01.csv</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run (empty body).</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/epf \
+  -H "Authorization: Bearer wp_live_xxx" -o epf.csv</code></pre>
+      </section>
+
+      <section class="endpoint" id="file-socso-eis">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/socso-eis</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>SOCSO + EIS combined contribution TXT, PERKESO ASSIST spec v1.0, fixed-width.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: text/plain</code>, filename <code>SOCSO_EIS_{mm}{yyyy}.txt</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — PERKESO Employer Code missing or looks like a placeholder.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/socso-eis \
+  -H "Authorization: Bearer wp_live_xxx" -o socso_eis.txt</code></pre>
+      </section>
+
+      <section class="endpoint" id="file-socso-eis-skbbk">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/socso-eis-skbbk</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The same SOCSO + EIS submission, in ASSIST 2.0's layout with SKBBK included. Admins pick whichever layout their PERKESO portal account is on — this is not a different period's data.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: text/plain</code>, filename <code>SOCSO_EIS_SKBBK_{mm}{yyyy}.txt</code>.</p>
+        <h3>Errors</h3>
+        <p>Same as <a href="#file-socso-eis">above</a>.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/socso-eis-skbbk \
+  -H "Authorization: Bearer wp_live_xxx" -o socso_eis_skbbk.txt</code></pre>
+      </section>
+
+      <section class="endpoint" id="file-pcb">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/pcb</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>LHDN's CP39 PCB/MTD batch submission TXT, fixed-width.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: text/plain</code>, filename <code>{10-digit employer no}{mm}_{yyyy}.txt</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — Employer LHDN E-number missing or looks like a placeholder.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/pcb \
+  -H "Authorization: Bearer wp_live_xxx" -o pcb.txt</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Documents ───────────────────────── -->
+
+    <section class="section" id="documents">
+      <h2>Documents</h2>
+
+      <section class="endpoint" id="doc-payslip">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/payslip/{employeeProfileId}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          One employee's payslip PDF. The one document a <strong>draft</strong> may also produce — as a
+          watermarked preview, so figures can be checked before approval. Everything else in this section
+          still waits for <code>SUBMITTED</code>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>Content-Type: application/pdf</code>, filename
+          <code>{employeeNumber}_{name}_{mm-yyyy}.pdf</code>, with a <code>_DRAFT</code> suffix before
+          <code>.pdf</code> when the run is not yet submitted.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "That employee has no payslip on this run." }</code> — not generated yet, or not a member of this run.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslip/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx" -o payslip.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-payslips">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/payslips</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every payslip on the run, as a ZIP of individual PDFs (one per employee) — finance teams forward them one at a time.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>Payslips_{yyyy}_{mm}_All.zip</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> — run not submitted, or no payslips on the run.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslips \
+  -H "Authorization: Bearer wp_live_xxx" -o payslips.zip</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/summary</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run. <code>409</code> — run not submitted/imported, or no payslips.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary \
+  -H "Authorization: Bearer wp_live_xxx" -o summary.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-payment-schedule">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/payment-schedule</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Who is paid what, into which account — in full, unmasked (unlike a payslip). For an approver to check against the bank file before releasing it.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>Payment_Schedule_{Month}_{Year}.pdf</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run. <code>409</code> — run not submitted/imported.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payment-schedule \
+  -H "Authorization: Bearer wp_live_xxx" -o payment-schedule.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-pcb-details">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/pcb-details</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>LHDN's MTD §E worksheet, one page per employee, re-deriving the PCB calculation by hand. Reads each payslip's stored breakdown rather than recomputing it, so a filed figure never moves.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>PCB_Calculation_Details_{Month}_{Year}.pdf</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run. <code>409</code> — run not submitted/imported, or no payslips.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/pcb-details \
+  -H "Authorization: Bearer wp_live_xxx" -o pcb-details.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-tp1">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/tp1/{employeeProfileId}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Borang PCB/TP1 for one employee: each relief item's limit, this month's figure (SEMASA) and the year-to-date (TERKUMPUL), as LHDN's form lays it out.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>TP1_{employeeNumber}_{mm}-{yyyy}.pdf</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted, or that employee has no payslip on this run.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/tp1/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx" -o tp1.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-tp1-claims">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/tp1-claims</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The month's printable list of employees who claimed a TP1 relief or declared a previous employer (TP3), as the MTD spec requires.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>TP1_TP3_Claims_{mm}-{yyyy}.pdf</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run. <code>409</code> — run not submitted.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/tp1-claims \
+  -H "Authorization: Bearer wp_live_xxx" -o tp1-claims.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-bank-file">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/bank-file</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info).</p>
+        <h3>Query parameters</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the value date. Defaults to the last day of the payroll period.</td></tr>
+              <tr><td><code>recipientReference</code></td><td>string, optional</td><td>Hong Leong only; every other bank ignores it.</td></tr>
+              <tr><td><code>channel</code></td><td>string, optional</td><td>Hong Leong only: <code>"ConnectFirst"</code> or <code>"ConnectBiz"</code> — the two upload portals take different files, so this is required for an HLB org.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank/CIMB TXT, or Hong Leong's two formats).</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>.</li>
+        </ul>
+<pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
+  -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-download">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/download</span>
+          <span class="tag">alias: /payroll/runs/{id}/download</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          Every document this run produces, zipped: the bank file, the summary, all payslips, and the
+          three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
+          payroll bank configured) is left out of the zip rather than failing the whole bundle.
+        </p>
+        <h3>Query parameters</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>payroll-{yyyy}-{mm}.zip</code>. Two extra headers:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Bundle-File-Count</code></td><td>How many documents made it into the zip.</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>summary</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Check these headers rather than unzipping the file to tell "no bank file configured" from "the zip is fine".</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run itself is not submitted (an individual missing document inside the zip does not fail the request).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/download \
+  -H "Authorization: Bearer wp_live_xxx" -D - -o payroll-bundle.zip</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Emailing payslips ───────────────────────── -->
+
+    <section class="section" id="emailing">
+      <h2>Emailing payslips</h2>
+      <p>
+        Manual, admin-triggered — never automatic, so there is no accidental blast.
+        <strong>Both routes send a real email</strong> to the employee's address on file when they succeed.
+      </p>
+
+      <section class="endpoint" id="email-payslip">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/documents/payslip/{employeeProfileId}/email</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Email one employee their payslip PDF for this run.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>{ "ok": true, "error": null }</code></p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> <code>{ "error": "…" }</code> — no such run, or no payslip for that employee on this run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run exists but can't be emailed yet: not <code>SUBMITTED</code>, or no email address on file for that employee.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslip/emp_123/email \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="email-run-payslips">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/email-payslips</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Email every payslip on this run to its employee, one send at a time.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>sent</code></td><td>number</td><td></td></tr>
+              <tr><td><code>failed[].employeeName</code> / <code>.reason</code></td><td>string</td><td>Per-employee failures (e.g. no email on file) do not fail the request — this is still a <code>200</code>.</td></tr>
+              <tr><td><code>error</code></td><td>string or null</td><td>Set only for a whole-run failure.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> <code>{ "error": "…" }</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run exists but isn't <code>SUBMITTED</code> yet.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/email-payslips \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <!-- ───────────────────────── Xero ───────────────────────── -->
+
+    <section class="section" id="xero">
+      <h2>Xero</h2>
+
+      <section class="endpoint" id="xero-tracking-categories">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/xero/tracking-categories</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The org's Xero tracking categories, for mapping payroll accounts to them. Not run-scoped — lives on this controller alongside the rest of the payroll-to-Xero surface.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array: <code>{ "trackingCategoryId": string, "name": string, "options": string[] }</code>. Empty when Xero is not connected or is unreachable.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/xero/tracking-categories \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="xero-preview">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/xero/preview</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The manual journal that WOULD post, so it can be checked against the chart of accounts before committing. Writes nothing.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td>Whether these lines would actually post — check this, not the HTTP status: a mapping problem still answers <code>200</code>.</td></tr>
+              <tr><td><code>error</code></td><td>string or null</td><td>Why <code>ok</code> is false, e.g. an unmapped account.</td></tr>
+              <tr><td><code>narration</code> / <code>date</code></td><td>string</td><td></td></tr>
+              <tr><td><code>lines[].accountCode</code> / <code>.description</code> / <code>.amount</code> / <code>.trackingOption</code></td><td>mixed</td><td></td></tr>
+              <tr><td><code>balance</code></td><td>number</td><td>Sum of every line's amount — should be 0 for a balanced journal.</td></tr>
+              <tr><td><code>totalDebits</code> / <code>totalCredits</code></td><td>number</td><td></td></tr>
+              <tr><td><code>xeroManualJournalId</code></td><td>string or null</td><td>Non-null once the run has already posted.</td></tr>
+              <tr><td><code>status</code></td><td>string</td><td><code>"NOT_SYNCED"</code> · <code>"SYNCED"</code> · <code>"ERROR"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such run.</p>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/xero/preview \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="xero-sync">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/runs/{id}/xero/sync</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Post the run's journal to Xero. Idempotent: calling it again after a success reports the journal already there rather than creating a second one.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>found</code></td><td>boolean</td><td><code>true</code> on a 200.</td></tr>
+              <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code> on a 200 (a failed post is returned as a <code>409</code> instead — see below).</td></tr>
+              <tr><td><code>manualJournalId</code></td><td>string or null</td><td></td></tr>
+              <tr><td><code>lineCount</code></td><td>number</td><td><code>0</code> when <code>alreadyPosted</code> is true — the existing journal's lines are not recounted.</td></tr>
+              <tr><td><code>alreadyPosted</code></td><td>boolean</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — note the body here is just <code>{ "error" }</code>, not the full shape above: not <code>SUBMITTED</code> yet, the org is not connected to Xero, an unmapped account, or an unbalanced journal.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/xero/sync \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section">
+      <h2>Not available to API keys</h2>
+      <p>
+        Every action on <code>PayrollRunsController</code> is reachable with a scoped API key — none are
+        marked <code>[HumanOnly]</code>. All of them also require the <strong>Payroll</strong> module on
+        the org's plan.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

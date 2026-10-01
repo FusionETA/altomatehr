@@ -47,13 +47,16 @@ public class TeamsController : ControllerBase
         [FromQuery] string? projectId = null) =>
         Ok(await _teams.GetApprovalChainAsync(employeeId, module, projectId));
 
+    [RequireScope("teams:write")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateTeamDto dto) => await ToResponse(await _teams.CreateAsync(dto));
 
+    [RequireScope("teams:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveTeamDto dto) =>
         await ToResponse(await _teams.UpdateAsync(id, dto), healApprovals: true);
 
+    [RequireScope("teams:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -63,6 +66,7 @@ public class TeamsController : ControllerBase
     }
 
     // POST /teams/{id}/members — add a member or move them to another layer.
+    [RequireScope("teams:write")]
     [HttpPost("{id}/members")]
     public async Task<IActionResult> AddMember(string id, SaveMembershipDto dto) =>
         // Moving someone DOWN a layer shortens the chain above them just as
@@ -70,6 +74,7 @@ public class TeamsController : ControllerBase
         await ToResponse(await _teams.AddOrUpdateMemberAsync(id, dto), healApprovals: true);
 
     // DELETE /teams/{id}/members/{employeeId} — remove a member.
+    [RequireScope("teams:write")]
     [HttpDelete("{id}/members/{employeeId}")]
     public async Task<IActionResult> RemoveMember(string id, string employeeId) =>
         await ToResponse(await _teams.RemoveMemberAsync(id, employeeId), healApprovals: true);
@@ -86,6 +91,7 @@ public class TeamsController : ControllerBase
 
     // PUT /teams/{id}/members/{employeeId}/approvers/{layer} — set/replace the
     // explicit approver list for this employee at this layer.
+    [RequireScope("teams:write")]
     [HttpPut("{id}/members/{employeeId}/approvers/{layer:int}")]
     public async Task<IActionResult> SetApproverOverride(
         string id, string employeeId, int layer, SetApproverOverrideDto dto) =>
@@ -94,6 +100,7 @@ public class TeamsController : ControllerBase
 
     // DELETE /teams/{id}/members/{employeeId}/approvers/{layer} — revert to
     // the team's implicit default at this layer.
+    [RequireScope("teams:write")]
     [HttpDelete("{id}/members/{employeeId}/approvers/{layer:int}")]
     public async Task<IActionResult> ClearApproverOverride(string id, string employeeId, int layer) =>
         await ToApproverResponse(await _teams.ClearApproverOverrideAsync(id, employeeId, layer));

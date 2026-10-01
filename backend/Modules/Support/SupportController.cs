@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Support.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Support;
 
@@ -18,11 +19,13 @@ public class SupportController : ControllerBase
     public SupportController(ISupportService support) => _support = support;
 
     // GET /support/organizations?search= — every company, by name or owner email.
+    [HumanOnly]
     [HttpGet("organizations")]
     public async Task<IActionResult> Organizations([FromQuery] string? search) =>
         Ok(await _support.ListOrganizationsAsync(search));
 
     // POST /support/organizations — provision a company and its Owner.
+    [HumanOnly]
     [HttpPost("organizations")]
     public async Task<IActionResult> CreateCompany(CreateSupportCompanyDto dto)
     {

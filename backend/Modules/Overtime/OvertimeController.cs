@@ -58,6 +58,7 @@ public class OvertimeController : ControllerBase
         return request is null ? NotFound() : Ok(request);
     }
 
+    [HumanOnly]
     [HttpPost]
     public async Task<IActionResult> Submit(CreateOvertimeRequestDto dto)
     {
@@ -65,22 +66,26 @@ public class OvertimeController : ControllerBase
         return result.Ok ? Ok(result.Request) : BadRequest(new { message = result.Error });
     }
 
+    [HumanOnly]
     [HttpPost("{id}/after-photo")]
     public async Task<IActionResult> AttachAfterPhoto(string id, AttachOvertimeAfterPhotoDto dto) =>
         ToTransitionResponse(await _overtime.AttachAfterPhotoAsync(id, GetUserId(), dto));
 
     // DELETE /overtime/{id}/after-photo — remove the after-work photo from a
     // pending request (owner only) and delete the file behind it.
+    [HumanOnly]
     [HttpDelete("{id}/after-photo")]
     public async Task<IActionResult> DeleteAfterPhoto(string id) =>
         ToTransitionResponse(await _overtime.DeleteAfterPhotoAsync(id, GetUserId()));
 
     // DELETE /overtime/{id}/attachments/{attachmentId} — remove ONE after-work
     // file from a pending request (owner only). Before-work files are refused.
+    [HumanOnly]
     [HttpDelete("{id}/attachments/{attachmentId}")]
     public async Task<IActionResult> DeleteAttachment(string id, string attachmentId) =>
         ToTransitionResponse(await _overtime.DeleteAttachmentAsync(id, attachmentId, GetUserId()));
 
+    [RequireScope("overtime:write")]
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
@@ -91,16 +96,19 @@ public class OvertimeController : ControllerBase
     // because a run where eighteen of twenty landed is not a failed request.
     //
     // No bulk reject counterpart on purpose — see BulkApproveOvertimeDto.
+    [RequireScope("overtime:write")]
     [HttpPost("bulk/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> BulkApprove(BulkApproveOvertimeDto dto) =>
         Ok(await _overtime.BulkApproveAsync(dto.Ids, GetUserId()));
 
+    [RequireScope("overtime:write")]
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectOvertimeDto dto) =>
         ToTransitionResponse(await _overtime.RejectAsync(id, GetUserId(), dto.ReviewNotes));
 
+    [HumanOnly]
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(string id) =>
         ToTransitionResponse(await _overtime.CancelAsync(id, GetUserId()));
@@ -109,6 +117,7 @@ public class OvertimeController : ControllerBase
     // a client attaching several uploads each, then sends the urls. The
     // request limit leaves room for multipart overhead around an 8 MB file,
     // so the storage's own 8 MB check is the one that answers.
+    [HumanOnly]
     [HttpPost("photo")]
     [RequestSizeLimit(9 * 1024 * 1024)]
     public async Task<IActionResult> UploadPhoto(IFormFile? photo)

@@ -24,6 +24,7 @@ public class HolidaysController : ControllerBase
             : await _holidays.GetAllAsync());
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveHolidayDto dto)
     {
@@ -32,6 +33,7 @@ public class HolidaysController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveHolidayDto dto)
     {
@@ -46,6 +48,7 @@ public class HolidaysController : ControllerBase
     // what was already there, because "imported 14, skipped 3" is the useful
     // answer when an admin re-runs it after a calendar revision.
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
     [HttpPost("import")]
     public async Task<IActionResult> Import(ImportHolidaysDto dto)
     {
@@ -56,6 +59,7 @@ public class HolidaysController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id) =>
         await _holidays.DeleteAsync(id) ? NoContent() : NotFound();

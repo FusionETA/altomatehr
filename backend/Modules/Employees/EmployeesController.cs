@@ -52,6 +52,7 @@ public class EmployeesController : ControllerBase
     }
 
     // PUT /employees/{id}/profile — upsert that profile (create on first save).
+    [RequireScope("employees:write")]
     [HttpPut("{id}/profile")]
     public async Task<IActionResult> SaveProfile(string id, EmployeeProfileDto dto)
     {
@@ -68,20 +69,22 @@ public class EmployeesController : ControllerBase
 
     // POST /employees — add a member to THIS org (the admin's active org). If the
     // email already belongs to a user, that identity is reused (second-org case).
+    [RequireScope("employees:write")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateEmployeeDto dto)
     {
         var result = await _employees.CreateAsync(dto);
-        return result.Ok ? Ok(result.Employee) : BadRequest(new { message = result.Error });
+        return result.Ok ? Ok(result.Employee) : BadRequest(new { error = result.Error });
     }
 
     // PUT /employees/{id} — set a user's role and/or supervisor.
+    [RequireScope("employees:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateEmployeeDto dto)
     {
         var result = await _employees.UpdateAsync(id, dto);
         if (!result.Ok && result.Error is null) return NotFound();
-        return result.Ok ? Ok(result.Employee) : BadRequest(new { message = result.Error });
+        return result.Ok ? Ok(result.Employee) : BadRequest(new { error = result.Error });
     }
 
     // GET /employees/{id}/documents — everything attached to this profile.
@@ -94,12 +97,13 @@ public class EmployeesController : ControllerBase
     }
 
     // POST /employees/{id}/documents — attach a file (ID scan, contract, etc).
+    [RequireScope("employees:write")]
     [HttpPost("{id}/documents")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> UploadDocument(string id, IFormFile? file)
     {
         if (file is null || file.Length == 0)
-            return BadRequest(new { message = "Pick a file to upload." });
+            return BadRequest(new { error = "Pick a file to upload." });
 
         await using var stream = file.OpenReadStream();
         var result = await _documents.UploadAsync(
@@ -107,7 +111,7 @@ public class EmployeesController : ControllerBase
             new EmployeeDocumentUpload(file.FileName, file.ContentType, file.Length, stream));
 
         if (!result.Ok && result.Error is null) return NotFound();
-        return result.Ok ? Ok(result.Document) : BadRequest(new { message = result.Error });
+        return result.Ok ? Ok(result.Document) : BadRequest(new { error = result.Error });
     }
 
     // GET /employees/{id}/documents/{documentId}/download
@@ -124,6 +128,7 @@ public class EmployeesController : ControllerBase
 
     // DELETE /employees/{id}/documents/{documentId} — unlists it; the physical
     // file is intentionally left on disk (see EmployeeDocumentService.DeleteAsync).
+    [RequireScope("employees:write")]
     [HttpDelete("{id}/documents/{documentId}")]
     public async Task<IActionResult> DeleteDocument(string id, string documentId)
     {
@@ -147,11 +152,11 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> DownloadLhdnForm(string id, string kind, [FromQuery] int? year)
     {
         if (!Enum.TryParse<LhdnFormKind>(kind, ignoreCase: true, out var parsedKind))
-            return BadRequest(new { message = $"Unknown form kind '{kind}'." });
+            return BadRequest(new { error = $"Unknown form kind '{kind}'." });
 
         var result = await _lhdnForms.GenerateAsync(id, parsedKind, year);
         if (!result.Ok && result.Error is null) return NotFound();
-        if (!result.Ok) return BadRequest(new { message = result.Error });
+        if (!result.Ok) return BadRequest(new { error = result.Error });
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Bytes!, "application/pdf", result.FileName);
@@ -166,6 +171,8 @@ public class EmployeesController : ControllerBase
     // For the employee who can no longer receive the reset code: a returning
     // worker, or one whose personal address is gone. Admin/Owner only, and the
     // service refuses the caller themselves and any Owner account.
+    // Never an API key: a key that can set a password can take the account over.
+    [HumanOnly]
     [HttpPost("{userId}/password")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SetPassword(string userId, SetEmployeePasswordDto dto)
@@ -180,6 +187,7 @@ public class EmployeesController : ControllerBase
             : BadRequest(new { error = result.Error });
     }
 
+    [RequireScope("employees:read")]
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ImportTemplate([FromQuery] TabularFormat format = TabularFormat.Xlsx)
@@ -193,6 +201,7 @@ public class EmployeesController : ControllerBase
     // and re-import. With ?fields=a,b,c only those columns, as a plain table
     // to read or print (Excel or PDF); ?includeArchived=false leaves out
     // archived employees.
+    [RequireScope("employees:read")]
     [HttpGet("export")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Export(
@@ -213,10 +222,12 @@ public class EmployeesController : ControllerBase
     }
 
     // GET /employees/export/fields — what an export can include, grouped.
+    [RequireScope("employees:read")]
     [HttpGet("export/fields")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ExportFields() => Ok(await _import.ExportFieldsAsync());
 
+    [RequireScope("employees:write")]
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Import(

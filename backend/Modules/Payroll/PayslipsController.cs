@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.Organizations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,10 @@ namespace AltomateHR.Api.Modules.Payroll;
 [ApiController]
 [Route("payslips")]
 [Authorize]
+// Plan check only: [Authorize] carries no roles, so an employee's own
+// payslips never need an admin grant — but a company without Payroll on its
+// plan has no payslips to read, as every other payroll endpoint already says.
+[RequireModule(OrgModules.Payroll)]
 public class PayslipsController : ControllerBase
 {
     private readonly IEmployeePayrollService _payroll;

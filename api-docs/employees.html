@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Employees</title>
+  <meta name="description" content="Manage the roster, HR/statutory profiles, documents, LHDN forms and bulk import/export for employees with a company API key." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Documented from backend/Modules/Employees/EmployeesController.cs and the
+  two employee-related actions on backend/Modules/ApiKeys/PartnerApiController.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html" aria-current="page">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Employees</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Employees</h1>
+    <p class="lead">
+      The roster, each person's HR/statutory profile, their attached documents, their LHDN
+      statutory forms, and bulk import/export of the lot. Unless an endpoint says otherwise,
+      it needs the organization's plan to include <strong>Employees</strong> — a key in a
+      plan without it gets <code>403</code> with
+      <code>This organization's plan does not include the 'employees' module.</code>
+    </p>
+    </div>
+
+    <section class="section" id="employees">
+      <h2>Employees</h2>
+
+      <section class="endpoint" id="list-employees">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>Everyone in the organization, with their role and employment basics.</p>
+        <div class="callout warn">
+          The <code>id</code> on each row is the <strong>user id</strong>, not the payroll
+          profile id. Payroll endpoints (e.g. <code>GET /payroll/employees</code> on
+          <a href="payroll.html">payroll.html</a>) key on <code>employeeProfileId</code>
+          instead — look it up there, or from <code>GET /employees/{id}/profile</code> below.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>The user id (not the payroll profile id).</td></tr>
+              <tr><td><code>email</code></td><td>string</td><td>Login email.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>Display name.</td></tr>
+              <tr><td><code>avatarUrl</code></td><td>string | null</td><td>Profile picture, if set.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code> — in this org.</td></tr>
+              <tr><td><code>employeeNumber</code></td><td>string | null</td><td>Staff/payroll number in this org.</td></tr>
+              <tr><td><code>jobTitle</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>First day of work in this org.</td></tr>
+              <tr><td><code>otTimeBalanceMin</code></td><td>number</td><td>Banked overtime time-off, in minutes.</td></tr>
+              <tr><td><code>policyId</code></td><td>string | null</td><td>Leave/attendance policy, if not the org default.</td></tr>
+              <tr><td><code>shiftId</code></td><td>string | null</td><td>Shift, if not the project default.</td></tr>
+              <tr><td><code>modules</code></td><td>string[] | null</td><td>Per-admin module grant. <code>null</code> = full access; only meaningful when <code>role</code> is <code>Admin</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/employees \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="create-employee">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/employees</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p>
+          Add a member to the key's own organization. If the email already belongs to a user
+          (someone who works at another company on AltomateHR too), that identity is
+          <strong>reused</strong> — a second membership is added to it — rather than a new
+          account created.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>email</code></td><td>string</td><td>Yes</td><td>Max 120 chars.</td></tr>
+              <tr><td><code>password</code></td><td>string</td><td>Only for a new account</td><td>Max 100 chars. Ignored when the email already has an account — that person keeps their password.</td></tr>
+              <tr><td><code>sendWelcomeEmail</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>dateOfBirth</code></td><td>string (date)</td><td>Only for a new account if <code>password</code> is omitted</td><td>The first password is then the email followed by the birthday as <code>MMDD</code>.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>Only for a new account</td><td>Max 160 chars. Ignored when reusing an existing identity.</td></tr>
+              <tr><td><code>employeeNumber</code></td><td>string</td><td>Yes</td><td>Max 40 chars. Payroll's statutory files key on it.</td></tr>
+              <tr><td><code>jobTitle</code></td><td>string</td><td>No</td><td>Max 120 chars.</td></tr>
+              <tr><td><code>joinDate</code></td><td>string (date)</td><td>No</td><td>Drives pro-rated leave accrual.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted.</td></tr>
+              <tr><td><code>policyId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
+              <tr><td><code>shiftId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
+              <tr><td><code>modules</code></td><td>string[] | null</td><td>No</td><td>Per-admin module grant (only meaningful for an <code>Admin</code>). <code>null</code> = full access, <code>[]</code> = locked out, otherwise a subset of the plan's modules.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The new (or reused) member, in the same shape as a row from <code>GET /employees</code>.</p>
+        <div class="callout warn">
+          Sending <code>sendWelcomeEmail: true</code> does not tell you whether the email
+          actually went out — the service tracks that, but the controller only returns the
+          employee object. The person is added either way.
+        </div>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Bad role, blank email, already a member, or a new account missing a required field</td><td><code>{ "error": "…" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/employees \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@example.com",
+    "name": "Jane Example",
+    "dateOfBirth": "1992-04-10",
+    "employeeNumber": "EMP-042",
+    "role": "Employee"
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-employee">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/employees/{id}</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p>Change a member's role, supervisor-layer placement, or roster basics. <code>{id}</code> is the user id.</p>
+        <div class="callout">
+          <strong>Patch semantics, not replace:</strong> <code>null</code> on
+          <code>name</code>, <code>email</code>, <code>employeeNumber</code>, <code>jobTitle</code>
+          or <code>joinDate</code> means "leave unchanged" — omit a field rather than send
+          <code>null</code> to clear it. <code>employeeNumber</code>/<code>jobTitle</code> accept
+          <code>""</code> to clear them on purpose. <code>joinDate</code> needs
+          <code>clearJoinDate: true</code> to be cleared, since <code>null</code> there is
+          "unchanged". <code>role</code>, <code>policyId</code>/<code>shiftId</code> and
+          <code>modules</code> ARE replaced outright on every call.
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string | null</td><td>No</td><td>Max 160 chars. <code>null</code> = unchanged.</td></tr>
+              <tr><td><code>email</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged; rejected if another user already has it.</td></tr>
+              <tr><td><code>employeeNumber</code></td><td>string | null</td><td>No</td><td>Max 40 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
+              <tr><td><code>jobTitle</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
+              <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>No</td><td><code>null</code> = unchanged. Recomputes pro-rated leave accrual when it actually changes.</td></tr>
+              <tr><td><code>clearJoinDate</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>. Wins over <code>joinDate</code>.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code>. Always replaced — resend the current value to leave it as is.</td></tr>
+              <tr><td><code>policyId</code></td><td>string | null</td><td>No</td><td>Replaced outright; <code>null</code> falls back to the org default.</td></tr>
+              <tr><td><code>shiftId</code></td><td>string | null</td><td>No</td><td>Replaced outright; <code>null</code> falls back to the project default.</td></tr>
+              <tr><td><code>modules</code></td><td>string[] | null</td><td>No</td><td>Replaced outright. <code>null</code> = full access, <code>[]</code> = locked out.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated member, in the same shape as a row from <code>GET /employees</code>.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Bad role, duplicate email, or demoting someone who still has people routing approvals to them</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/employees/usr_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "role": "Supervisor", "jobTitle": "Site Lead" }'</code></pre>
+      </section>
+
+    </section>
+
+    <section class="section" id="profile">
+      <h2>Profile</h2>
+      <p>
+        The full HR/statutory profile behind each member — personal details, tax reliefs,
+        statutory numbers, bank details and salary. This is where an admin screen or an
+        integration edits the record payroll actually reads.
+      </p>
+
+      <section class="endpoint" id="get-profile">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/{id}/profile</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p><code>{id}</code> is the user id (as returned by <code>GET /employees</code>).</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          If no profile has ever been saved for this person, the response is a shell with
+          only <code>id</code>/<code>employeeProfileId</code> (<code>null</code>)/<code>email</code>/<code>name</code>
+          populated and every other field at its default — so a form can still load.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>The user id. Read-only.</td></tr>
+              <tr><td><code>employeeProfileId</code></td><td>string | null</td><td>The profile row's own id — what payroll keys on (salary history, payslips). <code>null</code> until the profile is first saved. Read-only.</td></tr>
+              <tr><td><code>email</code></td><td>string</td><td>Read-only (edit via <code>PUT /employees/{id}</code>).</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>Read-only (edit via <code>PUT /employees/{id}</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Every other field below is editable — see <code>PUT /employees/{id}/profile</code>.</p>
+      </section>
+
+      <section class="endpoint" id="save-profile">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/employees/{id}/profile</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p>Create (on first save) or replace this person's profile. <code>{id}</code> is the user id.</p>
+        <div class="callout warn">
+          <strong>This PUT replaces every editable field</strong> — it is not a patch.
+          <code>GET</code> the profile first, change what you need, and send the whole object
+          back; any field you omit is written as its empty/default value. Saving also marks
+          every <strong>draft</strong> payroll run stale (it is regenerated, not auto-updated).
+        </div>
+        <h3>Request</h3>
+        <p>Context fields (<code>id</code>, <code>employeeProfileId</code>, <code>email</code>, <code>name</code>) are ignored if sent — they come from the route and the user record. Everything else:</p>
+        <h4>Personal / demographic</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>phone</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>alternateEmail</code></td><td>string | null</td><td>Not used to sign in.</td></tr>
+              <tr><td><code>gender</code></td><td>string | null</td><td><code>MALE</code> or <code>FEMALE</code>.</td></tr>
+              <tr><td><code>dateOfBirth</code></td><td>string (date) | null</td><td></td></tr>
+              <tr><td><code>nationality</code></td><td>string | null</td><td>Normalised against the dropdown's spelling (e.g. "Malaysia" → "Malaysian").</td></tr>
+              <tr><td><code>race</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>hasPr</code></td><td>boolean</td><td>Malaysian PR. Default <code>false</code>.</td></tr>
+              <tr><td><code>idType</code></td><td>string | null</td><td><code>NRIC</code>, <code>PASSPORT</code>, <code>ARMY_NO</code> or <code>POLICE_NO</code>.</td></tr>
+              <tr><td><code>idNumber</code></td><td>string | null</td><td>IC or passport number.</td></tr>
+              <tr><td><code>maritalStatus</code></td><td>string | null</td><td><code>SINGLE</code>, <code>MARRIED</code>, <code>DIVORCED</code> or <code>WIDOWED</code>.</td></tr>
+              <tr><td><code>isResident</code></td><td>boolean</td><td>Tax resident. Default <code>true</code>.</td></tr>
+              <tr><td><code>isOku</code></td><td>boolean</td><td>Person with disability. Default <code>false</code>.</td></tr>
+              <tr><td><code>addressLine1</code> / <code>addressLine2</code> / <code>city</code> / <code>postcode</code> / <code>state</code></td><td>string | null</td><td>Home address.</td></tr>
+              <tr><td><code>emergencyContactName</code> / <code>emergencyContactPhone</code> / <code>emergencyContactRelation</code></td><td>string | null</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Employment placement</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>First day of work in this org.</td></tr>
+              <tr><td><code>leaveDate</code></td><td>string (date) | null</td><td>Last working day. Gates several LHDN forms — see below.</td></tr>
+              <tr><td><code>department</code> / <code>location</code> / <code>workSchedule</code></td><td>string | null</td><td>Free text.</td></tr>
+              <tr><td><code>employmentStatus</code></td><td>string | null</td><td><code>MANAGEMENT</code>, <code>PERMANENT</code>, <code>CONTRACT</code>, <code>PART_TIME</code>, <code>INDUSTRIAL_TRAINEE</code> or <code>OTHER</code>. Reported on CP8D.</td></tr>
+              <tr><td><code>contractEndDate</code></td><td>string (date) | null</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Spouse / tax relief</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>spouseWorking</code></td><td>boolean | null</td><td></td></tr>
+              <tr><td><code>spouseDisabled</code></td><td>boolean | null</td><td></td></tr>
+              <tr><td><code>spousePcbNumber</code></td><td>string | null</td><td>Spouse's income tax number.</td></tr>
+              <tr><td><code>spouseIdNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>childReliefJson</code></td><td>string | null</td><td>JSON array of children — see below.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <strong><code>childReliefJson</code></strong> is a JSON array string, one object per
+          child:
+          <pre><code>[
+  {
+    "abilityStatus": "NORMAL",
+    "currentlyStudying": "UNDER_18",
+    "pcbDeduction": "NONE"
+  }
+]</code></pre>
+          <ul>
+            <li><code>abilityStatus</code>: <code>NORMAL</code> or <code>DISABLED</code>.</li>
+            <li><code>currentlyStudying</code>: <code>UNDER_18</code>, <code>PRE_UNIVERSITY</code>,
+              <code>DIPLOMA_MALAYSIA</code> or <code>DEGREE_ABROAD</code> — the LHDN relief band the child's education falls into.</li>
+            <li><code>pcbDeduction</code>: <code>FULL</code>, <code>HALF</code> (split with the
+              other parent) or <code>NONE</code> (default — add a child without claiming them
+              yet).</li>
+          </ul>
+          Read back leniently: an unparseable string, a non-array, or an unknown/legacy value
+          reads as no relief for that field rather than an error, so send exactly these values
+          to be sure what's stored.
+        </div>
+        <h4>Prior-employment year-to-date (for tax)</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>prevEmploymentYear</code></td><td>number | null</td><td></td></tr>
+              <tr><td><code>prevRemuneration</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>prevEpf</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>prevAllowableDeductions</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>prevPcb</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>prevZakat</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>prevIncludesPriorThisOrgPeriod</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>prevByCategoryJson</code></td><td>string | null</td><td>JSON — the previous employer's figures by payroll adjustment category, for yearly exemption/relief limits. Shape is owned by the payroll module.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>EPF</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>contributeToEpf</code></td><td>boolean</td><td>Default <code>true</code>. Can't be blank on import.</td></tr>
+              <tr><td><code>epfNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>epfEmployeeRate</code></td><td>number</td><td>A percentage; <code>0</code> = use the statutory rate.</td></tr>
+              <tr><td><code>epfEmployeeVoluntary</code></td><td>number</td><td>A percentage, on top of the statutory rate.</td></tr>
+              <tr><td><code>epfEmployerVoluntary</code></td><td>number</td><td>A percentage, on top of the statutory rate.</td></tr>
+              <tr><td><code>epfMemberBefore1998</code></td><td>boolean</td><td>Default <code>false</code>. Keeps a non-resident, non-PR member on the standard EPF rate instead of Part F.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>SOCSO / EIS / SKBBK</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>socsoNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>socsoScheme</code></td><td>string | null</td><td><code>EMPLOYMENT_INJURY_INVALIDITY</code> or <code>EMPLOYMENT_INJURY_ONLY</code>.</td></tr>
+              <tr><td><code>contributeToEis</code></td><td>boolean</td><td>Default <code>true</code>. Can't be blank on import.</td></tr>
+              <tr><td><code>contributeToSkbbk</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Income tax</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>specialTaxScheme</code></td><td>string | null</td><td><code>RETURNING_EXPERT</code>, <code>KNOWLEDGE_WORKER</code> or <code>C_SUITE</code> — the three 15% flat-tax approvals.</td></tr>
+              <tr><td><code>specialTaxFrom</code> / <code>specialTaxTo</code></td><td>string (date) | null</td><td>Stored as the first of the month; ignored unless <code>specialTaxScheme</code> is set.</td></tr>
+              <tr><td><code>incomeTaxNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>ssfwNumber</code></td><td>string | null</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Bank / payment</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>paymentMethod</code></td><td>string</td><td><code>BANK_TRANSFER</code> (default), <code>CASH</code> or <code>CHEQUE</code>.</td></tr>
+              <tr><td><code>bankName</code></td><td>string | null</td><td>Matched against a bank-name lookup when payroll builds a bank file; an unrecognised name blocks that file, not this save.</td></tr>
+              <tr><td><code>bankAccountHolderName</code> / <code>bankAccountNumber</code></td><td>string | null</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Salary &amp; salary-change trail</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>salaryType</code></td><td>string</td><td><code>MONTHLY</code> (default) or <code>HOURLY</code>.</td></tr>
+              <tr><td><code>monthlySalary</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>hourlyRate</code></td><td>number | null</td><td>Money.</td></tr>
+              <tr><td><code>fixedAllowancesJson</code></td><td>string | null</td><td>JSON array of recurring per-run allowances — see below.</td></tr>
+              <tr><td><code>salaryChangeEffectiveDate</code></td><td>string (date) | null</td><td>When a salary change took effect. <strong>Can't be in the future</strong> (v2 applies a change immediately) — a future date is rejected with <code>400</code>. <code>null</code> = today.</td></tr>
+              <tr><td><code>salaryChangeReason</code></td><td>string | null</td><td><code>RAISE</code> (default if omitted), <code>PROMOTION</code>, <code>DEMOTION</code>, <code>RESTRUCTURE</code> or <code>OTHER</code>.</td></tr>
+              <tr><td><code>salaryChangeNotes</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>salaryChangeIsCorrection</code></td><td>boolean</td><td>Default <code>false</code>. <code>true</code> fixes a typo <em>without</em> writing a salary-history row — use this for data cleanup, and leave it <code>false</code> for a real raise/promotion/demotion.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          A history row is written only when the salary actually changed — not for a
+          correction (<code>salaryChangeIsCorrection: true</code>) and not for a <em>first</em>
+          salary (nothing, or <code>0</code>, was set before). Sending the salary-change fields
+          on an edit that doesn't touch salary is harmless; they're simply unused.
+        </div>
+        <div class="callout">
+          <strong><code>fixedAllowancesJson</code></strong> is a JSON array string, one object
+          per recurring line:
+          <pre><code>[
+  {
+    "category": "allowance_standard",
+    "name": "Transport",
+    "amount": 300.00,
+    "treatAsRecurring": false
+  }
+]</code></pre>
+          <ul>
+            <li><code>category</code>: a payroll adjustment category code (free-form string,
+              not an enum — an unrecognised one is skipped rather than failing the save).</li>
+            <li><code>name</code>: the admin's own label; falls back to the category's label when omitted.</li>
+            <li><code>amount</code>: money, per pay run.</li>
+            <li><code>treatAsRecurring</code>: only meaningful on an additional-remuneration
+              category — routes it through the smoothed monthly PCB path instead of being
+              taxed as a one-off bonus. Never affects EPF.</li>
+          </ul>
+        </div>
+        <h4>Payroll config</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>payrollPolicy</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>payrollCycle</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>leaveEntitlementJson</code></td><td>string | null</td><td>JSON — shape owned by the leave/payroll modules.</td></tr>
+              <tr><td><code>payrollDocumentsJson</code></td><td>string | null</td><td>Internal document references; not the same list as <code>GET /employees/{id}/documents</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Lifecycle (archiving)</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>isArchived</code></td><td>boolean</td><td>Default <code>false</code>. See below.</td></tr>
+              <tr><td><code>archivedAt</code></td><td>string (date-time)</td><td>Ignored on write — stamped by the server the moment <code>isArchived</code> flips to <code>true</code>, and cleared when it flips back. Read-only in practice.</td></tr>
+              <tr><td><code>archiveReason</code></td><td>string | null</td><td>Kept only while <code>isArchived</code> is <code>true</code>; saving with <code>isArchived: false</code> clears it.</td></tr>
+              <tr><td><code>temporaryReviewDate</code></td><td>string (date) | null</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          There is no separate archive endpoint — archiving and restoring a member is the same
+          <code>PUT</code>, with <code>isArchived</code> flipped and the rest of the profile
+          unchanged (so <code>GET</code> first). Archiving affects which LHDN forms are
+          available for the person (see below) and which payroll-import template columns
+          apply to them.
+        </div>
+        <h3>Response</h3>
+        <p><code>200</code> with the full profile (same shape as <code>GET</code>) on success.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td><code>salaryChangeEffectiveDate</code> is in the future (and it's not a correction)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/employees/usr_123/profile \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idNumber": "900101-14-5567",
+    "idType": "NRIC",
+    "maritalStatus": "MARRIED",
+    "salaryType": "MONTHLY",
+    "monthlySalary": 5000.00,
+    "contributeToEpf": true,
+    "contributeToEis": true,
+    "paymentMethod": "BANK_TRANSFER"
+  }'</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="documents">
+      <h2>Documents</h2>
+      <p>Files attached to a profile — ID scans, contracts, certificates. <code>{id}</code> is always the user id.</p>
+
+      <section class="endpoint" id="list-documents">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>documents</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>Use with the download/delete endpoints below.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>Original file name.</td></tr>
+              <tr><td><code>mimeType</code></td><td>string</td><td></td></tr>
+              <tr><td><code>sizeBytes</code></td><td>number</td><td></td></tr>
+              <tr><td><code>uploadedAt</code></td><td>string (date-time)</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>404</code> (empty) when <code>{id}</code> is not a member of this organization.</p>
+      </section>
+
+      <section class="endpoint" id="upload-document">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>documents</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p><code>multipart/form-data</code> with one field, <code>file</code>. Up to 10&nbsp;MB.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The new document, in the same shape as a <code>GET /employees/{id}/documents</code> row.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>No file sent, or the service rejects it</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/employees/usr_123/documents \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@contract.pdf"</code></pre>
+      </section>
+
+      <section class="endpoint" id="download-document">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>documents/<wbr>{documentId}/<wbr>download</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>Streams the file bytes with its original content type. <code>404</code> (empty) if either id doesn't resolve.</p>
+      </section>
+
+      <section class="endpoint" id="delete-document">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>documents/<wbr>{documentId}</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p><code>204</code> on success. <code>404</code> (empty) if either id doesn't resolve.</p>
+        <div class="callout">
+          This removes the document from the list; the underlying file is deliberately left on
+          disk rather than deleted.
+        </div>
+      </section>
+    </section>
+
+    <section class="section" id="lhdn-forms">
+      <h2>LHDN forms</h2>
+      <p>
+        The five per-employee statutory PDFs (CP22, CP22A, CP21, TP3, PCB 2(II)) — summaries
+        HR transcribes onto the official LHDN form or pastes into e-PCB. <code>{id}</code> is
+        the user id.
+      </p>
+
+      <section class="endpoint" id="list-lhdn-forms">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>lhdn-forms</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>Which of the 5 forms can be generated right now, and why not when they can't.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>kind</code></td><td>string</td><td><code>PCB2II</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code> or <code>TP3</code> — use with the download endpoint below.</td></tr>
+              <tr><td><code>code</code></td><td>string</td><td>e.g. <code>"CP22"</code>, <code>"PCB 2(II)"</code>, <code>"PCB/TP3"</code>.</td></tr>
+              <tr><td><code>title</code></td><td>string</td><td>e.g. <code>"New-employee notification"</code>.</td></tr>
+              <tr><td><code>description</code></td><td>string</td><td></td></tr>
+              <tr><td><code>needsYearPicker</code></td><td>boolean</td><td><code>true</code> only for <code>PCB2II</code>.</td></tr>
+              <tr><td><code>enabled</code></td><td>boolean</td><td>Whether the form can be generated for this person right now.</td></tr>
+              <tr><td><code>disabledReason</code></td><td>string | null</td><td>Set when <code>enabled</code> is <code>false</code>: <code>"Available once a leave date is set"</code> (CP22A/CP21/TP3) or <code>"Available only for active employees"</code> (CP22).</td></tr>
+              <tr><td><code>badge</code></td><td>string | null</td><td>CP22/CP22A/CP21 only, e.g. <code>"Due in 12 days"</code> or <code>"Overdue by 3 days"</code>.</td></tr>
+              <tr><td><code>badgeVariant</code></td><td>string | null</td><td>One of <code>success</code>, <code>pending</code>, <code>rejected</code>, <code>outline</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>404</code> (empty) when <code>{id}</code> is not a member of this organization.</p>
+<pre><code>{
+  "kind": "CP22",
+  "code": "CP22",
+  "title": "New-employee notification",
+  "description": "Notification to LHDN that a new employee has joined.",
+  "needsYearPicker": false,
+  "enabled": true,
+  "disabledReason": null,
+  "badge": "Due in 18 days",
+  "badgeVariant": "success"
+}</code></pre>
+      </section>
+
+      <section class="endpoint" id="download-lhdn-form">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/<wbr>employees/<wbr>{id}/<wbr>lhdn-forms/<wbr>{kind}/<wbr>download</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>kind</code></td><td>string (route)</td><td>Yes</td><td>One of <code>PCB2II</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code>, <code>TP3</code> (case-insensitive).</td></tr>
+              <tr><td><code>year</code></td><td>number (query)</td><td>No</td><td><code>PCB2II</code> only; defaults to the current year.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/pdf</code> bytes.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/employees/usr_123/lhdn-forms/CP22/download \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o CP22_EMP-042.pdf</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="importing">
+      <h2>Importing &amp; exporting</h2>
+      <p>
+        One spreadsheet covers the whole roster — adding people and bulk-updating their
+        membership, profile, statutory and salary fields in one pass. <code>email</code>
+        identifies a row and is never changed by an import.
+      </p>
+
+      <section class="endpoint" id="import-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/<wbr>employees/<wbr>import/<wbr>template</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string (query)</td><td>No</td><td><code>xlsx</code> (default) or <code>csv</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The file bytes, as <code>xlsx</code> or <code>csv</code> content type (see
+          <a href="#export">Importing &amp; exporting</a> below for the exact MIME types). The
+          XLSX template includes a <code>READ ME</code> sheet and a <code>Columns</code> guide
+          alongside the empty <code>Employees</code> sheet; a key without Payroll access in its
+          org gets a template without the statutory/salary/bank columns.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/employees/import/template?format=xlsx \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o employees-import-template.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="export">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/export</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>The whole roster, in the import's column layout — edit it and re-import to bulk-update.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string (query)</td><td>No</td><td><code>xlsx</code> (default) or <code>csv</code>.</td></tr>
+              <tr><td><code>fields</code></td><td>string (query, comma-separated)</td><td>No</td><td>Export only these column keys, as a plain read-only table instead of the re-importable layout. See <code>GET /employees/export/fields</code> for the keys.</td></tr>
+              <tr><td><code>includeArchived</code></td><td>boolean (query)</td><td>No</td><td>Default <code>true</code>. Only applies with <code>fields</code> set.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>File bytes, same content type as the template:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Format</th><th>Content type</th></tr></thead>
+            <tbody>
+              <tr><td><code>xlsx</code></td><td><code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code></td></tr>
+              <tr><td><code>csv</code></td><td><code>text/csv</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>400</code> <code>{ "error": "Choose at least one field to export." }</code> when <code>fields</code> is set but none of the keys are recognised or allowed.</p>
+<pre><code>curl "https://&lt;api-host&gt;/employees/export?format=csv" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o employees.csv</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-fields">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/export/fields</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>The column keys <code>GET /employees/export?fields=…</code> accepts, grouped for a picker UI.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>key</code></td><td>string</td><td>Pass this in <code>fields</code>, e.g. <code>idNumber</code>, <code>monthlySalary</code>.</td></tr>
+              <tr><td><code>label</code></td><td>string</td><td>e.g. <code>"IC / Passport No"</code>.</td></tr>
+              <tr><td><code>group</code></td><td>string</td><td>One of <code>Employee</code>, <code>Personal</code>, <code>Contact &amp; address</code>, <code>Emergency contact</code>, <code>Employment</code>, <code>Spouse</code>, <code>Salary</code>, <code>Statutory</code>, <code>Payment</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The response is a flat array (not grouped); statutory/salary/bank keys are omitted for a key without Payroll access in its org.</p>
+      </section>
+
+      <section class="endpoint" id="import">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/employees/import</span>
+          <span class="tag scope">employees:write</span>
+        </div>
+        <p><code>multipart/form-data</code>. Field <code>file</code>: a <code>.csv</code> or <code>.xlsx</code> export/template, detected by extension.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>Yes</td><td>Multipart field name is <code>file</code>.</td></tr>
+              <tr><td><code>blankCells</code></td><td>string (form field)</td><td>No</td><td><code>Keep</code> (default) or <code>Erase</code> — what a blank cell does to an existing person's field; a column missing from the file is left alone either way.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>Key columns (by header text or listed alias)</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Required for a new person</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Email</td><td>Always</td><td>Identifies the row; never changed by an import.</td></tr>
+              <tr><td>Name</td><td>Yes</td><td>Can't be erased on an existing person either.</td></tr>
+              <tr><td>Role</td><td>Defaults to Employee</td><td>Can't be erased.</td></tr>
+              <tr><td>Employee No</td><td>Yes</td><td>Can't be erased.</td></tr>
+              <tr><td>Date of Birth</td><td>Yes</td><td>First password = email + birthday as <code>MMDD</code>.</td></tr>
+              <tr><td>Job Title, Join Date, Policy, Shift</td><td>No</td><td>Policy/Shift are matched by <strong>name</strong>, not id.</td></tr>
+              <tr><td>Salary Type, Contribute to EPF, Contribute to EIS</td><td>Default applies</td><td>Can't be erased (reset to their default instead: <code>MONTHLY</code> / <code>Yes</code> / <code>Yes</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Every other profile column from <code>PUT /employees/{id}/profile</code> has a
+          matching sheet column (see <code>GET /employees/export/fields</code> for the full,
+          grouped list) — dates as <code>YYYY-MM-DD</code>, booleans as <code>Yes</code>/<code>No</code>,
+          percentages as plain numbers, money tolerant of formatting like <code>"RM 5,000.00"</code>.
+          Statutory/salary/bank columns are only in the file for a key whose org grants Payroll
+          access; present in an uploaded file without that access, they're ignored (not an error).
+        </p>
+        <div class="callout warn">
+          <strong>Not all-or-nothing.</strong> Each row is applied independently: a row with a
+          problem is skipped and listed in <code>errors</code> with its row number, while every
+          other valid row is still created or updated. The response is still <code>200</code>
+          in that case — check <code>errors</code>, don't rely on the status code.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code> only when <code>errors</code> is empty.</td></tr>
+              <tr><td><code>created</code></td><td>number</td><td>Rows that added a new person.</td></tr>
+              <tr><td><code>updated</code></td><td>number</td><td>Rows that updated an existing person.</td></tr>
+              <tr><td><code>errors</code></td><td>array of <code>{ row, message }</code></td><td><code>row</code> is the 1-based row number as seen in the sheet (header is row 1). That row was NOT applied.</td></tr>
+              <tr><td><code>warnings</code></td><td>array of <code>{ row, message }</code></td><td>Applied, but worth a look — e.g. an unrecognised nationality kept as typed, or payroll columns ignored.</td></tr>
+              <tr><td><code>createdAccounts</code></td><td>array of <code>{ email, name, password }</code></td><td>The brand-new login accounts this import created, with the password each was given. Returned <strong>once</strong> — store it now, it is not recoverable afterwards. Absent for an existing person and for an email that already had an account in another company.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>No file sent, the file can't be read, it's empty, or it's missing a required column (a whole-file problem, not a row problem)</td><td><code>{ "error": "…" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/employees/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@employees.xlsx" \
+  -F "blankCells=Keep"</code></pre>
+<pre><code>{
+  "ok": false,
+  "created": 1,
+  "updated": 4,
+  "errors": [
+    {
+      "row": 7,
+      "message": "\"missing@example.com\" is new, so Employee No is required."
+    }
+  ],
+  "warnings": [],
+  "createdAccounts": [
+    {
+      "email": "new.hire@example.com",
+      "name": "New Hire",
+      "password": "new.hire@example.com1123"
+    }
+  ]
+}</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="counts">
+      <h2>Counts &amp; pending</h2>
+      <p>
+        Two small orientation endpoints. Unlike everything above, neither lives on
+        <code>EmployeesController</code> and neither is gated by the Employees module — they
+        answer across whatever the key's scopes allow.
+      </p>
+
+      <section class="endpoint" id="active-count">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/active-count</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>
+          One number — seats for billing — rather than a list. Counts <strong>memberships</strong>,
+          not users: the same person in two of your organizations counts once per organization.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>count</code></td><td>number</td><td></td></tr>
+              <tr><td><code>asOf</code></td><td>string (date-time)</td><td>ISO 8601 round-trip timestamp of the count.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{ "count": 42, "asOf": "2026-01-15T03:21:09.4130000Z" }</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/employees/active-count \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="pending">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/pending</span>
+          <span class="tag">No scope needed to call — each section needs its own scope</span>
+        </div>
+        <p>
+          What's waiting for a decision, across claims and leave (not employees specifically —
+          there's nothing "pending" on a roster row). A key only sees the sections its scopes
+          allow; the rest are named in <code>omitted</code> rather than reported as zero, so an
+          empty queue and "you may not ask" are never confused.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>claims</code></td><td>number</td><td>Pending claims. Present only with <code>claims:read</code>.</td></tr>
+              <tr><td><code>leave</code></td><td>number</td><td>Pending leave requests. Present only with <code>leave:read</code>.</td></tr>
+              <tr><td><code>omitted</code></td><td>string[]</td><td>Which of <code>"claims"</code> / <code>"leave"</code> were left out for missing scope.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{ "claims": 3, "omitted": ["leave"] }</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/pending \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>POST /employees/{userId}/password</code> is marked <code>[HumanOnly]</code> — a key can
+        never call it. Overwriting a member's login password is for a signed-in Admin/Owner only,
+        since a key that could set a password could take the account over.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

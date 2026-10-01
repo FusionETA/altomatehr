@@ -4,6 +4,7 @@ import { ExternalLink, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
+import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
@@ -74,6 +75,7 @@ export function AdminShell({
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const whatsNew = useWhatsNew(user.email);
 
   // Coming back from Xero's consent screen. The app has no router, so the
   // return URL is only ever the app root — without this a successful connect
@@ -226,9 +228,12 @@ export function AdminShell({
                   aria-label="Account menu"
                   aria-expanded={accountMenuOpen}
                   onClick={() => setAccountMenuOpen((open) => !open)}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
                   <MoreVertical className="h-4 w-4" />
+                  {whatsNew.unseen ? (
+                    <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" aria-hidden />
+                  ) : null}
                 </button>
 
                 {accountMenuOpen ? (
@@ -240,6 +245,15 @@ export function AdminShell({
 
                     <PushToggleMenuItem
                       onClose={() => setAccountMenuOpen(false)}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
+
+                    <WhatsNewMenuItem
+                      unseen={whatsNew.unseen}
+                      onSelect={() => {
+                        setAccountMenuOpen(false);
+                        whatsNew.show();
+                      }}
                       className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
                     />
 
@@ -360,6 +374,7 @@ export function AdminShell({
           </div>
         </main>
       </div>
+      {whatsNew.panel}
     </div>
   );
 }
