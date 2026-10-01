@@ -489,23 +489,27 @@ public class LeaveController : ControllerBase
 
     // POST /leave/{id}/cancellation — the applicant asks to cancel their
     // approved leave (before it starts). Nobody above them → cancelled at once.
+    [HumanOnly]
     [HttpPost("{id}/cancellation")]
     public async Task<IActionResult> RequestCancellation(string id, RequestLeaveCancellationDto dto) =>
         ToTransitionResponse(await _leave.RequestCancellationAsync(id, GetUserId(), dto.Reason));
 
     // POST /leave/{id}/cancellation/withdraw — the applicant takes the request back.
+    [HumanOnly]
     [HttpPost("{id}/cancellation/withdraw")]
     public async Task<IActionResult> WithdrawCancellation(string id) =>
         ToTransitionResponse(await _leave.WithdrawCancellationAsync(id, GetUserId()));
 
     // POST /leave/{id}/cancellation/approve — the current-step approver. The
     // last layer's approval cancels the leave and returns the days.
+    [RequireScope("leave:write")]
     [HttpPost("{id}/cancellation/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> ApproveCancellation(string id) =>
         ToTransitionResponse(await _leave.ApproveCancellationAsync(id, GetUserId()));
 
     // POST /leave/{id}/cancellation/reject — the leave still stands.
+    [RequireScope("leave:write")]
     [HttpPost("{id}/cancellation/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> RejectCancellation(string id, RejectLeaveDto dto) =>
