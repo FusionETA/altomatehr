@@ -280,22 +280,10 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         };
     }
 
-    // Malformed JSON reads as no children rather than failing the filing. An
-    // under-claimed relief is recoverable by the employee on their own return;
-    // a filing that cannot be produced at all is not.
-    private static IReadOnlyList<ChildRelief> ParseChildren(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return [];
-
-        try
-        {
-            return JsonSerializer.Deserialize<List<ChildRelief>>(json, ProfileJson) ?? [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
+    // Same lenient read as payroll, so EA / CP8D count the children PCB
+    // relieved — including v1's legacy values (see ChildReliefJson).
+    private static IReadOnlyList<ChildRelief> ParseChildren(string? json) =>
+        ChildReliefJson.Parse(json);
 
     // The JSON on EmployeeProfile was written by the reference app, so reads
     // are case-insensitive and enums arrive as names.
