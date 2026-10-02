@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Attendance</title>
+  <meta name="description" content="Attendance records and reports, approvals, historical import, shifts and public holidays over the AltomateHR API." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  This page covers Modules/Attendance (AttendanceController), Modules/Shifts
+  (ShiftsController) and Modules/Holidays (HolidaysController).
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html" aria-current="page">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Attendance</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Attendance</h1>
+    <p class="lead">
+      Read a company's attendance records, worked-hours totals and approval trail, load
+      historical days from another time clock, and manage the shifts and public holidays that
+      decide what counts as a normal working day.
+    </p>
+    <p>
+      Clocking in and out is for people, not keys (see
+      <a href="#not-for-keys">Not available to API keys</a>). A key reads the whole company's
+      records and reports, and administers shifts, holidays and imports. Dates are ISO&nbsp;8601;
+      instants in responses are UTC with a trailing <code>Z</code>; ids are strings. Every
+      <code>employeeId</code> on this page is the <em>user id</em> that <code>GET /employees</code>
+      returns as <code>id</code>.
+    </p>
+    </div>
+
+    <section class="section" id="gates">
+      <h2>Scopes, gates and errors on this page</h2>
+      <p>The three controllers are not gated the same way:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Group</th><th>Read scope</th><th>Write scope</th><th>Plan module (<code>403</code> if missing)</th></tr></thead>
+          <tbody>
+            <tr><td><code>/attendance/…</code></td><td><code>attendance:read</code></td><td><code>attendance:write</code></td><td><code>attendance</code></td></tr>
+            <tr><td><code>/shifts/…</code></td><td><code>attendance:read</code></td><td><code>attendance:write</code></td><td>none checked</td></tr>
+            <tr><td><code>/holidays/…</code></td><td><code>attendance:read</code></td><td><strong><code>organizations:write</code></strong></td><td>none checked</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>Shifts have no scopes of their own; they use the attendance ones.</li>
+        <li><strong>Public-holiday reads use <code>attendance:read</code> but writes (create, edit,
+          import, delete) need <code>organizations:write</code></strong>, not an attendance scope.
+          A key that can write attendance cannot write holidays unless it also holds that scope.</li>
+        <li>Every endpoint here also needs the key's admin rights, which a key always has.</li>
+      </ul>
+      <div class="callout warn">
+        <strong>A fourth error shape.</strong> Beyond the three on the
+        <a href="index.html#errors">overview</a>, most <code>400</code>s from these three controllers
+        are <code>{ "message": "…" }</code> (not <code>{ "error": "…" }</code>). Read
+        <code>message</code> when <code>error</code> is absent. Field-validation failures still
+        come back as <code>{ "errors": { "Field": ["…"] } }</code>, and a missing scope or module
+        as <code>{ "error": { "status": 403, "message": "…" } }</code>. A <code>404</code> is an
+        empty body unless noted.
+      </div>
+    </section>
+
+    <section class="section" id="records">
+      <h2>Attendance records &amp; reports</h2>
+      <p>
+        An attendance record is one employee's day. A day can hold several clock-in/clock-out
+        stints (<code>sessions</code>); the record's own <code>timeIn</code>, <code>timeOut</code>
+        and <code>durationMin</code> are the roll-up of them.
+      </p>
+
+      <div class="callout warn">
+        <strong>Some endpoints act as "the caller", and a key has no attendance of its own.</strong>
+        A key's identity is not an employee, not on any team and not in any approval chain
+        (admins are never in the approval hierarchy). So <code>GET /attendance/today</code> and
+        <code>/open-session</code> return <code>204</code>, <code>/hours-summary/me</code> returns
+        zeros, and the team queues and approval actions on the
+        <a href="#approvals">Approvals</a> section return empty lists or <code>404</code>. They are
+        documented for completeness; use the company-wide endpoints instead.
+      </div>
+
+      <h3>The attendance record object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>The record (day) id. Takes <code>/attendance/{recordId}/breaks</code>.</td></tr>
+            <tr><td><code>employeeId</code></td><td>string</td><td>User id.</td></tr>
+            <tr><td><code>date</code></td><td>string</td><td><code>yyyy-MM-dd</code>, the local business day (Malaysia time) the record is filed under.</td></tr>
+            <tr><td><code>timeIn</code>, <code>timeOut</code></td><td>string?</td><td>First clock-in and last clock-out of the day, ISO 8601 UTC. <code>timeOut</code> null while still clocked in.</td></tr>
+            <tr><td><code>durationMin</code></td><td>integer?</td><td>Worked minutes summed over the day's stints (the gap between two stints is not counted).</td></tr>
+            <tr><td><code>lateByMin</code></td><td>integer?</td><td>Minutes after the scheduled start.</td></tr>
+            <tr><td><code>location</code>, <code>projectId</code></td><td>string?</td><td>Free-text location and the project clocked in on.</td></tr>
+            <tr><td><code>clockInLat</code>, <code>clockInLng</code>, <code>clockOutLat</code>, <code>clockOutLng</code></td><td>number?</td><td>GPS, when the employee shared it.</td></tr>
+            <tr><td><code>clockInDistanceMeters</code>, <code>clockOutDistanceMeters</code></td><td>number?</td><td>Distance to the project's geofence site.</td></tr>
+            <tr><td><code>offSite</code></td><td>boolean</td><td>Clocked in beyond the organization's geofence radius.</td></tr>
+            <tr><td><code>clockInPhotoUrl</code>, <code>clockOutPhotoUrl</code></td><td>string?</td><td>Path such as <code>/attendance/photos/&lt;file&gt;</code>. Fetch it with <a href="#photo-file">GET /attendance/photos/{fileName}</a>.</td></tr>
+            <tr><td><code>clockInIpAddress</code></td><td>string?</td><td>What the IP check saw.</td></tr>
+            <tr><td><code>clockInIpAllowed</code></td><td>boolean?</td><td><code>null</code> means no IP check ran.</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td><code>ON_TIME</code>, <code>LATE</code>, <code>MISSING</code>, <code>CLOCKED_IN</code>, <code>CLOCKED_OUT</code> or <code>ON_LEAVE</code>.</td></tr>
+            <tr><td><code>approvalStatus</code></td><td>string</td><td>Latest approval request on the day: <code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>. <strong>A record with no approval requests (for example an imported one) reads <code>PENDING</code></strong> with an empty <code>approvals</code>.</td></tr>
+            <tr><td><code>currentStep</code>, <code>reviewNotes</code>, <code>submittedAt</code>, <code>decidedAt</code></td><td></td><td>The same "latest request" roll-up.</td></tr>
+            <tr><td><code>approvals</code></td><td>array</td><td>Every approval request on the day, see <a href="#approval-object">the approval request object</a>. Their <code>id</code>s are what the approve and reject endpoints take.</td></tr>
+            <tr><td><code>sessions</code></td><td>array</td><td>The day's stints, oldest first: <code>id</code>, <code>startedAt</code>, <code>endedAt</code>, <code>durationMin</code>, <code>lateByMin</code>, <code>status</code>, per-stint <code>clockInLat/Lng</code>, <code>clockOutLat/Lng</code>, <code>clockIn/OutDistanceMeters</code> and <code>clockIn/OutPhotoUrl</code>. Empty on endpoints that don't load them.</td></tr>
+            <tr><td><code>employeeEmail</code>, <code>employeeName</code></td><td>string?</td><td>Filled only on the approval queue (<code>GET /attendance/team</code>); null elsewhere. Look names up with <code>GET /employees</code>.</td></tr>
+            <tr><td><code>notes</code>, <code>remark</code></td><td>string?</td><td>System note (for example an auto clock-out) and the employee's remark.</td></tr>
+            <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>string</td><td>ISO 8601 UTC.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="list">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Every attendance record in the company (the roll call), each with its approvals and sessions.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. No query parameters.</p>
+        <h3>Response <code>200</code> — array of <a href="#records">attendance records</a></h3>
+        <div class="callout warn">
+          Unfiltered and unpaged: it returns all history. For a date window, use the hours
+          summaries or <code>GET /attendance/export/summary</code> instead.
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/attendance \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="record-breaks">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/{recordId}/breaks</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Every break taken on one day's record.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>recordId</code> is the record <code>id</code> from <code>GET /attendance</code>.</p>
+        <h3>Response <code>200</code> — array of break objects</h3>
+        <p>See <a href="#break-object">the break object</a>. Empty array when the day had no breaks.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty) when the record isn't in this company.</p>
+<pre><code>curl https://&lt;api-host&gt;/attendance/rec_123/breaks \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="hours-org">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/hours-summary/org</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Worked-minutes totals for a date range, one row per employee and supervisor plus company totals.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>yes</td><td>Inclusive range; any time of day is ignored. Omitting them is not a <code>400</code>: the range falls back to year 0001 and the figures are meaningless.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>no</td><td>Only people on a team under that project.</td></tr>
+              <tr><td><code>teamId</code></td><td>string</td><td>no</td><td>Only members of that team.</td></tr>
+              <tr><td><code>q</code></td><td>string</td><td>no</td><td>Case-insensitive match on name or email.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Filters combine (AND). A filter that matches nobody returns no employees, not the whole company. Admins and owners are not listed; the rows are people with the Employee or Supervisor role.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>totals</code></td><td>object</td><td>The <a href="#buckets">hours buckets</a> summed over every row.</td></tr>
+              <tr><td><code>employees[]</code></td><td>array</td><td><code>employeeId</code>, <code>email</code>, <code>name</code> (nullable) and <code>buckets</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3 id="buckets">Hours buckets (all values are minutes)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>normalMin</code></td><td>Working-day minutes, capped at the employee's standard daily minutes.</td></tr>
+              <tr><td><code>restDayMin</code></td><td>Minutes worked on a non-working day, uncapped.</td></tr>
+              <tr><td><code>publicHolidayMin</code></td><td>Minutes worked on a date in the holiday calendar. Beats <code>restDayMin</code> when a holiday falls on a rest day.</td></tr>
+              <tr><td><code>beyondShiftMin</code></td><td>Working-day minutes past the shift length. Recorded but never paid from here; it takes an approved overtime submission to become pay.</td></tr>
+              <tr><td><code>breakMin</code></td><td>Break minutes deducted from the raw clock time.</td></tr>
+              <tr><td><code>totalMin</code></td><td>Total worked minutes.</td></tr>
+              <tr><td><code>otApprovedMin</code>, <code>otPendingMin</code>, <code>otRejectedMin</code></td><td>Overtime requested in the range by status. Cancelled overtime isn't counted. Overtime is never derived from clock time.</td></tr>
+              <tr><td><code>expectedMin</code></td><td>Scheduled days in range times the daily minutes (from the employee's shift, else the org's working hours). Leave and holidays are not subtracted.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/hours-summary/org?from=2026-01-01&amp;to=2026-01-31" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="hours-employee">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/hours-summary/employees/{employeeId}</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>One employee's <a href="#buckets">hours buckets</a> for a date range.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>employeeId</code> is the user id. Query: <code>from</code>, <code>to</code> exactly as for <a href="#hours-org">the company summary</a>.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The hours buckets object directly (not wrapped).</p>
+        <div class="callout">
+          An id that isn't an employee of this company does not give a <code>404</code>: it returns
+          a buckets object of zeros.
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/hours-summary/employees/emp_123?from=2026-01-01&amp;to=2026-01-31" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="supervisor-performance">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/supervisor-performance</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>How long each approver takes to decide, against the organization's response-time target.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>yes</td><td>Requests <em>submitted</em> from the start of <code>from</code> to the end of <code>to</code>. Not validated when omitted.</td></tr>
+              <tr><td><code>projectId</code>, <code>teamId</code>, <code>q</code></td><td>string</td><td>no</td><td>Narrow by the employees the requests belong to, as on the company summary.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewerId</code>, <code>reviewerName</code></td><td>string</td><td>The decider (name, else email, else id).</td></tr>
+              <tr><td><code>totalDecisions</code>, <code>approvedCount</code>, <code>rejectedCount</code></td><td>integer</td><td>Decided requests only; pending ones are not counted against anyone.</td></tr>
+              <tr><td><code>slowDecisionCount</code></td><td>integer</td><td>Decisions slower than the organization's supervisor SLA (60 minutes when none is set).</td></tr>
+              <tr><td><code>avgDelayMinutes</code>, <code>maxDelayMinutes</code></td><td>number?</td><td>Submission-to-decision, in minutes.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Sorted by <code>slowDecisionCount</code>, then average delay, both descending. Reads at most the 5000 most recently submitted requests in range (pending ones count toward that cap).</p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/supervisor-performance?from=2026-01-01&amp;to=2026-01-31" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="approval-audit">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/approval-audit</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Who decided what, pending requests included, with how long each took (or has been waiting).</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Query: <code>from</code>, <code>to</code>, <code>projectId</code>, <code>teamId</code>, <code>q</code> as for <a href="#supervisor-performance">supervisor performance</a>.</p>
+        <h3>Response <code>200</code> — array of, newest submission first</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>The approval request id.</td></tr>
+              <tr><td><code>employeeId</code>, <code>employeeName</code></td><td>string</td><td>Whose request. <code>employeeName</code> falls back to email, then id.</td></tr>
+              <tr><td><code>kind</code></td><td>string</td><td><code>CLOCK_IN</code>, <code>CLOCK_OUT</code>, <code>BREAK_START</code> or <code>BREAK_END</code>.</td></tr>
+              <tr><td><code>status</code></td><td>string</td><td><code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>.</td></tr>
+              <tr><td><code>eventAt</code>, <code>submittedAt</code>, <code>decidedAt</code></td><td>string</td><td>ISO 8601, UTC. <code>decidedAt</code> null while pending. <code>eventAt</code> is the time being approved (the proposed time, for a correction).</td></tr>
+              <tr><td><code>reviewerId</code>, <code>reviewerName</code>, <code>reviewNotes</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>delayMinutes</code></td><td>number</td><td>Submission to decision, or to now while pending.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Capped at the 2000 most recently submitted requests in the range; narrow the range if you hit it.</p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/approval-audit?from=2026-01-01&amp;to=2026-01-31&amp;q=jane" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="audit-log">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/audit-log</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Every approval request of any kind, for compliance review, filtered by employee and submission time.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>string</td><td>Optional. User id.</td></tr>
+              <tr><td><code>from</code>, <code>to</code></td><td>datetime</td><td>Optional. Compared with <code>submittedAt</code> as exact instants, so a bare <code>to=2026-01-31</code> stops at the start of that day.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of <a href="#approval-object">approval request objects</a></h3>
+        <p>Newest submission first, <strong>at most 500</strong> rows, with <code>employeeEmail</code> and <code>employeeName</code> filled. There is no paging: narrow with <code>employeeId</code> and the range to reach older rows.</p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/audit-log?employeeId=emp_123&amp;from=2026-01-01&amp;to=2026-02-01" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-approval-audit">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/export/approval-audit</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The <a href="#approval-audit">approval audit</a> as a file, under the same filters and row cap.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Query: <code>from</code>, <code>to</code>, <code>projectId</code>, <code>teamId</code>, <code>q</code>, plus <code>format</code> (<code>csv</code> default, <code>xlsx</code> or <code>pdf</code>; anything unrecognised falls back to CSV).</p>
+        <h3>Response <code>200</code></h3>
+        <p>The file, named <code>approval-trail-&lt;from&gt;-to-&lt;to&gt;.&lt;ext&gt;</code>, with <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "'from' must not be after 'to'." }</code></p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/export/approval-audit?from=2026-01-01&amp;to=2026-01-31&amp;format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o approval-trail.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/export/summary</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>A worked-hours summary plus the daily records behind it as a file. For one employee it adds a day-by-day calendar (holidays, rest days, leave) instead of the record list.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>Optional. Both missing means the current month. If only one is sent, the other becomes today.</td></tr>
+              <tr><td><code>employeeId</code></td><td>string</td><td>Optional. One employee (user id); adds the calendar.</td></tr>
+              <tr><td><code>teamId</code></td><td>string</td><td>Optional. Narrows the summary rows to one team; the daily records listed in the file are not narrowed by team.</td></tr>
+              <tr><td><code>format</code></td><td>string</td><td><code>csv</code> (default), <code>xlsx</code> or <code>pdf</code>.</td></tr>
+              <tr><td><code>mine</code>, <code>team</code></td><td>boolean</td><td>Built for signed-in people. Don't use <code>mine</code> with a key: it means "the caller's own", and a key has no records, so the file is empty. For a key <code>team=true</code> is the same as sending no filter (the whole company).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The file, named <code>attendance-&lt;all|name&gt;-&lt;from&gt;-to-&lt;to&gt;.&lt;ext&gt;</code>, <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "'from' must not be after 'to'." }</code></p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/export/summary?from=2026-01-01&amp;to=2026-01-31&amp;employeeId=emp_123&amp;format=pdf" \
+  -H "Authorization: Bearer wp_live_xxx" -o hours.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="still-clocked-in">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/warnings/still-clocked-in</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Employees who have been clocked in longer than a threshold, for spotting a forgotten clock-out. Detection only: nothing is sent.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Query: <code>thresholdMinutes</code> (integer, default <code>600</code>, i.e. 10 hours; matches when clocked-in time is at least the threshold).</p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code>, <code>employeeEmail</code>, <code>employeeName</code></td><td>string</td><td>Email and name can be null.</td></tr>
+              <tr><td><code>recordId</code></td><td>string</td><td>The open record.</td></tr>
+              <tr><td><code>timeIn</code></td><td>string</td><td>ISO 8601 UTC.</td></tr>
+              <tr><td><code>minutesClockedIn</code></td><td>integer</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/warnings/still-clocked-in?thresholdMinutes=480" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="auto-clockout">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/cron/auto-clockout/run</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Run the automatic clock-out sweep now instead of waiting for its timer.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Query: <code>maxCandidates</code> (integer, default <code>200</code>), the most open sessions to inspect in one call. No body.</p>
+        <p>
+          The cut-off comes from each employee's policy (auto clock-out enabled, and its
+          after-minutes). An employee whose policy has it off is left alone, so this does nothing
+          until a policy turns it on.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>inspected</code></td><td>integer</td><td>Open sessions examined.</td></tr>
+              <tr><td><code>clockedOut</code></td><td>integer</td><td>Sessions actually closed.</td></tr>
+              <tr><td><code>errors</code></td><td>integer</td><td>Sessions that failed and were skipped.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>It writes.</strong> Each closed session gets a clock-out time of its start plus the
+          policy's cut-off (not "now"), a system note on the record, and a new
+          <strong>clock-out approval request</strong> that notifies the employee's approvers.
+        </div>
+<pre><code>curl -X POST "https://&lt;api-host&gt;/attendance/cron/auto-clockout/run?maxCandidates=50" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="selfie-storage">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/selfie-storage</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>What the stored clock-in photos are costing, measured from the files on disk.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. No parameters.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>photoCount</code></td><td>integer</td><td>Distinct photo files found.</td></tr>
+              <tr><td><code>totalBytes</code></td><td>integer</td><td>Their combined size.</td></tr>
+              <tr><td><code>missingCount</code></td><td>integer</td><td>Photos a record points at that are no longer on disk.</td></tr>
+              <tr><td><code>oldestPhotoAt</code></td><td>string?</td><td>Date of the earliest record holding a photo.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/attendance/selfie-storage \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="selfie-stats">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/selfies/stats</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>How many selfie references are stored and the date range they span.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. No parameters.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>total</code></td><td>integer</td><td>Clock-in photos plus clock-out photos referenced by records.</td></tr>
+              <tr><td><code>oldest</code>, <code>newest</code></td><td>string?</td><td><code>yyyy-MM-dd</code> of the earliest and latest record with a photo; null when there are none.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/attendance/selfies/stats \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="selfie-delete">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/selfies/delete-range</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Delete the stored clock-in and clock-out photos of every record in a date range and clear their photo URLs.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>from</code></td><td>date</td><td>yes</td><td>First record date, inclusive. Send a plain date (<code>2026-01-01</code>).</td></tr>
+              <tr><td><code>to</code></td><td>date</td><td>yes</td><td>Last record date, inclusive. Must not be before <code>from</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>scanned</code></td><td>integer</td><td>Photo references examined (a record with both photos counts twice).</td></tr>
+              <tr><td><code>deleted</code></td><td>integer</td><td>Files removed and references cleared.</td></tr>
+              <tr><td><code>failed</code></td><td>integer</td><td>Files that could not be removed; those references are kept.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>Irreversible.</strong> The photos are proof of where an employee clocked in. Check
+          the range with <code>GET /attendance/selfies/stats</code> first. Only the record-level photo
+          URLs are cleared.
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "Start date must be on or before end date." }</code></p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/selfies/delete-range \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "from": "2025-01-01", "to": "2025-06-30" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="photo-file">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/photos/{fileName}</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Download a clock-in or clock-out photo.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>fileName</code> is the last segment of a record's <code>clockInPhotoUrl</code> or <code>clockOutPhotoUrl</code> (<code>/attendance/photos/&lt;fileName&gt;</code>).</p>
+        <h3>Response <code>200</code></h3>
+        <p>The image bytes, with its own content type and <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty) when no record in this company points at that file, or the file is gone.</p>
+        <div class="callout">The request needs your <code>Authorization</code> header, so don't put this URL in an <code>&lt;img&gt;</code> tag on a public page. Fetch it from your server.</div>
+<pre><code>curl https://&lt;api-host&gt;/attendance/photos/photo_123.jpg \
+  -H "Authorization: Bearer wp_live_xxx" -o photo.jpg</code></pre>
+      </section>
+
+      <section class="endpoint" id="photo-xero">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/photos/xero/{xeroFileId}</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The same, for a photo held in the company's Xero Files. The server fetches it, so no Xero credentials reach you.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>xeroFileId</code> is the last segment of a photo URL shaped <code>/attendance/photos/xero/&lt;id&gt;</code>.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The file with its content type, name and <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty) when no record points at it, or Xero can't serve it. One answer for all of those, on purpose.</p>
+<pre><code>curl https://&lt;api-host&gt;/attendance/photos/xero/xf_123 \
+  -H "Authorization: Bearer wp_live_xxx" -o photo.jpg</code></pre>
+      </section>
+
+      <h3>Endpoints that read as "the caller" (empty for a key)</h3>
+
+      <section class="endpoint" id="today">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/today</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The calling user's record for today. <strong>For a key: always <code>204</code> (no body).</strong> Module gate: <code>attendance</code>. For anyone else's day, filter <code>GET /attendance</code> by <code>employeeId</code> and <code>date</code>.</p>
+      </section>
+
+      <section class="endpoint" id="open-session">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/open-session</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The calling user's still-running session. <strong>For a key: always <code>204</code>.</strong> Module gate: <code>attendance</code>. To find forgotten clock-outs company-wide use <a href="#still-clocked-in">still-clocked-in</a>.</p>
+      </section>
+
+      <section class="endpoint" id="hours-me">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/hours-summary/me</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The calling user's own hours buckets for <code>from</code>/<code>to</code>. <strong>For a key: all worked-minute buckets are zero</strong> (only <code>expectedMin</code> reflects the org's schedule). Module gate: <code>attendance</code>. Use <a href="#hours-employee">the per-employee summary</a>.</p>
+      </section>
+
+      <section class="endpoint" id="team-today">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/team/today</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Today's attendance of the calling user's direct reports, per project and team. <strong>For a key: always <code>[]</code></strong>, because a key supervises no team. Module gate: <code>attendance</code>.</p>
+      </section>
+    </section>
+
+    <section class="section" id="approvals">
+      <h2>Approvals (records and breaks)</h2>
+      <p>
+        Every clock-in, clock-out, break start and break end creates an <em>approval request</em>
+        that its employee's approvers decide step by step, along their team's approval chain. A
+        correction an employee asks for on a clock time is a clock-in or clock-out request that
+        also carries <code>originalEventAt</code> and <code>reason</code>; it changes the record only
+        once fully approved.
+      </p>
+
+      <div class="callout warn">
+        <strong>A key cannot decide approvals today.</strong> These endpoints are open to keys (they
+        pass the scope and role checks) but they act as the caller, and "who may approve" is a
+        seat in the employee's approval chain. A key is never in a chain, so for a key the queues
+        below are empty, <code>approve</code> and <code>reject</code> answer <code>404</code> for every id,
+        and the bulk calls report every id as <code>"Not found."</code>. Use
+        <a href="#approval-audit">approval-audit</a> and <a href="#audit-log">audit-log</a> to read
+        the trail.
+      </div>
+
+      <h3 id="approval-object">The approval request object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>The id the approve and reject endpoints take. It is <strong>not</strong> the attendance record id.</td></tr>
+            <tr><td><code>employeeId</code>, <code>employeeEmail</code>, <code>employeeName</code></td><td>string</td><td>Email and name are filled on queue and log responses and null when nested inside a record.</td></tr>
+            <tr><td><code>kind</code></td><td>string</td><td><code>CLOCK_IN</code>, <code>CLOCK_OUT</code>, <code>BREAK_START</code> or <code>BREAK_END</code>.</td></tr>
+            <tr><td><code>eventAt</code></td><td>string</td><td>ISO 8601 UTC. The time being approved (the proposed time, for a correction).</td></tr>
+            <tr><td><code>originalEventAt</code>, <code>reason</code></td><td>string?</td><td>Set only on a correction request: the time being replaced and the employee's reason.</td></tr>
+            <tr><td><code>approvalStatus</code></td><td>string</td><td><code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>.</td></tr>
+            <tr><td><code>currentStep</code></td><td>integer</td><td>Which step of the chain it is waiting at (from 0).</td></tr>
+            <tr><td><code>reviewNotes</code>, <code>reviewerId</code></td><td>string?</td><td>Rejection remark and the last decider.</td></tr>
+            <tr><td><code>submittedAt</code>, <code>decidedAt</code></td><td>string?</td><td>ISO 8601 UTC.</td></tr>
+            <tr><td><code>attendanceRecordId</code>, <code>attendanceSessionId</code>, <code>attendanceBreakId</code></td><td>string?</td><td>What it is about. The break id is set on break requests.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="break-object">The break object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code>, <code>attendanceSessionId</code>, <code>attendanceRecordId</code></td><td>string</td><td></td></tr>
+            <tr><td><code>startedAt</code>, <code>endedAt</code></td><td>string, string?</td><td>ISO 8601 UTC. <code>endedAt</code> null while the break is open.</td></tr>
+            <tr><td><code>durationMin</code></td><td>integer?</td><td>Null until it ends.</td></tr>
+            <tr><td><code>startLat</code>, <code>startLng</code>, <code>endLat</code>, <code>endLng</code></td><td>number?</td><td></td></tr>
+            <tr><td><code>remark</code></td><td>string?</td><td></td></tr>
+            <tr><td><code>approvalStatus</code>, <code>currentStep</code>, <code>reviewNotes</code>, <code>submittedAt</code>, <code>decidedAt</code></td><td></td><td>Latest-request roll-up, as on a record.</td></tr>
+            <tr><td><code>approvals</code></td><td>array</td><td>The break's <a href="#approval-object">approval requests</a>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="team-queue">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/team</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>The attendance records waiting for the calling user as current-step approver, with each day's full approval history.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <strong>For a key: always <code>[]</code>.</strong></p>
+        <h3>Response <code>200</code> — array of <a href="#records">attendance records</a></h3>
+        <p>With <code>employeeEmail</code> and <code>employeeName</code> filled. A day whose only pending request is a break still appears here.</p>
+      </section>
+
+      <section class="endpoint" id="team-breaks">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/team/breaks</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Break approval requests waiting for the calling user as current-step approver.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <strong>For a key: always <code>[]</code>.</strong> Response: array of <a href="#approval-object">approval request objects</a>.</p>
+      </section>
+
+      <section class="endpoint" id="digest">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/pending-approvals/digest</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>How many requests of any kind are waiting for the calling user. Detection only: nothing is sent.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <strong>For a key: always <code>{ "pendingCount": 0, "oldestSubmittedAt": null }</code>.</strong></p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>pendingCount</code></td><td>integer</td><td></td></tr>
+              <tr><td><code>oldestSubmittedAt</code></td><td>string?</td><td>ISO 8601 UTC; null when the count is 0.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint" id="approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/{id}/approve</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Approve a clock-in or clock-out request. No body.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>id</code> is an <a href="#approval-object">approval request</a> id of kind <code>CLOCK_IN</code> or <code>CLOCK_OUT</code>, not a record id and not a break request.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#records">attendance record</a> after the decision. The request advances to the next approval step, or becomes <code>APPROVED</code> if it was the last one. Approving a correction request applies the new time to the record and recomputes the day's total. The employee is notified.</p>
+        <h3>Errors</h3>
+        <p>
+          <code>404</code> (empty) when the id doesn't exist, is a break request, or the caller is not the
+          current-step approver (always the case for a key).
+          <code>400</code> <code>{ "message": "Only pending approvals can be approved or rejected." }</code>.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/appr_123/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="reject">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/{id}/reject</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Reject a clock-in or clock-out request. Rejecting a correction leaves the record unchanged.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>id</code> as for approve.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>yes in practice</td><td>The rejection remark. Blank or whitespace-only is refused.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The attendance record. Errors as for approve, plus <code>400</code> <code>{ "message": "Enter a rejection remark before rejecting this attendance record." }</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/appr_123/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Clock-in time does not match the site log." }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="bulk-approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/bulk/approve</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Approve many requests, of any kind (records and breaks), in one call. Each id succeeds or fails on its own.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>yes</td><td>Approval request ids. At least 1; more than 200 processes none and reports one failed item.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>succeeded</code>, <code>failed</code></td><td>integer</td><td>Counts.</td></tr>
+              <tr><td><code>items[]</code></td><td>array</td><td><code>id</code>, <code>ok</code> (boolean) and <code>error</code> (string, when not ok): <code>"Not found."</code> (also when the caller isn't the approver) or <code>"Only pending approvals can be approved or rejected."</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>It is <code>200</code> even when every item failed: check <code>failed</code>. Request-level validation failures (for example an empty <code>ids</code>) are <code>400</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/bulk/approve \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["appr_123", "appr_456"] }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="bulk-reject">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/bulk/reject</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Reject many requests in one call, with one shared remark.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>yes</td><td>As for bulk approve.</td></tr>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>yes in practice</td><td>Without a non-blank remark the call returns <code>200</code> with every id failed (<code>"Enter a rejection remark before rejecting."</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>Same shape as bulk approve.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/bulk/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["appr_123"], "reviewNotes": "Duplicate entry." }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="break-approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/break/{id}/approve</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Approve a break start or break end request. No body.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. <code>id</code> is an approval request id of kind <code>BREAK_START</code> or <code>BREAK_END</code> (the ids in the break's <code>approvals</code>, or from <code>GET /attendance/team/breaks</code>).</p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#break-object">break object</a>. Errors as for <a href="#approve">approve</a>: <code>404</code> (empty) for an unknown id, a clock-in/out request id, or a non-approver; <code>400</code> <code>{ "message": "Only pending approvals can be approved or rejected." }</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/break/appr_456/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="break-reject">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/break/{id}/reject</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Reject a break start or break end request.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Body: <code>reviewNotes</code> (string, a non-blank remark is required, else <code>400</code> <code>{ "message": "Enter a rejection remark before rejecting this break." }</code>). Response and other errors as for break approve.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/break/appr_456/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Break was not taken." }'</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="import">
+      <h2>Import</h2>
+      <p>
+        Load historical daily records from another time clock. It is a migration tool, not a second
+        way to clock in: no geofence, IP or photo checks apply, <strong>no approval requests are
+        created</strong> (so a year of history doesn't land in anyone's queue), and a day the employee
+        already has a record for is skipped, never overwritten.
+      </p>
+
+      <section class="endpoint" id="import-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/import/template</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>A blank import file with one example row (skipped on import).</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. Query: <code>format</code> — <code>csv</code> (default; also used for anything unrecognised) or <code>xlsx</code>.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The file, named <code>attendance-import-template.&lt;ext&gt;</code>, <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded." }</code> for <code>format=pdf</code>.</p>
+<pre><code>curl "https://&lt;api-host&gt;/attendance/import/template?format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o attendance-import-template.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="import-run">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/attendance/import</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Upload a file of historical daily records.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>.</p>
+        <h3>Request — <code>multipart/form-data</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>Required. <code>.csv</code> or <code>.xlsx</code> (<code>.txt</code> is read as CSV). Up to 8&nbsp;MB.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The first row is the header. Header text is matched ignoring case, spaces and punctuation, and the aliases below are accepted. Rows are numbered as in a spreadsheet: the header is row 1, the first data row is row 2.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Aliases</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>Employee Email</code></td><td>email, employee, staff email</td><td>one of these two</td><td>Matched first, case-insensitively, to a member of the company.</td></tr>
+              <tr><td><code>Employee Name</code></td><td>name, full name, member</td><td>(see above)</td><td>Used when the email is blank or unmatched. Ignores accents, case and spacing. A name shared by two people fails the row.</td></tr>
+              <tr><td><code>Date</code></td><td>work date, attendance date, day</td><td>yes</td><td><code>2026-01-15</code> preferred. Also <code>yyyy/MM/dd</code>, <code>dd/MM/yyyy</code>, <code>d MMM yyyy</code> and similar. Day-first for slashes.</td></tr>
+              <tr><td><code>Clock In</code></td><td>time in, in, start</td><td>no</td><td>A time (<code>09:03</code>, <code>9:03 AM</code>), or a timestamp (<code>2026-01-15 09:03</code>).</td></tr>
+              <tr><td><code>Clock Out</code></td><td>time out, out, end</td><td>no</td><td>As above. If earlier than the clock-in, it is read as the next day (a night shift).</td></tr>
+              <tr><td><code>Status</code></td><td>—</td><td>no</td><td><code>ON_TIME</code>, <code>LATE</code>, <code>MISSING</code>, <code>CLOCKED_IN</code>, <code>CLOCKED_OUT</code>, <code>ON_LEAVE</code> (case and punctuation tolerant). Blank: <code>MISSING</code> with no clock-in, <code>CLOCKED_IN</code> with a clock-in only, <code>CLOCKED_OUT</code> with both.</td></tr>
+              <tr><td><code>Project</code></td><td>project name, site</td><td>no</td><td>A project's exact name (case-insensitive). <strong>An unknown name is silently ignored</strong>: the row imports with no project, and no warning is given.</td></tr>
+              <tr><td><code>Location</code></td><td>—</td><td>no</td><td>Cut to 200 characters.</td></tr>
+              <tr><td><code>Remark</code></td><td>note, notes, comment</td><td>no</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>GPS coordinates and photos can't be imported: they are evidence captured at the moment of a clock event.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>imported</code></td><td>integer</td><td>Days created.</td></tr>
+              <tr><td><code>skipped</code></td><td>integer</td><td>Days the employee already had a record for, plus the template's example row. Not a failure.</td></tr>
+              <tr><td><code>failed</code></td><td>integer</td><td>Rows rejected.</td></tr>
+              <tr><td><code>errors[]</code></td><td>array</td><td><code>row</code> (integer) and <code>message</code>. At most 200 are listed.</td></tr>
+              <tr><td><code>warnings[]</code></td><td>array</td><td>Same shape; imported but worth a look.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>Times are stored as written, as UTC.</strong> There is no time zone conversion: a
+          bare <code>09:03</code> is stored as <code>09:03Z</code>, which reads as 17:03 in Malaysia.
+          Convert to UTC before uploading if your source is in local time.
+          <br /><br />
+          <strong>The status can be <code>200</code> with nothing imported.</strong> An empty file, a header
+          with no data rows, or a missing required column comes back <code>200</code> with
+          <code>imported: 0</code>, <code>failed: 0</code> and one <code>errors</code> entry on row 1 —
+          check <code>errors</code>, not just the status. Re-uploading a corrected file is safe: rows that
+          landed are skipped.
+        </div>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> <code>{ "message": "Pick a .csv or .xlsx file to import." }</code> (no file, or empty) or
+          <code>{ "message": "Unsupported file type. Upload a .csv or .xlsx file." }</code>.
+          Files over 8&nbsp;MB are refused before the import runs.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/attendance/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F file=@attendance-history.csv</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="shifts">
+      <h2>Shifts</h2>
+      <p>
+        A shift is a named work schedule belonging to one project: start and end time, working days
+        and an unpaid lunch break. An employee's shift sets their scheduled start (for lateness) and
+        their standard daily minutes (for the hours buckets). Reads need
+        <code>attendance:read</code> and writes <code>attendance:write</code>; the plan's attendance
+        module is not checked on these routes. Assigning a shift to an employee is done on the
+        employee, not here.
+      </p>
+
+      <h3>The shift object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code>, <code>projectId</code></td><td>string</td><td></td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Unique within the project.</td></tr>
+            <tr><td><code>startTime</code>, <code>endTime</code></td><td>string</td><td><code>HH:MM</code>, 24-hour. An end earlier than the start is a valid overnight shift.</td></tr>
+            <tr><td><code>workingDays</code></td><td>string?</td><td>Comma-separated weekday numbers, 1 = Monday to 7 = Sunday (<code>"1,2,3,4,5"</code>). Null: Monday to Friday is assumed when hours are computed.</td></tr>
+            <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>Unpaid break, deducted from the standard day.</td></tr>
+            <tr><td><code>isDefault</code></td><td>boolean</td><td>The project's default shift. At most one per project.</td></tr>
+            <tr><td><code>isArchived</code></td><td>boolean</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="shifts-list">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/shifts</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Every shift in the company, archived ones included, sorted by name.</p>
+        <p>Query: <code>projectId</code> (string, optional) to list one project's shifts. An unknown project returns <code>[]</code>, not <code>404</code>.</p>
+        <h3>Response <code>200</code> — array of <a href="#shifts">shifts</a></h3>
+<pre><code>curl "https://&lt;api-host&gt;/shifts?projectId=proj_123" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-create">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/shifts</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Create a shift on a project.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits / meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>projectId</code></td><td>string</td><td>yes</td><td>Max 40. Fixed for the shift's life; it cannot be changed later.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 80. Trimmed. A project can't have two shifts with the same name, archived ones included.</td></tr>
+              <tr><td><code>startTime</code>, <code>endTime</code></td><td>string</td><td>yes</td><td><code>HH:MM</code> 24-hour (<code>00:00</code>–<code>23:59</code>).</td></tr>
+              <tr><td><code>workingDays</code></td><td>string</td><td>no</td><td>Digits 1–7 separated by commas, no spaces. Blank or omitted stores null.</td></tr>
+              <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>no</td><td>0–240. Default <code>60</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> (not <code>201</code>) — the <a href="#shifts">shift</a></h3>
+        <p>The first shift created for a project becomes its default automatically.</p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "Project not found." }</code>; <code>{ "message": "A shift named \"…\" already exists for this project." }</code> (or the archived-shift variant, "Restore or rename it."); field validation as <code>{ "errors": { … } }</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/shifts \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "projectId": "proj_123", "name": "Day shift", "startTime": "09:00", "endTime": "18:00", "workingDays": "1,2,3,4,5", "lunchBreakMinutes": 60 }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-update">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/shifts/{id}</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Edit a shift. <code>name</code>, <code>startTime</code> and <code>endTime</code> are required; there is no <code>projectId</code> (it cannot move).</p>
+        <div class="callout warn">
+          <strong>This replaces the whole row.</strong> Omitting <code>workingDays</code> clears it to
+          null (Monday to Friday), and omitting <code>lunchBreakMinutes</code> resets it to <code>60</code>,
+          whatever it was before. Always send the full shift. The default and archived flags are
+          untouched.
+        </div>
+        <p>Body fields and limits as for create (minus <code>projectId</code>).</p>
+        <h3>Response <code>200</code> — the <a href="#shifts">shift</a></h3>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty) for an unknown id; <code>400</code> <code>{ "message": "A shift named … already exists for this project." }</code>; field validation as <code>{ "errors": { … } }</code>.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/shifts/shift_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Day shift", "startTime": "08:30", "endTime": "17:30", "workingDays": "1,2,3,4,5", "lunchBreakMinutes": 60 }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-delete">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/shifts/{id}</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Permanently delete a shift that no employee is assigned to. To retire one that is in use, archive it instead.</p>
+        <h3>Response <code>204</code></h3>
+        <h3>Errors</h3>
+        <p>
+          <code>404</code> (empty) for an unknown id.
+          <code>400</code> <code>{ "message": "Can't delete — 3 employee(s) still assigned to this shift. Reassign them first.", "code": "IN_USE", "assignedCount": 3 }</code>.
+        </p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/shifts/shift_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-archive">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/shifts/{id}/archive</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Archive a shift (soft delete). No body. Response <code>200</code>: the <a href="#shifts">shift</a>; <code>404</code> (empty) for an unknown id.</p>
+        <div class="callout warn">
+          An archived shift loses its default flag, and <strong>nothing is promoted in its place</strong>: a
+          project left with no default falls back to the organization's working hours until you
+          set a new default.
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/shifts/shift_123/archive \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-restore">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/shifts/{id}/restore</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Bring an archived shift back. No body. Response <code>200</code>: the <a href="#shifts">shift</a>; <code>404</code> (empty) for an unknown id. A restored shift does <strong>not</strong> regain the default flag.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/shifts/shift_123/restore \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="shifts-default">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/shifts/{id}/default</span>
+          <span class="tag scope">attendance:write</span>
+        </div>
+        <p>Make this the project's default shift; the previous default on that project is cleared. No body.</p>
+        <p>Response <code>200</code>: the <a href="#shifts">shift</a>. <code>404</code> (empty) for an unknown id. <code>400</code> <code>{ "message": "Restore this shift before making it the default." }</code> when it is archived.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/shifts/shift_123/default \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="holidays">
+      <h2>Public holidays</h2>
+      <p>
+        The holiday calendar decides which worked days count as public-holiday time in the hours
+        summaries and overtime rates. A holiday is either company-wide (<code>projectId</code> null) or
+        observed by one project only; a date can have one of each. These routes don't check the
+        plan's attendance module.
+      </p>
+      <div class="callout warn">
+        <strong>Different scopes for reading and writing.</strong> <code>GET /holidays</code> needs
+        <code>attendance:read</code>; create, edit, import and delete need
+        <code>organizations:write</code>.
+      </div>
+
+      <h3>The holiday object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td></td></tr>
+            <tr><td><code>projectId</code></td><td>string?</td><td>Null: observed company-wide.</td></tr>
+            <tr><td><code>date</code></td><td>string</td><td><code>yyyy-MM-dd</code>.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="holidays-list">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/holidays</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>List holidays, oldest first.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>Optional, inclusive. <strong>Both must be sent to filter</strong>; with only one (or neither) you get every holiday, all years.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of <a href="#holidays">holidays</a></h3>
+<pre><code>curl "https://&lt;api-host&gt;/holidays?from=2026-01-01&amp;to=2026-12-31" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="holidays-create">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/holidays</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Add a holiday.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits / meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>date</code></td><td>date</td><td>yes</td><td>Send a plain date (<code>2026-08-31</code>); any time part is dropped.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 160. Trimmed.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>no</td><td>Max 40. Omit or null for a company-wide holiday.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> (not <code>201</code>) — the <a href="#holidays">holiday</a></h3>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> <code>{ "message": "Project not found." }</code>;
+          <code>{ "message": "An org-wide holiday already exists on 2026-08-31." }</code> or
+          <code>{ "message": "This project already has a holiday on 2026-08-31." }</code>; field validation as <code>{ "errors": { … } }</code>.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/holidays \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "date": "2026-08-31", "name": "National Day" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="holidays-update">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/holidays/{id}</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Edit a holiday. Body fields and limits as for create.</p>
+        <div class="callout warn">
+          <strong>This replaces the whole row.</strong> Omitting <code>projectId</code> turns a
+          project-only holiday into a company-wide one. Always send all three fields.
+        </div>
+        <h3>Response <code>200</code> — the <a href="#holidays">holiday</a></h3>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty) for an unknown id; <code>400</code> <code>{ "message": "A holiday already exists on 2026-08-31 for this scope." }</code>, <code>{ "message": "Project not found." }</code>.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/holidays/hol_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "date": "2026-09-01", "name": "National Day (observed)", "projectId": null }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="holidays-import">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/holidays/import</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Load a country's public holidays for one year into the company-wide calendar.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits / meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>integer</td><td>yes</td><td>2000–2100.</td></tr>
+              <tr><td><code>countryCode</code></td><td>string</td><td>no</td><td>Two-letter ISO 3166-1 code, case-insensitive. Default <code>"MY"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>imported</code></td><td>integer</td><td>Holidays added.</td></tr>
+              <tr><td><code>skipped</code></td><td>integer</td><td>Dates the company already had a company-wide holiday on. They are left as they are, not overwritten.</td></tr>
+              <tr><td><code>source</code></td><td>string</td><td>The calendar that answered: <code>"date.nager.at"</code> or <code>"Calendarific"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          The server fetches the calendar from a third-party public-holiday service, so this call
+          needs outbound internet access on the server and can fail for reasons outside the API.
+          It only adds company-wide rows; add project-specific holidays with <code>POST /holidays</code>.
+          When two holidays share a date the first name wins. Re-running is safe.
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "…" }</code> for a year or country code out of range (field-validation <code>{ "errors": { … } }</code> for the year), no data for that country and year, or the calendar service being unreachable.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/holidays/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "year": 2026, "countryCode": "MY" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="holidays-delete">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/holidays/{id}</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Delete a holiday. Response <code>204</code>; <code>404</code> (empty) for an unknown id.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/holidays/hol_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="not-for-keys">
+      <h2>Not available to API keys</h2>
+      <p>
+        These answer <code>403</code> to any key because they are a person's own actions:
+        <code>POST /attendance/clock-in</code>, <code>POST /attendance/clock-out</code>,
+        <code>GET /attendance/geofence-check</code>, <code>POST /attendance/adjustments</code>,
+        <code>POST /attendance/break/start</code>, <code>POST /attendance/break/end</code> and
+        <code>POST /attendance/photo</code>.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

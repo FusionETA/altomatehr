@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Claims</title>
+  <meta name="description" content="Read, delete, export and import expense and mileage claims, change the claims settings, and push approved claims to Xero." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Claims/ClaimsController.cs, ClaimsService.cs,
+  ClaimsSummarySheet.cs, ClaimRunWindow.cs, ClaimReceiptStorage.cs,
+  Dtos/*.cs, Entities/Claim.cs, Entities/ClaimEnums.cs,
+  Common/Tabular/*.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html" aria-current="page">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Claims</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Claims</h1>
+    <p class="lead">
+      A claim is an expense or mileage reimbursement an employee files for approval. Read a
+      company's claims, export them, import historical ones, delete them, change the claims
+      settings, and push approved claims to Xero.
+    </p>
+    </div>
+
+    <section class="section" id="claims">
+      <h2>Claims</h2>
+      <p>
+        Every endpoint on this page needs the <code>claims</code> module on the company's plan;
+        without it they answer <code>403</code> with
+        <code>This organization's plan does not include the 'claims' module.</code>
+      </p>
+
+      <h3>The claim object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Claim id. This is what the <code>{id}</code> routes take.</td></tr>
+            <tr><td><code>organizationId</code></td><td>string</td><td>The company.</td></tr>
+            <tr><td><code>claimNumber</code></td><td>string</td><td>Human-readable number, e.g. <code>CLM-20260115-A1B2C3</code>. Unique.</td></tr>
+            <tr><td><code>title</code></td><td>string</td><td>Short title, up to 200 characters.</td></tr>
+            <tr><td><code>description</code></td><td>string</td><td>Free text.</td></tr>
+            <tr><td><code>category</code></td><td>string</td><td><code>TRAVEL</code>, <code>TRANSPORT</code>, <code>MEAL</code>, <code>MEDICAL</code>, <code>WELLNESS</code>, <code>HARDWARE</code>, <code>OFFICE</code> or <code>OTHER</code>.</td></tr>
+            <tr><td><code>amount</code></td><td>number</td><td>Amount claimed, 2 decimals.</td></tr>
+            <tr><td><code>currency</code></td><td>string</td><td>Three-letter code. The company's default currency for a claim filed in the app; whatever the file said (default <code>MYR</code>) for an imported one.</td></tr>
+            <tr><td><code>spentAt</code></td><td>string (ISO 8601)</td><td>When the money was spent.</td></tr>
+            <tr><td><code>submittedAt</code></td><td>string (ISO 8601)</td><td>When the claim was filed. For an imported claim this is the spent date.</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td><code>SUBMITTED</code>, <code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>. <code>APPROVED</code> is final.</td></tr>
+            <tr><td><code>currentStep</code></td><td>integer</td><td>Position in the approval chain, counted from 0. Only meaningful while <code>PENDING</code>.</td></tr>
+            <tr><td><code>claimType</code></td><td>string</td><td><code>EXPENSE</code> or <code>MILEAGE</code>.</td></tr>
+            <tr><td><code>paymentType</code></td><td>string</td><td><code>PERSONAL</code> (the employee paid and is owed the money) or <code>COMPANY</code> (the money already left a company account).</td></tr>
+            <tr><td><code>payViaAccountId</code></td><td>string | null</td><td>Company claims: the account that paid.</td></tr>
+            <tr><td><code>spendingWith</code></td><td>string | null</td><td>Client, vendor or team the money was spent with.</td></tr>
+            <tr><td><code>spendingAt</code></td><td>string | null</td><td>Company claims: merchant or vendor.</td></tr>
+            <tr><td><code>employeeId</code></td><td>string</td><td>The claimant's <strong>user id</strong> (as returned by <code>/employees</code>), not the payroll profile id.</td></tr>
+            <tr><td><code>projectId</code></td><td>string | null</td><td>The project the claim is filed against.</td></tr>
+            <tr><td><code>chartOfAccountId</code></td><td>string | null</td><td>The chart-of-accounts entry it is coded to.</td></tr>
+            <tr><td><code>exceedsLimit</code></td><td>boolean</td><td>The amount went over that account's spend limit. These can't be approved in bulk.</td></tr>
+            <tr><td><code>distance</code></td><td>number | null</td><td>Mileage claims only.</td></tr>
+            <tr><td><code>mileageOriginAddress</code>, <code>mileageDestinationAddress</code></td><td>string | null</td><td>Mileage claims only.</td></tr>
+            <tr><td><code>mileageRateUsed</code></td><td>number | null</td><td>Mileage claims only: the rate in force when the claim was filed.</td></tr>
+            <tr><td><code>mileageUnitUsed</code></td><td>string | null</td><td>Mileage claims only: <code>KM</code> or <code>MILE</code>.</td></tr>
+            <tr><td><code>receiptUrl</code></td><td>string | null</td><td>A path on this API, <code>/claims/receipts/{fileName}</code> or <code>/claims/receipts/xero/{xeroFileId}</code>. Fetch it with the <a href="#get-receipt">receipt endpoints</a>.</td></tr>
+            <tr><td><code>receiptXeroFileId</code></td><td>string | null</td><td>Set when the receipt is held in Xero Files.</td></tr>
+            <tr><td><code>supportingDocumentUrls</code></td><td>string[]</td><td>Extra documents, same kind of path as <code>receiptUrl</code>. Empty when there are none.</td></tr>
+            <tr><td><code>reviewNotes</code></td><td>string | null</td><td>The approver's remark. Set when a claim is rejected.</td></tr>
+            <tr><td><code>settlement</code></td><td>string</td><td>How an approved claim is paid: <code>XERO_BILL</code> (pushed to Xero) or <code>PAYROLL</code> (reimbursed through pay and picked up by the <a href="#export-payroll">payroll export</a>).</td></tr>
+            <tr><td><code>xeroSyncStatus</code></td><td>string</td><td><code>NOT_SYNCED</code>, <code>SYNCED</code> or <code>ERROR</code>. <code>ERROR</code> means a push was tried and failed; see <code>xeroSyncError</code>.</td></tr>
+            <tr><td><code>xeroBillId</code>, <code>xeroBillRef</code></td><td>string | null</td><td>The Xero document once synced. A company-paid claim becomes a spend-money transaction rather than a bill, but the id is stored in the same field.</td></tr>
+            <tr><td><code>xeroSyncError</code></td><td>string | null</td><td>Why the last push failed.</td></tr>
+            <tr><td><code>xeroSyncedAt</code></td><td>string (ISO 8601) | null</td><td>When it was pushed.</td></tr>
+            <tr><td><code>employeeEmail</code>, <code>employeeName</code></td><td>string | null</td><td>The claimant's email and name. Only filled by <code>GET /claims/all</code> and <code>GET /claims/team</code>; <code>null</code> everywhere else.</td></tr>
+            <tr><td><code>canAct</code></td><td>boolean</td><td>Whether the caller may approve or reject the claim now. Always <code>false</code> for an API key (see <a href="#approving">Approving and rejecting</a>).</td></tr>
+            <tr><td><code>awaitingApprovers</code></td><td>string[]</td><td>Names (or emails) of whoever the claim is waiting on. Only filled by <code>GET /claims/all</code> and <code>GET /claims/team</code>, and only while <code>PENDING</code>.</td></tr>
+            <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>string (ISO 8601)</td><td>Row timestamps.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "id": "clm_123",
+  "organizationId": "org_123",
+  "claimNumber": "CLM-20260115-A1B2C3",
+  "title": "Client lunch",
+  "description": "Lunch with the Acme team",
+  "category": "MEAL",
+  "amount": 85.50,
+  "currency": "MYR",
+  "spentAt": "2026-01-15T00:00:00",
+  "submittedAt": "2026-01-15T09:30:00Z",
+  "status": "PENDING",
+  "currentStep": 0,
+  "claimType": "EXPENSE",
+  "paymentType": "PERSONAL",
+  "payViaAccountId": null,
+  "spendingWith": null,
+  "spendingAt": null,
+  "employeeId": "emp_123",
+  "projectId": null,
+  "chartOfAccountId": "acc_123",
+  "exceedsLimit": false,
+  "distance": null,
+  "mileageOriginAddress": null,
+  "mileageDestinationAddress": null,
+  "mileageRateUsed": null,
+  "mileageUnitUsed": null,
+  "receiptUrl": "/claims/receipts/20260115093000-a1b2c3d4.jpg",
+  "receiptXeroFileId": null,
+  "supportingDocumentUrls": [],
+  "reviewNotes": null,
+  "settlement": "XERO_BILL",
+  "xeroSyncStatus": "NOT_SYNCED",
+  "xeroBillId": null,
+  "xeroBillRef": null,
+  "xeroSyncError": null,
+  "xeroSyncedAt": null,
+  "employeeEmail": null,
+  "employeeName": null,
+  "canAct": false,
+  "awaitingApprovers": [],
+  "createdAt": "2026-01-15T09:30:00Z",
+  "updatedAt": "2026-01-15T09:30:00Z"
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>Error bodies on this page.</strong> Most <code>400</code> responses from the
+        claims endpoints are <code>{ "message": "…" }</code>, not the
+        <code>{ "error": "…" }</code> shape described on the
+        <a href="index.html#errors">overview</a>. A request body that fails validation still
+        comes back as <code>{ "errors": { "Field": ["message"] } }</code>, and a missing scope
+        or module as <code>{ "error": { "status": 403, "message": "…" } }</code>. Read
+        <code>message</code> as well when you handle a <code>400</code> here.
+      </div>
+      <div class="callout">
+        <strong>Filing claims is for people.</strong> Creating or editing a claim and uploading
+        a receipt are not available to API keys (see the
+        <a href="#not-available">end of the page</a>). To bring existing claims in from another
+        system, use <a href="#import">POST /claims/import</a>.
+      </div>
+    </section>
+
+    <section class="section" id="reading">
+      <h2>Reading claims</h2>
+
+      <section class="endpoint" id="get-claims-all">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/all</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>
+          Every claim in the company, whatever its status. This is the endpoint to read claims
+          with from an API key.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array of <a href="#claims">claim objects</a>, with <code>employeeEmail</code>,
+          <code>employeeName</code> and <code>awaitingApprovers</code> filled in. There is no
+          paging, filtering or guaranteed order: filter and sort on your side, or use the
+          <a href="#export-summary">summary export</a> to filter on the server.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/claims/all \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-claim">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/{id}</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>One claim by id.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          A <a href="#claims">claim object</a>. <code>employeeEmail</code>,
+          <code>employeeName</code> and <code>awaitingApprovers</code> are not filled in here;
+          take them from <a href="#get-claims-all">GET /claims/all</a> if you need them.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/claims/clm_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no claim with that id in this company.</p>
+      </section>
+
+      <section class="endpoint" id="get-claims-mine">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>The caller's own claims.</p>
+        <div class="callout warn">
+          An API key isn't an employee and has no claims of its own, so this always returns
+          <code>200</code> with <code>[]</code>. Use <a href="#get-claims-all">GET /claims/all</a>.
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/claims \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-claims-team">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/team</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>The claims a supervisor has to decide, plus those their direct reports have already settled.</p>
+        <div class="callout warn">
+          An API key is nobody's supervisor and is never in an approval chain, so this always
+          returns <code>200</code> with <code>[]</code>. Use
+          <a href="#get-claims-all">GET /claims/all</a>.
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/claims/team \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="receipts">
+      <h2>Receipts</h2>
+      <p>
+        A claim's <code>receiptUrl</code> (and each entry of <code>supportingDocumentUrls</code>)
+        is a path on this API. Send it back to the matching endpoint below, with the same key,
+        to download the file. Both answer with the file itself and
+        <code>Cache-Control: no-store</code>, not JSON.
+      </p>
+
+      <section class="endpoint" id="get-receipt">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/receipts/{fileName}</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>
+          A receipt stored on the AltomateHR server, for a <code>receiptUrl</code> of the form
+          <code>/claims/receipts/20260115093000-a1b2c3d4.jpg</code>.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>In</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>fileName</code></td><td>path</td><td>string</td><td>The last segment of the claim's <code>receiptUrl</code>, extension included.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The file. Content type is <code>image/jpeg</code>, <code>image/png</code>,
+          <code>image/webp</code>, <code>image/heic</code>, <code>image/heif</code> or
+          <code>application/pdf</code>, from the extension.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/claims/receipts/20260115093000-a1b2c3d4.jpg \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o receipt.jpg</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no claim in this company references that file name, or the file is gone.</p>
+      </section>
+
+      <section class="endpoint" id="get-xero-receipt">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/receipts/xero/{xeroFileId}</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>
+          A receipt held in Xero Files, for a <code>receiptUrl</code> of the form
+          <code>/claims/receipts/xero/{xeroFileId}</code>. AltomateHR fetches it from Xero for
+          you, so you never need Xero credentials.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The file, with the content type and file name Xero holds it under.</p>
+<pre><code>curl https://&lt;api-host&gt;/claims/receipts/xero/file_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o receipt.pdf</code></pre>
+        <h3>Errors</h3>
+        <p>
+          <code>404</code> (empty body) — no claim in this company references that file, or Xero
+          can't serve it right now. The two look the same.
+        </p>
+      </section>
+    </section>
+
+    <section class="section" id="settings">
+      <h2>Claims settings</h2>
+      <p>Three company-wide settings that decide when a claims run closes and how approved claims are paid.</p>
+
+      <h3>The settings object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>Day of the month, 1–28, that a claims run closes. A claim submitted on or before it belongs to that month's run; a later one rolls into the next. Defaults to <code>25</code>.</td></tr>
+            <tr><td><code>settlementRoute</code></td><td>string</td><td><code>XERO_BILL</code> (default) or <code>PAYROLL</code>. How approved claims are paid out.</td></tr>
+            <tr><td><code>xeroBillStage</code></td><td>string</td><td><code>AwaitingPayment</code> (default) or <code>Draft</code>. The stage a bill lands at in Xero. Only used on the <code>XERO_BILL</code> route.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="get-claim-settings">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/settings</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>The company's current claims settings.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#settings">settings object</a>.</p>
+<pre><code>{
+  "claimRunCutoffDay": 25,
+  "settlementRoute": "XERO_BILL",
+  "xeroBillStage": "AwaitingPayment"
+}</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/claims/settings \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-claim-settings">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/claims/settings</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>Change the company's claims settings. The change is recorded in the company's activity log.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>no</td><td>1–28. Defaults to <code>25</code> when omitted.</td></tr>
+              <tr><td><code>settlementRoute</code></td><td>string</td><td>no</td><td><code>XERO_BILL</code> or <code>PAYROLL</code>. Defaults to <code>XERO_BILL</code> when omitted.</td></tr>
+              <tr><td><code>xeroBillStage</code></td><td>string</td><td>no</td><td><code>AwaitingPayment</code> or <code>Draft</code>. Defaults to <code>AwaitingPayment</code> when omitted.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#settings">settings object</a> as saved.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/claims/settings \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "claimRunCutoffDay": 20, "settlementRoute": "PAYROLL", "xeroBillStage": "Draft" }'</code></pre>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>It replaces all three settings.</strong> A field you leave out is reset to its default, not kept. To change one setting, read <a href="#get-claim-settings">GET /claims/settings</a> first and send all three back.</li>
+          <li><strong><code>settlementRoute</code> applies to claims filed afterwards.</strong> Each claim carries the route it was filed under, so switching it doesn't re-route claims that already exist. <code>xeroBillStage</code>, by contrast, is read each time a claim is pushed to Xero.</li>
+        </ul>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — <code>claimRunCutoffDay</code> outside 1–28 (<code>Cutoff day must be between 1 and 28.</code>), or an unknown enum value.</li>
+          <li><code>404</code> (empty body) — the company no longer exists.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="deleting">
+      <h2>Deleting a claim</h2>
+
+      <section class="endpoint" id="delete-claim">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/claims/{id}</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>Permanently delete a claim.</p>
+        <h3>Response <code>204</code></h3>
+        <p>No body.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/claims/clm_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>Any status can be deleted</strong>, approved and rejected claims included. There is no undo.</li>
+          <li><strong>Xero is not touched.</strong> A bill already pushed to Xero stays there; void it in Xero yourself.</li>
+          <li>The claimant's and approvers' open screens are told to refresh.</li>
+        </ul>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no claim with that id in this company.</p>
+      </section>
+    </section>
+
+    <section class="section" id="approving">
+      <h2>Approving and rejecting</h2>
+      <div class="callout warn">
+        <strong>These never succeed for an API key.</strong> Only the person who is the claim's
+        current approver in the claimant's team chain can decide it, and an API key is never in
+        a chain. Single approve and reject answer <code>404</code> for every claim; bulk approve
+        answers <code>200</code> with every id failed. The endpoints are listed because a key
+        with <code>claims:write</code> reaches them, so you know not to build on them. Approve
+        and reject claims in the AltomateHR app.
+      </div>
+
+      <section class="endpoint" id="approve-claim">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/{id}/approve</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>
+          Approve a claim as its current-step approver. Moves it to the next step, or to
+          <code>APPROVED</code> on the last one (which then pushes it to Xero when the company
+          pays on the <code>XERO_BILL</code> route).
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#claims">claim object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — no such claim, or the caller isn't its current approver. This is what a key always gets.</li>
+          <li><code>400</code> <code>{ "message": "Only pending claims can be approved or rejected." }</code></li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/clm_123/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="reject-claim">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/{id}/reject</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>Reject a claim as its current-step approver. A rejection is final and needs a remark.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>yes</td><td>Why it was rejected, up to 2000 characters. Shown to the claimant.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#claims">claim object</a>, <code>status</code> <code>REJECTED</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — as for approve. This is what a key always gets.</li>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — <code>reviewNotes</code> missing or over 2000 characters.</li>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the claim is no longer pending, or the remark is blank.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/clm_123/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Receipt is unreadable" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="bulk-approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/bulk/approve</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>
+          Approve many claims in one call, each judged on its own. There is no bulk reject:
+          a rejection needs its own reason.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>yes</td><td>Claim ids. At least one; more than 200 is refused whole.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>Always <code>200</code>, even when every id failed. Read the report.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>succeeded</code>, <code>failed</code></td><td>integer</td><td>Counts.</td></tr>
+              <tr><td><code>items</code></td><td>array</td><td>One entry per distinct id: <code>{ id, ok, error }</code>. <code>error</code> is <code>null</code> when <code>ok</code>. A claim over its spend limit always fails here (<code>Over the spend limit — approve this one on its own after reading it.</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "succeeded": 0,
+  "failed": 1,
+  "items": [
+    { "id": "clm_123", "ok": false, "error": "You can't approve this claim." }
+  ]
+}</code></pre>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/bulk/approve \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["clm_123", "clm_456"] }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — <code>ids</code> missing or empty.</li>
+          <li>More than 200 ids is <em>not</em> an error status: you get <code>200</code> with <code>succeeded: 0</code>, <code>failed</code> set to the number sent, and one item with an empty <code>id</code> and the error <code>Too many claims — pick fewer than 200.</code></li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="xero">
+      <h2>Pushing to Xero</h2>
+      <p>
+        An approved claim is pushed to Xero automatically when the final approver signs it off
+        and the company pays on the <code>XERO_BILL</code> route. These endpoints do it by hand,
+        for claims that failed, were imported already approved, or were never pushed. A
+        personal-paid claim becomes a bill, a company-paid one a spend-money transaction. They
+        write into the company's accounting system, so they need a Xero connection set up in
+        AltomateHR.
+      </p>
+
+      <section class="endpoint" id="xero-sync">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/{id}/xero-sync</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>Push one approved claim to Xero.</p>
+        <h3>Request body (optional)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>status</code></td><td>string</td><td>no</td><td><code>AwaitingPayment</code> or <code>Draft</code>: the stage the bill lands at. Omit it (or send no body) to use the company's <code>xeroBillStage</code> setting.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>alreadySynced</code></td><td>boolean</td><td><code>true</code> when the claim already had a Xero document. Nothing was sent; this is not an error, so a retry can never create a second bill.</td></tr>
+              <tr><td><code>claim</code></td><td>object</td><td>The <a href="#claims">claim object</a>, with <code>xeroSyncStatus</code>, <code>xeroBillId</code> and <code>xeroBillRef</code> set.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/clm_123/xero-sync \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "Draft" }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — no claim with that id in this company.</li>
+          <li>
+            <code>400</code> <code>{ "message": "…", "claim": { … } }</code> — it wasn't
+            pushed, and <code>message</code> says why: the claim isn't approved; it's routed to
+            payroll (<code>This claim is set to be reimbursed through payroll…</code>); its
+            account or company bank account doesn't exist in Xero; or Xero refused it or isn't
+            connected. For the Xero-side failures the claim's <code>xeroSyncStatus</code>
+            becomes <code>ERROR</code> and <code>xeroSyncError</code> holds the reason.
+          </li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li>Only <code>APPROVED</code> claims can be pushed.</li>
+          <li>A claim with <code>settlement</code> <code>PAYROLL</code> is refused, so it can't be paid twice. It is reimbursed through payroll instead.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="bulk-xero-sync">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/bulk/xero-sync</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>Push many approved claims to Xero in one call. They are sent one after another, each judged on its own.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>yes</td><td>Claim ids. At least one; more than 200 is refused whole.</td></tr>
+              <tr><td><code>status</code></td><td>string</td><td>no</td><td><code>AwaitingPayment</code> or <code>Draft</code>, applied to every claim. Omit to use the company setting.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          Always <code>200</code>: <code>{ succeeded, failed, items }</code> with one
+          <code>{ id, ok, error }</code> item per distinct id, as for
+          <a href="#bulk-approve">bulk approve</a>. A claim that was already pushed counts as
+          <code>ok</code>. An unknown id fails with <code>Claim not found.</code>
+        </p>
+<pre><code>{
+  "succeeded": 1,
+  "failed": 1,
+  "items": [
+    { "id": "clm_123", "ok": true, "error": null },
+    { "id": "clm_456", "ok": false, "error": "Only approved claims can be billed to Xero." }
+  ]
+}</code></pre>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/bulk/xero-sync \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["clm_123", "clm_456"] }'</code></pre>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> <code>{ "errors": { … } }</code> — <code>ids</code> missing or empty.
+          More than 200 ids gives <code>200</code> with every id counted as failed and a single
+          item (empty <code>id</code>) saying <code>Too many claims — pick fewer than 200.</code>
+        </p>
+      </section>
+    </section>
+
+    <section class="section" id="export-import">
+      <h2>Export and import</h2>
+      <p>
+        The export endpoints answer with a file, not JSON. <code>format</code> is
+        <code>csv</code> (the default, also used for any value that isn't recognised),
+        <code>xlsx</code> (or <code>excel</code>) or <code>pdf</code>. The response's
+        <code>Content-Type</code> and <code>Content-Disposition</code> follow the format, and
+        it carries <code>Cache-Control: no-store</code>.
+      </p>
+
+      <section class="endpoint" id="export-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/export/summary</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>
+          Every claim, as a spreadsheet or printable report, optionally filtered. Employees,
+          projects and accounts appear as names, not ids.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string</td><td><code>csv</code>, <code>xlsx</code> or <code>pdf</code>.</td></tr>
+              <tr><td><code>from</code>, <code>to</code></td><td>date (ISO 8601)</td><td>Both inclusive, compared by calendar day. Either can be left out. With no dates at all, every claim is exported.</td></tr>
+              <tr><td><code>dateField</code></td><td>string</td><td>Which date <code>from</code>/<code>to</code> and the sort apply to: <code>spent</code> (default) or <code>submitted</code>. Up to 20 characters; any other value behaves as <code>spent</code>.</td></tr>
+              <tr><td><code>status</code></td><td>string</td><td><code>SUBMITTED</code>, <code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>.</td></tr>
+              <tr><td><code>paymentType</code></td><td>string</td><td><code>PERSONAL</code> or <code>COMPANY</code>.</td></tr>
+              <tr><td><code>employeeId</code></td><td>string</td><td>The claimant's user id, up to 40 characters.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>Up to 40 characters.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The file, newest first. It is named
+          <code>claims-summary-{from}-to-{to}.{ext}</code> when both dates are given, otherwise
+          <code>claims-summary-{today}.{ext}</code>. CSV and XLSX have one row per claim and
+          these columns: <code>Claim #</code>, <code>Employee</code>, <code>Employee Email</code>,
+          <code>Title</code>, <code>Description</code>, <code>Claim Type</code>,
+          <code>Category</code>, <code>Payment Type</code>, <code>Amount</code>,
+          <code>Currency</code>, <code>Spent On</code>, <code>Submitted On</code>,
+          <code>Status</code>, <code>Approval Step</code> (counted from 1), <code>Project</code>,
+          <code>Account Code</code>, <code>Account Name</code>, <code>Merchant</code>,
+          <code>Spending With</code>, <code>Over Limit</code>, <code>Distance</code>,
+          <code>Mileage Rate</code>, <code>Review Notes</code>. The PDF is a narrower report
+          (12 columns) with the filter described under the title and totals per currency.
+        </p>
+<pre><code>curl "https://&lt;api-host&gt;/claims/export/summary?format=csv&amp;from=2026-01-01&amp;to=2026-01-31&amp;status=APPROVED" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o claims.csv</code></pre>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "errors": { … } }</code> — a date that doesn't parse, an unknown <code>status</code> or <code>paymentType</code>, or an over-long text parameter.</p>
+      </section>
+
+      <section class="endpoint" id="export-payroll">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/export/payroll</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>
+          The payroll reimbursement run: approved, personal-paid claims routed to payroll,
+          totalled per employee, for one month's run.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string</td><td><code>csv</code>, <code>xlsx</code> or <code>pdf</code>.</td></tr>
+              <tr><td><code>month</code></td><td>string</td><td>The run, as <code>yyyy-MM</code>, e.g. <code>2026-01</code>. Omit it for the run currently open. A value that isn't <code>yyyy-MM</code> is treated as omitted, not rejected.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The file, named <code>payroll-reimbursements-{yyyy-MM}.{ext}</code>, with one row per
+          employee and currency: <code>Employee</code>, <code>Employee Email</code>,
+          <code>Claims</code> (a count), <code>Claim #s</code>, <code>Total Amount</code>,
+          <code>Currency</code>, <code>Run Month</code>, and a totals row.
+        </p>
+<pre><code>curl "https://&lt;api-host&gt;/claims/export/payroll?format=xlsx&amp;month=2026-01" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o reimbursements.xlsx</code></pre>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>A run is not a calendar month.</strong> It covers claims <em>submitted</em> from the day after the previous month's cutoff to the cutoff day inclusive. With a cutoff of 25, the <code>2026-01</code> run is 26 December to 25 January.</li>
+          <li>Only claims whose <code>settlement</code> is <code>PAYROLL</code> appear, so an empty file usually means the company pays through Xero, or <code>settlementRoute</code> was changed after the claims were filed.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="import-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/claims/import/template</span>
+          <span class="tag scope">claims:read</span>
+        </div>
+        <p>The blank file to fill in for <a href="#import">POST /claims/import</a>.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string</td><td><code>csv</code> (default) or <code>xlsx</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The file, named <code>claims-import-template.{ext}</code>: a header row, plus an example row that the import skips.</p>
+<pre><code>curl "https://&lt;api-host&gt;/claims/import/template?format=csv" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o claims-import-template.csv</code></pre>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded." }</code> for <code>format=pdf</code>.</p>
+      </section>
+
+      <section class="endpoint" id="import">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/claims/import</span>
+          <span class="tag scope">claims:write</span>
+        </div>
+        <p>
+          Bring historical claims in from another system. It adds claims and never changes or
+          removes one, so uploading the same file again is safe.
+        </p>
+        <h3>Request</h3>
+        <p>
+          <code>multipart/form-data</code> with one file field named <code>file</code>: a
+          <code>.csv</code> or <code>.xlsx</code> of at most 8 MB. Headers are matched
+          ignoring case, spaces and punctuation, and a few synonyms are accepted
+          (<code>Email</code>, <code>Date</code>, <code>Total</code>…). Start from the
+          <a href="#import-template">template</a>.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>Employee Email</code></td><td>one of these two</td><td>Identifies the claimant. A name that matches more than one employee fails the row, so prefer the email.</td></tr>
+              <tr><td><code>Employee Name</code></td><td>(see above)</td><td>Used when there is no email.</td></tr>
+              <tr><td><code>Title</code></td><td>yes</td><td>Up to 200 characters.</td></tr>
+              <tr><td><code>Category</code></td><td>yes</td><td><code>TRAVEL</code>, <code>TRANSPORT</code>, <code>MEAL</code>, <code>MEDICAL</code>, <code>WELLNESS</code>, <code>HARDWARE</code>, <code>OFFICE</code> or <code>OTHER</code>.</td></tr>
+              <tr><td><code>Amount</code></td><td>yes</td><td>Greater than 0. Rounded to 2 decimals and stored exactly as given, never recalculated.</td></tr>
+              <tr><td><code>Spent On</code></td><td>yes</td><td>A date. <code>2026-01-15</code> is canonical; <code>dd/MM/yyyy</code> also works.</td></tr>
+              <tr><td><code>Currency</code></td><td>no</td><td>Three letters. Defaults to <code>MYR</code>.</td></tr>
+              <tr><td><code>Status</code></td><td>no</td><td><code>SUBMITTED</code>, <code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>. Blank means <code>APPROVED</code>; an unrecognised value fails the row.</td></tr>
+              <tr><td><code>Claim Type</code></td><td>no</td><td><code>EXPENSE</code> or <code>MILEAGE</code>. Blank or unrecognised becomes <code>EXPENSE</code>.</td></tr>
+              <tr><td><code>Payment Type</code></td><td>no</td><td><code>PERSONAL</code> or <code>COMPANY</code>. Blank or unrecognised becomes <code>PERSONAL</code>.</td></tr>
+              <tr><td><code>Account Code</code></td><td>no</td><td>The code of a chart-of-accounts entry. A code the company doesn't have fails the row.</td></tr>
+              <tr><td><code>Description</code></td><td>no</td><td>Free text.</td></tr>
+              <tr><td><code>Review Notes</code></td><td>no</td><td>Free text.</td></tr>
+              <tr><td><code>Claim #</code></td><td>no</td><td>Your own reference, up to 40 characters. Generated when blank.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>imported</code></td><td>integer</td><td>Claims added.</td></tr>
+              <tr><td><code>skipped</code></td><td>integer</td><td>Rows already there (see below) and the template's example row. Not a failure.</td></tr>
+              <tr><td><code>failed</code></td><td>integer</td><td>Rows that couldn't be imported.</td></tr>
+              <tr><td><code>errors</code></td><td>array</td><td><code>{ row, message }</code> for each failed row, at most 200. <code>row</code> is the spreadsheet row, header = 1, first data row = 2.</td></tr>
+              <tr><td><code>warnings</code></td><td>array</td><td>Same shape, for rows that landed but deserve a look.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "imported": 98,
+  "skipped": 1,
+  "failed": 1,
+  "errors": [
+    { "row": 14, "message": "No employee in this organization matches 'jane@example.com'." }
+  ],
+  "warnings": []
+}</code></pre>
+<pre><code>curl -X POST https://&lt;api-host&gt;/claims/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@claims.csv"</code></pre>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>It is <code>200</code> even when rows failed.</strong> Check <code>failed</code> and <code>errors</code>, not the status.</li>
+          <li><strong>A file the importer can't read is also <code>200</code>.</strong> An empty file, a header row with no data rows, or a missing required column comes back with <code>imported: 0</code>, <code>failed: 0</code> and a single entry in <code>errors</code> at <code>row</code> 1. Check <code>errors</code> too.</li>
+          <li><strong>A row is skipped as a duplicate</strong> when its <code>Claim #</code> already exists, or, with no <code>Claim #</code>, when the same employee, spent date, amount and title already exist. Skipped rows are never updated.</li>
+          <li><strong>Imported claims aren't re-checked.</strong> Spend limits, mileage rules and the approval chain are not applied, and nothing is pushed to Xero. A blank <code>Status</code> imports as already approved.</li>
+          <li><strong>Imported claims are routed to Xero</strong> (<code>settlement</code> <code>XERO_BILL</code>) whatever the company's route is, so they never appear in the <a href="#export-payroll">payroll export</a>.</li>
+          <li>Imported claims have no project and no receipt, and <code>submittedAt</code> is the spent date.</li>
+          <li>Everyone in the company's open screens is told to refresh once the import finishes.</li>
+        </ul>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "Pick a .csv or .xlsx file to import." }</code> — no file, or an empty one.</li>
+          <li><code>400</code> <code>{ "message": "Unsupported file type. Upload a .csv or .xlsx file." }</code></li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>POST /claims</code>, <code>PUT /claims/{id}</code>, <code>POST /claims/receipts</code>
+        and <code>POST /claims/receipts/analyze</code> are for people only and answer
+        <code>403</code> <code>This endpoint is not available to API keys.</code>
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>
