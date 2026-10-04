@@ -70,6 +70,10 @@ public class AppDbContext : DbContext
     // belongs to the organization it is about to create.
     public DbSet<Modules.Provisioning.MasterKey> MasterKeys => Set<Modules.Provisioning.MasterKey>();
     public DbSet<ApiKeyAuditLog> ApiKeyAuditLogs => Set<ApiKeyAuditLog>();
+    // Also not tenant-scoped: superadmins read it across companies, and a
+    // background worker saves it with no current org to stamp.
+    public DbSet<Modules.ApiMonitoring.Entities.ApiRequestLog> ApiRequestLogs =>
+        Set<Modules.ApiMonitoring.Entities.ApiRequestLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
     public DbSet<EmployeeLoan> EmployeeLoans => Set<EmployeeLoan>();
@@ -229,6 +233,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);
         modelBuilder.Entity<ApiKeyAuditLog>().HasIndex(l => new { l.ApiKeyId, l.CreatedAt });
+
+        // CreatedAt alone serves the nightly purge and an unfiltered range; the
+        // others serve the monitoring screen's filters.
+        var requestLog = modelBuilder.Entity<Modules.ApiMonitoring.Entities.ApiRequestLog>();
+        requestLog.HasIndex(l => l.CreatedAt);
+        requestLog.HasIndex(l => new { l.Route, l.CreatedAt });
+        requestLog.HasIndex(l => new { l.OrganizationId, l.CreatedAt });
+        requestLog.HasIndex(l => new { l.StatusCode, l.CreatedAt });
 
         // ApiClient (partner-app registry) is GLOBAL config — not tenant-scoped, so no
         // query filter. Name is the launch slug (unique); SecretHash is the per-request

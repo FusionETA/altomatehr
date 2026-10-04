@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Overtime</title>
+  <meta name="description" content="Read overtime requests and their before/after-work files, look up the OT rate that applies on a date, and approve or reject requests." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Overtime/OvertimeController.cs, OvertimeService.cs,
+  OtRateService.cs, OvertimePhotoStorage.cs, Dtos/OvertimeDtos.cs,
+  Dtos/BulkApproveOvertimeDto.cs, Entities/OvertimeRequest.cs,
+  Entities/OvertimeAttachment.cs, Entities/OvertimeEnums.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html" aria-current="page">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Overtime</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Overtime</h1>
+    <p class="lead">
+      An overtime request is an employee's claim for extra hours on a work date, backed by a
+      photo or PDF taken before the work and another taken after it. It moves through the
+      employee's approval chain, and approved overtime is paid through that month's payroll
+      run. These endpoints let you read requests and their files, look up the OT rate that
+      applies on a date, and approve or reject.
+    </p>
+    </div>
+
+    <section class="section" id="overtime">
+      <h2>Overtime requests</h2>
+      <p>
+        Needs the <code>overtime</code> module on the company's plan — every endpoint below
+        answers <code>403</code> with
+        <code>This organization's plan does not include the 'overtime' module.</code> otherwise.
+      </p>
+      <p>
+        Requests are <strong>filed by people</strong> (the employee submits, attaches the
+        after-work file and can cancel) and there is no API-key route for any of that — see
+        <a href="#not-available">Not available to API keys</a>. A key reads and, in principle,
+        decides them.
+      </p>
+
+      <div class="callout warn">
+        <strong>A key can't act as an approver today.</strong> Approving and rejecting is
+        allowed only for the people on the employee's approval chain at the request's current
+        step (set up under teams). A key's identity is a synthetic id
+        (<code>apikey:…</code>) that is never on a chain, so as the code stands
+        <a href="#approve-overtime">approve</a> and <a href="#reject-overtime">reject</a>
+        always answer <code>404</code>, and
+        <a href="#bulk-approve-overtime">bulk approve</a> reports every id as failed. For the
+        same reason <a href="#get-overtime">GET /overtime</a> (the caller's own requests) and
+        <a href="#get-overtime-team">GET /overtime/team</a> (requests waiting on the caller)
+        always return an empty array. Use <a href="#get-overtime-all">GET /overtime/all</a> and
+        <a href="#get-overtime-by-id">GET /overtime/{id}</a> to read requests.
+      </div>
+
+      <h3>The overtime request object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Request id.</td></tr>
+            <tr><td><code>employeeId</code></td><td>string</td><td>The employee's <strong>user id</strong> (the id from <code>/employees</code>), not the payroll profile id.</td></tr>
+            <tr><td><code>employeeEmail</code></td><td>string | null</td><td>Filled only by <a href="#get-overtime-team">/overtime/team</a> and <a href="#get-overtime-all">/overtime/all</a>; null on every other endpoint.</td></tr>
+            <tr><td><code>employeeName</code></td><td>string | null</td><td>The person's name from the directory; null when none is set or on the endpoints above that don't fill it.</td></tr>
+            <tr><td><code>projectId</code></td><td>string | null</td><td>The project the overtime was worked on, if any.</td></tr>
+            <tr><td><code>workDate</code></td><td>string</td><td>The day worked, <code>"yyyy-MM-dd"</code>.</td></tr>
+            <tr><td><code>startAt</code>, <code>endAt</code></td><td>string (ISO 8601, UTC)</td><td>When the overtime started and ended.</td></tr>
+            <tr><td><code>requestedMinutes</code></td><td>integer</td><td>Minutes claimed.</td></tr>
+            <tr><td><code>reason</code></td><td>string</td><td>The employee's reason.</td></tr>
+            <tr><td><code>beforePhotoUrl</code></td><td>string</td><td>The first before-work file. Kept for older clients; read <code>beforeAttachments</code> instead.</td></tr>
+            <tr><td><code>afterPhotoUrl</code></td><td>string | null</td><td>The first after-work file, null until one is attached. Kept for older clients; read <code>afterAttachments</code> instead.</td></tr>
+            <tr><td><code>beforeAttachments</code>, <code>afterAttachments</code></td><td>array</td><td>Every before / after-work file (up to 10 each), each <code>{ id, url, fileName, addedAt }</code>. <code>url</code> is a path on this API, e.g. <code>/overtime/photos/20250310083000-ab12cd34.jpg</code> or <code>/overtime/photos/xero/&lt;fileId&gt;</code> — fetch it with <a href="#get-overtime-photo">the photo endpoints</a>. <code>addedAt</code> is ISO 8601.</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td><code>"PENDING"</code>, <code>"APPROVED"</code>, <code>"REJECTED"</code> or <code>"CANCELLED"</code>.</td></tr>
+            <tr><td><code>currentStep</code></td><td>integer</td><td>Zero-based position in the approval chain of the step now waiting. Goes up by one each time a step approves without being the last.</td></tr>
+            <tr><td><code>reviewNotes</code></td><td>string | null</td><td>The rejection remark.</td></tr>
+            <tr><td><code>reviewerId</code></td><td>string | null</td><td>User id of whoever last acted. Null for a request nobody decided, e.g. one auto-approved because the employee has no approver.</td></tr>
+            <tr><td><code>reviewerEmail</code>, <code>reviewerName</code></td><td>string | null</td><td>Filled only by <a href="#get-overtime-all">/overtime/all</a>.</td></tr>
+            <tr><td><code>submittedAt</code></td><td>string (ISO 8601)</td><td>When the request was filed.</td></tr>
+            <tr><td><code>decidedAt</code></td><td>string (ISO 8601) | null</td><td>When it was approved or rejected.</td></tr>
+            <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>string (ISO 8601)</td><td>Row timestamps.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "id": "ot_123",
+  "employeeId": "emp_123",
+  "employeeEmail": "jane@example.com",
+  "employeeName": "Jane Tan",
+  "projectId": "prj_123",
+  "workDate": "2025-03-10",
+  "startAt": "2025-03-10T10:00:00.0000000Z",
+  "endAt": "2025-03-10T12:00:00.0000000Z",
+  "requestedMinutes": 120,
+  "reason": "Late delivery to site",
+  "beforePhotoUrl": "/overtime/photos/20250310100000-ab12cd34.jpg",
+  "afterPhotoUrl": "/overtime/photos/20250310120000-ef56ab78.jpg",
+  "beforeAttachments": [
+    { "id": "att_1", "url": "/overtime/photos/20250310100000-ab12cd34.jpg", "fileName": "before.jpg", "addedAt": "2025-03-10T10:01:00.0000000Z" }
+  ],
+  "afterAttachments": [
+    { "id": "att_2", "url": "/overtime/photos/20250310120000-ef56ab78.jpg", "fileName": "after.jpg", "addedAt": "2025-03-10T12:01:00.0000000Z" }
+  ],
+  "status": "PENDING",
+  "currentStep": 0,
+  "reviewNotes": null,
+  "reviewerId": null,
+  "reviewerEmail": null,
+  "reviewerName": null,
+  "submittedAt": "2025-03-10T12:02:00.0000000Z",
+  "decidedAt": null,
+  "createdAt": "2025-03-10T12:02:00.0000000Z",
+  "updatedAt": "2025-03-10T12:02:00.0000000Z"
+}</code></pre>
+    </section>
+
+    <section class="section" id="read">
+      <h2>Read requests</h2>
+
+      <section class="endpoint" id="get-overtime-all">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/all</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>Every overtime request in the company, newest work date first, whatever its status.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array of <a href="#overtime">overtime request objects</a>, with
+          <code>employeeEmail</code>, <code>employeeName</code>, <code>reviewerEmail</code> and
+          <code>reviewerName</code> filled in. Not paged: it returns the whole history, so cache
+          it rather than polling.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/overtime/all \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-overtime-by-id">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/{id}</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>One request, by id, from anywhere in the company.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An <a href="#overtime">overtime request object</a>.
+          <code>employeeEmail</code>, <code>employeeName</code>, <code>reviewerEmail</code> and
+          <code>reviewerName</code> are null here; take them from
+          <a href="#get-overtime-all">/overtime/all</a> if you need them.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/overtime/ot_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no request with that id in this company.</p>
+      </section>
+
+      <section class="endpoint" id="get-overtime">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>The caller's own overtime requests, newest work date first.</p>
+        <div class="callout warn">
+          "The caller" is a signed-in employee's own user id. An API key has no employee behind
+          it, so with a key this always returns an empty array. Use
+          <a href="#get-overtime-all">GET /overtime/all</a>.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#overtime">overtime request objects</a> (none for a key).</p>
+<pre><code>curl https://&lt;api-host&gt;/overtime \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-overtime-team">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/team</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>
+          The requests currently waiting on the caller as an approver: every request, of any
+          status, whose current approval step lists the caller.
+        </p>
+        <div class="callout warn">
+          A key is never on an approval chain, so with a key this always returns an empty
+          array. Use <a href="#get-overtime-all">GET /overtime/all</a>.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array of <a href="#overtime">overtime request objects</a>, with
+          <code>employeeEmail</code> and <code>employeeName</code> filled in (none for a key).
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/overtime/team \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="rate">
+      <h2>OT rate</h2>
+
+      <section class="endpoint" id="get-overtime-rate">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/rate</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>
+          Which overtime multiplier applies on a date, and why. It resolves the rate only — it
+          doesn't compute any pay amount.
+        </p>
+        <div class="callout warn">
+          The rate is worked out for "the caller" (the employee's own policy and working days).
+          A key isn't an employee, so with a key you get the <strong>company's default
+          policy</strong> and a Monday–Friday working week, not any particular person's. It
+          can't be pointed at an employee.
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query parameter</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>date</code></td><td>string (ISO 8601 date)</td><td>yes</td><td>The day to classify, e.g. <code>2025-03-10</code>.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>no</td><td>A project, so a holiday set up for that project counts.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>dayType</code></td><td>string</td><td><code>"NORMAL_DAY"</code>, <code>"REST_DAY"</code> or <code>"PUBLIC_HOLIDAY"</code>. A public holiday that falls on a rest day is <code>"PUBLIC_HOLIDAY"</code> (the higher premium wins).</td></tr>
+              <tr><td><code>outOfShiftMultiplier</code></td><td>number | null</td><td>Multiplier for hours worked beyond the regular shift. Null when OT doesn't pay a cash premium (see <code>reason</code>).</td></tr>
+              <tr><td><code>inShiftMultiplier</code></td><td>number | null</td><td>Premium for hours worked <em>within</em> the regular shift on a rest day or public holiday. Always null on a normal day, where those hours are ordinary pay.</td></tr>
+              <tr><td><code>reason</code></td><td>string</td><td>Plain-English explanation, including why both multipliers are null: no policy resolved, OT disabled on the policy, or OT banked as time off instead of paid.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "dayType": "REST_DAY",
+  "outOfShiftMultiplier": 2.0,
+  "inShiftMultiplier": 1.0,
+  "reason": "Rest day (outside the employee's working days)."
+}</code></pre>
+<pre><code>curl "https://&lt;api-host&gt;/overtime/rate?date=2025-03-09&amp;projectId=prj_123" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="decide">
+      <h2>Approve and reject</h2>
+      <p>
+        These write endpoints need <code>overtime:write</code>. They decide a request as the
+        approver at its <em>current</em> step — see the warning at the
+        <a href="#overtime">top of the page</a> about what that means for a key.
+      </p>
+      <div class="callout warn">
+        Error bodies on this page's write endpoints use a fourth shape that
+        <a href="index.html#errors">the overview</a> doesn't list: a <code>400</code> comes
+        back as <code>{ "message": "…" }</code>, not <code>{ "error": "…" }</code>.
+      </div>
+
+      <section class="endpoint" id="approve-overtime">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/overtime/{id}/approve</span>
+          <span class="tag scope">overtime:write</span>
+        </div>
+        <p>
+          Approve a pending request at its current step. On the last step of the chain the
+          request becomes <code>APPROVED</code>; otherwise it stays <code>PENDING</code> and
+          <code>currentStep</code> goes up by one for the next approver.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#overtime">overtime request object</a>. No request body.</p>
+        <div class="callout">
+          Things that bite: the request must already have an after-work file; the decision
+          notifies the employee; and a final approval marks any generated payroll draft that
+          covers the work date's month as stale, so regenerate it before submitting that run.
+          <code>reviewerId</code> is set on every step, not only the last.
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/overtime/ot_123/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — no such request in this company, <strong>or the caller isn't the current-step approver</strong>. The two look the same on purpose. This is what a key always gets.</li>
+          <li><code>400</code> <code>{ "message": "Only pending overtime requests can be approved or rejected." }</code> — already decided or cancelled.</li>
+          <li><code>400</code> <code>{ "message": "An after-work photo or file must be attached before approval." }</code></li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="bulk-approve-overtime">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/overtime/bulk/approve</span>
+          <span class="tag scope">overtime:write</span>
+        </div>
+        <p>
+          Approve many requests in one call, each as the current-step approver. Every id is
+          judged on its own, so one failure never blocks the rest. There is deliberately no
+          bulk reject: a rejection needs its own remark, so reject one at a time.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>yes</td><td>Request ids; at least one. More than 200 and nothing is approved. Duplicates are counted once.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          Always <code>200</code> once the body is valid, even when every id failed. Read the
+          per-id result.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>succeeded</code></td><td>integer</td><td>How many ids were approved (or advanced a step).</td></tr>
+              <tr><td><code>failed</code></td><td>integer</td><td>How many were not.</td></tr>
+              <tr><td><code>items</code></td><td>array</td><td>One entry per id: <code>{ id, ok, error }</code>. <code>error</code> is the reason when <code>ok</code> is false.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "succeeded": 1,
+  "failed": 2,
+  "items": [
+    { "id": "ot_123", "ok": true, "error": null },
+    { "id": "ot_124", "ok": false, "error": "An after-work photo or file must be attached before approval." },
+    { "id": "ot_999", "ok": false, "error": "You can't approve this overtime request." }
+  ]
+}</code></pre>
+<pre><code>curl -X POST https://&lt;api-host&gt;/overtime/bulk/approve \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["ot_123", "ot_124"] }'</code></pre>
+        <div class="callout">
+          Things that bite: an id that doesn't exist, or that the caller can't decide, is
+          reported as <code>"You can't approve this overtime request."</code> (what a key gets
+          for every id); a request already decided gets the same reason as the single approve;
+          a request with no after-work file is refused with its reason. Unlike the single
+          approve, this does not send the employee a decision notification. A final approval
+          still marks the payroll draft for the work date's month as stale. A list of more than
+          200 returns <code>failed</code> equal to the list length and one item with an empty
+          <code>id</code> saying <code>"Too many requests — pick fewer than 200."</code>
+        </div>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> <code>{ "errors": { "Ids": ["…"] } }</code> — <code>ids</code> missing or empty.
+        </p>
+      </section>
+
+      <section class="endpoint" id="reject-overtime">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/overtime/{id}/reject</span>
+          <span class="tag scope">overtime:write</span>
+        </div>
+        <p>Reject a pending request at its current step. Final: a rejected request is not paid.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>yes, in practice</td><td>The reason shown to the employee, up to 1000 characters. The field is optional in the schema but a blank or missing remark is refused.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The updated <a href="#overtime">overtime request object</a>, with
+          <code>status: "REJECTED"</code>, <code>reviewNotes</code>, <code>reviewerId</code> and
+          <code>decidedAt</code> set. The employee is notified.
+        </p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/overtime/ot_123/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Hours do not match the site log." }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> (empty body) — no such request, <strong>or the caller isn't the current-step approver</strong>. This is what a key always gets.</li>
+          <li><code>400</code> <code>{ "message": "Only pending overtime requests can be approved or rejected." }</code></li>
+          <li><code>400</code> <code>{ "message": "Enter a rejection remark before rejecting this overtime request." }</code></li>
+          <li><code>400</code> <code>{ "errors": { "ReviewNotes": ["…"] } }</code> — longer than 1000 characters.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="files">
+      <h2>Before and after-work files</h2>
+      <p>
+        The <code>url</code> of an attachment is a path on this API. Fetch it with the endpoint
+        that matches its shape, sending the key as usual (prefix the path with the API host).
+        An admin-level caller, which a key is, can open any file in the company; the response is
+        the raw file with <code>Cache-Control: no-store</code>, and the file name comes back in
+        <code>Content-Disposition</code>.
+      </p>
+
+      <section class="endpoint" id="get-overtime-photo">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/photos/{fileName}</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>
+          A file stored by AltomateHR itself — the last segment of an attachment
+          <code>url</code> of the form <code>/overtime/photos/&lt;fileName&gt;</code>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The file bytes, as <code>image/jpeg</code>, <code>image/png</code>,
+          <code>image/webp</code>, <code>image/heic</code>, <code>image/heif</code> or
+          <code>application/pdf</code>, chosen by the file extension.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/overtime/photos/20250310120000-ef56ab78.jpg \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o after.jpg</code></pre>
+        <h3>Errors</h3>
+        <p>
+          <code>404</code> (empty body) — the file name isn't attached to any request in this
+          company, or the file is no longer on disk.
+        </p>
+      </section>
+
+      <section class="endpoint" id="get-overtime-xero-photo">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/photos/xero/{xeroFileId}</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>
+          A file held in the company's Xero Files — an attachment <code>url</code> of the form
+          <code>/overtime/photos/xero/&lt;fileId&gt;</code>. The API fetches it from Xero for you.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The file bytes, with the content type and file name Xero holds for it.</p>
+<pre><code>curl https://&lt;api-host&gt;/overtime/photos/xero/xf_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o job-sheet.pdf</code></pre>
+        <h3>Errors</h3>
+        <p>
+          <code>404</code> (empty body) — the file id isn't attached to any request in this
+          company, or Xero no longer returns it.
+        </p>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        These are marked <code>[HumanOnly]</code> and answer <code>403</code> to any key:
+        <code>POST /overtime</code> (submit), <code>POST /overtime/photo</code> (upload a file),
+        <code>POST /overtime/{id}/after-photo</code>, <code>DELETE /overtime/{id}/after-photo</code>,
+        <code>DELETE /overtime/{id}/attachments/{attachmentId}</code> and
+        <code>POST /overtime/{id}/cancel</code>.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

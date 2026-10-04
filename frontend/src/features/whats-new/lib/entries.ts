@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 41547f0
+// whats-new-covered-up-to: 4c5e254
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,12 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-04",
+    new: [
+      "Account menu → Guide: opens the user guide for this portal in a new tab.",
+    ],
+  },
   {
     date: "2026-10-01",
     new: [

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Accounts</title>
+  <meta name="description" content="List, create, update, archive and restore chart-of-accounts entries: the accounts claims are filed against, with their spend limits and mileage rates." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Accounts/AccountsController.cs,
+  ChartOfAccountService.cs, Dtos/ChartOfAccountDto.cs,
+  Dtos/SaveChartOfAccountDto.cs, Entities/ChartOfAccount.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html" aria-current="page">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Accounts</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Accounts</h1>
+    <p class="lead">
+      The company's chart of accounts. Employees file claims against an account; an account
+      can carry a spend limit and a mileage rate, and can be switched off for claims or
+      archived. Bank accounts are what a company-paid claim is paid from.
+    </p>
+    </div>
+
+    <section class="section" id="accounts">
+      <h2>Accounts</h2>
+      <p>
+        Needs the <code>accounts</code> module on the company's plan — every endpoint below
+        answers <code>403</code> with
+        <code>This organization's plan does not include the 'accounts' module.</code> otherwise.
+      </p>
+
+      <h3>The account object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Account id.</td></tr>
+            <tr><td><code>code</code></td><td>string</td><td>Account code, e.g. <code>"6100"</code>.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Display name, e.g. <code>"Travel Expenses"</code>.</td></tr>
+            <tr><td><code>type</code></td><td>string</td><td><code>"EXPENSE"</code> (what a claim is coded to), <code>"BANK"</code> (what a company-paid claim is paid from) or <code>"LIABILITY"</code> (payroll payables such as EPF or net salary; never offered for a claim). You can only create or save <code>EXPENSE</code> and <code>BANK</code>; <code>LIABILITY</code> accounts are only returned when asked for.</td></tr>
+            <tr><td><code>xeroAccountId</code></td><td>string | null</td><td>Xero's id for the account, when it came from a Xero sync. Null for an account made by hand.</td></tr>
+            <tr><td><code>xeroStatus</code></td><td>string | null</td><td>Status as last synced from Xero, e.g. <code>"ACTIVE"</code>.</td></tr>
+            <tr><td><code>xeroType</code></td><td>string | null</td><td>Xero's own account type as the last sync saw it (e.g. <code>"EXPENSE"</code>, <code>"OVERHEADS"</code>). Null for a hand-made account, and for a Xero one until its next sync.</td></tr>
+            <tr><td><code>xeroSyncedAt</code></td><td>string (ISO 8601) | null</td><td>When Xero last synced this row.</td></tr>
+            <tr><td><code>isSelectable</code></td><td>boolean</td><td>Whether employees can file claims against it. Always <code>false</code> for a <code>LIABILITY</code> account.</td></tr>
+            <tr><td><code>limitAmount</code></td><td>number | null</td><td>Optional spend limit per claim, in MYR. Null means no limit.</td></tr>
+            <tr><td><code>allowMileageClaim</code></td><td>boolean</td><td>Whether mileage claims can be filed against this account.</td></tr>
+            <tr><td><code>mileageRate</code></td><td>number | null</td><td>Rate per distance unit (the company's mileage unit, km by default) for mileage claims on this account. Null or <code>0</code> falls back to the company's default mileage rate.</td></tr>
+            <tr><td><code>isArchived</code></td><td>boolean</td><td>Soft-archived. An archived account can't be chosen on a new claim, but the row stays for past claims to reference.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        A claim over its account's <code>limitAmount</code> isn't refused; it's flagged as
+        exceeding the limit.
+      </div>
+
+      <section class="endpoint" id="get-accounts">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/accounts</span>
+          <span class="tag scope">accounts:read</span>
+        </div>
+        <p>
+          The company's chart of accounts, ordered by <code>code</code>. Archived accounts and
+          accounts with <code>isSelectable: false</code> are included, so filter on those
+          fields if you only want what a claim can use.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>includeLiabilities</code></td><td>boolean</td><td>No (default <code>false</code>)</td><td>Also return <code>LIABILITY</code> accounts. They're left out otherwise.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#accounts">account objects</a>.</p>
+<pre><code>[
+  {
+    "id": "acc_123",
+    "code": "6100",
+    "name": "Travel Expenses",
+    "type": "EXPENSE",
+    "xeroAccountId": null,
+    "xeroStatus": null,
+    "xeroType": null,
+    "xeroSyncedAt": null,
+    "isSelectable": true,
+    "limitAmount": 500.00,
+    "allowMileageClaim": true,
+    "mileageRate": 0.60,
+    "isArchived": false
+  }
+]</code></pre>
+<pre><code>curl "https://&lt;api-host&gt;/accounts?includeLiabilities=true" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="writing">
+      <h2>Creating, updating &amp; archiving</h2>
+      <p>
+        These require the <code>Admin</code> role, which an API key always holds in its own
+        company. Each one is written to the company's activity log.
+      </p>
+
+      <h3>Body for create and update</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>code</code></td><td>string</td><td>Yes</td><td>max 20 chars</td><td>Account code.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>max 160 chars</td><td>Display name.</td></tr>
+            <tr><td><code>type</code></td><td>string</td><td>Yes (defaults to <code>"EXPENSE"</code> if left out)</td><td><code>"EXPENSE"</code> or <code>"BANK"</code>, upper case</td><td>What the account is for.</td></tr>
+            <tr><td><code>isSelectable</code></td><td>boolean</td><td>No (default <code>true</code>)</td><td></td><td>Whether employees can file claims against it. For a <code>BANK</code> account it means "offered as the paid-from account for company-paid claims".</td></tr>
+            <tr><td><code>limitAmount</code></td><td>number | null</td><td>No</td><td>0 to 100,000,000</td><td>Spend limit per claim, in MYR. Null or left out means no limit.</td></tr>
+            <tr><td><code>allowMileageClaim</code></td><td>boolean</td><td>No (default <code>false</code>)</td><td></td><td>Allow mileage claims against this account.</td></tr>
+            <tr><td><code>mileageRate</code></td><td>number | null</td><td>No</td><td>0 to 100</td><td>Rate per distance unit. Null or <code>0</code> uses the company's default mileage rate.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="create-account">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/accounts</span>
+          <span class="tag scope">accounts:write</span>
+        </div>
+        <p>Creates an account by hand.</p>
+        <div class="callout warn">
+          Refused with <code>409</code> while the company is connected to Xero: Xero owns the
+          chart of accounts then, and accounts arrive by syncing from Xero instead.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The new <a href="#accounts">account object</a> (status is <code>200</code>, not <code>201</code>).</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — <code>{ "errors": { "Code": ["..."] } }</code> when a field fails validation, including a <code>type</code> other than <code>EXPENSE</code> or <code>BANK</code>.</li>
+          <li><code>409</code> — <code>{ "message": "Xero owns the chart of accounts while it's connected. Sync from Xero instead of adding an account here." }</code>. Note the key is <code>message</code>, not <code>error</code>.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/accounts \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "6100",
+    "name": "Travel Expenses",
+    "type": "EXPENSE",
+    "isSelectable": true,
+    "limitAmount": 500.00,
+    "allowMileageClaim": true,
+    "mileageRate": 0.60
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-account">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/accounts/{id}</span>
+          <span class="tag scope">accounts:write</span>
+        </div>
+        <p>
+          Updates an account, including its spend limit and mileage settings. This is a full
+          replace, not a merge: every field is overwritten with what you send, so a field you
+          leave out goes back to its default (<code>limitAmount</code> and
+          <code>mileageRate</code> to null, <code>allowMileageClaim</code> to
+          <code>false</code>, <code>isSelectable</code> to <code>true</code>, <code>type</code>
+          to <code>"EXPENSE"</code>). Read the account first and send it back with your change.
+        </p>
+        <div class="callout">
+          Still allowed while the company is connected to Xero. Unlike create, update isn't
+          blocked by the Xero connection.
+        </div>
+        <div class="callout warn">
+          A <code>LIABILITY</code> account stays a liability and stays unselectable: its
+          <code>type</code> and <code>isSelectable</code> in the body are ignored. Its
+          <code>code</code>, <code>name</code>, limit and mileage fields are still written.
+        </div>
+        <h3>Request</h3>
+        <p>
+          <code>{id}</code> is the account id from <a href="#get-accounts">GET /accounts</a>.
+          The body is the one described above.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#accounts">account object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — <code>{ "errors": { "Name": ["..."] } }</code> when a field fails validation.</li>
+          <li><code>404</code> (empty body) — no account with that id in this company.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/accounts/acc_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "6100",
+    "name": "Travel Expenses",
+    "type": "EXPENSE",
+    "isSelectable": true,
+    "limitAmount": 800.00,
+    "allowMileageClaim": true,
+    "mileageRate": 0.60
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="archive-account">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/accounts/{id}/archive</span>
+          <span class="tag scope">accounts:write</span>
+        </div>
+        <p>
+          Archives an account, so it can no longer be chosen on a new claim. Nothing is deleted:
+          past claims keep pointing at it. No body. Archiving an already-archived account
+          succeeds and changes nothing.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#accounts">account object</a> with <code>isArchived: true</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no account with that id in this company.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/accounts/acc_123/archive \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="restore-account">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/accounts/{id}/restore</span>
+          <span class="tag scope">accounts:write</span>
+        </div>
+        <p>Brings an archived account back. No body. Restoring an account that isn't archived succeeds and changes nothing.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#accounts">account object</a> with <code>isArchived: false</code>.</p>
+        <h3>Errors</h3>
+        <p><code>404</code> (empty body) — no account with that id in this company.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/accounts/acc_123/restore \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>Every action on <code>/accounts</code> can be called with a key; none is people-only.</p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

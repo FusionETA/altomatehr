@@ -1,9 +1,13 @@
 /* AltomateHR API docs — one stylesheet for every page. Plain CSS, no build.
    Tokens are the app's own (frontend/src/index.css): the production purple/mint
    palette, Manrope, the rounded scale and the soft purple shadows. Keep them in
-   step if the app's theme changes. */
+   step if the app's theme changes.
+
+   Light only, like the app itself: no prefers-color-scheme dark variant, so the
+   docs look the same as AltomateHR whatever the reader's OS setting is. */
 
 :root {
+  color-scheme: light;
   --background: hsl(268 30% 97%);
   --foreground: hsl(268 50% 10%);
   --card: hsl(268 35% 99%);
@@ -28,28 +32,6 @@
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: hsl(268 40% 7%);
-    --foreground: hsl(268 20% 96%);
-    --card: hsl(268 35% 11%);
-    --primary: hsl(268 62% 67%);
-    --primary-foreground: hsl(268 55% 8%);
-    --secondary: hsl(168 28% 20%);
-    --secondary-foreground: hsl(166 75% 88%);
-    --muted: hsl(268 22% 16%);
-    --muted-foreground: hsl(268 16% 66%);
-    --accent: hsl(166 80% 68%);
-    --destructive: hsl(0 72% 48%);
-    --warning: hsl(34 45% 18%);
-    --warning-foreground: hsl(38 95% 78%);
-    --border: hsl(268 22% 20%);
-    --surface-low: hsl(268 28% 13%);
-    --code-bg: hsl(268 45% 5%);
-    --shadow-ambient: 0 12px 30px rgba(0, 0, 0, 0.25);
-    --shadow-panel: 0 18px 48px rgba(0, 0, 0, 0.35);
-  }
-}
 
 * { box-sizing: border-box; }
 html { scroll-padding-top: 88px; -webkit-text-size-adjust: 100%; }

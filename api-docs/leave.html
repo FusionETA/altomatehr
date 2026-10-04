@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Leave</title>
+  <meta name="description" content="Leave types, entitlements and balances, leave applications, cancellations, reports, history import and attachments with a company API key." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Documented from backend/Modules/Leave/LeaveController.cs and
+  backend/Modules/Leave/LeaveTypesController.cs (and their services and DTOs).
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html" aria-current="page">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Leave</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Leave</h1>
+    <p class="lead">
+      The company's leave types, each person's yearly entitlement and balance, leave
+      applications (filing on someone's behalf, cancelling, the approval trail), reports and
+      exports, and bulk import of leave history. Every endpoint on this page needs the
+      organization's plan to include <strong>Leave</strong> — a key in a plan without it gets
+      <code>403</code> with
+      <code>This organization's plan does not include the 'leave' module.</code>
+    </p>
+    </div>
+
+    <section class="section" id="basics">
+      <h2>Read this first</h2>
+      <ul>
+        <li><strong>Employee ids</strong> on this page are <strong>user ids</strong> — the
+          <code>id</code> on each row of <code>GET /employees</code>
+          (<a href="employees.html">employees.html</a>). Not the payroll profile id.</li>
+        <li><strong>Years.</strong> Endpoints that take <code>?year=</code> accept 2000–2100 and
+          default to the current UTC year. Anything else is a <code>400</code> validation error.</li>
+        <li><strong>Dates</strong> on a leave application are plain calendar dates
+          (<code>2026-03-02</code>); timestamps (<code>decidedAt</code>,
+          <code>createdAt</code>) are ISO 8601 UTC.</li>
+        <li><strong>Days</strong> are numbers and may be halves (<code>0.5</code>).</li>
+        <li><strong>Error bodies.</strong> Besides the shapes on the
+          <a href="index.html#errors">overview</a>, this module's own refusals come back as
+          <code>{ "message": "…" }</code>. A missing scope or module is still
+          <code>{ "error": { "status": 403, "message": "…" } }</code>. The error tables below show
+          the exact body.</li>
+        <li><strong>Send a JSON body</strong> on every <code>POST</code>/<code>PUT</code> that
+          lists one below, even when every field is optional — <code>{}</code> is enough.
+          An empty body is a <code>400</code>.</li>
+      </ul>
+      <div class="callout warn">
+        <strong>A key cannot be an approver.</strong> A key acts as an admin, but admins are not
+        part of any approval chain — only people on a team seat are. So
+        <code>approve</code>, <code>bulk/approve</code>, <code>reject</code>,
+        <code>cancellation/approve</code> and <code>cancellation/reject</code> always refuse a key
+        (<code>403 You are not authorized to review this step</code>, or a per-id failure in the
+        bulk call). To settle leave with a key use <a href="#on-behalf">file on behalf</a> and
+        <a href="#admin-cancel">admin cancel</a>, which don't go through the chain. The approval
+        endpoints are documented because they are reachable, so you know what to expect.
+      </div>
+      <div class="callout warn">
+        <strong>Acts as the caller.</strong> <code>GET /leave</code>, <code>GET /leave/balances</code>,
+        <code>GET /leave/team</code>, <code>GET /leave/team/balances</code> and
+        <code>GET /leave/pending-count</code> answer for "the person making the call". A key is
+        not a person, so these return empty (or a meaningless default) for a key. Use
+        <code>GET /leave/all</code> and <code>GET /leave/balances/{employeeId}</code> instead.
+      </div>
+
+      <h3>Leave application <span class="tag">shape</span></h3>
+      <p>Returned by the endpoints that read or change one application.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Application id.</td></tr>
+            <tr><td><code>employeeId</code></td><td>string</td><td>The applicant's user id.</td></tr>
+            <tr><td><code>employeeEmail</code></td><td>string | null</td><td>Filled only in <code>GET /leave/all</code>, <code>GET /leave/team</code> and <code>recentApplications</code>; <code>null</code> elsewhere.</td></tr>
+            <tr><td><code>employeeName</code></td><td>string | null</td><td>Same as <code>employeeEmail</code>; also <code>null</code> when the person has no name set.</td></tr>
+            <tr><td><code>leaveTypeId</code></td><td>string</td><td>From <code>GET /leave-types</code>.</td></tr>
+            <tr><td><code>startDate</code>, <code>endDate</code></td><td>string (date)</td><td>Inclusive.</td></tr>
+            <tr><td><code>totalDays</code></td><td>number</td><td>Working days in the range under the company's working-week and holiday calendar. A half day is <code>0.5</code>.</td></tr>
+            <tr><td><code>duration</code></td><td>string</td><td><code>FULL_DAY</code>, <code>MORNING</code> or <code>AFTERNOON</code>.</td></tr>
+            <tr><td><code>reason</code></td><td>string | null</td><td>The applicant's reason.</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td><code>PENDING</code>, <code>APPROVED</code>, <code>REJECTED</code> or <code>CANCELLED</code>.</td></tr>
+            <tr><td><code>reviewNotes</code></td><td>string | null</td><td>The last rejection note.</td></tr>
+            <tr><td><code>decidedAt</code></td><td>string (timestamp) | null</td><td>When it was last decided.</td></tr>
+            <tr><td><code>cancellationStatus</code></td><td>string | null</td><td>The latest request to cancel this (approved) leave: <code>PENDING</code>, <code>APPROVED</code>, <code>REJECTED</code> or <code>WITHDRAWN</code>. <code>null</code> when none was ever made. <code>PENDING</code> means the leave is still <code>APPROVED</code> and its days still count as taken.</td></tr>
+            <tr><td><code>cancellationReason</code></td><td>string | null</td><td>Why the employee asked.</td></tr>
+            <tr><td><code>cancellationRequestedAt</code></td><td>string (timestamp) | null</td><td></td></tr>
+            <tr><td><code>createdAt</code></td><td>string (timestamp)</td><td></td></tr>
+            <tr><td><code>attachmentName</code></td><td>string | null</td><td>Supporting document's display name.</td></tr>
+            <tr><td><code>attachmentUrl</code></td><td>string | null</td><td>A path on this API, e.g. <code>/leave/files/{xeroFileId}/content</code> or <code>/leave/attachments/{fileName}</code>. Fetch it with the same key — see <a href="#attachments">Attachments</a>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "id": "lv_123",
+  "employeeId": "emp_123",
+  "employeeEmail": null,
+  "employeeName": null,
+  "leaveTypeId": "lt_123",
+  "startDate": "2026-03-02",
+  "endDate": "2026-03-03",
+  "totalDays": 2,
+  "duration": "FULL_DAY",
+  "reason": "Family event",
+  "status": "APPROVED",
+  "reviewNotes": null,
+  "decidedAt": "2026-02-20T03:15:00.0000000Z",
+  "cancellationStatus": null,
+  "cancellationReason": null,
+  "cancellationRequestedAt": null,
+  "createdAt": "2026-02-20T03:15:00.0000000Z",
+  "attachmentName": null,
+  "attachmentUrl": null
+}</code></pre>
+
+      <h3>Leave balance <span class="tag">shape</span></h3>
+      <p>One leave type for one person in one year. Returned in lists by the balance endpoints.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>leaveTypeId</code>, <code>code</code>, <code>name</code></td><td>string</td><td>The leave type. Archived types are left out.</td></tr>
+            <tr><td><code>paid</code></td><td>boolean</td><td></td></tr>
+            <tr><td><code>year</code></td><td>number</td><td></td></tr>
+            <tr><td><code>isOpened</code></td><td>boolean</td><td><code>false</code> when no entitlement row exists for that year yet (the year-end rollover hasn't run, and nothing has been filed). The figures are then a projection of what the rollover <em>would</em> create, not stored state.</td></tr>
+            <tr><td><code>accrualMethod</code></td><td>string</td><td><code>LUMP_SUM</code> (whole entitlement from day one) or <code>PRO_RATED</code> (1/12 a month). The person's override if set, else the leave type's.</td></tr>
+            <tr><td><code>entitlementDays</code></td><td>number</td><td>The year's full entitlement.</td></tr>
+            <tr><td><code>accruedDays</code></td><td>number</td><td>How much of it is available so far. Equals <code>entitlementDays</code> for <code>LUMP_SUM</code>.</td></tr>
+            <tr><td><code>carriedDays</code></td><td>number</td><td>Unused days carried in from last year.</td></tr>
+            <tr><td><code>carriedExpiresAt</code></td><td>string (timestamp) | null</td><td>When the carried days lapse; <code>null</code> = never.</td></tr>
+            <tr><td><code>carriedExpired</code></td><td>boolean</td><td>The lapse has been applied.</td></tr>
+            <tr><td><code>takenDays</code></td><td>number</td><td>Sum of <code>APPROVED</code> applications that <em>start</em> in this year.</td></tr>
+            <tr><td><code>pendingDays</code></td><td>number</td><td>Sum of <code>PENDING</code> applications that start in this year. Not deducted from <code>remainingDays</code>.</td></tr>
+            <tr><td><code>remainingDays</code></td><td>number</td><td>What the person may book now: the available bucket plus unexpired carry-forward, minus <code>takenDays</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "leaveTypeId": "lt_123",
+  "code": "ANNUAL",
+  "name": "Annual Leave",
+  "paid": true,
+  "year": 2026,
+  "isOpened": true,
+  "accrualMethod": "LUMP_SUM",
+  "entitlementDays": 14,
+  "accruedDays": 14,
+  "carriedDays": 0,
+  "carriedExpiresAt": null,
+  "carriedExpired": false,
+  "takenDays": 2,
+  "pendingDays": 0,
+  "remainingDays": 12
+}</code></pre>
+    </section>
+
+    <section class="section" id="leave-types">
+      <h2>Leave types</h2>
+      <p>
+        The company's catalogue of kinds of leave (Annual, Medical, Unpaid…). A person applies
+        against a type, and each person's yearly entitlement is created from it. Base path
+        <code>/leave-types</code>.
+      </p>
+
+      <section class="endpoint" id="list-leave-types">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave-types</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>Every leave type in the company, archived ones included, ordered by name.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>The leave type id. Used as <code>leaveTypeId</code> elsewhere.</td></tr>
+              <tr><td><code>code</code></td><td>string</td><td>Unique per company, e.g. <code>ANNUAL</code>.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>paid</code></td><td>boolean</td><td>Unpaid types skip the balance check and feed payroll deductions.</td></tr>
+              <tr><td><code>defaultDays</code></td><td>number</td><td>Yearly entitlement, in days.</td></tr>
+              <tr><td><code>isArchived</code></td><td>boolean</td><td>Archived types can't be applied for and are left out of balances.</td></tr>
+              <tr><td><code>accrualMethod</code></td><td>string</td><td><code>LUMP_SUM</code> or <code>PRO_RATED</code>.</td></tr>
+              <tr><td><code>carryForward</code></td><td>boolean</td><td>Unused days roll into next year at the rollover.</td></tr>
+              <tr><td><code>carryExpiryMonth</code></td><td>number | null</td><td>Month (1–12) the carried days lapse.</td></tr>
+              <tr><td><code>maxCarryForwardDays</code></td><td>number | null</td><td>Ceiling on carried days; <code>null</code> = uncapped.</td></tr>
+              <tr><td><code>prorateFirstYear</code></td><td>boolean</td><td>Stored with the type. Only meaningful with <code>LUMP_SUM</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/leave-types \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="count-leave-types">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave-types/count</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>How many leave types are active (not archived).</p>
+        <h3>Response <code>200</code></h3>
+<pre><code>{ "active": 8 }</code></pre>
+      </section>
+
+      <section class="endpoint" id="create-leave-type">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave-types</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Add a leave type to the company.</p>
+        <h3>Request</h3>
+        <p>The same body is used to create and to <a href="#update-leave-type">update</a>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>code</code></td><td>string</td><td>Yes</td><td>Max 20 chars, trimmed, unique in the company.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Max 80 chars.</td></tr>
+              <tr><td><code>paid</code></td><td>boolean</td><td>No</td><td>Default <code>true</code>. An unpaid type must have <code>defaultDays</code> of <code>0</code>.</td></tr>
+              <tr><td><code>defaultDays</code></td><td>number</td><td>No</td><td>0–365, default <code>0</code>.</td></tr>
+              <tr><td><code>accrualMethod</code></td><td>string</td><td>No</td><td><code>LUMP_SUM</code> (default) or <code>PRO_RATED</code>. <code>PRO_RATED</code> is only allowed when the code is <code>ANNUAL</code> (case-insensitive).</td></tr>
+              <tr><td><code>carryForward</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>. Only allowed when the code is <code>ANNUAL</code>.</td></tr>
+              <tr><td><code>carryExpiryMonth</code></td><td>number</td><td>When <code>carryForward</code> is <code>true</code></td><td>1–12.</td></tr>
+              <tr><td><code>maxCarryForwardDays</code></td><td>number | null</td><td>No</td><td>0 or more. <code>null</code> = no cap.</td></tr>
+              <tr><td><code>prorateFirstYear</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The new leave type, same shape as a row from <code>GET /leave-types</code>. Not <code>201</code>.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>A field is over its limit or out of range</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>A rule above is broken (e.g. <code>Pro-rated accrual is only allowed for ANNUAL leave</code>, <code>Carry-forward requires an expiry month (1-12)</code>, <code>Unpaid leave cannot have entitlement days</code>), or the code already exists</td><td><code>{ "message": "…" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave-types \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "STUDY",
+    "name": "Study Leave",
+    "paid": true,
+    "defaultDays": 5
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-leave-type">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/leave-types/{id}</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Change a leave type. <code>{id}</code> is the leave type id.</p>
+        <div class="callout warn">
+          <strong>This PUT replaces the whole type.</strong> Every field is overwritten from the
+          body; one you leave out falls back to its default (<code>paid</code> to <code>true</code>,
+          <code>defaultDays</code> to <code>0</code>, <code>accrualMethod</code> to
+          <code>LUMP_SUM</code>, <code>carryForward</code> and <code>prorateFirstYear</code> to
+          <code>false</code>, the carry fields to <code>null</code>). Read the type first and send
+          it back with your change. <code>isArchived</code> is not touched — use
+          <a href="#archive-leave-type">archive/restore</a>.
+        </div>
+        <p>
+          Entitlement rows already created for people keep the days they were created with; the
+          change applies to rows created from now on. The body and validation are the same as
+          <a href="#create-leave-type">create</a>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated leave type.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Field limits</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>A rule is broken, or the code belongs to another type</td><td><code>{ "message": "…" }</code></td></tr>
+              <tr><td><code>404</code></td><td>No such type in this company</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/leave-types/lt_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "ANNUAL",
+    "name": "Annual Leave",
+    "paid": true,
+    "defaultDays": 16,
+    "accrualMethod": "PRO_RATED",
+    "carryForward": true,
+    "carryExpiryMonth": 3,
+    "maxCarryForwardDays": 5,
+    "prorateFirstYear": false
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="archive-leave-type">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave-types/{id}/archive</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Retire a leave type. It stays in <code>GET /leave-types</code> with
+          <code>isArchived: true</code>, can no longer be applied for, and disappears from balances.
+          Existing applications are untouched. No request body.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The leave type.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>The type's code is <code>UNPAID</code> — it can't be archived</td><td><code>{ "message": "UNPAID leave cannot be archived" }</code></td></tr>
+              <tr><td><code>404</code></td><td>No such type in this company</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave-types/lt_123/archive \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="restore-leave-type">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave-types/{id}/restore</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Bring an archived leave type back. No request body. Restoring one that isn't archived is harmless.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The leave type.</p>
+        <p><code>404</code> with an empty body when there is no such type in this company.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave-types/lt_123/restore \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="default-leave-types">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave-types/defaults</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Create whichever of the standard leave types the company is missing. Safe to repeat:
+          types are matched by <code>code</code>, so it only adds what's absent. No request body.
+        </p>
+        <p>
+          The standard set, all <code>LUMP_SUM</code> with no carry-forward:
+          <code>ANNUAL</code> (14 days), <code>MEDICAL</code> (14), <code>COMPASSIONATE</code> (3),
+          <code>HOSPITALIZATION</code> (60), <code>MARRIAGE</code> (3), <code>MATERNITY</code> (98),
+          <code>PATERNITY</code> (7), and <code>UNPAID</code> (0, unpaid).
+        </p>
+        <h3>Response <code>200</code></h3>
+<pre><code>{ "added": 2 }</code></pre>
+        <p><code>added</code> is how many types were created (<code>0</code> when all existed).</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave-types/defaults \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="balances">
+      <h2>Balances</h2>
+      <p>Read how much leave people have. Leave balance shapes are at the <a href="#basics">top of the page</a>.</p>
+
+      <section class="endpoint" id="org-balances">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/balances/all</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>Every member of the company with their balances for a year — the admin grid, in one call.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>number</td><td>No</td><td>2000–2100. Default: the current year.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>data</code></td><td>object[]</td><td>One per member (see below).</td></tr>
+              <tr><td><code>total</code></td><td>number</td><td>Length of <code>data</code>.</td></tr>
+              <tr><td><code>year</code></td><td>number</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each <code>data</code> row:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>userId</code></td><td>string</td><td>The user id.</td></tr>
+              <tr><td><code>email</code></td><td>string</td><td></td></tr>
+              <tr><td><code>name</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code>. Admins and owners are listed too.</td></tr>
+              <tr><td><code>balances</code></td><td>object[]</td><td>The leave balance shape, one per active leave type.</td></tr>
+              <tr><td><code>teamId</code>, <code>teamName</code>, <code>projectId</code>, <code>projectName</code></td><td>string | null</td><td>Always <code>null</code> on this endpoint.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/balances/all?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="employee-balances">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/balances/{employeeId}</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>One person's balances for a year. <code>{employeeId}</code> is the user id.</p>
+        <p>Optional <code>?year=</code> (2000–2100, default the current year).</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>{ "data": [ …leave balance… ], "total": n, "year": 2026 }</code></p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>404</code></td><td>The id isn't a member of this company</td><td><code>{ "message": "Employee not found." }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/balances/emp_123?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="own-balances">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/balances</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          The <em>caller's own</em> balances (optional <code>?year=</code>). For a key the caller is
+          not a person, so this returns a list of default figures for no one. Use
+          <code>/leave/balances/{employeeId}</code>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of leave balances.</p>
+      </section>
+
+      <section class="endpoint" id="team-balances">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/team/balances</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          Balances for the teams the <em>caller</em> supervises (optional <code>?year=</code>).
+          A key supervises no team, so <code>data</code> is empty. Use
+          <a href="#org-balances"><code>/leave/balances/all</code></a>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p><code>{ "data": [], "total": 0, "year": 2026 }</code> — same row shape as <code>/leave/balances/all</code>, with the team fields filled for a real supervisor.</p>
+      </section>
+
+      <section class="endpoint" id="set-entitlement">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/leave/entitlements/{employeeId}/{leaveTypeId}</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Override one person's entitlement for one leave type in one year — grant extra days or
+          cut them. <code>{employeeId}</code> is the user id; <code>{leaveTypeId}</code> is from
+          <code>GET /leave-types</code>.
+        </p>
+        <div class="callout warn">
+          <strong>The year's row is set from the body, not merged.</strong>
+          <code>entitledDays</code> is the year's new total (not an increment).
+          <code>accrualMethod</code> is overwritten too — <code>null</code>, or leaving it out,
+          <em>clears</em> the person's override so they fall back to their policy, then the type.
+          For a <code>LUMP_SUM</code> type the accrued days are set to the full new total at once;
+          for <code>PRO_RATED</code> the days accrued so far are kept but capped at the new total.
+          Carried-forward days are not touched. If the year hasn't been opened for this person it
+          is opened first.
+        </div>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Where</th><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>query</td><td><code>year</code></td><td>number</td><td>No</td><td>2000–2100. Default: the current year.</td></tr>
+              <tr><td>body</td><td><code>entitledDays</code></td><td>number</td><td>Yes</td><td>0 or more. Omitted counts as <code>0</code>, so always send it.</td></tr>
+              <tr><td>body</td><td><code>accrualMethod</code></td><td>string | null</td><td>No</td><td><code>LUMP_SUM</code> or <code>PRO_RATED</code>; <code>null</code> clears the override.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The person's resulting leave balance for that type. If the leave type is archived,
+          balances don't list it, and the call succeeds with <code>204</code> and no body.
+        </p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td><code>year</code> out of range</td><td><code>{ "errors": { "year": ["message"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>Negative <code>entitledDays</code>, or no such leave type</td><td><code>{ "message": "Entitled days cannot be negative" }</code> / <code>{ "message": "Leave type not found" }</code></td></tr>
+              <tr><td><code>404</code></td><td>The employee isn't a member of this company</td><td><code>{ "message": "Employee not found." }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X PUT "https://&lt;api-host&gt;/leave/entitlements/emp_123/lt_123?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "entitledDays": 18, "accrualMethod": null }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="reset-entitlement">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/entitlements/{employeeId}/{leaveTypeId}/reset</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Undo an override: put the person's entitlement for that type and year back to what
+          their policy says (else the leave type's <code>defaultDays</code>) and clear their
+          accrual-method override. No request body; optional <code>?year=</code>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The resulting leave balance (or <code>204</code> for an archived type, as above).</p>
+        <h3>Errors</h3>
+        <p>
+          <code>400</code> <code>{ "message": "Leave type not found" }</code>;
+          <code>404</code> <code>{ "message": "Employee not found." }</code>;
+          <code>400</code> validation for a bad <code>year</code>.
+        </p>
+<pre><code>curl -X POST "https://&lt;api-host&gt;/leave/entitlements/emp_123/lt_123/reset?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="seed-entitlements">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/entitlements/{employeeId}/seed</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Open a year for one person: create an entitlement row for every active leave type that
+          doesn't have one yet. Use it for someone who joined after the year-end rollover ran.
+          Existing rows are left alone. No request body; optional <code>?year=</code>.
+        </p>
+        <div class="callout">
+          Unlike the other entitlement calls this does <strong>not</strong> check that
+          <code>{employeeId}</code> is on the company's roster, so a wrong id quietly creates rows
+          for a person who doesn't exist. Take the id from <code>GET /employees</code>.
+        </div>
+        <h3>Response <code>200</code></h3>
+<pre><code>{ "created": 8 }</code></pre>
+        <p><code>created</code> is how many entitlement rows were added.</p>
+<pre><code>curl -X POST "https://&lt;api-host&gt;/leave/entitlements/emp_123/seed?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="applications">
+      <h2>Leave applications — reading</h2>
+
+      <section class="endpoint" id="list-all">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/all</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          Every leave application in the company, newest first, with the applicant's email and
+          name filled in. Not paged — it returns the whole history.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#basics">leave applications</a>.</p>
+<pre><code>curl https://&lt;api-host&gt;/leave/all \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="overview">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/overview</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>Dashboard summary for a year: counts by status, days used per type, who's out today, and the latest requests.</p>
+        <p>Optional <code>?year=</code> (2000–2100, default the current year). Only applications that <em>start</em> in that year are counted.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>number</td><td></td></tr>
+              <tr><td><code>totals</code></td><td>object</td><td><code>pending</code>, <code>approved</code>, <code>rejected</code>, <code>cancelled</code> — counts of applications.</td></tr>
+              <tr><td><code>daysUsedByType</code></td><td>object[]</td><td>Per leave type (archived too): <code>leaveTypeId</code>, <code>code</code>, <code>name</code>, <code>paid</code>, <code>daysUsed</code> (approved days).</td></tr>
+              <tr><td><code>onLeaveToday</code></td><td>object[]</td><td>Who is out <em>today</em>, whatever the <code>year</code> — same rows as <a href="#on-leave-today"><code>/leave/on-leave-today</code></a>.</td></tr>
+              <tr><td><code>recentApplications</code></td><td>object[]</td><td>The ten newest <a href="#basics">leave applications</a> of the year. Use <code>/leave/all</code> for more.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/overview?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="on-leave-today">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/on-leave-today</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>Who is out on approved leave on a given day.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>date</code></td><td>string (date)</td><td>No</td><td><code>2026-03-02</code>. Default: today (UTC).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>An array, one per approved application covering that day (a person with two overlapping ones appears twice):</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>string</td><td>User id.</td></tr>
+              <tr><td><code>email</code>, <code>name</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>leaveTypeId</code>, <code>leaveTypeCode</code>, <code>leaveTypeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>startDate</code>, <code>endDate</code></td><td>string (timestamp)</td><td>Midnight values such as <code>2026-03-02T00:00:00</code>.</td></tr>
+              <tr><td><code>totalDays</code></td><td>number</td><td>Of the whole application, not just this day.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/on-leave-today?date=2026-03-02" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="approved-days">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/approved-days</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>Total approved leave days for one person that overlap a date range.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>string</td><td>Yes</td><td>User id.</td></tr>
+              <tr><td><code>from</code></td><td>string (date)</td><td>Yes</td><td>Inclusive.</td></tr>
+              <tr><td><code>to</code></td><td>string (date)</td><td>Yes</td><td>Inclusive.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+<pre><code>{
+  "employeeId": "emp_123",
+  "from": "2026-03-01T00:00:00",
+  "to": "2026-03-31T00:00:00",
+  "days": 3
+}</code></pre>
+        <div class="callout warn">
+          Any approved application that merely <strong>overlaps</strong> the range counts in
+          <em>full</em>: a 28 Jan – 6 Feb absence adds all its days to a query for February
+          as well as January. It also doesn't check that <code>employeeId</code> is on the
+          roster — an unknown id just gives <code>0</code>. Don't use it to dock pay; the payroll
+          endpoints already count unpaid leave per month.
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/approved-days?employeeId=emp_123&amp;from=2026-03-01&amp;to=2026-03-31" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="audit">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/{id}/audit</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>The decision trail of one application, oldest first. <code>{id}</code> is the application id.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array (empty when nothing has been recorded) of:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>step</code></td><td>number</td><td>The approval-chain step (0-based) the entry was made at.</td></tr>
+              <tr><td><code>approverId</code></td><td>string</td><td>Who acted: a user id, or <code>apikey:&lt;key id&gt;</code> when an API key did.</td></tr>
+              <tr><td><code>decision</code></td><td>string</td><td>What happened. Values: <code>APPROVED</code>, <code>REJECTED</code>, <code>AUTO_APPROVED</code> (nobody above the applicant), <code>ADMIN_APPLIED</code>, <code>ADMIN_CANCELLED</code>, <code>WITHDRAWN</code>, <code>IMPORTED</code>, <code>CANCELLATION_REQUESTED</code>, <code>CANCELLATION_APPROVED</code>, <code>CANCELLATION_REJECTED</code>, <code>CANCELLATION_WITHDRAWN</code>, <code>CANCELLATION_AUTO_APPROVED</code>.</td></tr>
+              <tr><td><code>decidedAt</code></td><td>string (timestamp)</td><td></td></tr>
+              <tr><td><code>notes</code></td><td>string | null</td><td>The reason or review note given.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>404</code></td><td>No such application in this company</td><td><code>{ "message": "Application not found" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/leave/lv_123/audit \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="caller-lists">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          The <em>caller's own</em> applications. For a key this is <code>[]</code>. Use
+          <code>GET /leave/all</code>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#basics">leave applications</a>.</p>
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/team</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          Applications (and cancellation requests) waiting on the <em>caller</em> as the current
+          approver. A key is never an approver, so this is always <code>[]</code>.
+        </p>
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/pending-count</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          How many items are in the caller's approval queue: <code>{ "pendingLeaveApprovals": 0 }</code>.
+          Always <code>0</code> for a key.
+        </p>
+      </section>
+    </section>
+
+    <section class="section" id="filing">
+      <h2>Filing and cancelling leave</h2>
+      <p>
+        Employees apply for, edit and withdraw their own leave themselves (those calls are
+        <a href="#people-only">people-only</a>). What an integration can do is file leave on
+        someone's behalf and cancel it.
+      </p>
+
+      <section class="endpoint" id="on-behalf">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/on-behalf/{employeeId}</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          File a leave application for someone. It lands <code>APPROVED</code> straight away —
+          no approval chain — and is recorded as filed by an admin. <code>{employeeId}</code> is
+          the user id.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>leaveTypeId</code></td><td>string</td><td>Yes</td><td>Max 40 chars. From <code>GET /leave-types</code>; the type must not be archived.</td></tr>
+              <tr><td><code>startDate</code></td><td>string (date)</td><td>Yes</td><td><code>2026-03-02</code>.</td></tr>
+              <tr><td><code>endDate</code></td><td>string (date)</td><td>Yes</td><td>Not before <code>startDate</code>.</td></tr>
+              <tr><td><code>duration</code></td><td>string</td><td>No</td><td><code>FULL_DAY</code> (default), <code>MORNING</code> or <code>AFTERNOON</code>. A half day must start and end on the same date and counts as 0.5.</td></tr>
+              <tr><td><code>reason</code></td><td>string</td><td>No</td><td>Max 1000 chars. Also stored on the trail.</td></tr>
+              <tr><td><code>xeroFileId</code></td><td>string</td><td>No</td><td>Max 80 chars. Id of a supporting document already in Xero Files.</td></tr>
+              <tr><td><code>attachmentName</code></td><td>string</td><td>No</td><td>Max 260 chars. Display name for the document.</td></tr>
+              <tr><td><code>attachmentUrl</code></td><td>string</td><td>No</td><td>Max 400 chars. A key can't upload attachments, so there is rarely a value to send.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#basics">leave application</a>, with <code>status: "APPROVED"</code>. Not <code>201</code>.</p>
+        <div class="callout warn">
+          <strong>The balance rules still apply.</strong> For a paid type the days requested must
+          fit in what the person has available <em>after</em> their pending requests are
+          counted, or the call is refused. <strong>Unpaid</strong> types skip the check and may go
+          negative. If the leave dates fall on no working day (weekends and holidays are
+          skipped) it is refused too. The year checked is the year of <code>startDate</code>.
+        </div>
+        <p>
+          Side effects: the person's entitlement row for that year is created if missing; the
+          employee is notified that it was approved; approved <em>unpaid</em> leave marks any
+          generated payroll draft covering those dates as out of date, so it has to be re-run
+          before it can be submitted.
+        </p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Missing or over-long field</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>A rule refused it</td><td><code>{ "message": "…" }</code> — <code>Leave type not found</code>, <code>Leave type is archived</code>, <code>End date is before start date</code>, <code>Half-day leave must start and end on the same day</code>, <code>Selected dates contain no working days</code>, <code>Insufficient balance: requesting 3 but only 2 available</code></td></tr>
+              <tr><td><code>404</code></td><td>The employee isn't a member of this company</td><td><code>{ "message": "Employee not found." }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/on-behalf/emp_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "leaveTypeId": "lt_123",
+    "startDate": "2026-03-02",
+    "endDate": "2026-03-03",
+    "duration": "FULL_DAY",
+    "reason": "Family event"
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="admin-cancel">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/{id}/admin-cancel</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Cancel an application without going through the approval chain. Works on a
+          <code>PENDING</code> request, on <code>APPROVED</code> leave (including leave the
+          employee has asked to cancel and that is still under review), and — unlike the
+          employee's own cancel — on leave that has already started. <code>{id}</code> is the
+          application id.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>reason</code></td><td>string</td><td>No</td><td>Max 1000 chars. Kept on the trail (as <code>ADMIN_CANCELLED</code>) and shown to the employee in their notification. Send <code>{}</code> for none.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The <a href="#basics">leave application</a> with <code>status: "CANCELLED"</code>. If a
+          cancellation request was under review, its <code>cancellationStatus</code> becomes
+          <code>APPROVED</code>. Cancelling an already-cancelled application is a no-op that
+          returns <code>200</code> with it.
+        </p>
+        <div class="callout">
+          <strong>Days come back automatically</strong> — a balance's <code>takenDays</code> only
+          sums <code>APPROVED</code> applications, so there is nothing to refund. Cancelling
+          <em>approved unpaid</em> leave marks open payroll drafts covering those dates as out of
+          date. The employee is notified, and the action is written to the company's activity log.
+        </div>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>The application is <code>REJECTED</code></td><td><code>{ "message": "Rejected leave has nothing to cancel." }</code></td></tr>
+              <tr><td><code>404</code></td><td>No such application in this company</td><td><code>{ "message": "Application not found" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/lv_123/admin-cancel \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reason": "Entered by mistake" }'</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="approvals">
+      <h2>Approvals and cancellation requests</h2>
+      <p>
+        Leave goes up the company's approval chain one layer at a time (set by teams and
+        approval positions). Approved leave can later be cancelled in two ways:
+      </p>
+      <ul>
+        <li><strong>The employee asks</strong> (people-only). The request goes up the same chain,
+          layer by layer. While it is under review the leave stays <code>APPROVED</code> and its
+          days stay taken; <code>cancellationStatus</code> is <code>PENDING</code>. The last
+          layer's approval sets the leave to <code>CANCELLED</code> and the days come back. A
+          rejection leaves the leave standing (<code>cancellationStatus: "REJECTED"</code>). The
+          employee can only ask before the leave starts.</li>
+        <li><strong>An admin cancels</strong> directly: <a href="#admin-cancel">admin cancel</a>,
+          any time, no chain.</li>
+      </ul>
+      <div class="callout warn">
+        Every endpoint in this section requires the caller to be an approver at the application's
+        <em>current</em> step. A key never is, so a key always gets the refusal described in
+        <a href="#basics">Read this first</a>. They are listed so integrators know what they will
+        see. To act on leave from an integration, use admin cancel or file on behalf.
+      </div>
+
+      <section class="endpoint" id="approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/{id}/approve</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Approve a pending application at the caller's step. Approving the last step sets it
+          <code>APPROVED</code>; otherwise it moves to the next layer. No request body.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#basics">leave application</a>.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>The application isn't <code>PENDING</code></td><td><code>{ "message": "Application is not pending" }</code></td></tr>
+              <tr><td><code>403</code></td><td>The caller isn't an approver at this step (always, for a key)</td><td><code>{ "message": "You are not authorized to review this step" }</code></td></tr>
+              <tr><td><code>404</code></td><td>No such application</td><td><code>{ "message": "Application not found" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/lv_123/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="bulk-approve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/bulk/approve</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Approve many applications in one call, each judged on its own. There is deliberately no
+          bulk reject — a rejection needs its own reason.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>ids</code></td><td>string[]</td><td>Yes</td><td>At least one application id. Repeats are counted once. More than 200 fails the whole call (see below).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>Always <code>200</code>, even when some or all ids failed — read the body.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>succeeded</code></td><td>number</td><td>How many were approved.</td></tr>
+              <tr><td><code>failed</code></td><td>number</td><td>How many weren't.</td></tr>
+              <tr><td><code>items</code></td><td>object[]</td><td><code>id</code>, <code>ok</code>, and <code>error</code> (string, only when <code>ok</code> is <code>false</code>, e.g. <code>You are not authorized to review this step</code>, <code>Application is not pending</code>, <code>Application not found</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Over 200 ids: nothing is approved and the body is <code>failed</code> equal to the number
+          sent plus a single item with an empty <code>id</code> and a "too many requests" error.
+        </p>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "errors": { "Ids": ["…"] } }</code> when <code>ids</code> is missing or empty.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/bulk/approve \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "ids": ["lv_123", "lv_124"] }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="reject">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/{id}/reject</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Reject a pending application at the caller's step. The application becomes <code>REJECTED</code> at once, whatever the layer.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>No</td><td>Max 1000 chars. Shown to the employee. Send <code>{}</code> for none.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> and errors</h3>
+        <p>The leave application, with <code>status: "REJECTED"</code>. Errors are the same as <a href="#approve">approve</a> (<code>400</code>, <code>403</code>, <code>404</code>, all <code>{ "message": "…" }</code>).</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/lv_123/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Team is short that week" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="approve-cancellation">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/{id}/cancellation/approve</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Approve an employee's request to cancel approved leave, as the approver at its current
+          step. Not the last layer: it moves up one. The last layer's approval cancels the leave
+          and returns the days (and marks payroll drafts out of date if the leave was unpaid). No
+          request body.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#basics">leave application</a> — <code>status: "CANCELLED"</code> after the final layer, otherwise still <code>APPROVED</code> with <code>cancellationStatus: "PENDING"</code>.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>No cancellation request is waiting on this leave</td><td><code>{ "message": "There's no cancellation request waiting on this leave." }</code></td></tr>
+              <tr><td><code>403</code></td><td>The caller isn't an approver at this step (always, for a key)</td><td><code>{ "message": "You are not authorized to review this step" }</code></td></tr>
+              <tr><td><code>404</code></td><td>No such application</td><td><code>{ "message": "Application not found" }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/lv_123/cancellation/approve \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="reject-cancellation">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/{id}/cancellation/reject</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Decline an employee's request to cancel. The leave still stands (<code>APPROVED</code>),
+          <code>cancellationStatus</code> becomes <code>REJECTED</code> and the employee is
+          notified.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>reviewNotes</code></td><td>string</td><td>No</td><td>Max 1000 chars. Sent to the employee with the decision. Send <code>{}</code> for none.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> and errors</h3>
+        <p>The leave application. Errors are the same as <a href="#approve-cancellation">approve cancellation</a>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/lv_123/cancellation/reject \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "reviewNotes": "Already arranged cover" }'</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="reports">
+      <h2>Reports and exports</h2>
+      <p>
+        Downloads set <code>Cache-Control: no-store</code> and a <code>Content-Disposition</code>
+        filename. <code>employeeId</code> is the user id, and an unknown one is a
+        <code>404</code> <code>{ "message": "Employee not found." }</code>. <code>employeeId</code>
+        is required (<code>400</code> validation error when it's missing) wherever it is listed below.
+      </p>
+
+      <section class="endpoint" id="summary-report">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/summary-report</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>One person's yearly leave summary as JSON: a month-by-month grid per leave type, plus the approved requests behind it.</p>
+        <p>Query: <code>employeeId</code> (required), <code>year</code> (optional, 2000–2100, default the current year).</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>organizationName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeLabel</code></td><td>string</td><td>The person's email (their id if none).</td></tr>
+              <tr><td><code>year</code></td><td>number</td><td></td></tr>
+              <tr><td><code>reportDate</code></td><td>string (timestamp)</td><td>When it was generated.</td></tr>
+              <tr><td><code>monthlyRows</code></td><td>object[]</td><td>One per leave type that has an entitlement row for the year: <code>leaveTypeName</code>, <code>entitledDays</code>, <code>carriedDays</code>, <code>monthly</code> (12 numbers Jan–Dec, <code>null</code> for a month with no leave), <code>total</code>, <code>balance</code>.</td></tr>
+              <tr><td><code>detailRows</code></td><td>object[]</td><td>Each approved application starting in the year: <code>from</code>, <code>to</code>, <code>leaveTypeName</code>, <code>days</code>, <code>reason</code>, <code>attachmentName</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          A request is counted whole in the month it <strong>starts</strong> (28 Dec – 3 Jan is
+          all December). <code>balance</code> is <code>entitledDays + carriedDays − total</code> —
+          the full year's allowance, not what has accrued so far — and can be negative. Only
+          <code>APPROVED</code> leave is included.
+        </div>
+<pre><code>curl "https://&lt;api-host&gt;/leave/summary-report?employeeId=emp_123&amp;year=2026" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-summary-pdf">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/export/summary.pdf</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>The same yearly summary as a two-page A4 landscape PDF (<code>leave-summary-2026.pdf</code>).</p>
+        <p>Query: <code>employeeId</code> (required), <code>year</code> (optional).</p>
+<pre><code>curl "https://&lt;api-host&gt;/leave/export/summary.pdf?employeeId=emp_123&amp;year=2026" \
+  -H "Authorization: Bearer wp_live_xxx" -o leave-summary-2026.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-summary-bulk">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/export/summary-bulk.zip</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          One summary PDF per person, zipped (<code>leave-summaries-2026.zip</code>, files named
+          <code>{email}_{year}.pdf</code>). Leave out <code>employeeIds</code> for everyone in the
+          company.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>number</td><td>No</td><td>2000–2100. Default: the current year.</td></tr>
+              <tr><td><code>employeeIds</code></td><td>string, repeated</td><td>No</td><td><code>employeeIds=emp_123&amp;employeeIds=emp_124</code>. Ids that aren't members are ignored.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>404</code> <code>{ "message": "No employees found." }</code> when no member matches.</p>
+<pre><code>curl "https://&lt;api-host&gt;/leave/export/summary-bulk.zip?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx" -o leave-summaries-2026.zip</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/export/summary</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>One person's balances as a spreadsheet — one row per leave type (<code>leave-summary-2026.csv</code>).</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Query</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>string</td><td>Yes</td><td>User id.</td></tr>
+              <tr><td><code>year</code></td><td>number</td><td>No</td><td>2000–2100. Default: the current year.</td></tr>
+              <tr><td><code>format</code></td><td>string</td><td>No</td><td><code>csv</code> (default) or <code>xlsx</code>. Anything unrecognised silently becomes <code>csv</code>. <code>pdf</code> is refused.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Columns: Employee, Role, Code, Leave Type, Paid, Year, Accrual Method, Opened, Entitled
+          Days, Accrued Days, Carried Days, Carry Expires, Carry Expired, Taken Days, Pending Days,
+          Remaining Days.
+        </p>
+        <p><code>400</code> <code>{ "message": "For a PDF use /leave/export/summary.pdf — it renders the full yearly summary." }</code> when <code>format=pdf</code>.</p>
+<pre><code>curl "https://&lt;api-host&gt;/leave/export/summary?employeeId=emp_123&amp;year=2026&amp;format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o leave-summary-2026.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="export-summary-all">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/export/summary/all</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          Everyone's balances in one spreadsheet, same columns as above, one row per person per
+          leave type (<code>leave-summary-all-2026.csv</code>). Query: <code>year</code> and
+          <code>format</code> (<code>csv</code> default, <code>xlsx</code>).
+        </p>
+        <p><code>400</code> <code>{ "message": "For PDFs use /leave/export/summary-bulk.zip — one yearly summary per employee." }</code> when <code>format=pdf</code>.</p>
+<pre><code>curl "https://&lt;api-host&gt;/leave/export/summary/all?year=2026" \
+  -H "Authorization: Bearer wp_live_xxx" -o leave-summary-all-2026.csv</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="import">
+      <h2>Import leave history</h2>
+      <p>
+        For moving off another system: upload a spreadsheet of past leave applications. Get the
+        template first, fill it in, upload it.
+      </p>
+
+      <section class="endpoint" id="import-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/import/template</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>The blank import template (<code>leave-history-import-template.csv</code>), with an example row.</p>
+        <p>
+          Query: <code>format</code> — <code>csv</code> (default) or <code>xlsx</code>. Anything
+          unrecognised becomes <code>csv</code>; <code>pdf</code> is
+          <code>400</code> <code>{ "message": "Templates come as .csv or .xlsx — a PDF can't be filled in and uploaded." }</code>.
+        </p>
+<pre><code>curl "https://&lt;api-host&gt;/leave/import/template?format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o leave-history-import-template.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="import-history">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/import</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Import past leave applications from a <code>.csv</code> or <code>.xlsx</code> file.</p>
+        <h3>Request</h3>
+        <p>
+          <code>multipart/form-data</code> with one file field named <code>file</code>, up to
+          8 MB (larger is refused by the server). The format is taken from the extension
+          (<code>.csv</code>, <code>.txt</code> or <code>.xlsx</code>).
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Employee Email</td><td>One of the two</td><td>Matches a member by email.</td></tr>
+              <tr><td>Employee Name</td><td>One of the two</td><td>Used when there's no email; fails the row if more than one member has that name.</td></tr>
+              <tr><td>Leave Type</td><td>Yes</td><td>A leave type's name or code. Archived types match too.</td></tr>
+              <tr><td>Start Date, End Date</td><td>Yes</td><td>For example <code>2026-01-15</code>. End not before start.</td></tr>
+              <tr><td>Days</td><td>Yes</td><td>Greater than 0. Used as given — halves are written here.</td></tr>
+              <tr><td>Status</td><td>Yes</td><td><code>PENDING</code>, <code>APPROVED</code>, <code>REJECTED</code> or <code>CANCELLED</code>.</td></tr>
+              <tr><td>Reason</td><td>No</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>200</code> with a per-row report even when rows failed. Only an unusable
+          <em>file</em> is a <code>400</code>.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>imported</code></td><td>number</td><td>Rows created.</td></tr>
+              <tr><td><code>skipped</code></td><td>number</td><td>The example row, or leave already on file for the same person, type and exact dates.</td></tr>
+              <tr><td><code>failed</code></td><td>number</td><td>Rows that couldn't be read (see <code>errors</code>).</td></tr>
+              <tr><td><code>errors</code></td><td>object[]</td><td><code>{ "row": 3, "message": "…" }</code>. <code>row</code> is the spreadsheet row (header = 1). A file-level problem such as a missing column is reported on row 1 with <code>failed: 0</code>. Capped at 200.</td></tr>
+              <tr><td><code>warnings</code></td><td>object[]</td><td>Same shape; for rows that landed but need a look.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>This is a migration tool, not the apply flow.</strong> The row's
+          <code>Status</code> is taken as given (no approval chain), <code>Days</code> is trusted
+          rather than recomputed from the working-week calendar, and the balance check is skipped.
+          Re-uploading is safe: leave already on file for the same person, type and exact dates is
+          skipped. The person's entitlement row for the start year is opened if missing, so
+          imported <code>APPROVED</code> leave shows in balances immediately. Imported
+          <code>PENDING</code> rows are real pending requests. Importing approved
+          <em>unpaid</em> leave does <strong>not</strong> mark existing payroll drafts out of date
+          — re-run any draft for those months yourself.
+        </div>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>No file, an empty file, or not a <code>.csv</code>/<code>.xlsx</code></td><td><code>{ "message": "Pick a .csv or .xlsx file to import." }</code> / <code>{ "message": "Unsupported file type. Upload a .csv or .xlsx file." }</code></td></tr>
+              <tr><td><code>413</code></td><td>Larger than 8 MB</td><td>empty</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@leave-history.csv"</code></pre>
+<pre><code>{
+  "imported": 41,
+  "skipped": 2,
+  "failed": 1,
+  "errors": [
+    { "row": 9, "message": "No employee in this organization matches 'jane@example.com'." }
+  ],
+  "warnings": []
+}</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="attachments">
+      <h2>Attachments</h2>
+      <p>
+        A leave application's <code>attachmentUrl</code> is a path on this API. Request it with
+        the same key. Both routes return the file with <code>Cache-Control: no-store</code>.
+      </p>
+
+      <section class="endpoint" id="attachment-xero">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/files/{xeroFileId}/content</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>A supporting document stored in the company's Xero Files, streamed through the API.</p>
+        <p>
+          <code>404</code> <code>{ "message": "Not found." }</code> when no application in this
+          company references that file id, or Xero can't return it.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/leave/files/file_123/content \
+  -H "Authorization: Bearer wp_live_xxx" -o attachment</code></pre>
+      </section>
+
+      <section class="endpoint" id="attachment-local">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/leave/attachments/{fileName}</span>
+          <span class="tag scope">leave:read</span>
+        </div>
+        <p>
+          A supporting document stored by AltomateHR itself (used when the company has no Xero
+          connection). <code>{fileName}</code> is the bare file name from
+          <code>attachmentUrl</code>. Served as JPG, PNG, WEBP, HEIC, HEIF or PDF.
+        </p>
+        <p><code>404</code> <code>{ "message": "Not found." }</code> for an unknown name or one that isn't a plain file name.</p>
+<pre><code>curl https://&lt;api-host&gt;/leave/attachments/20260220031500-ab12cd34.pdf \
+  -H "Authorization: Bearer wp_live_xxx" -o attachment.pdf</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="jobs">
+      <h2>Scheduled jobs, on demand</h2>
+      <p>
+        Leave maintenance normally runs by itself — the year rollover at the new year and the
+        accrual on the 1st of each month. These two calls force a run now. They act on the key's
+        own company.
+      </p>
+
+      <section class="endpoint" id="year-rollover">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/cron/year-rollover</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Open a year: create an entitlement row for every member × active leave type that
+          doesn't have one, carrying unused days forward where the type allows. Safe to repeat —
+          existing rows are skipped. Optional <code>?year=</code> (2000–2100, default the
+          current UTC year); pass next year to open it early. No request body.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code>.</td></tr>
+              <tr><td><code>created</code></td><td>number</td><td>Rows added.</td></tr>
+              <tr><td><code>skipped</code></td><td>number</td><td>Rows that already existed.</td></tr>
+              <tr><td><code>year</code></td><td>number</td><td>The year opened.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>500</code> <code>{ "ok": false, "error": "rollover failed" }</code> if the run failed.</p>
+<pre><code>curl -X POST "https://&lt;api-host&gt;/leave/cron/year-rollover?year=2027" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="monthly-accrual">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/leave/cron/monthly-accrual</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Run one monthly accrual: every <code>PRO_RATED</code> entitlement of the current
+          Malaysian-time year gains one twelfth of its entitlement (capped at the full amount),
+          and carried-forward days past their expiry are forfeited. No request body.
+        </p>
+        <div class="callout warn">
+          <strong>Not safe to repeat.</strong> Each call adds another month's accrual, so calling
+          it twice in a month — or on top of the scheduled run on the 1st — gives people an extra
+          month of pro-rated leave that you can't take back with a single call. Only use it
+          if you know the month's accrual hasn't run.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code>.</td></tr>
+              <tr><td><code>accruedCount</code></td><td>number</td><td>Entitlement rows that gained a month.</td></tr>
+              <tr><td><code>expiredCount</code></td><td>number</td><td>Rows whose carry-forward lapsed.</td></tr>
+              <tr><td><code>year</code></td><td>number</td><td>The year accrued.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>500</code> <code>{ "ok": false, "error": "accrual failed" }</code> if the run failed.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/leave/cron/monthly-accrual \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="people-only">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>POST /leave</code> (apply), <code>PUT /leave/{id}</code> (edit your own request),
+        <code>POST /leave/{id}/cancel</code>, <code>POST /leave/{id}/cancellation</code>,
+        <code>POST /leave/{id}/cancellation/withdraw</code> and
+        <code>POST /leave/attachments</code> (upload) are for signed-in people only and answer
+        <code>403</code> to any key.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

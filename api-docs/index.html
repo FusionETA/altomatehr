@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: 41547f0
+  api-docs-covered-up-to: 4c5e254
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -48,6 +48,14 @@
     <ul>
       <li><a href="employees.html">Employees</a></li>
       <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
       <li><a href="payroll.html">Payroll</a></li>
       <li><a href="payroll-runs.html">Payroll runs</a></li>
     </ul>
@@ -143,13 +151,14 @@
 
     <section class="section" id="errors">
       <h2>Errors</h2>
-    <p>Errors come back as JSON in one of three shapes. Read the status code first.</p>
+    <p>Errors come back as JSON in one of four shapes. Read the status code first.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
         <tbody>
           <tr><td><code>400</code></td><td>A field failed validation</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
           <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has a run)</td><td><code>{ "error": "message" }</code></td></tr>
+          <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
           <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
           <tr><td><code>403</code></td><td>Missing scope, module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
           <tr><td><code>404</code></td><td>Not found in this company</td><td>empty or <code>{ "error": "…" }</code></td></tr>
@@ -158,7 +167,8 @@
     </div>
     <p>
       A robust client reads <code>error</code> when it's a string, <code>error.message</code>
-      when it's an object, and the first entry of <code>errors</code> otherwise.
+      when it's an object, <code>message</code> when present, and the first entry of
+      <code>errors</code> otherwise.
     </p>
     </section>
 

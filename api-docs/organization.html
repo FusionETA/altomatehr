@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Organization</title>
+  <meta name="description" content="Read and update a company's settings, see which modules its plan enables, grant admin access, and hand an admin into AltomateHR already signed in." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Organizations/OrganizationsController.cs,
+  OrganizationService.cs, ModuleAccessService.cs, OrgModules.cs,
+  Dtos/OrganizationDto.cs, Dtos/UpdateOrganizationDto.cs, Dtos/AdminAccessDto.cs;
+  backend/Modules/Provisioning/OrgAdminsController.cs, OrgAdminService.cs;
+  backend/Modules/Partners/InboundSsoController.cs, InboundSsoService.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html" aria-current="page">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Organization</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Organization</h1>
+    <p class="lead">
+      The company the key belongs to: its settings, the modules its plan enables, who
+      administers it, and a hand-off that drops one of those administrators into
+      AltomateHR already signed in. A key can only ever reach its own company; there is no
+      company id to send.
+    </p>
+    </div>
+
+    <div class="callout warn">
+      This page's errors don't all use the shapes on the <a href="index.html#errors">overview</a>.
+      Where an action refuses a request itself, it answers <code>400</code> or
+      <code>404</code> with <code>{ "message": "…" }</code> (a plain <code>message</code>
+      string), not <code>error</code>. Field validation (<code>errors</code>) and
+      <code>403</code> (<code>error.message</code>) are as on the overview. Each endpoint
+      below says which it returns.
+    </div>
+
+    <section class="section" id="settings">
+      <h2>Company settings</h2>
+      <p>
+        No plan module is needed for these three endpoints: every company can read and edit
+        its own settings.
+      </p>
+
+      <h3>The organization object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Company id.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Display name.</td></tr>
+            <tr><td><code>defaultCurrency</code></td><td>string</td><td>Three-letter currency code, upper-case (e.g. <code>"MYR"</code>). Every claim is denominated in it.</td></tr>
+            <tr><td><code>defaultMileageRate</code></td><td>number</td><td>Reimbursement per mileage unit, 2 decimals.</td></tr>
+            <tr><td><code>mileageUnit</code></td><td>string</td><td><code>"KM"</code> or <code>"MILE"</code>.</td></tr>
+            <tr><td><code>geofenceRadiusMeters</code></td><td>integer</td><td>Default clock-in radius around a project's site, in metres.</td></tr>
+            <tr><td><code>workingDays</code></td><td>string | null</td><td>CSV of weekday numbers, <code>1</code> (Monday) – <code>7</code> (Sunday), e.g. <code>"1,2,3,4,5"</code>. <code>null</code> means Monday to Friday.</td></tr>
+            <tr><td><code>workingHoursStart</code>, <code>workingHoursEnd</code></td><td>string</td><td>Local <code>"HH:mm"</code> (24-hour), e.g. <code>"09:00"</code>.</td></tr>
+            <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>Deducted from the working-hours span.</td></tr>
+            <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>Day of the month (1–28) the claims run closes. Read-only here.</td></tr>
+            <tr><td><code>claimSettlementRoute</code></td><td>string</td><td>Where approved claims are paid out: <code>"XERO_BILL"</code> or <code>"PAYROLL"</code>. Read-only here.</td></tr>
+            <tr><td><code>xeroBillStage</code></td><td>string</td><td>Status a claim bill is created with in Xero: <code>"AwaitingPayment"</code> or <code>"Draft"</code>. Read-only here.</td></tr>
+            <tr><td><code>supervisorSlaMinutes</code></td><td>integer</td><td>The line the attendance performance report measures supervisors against. Read-only here.</td></tr>
+            <tr><td><code>plan</code></td><td>string</td><td><code>"DIY"</code> or <code>"EXPERT"</code>. Read-only.</td></tr>
+            <tr><td><code>tier</code></td><td>string | null</td><td><code>"FREE"</code> or <code>"PAID"</code>; <code>null</code> when none is set. Read-only.</td></tr>
+            <tr><td><code>addons</code></td><td>string[]</td><td>Paid add-ons the company holds (<code>"expense_claim"</code>, <code>"clock"</code>). Read-only.</td></tr>
+            <tr><td><code>enabledModules</code></td><td>string[]</td><td>The modules the plan resolves to. See <a href="#get-modules">GET /organizations/modules</a>. Read-only.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The plan, tier, add-ons and claim settings can't be changed with an API key. Only
+        the fields in <a href="#update-organization">PUT /organizations/current</a> can.
+      </p>
+
+      <section class="endpoint" id="get-organization">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/organizations/current</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>The key's own company and its settings.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#settings">organization object</a>.</p>
+<pre><code>{
+  "id": "org_123",
+  "name": "Example Sdn Bhd",
+  "defaultCurrency": "MYR",
+  "defaultMileageRate": 0.60,
+  "mileageUnit": "KM",
+  "geofenceRadiusMeters": 200,
+  "workingDays": null,
+  "workingHoursStart": "09:00",
+  "workingHoursEnd": "18:00",
+  "lunchBreakMinutes": 60,
+  "claimRunCutoffDay": 25,
+  "claimSettlementRoute": "XERO_BILL",
+  "xeroBillStage": "AwaitingPayment",
+  "supervisorSlaMinutes": 60,
+  "plan": "DIY",
+  "tier": "PAID",
+  "addons": ["expense_claim", "clock"],
+  "enabledModules": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"]
+}</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — the key lacks <code>organizations:read</code>.</li>
+          <li><code>404</code> — empty body; the company no longer exists.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/organizations/current \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-organization">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/organizations/current</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Update the company's name, currency, mileage, geofence and working-hours settings.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 160 characters; can't be empty.</td></tr>
+              <tr><td><code>defaultCurrency</code></td><td>string</td><td>see note</td><td>Exactly 3 characters. Trimmed and stored upper-case. Default <code>"MYR"</code>.</td></tr>
+              <tr><td><code>defaultMileageRate</code></td><td>number</td><td>see note</td><td>0 – 100. Default <code>0</code>.</td></tr>
+              <tr><td><code>mileageUnit</code></td><td>string</td><td>see note</td><td><code>"KM"</code> or <code>"MILE"</code>. Default <code>"KM"</code>.</td></tr>
+              <tr><td><code>geofenceRadiusMeters</code></td><td>integer</td><td>see note</td><td>10 – 100000. Default <code>200</code>.</td></tr>
+              <tr><td><code>workingDays</code></td><td>string | null</td><td>no</td><td>CSV of weekday numbers 1–7 (Monday = 1), max 20 characters. Null or blank means Monday to Friday. The server doesn't check the digits. Leave counts only these days, so a Friday-to-Monday request costs 2 days, not 4.</td></tr>
+              <tr><td><code>workingHoursStart</code></td><td>string</td><td>see note</td><td><code>"HH:mm"</code>, 24-hour. Default <code>"09:00"</code>. Must be earlier than the end.</td></tr>
+              <tr><td><code>workingHoursEnd</code></td><td>string</td><td>see note</td><td><code>"HH:mm"</code>, 24-hour. Default <code>"18:00"</code>.</td></tr>
+              <tr><td><code>lunchBreakMinutes</code></td><td>integer</td><td>see note</td><td>0 – 480. Default <code>60</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <strong>see note</strong>: the request isn't rejected when the field is left out, but
+          its default is then saved. See below.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#settings">organization object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — a field is out of range, malformed, or not a valid <code>mileageUnit</code>.</li>
+          <li><code>400</code> <code>{ "message": "Working hours start must be before end." }</code></li>
+          <li><code>400</code> <code>{ "message": "Xero is not subscribed to … " }</code> — the company has Xero connected and <code>defaultCurrency</code> is not one of the currencies Xero holds. The message lists the ones it does. Without Xero connected, any 3-letter code is accepted.</li>
+          <li><code>403</code> — the key lacks <code>organizations:write</code>.</li>
+          <li><code>404</code> — empty body; the company no longer exists.</li>
+        </ul>
+        <div class="callout warn">
+          <strong>This replaces every field above, it doesn't merge.</strong> A field you
+          leave out is saved as its default: leave out <code>defaultMileageRate</code> and the
+          rate becomes <code>0</code>; leave out <code>workingDays</code> and the company goes
+          back to Monday to Friday. <code>GET /organizations/current</code> first, change what
+          you need, and send all the fields back. The plan, claim settings and supervisor SLA
+          are never touched by this call. The change is recorded in the company's activity log.
+        </div>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/organizations/current \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Example Sdn Bhd",
+    "defaultCurrency": "MYR",
+    "defaultMileageRate": 0.60,
+    "mileageUnit": "KM",
+    "geofenceRadiusMeters": 200,
+    "workingDays": "1,2,3,4,5",
+    "workingHoursStart": "09:00",
+    "workingHoursEnd": "18:00",
+    "lunchBreakMinutes": 60
+  }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-modules">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/organizations/modules</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>
+          Which modules the company's plan enables, alongside every module key that exists.
+          Check it before calling an endpoint of a gated module, which otherwise answers
+          <code>403</code> when the plan lacks it.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>all</code></td><td>string[]</td><td>Every module key: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>policies</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>claims</code>, <code>attendance</code>.</td></tr>
+              <tr><td><code>enabled</code></td><td>string[]</td><td>The modules the company's plan includes. For a key this is the plan's full set: a key isn't narrowed by any per-admin grant, only by its <a href="index.html#scopes">scopes</a>. The order isn't guaranteed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          Every plan includes the core modules. <code>claims</code> and <code>attendance</code>
+          are paid add-ons: they're included only when the company holds the add-on, and never
+          on a DIY plan with the FREE tier.
+        </div>
+<pre><code>{
+  "all": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"],
+  "enabled": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit"]
+}</code></pre>
+        <h3>Errors</h3>
+        <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
+<pre><code>curl https://&lt;api-host&gt;/organizations/modules \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="admins">
+      <h2>Administrators</h2>
+      <p>
+        These two endpoints live under <code>/admin</code> but are called with the same
+        <code>wp_live_</code> company key as everything else, not a master key. The key
+        decides which company they act on, so a caller can only ever make an administrator of
+        the company it already integrates with.
+      </p>
+      <p>
+        Roles here are <code>"Owner"</code> and <code>"Admin"</code>. An Owner is a company's
+        top administrator; everyone else with admin access is an Admin.
+      </p>
+
+      <section class="endpoint" id="grant-admin">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/admin/admins</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>
+          Make an email address an administrator of the company. This is the explicit step
+          to take when <a href="#sso-ticket">POST /sso/ticket</a> answers <code>404</code>
+          because that email isn't an admin yet: grant, then retry the ticket.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>email</code></td><td>string</td><td>yes</td><td>A valid email address. Surrounding spaces are trimmed.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>no</td><td>Max 120 characters. Used only when a new account is created; when blank, the part of the email before <code>@</code> is used.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>200</code> in every success case, including when nothing changed.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>email</code></td><td>string</td><td>The account's email.</td></tr>
+              <tr><td><code>created</code></td><td>boolean</td><td><code>true</code> when no account existed for this email and one was made.</td></tr>
+              <tr><td><code>linked</code></td><td>boolean</td><td><code>true</code> when this call gave the account an admin seat in the company. <code>false</code> when it already held one.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td>The seat the account holds now: <code>"Owner"</code> or <code>"Admin"</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{ "email": "jane@example.com", "created": true, "linked": true, "role": "Owner" }</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — <code>email</code> missing or not an email address, or <code>name</code> too long.</li>
+          <li><code>403</code> — the key lacks <code>organizations:write</code>.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>The first administrator becomes the Owner.</strong> If the company has
+            nobody administering it yet, the person you grant is its Owner; everyone after
+            that is an Admin.</li>
+          <li><strong>Safe to retry.</strong> Someone who is already an Owner or Admin is
+            left exactly as they are (<code>linked: false</code>, their existing
+            <code>role</code>).</li>
+          <li><strong>It can promote.</strong> An existing employee of the company is moved
+            into the admin seat; their account and history stay.</li>
+          <li><strong>Accounts are matched by email across companies.</strong> If the email
+            already has an AltomateHR account elsewhere, it is reused and gains a seat here
+            (<code>created: false</code>, <code>linked: true</code>). A newly created account
+            has no password. It's meant to be entered through the
+            <a href="#sso-ticket">sign-in hand-off</a>.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/admin/admins \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "jane@example.com", "name": "Jane Example" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="list-admins">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/admin/users</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>Who administers the company: its Owners and Admins.</p>
+        <h3>Query</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>role</code></td><td>string</td><td>Comma-separated roles to keep, matched case-insensitively, e.g. <code>OWNER,ADMIN</code>. Omit for both. Anything other than Owner or Admin matches nobody, because only administrative seats are ever listed.</td></tr>
+              <tr><td><code>limit</code></td><td>integer</td><td>Return at most this many rows. Ignored when missing or not above 0.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>data</code></td><td>array</td><td>Each row is <code>{ userId, email, name, role }</code>, sorted by email. <code>role</code> is <code>"Owner"</code> or <code>"Admin"</code>.</td></tr>
+              <tr><td><code>total</code></td><td>integer</td><td>The number of rows in <code>data</code>. After <code>limit</code> or <code>role</code> narrow the list, this is the narrowed count, not the company's full count.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "data": [
+    { "userId": "user_123", "email": "jane@example.com", "name": "Jane Example", "role": "Owner" }
+  ],
+  "total": 1
+}</code></pre>
+        <h3>Errors</h3>
+        <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
+<pre><code>curl "https://&lt;api-host&gt;/admin/users?role=OWNER,ADMIN&amp;limit=10" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="sso">
+      <h2>Single sign-on hand-off</h2>
+      <p>
+        Lets your platform drop one of the company's administrators into AltomateHR already
+        signed in, with no AltomateHR password. It's two steps: your server asks for a ticket
+        with the key, then the administrator's browser opens the callback with it. Only
+        the first step is an API call.
+      </p>
+      <p>
+        <code>GET /whoami</code> lists <code>sso.inbound</code> in <code>features</code> on a
+        deployment that supports this.
+      </p>
+
+      <section class="endpoint" id="sso-ticket">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/sso/ticket</span>
+          <span class="tag scope">sso:write</span>
+        </div>
+        <p>
+          Mint a one-time sign-in ticket for an Owner or Admin of the key's company. The
+          person comes from the body; the company is always the key's own.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>email</code></td><td>string</td><td>yes</td><td>A valid email address of an Owner or Admin of this company, matched case-insensitively.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ticket</code></td><td>string</td><td>An opaque, single-use ticket.</td></tr>
+              <tr><td><code>redirectPath</code></td><td>string</td><td>The path to send the person's browser to: <code>/sso/callback?t=&lt;ticket&gt;</code>. It's relative to the API host, so prefix it with the host you call.</td></tr>
+              <tr><td><code>expiresIn</code></td><td>integer</td><td>Seconds the ticket stays valid: <code>120</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "ticket": "tkt_xxx",
+  "redirectPath": "/sso/callback?t=tkt_xxx",
+  "expiresIn": 120
+}</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> — <code>email</code> missing or not an email address.</li>
+          <li><code>403</code> — the key lacks <code>sso:write</code>.</li>
+          <li><code>404</code> <code>{ "message": "No admin or owner with that email in this organization." }</code> — one answer for no such person, a person in another company, and a person who isn't an Owner or Admin. Call <a href="#grant-admin">POST /admin/admins</a> to give them a seat, then retry.</li>
+        </ul>
+        <div class="callout warn">
+          Mint the ticket when the person clicks, not ahead of time. It works once and dies
+          after 2 minutes. It's also checked again when it's used, so an admin seat revoked in
+          the meantime no longer works.
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/sso/ticket \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "jane@example.com" }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="sso-callback">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/sso/callback?t=&lt;ticket&gt;</span>
+          <span class="tag">Browser redirect, no key</span>
+        </div>
+        <p>
+          Not an API call. Redirect the administrator's browser to the
+          <code>redirectPath</code> from the previous step. The ticket is the credential, so
+          this takes no <code>Authorization</code> header.
+        </p>
+        <ul>
+          <li><strong>Valid ticket</strong>: the browser is redirected into AltomateHR,
+            signed in as that administrator in the key's company. Nothing sensitive is in
+            the URL.</li>
+          <li><strong>Used, expired, forged or missing ticket</strong>: the browser is
+            redirected to the ordinary sign-in page with <code>sso=expired</code> in the
+            query, the same as arriving signed out. Mint a new ticket.</li>
+        </ul>
+        <p>The redirect always goes to AltomateHR's own address, never to one you supply.</p>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        Listing admins and setting their module access (<code>GET /organizations/admins</code>,
+        <code>PUT /organizations/admins/{userId}/access</code>), creating a company
+        (<code>POST /organizations</code>) and changing a company's plan
+        (<code>PUT /organizations/{organizationId}/plan</code>) answer <code>403</code> to any
+        key.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>
