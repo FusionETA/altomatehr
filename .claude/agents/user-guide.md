@@ -18,6 +18,22 @@ user-guide/
 └── shots/admin/*.png, shots/employee/*.png   screenshots (demo company only)
 ```
 
+### Where they're published (don't break it)
+
+They're served live, and the app links to them from the three-dot menu
+("Guide", `frontend/src/shared/components/GuideMenuItem.tsx`):
+
+- `https://hr-guide.altomate.io/admin` → `altomatehr-admin-guide.html`
+- `https://hr-guide.altomate.io/employee` → `altomatehr-employee-guide.html`
+- `https://hr-guide.altomate.io/shots/...` → `shots/...`
+
+The server maps those URLs to these exact file names, so:
+
+- **Never rename or move** either HTML file or the `shots/` folder.
+- **Keep image paths relative** (`src="shots/admin/x.png"`) — no leading `/`,
+  no `../`, no absolute URL. They resolve against `/admin` and `/employee`.
+- Links between the two guides use `/admin` and `/employee`, not file names.
+
 Each guide is one self-contained HTML page with its own `<style>`. Topics are
 `<details class="topic">` blocks with a `<summary><h2>`, a `.topic-lede` and a
 `.topic-body`; screenshots sit in `.shot-grid` / `.shot-item` with a

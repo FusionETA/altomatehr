@@ -386,6 +386,19 @@ builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
+
+// API monitoring: one row per request, queued by the middleware and saved by the
+// writer in batches; the cleanup worker enforces the retention window.
+builder.Services.Configure<AltomateHR.Api.Modules.ApiMonitoring.ApiMonitoringOptions>(
+    builder.Configuration.GetSection(AltomateHR.Api.Modules.ApiMonitoring.ApiMonitoringOptions.SectionName));
+builder.Services.AddSingleton<AltomateHR.Api.Modules.ApiMonitoring.IApiRequestLogQueue,
+    AltomateHR.Api.Modules.ApiMonitoring.ApiRequestLogQueue>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiRequestLogRepository,
+    AltomateHR.Api.Modules.ApiMonitoring.ApiRequestLogRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiMonitoringService,
+    AltomateHR.Api.Modules.ApiMonitoring.ApiMonitoringService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogWriterBackgroundService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogCleanupBackgroundService>();
 builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
 builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
 builder.Services.AddScoped<IPartnerAuthService, PartnerAuthService>();
@@ -398,6 +411,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.MapScalarApiReference();   // Swagger-style UI at /scalar
 }
+
+// Outermost, so it times the whole request and records the status the caller
+// actually got — after the exception handler below has turned a crash into one.
+app.UseMiddleware<AltomateHR.Api.Modules.ApiMonitoring.ApiRequestLogMiddleware>();
 
 app.UseExceptionHandler(errorApp =>
 {

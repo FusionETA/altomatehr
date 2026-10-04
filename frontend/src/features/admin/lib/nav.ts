@@ -70,6 +70,7 @@ export const adminNav: AdminNavItem[] = [
       // Owner-only: an Admin cannot edit their own or a peer's access.
       { id: "settings-admins", label: "Admins", ownerOnly: true },
       { id: "settings-api", label: "API integrations", superadminOnly: true },
+      { id: "settings-api-monitoring", label: "API monitoring", superadminOnly: true },
     ],
   },
 ];

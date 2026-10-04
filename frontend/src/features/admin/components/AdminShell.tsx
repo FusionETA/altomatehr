@@ -11,11 +11,13 @@ import { OrganizationSettings } from "@/features/settings/components/Organizatio
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
 import { ApiIntegrationsSettings } from "@/features/settings/components/ApiIntegrationsSettings";
+import { ApiMonitoringPanel } from "@/features/api-monitoring/components/ApiMonitoringPanel";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { WorkScheduleSettings } from "@/features/settings/components/WorkScheduleSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
 import { buildInitials, personName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
+import { GuideMenuItem } from "@/shared/components/GuideMenuItem";
 import type { SignedInUser } from "@/shared/types/session";
 import {
   defaultChildOf,
@@ -257,6 +259,12 @@ export function AdminShell({
                       className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
                     />
 
+                    <GuideMenuItem
+                      audience="admin"
+                      onSelect={() => setAccountMenuOpen(false)}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
+
                     {onOpenSupport ? (
                       <button
                         type="button"
@@ -413,6 +421,8 @@ function AdminContent({
       return <AdminsSettings />;
     case "settings-api":
       return <ApiIntegrationsSettings organizationName={user.activeOrganizationName} />;
+    case "settings-api-monitoring":
+      return <ApiMonitoringPanel />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.
