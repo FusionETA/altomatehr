@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 4c5e254
+  user-guide-covered-up-to: 21509f7
 -->
 <html lang="en">
 <head>
@@ -386,7 +386,7 @@
       <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
-      <li>The ⋮ menu — push notifications, <span class="btn-name">What's new</span> (our release notes, with a dot on
+      <li>The ⋮ menu — push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
         the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
         <span class="btn-name">Launch Appraisify</span>, and <span class="btn-name">Log out</span></li>
     </ol>
@@ -402,7 +402,7 @@
           <p class="shot-cap">Notifications bell</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: push notifications, Launch Appraisify, Log out" loading="lazy">
+          <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
           <p class="shot-cap">⋮ menu</p>
         </div>
       </div>
@@ -496,7 +496,7 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/accounts-bank.png" alt="System Settings → Accounts: chart of accounts, Expenses / Bank accounts tabs and mileage defaults" loading="lazy">
+          <img src="shots/admin/accounts-bank.png" alt="System Settings → Accounts: the Expenses list with its Type filter (Depreciation, Direct Costs, Expense, Overhead) and Type column" loading="lazy">
           <p class="shot-cap">Accounts</p>
         </div>
         <div class="shot-item">
@@ -625,7 +625,12 @@
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/manage-employee.png" alt="Manage Employee with search, role and status filters, and the need-payroll-setup box" loading="lazy">
+          <img src="shots/admin/manage-employee.png" alt="Manage Employee with Import, Export, Salary adjustments and Add employee, the search and filters, and the need-payroll-setup box" loading="lazy">
+          <p class="shot-cap">Manage Employee</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-import.png" alt="The Import employees dialog: Step 1 templates, Step 2 Keep or Erase existing values for blank cells, Step 3 upload" loading="lazy">
+          <p class="shot-cap">Import</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Manage Employee</p>
@@ -668,6 +673,15 @@
     </ul>
     <p><span class="btn-name">Salary history</span>, under the salary, lists every real change with its date, reason and
       the old and new figure.</p>
+
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/salary-change.png" alt="The Why is the salary changing? dialog, from RM 5,500.00 to RM 5,800.00 a month, with Typo correction and Salary adjustment" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Why is the salary changing?</p>
+    </figure>
     <h3>Other things worth knowing on the record</h3>
     <ul>
       <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
@@ -689,7 +703,7 @@
           <p class="shot-cap">Statutory tab</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/employee-employment.png" alt="An employee record on the Employment tab, with compensation and fixed adjustments" loading="lazy">
+          <img src="shots/admin/employee-employment.png" alt="An employee record on the Employment tab, with compensation, Salary history and fixed adjustments" loading="lazy">
           <p class="shot-cap">Employment tab</p>
         </div>
       </div>
@@ -865,6 +879,15 @@
       asked to cancel, cancelling here completes it at once. Cancelling approved <em>unpaid</em> leave marks any open
       payroll draft for those dates for a re-run; a payroll already submitted isn't changed. The cancellation is recorded
       in the <a href="#audit">Activity Log</a>.</p>
+
+    <figure class="shot" data-place="Leave">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/leave-cancel.png" alt="The Cancel this approved leave? dialog with the leave, an optional reason, and Cancel leave or Keep it" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Cancelling approved leave</p>
+    </figure>
     <p><span class="btn-name">Import</span> brings in entitlements from a spreadsheet. Year rollover and monthly accrual
       run by themselves; the buttons under <em>Maintenance</em> are there if you need to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
@@ -1010,7 +1033,7 @@
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog with reports and statutory uploads" loading="lazy">
+          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog: statutory uploads (EPF, both SOCSO + EIS files, PCB) and the TP1 / TP3 Claims List" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Downloading the month's files</p>
@@ -1044,7 +1067,7 @@
     <figure class="shot" data-place="Loans">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/loans.png" alt="Payroll → Loans with Record a loan" loading="lazy">
+          <img src="shots/admin/loans.png" alt="Payroll → Loans: a paused loan with Resume and Cancel, and its repayment schedule showing paid and paused months" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Loans and advances</p>
@@ -1078,7 +1101,7 @@
     <figure class="shot" data-place="Annual forms">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms with the filing year and the forms listed" loading="lazy">
+          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: Form EA, Form E + CP8D, PCB 2(II) (bulk) and the e-CP8D upload files" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Annual tax forms</p>
@@ -1150,7 +1173,7 @@
   <details class="topic" id="notifications" open>
     <summary><h2>Notifications &amp; the app</h2></summary>
     <div class="topic-body">
-    <p class="topic-lede">The bell shows requests and decisions as they happen. Turn on push notifications from the
+    <p class="topic-lede">The bell shows requests and decisions as they happen. If your browser supports it, turn on push notifications from the
       ⋮ menu to get them on your phone or computer even when AltomateHR isn't open. The same menu has
       <span class="btn-name">What's new</span> for our release notes and <span class="btn-name">Guide</span> to open this
       guide.</p>
