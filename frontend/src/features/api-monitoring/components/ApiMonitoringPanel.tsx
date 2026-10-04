@@ -37,8 +37,9 @@ const ALL = "__all";
 export function ApiMonitoringPanel() {
   const [range, setRange] = useState<RangeKey>("24h");
   const [company, setCompany] = useState<string>(ALL);
-  // Set by clicking an endpoint: narrows the error list to it.
-  const [route, setRoute] = useState<string | null>(null);
+  // Set by clicking an endpoint: narrows the error list to it. Method AND
+  // route — an endpoint row is one of each, and GET/PUT share a path.
+  const [endpoint, setEndpoint] = useState<{ method: string; route: string } | null>(null);
 
   const [summary, setSummary] = useState<ApiMonitoringSummary | null>(null);
   const [errors, setErrors] = useState<ApiRequestError[]>([]);
@@ -55,7 +56,12 @@ export function ApiMonitoringPanel() {
     try {
       const [nextSummary, nextErrors] = await Promise.all([
         getApiMonitoringSummary(filter),
-        getApiMonitoringErrors({ ...filter, route, limit: 50 }),
+        getApiMonitoringErrors({
+          ...filter,
+          method: endpoint?.method,
+          route: endpoint?.route,
+          limit: 50,
+        }),
       ]);
       setSummary(nextSummary);
       setErrors(nextErrors);
@@ -64,7 +70,7 @@ export function ApiMonitoringPanel() {
     } finally {
       setLoading(false);
     }
-  }, [range, company, route]);
+  }, [range, company, endpoint]);
 
   useEffect(() => {
     void load();
@@ -181,8 +187,14 @@ export function ApiMonitoringPanel() {
                       <EndpointRow
                         key={`${e.method} ${e.route}`}
                         endpoint={e}
-                        selected={route === e.route}
-                        onSelect={() => setRoute((cur) => (cur === e.route ? null : e.route))}
+                        selected={endpoint?.method === e.method && endpoint?.route === e.route}
+                        onSelect={() =>
+                          setEndpoint((cur) =>
+                            cur?.method === e.method && cur?.route === e.route
+                              ? null
+                              : { method: e.method, route: e.route },
+                          )
+                        }
                       />
                     ))}
                   </tbody>
@@ -198,9 +210,11 @@ export function ApiMonitoringPanel() {
                 <h3 className="text-sm font-bold text-foreground">Recent errors</h3>
                 <p className="text-xs text-muted-foreground">Latest 50 failed calls, newest first.</p>
               </div>
-              {route ? (
-                <button type="button" className={BUTTON_GHOST} onClick={() => setRoute(null)}>
-                  <span className="font-mono">{route}</span>
+              {endpoint ? (
+                <button type="button" className={BUTTON_GHOST} onClick={() => setEndpoint(null)}>
+                  <span className="font-mono">
+                    {endpoint.method} {endpoint.route}
+                  </span>
                   <X className="size-3.5" aria-hidden />
                 </button>
               ) : null}

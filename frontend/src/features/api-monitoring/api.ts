@@ -67,6 +67,11 @@ export const getApiMonitoringSummary = (filter: ApiMonitoringFilter) =>
   );
 
 export const getApiMonitoringErrors = (
-  filter: ApiMonitoringFilter & { route?: string | null; status?: number | null; limit?: number },
+  filter: ApiMonitoringFilter & {
+    method?: string | null;
+    route?: string | null;
+    status?: number | null;
+    limit?: number;
+  },
 ) =>
   apiGetFresh<ApiRequestError[]>(`/platform/api-monitoring/errors?${query({ ...filter })}`);

@@ -88,7 +88,8 @@ public class ApiMonitoringService : IApiMonitoringService
         var limit = Math.Clamp(query.Limit ?? DefaultErrorLimit, 1, MaxErrorLimit);
 
         var rows = await _logs.GetErrorsAsync(
-            start, end, Blank(query.OrganizationId), Blank(query.Route), query.Status, limit);
+            start, end, Blank(query.OrganizationId), Blank(query.Method)?.ToUpperInvariant(),
+            Blank(query.Route), query.Status, limit);
         if (rows.Count == 0) return [];
 
         var names = await OrganizationNamesAsync();

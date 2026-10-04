@@ -56,9 +56,10 @@ public class ApiRequestLogRepository : IApiRequestLogRepository
     }
 
     public Task<List<ApiRequestLog>> GetErrorsAsync(
-        DateTime from, DateTime to, string? organizationId, string? route, int? status, int limit)
+        DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit)
     {
         var query = InRange(from, to, organizationId).Where(r => r.StatusCode >= 400);
+        if (method is not null) query = query.Where(r => r.Method == method);
         if (route is not null) query = query.Where(r => r.Route == route);
         if (status is not null) query = query.Where(r => r.StatusCode == status);
 

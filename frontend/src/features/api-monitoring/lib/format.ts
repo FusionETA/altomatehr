@@ -27,8 +27,11 @@ export function percent(rate: number) {
   return value < 0.1 ? "<0.1%" : `${value.toFixed(value < 10 ? 1 : 0)}%`;
 }
 
+// The backend stores UTC but sends it without a zone ("2026-10-04T03:12:45"),
+// which the browser would read as local time — 8 hours early in Malaysia.
 export function when(iso: string) {
-  return new Date(iso).toLocaleString("en-MY", {
+  const utc = /(Z|[+-]\d{2}:\d{2})$/.test(iso) ? iso : `${iso}Z`;
+  return new Date(utc).toLocaleString("en-MY", {
     day: "numeric",
     month: "short",
     hour: "2-digit",

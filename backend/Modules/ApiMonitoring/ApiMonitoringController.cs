@@ -25,7 +25,7 @@ public class ApiMonitoringController : ControllerBase
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? organizationId) =>
         Ok(await _monitoring.GetSummaryAsync(from, to, organizationId));
 
-    // GET /platform/api-monitoring/errors?from&to&route&organizationId&status&limit
+    // GET /platform/api-monitoring/errors?from&to&method&route&organizationId&status&limit
     [HttpGet("errors")]
     public async Task<IActionResult> Errors([FromQuery] ApiRequestErrorQuery query) =>
         Ok(await _monitoring.GetRecentErrorsAsync(query));

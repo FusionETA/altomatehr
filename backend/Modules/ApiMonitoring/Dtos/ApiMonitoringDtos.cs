@@ -57,6 +57,9 @@ public class ApiRequestErrorQuery
 {
     public DateTime? From { get; set; }
     public DateTime? To { get; set; }
+    // Endpoints are one per method + route, so a route alone would mix
+    // GET employees/{id} with PUT and DELETE on the same path.
+    public string? Method { get; set; }
     public string? Route { get; set; }
     public string? OrganizationId { get; set; }
     public int? Status { get; set; }

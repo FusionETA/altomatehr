@@ -17,7 +17,7 @@ public interface IApiRequestLogRepository
 
     // Failed calls (status >= 400) in [from, to), newest first.
     Task<List<ApiRequestLog>> GetErrorsAsync(
-        DateTime from, DateTime to, string? organizationId, string? route, int? status, int limit);
+        DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit);
 }
 
 public record ApiOrganizationCalls(string OrganizationId, int Calls);

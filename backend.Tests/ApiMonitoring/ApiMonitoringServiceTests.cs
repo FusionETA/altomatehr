@@ -154,6 +154,23 @@ public class ApiMonitoringServiceTests : IDisposable
         Assert.Equal("org-1", only.OrganizationId);
     }
 
+    // One endpoint row is a method AND a route; GET and DELETE on the same
+    // path must not share an error list.
+    [Fact]
+    public async Task ErrorsFilterByMethodToo()
+    {
+        await SeedAsync(
+            Row("employees/{id}", 500, method: "GET"),
+            Row("employees/{id}", 500, method: "DELETE"));
+
+        var errors = await _service.GetRecentErrorsAsync(new ApiRequestErrorQuery
+        {
+            Method = "get", Route = "employees/{id}",
+        });
+
+        Assert.Equal("GET", Assert.Single(errors).Method);
+    }
+
     [Fact]
     public async Task ErrorListIsCapped()
     {
@@ -225,7 +242,7 @@ public class ApiMonitoringServiceTests : IDisposable
         public Task<List<ApiEndpointStats>> GetEndpointStatsAsync(DateTime from, DateTime to, string? organizationId) =>
             throw new NotSupportedException();
         public Task<List<ApiRequestLog>> GetErrorsAsync(
-            DateTime from, DateTime to, string? organizationId, string? route, int? status, int limit) =>
+            DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit) =>
             throw new NotSupportedException();
     }
 }
