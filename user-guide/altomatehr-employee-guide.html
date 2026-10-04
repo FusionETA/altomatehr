@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 791d224
+  user-guide-covered-up-to: 4c5e254
 -->
 <html lang="en">
 <head>
@@ -407,7 +407,8 @@
       <li><h4>Change it straight away</h4>
         <p>Open the ⋮ menu and choose <span class="btn-name">Change password</span>. Enter your current password, then a
           new one (at least 8 characters) twice. This signs you out of every device, including this one — sign back
-          in with the new password.</p></li>
+          in with the new password. (If you signed in through Altomate, your password is managed there, so this isn't
+          in the menu.)</p></li>
     </ol>
     <h3>Forgotten your password</h3>
     <ol class="steps">
@@ -477,7 +478,9 @@
       <li><strong>Bottom tabs</strong> — Dashboard, Claims, Attendance, Leave, Payslips. Some tabs have sub-pages in a
         strip just under the header (e.g. Attendance → Dashboard, Overtime, History).</li>
       <li><strong>The bell</strong> — approvals and decisions about your requests. Tap one to go straight to it.</li>
-      <li><strong>The ⋮ menu</strong> — change password, notifications, switch company, Appraisify, log out.</li>
+      <li><strong>The ⋮ menu</strong> — change password, notifications, <span class="btn-name">What's new</span> (our
+        release notes — a dot shows on the menu until you've read the latest), <span class="btn-name">Guide</span> (opens
+        this guide in a new tab), switch company, Appraisify, log out.</li>
     </ul>
     <p>Supervisors see extra sub-pages and red number badges for what's waiting on them — see
       <a href="#supervisor">Approving for your team</a>.</p>
@@ -508,8 +511,10 @@
     <ol class="steps">
       <li><h4>Pick your project</h4><p>Choose where you're working from <strong>Project</strong>. You only see the projects
         you're assigned to.</p></li>
-      <li><h4>Tap to Clock In</h4><p>Allow location when your phone asks. Your clock-in goes to your supervisor for
-        approval.</p></li>
+      <li><h4>Tap to Clock In</h4><p>Allow location when your phone asks. Under the project, a small line already tells
+        you where you stand — <em>On site · 45 m away</em>, or <em>Off site · 612 m away (limit 500 m)</em> — so an
+        off-site clock-in asking for a reason and photo is no surprise. Tap the little refresh arrow beside it to check
+        again. Your clock-in goes to your supervisor for approval.</p></li>
       <li><h4>Breaks</h4><p>While you're on the clock, <span class="btn-name">Start break</span> and
         <span class="btn-name">End break</span> sit under the button.</p></li>
       <li><h4>Tap to Clock Out</h4><p>A summary shows your hours. Tap <span class="btn-name">Clock out now</span>.</p></li>
@@ -615,10 +620,13 @@
       claimed by you — it isn't created from your clock times.</p>
     <ol class="steps">
       <li><h4>Fill it in</h4><p>Project, date, start and end time, and what the extra work was for.</p></li>
-      <li><h4>Add a before photo</h4><p>Required — a photo from before the work started. The form shows the rate it'll
-        be paid at (normal day, rest day or public holiday). If your company banks overtime as time off, it says so.</p></li>
-      <li><h4>Attach the after photo</h4><p>When the work's done, open the overtime and <span class="btn-name">Attach
-        after</span>. It can't be approved without one.</p></li>
+      <li><h4>Add before-work photos or files</h4><p>Required — at least one photo or PDF from before the work started.
+        Choose several at once or <em>Add more</em>, up to 10 files of 8 MB each; the small × beside a file takes it off.
+        The form shows the rate it'll be paid at (normal day, rest day or public holiday). If your company banks
+        overtime as time off, it says so. Before files can't be changed after you submit.</p></li>
+      <li><h4>Attach the after-work files</h4><p>When the work's done, open the overtime and <span class="btn-name">Attach
+        after</span> (then <span class="btn-name">Add more</span> for extras). It can't be approved without at least one.
+        While it's still pending you can remove a file with the ×, and confirm.</p></li>
     </ol>
     <p>Filter your list by Pending, Approved, Rejected or Cancelled. A rejected one shows the reviewer's note.</p>
     
@@ -658,7 +666,14 @@
     </div>
     <h3>Changing your mind</h3>
     <p>While it's still pending, open it and tap <span class="btn-name">Cancel</span> — then apply again with the right
-      dates. Once it's approved, ask HR.</p>
+      dates.</p>
+    <p>Once it's approved, and hasn't started yet, tap <span class="btn-name">Request cancellation</span>. Add a reason if
+      you like and tap <span class="btn-name">Send request</span> (or <span class="btn-name">Keep my leave</span> to back
+      out). Your approver reviews it like the original request. Your leave stays booked, and its days stay taken, until
+      they agree — then it's cancelled and the days go back into your balance. The leave shows a
+      <em>Cancellation requested</em> tag meanwhile; change your mind and tap <span class="btn-name">Withdraw request</span>.
+      If they say no you'll see <em>Cancellation declined</em>, and the leave goes ahead. Leave that has already started
+      can't be cancelled here — ask HR.</p>
     
     <figure class="shot" data-place="Leave">
       <div class="shot-grid" data-orient="phone">
@@ -748,6 +763,7 @@
     <ul>
       <li><span class="btn-name">View breakdown</span> — earnings, deductions and every line item.</li>
       <li><span class="btn-name">PDF</span> — download it.</li>
+      <li><span class="btn-name">TP1</span> — download your Borang PCB/TP1, the tax reliefs you've claimed for that month.</li>
       <li>Your latest payslip is also on the Dashboard. Your company may email it to you as well.</li>
     </ul>
     
@@ -770,13 +786,17 @@
     <div class="topic-body">
     <p class="topic-lede">All in the <strong>⋮</strong> menu at the top.</p>
     <ul>
-      <li><strong>Change password</strong> — signs you out of every device afterwards.</li>
+      <li><strong>Change password</strong> — signs you out of every device afterwards. Not shown if you signed in
+        through Altomate — your password is managed there.</li>
       <li><strong>Notifications</strong> — <span class="btn-name">Enable push notifications</span> to hear about approvals
         and decisions even when the app is closed. You're also asked once, the first time you sign in.</li>
+      <li><strong>What's new</strong> — what we've added or changed lately, newest first. A dot shows on the ⋮ menu
+        until you've read the latest.</li>
+      <li><strong>Guide</strong> — opens this guide in a new tab.</li>
       <li><strong>Switch company</strong> — if you work for more than one company in the group, pick another here. On a
         computer it's the company name at the top instead.</li>
       <li><strong>Launch Appraisify</strong> — opens your company's appraisal app, already signed in.</li>
-      <li><strong>Log out</strong>.</li>
+      <li><strong>Log out</strong>. (Not shown if you signed in through Altomate — sign out there.)</li>
     </ul>
     </div>
   </details>
@@ -804,10 +824,16 @@
       <li><strong>Several at once:</strong> tap <span class="btn-name">Select</span>, pick them (or <em>Select all</em>),
         and approve together. Rejections are always one at a time.</li>
       <li>A claim over its spend limit has to be approved on its own.</li>
-      <li>Overtime can only be approved once the after photo is attached.</li>
+      <li>Overtime can only be approved once an after-work photo or file is attached. You can open every before and
+        after file from the request.</li>
       <li>For attendance, you see each shift with its location (on-site or off-site), any note and photo, and any
         corrected clock-out time requested.</li>
       <li>Leave shows who else is off in the same period.</li>
+      <li><strong>Cancellation requests</strong> — when someone asks to cancel approved leave, it appears in
+        <strong>Leave → Approvals</strong> tagged <em>Cancellation request</em>, with their reason and the approval trail.
+        The buttons are <span class="btn-name">Approve cancellation</span> and <span class="btn-name">Decline</span>
+        (a reason is required, so they know why the leave still stands). These are decided one at a time, not with
+        <em>Select</em>, and they count in the red badge on Leave.</li>
     </ul>
     <p>If your company has more than one level of approval, your approval passes the request to the next level. If
       something isn't yours to decide, the row says who it's with.</p>
@@ -875,7 +901,7 @@
 
   </main>
 </div>
-<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of September 2026.</footer></div>
+<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of October 2026.</footer></div>
 <script>
 (function(){
   var topics = Array.prototype.slice.call(document.querySelectorAll('details.topic'));

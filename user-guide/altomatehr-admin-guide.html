@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 791d224
+  user-guide-covered-up-to: 4c5e254
 -->
 <html lang="en">
 <head>
@@ -344,7 +344,7 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th></th><th>Owner</th><th>Admin</th></tr></thead>
       <tbody>
-        <tr><td>Everything in the admin portal</td><td class="yes">Yes</td><td>Yes, unless the owner narrows it</td></tr>
+        <tr><td>Everything in the admin portal</td><td class="yes">Yes</td><td>Yes, unless the owner narrows it — a page an admin hasn't been given doesn't appear in their sidebar</td></tr>
         <tr><td>System Settings → Admins (add admins, choose what they see)</td><td class="yes">Yes</td><td class="no">No</td></tr>
         <tr><td>Set another person's password</td><td class="yes">Yes</td><td>Yes — except an owner's</td></tr>
       </tbody>
@@ -362,7 +362,9 @@
       <li><strong>Forgot your password?</strong> — enter your work email, and a <strong>6-digit code</strong> is
         emailed to you. Enter it with a new password (at least 8 characters).</li>
       <li><strong>Coming from Altomate?</strong> — the "open altomate HR" button signs you straight in. If that link
-        has expired or was already used, the sign-in page says so; go back and press it again.</li>
+        has expired or was already used, the sign-in page says so; go back and press it again. Because your account
+        is managed in Altomate, <span class="btn-name">New company</span> and <span class="btn-name">Log out</span>
+        aren't shown here — sign out from Altomate.</li>
       <li>The first time, you're asked to <span class="btn-name">Enable</span> notifications — say yes if you want
         to hear about approvals and requests as they happen.</li>
     </ul>
@@ -384,8 +386,9 @@
       <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
-      <li>The ⋮ menu — push notifications, <span class="btn-name">Launch Appraisify</span>, and
-        <span class="btn-name">Log out</span></li>
+      <li>The ⋮ menu — push notifications, <span class="btn-name">What's new</span> (our release notes, with a dot on
+        the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
+        <span class="btn-name">Launch Appraisify</span>, and <span class="btn-name">Log out</span></li>
     </ol>
     
     <figure class="shot" data-place="Layout">
@@ -454,7 +457,9 @@
         <p>The chart of accounts, in two tabs:</p>
         <ul>
           <li><strong>Expenses</strong> — what a claim is coded to. Each can be <em>Selectable for claims</em>,
-            carry a <strong>spend limit</strong>, and <em>Allow mileage</em> at its own rate.</li>
+            carry a <strong>spend limit</strong>, and <em>Allow mileage</em> at its own rate. A <strong>Type</strong>
+            column and a row of filters — <em>All</em>, <em>Depreciation</em>, <em>Direct Costs</em>,
+            <em>Expense</em>, <em>Overhead</em> — match how Xero groups them; only the types you actually have are shown.</li>
           <li><strong>Bank accounts</strong> — what a company-paid claim was paid <em>from</em>. Tick
             <strong>Offer for company-paid claims</strong> on the ones employees should be able to pick.</li>
         </ul>
@@ -478,9 +483,14 @@
       <li><h4>Policies</h4>
         <p>Reusable rules you assign to people instead of setting each one individually: which modules they
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
-          overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default.</p></li>
+          overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
+          <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
+          choose another.</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
-        <p>Add admins and choose what each one can see — full access, or only the modules you tick.</p></li>
+        <p>Add admins and choose what each one can see — full access, or only the modules you tick
+          (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Activity
+          log). Anything you leave out disappears from that admin's sidebar and they can't open it. Owners are listed
+          too, marked <em>Owner · full access</em> — an owner's access can't be restricted.</p></li>
     </ol>
     
     <figure class="shot" data-place="System Settings">
@@ -582,14 +592,34 @@
     </ul>
     <h3>Adding people</h3>
     <ul>
-      <li><span class="btn-name">Add employee</span> — name, employee ID, job title, join date, email, date of birth,
-        role and policy. Their <strong>starting password</strong> is their email followed by their birth month and
-        day (e.g. <code>ali@company.com1123</code>), or one you type. Tick <em>Send a welcome email</em> to have it
-        sent to them.</li>
-      <li><span class="btn-name">Import people</span> — download the template (or export the current list), fill it
-        in, upload it back. New passwords are shown once — copy them then.</li>
-      <li><strong>Payroll details in bulk</strong> — export everyone's statutory and pay details, edit the
-        spreadsheet, upload it. Blank cells keep what's already there.</li>
+      <li><span class="btn-name">Add employee</span> — name, employee ID (required), job title, join date, email, date
+        of birth, role and policy. The policy starts on your default one. Their <strong>starting password</strong> is
+        their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
+        Tick <em>Send a welcome email</em> to have it sent to them.</li>
+      <li><span class="btn-name">Import</span> — one spreadsheet to add new people <em>or</em> update everyone at once,
+        payroll, bank and statutory details included.
+        <ol>
+          <li><strong>Step 1</strong> — <span class="btn-name">Blank template</span> for new hires, or
+            <span class="btn-name">Export current</span> to update people already here. The file's
+            <strong>READ ME</strong> sheet explains every column.</li>
+          <li><strong>Step 2</strong> — choose what a blank cell does: <em>Keep existing values</em> (the safe default —
+            a partly filled file can't wipe anything) or <em>Erase existing values</em> (use only when the file is the
+            full, up-to-date record; you're asked to confirm, and Name, Role, Employee No, Salary Type and EPF/EIS can't
+            be erased).</li>
+          <li><strong>Step 3</strong> — upload it. An email already in the company updates that person. Rows that
+            were imported but need a look — for example a nationality it didn't recognise, kept as typed — are listed
+            as warnings. New passwords are shown once — copy them then.</li>
+        </ol></li>
+      <li><span class="btn-name">Export</span> — <strong>Export employee details</strong> as Excel or PDF. Choose
+        <em>All fields</em> or <em>Choose fields</em>, and tick <em>Include archived employees</em> if you want them.
+        A PDF page fits about a handful of columns, so use Excel for a wide export.</li>
+      <li><span class="btn-name">Salary adjustments</span> — shown only if your access includes Payroll. A
+        pay round for many people at once. <span class="btn-name">Download template</span> (everyone with their current
+        salary), fill in <em>New Salary</em> — and optionally Effective Date, Reason and Notes — only for people whose
+        pay is changing, then upload it. A new salary applies straight away, so the effective date can be today or
+        earlier, not later. It's all or nothing: if any row has a problem, nothing is saved and the rows are listed.
+        Each change goes into the person's salary history, and draft payroll runs are marked for
+        a re-run.</li>
     </ul>
     
     <figure class="shot" data-place="Employees">
@@ -607,12 +637,14 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
       <tbody>
-        <tr><td><strong>Personal</strong></td><td>Contact, identity, PR / tax resident / OKU, address, emergency contact,
-          spouse, children</td></tr>
-        <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate, fixed allowances and deductions, join
-          date, previous employment this year (TP3), and <strong>Archive</strong> — last day and reason</td></tr>
-        <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, <strong>Bank / payout</strong>,
-          and the <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
+        <tr><td><strong>Personal</strong></td><td>Contact, identity (nationality is picked from a list), PR / tax resident /
+          OKU, address, emergency contact, spouse, children</td></tr>
+        <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
+          fixed allowances and deductions, join date, <strong>employment status</strong> and contract end date,
+          previous employment this year (TP3), and <strong>Archive</strong> — last day and reason</td></tr>
+        <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, the
+          <strong>Special tax rate (15%)</strong>, <strong>Bank / payout</strong>, and the
+          <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
         <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, and which projects,
           teams and approval level they sit in</td></tr>
         <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates</td></tr>
@@ -624,6 +656,31 @@
     </div>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
+    <h3>Changing a salary</h3>
+    <p>Change the salary on the Employment tab and press save, and you're asked <strong>Why is the salary
+      changing?</strong></p>
+    <ul>
+      <li><strong>Typo correction</strong> — the old figure was a mistake. It's fixed, and nothing is added to the history.</li>
+      <li><strong>Salary adjustment</strong> — a raise, promotion or restructure. Pick the <strong>Effective from</strong>
+        date (today or earlier — the new salary applies straight away), a <strong>Reason</strong> (Raise, Promotion,
+        Demotion, Restructure or Other) and optional notes, then <span class="btn-name">Save salary</span>. A date inside
+        a month that's already on a payroll run is flagged on that run.</li>
+    </ul>
+    <p><span class="btn-name">Salary history</span>, under the salary, lists every real change with its date, reason and
+      the old and new figure.</p>
+    <h3>Other things worth knowing on the record</h3>
+    <ul>
+      <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
+        taxed as a resident.</li>
+      <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
+        the Personal tab, since for most employees it's the same.</li>
+      <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
+        for each tax-exempt allowance or TP1 relief the previous employer already gave this year, with the amount. It
+        uses up that item's yearly limit here.</li>
+      <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
+        or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
+        them PCB goes back to the normal resident rates.</li>
+    </ul>
     
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
@@ -648,9 +705,11 @@
     <p class="topic-lede"><strong>Company/Employee → Company Structure</strong> decides who approves what. Get this
       right and every request goes to the right person automatically.</p>
     <ol class="steps">
-      <li><h4>Pick a project, then a team</h4><p>Or press <span class="btn-name">New</span> to create a team.</p></li>
-      <li><h4>Set the layers</h4><p>1 to 6 levels, each with a label — e.g. <em>Staff</em>, <em>Supervisor</em>,
-        <em>Manager</em>.</p></li>
+      <li><h4>Pick a project, then a team</h4><p>Or press <span class="btn-name">New</span> to create a team — it's
+        created in the project you've selected. Deleting a team asks you to confirm: its members are unassigned and
+        their claims and leave stop routing through it.</p></li>
+      <li><h4>Set the layers</h4><p>1 to 6 levels (type a number in the <strong>Layers</strong> box), each with a
+        label — e.g. <em>Staff</em>, <em>Supervisor</em>, <em>Manager</em>.</p></li>
       <li><h4>Tick who approves each module</h4><p>For Claims, OT, Leave and Attendance, tick which layers must
         approve. A request climbs from the person's own level up through each ticked layer.</p></li>
       <li><h4>Add members</h4><p>Add each employee at their level. People with the Employee role go in the bottom
@@ -718,8 +777,8 @@
     <p>A card per person. Open one for their year at a glance — a heatmap of on-time, late, absent and leave days
       — plus hours worked, recent attendance, and PDF exports.</p>
     <h3>Overtime</h3>
-    <p>Every overtime submission with its before and after photos, filterable by status. Read-only — supervisors
-      approve overtime from their own queue.</p>
+    <p>Every overtime submission with its before-work and after-work photos or PDFs (an employee can attach up to ten
+      of each), filterable by status. Read-only — supervisors approve overtime from their own queue.</p>
     <h3>Shifts</h3>
     <p>Define shifts per project (e.g. Day 8:00–17:00), with working days and unpaid break minutes. Whether someone
       is late, and how many hours they were expected to work, come from their shift.</p>
@@ -789,13 +848,23 @@
     <ul>
       <li><strong>Overview</strong> — pending approvals, who's on leave today, what's been approved this year, and
         days used by type.</li>
-      <li><strong>History</strong> — every application, filtered by person, type, dates and status.</li>
+      <li><strong>History</strong> — every application, filtered by person, type, dates and status. An approved leave
+        an employee has asked to cancel shows a <em>Cancellation requested</em> tag (or <em>Cancellation declined</em>
+        if their approver said no).</li>
       <li><strong>Balances</strong> — everyone's remaining days per leave type. Open a person to
         <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
         entitlement, or export their leave report.</li>
       <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid), and for Annual Leave:
         lump sum or pro-rated, and carry-forward with its expiry month and maximum days.</li>
     </ul>
+    <h3>Cancelling someone's leave</h3>
+    <p>Open an application in <strong>History</strong> and press <span class="btn-name">Cancel this leave</span> — it works
+      on a pending request or on approved leave. Add a <strong>Reason</strong> if you like (the employee sees it), then
+      <span class="btn-name">Cancel leave</span> (or <span class="btn-name">Keep it</span> to back out). Approved days go
+      back into their balance and they're notified; it can't be undone, so they'd need to apply again. If they'd already
+      asked to cancel, cancelling here completes it at once. Cancelling approved <em>unpaid</em> leave marks any open
+      payroll draft for those dates for a re-run; a payroll already submitted isn't changed. The cancellation is recorded
+      in the <a href="#audit">Activity Log</a>.</p>
     <p><span class="btn-name">Import</span> brings in entitlements from a spreadsheet. Year rollover and monthly accrual
       run by themselves; the buttons under <em>Maintenance</em> are there if you need to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
@@ -828,7 +897,8 @@
     <ol class="steps">
       <li><h4>Create the draft</h4>
         <p><span class="btn-name">Create draft</span> — pick the month and year, and which policies and employees to
-          include. Only people whose records are complete can be included.</p></li>
+          include. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
+          owners and admins aren't.</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
@@ -836,8 +906,11 @@
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
           or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
-          approved claims waiting to be paid — add them to this run. The <strong>Needs attention</strong> tab lists
-          anyone taking home nothing, missing fields the statutory files need, and anyone left out.</p></li>
+          approved claims waiting to be paid — add them to this run. Unpaid leave isn't offered as an adjustment — it's
+          deducted automatically from approved unpaid leave. The <strong>Needs attention</strong> tab lists anyone
+          whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
+          out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
+          watermarked <strong>DRAFT</strong>.</p></li>
       <li><h4>Re-run if anything changed</h4>
         <p>After an adjustment, just press <span class="btn-name">Re-run payroll</span>. Adjustments carry over; the
           payslip lines are rebuilt from them.</p></li>
@@ -860,11 +933,15 @@
     <div class="note stop"><span class="nt">What stops a run being sent</span>
       <ul>
         <li>It's stale — re-run it.</li>
-        <li>Someone would take home zero or less.</li>
+        <li>Someone's net pay would be negative — their deductions are more than their pay. (RM 0.00 is allowed, for
+          example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
         <li>A required employer or employee field is missing.</li>
         <li>The previous month hasn't been filed yet — months are filed in order.</li>
       </ul>
     </div>
+    <p>Once a run is approved, a <strong>LHDN payment receipts</strong> card appears on it. Enter the receipt number and
+      date LHDN issued when you paid that month's PCB (MTD) — and CP38, if you had any — and press
+      <span class="btn-name">Save receipts</span>. They're printed on each employee's PCB 2(II) statement; no figure changes.</p>
     <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
       months that were worked out from it go back to draft too — the app lists them before you confirm.</p>
     
@@ -908,8 +985,10 @@
       <tbody>
         <tr><td>Reports</td><td>Payroll Summary, Payment Schedule, PCB Calculation Details</td><td>Your records / approver</td></tr>
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
-        <tr><td></td><td>SOCSO + EIS Contribution TXT</td><td>PERKESO ASSIST</td></tr>
+        <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
+        <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
         <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB</td></tr>
+        <tr><td></td><td>TP1 / TP3 Claims List</td><td>Your records — everyone who claimed reliefs on Borang PCB/TP1 this month, or declared a previous employer on TP3</td></tr>
         <tr><td>Payslips</td><td>Bulk payslips (a ZIP of PDFs), or <span class="btn-name">Email all</span> to each employee</td><td>Employees</td></tr>
         <tr><td>Bank</td><td>The bulk payment file for your payroll bank</td><td>Your bank's portal</td></tr>
       </tbody>
@@ -924,7 +1003,9 @@
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
       bank setting is missing or an employee's bank isn't recognised. If your payroll bank is “Other”, no bank file
       is produced.</p>
-    <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed.</p>
+    <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed. Each row also has
+      a button for that person's <strong>Borang PCB/TP1</strong> (the reliefs they claimed, this month and year to date).
+      <span class="btn-name">Email all</span> asks you to confirm first — payslips can't be recalled once sent.</p>
     
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
@@ -944,8 +1025,21 @@
     <p class="topic-lede"><strong>Payroll → Loans.</strong> Money lent to an employee, repaid from their pay.</p>
     <p><span class="btn-name">Record a loan</span> — the employee, the amount, and either <em>over a number of months</em> or
       <em>a fixed amount each month</em>, starting from the month you choose. Each payroll run deducts the instalment
-      by itself. The table shows what's outstanding and the repayment schedule. Once repayments have been taken,
-      the terms are locked.</p>
+      by itself. The table shows what's outstanding and the repayment schedule, with a warning under a loan if
+      repayments run past the employee's leaving date or loans together are over half their monthly salary.</p>
+    <p>Once repayments have been taken, the amount lent and the months already filed are locked — but you can still change
+      what's left:</p>
+    <ul>
+      <li><span class="btn-name">Re-plan</span> — spread the balance <em>over a number of months</em>, as <em>a fixed
+        amount each month</em>, <em>set each month</em>, or <em>settle it all next payroll</em>. Months already submitted
+        or awaiting approval can't change; the page names the earliest month that can.</li>
+      <li><span class="btn-name">Pause</span> — <em>skip a number of months</em>, or pause <em>until I resume it</em>,
+        from the month you pick. Nothing is forgiven: what was due moves into the next months that aren't skipped, so the
+        loan ends later. Skipped months show as “skipped” in the schedule.</li>
+      <li><span class="btn-name">Resume</span> — on a paused loan, choose the month to start deducting again.</li>
+      <li><span class="btn-name">Cancel</span> — stops the remaining deductions.</li>
+    </ul>
+    <p>A loan can only be recorded for someone who has saved payroll details.</p>
     
     <figure class="shot" data-place="Loans">
       <div class="shot-grid" data-orient="screen">
@@ -966,13 +1060,20 @@
     <div class="topic-body">
     <p class="topic-lede"><strong>Payroll → Annual forms.</strong> Pick the filing year — only approved runs count.</p>
     <ul>
-      <li><strong>Form EA (bulk)</strong> — every employee's EA, to hand out by 28 February.</li>
+      <li><strong>Form EA (bulk)</strong> — every employee's EA in LHDN's C.P.8A layout, one page each, to hand out by
+        28 February.</li>
+      <li><strong>PCB 2(II) (bulk)</strong> — each employee's statement of PCB deducted, in LHDN's own layout, with the
+        receipt numbers you saved on each month. Unlike the returns it doesn't wait for the whole year, so you can
+        download it any time.</li>
       <li><strong>Form E + CP8D</strong> — the employer's return and its employee list.</li>
-      <li><strong>LHDN e-CP8D upload</strong> — the employer master (M) and employee particulars (P) files.</li>
+      <li><strong>LHDN e-CP8D upload</strong> — in LHDN's current 22-field layout. LHDN's e-CP8D takes the employee file
+        (P) only; the employer master (M) is there for your records.</li>
       <li><strong>CP8D converter</strong> — for a year you didn't run in AltomateHR: type the figures in and download
-        the upload files.</li>
+        the upload files. Each row also needs a <strong>Status</strong>, a <strong>Retire / contract end</strong> date
+        (or the date they left) and their <strong>PERKESO</strong> amount (SOCSO and EIS together).</li>
     </ul>
-    <p>CP8D needs your LHDN employer number — the page warns you if it's missing.</p>
+    <p>CP8D needs your LHDN employer number — the page warns you if it's missing. Each employee's status and contract
+      end date come from the Employment tab of their record; if left blank they count as permanent, with retirement at 60.</p>
     
     <figure class="shot" data-place="Annual forms">
       <div class="shot-grid" data-orient="screen">
@@ -991,7 +1092,9 @@
     <div class="topic-body">
     <p class="topic-lede">In an employee's record, <strong>Statutory → LHDN Forms</strong>: pick the year and download
       <strong>PCB 2(II)</strong>, <strong>CP22</strong> (new employee), <strong>CP22A</strong> (leaving),
-      <strong>CP21</strong> (leaving the country) or <strong>PCB/TP3</strong>.</p>
+      <strong>CP21</strong> (leaving the country) or <strong>PCB/TP3</strong>. CP22A and CP21 open as soon as you've set
+      their <strong>Last day</strong> (Employment tab → Archive) — you don't have to archive them first — and show a
+      deadline badge counting down to 30 days before that date.</p>
     </div>
   </details>
 
@@ -1002,7 +1105,8 @@
       correctly instead of starting from zero.</p>
     <p>At the bottom of <strong>Payroll runs</strong>, <strong>Import earlier payroll</strong>: download the template for
       the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
-      never recalculated and count toward everyone's year-to-date.</p>
+      never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
+      by name and check their figures.</p>
     <p>For someone who joined from another employer this year, fill in <strong>Previous employment (TP3)</strong> on the
       Employment tab of their record.</p>
     </div>
@@ -1019,9 +1123,14 @@
       <li><strong>Connect</strong> — sign in to Xero and choose <em>only this company's</em> organisation.</li>
       <li><strong>Chart of accounts</strong> — Xero owns it while connected; <span class="btn-name">Sync from Xero</span> in
         Accounts. Accounts no longer in Xero are archived.</li>
-      <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.</li>
+      <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.
+        Once you choose a category, it <em>is</em> the project list: projects made by hand, or not in that category, are
+        hidden from the pickers (clearing the category brings them back).</li>
       <li><strong>Claims</strong> — approved claims become a bill (own money) or a spend-money transaction (company money).</li>
-      <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on.</li>
+      <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on. In
+        <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables
+        (EPF, SOCSO, EIS, PCB, net salary) offer liability accounts — sync from Xero first if a list is empty. A saved
+        account of the wrong type is flagged so you can pick again.</li>
       <li><strong>Reconnect</strong> if the card says the connection has stopped working; <strong>Disconnect</strong>
         removes AltomateHR from that Xero organisation.</li>
     </ul>
@@ -1042,7 +1151,9 @@
     <summary><h2>Notifications &amp; the app</h2></summary>
     <div class="topic-body">
     <p class="topic-lede">The bell shows requests and decisions as they happen. Turn on push notifications from the
-      ⋮ menu to get them on your phone or computer even when AltomateHR isn't open.</p>
+      ⋮ menu to get them on your phone or computer even when AltomateHR isn't open. The same menu has
+      <span class="btn-name">What's new</span> for our release notes and <span class="btn-name">Guide</span> to open this
+      guide.</p>
     <p>AltomateHR runs in the browser. On a phone, add it to your home screen (iPhone: Share → Add to Home Screen;
       Android: menu → Install app) and it opens like an app.</p>
     </div>
@@ -1051,8 +1162,9 @@
   <details class="topic" id="audit" open>
     <summary><h2>Activity Log</h2></summary>
     <div class="topic-body">
-    <p class="topic-lede">Who did what, and when — sign-ins, settings, people, teams, accounts, projects and Xero.
-      Open a row to see what changed, before and after.</p>
+    <p class="topic-lede">Who did what, and when — sign-ins, settings, people, teams, accounts, projects and Xero, and
+      any leave that was cancelled (filter by <em>Leave cancellations</em>). Open a row to see what changed, before and
+      after.</p>
     
     <figure class="shot" data-place="Activity Log">
       <div class="shot-grid" data-orient="screen">
@@ -1076,8 +1188,8 @@
         queue in the employee app. The admin portal shows who each request is waiting on — if it says “Nobody can
         approve”, add an approver to that person's team.</p></div></details>
     <details class="qa"><summary>Why can't I send the payroll run for approval?</summary>
-      <div class="body"><p>The message beside the button says why: the run needs re-running, someone would take home
-        nothing, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
+      <div class="body"><p>The message beside the button says why: the run needs re-running, someone's net pay would be
+        negative, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record, then download again.</p></div></details>
@@ -1092,7 +1204,7 @@
 
   </main>
 </div>
-<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of September 2026.</footer></div>
+<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of October 2026.</footer></div>
 <script>
 (function(){
   var topics = Array.prototype.slice.call(document.querySelectorAll('details.topic'));
