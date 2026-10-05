@@ -54,7 +54,19 @@ SELECT
   COALESCE(pp.paymentMethod, 'BANK_TRANSFER'), pp.bankName, pp.bankAccountHolderName,
   pp.bankAccountNumber,
   COALESCE(pp.salaryType, 'MONTHLY'), pp.monthlySalary, pp.hourlyRate, pp.fixedAllowances,
-  pp.payrollPolicy, pp.payrollCycle, pp.leaveEntitlement, pp.payrollDocuments,
+  pp.payrollPolicy, pp.payrollCycle, pp.leaveEntitlement,
+  -- v1 camelCase {id,url,name,...} -> v2 PascalCase {Id,Name,...,StoredFileName}.
+  -- EmployeeDocumentService deserialises case-SENSITIVELY, so a verbatim copy binds
+  -- every field empty (this reverted 2 fixed rows on the 2026-09-24 re-sync).
+  -- The files themselves: ../prod-topup/04-copy-files.sh.
+  (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+            'Id', j.id, 'Name', j.name, 'MimeType', j.mimeType, 'SizeBytes', j.sizeBytes,
+            'UploadedAt', j.uploadedAt,
+            'StoredFileName', REPLACE(SUBSTRING_INDEX(j.url, '/', -1), '.jpeg', '.jpg')))
+     FROM JSON_TABLE(pp.payrollDocuments, '$[*]' COLUMNS (
+            id VARCHAR(64) PATH '$.id', name VARCHAR(260) PATH '$.name',
+            mimeType VARCHAR(100) PATH '$.mimeType', sizeBytes BIGINT PATH '$.sizeBytes',
+            uploadedAt VARCHAR(40) PATH '$.uploadedAt', url VARCHAR(600) PATH '$.url')) j),
   COALESCE(pp.isArchived, 0), pp.archivedAt, pp.archiveReason, pp.temporaryReviewDate,
   ep.createdAt, UTC_TIMESTAMP()
 FROM hr_prod.EmployeeOrganization e
