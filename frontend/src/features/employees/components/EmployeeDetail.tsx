@@ -85,6 +85,7 @@ import {
   pickEpfBranch,
   recommendSocsoScheme,
   socsoSchemeNeedsManualChoice,
+  workPermitExpiryHint,
 } from "../lib/statutory";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
@@ -945,6 +946,30 @@ export function EmployeeDetail({
                       }))}
                     />
                   </Field>
+                  {/* Only for a foreign worker — a citizen or PR has no work permit. */}
+                  {profile.nationality && isForeignWorker ? (
+                    <>
+                      <Field
+                        label="Work permit number"
+                        hint="The Immigration work permit (PLKS) — not the SSFW number."
+                      >
+                        <Text
+                          value={profile.workPermitNumber}
+                          onChange={(v) => set("workPermitNumber", v)}
+                        />
+                      </Field>
+                      <Field
+                        label="Work permit expiry"
+                        hint={workPermitExpiryHint(profile.workPermitExpiry)}
+                      >
+                        <Text
+                          type="date"
+                          value={profile.workPermitExpiry}
+                          onChange={(v) => set("workPermitExpiry", v)}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
                   <Field label="Race">
                     <Text value={profile.race} onChange={(v) => set("race", v)} />
                   </Field>

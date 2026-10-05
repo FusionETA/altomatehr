@@ -95,6 +95,10 @@ public static class EmployeeImportSheet
         (new("isResident", "Tax Resident", false, "Yes", ["resident", "is resident"]),
             "Yes or No."),
         (new("isOku", "OKU", false, "No", ["disabled", "is oku"]), "Yes or No."),
+        (new("workPermitNumber", "Work Permit No", false, "", ["work permit", "plks", "plks no"]),
+            "Foreign workers: the Immigration work permit (PLKS) — not the SSFW number."),
+        (new("workPermitExpiry", "Work Permit Expiry", false, "", ["permit expiry", "plks expiry"]),
+            "YYYY-MM-DD. Foreign workers only."),
 
         // ---- Contact & address ----
         (new("phone", "Phone", false, "012-345 6789", ["mobile", "phone no"]), "Free text."),
@@ -168,7 +172,8 @@ public static class EmployeeImportSheet
     public static readonly IReadOnlyList<(string Group, string[] Keys)> Groups =
     [
         ("Employee", [EmailKey, NameKey, RoleKey, EmployeeNumberKey, JobTitleKey, JoinDateKey, DateOfBirthKey, PolicyKey, ShiftKey]),
-        ("Personal", ["idNumber", "idType", "nationality", "gender", "race", "maritalStatus", "hasPr", "isResident", "isOku"]),
+        ("Personal", ["idNumber", "idType", "nationality", "gender", "race", "maritalStatus", "hasPr", "isResident", "isOku",
+            "workPermitNumber", "workPermitExpiry"]),
         ("Contact & address", ["phone", "alternateEmail", "addressLine1", "addressLine2", "city", "postcode", "state"]),
         ("Emergency contact", ["emergencyContactName", "emergencyContactPhone", "emergencyContactRelation"]),
         ("Employment", ["leaveDate", "department", "location", "workSchedule"]),

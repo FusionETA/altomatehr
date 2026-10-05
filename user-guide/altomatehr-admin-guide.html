@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 21509f7
+  user-guide-covered-up-to: 7ae4fe4
 -->
 <html lang="en">
 <head>
@@ -423,6 +423,9 @@
     <ul>
       <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
         Accounts and Projects.</li>
+      <li><strong>Work permits</strong> — shown first, and only when it applies: foreign workers whose work permit
+        has expired or runs out within 60 days, soonest first, with the permit number and how many days are left
+        (or how long ago it expired). With nothing to renew, the card isn't there.</li>
       <li><strong>Project claims</strong> — this month's spend per project. <span class="badge optional">Claims</span></li>
       <li><strong>Attendance health</strong> — on-time rate per project over 30 days, with late, missing and
         on-leave counts. <span class="badge optional">Attendance</span></li>
@@ -643,7 +646,8 @@
       <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
       <tbody>
         <tr><td><strong>Personal</strong></td><td>Contact, identity (nationality is picked from a list), PR / tax resident /
-          OKU, address, emergency contact, spouse, children</td></tr>
+          OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
+          the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
           fixed allowances and deductions, join date, <strong>employment status</strong> and contract end date,
           previous employment this year (TP3), and <strong>Archive</strong> — last day and reason</td></tr>
@@ -655,6 +659,26 @@
         <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates</td></tr>
       </tbody>
     </table></div>
+    <h3>Work permits</h3>
+    <p>For a foreign worker, keep their Immigration work permit on file so a renewal isn't missed.</p>
+    <ol class="steps">
+      <li><h4>Set the nationality first</h4>
+        <p>Open the person, go to <strong>Personal</strong> and, under <strong>Identity</strong>, pick their
+          <strong>Nationality</strong>. The work permit fields appear only for someone who isn't Malaysian and has no
+          PR — a citizen or PR has no permit to renew.</p></li>
+      <li><h4>Fill in the permit</h4>
+        <p>Type the <strong>Work permit number</strong> (the Immigration work permit, not the SSFW number) and pick the
+          <strong>Work permit expiry</strong> date, then save. Under the date, a line tells you where it stands:
+          <em>Valid until</em> a date, <em>Expires in N days</em> once it's within 60 days, <em>Expires today</em>, or
+          <em>Expired</em>.</p></li>
+      <li><h4>Watch the Executive Overview</h4>
+        <p>Once a permit is expired or within 60 days of expiring, the person is listed on the
+          <strong>Work permits</strong> card of the <a href="#overview">Executive Overview</a>. Archived employees and
+          people who have already left aren't listed.</p></li>
+    </ol>
+    <p>The import spreadsheet has <strong>Work Permit No</strong> and <strong>Work Permit Expiry</strong> columns
+      (date as YYYY-MM-DD, foreign workers only), so permits can be filled in for many people at once with
+      <span class="btn-name">Import</span>.</p>
     <div class="note warn"><span class="nt">Pick the bank from the list</span>
       <p>Under Bank / payout, choose the employee's bank from the dropdown of Malaysian banks. The bank file refuses
         the <strong>whole run</strong> if anyone's bank isn't recognised — so a typo would stop everyone being paid.</p>

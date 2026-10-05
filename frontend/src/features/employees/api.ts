@@ -277,6 +277,9 @@ export type EmployeeProfile = {
   specialTaxTo: string | null;
   pcbBorneByEmployer: boolean;
   ssfwNumber: string | null;
+  /** A foreign worker's Immigration work permit (PLKS) — not the SSFW number. */
+  workPermitNumber: string | null;
+  workPermitExpiry: string | null;
 
   // Bank / payment
   paymentMethod: PaymentMethod;

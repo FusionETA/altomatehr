@@ -11,4 +11,8 @@ public interface IEmployeeProfileService
 
     // Upsert the profile. Null → not a member of this org (→ 404).
     Task<EmployeeProfileDto?> SaveAsync(string userId, EmployeeProfileDto dto);
+
+    // Every profile in the current org with a work-permit expiry on file, with
+    // what decides whether it still matters (nationality, PR, archived, left).
+    Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync();
 }

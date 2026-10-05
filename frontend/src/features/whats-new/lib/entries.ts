@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 21509f7
+// whats-new-covered-up-to: 7ae4fe4
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,19 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-05",
+    new: [
+      "Employee profile → Personal → Identity: work permit number and expiry for foreign workers, showing when it expires or that it has expired.",
+      'Executive Overview: a "Work permits" card lists foreign workers whose permit expired or expires within 60 days, soonest first.',
+    ],
+    improved: [
+      'Employee import/export spreadsheet: "Work Permit No" and "Work Permit Expiry" columns added to the Personal section.',
+    ],
+    fixed: [
+      'Employee profile: a nationality saved as "Malaysian." (with a full stop, e.g. from an import) is now shown as Malaysian, as payroll already treated it.',
+    ],
+  },
   {
     date: "2026-10-04",
     new: [

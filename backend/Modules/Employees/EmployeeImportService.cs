@@ -160,6 +160,8 @@ public class EmployeeImportService : IEmployeeImportService
                 ["hasPr"] = TabularSheet.Bool(p.HasPr),
                 ["isResident"] = TabularSheet.Bool(p.IsResident),
                 ["isOku"] = TabularSheet.Bool(p.IsOku),
+                ["workPermitNumber"] = p.WorkPermitNumber,
+                ["workPermitExpiry"] = TabularSheet.Date(p.WorkPermitExpiry),
                 ["phone"] = p.Phone,
                 ["alternateEmail"] = p.AlternateEmail,
                 ["addressLine1"] = p.AddressLine1,
@@ -454,6 +456,8 @@ public class EmployeeImportService : IEmployeeImportService
         c.Flag("hasPr", "Malaysian PR", false, v => p.HasPr = v);
         c.Flag("isResident", "Tax Resident", true, v => p.IsResident = v);
         c.Flag("isOku", "OKU", false, v => p.IsOku = v);
+        c.Text("workPermitNumber", 40, v => p.WorkPermitNumber = v);
+        c.Date("workPermitExpiry", v => p.WorkPermitExpiry = v);
 
         c.Text("phone", 40, v => p.Phone = v);
         c.Text("alternateEmail", 120, v => p.AlternateEmail = v);

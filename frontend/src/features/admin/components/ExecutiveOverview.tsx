@@ -8,6 +8,7 @@ import type {
   SlowOtApprover,
   StalePendingClaim,
   UpcomingClaimRun,
+  WorkPermitAlert,
 } from "../api";
 import { CARD, EYEBROW, SCROLL_LIST, TILE } from "../lib/dashboard-styles";
 import { CardHead, EmptyState, Stat } from "./DashboardCard";
@@ -27,6 +28,9 @@ export function ExecutiveOverview({ data }: { data: AdminOverview }) {
   const has = (m: string) => data.enabledModules.includes(m);
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/* An alert, not analytics: only there when a permit needs action, and
+          first so it isn't scrolled past. Most orgs have no foreign workers. */}
+      {data.workPermitAlerts?.length ? <WorkPermitsCard alerts={data.workPermitAlerts} /> : null}
       {has("claims") ? <ProjectClaimsCard projects={data.projectSpend} /> : null}
       {has("attendance") ? <AttendanceHealthCard projects={data.attendanceHealth} /> : null}
       {has("overtime") ? <SlowOtApproversCard approvers={data.slowOtApprovers} /> : null}
@@ -37,6 +41,47 @@ export function ExecutiveOverview({ data }: { data: AdminOverview }) {
         samples={data.overturnedSupervisors.samples}
       />
     </div>
+  );
+}
+
+// ─── Alert: work permits expiring ────────────────────────────────────────────
+
+function permitStatus(daysLeft: number): { text: string; className: string } {
+  if (daysLeft < 0) {
+    const ago = -daysLeft;
+    return { text: `Expired ${ago}d ago`, className: "text-destructive" };
+  }
+  if (daysLeft === 0) return { text: "Expires today", className: "text-destructive" };
+  return { text: `In ${daysLeft} day${daysLeft === 1 ? "" : "s"}`, className: "text-tertiary" };
+}
+
+function WorkPermitsCard({ alerts }: { alerts: WorkPermitAlert[] }) {
+  const expired = alerts.filter((a) => a.daysLeft < 0).length;
+  return (
+    <section className={CARD}>
+      <CardHead
+        title="Work permits"
+        meta={expired > 0 ? `${expired} expired` : "Next 60 days"}
+      />
+      <div className={`${SCROLL_LIST} space-y-3`}>
+        {alerts.map((a) => {
+          const status = permitStatus(a.daysLeft);
+          return (
+            <div key={a.employeeId} className={`flex items-center justify-between gap-3 ${TILE}`}>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-foreground">
+                  {a.employeeName || "Unnamed employee"}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {a.workPermitNumber ? `${a.workPermitNumber} · ` : ""}expires {shortDate(a.expiry)}
+                </p>
+              </div>
+              <p className={`shrink-0 text-sm font-black ${status.className}`}>{status.text}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

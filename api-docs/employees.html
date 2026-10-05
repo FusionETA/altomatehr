@@ -407,6 +407,8 @@
               <tr><td><code>incomeTaxNumber</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
               <tr><td><code>ssfwNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>workPermitNumber</code></td><td>string | null</td><td>Max 40 characters. A foreign worker's Immigration work permit (PLKS) number &mdash; a separate document from <code>ssfwNumber</code>.</td></tr>
+              <tr><td><code>workPermitExpiry</code></td><td>string (date) | null</td><td>When the work permit lapses. Stored date-only: any time part you send is dropped. <code>null</code> clears it. Meaningful for foreign workers only.</td></tr>
             </tbody>
           </table>
         </div>
@@ -502,6 +504,7 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
+              <tr><td><code>400</code></td><td>A field failed validation, e.g. <code>workPermitNumber</code> longer than 40 characters</td><td><code>{ "errors": { "WorkPermitNumber": ["…"] } }</code></td></tr>
               <tr><td><code>400</code></td><td><code>salaryChangeEffectiveDate</code> is in the future (and it's not a correction)</td><td><code>{ "error": "…" }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
@@ -805,6 +808,11 @@
           matching sheet column (see <code>GET /employees/export/fields</code> for the full,
           grouped list) — dates as <code>YYYY-MM-DD</code>, booleans as <code>Yes</code>/<code>No</code>,
           percentages as plain numbers, money tolerant of formatting like <code>"RM 5,000.00"</code>.
+          The work permit columns are <code>Work Permit No</code> (<code>workPermitNumber</code>,
+          max 40 characters) and <code>Work Permit Expiry</code> (<code>workPermitExpiry</code>,
+          <code>YYYY-MM-DD</code>); they sit in the "Personal" group, are optional, and &mdash;
+          unlike the salary, IC and bank columns &mdash; are in the file whether or not the key's
+          org grants Payroll access.
           Statutory/salary/bank columns are only in the file for a key whose org grants Payroll
           access; present in an uploaded file without that access, they're ignored (not an error).
         </p>
