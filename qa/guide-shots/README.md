@@ -9,9 +9,13 @@ agent (`.claude/agents/user-guide.md`) runs these; you can too.
 `ConnectionStrings:Default` in user-secrets points at the shared DigitalOcean
 database. `start-local-demo.sh` starts the backend with an explicit override to
 the local MySQL database `altomatehr_local` (demo data seeded, email, Gemini
-and Xero switched off). It reuses a backend already on `:5001` only if that
-process's environment shows the same localhost override. Otherwise it refuses.
-`setup.mjs` refuses any API that isn't localhost.
+and Xero switched off), and the frontend with `VITE_API_URL` pinned to
+`http://localhost:5001`. It reuses a process already on `:5001` or `:5173` only
+if that process's own environment shows it was started this way (same
+database, keys blanked, same API target). Otherwise it refuses and starts
+nothing. Stop it yourself first: a backend started by hand would still have the
+real email key. `stop-local-demo.sh` kills only the pids it recorded, checked
+against their start time. `setup.mjs` refuses any API that isn't localhost.
 
 ## Run
 
@@ -28,6 +32,14 @@ node check-guide.mjs            # every <img> in both guides loads
 Shots land in `.out/shots/<admin|employee>/<name>.png`, named as in
 `user-guide/shots/`. Look at each one before copying it across. A failed
 step leaves `.out/shots/debug-<name>.png`.
+
+## What the seed doesn't have
+
+Most screens work from the seed plus a `setup.mjs` step. Payroll screens don't:
+`payroll-run`, `payroll-downloads`, `annual-forms`, `payslip-breakdown` and the
+`loan` step need payroll runs (and a saved payroll profile for Evan). The seed
+doesn't create those. Create them in the local demo app first, or add a setup
+step for them.
 
 ## Adding a shot
 

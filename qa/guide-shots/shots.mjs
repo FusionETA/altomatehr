@@ -10,7 +10,7 @@
 // phone 327×708 @2 (654×1416). Each recipe is a function below — add one per
 // new screenshot, named after its file.
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 
 const FRONT = "http://localhost:5173";
 const PASSWORD = "password123"; // backend/Data/DbSeeder.cs
@@ -206,9 +206,16 @@ const admin = {
     await go(page, "leave");
     await clickText(page, "History");
     await page.getByText("Evan Employee").filter({ visible: true }).first().waitFor();
-    // The 7–8 Oct application approved by setup.mjs.
+    // The future leave `node setup.mjs leave` approved (its date is in .out/leave.json).
+    const saved = new URL("./.out/leave.json", import.meta.url);
+    if (!existsSync(saved)) throw new Error("run `node setup.mjs leave` first");
+    const start = new Date(JSON.parse(readFileSync(saved, "utf8")).startDate + "T00:00:00");
+    const d = start.getDate(), mon = start.toLocaleString("en-GB", { month: "short" });
+    const dd = String(d).padStart(2, "0"), mm = String(start.getMonth() + 1).padStart(2, "0");
+    // Cell texts run together ("Annual Leave07 Oct 2026"), so no \b: "not after a digit".
+    const when = new RegExp(`(^|\\D)(${dd}|${d}) ${mon}|${start.getFullYear()}-${mm}-${dd}`);
     const row = page.locator("tr, li, button, [role=row]").filter({ hasText: "Evan Employee" })
-      .filter({ hasText: /7 Oct|Oct 7|07\/10|2026-10-07/ }).first();
+      .filter({ hasText: when }).first();
     await row.click();
     await settle(page);
     await page.getByRole("button", { name: "Cancel this leave" }).click();
@@ -319,3 +326,4 @@ for (const [group, email, device, extra, steps] of [
 }
 await browser.close();
 if (failures.length) console.log("FAILED:\n  " + failures.join("\n  "));
+process.exit(failures.length ? 1 : 0);

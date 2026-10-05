@@ -78,8 +78,8 @@ teammates merge to main without running this — so:
    1. `cd qa/guide-shots && npm install` if `node_modules/` is missing.
    2. `./start-local-demo.sh`. It runs the backend on the **local** MySQL demo
       database with demo data seeded and email, Gemini and Xero off, plus the
-      frontend. If it refuses because something else is on `:5001`, **stop
-      there**. Never stop that process yourself, and never point anything at
+      frontend. If it refuses because something else is on `:5001` or
+      `:5173`, **stop there**. Never stop that process yourself, and never point anything at
       another database or a deployed site. Report it, and list the shots as
       "to retake" instead.
    3. If the screen needs data the seed doesn't have, run or add a step in

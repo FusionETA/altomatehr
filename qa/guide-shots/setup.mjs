@@ -7,7 +7,7 @@
 // Everything here is made-up demo data (the repo is public): demo sign-ins
 // from backend/Data/DbSeeder.cs, invented permit numbers, no real people.
 
-import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
 
 const API = "http://localhost:5001";
 const PASSWORD = "password123"; // backend/Data/DbSeeder.cs
@@ -67,7 +67,7 @@ function mytDate(n = 0) {
 async function profileIdOf(name) {
   const rows = (await call(admin, "GET", "/payroll/employees")).data ?? [];
   const row = rows.find((r) => r.name === name);
-  if (!row) throw new Error(`no payroll profile for ${name}`);
+  if (!row?.employeeProfileId) throw new Error(`no saved payroll profile for ${name} — save one on their Employment tab first`);
   return row.employeeProfileId;
 }
 
@@ -102,18 +102,44 @@ const steps = {
     }
   },
 
-  // Approve Evan's pending 7–8 Oct leave (approved, not started) — for the
-  // admin and employee leave-cancellation shots.
+  // Approve one of Evan's future leaves (approved, not started) — for the
+  // admin and employee leave-cancellation shots. Prefers the seeded lv-demo-5
+  // (dates are relative to the day the seed ran), else his next pending leave,
+  // else files a new one. Adds a leave when it has to.
+  // Writes its start date to .out/leave.json for the `leave-cancel` recipe.
   leave: async () => {
-    const mine = await call(evan, "GET", "/leave");
-    const app = mine.data.find((a) => a.startDate?.startsWith("2026-10-07") && a.status === "PENDING");
-    if (!app) { console.log("no pending 7 Oct leave", mine.data.map((a) => [a.startDate, a.status])); return; }
+    const today = mytDate();
+    const mine = (await call(evan, "GET", "/leave")).data ?? [];
+    // Future, and no cancellation already asked for (the `leave-request-cancel`
+    // recipe sends one, after which the admin's cancel button changes).
+    const future = (a) => (a.startDate ?? "") > today && !a.cancellationStatus;
+    rmSync(new URL("./.out/leave.json", import.meta.url), { force: true });
+    let app =
+      mine.find((a) => a.id === "lv-demo-5" && future(a) && ["PENDING", "APPROVED"].includes(a.status)) ??
+      mine.filter((a) => future(a) && a.status === "PENDING").sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+    // None left (each run of the cancellation recipes uses one up): Evan files
+    // a fresh two-day annual leave on the first free weekdays 3+ weeks out.
+    const leaveTypeId = mine.find((a) => a.id === "lv-demo-5")?.leaveTypeId ?? mine[0]?.leaveTypeId;
+    for (let n = 21; !app && leaveTypeId && n < 60; n++) {
+      const start = mytDate(n), end = mytDate(n + 1);
+      const dow = new Date(start + "T00:00:00Z").getUTCDay();
+      if (dow === 0 || dow === 5 || dow === 6) continue;   // Mon–Thu start, so both days are weekdays
+      const r = await call(evan, "POST", "/leave", {
+        leaveTypeId, startDate: `${start}T00:00:00`, endDate: `${end}T00:00:00`,
+        duration: "FULL_DAY", reason: "Cousin's wedding in Ipoh.",
+      });
+      if (r.status === 200 || r.status === 201) { app = r.data; console.log("filed leave", start, "→", end); }
+    }
+    if (!app) { console.log("couldn't find or file a future leave for Evan", mine.map((a) => [a.id, a.startDate, a.status])); process.exit(1); }
     for (const [who, token] of [["supervisor", sara], ["admin", admin]]) {
+      const now = (await call(evan, "GET", "/leave")).data.find((a) => a.id === app.id);
+      if (now.status === "APPROVED") break;
       const r = await call(token, "POST", `/leave/${app.id}/approve`);
       console.log(`approve as ${who}:`, r.status, r.data?.status ?? r.data?.message ?? "");
-      const now = (await call(evan, "GET", "/leave")).data.find((a) => a.id === app.id);
-      if (now.status === "APPROVED") { console.log("approved:", app.id); break; }
     }
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    writeFileSync(new URL("./.out/leave.json", import.meta.url), JSON.stringify({ id: app.id, startDate: app.startDate.slice(0, 10) }));
+    console.log("leave for the cancellation shots:", app.id, app.startDate.slice(0, 10));
   },
 
   // A loan for Evan that started in a filed month (Aug), paused from November.
