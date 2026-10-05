@@ -1,57 +1,78 @@
 name: Deploy
 
-# MANUAL for now — trigger by hand from the Actions tab ("Run workflow"). Tests run
-# first (below); deploy only proceeds if they pass. Once the DROPLET_* secrets are set
-# and you want auto-deploy on merge, add:
-#   push:
-#     branches: [main]
+# Ships main to production (hr.altomate.io) on the droplet.
+#
+# AUTOMATIC: runs when the CI workflow finishes successfully for a push to main —
+# i.e. every merged PR, once its tests pass. It reuses that CI run instead of
+# testing a second time, so a red CI never deploys.
+#
+# MANUAL: "Run workflow" in the Actions tab redeploys the current main. It still
+# refuses unless CI passed on that exact commit.
+#
+# The actual deploy lives on the server in /usr/local/bin/altomatehr-v2-deploy.sh
+# (pull, rebuild API container, rebuild frontend, health-check; log at
+# /var/log/altomatehr-v2-deploy.log). The DEPLOY_SSH_KEY secret is pinned to that
+# script in root's authorized_keys, so it can't run anything else on the box.
+#
+# Secrets: DEPLOY_HOST, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
+# One deploy at a time; a second merge waits for the first rather than cancelling it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
 jobs:
-  # ---------- CI: the quality gate ----------
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Backend — build & test
-        working-directory: backend.Tests
-        run: dotnet test --nologo
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Frontend — install & build
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-
-  # ---------- CD: ship it (only if `test` passed) ----------
   deploy:
-    needs: test
+    # workflow_run fires for PR runs too (head branch main); only deploy real pushes that passed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://hr.altomate.io
     steps:
-      - name: Deploy to the Droplet over SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DROPLET_HOST }}
-          username: ${{ secrets.DROPLET_USER }}
-          key: ${{ secrets.DROPLET_SSH_KEY }}
-          port: 22
-          script: |
-            set -e
-            cd /opt/altomatehr-v2
-            git pull origin main
-            docker compose -f docker-compose.test.yml up -d --build
-            docker image prune -f
+      - name: Pick the commit to ship
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            SHA=$RUN_SHA
+          else
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+            OK=$(gh run list -R "$GITHUB_REPOSITORY" --workflow CI --commit "$SHA" --event push \
+                   --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')
+            if [ "$OK" = "0" ]; then
+              echo "::error::CI has not passed on main ($SHA) — not deploying."
+              exit 1
+            fi
+          fi
+          echo "Deploying $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server ignores the command and runs the deploy script; the SHA is
+          # passed so it can confirm it's shipping the commit CI tested.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ServerAliveInterval=30 \
+            "root@$DEPLOY_HOST" "$SHA"
