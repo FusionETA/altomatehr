@@ -34,9 +34,16 @@ const MALAYSIAN_SPELLINGS = new Set([
   "warganegara",
 ]);
 
-/** True for any accepted spelling of Malaysian, case- and space-insensitively. */
+/** True for any accepted spelling of Malaysian — normalised exactly as the
+ * backend's Nationalities.Key does: spaces collapsed, curly apostrophe folded,
+ * trailing full stops dropped, case ignored. */
 export function isMalaysianNationality(nationality: string | null | undefined): boolean {
-  const v = (nationality ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+  const v = (nationality ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\u2019/g, "'")
+    .replace(/\.+$/, "")
+    .toLowerCase();
   return MALAYSIAN_SPELLINGS.has(v);
 }
 
