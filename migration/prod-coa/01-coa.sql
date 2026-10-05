@@ -34,7 +34,11 @@ SELECT
   -- v1 has no sync timestamp. For Xero-sourced rows updatedAt IS the last sync write;
   -- hand-made accounts have never synced, so they stay NULL.
   CASE WHEN c.xeroAccountId IS NOT NULL THEN c.updatedAt END,
-  c.isSelectable,
+  -- v2 has ONE tick for both jobs. For expense accounts it is v1 `isSelectable` (claim can
+  -- be coded to it); for banks it is v1 `isBankAccount` (admin enabled it for company-paid
+  -- claims -- organization.repository.ts getSelectedBankAccountsForOrganization). v1 keeps
+  -- isSelectable=0 on every bank, so copying it for banks silently unticked all of them.
+  IF(UPPER(c.type) = 'BANK', c.isBankAccount, c.isSelectable),
   c.limitAmount,
   c.allowMileageClaim,
   c.mileageRate,
