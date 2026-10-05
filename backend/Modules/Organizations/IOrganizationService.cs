@@ -9,7 +9,10 @@ public interface IOrganizationService
     Task<OrganizationDto?> GetByIdAsync(string organizationId);
 
     // Create a new company and make `ownerUserId` its Owner (so they can access it).
-    Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId);
+    // viaSso: the caller arrived through the SSO hand-off. Their account is
+    // managed by the external platform, so creating a company here is refused
+    // (SsoManagedActionException) — the UI hides "New company" for the same reason.
+    Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false);
 
     // --- Admin access control (Owner only) ---
     // The org's admins with their current module grant, for the Owner's

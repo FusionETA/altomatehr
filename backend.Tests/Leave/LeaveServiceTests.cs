@@ -1345,7 +1345,7 @@ public class LeaveServiceTests
 
         public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
             Task.FromResult<OrganizationDto?>(new OrganizationDto { Id = organizationId, Name = "Test Org" });
-        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId) => throw new NotImplementedException();
+        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false) => throw new NotImplementedException();
         public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) => throw new NotImplementedException();
         public Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto) => throw new NotImplementedException();
     }

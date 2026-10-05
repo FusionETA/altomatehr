@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave;
@@ -173,8 +174,16 @@ public class OrganizationService : IOrganizationService
         return ToDto(org);
     }
 
-    public async Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId)
+    public async Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false)
     {
+        // As with Change password: an SSO session belongs to an account the
+        // external platform provisions and pays for. A company created from it
+        // would be one that platform never set up, so it's refused here, not
+        // only hidden in the switcher.
+        if (viaSso)
+            throw new SsoManagedActionException(
+                "This account signs in via Altomate. Create new companies there.");
+
         var org = new Organization
         {
             Name = dto.Name.Trim(),

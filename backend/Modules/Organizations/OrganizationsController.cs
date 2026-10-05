@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Common;
 
 namespace AltomateHR.Api.Modules.Organizations;
 
@@ -14,9 +15,13 @@ namespace AltomateHR.Api.Modules.Organizations;
 public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizations;
+    private readonly ICurrentUser _currentUser;
 
-    public OrganizationsController(IOrganizationService organizations) =>
+    public OrganizationsController(IOrganizationService organizations, ICurrentUser currentUser)
+    {
         _organizations = organizations;
+        _currentUser = currentUser;
+    }
 
 
     // GET /organizations/current — the caller's own org (any authenticated user can read it).
@@ -113,7 +118,14 @@ public class OrganizationsController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         if (userId is null) return Unauthorized();
-        return Ok(await _organizations.CreateAsync(dto, userId));
+        try
+        {
+            return Ok(await _organizations.CreateAsync(dto, userId, viaSso: _currentUser.IsSso));
+        }
+        catch (SsoManagedActionException ex)
+        {
+            return StatusCode(403, new { error = new { status = 403, message = ex.Message } });
+        }
     }
 
     // The org id comes from the JWT 'org' claim — never from the client.
