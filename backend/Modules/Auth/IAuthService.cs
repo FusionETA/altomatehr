@@ -20,8 +20,11 @@ public interface IAuthService
     // Support mode (Fusioneta superadmins only). Enter: null when the caller is
     // not on SUPERADMIN_EMAILS or the org does not exist. Exit: back to the
     // caller's own org; null when they have none.
-    Task<AuthResult?> EnterSupportAsync(string userId, string organizationId);
-    Task<AuthResult?> ExitSupportAsync(string userId);
+    // sso: the current session came through the SSO hand-off. It's carried into
+    // the support session and back out, so entering and leaving support mode
+    // can't shed it (and with it the SSO-only restrictions).
+    Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false);
+    Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false);
 
     // Every org the user can switch into (id + their role there).
     Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId);

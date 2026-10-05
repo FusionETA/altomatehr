@@ -134,7 +134,7 @@ public class AuthService : IAuthService
     // customer's log as "System (Support)", with the real person in the
     // internal support log (AuditService).
 
-    public async Task<AuthResult?> EnterSupportAsync(string userId, string organizationId)
+    public async Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false)
     {
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null || _superadmins?.IsSuperadmin(user.Email) != true) return null;
@@ -142,7 +142,7 @@ public class AuthService : IAuthService
         var org = await _organizations.GetByIdAsync(organizationId);
         if (org is null) return null;
 
-        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true);
+        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true, sso: sso);
 
         // Written into the CUSTOMER's log — masked, like every support action —
         // so a company can see that support was in, and when.
@@ -159,7 +159,7 @@ public class AuthService : IAuthService
 
     // Back to the superadmin's own org (their first membership), as a normal
     // session. Null when they belong to none — the caller signs them out.
-    public async Task<AuthResult?> ExitSupportAsync(string userId)
+    public async Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false)
     {
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
@@ -167,7 +167,7 @@ public class AuthService : IAuthService
         var home = (await _directory.GetMembershipsByUserAsync(userId)).FirstOrDefault();
         if (home is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId);
+        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso);
     }
 
     public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false)
@@ -217,10 +217,10 @@ public class AuthService : IAuthService
             if (_superadmins?.IsSuperadmin(stored.Email) == true)
             {
                 return await IssueTokensAsync(
-                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true);
+                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true, sso: stored.IsSso);
             }
 
-            return await ExitSupportAsync(stored.UserId);
+            return await ExitSupportAsync(stored.UserId, stored.IsSso);
         }
 
         return await IssueTokensAsync(

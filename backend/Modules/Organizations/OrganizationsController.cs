@@ -124,7 +124,9 @@ public class OrganizationsController : ControllerBase
         }
         catch (SsoManagedActionException ex)
         {
-            return StatusCode(403, new { error = new { status = 403, message = ex.Message } });
+            // { message }, as ChangePassword's SSO refusal — what the frontend's
+            // api-client reads, so the reason reaches the screen.
+            return StatusCode(403, new { message = ex.Message });
         }
     }
 
