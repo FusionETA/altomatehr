@@ -1,0 +1,13 @@
+{
+  "name": "guide-shots",
+  "private": true,
+  "description": "Playwright screenshots for user-guide/, against the local demo stack",
+  "type": "module",
+  "scripts": {
+    "shots": "node shots.mjs",
+    "check": "node check-guide.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

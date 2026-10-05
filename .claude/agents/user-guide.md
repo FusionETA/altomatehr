@@ -1,6 +1,6 @@
 ---
 name: user-guide
-description: Keeps the AltomateHR user guides current — user-guide/altomatehr-admin-guide.html (admins/owners) and user-guide/altomatehr-employee-guide.html (employees and supervisors) — when a change alters what someone sees or does on a screen. Covers every branch's changes since its bookmark. Run on the branch BEFORE merging to main when user-visible frontend behaviour changed, or when asked to update the user guide.
+description: Keeps the AltomateHR user guides current — user-guide/altomatehr-admin-guide.html (admins/owners) and user-guide/altomatehr-employee-guide.html (employees and supervisors) — when a change alters what someone sees or does on a screen, and retakes its screenshots with Playwright on the local demo company (qa/guide-shots). Covers every branch's changes since its bookmark. Run on the branch BEFORE merging to main when user-visible frontend behaviour changed, or when asked to update the user guide.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 ---
@@ -16,6 +16,8 @@ user-guide/
 ├── altomatehr-admin-guide.html      admins & owners: settings, employees, payroll, …
 ├── altomatehr-employee-guide.html   employees & supervisors: clock-in, leave, claims, payslips, approving
 └── shots/admin/*.png, shots/employee/*.png   screenshots (demo company only)
+
+qa/guide-shots/   how the screenshots are taken: local demo stack + Playwright recipes
 ```
 
 ### Where they're published (don't break it)
@@ -69,13 +71,40 @@ teammates merge to main without running this — so:
    names (exactly as the UI labels them — check the component), and what the
    person sees. Add a new `topic` only for a genuinely new area. Remove steps
    that no longer exist.
-6. **Screenshots.** You can't take them (no browser, no login). Never invent
-   or edit an image, and never point `<img>` at a file that doesn't exist.
-   - If an existing screenshot now shows something wrong or missing, leave it
-     and list it under **Screenshots to retake** in your reply: file, what it
-     should show, which demo screen.
-   - For a new topic, write the text without an image and list the screenshot
-     it needs.
+6. **Screenshots: retake them yourself with Playwright, on local demo data.**
+   An existing shot that now shows something wrong or missing gets retaken,
+   and a new topic gets its new shot. Use `qa/guide-shots/` (read its README
+   first):
+   1. `cd qa/guide-shots && npm install` if `node_modules/` is missing.
+   2. `./start-local-demo.sh`. It runs the backend on the **local** MySQL demo
+      database with demo data seeded and email, Gemini and Xero off, plus the
+      frontend. If it refuses because something else is on `:5001`, **stop
+      there**. Never stop that process yourself, and never point anything at
+      another database or a deployed site. Report it, and list the shots as
+      "to retake" instead.
+   3. If the screen needs data the seed doesn't have, run or add a step in
+      `setup.mjs`, e.g. `node setup.mjs work-permits`. Demo values only:
+      made-up names and numbers, `@altomate.com` demo sign-ins. Only call
+      `http://localhost:5001`.
+   4. Add or fix the recipe in `shots.mjs` (named after the file), then run
+      `node shots.mjs <name> [...]`. On failure, look at
+      `.out/shots/debug-<name>.png` and fix the recipe. Give each shot at most
+      three tries.
+   5. **Look at every shot** (Read the PNG) before using it. It must show the
+      thing the text describes, from the demo company. No error toasts, no
+      loading spinners, no half-open menus, no real client data. Then copy it
+      to `user-guide/shots/<admin|employee>/<name>.png`, replacing the old one
+      or adding the new one. Keep the existing file name when replacing.
+   6. A new image goes in a `.shot-item` with a `.shot-cap` and alt text that
+      says what the shot shows. Then run `node check-guide.mjs`: it must
+      report 0 broken images.
+   7. `./stop-local-demo.sh` when done, even after a failure. It only stops
+      what it started.
+
+   Never draw, edit or crop an image by hand, and never point `<img>` at a
+   file that doesn't exist. A shot you couldn't take goes under **Screenshots
+   to retake** in your reply: file, what it should show, which demo screen,
+   and why it failed.
 7. **Move the bookmark** in BOTH guides to `git rev-parse --short HEAD`, even
    when nothing needed changing.
 
@@ -100,6 +129,10 @@ now* — a change can need both.
 
 ## Finish
 
-Reply with: what you changed in each guide (topic → one line), the commits you
-skipped as "no user-visible change", and **Screenshots to retake**. Don't
-commit — the user decides when.
+Reply with:
+- what you changed in each guide (topic → one line);
+- the commits you skipped as "no user-visible change";
+- **Screenshots taken**: each file, new or replaced, and what it shows;
+- **Screenshots to retake**: only the ones you couldn't take, and why.
+
+Don't commit. The user decides when.
