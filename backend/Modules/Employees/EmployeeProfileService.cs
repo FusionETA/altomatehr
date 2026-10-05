@@ -110,6 +110,20 @@ public class EmployeeProfileService : IEmployeeProfileService
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 
+    public async Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() =>
+        [.. (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => p.WorkPermitExpiry is not null)
+            .Select(p => new WorkPermitDto
+            {
+                UserId = p.UserId,
+                Nationality = p.Nationality,
+                HasPr = p.HasPr,
+                IsArchived = p.IsArchived,
+                LeaveDate = p.LeaveDate,
+                WorkPermitNumber = p.WorkPermitNumber,
+                WorkPermitExpiry = p.WorkPermitExpiry!.Value.Date,
+            })];
+
     private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
 
     private static bool HadASalary(EmployeeProfile before) =>
@@ -172,6 +186,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         e.IncomeTaxNumber = d.IncomeTaxNumber; e.PcbBorneByEmployer = d.PcbBorneByEmployer;
         e.SsfwNumber = d.SsfwNumber;
+        e.WorkPermitNumber = d.WorkPermitNumber; e.WorkPermitExpiry = d.WorkPermitExpiry?.Date;
 
         e.PaymentMethod = d.PaymentMethod; e.BankName = d.BankName;
         e.BankAccountHolderName = d.BankAccountHolderName; e.BankAccountNumber = d.BankAccountNumber;
@@ -237,6 +252,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         IncomeTaxNumber = e.IncomeTaxNumber, PcbBorneByEmployer = e.PcbBorneByEmployer,
         SsfwNumber = e.SsfwNumber,
+        WorkPermitNumber = e.WorkPermitNumber, WorkPermitExpiry = e.WorkPermitExpiry,
 
         PaymentMethod = e.PaymentMethod, BankName = e.BankName,
         BankAccountHolderName = e.BankAccountHolderName, BankAccountNumber = e.BankAccountNumber,

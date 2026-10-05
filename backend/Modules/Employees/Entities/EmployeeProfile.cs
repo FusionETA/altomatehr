@@ -112,6 +112,11 @@ public class EmployeeProfile : ITenantScoped
     public bool PcbBorneByEmployer { get; set; }
     [MaxLength(40)] public string? SsfwNumber { get; set; }
 
+    // A foreign worker's Immigration work permit (PLKS) — a separate document
+    // from the SSFW/SOCSO number above. Kept so HR can see when it lapses.
+    [MaxLength(40)] public string? WorkPermitNumber { get; set; }
+    public DateTime? WorkPermitExpiry { get; set; }
+
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;
     [MaxLength(120)] public string? BankName { get; set; }

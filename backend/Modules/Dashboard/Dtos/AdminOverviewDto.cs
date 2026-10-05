@@ -12,6 +12,18 @@ public class AdminOverviewDto
     public List<StalePendingClaimDto> StalePendingClaims { get; set; } = new();
     public UpcomingClaimRunDto? UpcomingClaimRun { get; set; }
     public OverturnedSupervisorsDto OverturnedSupervisors { get; set; } = new();
+    public List<WorkPermitAlertDto> WorkPermitAlerts { get; set; } = new();
+}
+
+// A foreign worker whose work permit has lapsed or lapses soon.
+public class WorkPermitAlertDto
+{
+    public string EmployeeId { get; set; } = string.Empty;
+    public string EmployeeName { get; set; } = string.Empty;
+    public string? WorkPermitNumber { get; set; }
+    public DateTime Expiry { get; set; }
+    // Negative once expired; 0 = expires today.
+    public int DaysLeft { get; set; }
 }
 
 // Card 1 — claim spend grouped by project, current month.

@@ -130,6 +130,22 @@ public class SalaryChangeServiceTests : IDisposable
         Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
     }
 
+    // A foreign worker's work permit is saved and read back; the expiry keeps
+    // only the date, and editing it is not a pay change.
+    [Fact]
+    public async Task AWorkPermit_IsSavedAndReadBack_AsADate()
+    {
+        var edit = Edit(monthly: 5000m);
+        edit.WorkPermitNumber = "PLKS-0001";
+        edit.WorkPermitExpiry = new DateTime(2027, 3, 31, 17, 45, 0);
+
+        var saved = await _profiles.SaveAsync("usr-1", edit);
+
+        Assert.Equal("PLKS-0001", saved!.WorkPermitNumber);
+        Assert.Equal(new DateTime(2027, 3, 31), saved.WorkPermitExpiry);
+        Assert.Empty(await _service.GetForEmployeeAsync("emp-1"));
+    }
+
     // The admin said the old figure was a typo: the salary is corrected, but
     // it is not a change to anyone's pay, so no history — as in v1.
     [Fact]

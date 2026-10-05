@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Policies.Entities;   // SalaryType
 
@@ -86,6 +87,8 @@ public class EmployeeProfileDto
     public string? IncomeTaxNumber { get; set; }
     public bool PcbBorneByEmployer { get; set; }
     public string? SsfwNumber { get; set; }
+    [MaxLength(40)] public string? WorkPermitNumber { get; set; }
+    public DateTime? WorkPermitExpiry { get; set; }
 
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;

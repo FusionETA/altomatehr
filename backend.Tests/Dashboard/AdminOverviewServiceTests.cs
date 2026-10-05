@@ -1,6 +1,7 @@
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Dashboard;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Dtos;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Projects.Dtos;
 using AltomateHR.Api.Tests.Claims;
@@ -47,6 +48,12 @@ public class AdminOverviewServiceTests
     private static AdminOverviewService Create(
         IEnumerable<Claim> claims,
         FakeApprovalRouter? router = null,
+        params string[] modules) => Create(claims, [], router, modules);
+
+    private static AdminOverviewService Create(
+        IEnumerable<Claim> claims,
+        IReadOnlyList<WorkPermitDto> permits,
+        FakeApprovalRouter? router = null,
         params string[] modules)
     {
         var directory = new FakeEmployeeDirectory(Ahmad, Siti, Aisha);
@@ -57,7 +64,57 @@ public class AdminOverviewServiceTests
             new FakeProjectServiceForExport(new ProjectDto { Id = "proj-1", Name = "HQ" }),
             new FakeModuleAccessService(enabled),
             router ?? Chain(),
-            directory);
+            directory,
+            new FakeWorkPermits(permits));
+    }
+
+    // ---- Work permits ----
+
+    private static readonly DateTime Today = new(2026, 10, 5);
+
+    private static WorkPermitDto Permit(
+        string userId, int daysFromToday, string nationality = "Indonesian",
+        bool pr = false, bool archived = false, DateTime? left = null) => new()
+        {
+            UserId = userId,
+            Nationality = nationality,
+            HasPr = pr,
+            IsArchived = archived,
+            LeaveDate = left,
+            WorkPermitNumber = "PLKS-" + userId,
+            WorkPermitExpiry = Today.AddDays(daysFromToday),
+        };
+
+    // Lapsed and lapsing-within-60-days permits, soonest first; later ones wait.
+    [Fact]
+    public async Task WorkPermitAlerts_ListExpiredAndSoonToExpire_SoonestFirst()
+    {
+        var service = Create([], [Permit("usr-siti", 30), Permit("usr-ahmad", -3), Permit("usr-aisha", 61)]);
+
+        var alerts = await service.WorkPermitAlertsAsync(Today);
+
+        Assert.Equal(["Ahmad Ali", "Siti Nur"], alerts.Select(a => a.EmployeeName));
+        Assert.Equal([-3, 30], alerts.Select(a => a.DaysLeft));
+        Assert.Equal("PLKS-usr-ahmad", alerts[0].WorkPermitNumber);
+    }
+
+    // A citizen or PR has no permit to renew; nobody archived or gone needs one.
+    [Fact]
+    public async Task WorkPermitAlerts_LeaveOutCitizensPrsAndPeopleWhoLeft()
+    {
+        var service = Create([],
+        [
+            Permit("usr-1", 5, nationality: "Malaysian"),
+            Permit("usr-2", 5, pr: true),
+            Permit("usr-3", 5, archived: true),
+            Permit("usr-4", 5, left: Today.AddDays(-1)),
+            Permit("usr-5", 5, nationality: ""),
+            Permit("usr-siti", 60),
+        ]);
+
+        var alerts = await service.WorkPermitAlertsAsync(Today);
+
+        Assert.Equal(["usr-siti"], alerts.Select(a => a.EmployeeId));
     }
 
     // ---- Stale pending claims ----
@@ -194,4 +251,11 @@ internal sealed class FakeModuleAccessService : IModuleAccessService
 
     public Task<IReadOnlyCollection<string>> GetEnabledModulesAsync() => Task.FromResult(_modules);
     public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => Task.FromResult(_ceiling);
+}
+
+internal sealed class FakeWorkPermits(IReadOnlyList<WorkPermitDto> permits) : IEmployeeProfileService
+{
+    public Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() => Task.FromResult(permits);
+    public Task<EmployeeProfileDto?> GetAsync(string userId) => throw new NotSupportedException();
+    public Task<EmployeeProfileDto?> SaveAsync(string userId, EmployeeProfileDto dto) => throw new NotSupportedException();
 }
