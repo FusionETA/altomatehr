@@ -149,7 +149,7 @@ public class AuthController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.EnterSupportAsync(userId, organizationId);
+        var result = await _auth.EnterSupportAsync(userId, organizationId, sso: _currentUser.IsSso);
         if (result is null) return NotFound(new { message = "No such organization." });
 
         SetRefreshCookie(result);
@@ -165,7 +165,7 @@ public class AuthController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.ExitSupportAsync(userId);
+        var result = await _auth.ExitSupportAsync(userId, sso: _currentUser.IsSso);
         if (result is null) return Unauthorized(new { message = "You have no organization of your own to return to." });
 
         SetRefreshCookie(result);

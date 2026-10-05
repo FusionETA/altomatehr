@@ -506,6 +506,52 @@ public class AuthServiceTests
         Assert.False(home.SupportMode);
     }
 
+    // A superadmin who arrived through the SSO hand-off stays SSO through
+    // support mode — entering, refreshing and leaving it must not shed the
+    // flag, or with it the SSO restrictions (no New company, Change password
+    // or Log out).
+    [Fact]
+    public async Task SupportMode_FromAnSsoSession_StaysSso()
+    {
+        var service = CreateService([CreateUser("pw")], out _, superadminEmails: "admin@altomate.com");
+
+        var entered = await service.EnterSupportAsync("usr-admin", "org-2", sso: true);
+        Assert.True(entered!.ViaSso);
+
+        var refreshed = await service.RefreshAsync(entered.RefreshToken);
+        Assert.True(refreshed!.SupportMode);
+        Assert.True(refreshed.ViaSso);
+
+        var home = await service.ExitSupportAsync("usr-admin", sso: true);
+        Assert.False(home!.SupportMode);
+        Assert.True(home.ViaSso);
+    }
+
+    // Taken off the list mid-session, the refresh that ends support mode keeps
+    // an SSO session SSO.
+    [Fact]
+    public async Task Refresh_EndingSupport_KeepsAnSsoSessionSso()
+    {
+        var supportToken = new RefreshToken
+        {
+            Token = "sso-support-refresh",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            OrganizationId = "org-2",
+            IsSupport = true,
+            IsSso = true,
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+        };
+        var service = CreateService([CreateUser("pw")], out _, existingRefreshTokens: [supportToken],
+            superadminEmails: string.Empty);
+
+        var refreshed = await service.RefreshAsync("sso-support-refresh");
+
+        Assert.False(refreshed!.SupportMode);
+        Assert.True(refreshed.ViaSso);
+    }
+
     // --- helpers ---
 
     private static AuthService CreateService(
