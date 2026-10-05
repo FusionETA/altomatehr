@@ -143,8 +143,8 @@ merge**, so their output ships in the same PR:
 5. If anything under `backend/Modules` changed since the bookmark in
    `api-docs/index.html`, run **api-docs**.
 6. If anything a user sees or does changed since the bookmark in the
-   `user-guide/` pages, run **user-guide**, and list the screenshots it says
-   to retake.
+   `user-guide/` pages, run **user-guide**. It retakes the affected
+   screenshots on the local demo data. List any it couldn't take.
 7. Commit their edits on the branch, push, open the PR, merge once.
 
 ### Which agent when
@@ -156,7 +156,7 @@ The main session decides; agents don't call each other.
 | `bug-check` | before any merge to main; after a large change; "check for bugs" | nothing (report) |
 | `whats-new` | before a merge to main (every time; it skips invisible changes) | `frontend/src/features/whats-new/lib/entries.ts` |
 | `api-docs` | before a merge when `backend/Modules` changed; "document the API" | `api-docs/` |
-| `user-guide` | before a merge when a screen or flow changed; "update the guide" | `user-guide/` |
+| `user-guide` | before a merge when a screen or flow changed; "update the guide" | `user-guide/` (text + screenshots, retaken via `qa/guide-shots/` on local demo data) |
 
 Independent ones (`whats-new`, `api-docs`, `user-guide`) can run in parallel
 after `bug-check` passes.
