@@ -34,6 +34,17 @@ public interface IDirectoryService
     // Every org a user belongs to — the org-picker on login.
     Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId);
 
+    // The same person's employment record in each org they belong to. Auth
+    // uses it to tell a current employer from a former one (archived there —
+    // left, or transferred out).
+    // (Default keeps hand-written test doubles compiling; DirectoryService overrides.)
+    Task<List<EmployeeProfile>> GetProfilesByUserAsync(string userId) => Task.FromResult(new List<EmployeeProfile>());
+
+    // A former employee removes a company from their own account (see
+    // OrganizationMembership.HiddenByEmployeeAt). The one write here: the
+    // membership is Employees' data, and Auth must not reach its repository.
+    Task HideMembershipForEmployeeAsync(string organizationId, string userId) => Task.CompletedTask;
+
     // How many people are assigned to a shift; the shift module guards deletes
     // with it.
     Task<int> CountMembershipsByShiftAsync(string shiftId);

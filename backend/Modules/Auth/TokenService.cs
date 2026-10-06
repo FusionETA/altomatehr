@@ -10,6 +10,7 @@ public class TokenService : ITokenService
 {
     public const string SupportClaim = "support";
     public const string SsoClaim = "sso";
+    public const string FormerClaim = "former";
 
     private readonly IConfiguration _config;
 
@@ -19,7 +20,8 @@ public class TokenService : ITokenService
     public string CreateToken(string userId, string email, string role, string organizationId) =>
         CreateToken(userId, email, role, organizationId, support: false);
 
-    public string CreateToken(string userId, string email, string role, string organizationId, bool support, bool sso = false)
+    public string CreateToken(
+        string userId, string email, string role, string organizationId, bool support, bool sso = false, bool former = false)
     {
         var jwt = _config.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
@@ -43,6 +45,11 @@ public class TokenService : ITokenService
         // switching company keeps it; the shells hide New company, Change
         // password and Log out on it — the account is managed in Altomate.
         if (sso) claims.Add(new Claim(SsoClaim, "1"));
+
+        // A company this person used to work at (archived there — left, or
+        // transferred out). Kept so they can still read their payslips; the
+        // FormerEmployeeReadOnlyMiddleware refuses every write on it.
+        if (former) claims.Add(new Claim(FormerClaim, "1"));
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],

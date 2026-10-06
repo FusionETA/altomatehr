@@ -13,6 +13,7 @@ export const toSignedInUser = (res: AuthResponse): SignedInUser => ({
   supportMode: res.supportMode ?? false,
   viaSso: res.viaSso ?? false,
   activeOrganizationName: res.activeOrganizationName ?? null,
+  formerEmployee: res.formerEmployee ?? false,
 });
 
 export const login = (body: LoginRequest) => apiPost<AuthResponse>("/auth/login", body);
@@ -21,8 +22,9 @@ export const login = (body: LoginRequest) => apiPost<AuthResponse>("/auth/login"
 export const refresh = () => apiPost<AuthResponse>("/auth/refresh");
 
 // One company the signed-in account can act in. `role` is the account's role in
-// THAT org (an Owner here may be a plain Employee elsewhere).
-export type UserOrg = { organizationId: string; name: string; role: string };
+// THAT org (an Owner here may be a plain Employee elsewhere). `isFormer`: they
+// no longer work there — kept for its payslips, listed after current ones.
+export type UserOrg = { organizationId: string; name: string; role: string; isFormer?: boolean };
 
 // The companies this account belongs to — drives the org switcher.
 export const getOrgs = () => apiGet<UserOrg[]>("/auth/orgs");
@@ -32,6 +34,13 @@ export const getOrgs = () => apiGet<UserOrg[]>("/auth/orgs");
 // every screen re-fetching against it.
 export const switchOrg = (organizationId: string) =>
   apiPost<AuthResponse>(`/auth/switch-org/${organizationId}`);
+
+// A former employee removes a company they no longer work at from their own
+// account. When it was the active company the server moves the session to
+// their home company (and rotates the cookie), or ends it when none is left —
+// either way the caller reloads.
+export const leaveOrg = (organizationId: string) =>
+  apiPost<AuthResponse | { switched: false } | undefined>(`/auth/leave-org/${organizationId}`);
 
 // Fusioneta support: act inside a customer's company as an Admin. Like a
 // switch, the server rotates the refresh cookie, so reload afterwards. What is

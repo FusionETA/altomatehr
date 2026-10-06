@@ -63,6 +63,13 @@ public class OrganizationMembership : ITenantScoped
     // Drives first-year proration and production's forecast-availability check.
     public DateTime? JoinDate { get; set; }
 
+    // A FORMER employee removed this company from their own account ("Leave
+    // company" in the portal): it no longer appears in their company list and
+    // they can't sign into it. The row stays — the company still needs it for
+    // its archived staff, payroll history and statutory forms. Cleared when
+    // they are restored or transferred back.
+    public DateTime? HiddenByEmployeeAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -95,6 +95,10 @@ public static class AuditActions
     // People
     public const string EmployeeCreate = "employee.create";
     public const string EmployeeUpdate = "employee.update";
+    public const string EmployeeTransferSchedule = "employee.transfer.schedule";
+    public const string EmployeeTransferCancel = "employee.transfer.cancel";
+    public const string EmployeeTransferExecute = "employee.transfer.execute";
+    public const string EmployeeLeftCompany = "employee.left-company";
 
     // Teams / approval hierarchy
     public const string TeamCreate = "team.create";
@@ -169,6 +173,10 @@ public static class AuditActions
         [ProjectRestore] = "Project restored",
         [EmployeeCreate] = "Employee added",
         [EmployeeUpdate] = "Employee updated",
+        [EmployeeTransferSchedule] = "Employee transfer scheduled",
+        [EmployeeTransferCancel] = "Employee transfer cancelled",
+        [EmployeeTransferExecute] = "Employee transferred",
+        [EmployeeLeftCompany] = "Former employee removed company from their account",
         [TeamCreate] = "Team created",
         [TeamUpdate] = "Team updated",
         [TeamDelete] = "Team deleted",

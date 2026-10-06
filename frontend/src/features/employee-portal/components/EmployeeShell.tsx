@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
-import { ExternalLink, LifeBuoy, KeyRound, LogOut, MoreVertical } from "lucide-react";
+import { ExternalLink, LifeBuoy, KeyRound, LoaderCircle, LogOut, MoreVertical } from "lucide-react";
+import { leaveOrg } from "@/features/auth/api";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
 import { launchAppraisify } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
@@ -51,11 +53,17 @@ export function EmployeeShell({
   // Superadmins only: opens the Fusioneta support page.
   onOpenSupport?: () => void;
 }) {
-  const isSupervisor = user.role === "Supervisor";
+  // A company they no longer work at (left, or transferred out): kept so they
+  // can still read its payslips, and nothing else — the server refuses writes.
+  const former = user.formerEmployee === true;
+  const isSupervisor = user.role === "Supervisor" && !former;
   // Mirrors the admin shell: the view lives in the URL so Back steps through
   // the portal rather than out of it. See shared/lib/use-url-nav.
   const [nav, go] = useUrlNav(NAV_FALLBACK, normaliseEmployeeNav);
-  const activeView = nav.parent as EmployeeView;
+  const activeView: EmployeeView = former ? "payslips" : (nav.parent as EmployeeView);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
   const sub = nav.child;
   const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -122,6 +130,33 @@ export function EmployeeShell({
     };
   }, [accountMenuOpen]);
 
+  // "Leave company": a former employee removes this company from their own
+  // account. The company keeps their records; they just stop seeing it.
+  async function handleLeaveCompany() {
+    const orgId = orgQuery.data?.id;
+    if (!orgId) return;
+    const ok = await confirm({
+      title: `Leave ${organizationName ?? "this company"}?`,
+      message:
+        "It disappears from your account, and you won't be able to open your payslips from here any more — download any you need first. The company keeps your records; ask HR if you need something later.",
+      confirmLabel: "Leave company",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setLeaving(true);
+    setLeaveError(null);
+    try {
+      await leaveOrg(orgId);
+      // The server moved the session to your current company, or ended it if
+      // there is none; a reload boots into whichever it was.
+      window.location.reload();
+    } catch (e) {
+      setLeaveError(e instanceof Error ? e.message : "Could not leave this company.");
+      setLeaving(false);
+    }
+  }
+
   function badgeFor(view: EmployeeView) {
     return view === "claims" ? claimBadge : view === "leave" ? leaveBadge : view === "attendance" ? attendanceBadge : 0;
   }
@@ -173,12 +208,13 @@ export function EmployeeShell({
   const navItems = useMemo(
     () =>
       employeeNav.filter((item) => {
+        if (former) return item.id === "payslips";
         if (item.id === "claims") return moduleAccess?.claims !== false;
         if (item.id === "leave") return moduleAccess?.leave !== false;
         if (item.id === "attendance") return moduleAccess?.attendance !== false;
         return true;
       }),
-    [moduleAccess],
+    [moduleAccess, former],
   );
 
   return (
@@ -441,6 +477,26 @@ export function EmployeeShell({
               key={activeView}
               className="min-h-[60vh] animate-in fade-in-0 duration-200 ease-out"
             >
+              {former ? (
+                <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                  <p className="min-w-0 flex-1">
+                    You no longer work at {organizationName ?? "this company"}, so only your payslips
+                    from here are available. Switch to your current company from the company menu to
+                    clock in, claim or apply for leave.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={leaving}
+                    onClick={() => void handleLeaveCompany()}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+                  >
+                    {leaving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+                    Leave company
+                  </button>
+                  {leaveError ? <p className="basis-full text-xs text-destructive">{leaveError}</p> : null}
+                </div>
+              ) : null}
+              {confirmDialog}
               {activeView === "dashboard" ? <DashboardView user={user} onNavigate={selectParent} /> : null}
               {activeView === "claims" ? (
                 <ClaimsPage sub={sub ?? "claims-mine"} onDecided={refreshBadges} />

@@ -13,4 +13,8 @@ export type SignedInUser = {
   viaSso?: boolean;
   /** The company the session is scoped to. */
   activeOrganizationName?: string | null;
+  /** The active company is one they no longer work at (left, or transferred
+   *  out). View-only: the portal shows their payslips there and nothing else,
+   *  and the server refuses writes. */
+  formerEmployee?: boolean;
 };

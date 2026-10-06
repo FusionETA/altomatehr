@@ -13,6 +13,12 @@ public class EmployeePolicyRepository : IEmployeePolicyRepository
     public Task<List<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
         _db.EmployeePolicies.IgnoreQueryFilters().ToListAsync();
 
+    public Task<List<EmployeePolicy>> GetActiveForOrgsAsync(IReadOnlyCollection<string> organizationIds) =>
+        _db.EmployeePolicies.IgnoreQueryFilters()
+            .Where(p => organizationIds.Contains(p.OrganizationId) && !p.IsArchived)
+            .OrderByDescending(p => p.IsDefault).ThenBy(p => p.Name)
+            .ToListAsync();
+
     public Task<List<EmployeePolicy>> GetAllAsync() =>
         _db.EmployeePolicies.OrderBy(p => p.Name).ToListAsync();
 

@@ -74,8 +74,14 @@ public interface IPastLeaverArchiver
 public class PastLeaverArchiver : IPastLeaverArchiver
 {
     private readonly IEmployeeProfileRepository _profiles;
+    private readonly IEmploymentHistory? _history;
 
-    public PastLeaverArchiver(IEmployeeProfileRepository profiles) => _profiles = profiles;
+    // History is optional so hand-built instances in tests need not supply it.
+    public PastLeaverArchiver(IEmployeeProfileRepository profiles, IEmploymentHistory? history = null)
+    {
+        _profiles = profiles;
+        _history = history;
+    }
 
     public async Task<int> SweepAsync(int max)
     {
@@ -91,6 +97,11 @@ public class PastLeaverArchiver : IPastLeaverArchiver
             profile.IsArchived = true;
             profile.ArchivedAt = DateTime.UtcNow;
             profile.ArchiveReason = "Leave date passed";
+            if (_history is not null)
+            {
+                await _history.CloseAsync(
+                    profile.OrganizationId, profile.UserId, profile.JoinDate, profile.LeaveDate, "Leave date passed");
+            }
             await _profiles.UpdateAsync(profile);
         }
 
