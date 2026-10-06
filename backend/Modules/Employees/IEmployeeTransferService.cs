@@ -29,6 +29,13 @@ public interface IEmployeeTransferService
     // failure — the caller records the error on the row in a fresh scope.
     Task ExecuteDueAsync(string transferId);
 
+    // A payroll run for `year` was submitted or reverted at `organizationId`.
+    // Anyone transferred OUT of it this year (with payroll carried) gets their
+    // new company's previous-employment figures recomputed from scratch — the
+    // final month at the old company is usually paid AFTER the transfer ran.
+    // Best-effort; never throws.
+    Task RecomputeCarriedYearToDateAsync(string organizationId, int year);
+
     // Record a failed attempt so the screen can show why and the job retries.
     Task MarkFailedAsync(string transferId, string error);
 }

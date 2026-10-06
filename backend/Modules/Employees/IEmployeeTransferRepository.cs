@@ -21,6 +21,11 @@ public interface IEmployeeTransferRepository
     // across every org (the daily job), oldest first.
     Task<List<string>> GetDueIdsAsync(DateTime today, int max);
 
+    // Executed transfers OUT of a named org that carried payroll, effective in
+    // `year` (ignores the tenant filter — the payroll submit that triggers the
+    // recompute may come from either side).
+    Task<List<EmployeeTransfer>> GetExecutedWithPayrollFromOrgAsync(string organizationId, int year);
+
     Task AddAsync(EmployeeTransfer transfer);
     Task UpdateAsync(EmployeeTransfer transfer);
 

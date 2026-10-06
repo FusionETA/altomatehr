@@ -40,6 +40,11 @@ public class PayrollRunService : IPayrollRunService
     private readonly IPayrollXeroSyncService _xeroSync;
     private readonly IEmployeeLoanService _loans;
     private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
+    // Optional so hand-built instances in tests need not supply it. A leaver
+    // transferred to another company is paid their final month here after the
+    // transfer ran; submitting (or reverting) that month re-carries their
+    // year-to-date to the new company.
+    private readonly Employees.IEmployeeTransferService? _transfers;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -57,8 +62,10 @@ public class PayrollRunService : IPayrollRunService
         IAuditService audit,
         IPayrollXeroSyncService xeroSync,
         IEmployeeLoanService loans,
-        Overtime.IApprovedOvertimeService approvedOvertime)
+        Overtime.IApprovedOvertimeService approvedOvertime,
+        Employees.IEmployeeTransferService? transfers = null)
     {
+        _transfers = transfers;
         _approvedOvertime = approvedOvertime;
         _statutory = statutory;
         _hours = hours;
@@ -585,6 +592,9 @@ public class PayrollRunService : IPayrollRunService
         run.SubmittedById = _currentUser.UserId;
         await _runs.UpdateAsync(run);
 
+        if (_transfers is not null)
+            await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
+
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunApprove,
             $"Approved the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
@@ -706,6 +716,9 @@ public class PayrollRunService : IPayrollRunService
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new { run.PeriodYear, run.PeriodMonth, AlsoReverted = alsoReverted }));
+
+        if (_transfers is not null)
+            await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
 
         return new PayrollRunRevertResult(true, ToDto(run), alsoReverted, null);
     }

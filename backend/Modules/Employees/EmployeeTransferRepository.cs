@@ -36,6 +36,18 @@ public class EmployeeTransferRepository : IEmployeeTransferRepository
             .Select(t => t.Id)
             .ToListAsync();
 
+    public Task<List<EmployeeTransfer>> GetExecutedWithPayrollFromOrgAsync(string organizationId, int year)
+    {
+        var from = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var to = from.AddYears(1);
+        return _db.EmployeeTransfers.IgnoreQueryFilters()
+            .Where(t => t.OrganizationId == organizationId
+                        && t.Status == EmployeeTransferStatus.EXECUTED
+                        && t.CopyPayrollInfo
+                        && t.EffectiveDate >= from && t.EffectiveDate < to)
+            .ToListAsync();
+    }
+
     public async Task AddAsync(EmployeeTransfer transfer)
     {
         transfer.CreatedAt = DateTime.UtcNow;

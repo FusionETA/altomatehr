@@ -331,6 +331,46 @@ public class EmployeeTransferService : IEmployeeTransferService
         await AuditExecutedAsync(transfer, targetName, await NameOfAsync(transfer.UserId), transfer.OrganizationId);
     }
 
+    public async Task RecomputeCarriedYearToDateAsync(string organizationId, int year)
+    {
+        try
+        {
+            var transfers = await _transfers.GetExecutedWithPayrollFromOrgAsync(organizationId, year);
+            if (transfers.Count == 0) return;
+
+            var sourceYtd = await _payslips.GetYtdByEmployeeInOrgAsync(organizationId, year);
+            var touchedTargets = new HashSet<string>(StringComparer.Ordinal);
+
+            // Latest first, one per person: an earlier transfer's target is
+            // either the same company or one they've since left.
+            foreach (var t in transfers.OrderByDescending(t => t.EffectiveDate).DistinctBy(t => t.UserId))
+            {
+                var source = await _profiles.GetByUserInOrgAsync(organizationId, t.UserId);
+                var target = await _profiles.GetByUserInOrgAsync(t.TargetOrganizationId, t.UserId);
+
+                // Only while the move still stands: back at the source (source
+                // reopened) or gone from the target, a later move owns the carry.
+                if (source is null || !source.IsArchived || target is null || target.IsArchived) continue;
+
+                var targetOwn = (await _payslips.GetYtdByEmployeeInOrgAsync(t.TargetOrganizationId, year))
+                    .GetValueOrDefault(target.Id);
+
+                CarryYearToDate(source, sourceYtd.GetValueOrDefault(source.Id), targetOwn, year, target);
+                target.UpdatedAt = DateTime.UtcNow;
+                await _profiles.UpdateAsync(target);
+                touchedTargets.Add(t.TargetOrganizationId);
+            }
+
+            if (_drafts is not null)
+                foreach (var org in touchedTargets) await _drafts.MarkAllDraftsForOrgAsync(org);
+        }
+        catch
+        {
+            // Never undo the payroll action that triggered this: the figures
+            // can be recomputed by the next submit, or corrected by hand.
+        }
+    }
+
     public async Task MarkFailedAsync(string transferId, string error)
     {
         var transfer = await _transfers.GetByIdAnyOrgAsync(transferId);
