@@ -66,6 +66,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null) return null;
 
         var targets = await ListTargetsAsync();
+        foreach (var t in targets) t.EmployeeActiveHere = await ActiveAtTargetAsync(t.Id, userId);
         var open = await _transfers.GetOpenForUserAsync(userId);
 
         return new EmployeeTransferOptionsDto
@@ -186,6 +187,109 @@ public class EmployeeTransferService : IEmployeeTransferService
         }
 
         return new TransferResult(true, await ToDtoAsync(transfer, targets), null, executedNow);
+    }
+
+    public async Task<(bool Ok, DuplicateResultDto? Result, string? Error)> DuplicateAsync(
+        string userId, DuplicateEmployeeDto dto)
+    {
+        var sourceOrgId = _currentUser.OrganizationId;
+        if (string.IsNullOrEmpty(sourceOrgId) || string.IsNullOrEmpty(_currentUser.UserId))
+            return (false, null, "Session expired. Please sign in again.");
+
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return (false, null, null);   // 404
+
+        if (OrgRoles.IsAdministrative(membership.Role))
+            return (false, null, "Only employees and supervisors can be added to another company.");
+
+        var source = await _profiles.GetByUserAsync(userId);
+        if (source?.IsArchived == true)
+            return (false, null, "This employee is archived here — use Transfer, or restore them first.");
+
+        if (dto.TargetOrganizationId == sourceOrgId)
+            return (false, null, "Pick a different company — they already work here.");
+
+        var target = (await ListTargetsAsync()).FirstOrDefault(t => t.Id == dto.TargetOrganizationId);
+        if (target is null)
+            return (false, null, "You don't administer that company, or it has no policy set up yet.");
+        if (target.Policies.All(p => p.Id != dto.TargetPolicyId))
+            return (false, null, "That policy doesn't belong to the target company.");
+        if (await ActiveAtTargetAsync(target.Id, userId))
+            return (false, null, $"This employee already works at {target.Name}.");
+        // A queued transfer would then fail on its date ("already active there").
+        if (await _transfers.GetOpenForUserAsync(userId) is not null)
+            return (false, null, "A transfer is scheduled for this employee. Cancel it first, or let it run.");
+
+        var joinDate = DateTime.SpecifyKind(dto.JoinDate.Date, DateTimeKind.Utc);
+        var sourceOrgName = (await _organizations.GetByIdAsync(sourceOrgId))?.Name ?? "another company";
+        var now = DateTime.UtcNow;
+        var newMemberships = new List<OrganizationMembership>();
+        var newProfiles = new List<EmployeeProfile>();
+
+        // Membership at the target — reopened if they worked there before.
+        var targetMembership = await _memberships.GetAsync(target.Id, userId);
+        if (targetMembership is null)
+        {
+            targetMembership = new OrganizationMembership
+            {
+                OrganizationId = target.Id,
+                UserId = userId,
+                Role = OrgRoles.Employee,
+                EmployeeNumber = await TargetEmployeeNumberAsync(target.Id, membership.EmployeeNumber),
+            };
+            newMemberships.Add(targetMembership);
+        }
+        targetMembership.JobTitle = membership.JobTitle;
+        targetMembership.PolicyId = dto.TargetPolicyId;
+        targetMembership.ShiftId = null;
+        targetMembership.JoinDate = joinDate;
+        targetMembership.HiddenByEmployeeAt = null;
+        targetMembership.UpdatedAt = now;
+
+        var targetProfile = await _profiles.GetByUserInOrgAsync(target.Id, userId);
+        if (targetProfile is not null)
+        {
+            await _history.RecordEndedIfMissingAsync(
+                target.Id, userId, targetProfile.JoinDate, targetProfile.LeaveDate, targetProfile.ArchiveReason);
+        }
+        else
+        {
+            targetProfile = new EmployeeProfile { OrganizationId = target.Id, UserId = userId };
+            newProfiles.Add(targetProfile);
+        }
+
+        var from = source ?? new EmployeeProfile();
+        CopyPersonal(from, targetProfile);
+        // Start from a clean payroll slate (also clears an old tenure's salary
+        // on a reopened profile), then lay the person's own numbers back on.
+        ResetPayroll(from, targetProfile);
+        if (dto.CopyStatutoryAndBank) CopyStatutoryAndBank(from, targetProfile);
+        targetProfile.JoinDate = joinDate;
+        targetProfile.LeaveDate = null;
+        targetProfile.IsArchived = false;
+        targetProfile.ArchivedAt = null;
+        targetProfile.ArchiveReason = null;
+        targetProfile.UpdatedAt = now;
+
+        await _history.OpenAsync(target.Id, userId, joinDate, $"Added from {sourceOrgName} (works at both)");
+        await _transfers.CommitAsync(newMemberships, newProfiles);
+
+        var who = await NameOfAsync(userId);
+        var metadata = new
+        {
+            SourceOrganizationId = sourceOrgId,
+            TargetOrganizationId = target.Id,
+            JoinDate = joinDate.ToString("yyyy-MM-dd"),
+            dto.CopyStatutoryAndBank,
+        };
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeDuplicate, $"Added {who} to {target.Name} as well",
+            TargetType: "Employee", TargetId: userId, Metadata: metadata, OrganizationId: sourceOrgId));
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeDuplicate, $"{who} added from {sourceOrgName} (works at both)",
+            TargetType: "Employee", TargetId: userId, Metadata: metadata, OrganizationId: target.Id));
+
+        return (true, new DuplicateResultDto { TargetOrganizationId = target.Id, TargetOrganizationName = target.Name }, null);
     }
 
     public async Task<TransferResult> CancelAsync(string userId, string transferId)
@@ -395,6 +499,17 @@ public class EmployeeTransferService : IEmployeeTransferService
     // employer, and a new employer means new ones.
     private static void CopyPayroll(EmployeeProfile from, EmployeeProfile to)
     {
+        CopyStatutoryAndBank(from, to);
+        to.SalaryType = from.SalaryType;
+        to.MonthlySalary = from.MonthlySalary;
+        to.HourlyRate = from.HourlyRate;
+        to.FixedAllowancesJson = from.FixedAllowancesJson;
+    }
+
+    // The person's OWN statutory registrations and bank account — the same
+    // whichever company employs them. Salary is the employer's, so not here.
+    private static void CopyStatutoryAndBank(EmployeeProfile from, EmployeeProfile to)
+    {
         to.ContributeToEpf = from.ContributeToEpf;
         to.EpfNumber = from.EpfNumber;
         to.EpfEmployeeRate = from.EpfEmployeeRate;
@@ -415,10 +530,6 @@ public class EmployeeTransferService : IEmployeeTransferService
         to.BankName = from.BankName;
         to.BankAccountHolderName = from.BankAccountHolderName;
         to.BankAccountNumber = from.BankAccountNumber;
-        to.SalaryType = from.SalaryType;
-        to.MonthlySalary = from.MonthlySalary;
-        to.HourlyRate = from.HourlyRate;
-        to.FixedAllowancesJson = from.FixedAllowancesJson;
     }
 
     // "Personal only": the target admin sets payroll up from scratch. Defaults

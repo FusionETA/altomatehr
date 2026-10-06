@@ -122,6 +122,8 @@ export type TransferStatus = "PENDING" | "EXECUTED" | "CANCELLED" | "FAILED";
 export type TransferTarget = {
   id: string;
   name: string;
+  /** This employee already works there — can't be transferred or duplicated into it. */
+  employeeActiveHere: boolean;
   policies: { id: string; name: string; isDefault: boolean }[];
 };
 
@@ -182,6 +184,25 @@ export type EmploymentPeriod = {
 
 export const getEmploymentHistory = (id: string) =>
   apiGet<EmploymentPeriod[]>(`/employees/${id}/history`);
+
+// "Duplicate": add the same person to another company this admin runs while
+// they KEEP working here (concurrent employment). Same login. Personal details
+// always go across; statutory numbers + bank when `copyStatutoryAndBank`.
+// Salary never does (each company pays its own), nor YTD (concurrent jobs are
+// taxed by each employer separately).
+export type DuplicateEmployee = {
+  targetOrganizationId: string;
+  targetPolicyId: string;
+  /** yyyy-mm-dd — their first day at the other company. */
+  joinDate: string;
+  copyStatutoryAndBank: boolean;
+};
+
+export const duplicateEmployee = (id: string, body: DuplicateEmployee) =>
+  apiPost<{ targetOrganizationId: string; targetOrganizationName: string }>(
+    `/employees/${id}/duplicate`,
+    body,
+  );
 
 export const cancelTransfer = (id: string, transferId: string) =>
   apiDelete<EmployeeTransfer>(`/employees/${id}/transfer/${transferId}`);

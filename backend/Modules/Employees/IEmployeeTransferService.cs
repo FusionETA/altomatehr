@@ -15,6 +15,12 @@ public interface IEmployeeTransferService
     // Schedule a transfer; when the effective date is today it runs now.
     Task<TransferResult> CreateAsync(string userId, CreateEmployeeTransferDto dto);
 
+    // Add the person to another company the admin runs, KEEPING them here —
+    // concurrent employment. Same login; a profile there with their personal
+    // details (and, optionally, statutory numbers + bank). Ok=false + Error → 400;
+    // Error null → 404.
+    Task<(bool Ok, DuplicateResultDto? Result, string? Error)> DuplicateAsync(string userId, DuplicateEmployeeDto dto);
+
     // Cancel a queued transfer. Cancelling one that already ran or was
     // cancelled is a no-op.
     Task<TransferResult> CancelAsync(string userId, string transferId);

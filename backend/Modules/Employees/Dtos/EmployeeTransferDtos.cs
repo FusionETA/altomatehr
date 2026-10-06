@@ -20,6 +20,10 @@ public class TransferTargetDto
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 
+    // This employee already works there (active membership) — they can't be
+    // transferred or duplicated into it again.
+    public bool EmployeeActiveHere { get; set; }
+
     // Live policies, the default first.
     public List<TransferTargetPolicyDto> Policies { get; set; } = [];
 }
@@ -64,6 +68,32 @@ public class CreateEmployeeTransferDto
 
     [MaxLength(500)]
     public string? Notes { get; set; }
+}
+
+// What an admin sends to add the same person to another company while they
+// KEEP working here (concurrent employment) — "Duplicate".
+public class DuplicateEmployeeDto
+{
+    [Required, MaxLength(40)]
+    public string TargetOrganizationId { get; set; } = string.Empty;
+
+    [Required, MaxLength(40)]
+    public string TargetPolicyId { get; set; } = string.Empty;
+
+    // Their first day at the other company.
+    [Required]
+    public DateTime JoinDate { get; set; }
+
+    // Statutory numbers (EPF / SOCSO / income tax …) and bank account — the
+    // person's own, so normally the same at both. Salary never copies: each
+    // employer pays its own.
+    public bool CopyStatutoryAndBank { get; set; } = true;
+}
+
+public class DuplicateResultDto
+{
+    public string TargetOrganizationId { get; set; } = string.Empty;
+    public string TargetOrganizationName { get; set; } = string.Empty;
 }
 
 // One tenure at this company, for the Employment history list.

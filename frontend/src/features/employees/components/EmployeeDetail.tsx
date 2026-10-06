@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, KeyRound } from "lucide-react";
+import { ArrowRightLeft, Copy, KeyRound } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
 import { TransferDialog } from "./TransferDialog";
+import { DuplicateDialog } from "./DuplicateDialog";
 import { SalaryChangeDialog, salaryText, type SalaryClassification } from "./SalaryChangeDialog";
 import { SalaryHistoryDialog } from "./SalaryHistoryDialog";
 import { ArrowLeft, Check, CircleAlert, History, LoaderCircle, Plus, Trash2 } from "lucide-react";
@@ -188,6 +189,7 @@ export function EmployeeDetail({
   // which simply hides the action.
   const [transferOptions, setTransferOptions] = useState<TransferOptions | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [cancellingTransfer, setCancellingTransfer] = useState(false);
   const [transferNotice, setTransferNotice] = useState<string | null>(null);
   // Bumped after a transfer that ran immediately: the profile here was just
@@ -290,14 +292,24 @@ export function EmployeeDetail({
       .catch(() => setHistory(null));
   }, [employee.id, profileReload, historyReload]);
 
+  // Bumped after a Duplicate: the target now counts as "already works here".
+  const [optionsReload, setOptionsReload] = useState(0);
   useEffect(() => {
     setTransferOptions(null);
-    setTransferNotice(null);
-    // Best-effort: without options there is just no Transfer button.
+    // Best-effort: without options there is just no Transfer / Duplicate button.
     getTransferOptions(employee.id)
       .then(setTransferOptions)
       .catch(() => setTransferOptions(null));
-  }, [employee.id]);
+  }, [employee.id, optionsReload]);
+  useEffect(() => setTransferNotice(null), [employee.id]);
+
+  // Transfer and Duplicate share the same gate: staff only, another company
+  // this admin runs that the person doesn't already work at, nothing queued.
+  const canMoveCompanies =
+    !!transferOptions &&
+    transferOptions.targets.some((t) => !t.employeeActiveHere) &&
+    !transferOptions.pending &&
+    !["owner", "admin"].includes(employee.role?.toLowerCase() ?? "");
 
   async function handleCancelTransfer(transferId: string) {
     setCancellingTransfer(true);
@@ -879,10 +891,7 @@ export function EmployeeDetail({
               person, not on one section. Only for staff (admins are separate
               accounts), only when this admin runs another company, and not
               while a transfer is already queued — the banner below owns that. */}
-          {transferOptions &&
-          transferOptions.targets.length > 0 &&
-          !transferOptions.pending &&
-          !["owner", "admin"].includes(employee.role?.toLowerCase() ?? "") ? (
+          {canMoveCompanies ? (
             <button
               type="button"
               onClick={() => setTransferring(true)}
@@ -892,6 +901,21 @@ export function EmployeeDetail({
             >
               <ArrowRightLeft className="h-3.5 w-3.5" />
               Transfer
+            </button>
+          ) : null}
+
+          {/* Transfer's sibling for someone who works at BOTH companies:
+              nothing ends here. */}
+          {canMoveCompanies ? (
+            <button
+              type="button"
+              onClick={() => setDuplicating(true)}
+              disabled={!profile || profile.isArchived}
+              title={profile?.isArchived ? "Restore this employee first, or use Transfer." : undefined}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
             </button>
           ) : null}
         </div>
@@ -2453,6 +2477,22 @@ export function EmployeeDetail({
           loading={salaryHistoryQuery.loading}
           error={salaryHistoryQuery.error}
           onClose={() => setSalaryHistoryOpen(false)}
+        />
+      ) : null}
+
+      {duplicating && transferOptions ? (
+        <DuplicateDialog
+          employeeId={employee.id}
+          employeeName={employee.name || employee.email}
+          targets={transferOptions.targets}
+          onClose={() => setDuplicating(false)}
+          onDone={(targetName) => {
+            setDuplicating(false);
+            setTransferNotice(
+              `Added to ${targetName} as well. They keep working here and can switch between the two companies with the same login — set their salary there.`,
+            );
+            setOptionsReload((n) => n + 1);
+          }}
         />
       ) : null}
 

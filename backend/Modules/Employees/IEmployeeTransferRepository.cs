@@ -29,6 +29,9 @@ public interface IEmployeeTransferRepository
     // service made to rows it loaded (source profile archive, reused target
     // membership/profile, the transfer itself) rides along — they share this
     // request's DbContext. `isNewTransfer` = executed inline at creation.
+    // Same single-commit write for a change with no transfer row (Duplicate).
+    Task CommitAsync(IEnumerable<OrganizationMembership> newMemberships, IEnumerable<EmployeeProfile> newProfiles);
+
     Task CommitExecutionAsync(
         EmployeeTransfer transfer,
         bool isNewTransfer,

@@ -45,6 +45,25 @@ public class EmployeeTransferRepository : IEmployeeTransferRepository
 
     public Task UpdateAsync(EmployeeTransfer transfer) => _db.SaveChangesAsync();
 
+    public async Task CommitAsync(
+        IEnumerable<OrganizationMembership> newMemberships, IEnumerable<EmployeeProfile> newProfiles)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var m in newMemberships)
+        {
+            m.CreatedAt = now;
+            m.UpdatedAt = now;
+            _db.OrganizationMemberships.Add(m);
+        }
+        foreach (var p in newProfiles)
+        {
+            p.CreatedAt = now;
+            p.UpdatedAt = now;
+            _db.EmployeeProfiles.Add(p);
+        }
+        await _db.SaveChangesAsync();
+    }
+
     public async Task CommitExecutionAsync(
         EmployeeTransfer transfer,
         bool isNewTransfer,

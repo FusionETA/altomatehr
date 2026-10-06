@@ -208,6 +208,17 @@ public class EmployeesController : ControllerBase
         return result.Error is null ? NotFound() : BadRequest(new { error = result.Error });
     }
 
+    // POST /employees/{userId}/duplicate — add the same person to another
+    // company this admin runs, keeping them here too (concurrent employment).
+    [HumanOnly]
+    [HttpPost("{userId}/duplicate")]
+    public async Task<IActionResult> Duplicate(string userId, DuplicateEmployeeDto dto)
+    {
+        var (ok, result, error) = await _transfers.DuplicateAsync(userId, dto);
+        if (ok) return Ok(result);
+        return error is null ? NotFound() : BadRequest(new { error });
+    }
+
     // DELETE /employees/{userId}/transfer/{transferId} — cancel a queued transfer.
     [HumanOnly]
     [HttpDelete("{userId}/transfer/{transferId}")]
