@@ -45,6 +45,12 @@ public static class PayslipCalculator
         public DateTime? JoinDate { get; init; }
         public DateTime? LeaveDate { get; init; }
 
+        // The run's figures are final — an external timesheet (ABPay) already
+        // reduced a joiner's or leaver's pay to the days they worked. Proration
+        // here would cut the same days a second time, so the factor is 1. The
+        // join/leave dates still arrive: they are statutory facts, not pay.
+        public bool SkipProration { get; init; }
+
         // ---- Statutory identity ----
         public string? Nationality { get; init; }
         public bool HasPr { get; init; }
@@ -270,9 +276,13 @@ public static class PayslipCalculator
         //    The EXACT ratio does the money; the rounded factor is only a
         //    snapshot. Rounding before multiplying loses sen — 4999.99 ×
         //    round(19/28) is not 4999.99 × 19/28.
-        var proratedDays = PayPeriod.EffectiveWorkedDays(
-            input.PeriodYear, input.PeriodMonth, input.JoinDate, input.LeaveDate,
-            prorationDays, input.WorkingDaysRule) ?? 0;
+        //    A run whose figures are final (SkipProration) pays the whole
+        //    period: the timesheet already did this arithmetic once.
+        var proratedDays = input.SkipProration
+            ? prorationDays
+            : PayPeriod.EffectiveWorkedDays(
+                input.PeriodYear, input.PeriodMonth, input.JoinDate, input.LeaveDate,
+                prorationDays, input.WorkingDaysRule) ?? 0;
 
         var prorationRatio = prorationDays > 0 ? (decimal)proratedDays / prorationDays : 0m;
         var proratedFactor = Math.Round(prorationRatio, 6, MidpointRounding.AwayFromZero);

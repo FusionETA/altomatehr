@@ -124,6 +124,7 @@ public class PayrollRunService : IPayrollRunService
             PeriodMonth = dto.PeriodMonth,
             Status = PayrollRunStatus.DRAFT,
             Source = PayrollRunSource.COMPUTED,
+            SkipProration = dto.SkipProration,
         });
 
         // Freeze the admin's chosen roster (policies − unticked employees).
@@ -137,7 +138,42 @@ public class PayrollRunService : IPayrollRunService
             $"Started the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
-            Metadata: new { run.PeriodYear, run.PeriodMonth, MemberCount = members.Count }));
+            Metadata: new { run.PeriodYear, run.PeriodMonth, MemberCount = members.Count, run.SkipProration }));
+
+        return new PayrollRunSaveResult(true, ToDto(run), null);
+    }
+
+    public async Task<PayrollRunSaveResult> UpdateAsync(string id, UpdatePayrollRunDto dto)
+    {
+        var run = await _runs.GetByIdAsync(id);
+        if (run is null) return new PayrollRunSaveResult(false, null, null);
+
+        // Changing how pay is computed on a filed or pending month would leave
+        // its payslips describing a rule the run no longer says it used.
+        if (run.Status != PayrollRunStatus.DRAFT)
+        {
+            return new PayrollRunSaveResult(
+                false, null, "Only a draft payroll run can be changed.");
+        }
+
+        if (dto.SkipProration is not { } skip || skip == run.SkipProration)
+            return new PayrollRunSaveResult(true, ToDto(run), null);
+
+        run.SkipProration = skip;
+
+        // The payslips on screen were priced under the old setting, so the run
+        // asks for a re-run — the same stamp an adjustment edit leaves.
+        if (run.GeneratedAt is not null) run.LastMutatedAt = DateTime.UtcNow;
+        await _runs.UpdateAsync(run);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.PayrollRunUpdate,
+            skip
+                ? $"Set the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run to use pay figures as final (no proration)"
+                : $"Set the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run to prorate joiners and leavers",
+            TargetType: "PayrollRun",
+            TargetId: run.Id,
+            Metadata: new { run.PeriodYear, run.PeriodMonth, SkipProration = skip }));
 
         return new PayrollRunSaveResult(true, ToDto(run), null);
     }
@@ -826,6 +862,7 @@ public class PayrollRunService : IPayrollRunService
                 loanRepayment),
             JoinDate = profile.JoinDate,
             LeaveDate = profile.LeaveDate,
+            SkipProration = run.SkipProration,
 
             Nationality = profile.Nationality,
             HasPr = profile.HasPr,
@@ -1151,6 +1188,7 @@ public class PayrollRunService : IPayrollRunService
         PeriodLabel = PeriodLabel(r.PeriodYear, r.PeriodMonth),
         Status = r.Status,
         Source = r.Source,
+        SkipProration = r.SkipProration,
         EmployeeCount = r.EmployeeCount,
         TotalGross = r.TotalGross,
         TotalNet = r.TotalNet,

@@ -355,6 +355,11 @@ export const apiPut = <T>(path: string, body?: unknown) =>
     cache.invalidateFor(path);
     return r;
   });
+export const apiPatch = <T>(path: string, body?: unknown) =>
+  request<T>("PATCH", path, body).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
 export const apiDelete = <T>(path: string) =>
   request<T>("DELETE", path).then((r) => {
     cache.invalidateFor(path);

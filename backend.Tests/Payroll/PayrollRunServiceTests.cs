@@ -379,6 +379,92 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(2592.59m, payslip.ProratedPay);  // 5000 × 14/27
     }
 
+    // ─── Final figures (SkipProration) ──────────────────────────────────
+
+    // An ABPay run: the salary it sent is already the joiner's part-month pay,
+    // so the run pays it as sent instead of cutting it a second time.
+    [Fact]
+    public async Task GenerateAsync_PaysAJoinerAsSent_WhenTheRunSkipsProration()
+    {
+        AddEmployee("usr-1", "Aisyah", joinDate: new DateTime(2026, 1, 16));
+        var created = await _service.CreateAsync(new CreatePayrollRunDto
+        {
+            PeriodYear = 2026,
+            PeriodMonth = 1,
+            SkipProration = true,
+        });
+        Assert.True(created.Run!.SkipProration);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(created.Run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(5000m, payslip.ProratedPay);
+        Assert.Equal(1m, payslip.ProratedFactor);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ProratesByDefault()
+    {
+        var run = await CreateRunAsync();
+
+        Assert.False(run.SkipProration);
+    }
+
+    // Flipping the setting after payslips exist means they were priced under
+    // the other rule, so the run must ask for a re-run before submission.
+    [Fact]
+    public async Task UpdateAsync_TogglesSkipProration_AndMarksAGeneratedRunStale()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await CreateRunAsync();
+        await _service.GenerateAsync(run.Id);
+
+        var updated = await _service.UpdateAsync(run.Id, new UpdatePayrollRunDto { SkipProration = true });
+
+        Assert.True(updated.Ok);
+        Assert.True(updated.Run!.SkipProration);
+        Assert.True(updated.Run.IsStale);
+        Assert.True(_audit.Recorded(AuditActions.PayrollRunUpdate));
+    }
+
+    // Nothing changed, so nothing is stale and nothing is logged.
+    [Fact]
+    public async Task UpdateAsync_IsANoOp_WhenTheValueIsUnchanged()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await CreateRunAsync();
+        await _service.GenerateAsync(run.Id);
+
+        var updated = await _service.UpdateAsync(run.Id, new UpdatePayrollRunDto { SkipProration = false });
+
+        Assert.True(updated.Ok);
+        Assert.False(updated.Run!.IsStale);
+        Assert.False(_audit.Recorded(AuditActions.PayrollRunUpdate));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RefusesARunThatIsNoLongerADraft()
+    {
+        var run = await CreateRunAsync();
+        var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id);
+        stored.Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.UpdateAsync(run.Id, new UpdatePayrollRunDto { SkipProration = true });
+
+        Assert.False(result.Ok);
+        Assert.NotNull(result.Error);
+        Assert.False((await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id)).SkipProration);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReportsAnUnknownRunAsNotFound()
+    {
+        var result = await _service.UpdateAsync("run-that-never-was", new UpdatePayrollRunDto { SkipProration = true });
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+    }
+
     // ─── Profile JSON ───────────────────────────────────────────────────
 
     [Fact]

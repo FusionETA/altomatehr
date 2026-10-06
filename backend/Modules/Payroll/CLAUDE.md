@@ -101,6 +101,21 @@ someone's salary in March must not rewrite what January paid them.
 
 Only a DRAFT run can be generated, adjusted, or have claims attached.
 
+## Final figures (`PayrollRun.SkipProration`)
+
+A run fed by ABPay carries pay that the timesheet has already cut to the days
+a joiner or leaver worked. Prorating it again cuts the same days twice — July
+2026 for Ayu Borneo (Management) underpaid nine people RM 3,332.29 that way. So
+a run can say its figures are final: `PayslipCalculator` then uses a factor of
+1 for basic AND the prorated allowance categories. Join/leave dates still reach
+the input — they are statutory facts (CP22/CP22A, EA), not pay — and
+`SkipReasonFor` still drops someone not employed in the period at all.
+
+Per run, not per org, so a run an admin builds by hand in the same company
+still prorates. Set on `POST /payroll/runs` (`skipProration`) or
+`PATCH /payroll/runs/{id}`; DRAFT-only, and changing it on a generated run
+stamps `LastMutatedAt` so it asks for a re-run.
+
 ## The status machine
 
 ```

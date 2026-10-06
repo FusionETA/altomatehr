@@ -30,6 +30,13 @@ public class PayrollRun : ITenantScoped
     public PayrollRunStatus Status { get; set; } = PayrollRunStatus.DRAFT;
     public PayrollRunSource Source { get; set; } = PayrollRunSource.COMPUTED;
 
+    // The pay figures on this run are final: an external timesheet (ABPay)
+    // already reduced joiners and leavers to the days they worked, so
+    // generation must not prorate them again. Per run rather than per org, so
+    // a run an admin builds by hand in the same company still prorates.
+    // DRAFT-only to change; it is regenerated with the run.
+    public bool SkipProration { get; set; }
+
     // ---- Totals across the run's payslips ----
 
     public int EmployeeCount { get; set; }
