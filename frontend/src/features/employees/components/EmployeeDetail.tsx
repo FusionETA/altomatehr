@@ -1628,7 +1628,7 @@ export function EmployeeDetail({
                   <Field label="Archived" span>
                     <Toggle
                       label="Archive this employee"
-                      hint="Keeps their history and payslips, but leaves them out of new payroll runs."
+                      hint="Keeps their history and payslips. Payroll still pays them up to their last day, then leaves them out."
                       checked={profile.isArchived}
                       onChange={(v) => set("isArchived", v)}
                     />

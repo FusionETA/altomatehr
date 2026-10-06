@@ -305,8 +305,10 @@ export type PayrollPickerPolicy = {
 
 export type PayrollRunPicker = { policies: PayrollPickerPolicy[] };
 
-export const getPayrollRunPicker = () =>
-  apiGet<PayrollRunPicker>("/payroll/runs/picker");
+// For the month being started: someone archived is still listed when their
+// last day falls in or after it — they're owed that month up to that day.
+export const getPayrollRunPicker = (year: number, month: number) =>
+  apiGet<PayrollRunPicker>(`/payroll/runs/picker?year=${year}&month=${month}`);
 
 export type CreatePayrollRunInput = {
   periodYear: number;
