@@ -7,11 +7,13 @@ import {
   getRevertImpact,
   rejectPayrollRun,
   revertPayrollRun,
+  setPayrollRunSkipProration,
   submitPayrollRun,
   type PayrollRun,
   type SkippedEmployee,
 } from "../api";
-import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
+import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, HINT, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
+import { CheckBox } from "./PayrollCheckbox";
 
 // WARN_PANEL's colours at a single line's weight — a reason next to a button,
 // not a panel of its own.
@@ -89,6 +91,14 @@ export function PayrollRunActions({
 
     onSkipped(result.skippedEmployees);
     onChanged();
+  }
+
+  // Final figures: an ABPay timesheet already paid joiners and leavers for the
+  // days they worked. Changing it on a generated run makes the run stale, and
+  // the strip below then asks for a re-run.
+  async function toggleSkipProration(next: boolean) {
+    const result = await run_("skip-proration", () => setPayrollRunSkipProration(run.id, next));
+    if (result) onChanged();
   }
 
   async function askRevert() {
@@ -218,6 +228,31 @@ export function PayrollRunActions({
           </button>
         ) : null}
       </div>
+
+      {run.status === "DRAFT" ? (
+        <label htmlFor="skipProration" className="flex cursor-pointer items-start gap-3">
+          <CheckBox
+            id="skipProration"
+            checked={run.skipProration}
+            disabled={busy !== null}
+            onChange={(next) => void toggleSkipProration(next)}
+          />
+          <span>
+            <span className="flex items-center gap-2 text-sm font-medium">
+              Pay figures are final — don't prorate joiners and leavers
+              {spinner("skip-proration")}
+            </span>
+            <span className={`${HINT} block`}>
+              For runs imported from ABPay, where the timesheet already pays part-month staff
+              for the days they worked. Prorating again would cut those days twice.
+            </span>
+          </span>
+        </label>
+      ) : run.skipProration ? (
+        <p className={HINT}>
+          Pay figures were used as final — joiners and leavers were not prorated.
+        </p>
+      ) : null}
 
       {/* Why Send for approval is greyed out, in view rather than in a hover
           title (invisible on a touch screen, easy to miss with a mouse). It

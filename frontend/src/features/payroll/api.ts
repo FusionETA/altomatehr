@@ -6,6 +6,7 @@ import {
   apiPostFile,
   apiPost,
   apiPostForm,
+  apiPatch,
   apiPut,
 } from "@/shared/lib/api-client";
 
@@ -136,6 +137,9 @@ export type PayrollRun = {
   periodLabel: string;
   status: PayrollRunStatus;
   source: PayrollRunSource;
+  // Pay figures are final (an ABPay import): joiners and leavers are paid as
+  // sent rather than prorated a second time.
+  skipProration: boolean;
   employeeCount: number;
   totalGross: number;
   totalNet: number;
@@ -311,10 +315,15 @@ export type CreatePayrollRunInput = {
   // callers with no scope, which the backend reads as "the whole roster".
   policyIds?: string[];
   excludedEmployeeProfileIds?: string[];
+  skipProration?: boolean;
 };
 
 export const createPayrollRun = (input: CreatePayrollRunInput) =>
   apiPost<PayrollRun>("/payroll/runs", input);
+
+// Draft only. Changing it on a generated run makes the run ask for a re-run.
+export const setPayrollRunSkipProration = (id: string, skipProration: boolean) =>
+  apiPatch<PayrollRun>(`/payroll/runs/${id}`, { skipProration });
 
 export const generatePayrollRun = (id: string) =>
   apiPost<GenerateResult>(`/payroll/runs/${id}/generate`);

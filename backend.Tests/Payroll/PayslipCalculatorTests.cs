@@ -136,6 +136,51 @@ public class PayslipCalculatorTests
         Assert.Equal(50m, Line("deduct_zakat"));
     }
 
+    // The ABPay case, with the real July 2026 figures. The timesheet already
+    // cut a 22 July joiner to 10 of 31 days (RM 1,800 → 580.65, RM 500 travel →
+    // 161.29). Prorating again cut them to 9 of 27 Mon-Sat days — 193.55 and
+    // 53.76 — which is the double proration a final-figures run must not do.
+    [Fact]
+    public void SkipProration_PaysAJoinersFiguresExactlyAsSent()
+    {
+        var input = Make(
+            year: 2026, month: 7,
+            monthlySalary: 580.65m,
+            joinDate: new DateTime(2026, 7, 22),
+            allowances: [Allowance("allowance_travel_official", 161.29m)]);
+
+        decimal Travel(PayslipCalculator.Result r) =>
+            r.LineItems.Single(l => l.Category == "allowance_travel_official").Amount;
+
+        var prorated = PayslipCalculator.Calculate(input);
+        Assert.Equal(193.55m, prorated.ProratedPay);
+        Assert.Equal(53.76m, Travel(prorated));
+
+        var final = PayslipCalculator.Calculate(input with { SkipProration = true });
+        Assert.Equal(580.65m, final.ProratedPay);
+        Assert.Equal(161.29m, Travel(final));
+        Assert.Equal(741.94m, final.GrossPay);
+
+        // Recorded as a whole period, so the payslip says nothing was cut.
+        Assert.Equal(1m, final.ProratedFactor);
+        Assert.Equal(27, final.ProratedDays);
+        Assert.Equal(27, final.ProrationDaysInPeriod);
+    }
+
+    // The flag only stops the SECOND cut. Someone who worked the whole month
+    // is paid the same either way.
+    [Fact]
+    public void SkipProration_ChangesNothingForAFullMonth()
+    {
+        var input = Make(allowances: [Allowance("allowance_travel_official", 500m)]);
+
+        var normal = PayslipCalculator.Calculate(input);
+        var final = PayslipCalculator.Calculate(input with { SkipProration = true });
+
+        Assert.Equal(normal.GrossPay, final.GrossPay);
+        Assert.Equal(normal.NetPay, final.NetPay);
+    }
+
     // Every category v1 leaves unprorated is unprorated here too — and so is
     // every TP1 item and rebate added since, being stated amounts as well.
     [Fact]

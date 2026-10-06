@@ -81,6 +81,18 @@ public class PayrollRunsController : ControllerBase
             : Conflict(new { error = result.Error });
     }
 
+    // Change a draft run's settings — today only SkipProration, which an
+    // integration sets on a run that already existed when it imported.
+    [RequireScope("payroll:write")]
+    [HttpPatch("{id}")]
+    public async Task<IActionResult> Update(string id, UpdatePayrollRunDto dto)
+    {
+        var result = await _runs.UpdateAsync(id, dto);
+
+        if (result.Ok) return Ok(result.Run);
+        return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+    }
+
     // Rebuilds every payslip on the run from the employees' current profiles,
     // discarding the previous ones. Safe to call repeatedly on a draft.
     [RequireScope("payroll:write")]
