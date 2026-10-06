@@ -804,8 +804,10 @@ public class PayrollRunService : IPayrollRunService
         p.LeaveDate ?? (p.IsArchived ? p.ArchivedAt?.Date : null);
 
     // Whether the profile can be on a run for this month. With no month (an
-    // old caller), archived means no.
-    private static bool PayableIn(EmployeeProfile p, int? year, int? month)
+    // old caller), archived means no. Public so every service that decides
+    // "is this person on the run" (claims, adjustment imports) agrees with
+    // generation.
+    public static bool PayableIn(EmployeeProfile p, int? year, int? month)
     {
         if (!p.IsArchived) return true;
         if (year is null || month is null) return false;

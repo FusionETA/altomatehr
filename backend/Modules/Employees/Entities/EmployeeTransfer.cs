@@ -55,6 +55,13 @@ public class EmployeeTransfer : ITenantScoped
     public DateTime CreatedAt { get; set; }
     public DateTime? ExecutedAt { get; set; }
 
+    // A fingerprint of the previous-employment figures this transfer wrote on
+    // the target profile. The old company's later payroll submits re-carry
+    // them only while the target still holds exactly these — a figure HR
+    // corrected by hand is theirs, and is left alone.
+    [MaxLength(64)]
+    public string? CarriedPrevFingerprint { get; set; }
+
     // Why the last attempt failed, for the operator. The daily job retries a
     // FAILED row until it executes or someone cancels it.
     [MaxLength(500)]

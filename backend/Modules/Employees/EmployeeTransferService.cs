@@ -352,12 +352,20 @@ public class EmployeeTransferService : IEmployeeTransferService
                 // reopened) or gone from the target, a later move owns the carry.
                 if (source is null || !source.IsArchived || target is null || target.IsArchived) continue;
 
-                var targetOwn = (await _payslips.GetYtdByEmployeeInOrgAsync(t.TargetOrganizationId, year))
+                // HR corrected the figures by hand since: theirs, not ours.
+                if (t.CarriedPrevFingerprint is null || t.CarriedPrevFingerprint != PrevFingerprint(target)) continue;
+
+                // What the target paid them BEFORE this transfer (a return) —
+                // never what it has paid since, or each month there would wipe
+                // out the old company's months.
+                var targetOwn = (await _payslips.GetYtdByEmployeeInOrgAsync(
+                        t.TargetOrganizationId, year, t.EffectiveDate.Month))
                     .GetValueOrDefault(target.Id);
 
                 CarryYearToDate(source, sourceYtd.GetValueOrDefault(source.Id), targetOwn, year, target);
                 target.UpdatedAt = DateTime.UtcNow;
-                await _profiles.UpdateAsync(target);
+                t.CarriedPrevFingerprint = PrevFingerprint(target);
+                await _profiles.UpdateAsync(target);   // saves the transfer's new fingerprint too
                 touchedTargets.Add(t.TargetOrganizationId);
             }
 
@@ -442,7 +450,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         }
         if (transfer.CopyPayrollInfo && targetProfile is not null)
         {
-            targetOwnYtd = (await _payslips.GetYtdByEmployeeInOrgAsync(targetOrgId, effective.Year))
+            targetOwnYtd = (await _payslips.GetYtdByEmployeeInOrgAsync(targetOrgId, effective.Year, effective.Month))
                 .GetValueOrDefault(targetProfile.Id);
         }
 
@@ -510,6 +518,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         {
             CopyPayroll(source, targetProfile);
             CarryYearToDate(source, sourceYtd, targetOwnYtd, effective.Year, targetProfile);
+            transfer.CarriedPrevFingerprint = PrevFingerprint(targetProfile);
         }
         else
         {
@@ -717,6 +726,21 @@ public class EmployeeTransferService : IEmployeeTransferService
     }
 
     // ---- Helpers ----
+
+    // The previous-employment figures as one hash, to tell "still what the
+    // transfer carried" from "changed by hand".
+    public static string PrevFingerprint(EmployeeProfile p)
+    {
+        // Fixed 2-dp invariant text: the database hands back 15000.00 for a
+        // 15000 written in memory, and the two must hash the same.
+        static string M(decimal? v) =>
+            v is null ? "" : Math.Round(v.Value, 2).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var raw = string.Join('|',
+            p.PrevEmploymentYear, M(p.PrevRemuneration), M(p.PrevEpf), M(p.PrevPcb), M(p.PrevZakat),
+            M(p.PrevAllowableDeductions), p.PrevByCategoryJson, p.PrevIncludesPriorThisOrgPeriod);
+        return Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw)));
+    }
 
     // Every other org where the signed-in admin is Admin/Owner with the
     // Employees module, that has a live policy to place the person on.

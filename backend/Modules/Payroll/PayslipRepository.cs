@@ -144,16 +144,16 @@ public class PayslipRepository : IPayslipRepository
 
     public Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeAsync(
         int year, string? excludeRunId) =>
-        ComputeYtdAsync(year, excludeRunId, organizationId: null);
+        ComputeYtdAsync(year, excludeRunId, organizationId: null, beforeMonth: null);
 
     public Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeInOrgAsync(
-        string organizationId, int year) =>
-        ComputeYtdAsync(year, excludeRunId: null, organizationId);
+        string organizationId, int year, int? beforeMonth = null) =>
+        ComputeYtdAsync(year, excludeRunId: null, organizationId, beforeMonth);
 
     // `organizationId` null = the current org (tenant filter). Set = that org
     // exactly, ignoring the filter — for a transfer, which reads two companies.
     private async Task<IReadOnlyDictionary<string, PayrollYtdTotals>> ComputeYtdAsync(
-        int year, string? excludeRunId, string? organizationId)
+        int year, string? excludeRunId, string? organizationId, int? beforeMonth)
     {
         var runsQuery = organizationId is null
             ? _db.PayrollRuns
@@ -169,6 +169,7 @@ public class PayslipRepository : IPayslipRepository
         // generated right now must not feed its own YTD baseline.
         var runIds = await runsQuery
             .Where(r => r.PeriodYear == year
+                        && (beforeMonth == null || r.PeriodMonth < beforeMonth)
                         && r.Status == PayrollRunStatus.SUBMITTED
                         && (excludeRunId == null || r.Id != excludeRunId))
             .Select(r => r.Id)

@@ -90,4 +90,18 @@ public class TransferYearToDateTests
 
         Assert.Equal(10_000m, target.PrevRemuneration);
     }
+
+    // The old company's later submits re-carry only while the target still holds
+    // what the transfer wrote. The database hands decimals back at 2 dp, so the
+    // fingerprint must not change with the scale.
+    [Fact]
+    public void Fingerprint_ignores_decimal_scale_but_sees_a_hand_edit()
+    {
+        var written = new EmployeeProfile { PrevEmploymentYear = Year, PrevRemuneration = 15000m, PrevPcb = 300m };
+        var reloaded = new EmployeeProfile { PrevEmploymentYear = Year, PrevRemuneration = 15000.00m, PrevPcb = 300.00m };
+        var edited = new EmployeeProfile { PrevEmploymentYear = Year, PrevRemuneration = 15000m, PrevPcb = 350m };
+
+        Assert.Equal(EmployeeTransferService.PrevFingerprint(written), EmployeeTransferService.PrevFingerprint(reloaded));
+        Assert.NotEqual(EmployeeTransferService.PrevFingerprint(written), EmployeeTransferService.PrevFingerprint(edited));
+    }
 }

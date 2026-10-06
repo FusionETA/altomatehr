@@ -372,7 +372,9 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
     private async Task<IReadOnlyList<EmployeeProfile>> ScopeAsync(PayrollRun run)
     {
         var payable = (await _directory.PayrollProfilesAsync())
-            .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
+            // Same rule as generation: a leaver is on their final month's run.
+            .Where(p => PayrollRunService.PayableIn(p, run.PeriodYear, run.PeriodMonth)
+                        && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 
         var members = await _members.GetForRunAsync(run.Id);
