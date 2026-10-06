@@ -99,7 +99,9 @@ public class PayrollRunRepository : IPayrollRunRepository
         // string-converted enum that version stamped nothing in the tests, and
         // the caller swallows errors by design — so it failed silently.
         var includeLocked = periods is not null;
-        var runs = await _db.PayrollRuns
+        // Keyed by the org passed in, not the session's: an employee transfer
+        // marks the TARGET company's drafts from a request scoped to the source.
+        var runs = await _db.PayrollRuns.IgnoreQueryFilters()
             .Where(r => r.OrganizationId == organizationId
                         && r.GeneratedAt != null
                         && (r.Status == PayrollRunStatus.DRAFT

@@ -500,7 +500,12 @@ public class AuthService : IAuthService
                      && (await _directory.GetProfilesByUserAsync(userId))
                          .Any(p => p.OrganizationId == organizationId && p.IsArchived);
 
-        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support, sso, former);
+        // In a former company they are nobody's supervisor any more: the
+        // middleware only stops writes, and a Supervisor role would still
+        // read their old team's attendance, leave and overtime. The REFRESH
+        // token keeps the real role, so a restore gives it back on refresh.
+        var sessionRole = former ? OrgRoles.Employee : role;
+        var accessToken = _tokens.CreateToken(userId, email, sessionRole, organizationId, support, sso, former);
 
         var refresh = new RefreshToken
         {
@@ -520,7 +525,7 @@ public class AuthService : IAuthService
         // from the email — "admin@…" read as a person called "Admin".
         var name = (await _userRepo.GetByIdAsync(userId))?.Name;
         var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
-        return new AuthResult(accessToken, email, role, organizationId, refresh.Token, refresh.ExpiresAt,
+        return new AuthResult(accessToken, email, sessionRole, organizationId, refresh.Token, refresh.ExpiresAt,
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
             SupportMode: support,

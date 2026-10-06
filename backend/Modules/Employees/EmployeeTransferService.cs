@@ -36,6 +36,7 @@ public class EmployeeTransferService : IEmployeeTransferService
     private readonly IAuditService _audit;
     private readonly ICurrentUser _currentUser;
     private readonly IEmploymentHistory _history;
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public EmployeeTransferService(
         IEmployeeTransferRepository transfers,
@@ -47,7 +48,8 @@ public class EmployeeTransferService : IEmployeeTransferService
         IUserRepository users,
         IAuditService audit,
         ICurrentUser currentUser,
-        IEmploymentHistory history)
+        IEmploymentHistory history,
+        IPayrollDraftStaleness? drafts = null)
     {
         _transfers = transfers;
         _memberships = memberships;
@@ -59,6 +61,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         _audit = audit;
         _currentUser = currentUser;
         _history = history;
+        _drafts = drafts;
     }
 
     public async Task<EmployeeTransferOptionsDto?> GetOptionsAsync(string userId)
@@ -273,6 +276,7 @@ public class EmployeeTransferService : IEmployeeTransferService
 
         await _history.OpenAsync(target.Id, userId, joinDate, $"Added from {sourceOrgName} (works at both)");
         await _transfers.CommitAsync(newMemberships, newProfiles);
+        if (_drafts is not null) await _drafts.MarkAllDraftsForOrgAsync(target.Id);
 
         var who = await NameOfAsync(userId);
         var metadata = new
@@ -357,6 +361,12 @@ public class EmployeeTransferService : IEmployeeTransferService
         var sourceMembership = await _memberships.GetAsync(sourceOrgId, userId)
                                ?? throw new TransferException("This person is no longer a member of the source company.");
 
+        // Whoever scheduled it must still run the target: access can be taken
+        // away between scheduling and the effective date.
+        if (!await AdministersTargetAsync(transfer.CreatedByUserId, targetOrgId))
+            throw new TransferException(
+                $"The admin who scheduled this no longer manages employees at {targetOrg.Name}. Cancel it and have someone who does schedule it again.");
+
         var policy = (await _policies.GetActiveForOrgsAsync([targetOrgId]))
                      .FirstOrDefault(p => p.Id == transfer.TargetPolicyId)
                      ?? throw new TransferException("The chosen policy no longer exists at the target company.");
@@ -370,13 +380,30 @@ public class EmployeeTransferService : IEmployeeTransferService
         var effective = transfer.EffectiveDate;
         var now = DateTime.UtcNow;
 
+        // They may have left in the meantime (archived, or a planned leave date
+        // before the transfer). Running anyway would rewrite that leave date
+        // and hand them an active job at the target.
+        if (source?.IsArchived == true)
+            throw new TransferException(
+                "This person was archived after the transfer was scheduled. Cancel it, or restore them first.");
+        if (source?.LeaveDate is { } leaving && leaving.Date < effective.AddDays(-1))
+            throw new TransferException(
+                $"Their last day here ({leaving:yyyy-MM-dd}) is before the transfer date. Cancel the transfer.");
+
         // This year's figures at the source, for PCB continuity at the target.
         // Read BEFORE anything changes.
-        PayrollYtdTotals? ytd = null;
+        // Each read is for ONE named org: the inline path's current org is the
+        // source, and the job has none — neither may decide what gets counted.
+        PayrollYtdTotals? sourceYtd = null, targetOwnYtd = null;
         if (transfer.CopyPayrollInfo && source is not null)
         {
-            var byEmployee = await _payslips.GetYtdByEmployeeAsync(effective.Year, excludeRunId: null);
-            ytd = byEmployee.GetValueOrDefault(source.Id);
+            sourceYtd = (await _payslips.GetYtdByEmployeeInOrgAsync(sourceOrgId, effective.Year))
+                .GetValueOrDefault(source.Id);
+        }
+        if (transfer.CopyPayrollInfo && targetProfile is not null)
+        {
+            targetOwnYtd = (await _payslips.GetYtdByEmployeeInOrgAsync(targetOrgId, effective.Year))
+                .GetValueOrDefault(targetProfile.Id);
         }
 
         var newMemberships = new List<OrganizationMembership>();
@@ -402,7 +429,6 @@ public class EmployeeTransferService : IEmployeeTransferService
             $"Transferred to {targetOrg.Name}", transfer.Id);
 
         // 2) Membership at the target — reused on a round trip.
-        var isReturning = targetMembership is not null;
         if (targetMembership is null)
         {
             targetMembership = new OrganizationMembership
@@ -443,7 +469,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         if (transfer.CopyPayrollInfo)
         {
             CopyPayroll(source, targetProfile);
-            CarryYearToDate(source, ytd, effective.Year, isReturning, targetProfile);
+            CarryYearToDate(source, sourceYtd, targetOwnYtd, effective.Year, targetProfile);
         }
         else
         {
@@ -462,6 +488,15 @@ public class EmployeeTransferService : IEmployeeTransferService
         transfer.ErrorMessage = null;
 
         await _transfers.CommitExecutionAsync(transfer, isNewTransfer, newMemberships, newProfiles);
+
+        // Payroll inputs changed in both companies (an archive and a leave date
+        // at the source; a new or reopened employee at the target). Named orgs:
+        // the job runs with no current one.
+        if (_drafts is not null)
+        {
+            await _drafts.MarkAllDraftsForOrgAsync(sourceOrgId);
+            await _drafts.MarkAllDraftsForOrgAsync(targetOrgId);
+        }
     }
 
     // Who the person is — always goes across.
@@ -570,44 +605,75 @@ public class EmployeeTransferService : IEmployeeTransferService
         to.PrevIncludesPriorThisOrgPeriod = false;
     }
 
-    // The target's "previous employment" for the year = what the source itself
-    // carried in from before (if it was for this year) + what the source paid.
-    // That is LHDN's view of a same-owner move: continuous for MTD purposes.
-    private static void CarryYearToDate(
-        EmployeeProfile source, PayrollYtdTotals? ytd, int year, bool isReturning, EmployeeProfile to)
+    // The target's "previous employment" for the year: everything the person
+    // earned this year anywhere EXCEPT at the target itself.
+    //
+    //   elsewhere = what the source carried in from employers before it
+    //               (net of the source's own months if it was flagged as
+    //               including them) + what the source itself paid;
+    //   prev      = elsewhere − what the TARGET already paid them this year
+    //               (only non-zero on a return), floored at zero.
+    //
+    // Written as plain prior-employer figures with the flag OFF. Leaning on
+    // PrevIncludesPriorThisOrgPeriod instead is wrong after a return: payroll
+    // nets the target's GROWING own YTD against the carried total, so each
+    // month back at the target eats into the other employer's months until
+    // PCB drops to zero.
+    public static void CarryYearToDate(
+        EmployeeProfile source, PayrollYtdTotals? sourceYtd, PayrollYtdTotals? targetOwnYtd,
+        int year, EmployeeProfile to)
     {
         var carried = source.PrevEmploymentYear == year;
-        decimal Prior(decimal? v) => carried ? v ?? 0m : 0m;
+        var sourceFlagged = carried && source.PrevIncludesPriorThisOrgPeriod;
+
+        // A figure from before the source, net of the source's own months when
+        // the source's prev was flagged as already including them.
+        decimal Prior(decimal? declared, decimal sourceOwn) =>
+            !carried ? 0m : sourceFlagged ? Math.Max(0m, (declared ?? 0m) - sourceOwn) : declared ?? 0m;
+
+        decimal Prev(decimal? declared, Func<PayrollYtdTotals, decimal> pick)
+        {
+            var own = sourceYtd is null ? 0m : pick(sourceYtd);
+            var elsewhere = Prior(declared, own) + own;
+            var atTarget = targetOwnYtd is null ? 0m : pick(targetOwnYtd);
+            return Math.Max(0m, elsewhere - atTarget);
+        }
 
         var byCategory = new Dictionary<string, decimal>(StringComparer.Ordinal);
         if (carried)
         {
             foreach (var item in PreviousEmployerItems.Parse(source.PrevByCategoryJson))
                 byCategory[item.Category] = byCategory.GetValueOrDefault(item.Category) + item.Amount;
+            if (sourceFlagged && sourceYtd is not null)
+            {
+                foreach (var (category, amount) in sourceYtd.AllowanceByCategory)
+                    if (byCategory.ContainsKey(category))
+                        byCategory[category] = Math.Max(0m, byCategory[category] - amount);
+            }
         }
-        if (ytd is not null)
+        if (sourceYtd is not null)
         {
-            foreach (var (category, amount) in ytd.AllowanceByCategory)
+            foreach (var (category, amount) in sourceYtd.AllowanceByCategory)
                 byCategory[category] = byCategory.GetValueOrDefault(category) + amount;
         }
+        if (targetOwnYtd is not null)
+        {
+            foreach (var (category, amount) in targetOwnYtd.AllowanceByCategory)
+                if (byCategory.ContainsKey(category))
+                    byCategory[category] = Math.Max(0m, byCategory[category] - amount);
+        }
+        var items = byCategory.Where(kv => kv.Value > 0m).ToList();
 
         to.PrevEmploymentYear = year;
-        to.PrevRemuneration = Prior(source.PrevRemuneration) + (ytd?.Taxable ?? 0m);
-        to.PrevEpf = Prior(source.PrevEpf) + (ytd?.Epf ?? 0m);
-        to.PrevPcb = Prior(source.PrevPcb) + (ytd?.Pcb ?? 0m);
-        to.PrevZakat = Prior(source.PrevZakat) + (ytd?.Zakat ?? 0m);
-        to.PrevAllowableDeductions = Prior(source.PrevAllowableDeductions) + (ytd?.AllowableDeductions ?? 0m);
-        to.PrevByCategoryJson = byCategory.Count == 0
+        to.PrevRemuneration = Prev(source.PrevRemuneration, y => y.Taxable);
+        to.PrevEpf = Prev(source.PrevEpf, y => y.Epf);
+        to.PrevPcb = Prev(source.PrevPcb, y => y.Pcb);
+        to.PrevZakat = Prev(source.PrevZakat, y => y.Zakat);
+        to.PrevAllowableDeductions = Prev(source.PrevAllowableDeductions, y => y.AllowableDeductions);
+        to.PrevByCategoryJson = items.Count == 0
             ? null
-            : JsonSerializer.Serialize(
-                byCategory.Select(kv => new { category = kv.Key, amount = kv.Value }), CamelCase);
-
-        // Coming BACK to a company already worked at this year: the outbound
-        // transfer folded this company's months into the source's prev figures,
-        // so they are in what we just carried. Flag it so payroll takes this
-        // company's own YTD back out instead of counting those months twice.
-        // (Zero own YTD this year makes the flag harmless.)
-        to.PrevIncludesPriorThisOrgPeriod = isReturning;
+            : JsonSerializer.Serialize(items.Select(kv => new { category = kv.Key, amount = kv.Value }), CamelCase);
+        to.PrevIncludesPriorThisOrgPeriod = false;
     }
 
     // ---- Helpers ----
@@ -654,6 +720,17 @@ public class EmployeeTransferService : IEmployeeTransferService
         }
 
         return targets.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // Admin/Owner at the org with the Employees module — the same rule
+    // ListTargetsAsync applies to the signed-in admin.
+    private async Task<bool> AdministersTargetAsync(string userId, string orgId)
+    {
+        var m = await _memberships.GetAsync(orgId, userId);
+        return m is not null
+               && OrgRoles.IsAdministrative(m.Role)
+               && (m.Modules is null
+                   || OrgModules.Split(m.Modules).Contains(OrgModules.Employees, StringComparer.OrdinalIgnoreCase));
     }
 
     private async Task<bool> ActiveAtTargetAsync(string targetOrgId, string userId)
