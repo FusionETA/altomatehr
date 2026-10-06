@@ -57,6 +57,9 @@ public static class AuditActions
     public const string PayrollRunCreate = "payroll.run.create";
     public const string PayrollRunGenerate = "payroll.run.generate";
 
+    // A run setting that changes what generation pays (SkipProration).
+    public const string PayrollRunUpdate = "payroll.run.update";
+
     // Per-run inputs that SURVIVE a generation — the hand-entered overtime,
     // one-off pay and attached reimbursements. Generation rebuilds payslips
     // from these, so a figure nobody can explain is traced back through here

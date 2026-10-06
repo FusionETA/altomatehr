@@ -20,6 +20,16 @@ public class CreatePayrollRunDto
 
     // Individual employees the admin unticked within a selected policy.
     public List<string>? ExcludedEmployeeProfileIds { get; set; }
+
+    // The pay figures are final (an ABPay import): don't prorate joiners and
+    // leavers again. Omitted means false — a run built here prorates as usual.
+    public bool SkipProration { get; set; }
+}
+
+// Change a draft run's settings. Only what is sent changes.
+public class UpdatePayrollRunDto
+{
+    public bool? SkipProration { get; set; }
 }
 
 // A run in the list. Totals only — the payslips come with the detail.
@@ -36,6 +46,9 @@ public class PayrollRunDto
 
     public PayrollRunStatus Status { get; set; }
     public PayrollRunSource Source { get; set; }
+
+    // Pay figures are final — joiners and leavers are not prorated.
+    public bool SkipProration { get; set; }
 
     public int EmployeeCount { get; set; }
 

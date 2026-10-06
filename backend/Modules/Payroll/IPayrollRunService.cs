@@ -24,6 +24,10 @@ public interface IPayrollRunService
     // attempt is a conflict rather than a second run.
     Task<PayrollRunSaveResult> CreateAsync(CreatePayrollRunDto dto);
 
+    // Change a DRAFT run's settings (today: SkipProration). Marks the run stale
+    // when a setting actually changes, because its payslips used the old one.
+    Task<PayrollRunSaveResult> UpdateAsync(string id, UpdatePayrollRunDto dto);
+
     // Build every payslip on the run from scratch. Idempotent by design: the
     // previous payslips and line items are discarded, not merged into.
     Task<PayrollRunGenerateResult> GenerateAsync(string id);
