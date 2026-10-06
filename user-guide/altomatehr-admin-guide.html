@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 7ae4fe4
+  user-guide-covered-up-to: ffff693
 -->
 <html lang="en">
 <head>
@@ -589,7 +589,9 @@
         <em>Archived</em> or <em>All statuses</em>.</li>
       <li>People are split into three boxes: <strong>need payroll setup</strong> (something's missing),
         <strong>ready for payroll</strong> (who a run will include), and <strong>archived</strong> (left the company —
-        kept for their records, left out of runs).</li>
+        kept for their records, left out of runs after their last month).</li>
+      <li>Someone with a transfer queued has a tag under their name — <em>Transfer → Demo Transfer Co on 2026-11-01</em>
+        (or <em>Transfer failed</em> if it didn't go through).</li>
       <li>Anyone with no salary on file is named in a warning — they'd get a zero payslip, which stops the run
         being submitted.</li>
     </ul>
@@ -650,7 +652,8 @@
           the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
           fixed allowances and deductions, join date, <strong>employment status</strong> and contract end date,
-          previous employment this year (TP3), and <strong>Archive</strong> — last day and reason</td></tr>
+          previous employment this year (TP3), <strong>Archive</strong> — last day and reason, and
+          <strong>Employment history</strong> at the bottom</td></tr>
         <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, the
           <strong>Special tax rate (15%)</strong>, <strong>Bank / payout</strong>, and the
           <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
@@ -693,6 +696,71 @@
     </div>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
+    <h3>Archiving, and employment history</h3>
+    <p>On the Employment tab, turn on <strong>Archive this employee</strong> and set their last day and reason. Payroll
+      still pays them up to their last day, then leaves them out. At the bottom of the tab, <strong>Employment
+      history</strong> lists every stretch of employment at this company — its dates, a <em>Current</em> tag on the
+      present one, and why it started or ended (<em>Resigned</em>, <em>Transferred to …</em>, <em>Restored</em>). The
+      dates higher up only show the current stretch.</p>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-history.png" alt="The Archive section and the Employment history list on the Employment tab, with a Current period and an earlier one that ended in resignation" loading="lazy">
+          <p class="shot-cap">Employment history</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Archive and Employment history, bottom of the Employment tab</p>
+    </figure>
+    <h3>Moving someone to another company</h3>
+    <p>If you look after more than one company, two buttons sit in the employee's header, next to
+      <span class="btn-name">Set password</span>. They appear for staff, not for owners or admins, and only when there is
+      a company you run where the person doesn't already work. Archived people must be restored first.</p>
+    <ul>
+      <li><span class="btn-name">Transfer</span> — they leave this company and start at the other one.
+        <ol>
+          <li>Pick the <strong>Target company</strong>, the <strong>Policy at the target</strong> and the
+            <strong>Effective date</strong> — their first day there. Today moves them straight away; a later date queues the
+            transfer, and it runs by itself that day.</li>
+          <li>Personal details, job title and staff number always go across. Tick <strong>Include payroll settings</strong>
+            to also copy salary, allowances, bank and statutory setup, plus this year's earnings so far, so PCB at the new
+            company carries on instead of starting over. Teams, shift, leave balances, claims and documents don't go.</li>
+          <li>Add a note if you like, then press <span class="btn-name">Transfer now</span> or
+            <span class="btn-name">Schedule transfer</span>.</li>
+        </ol>
+        Here, they're archived with the day before as their last day, and the move is added to their Employment history.</li>
+      <li><span class="btn-name">Duplicate</span> — they keep working here <em>and</em> are added to the other company
+        (same login; they switch between the two). In <strong>Add to another company</strong> pick the
+        <strong>Other company</strong>, <strong>Policy there</strong> and <strong>Join date there</strong>, choose whether to
+        include statutory numbers and bank, and press <span class="btn-name">Add to company</span>. Set their salary
+        at the other company.</li>
+    </ul>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-transfer-buttons.png" alt="An employee's header with Set password, Transfer and Duplicate buttons" loading="lazy">
+          <p class="shot-cap">Transfer and Duplicate</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-transfer-dialog.png" alt="The Transfer to another company dialog with the target company, policy, effective date and Include payroll settings" loading="lazy">
+          <p class="shot-cap">Transfer dialog</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-transfer-pending.png" alt="An employee record with the banner Transferring to Demo Transfer Co on 2026-10-20 and a Cancel transfer button" loading="lazy">
+          <p class="shot-cap">Queued transfer</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-transfer-list.png" alt="The employee list with a Transfer tag under a person's name showing the target company and date" loading="lazy">
+          <p class="shot-cap">Tag on the list</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Moving someone to another company</p>
+    </figure>
+    <p>While a transfer is queued, a banner at the top of the record says <em>Transferring to … on …</em>, and the
+      Transfer and Duplicate buttons are hidden. Press <span class="btn-name">Cancel transfer</span> to change the company,
+      policy or date, then schedule it again. If a transfer fails, the banner says why; it retries by itself, or you can
+      cancel it.</p>
+    <p>After the move, the person sees the old company as <em>Former · payslips only</em> in their company menu — they
+      can still read their payslips there, nothing else (see the <a href="/employee#account">employee guide</a>).</p>
     <h3>Changing a salary</h3>
     <p>Change the salary on the Employment tab and press save, and you're asked <strong>Why is the salary
       changing?</strong></p>
@@ -951,8 +1019,9 @@
       it, send it for approval, then approve and file.</p>
     <ol class="steps">
       <li><h4>Create the draft</h4>
-        <p><span class="btn-name">Create draft</span> — pick the month and year, and which policies and employees to
-          include. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
+        <p><span class="btn-name">Create draft</span> — in <strong>Start a payroll run</strong>, pick the month and year,
+          and which policies and employees to include. Changing the month reloads the list, because who is payable
+          depends on it: someone who left is still listed for their last month. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
           owners and admins aren't.</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
@@ -966,6 +1035,11 @@
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
           out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
           watermarked <strong>DRAFT</strong>.</p></li>
+      <li><h4>Pay figures are final (ABPay runs only)</h4>
+        <p>On a draft you'll see a tick box, <strong>Pay figures are final — don't prorate joiners and leavers</strong>.
+          Tick it for a run imported from ABPay, where the timesheet already pays part-month staff for the days they
+          worked, so they aren't cut twice. Changing it on a run you've already run makes it stale — press
+          <span class="btn-name">Re-run payroll</span>. Once the run is no longer a draft, a line records that it was used.</p></li>
       <li><h4>Re-run if anything changed</h4>
         <p>After an adjustment, just press <span class="btn-name">Re-run payroll</span>. Adjustments carry over; the
           payslip lines are rebuilt from them.</p></li>
@@ -1249,8 +1323,8 @@
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record, then download again.</p></div></details>
     <details class="qa"><summary>Someone left. Do I delete them?</summary>
-      <div class="body"><p>No — archive them (Employment tab → Archive, with their last day). They drop out of future
-        runs but keep every payslip and form.</p></div></details>
+      <div class="body"><p>No — archive them (Employment tab → Archive, with their last day). Payroll pays them up to
+        that day, then they drop out of future runs but keep every payslip and form.</p></div></details>
     <details class="qa"><summary>A new employee can't sign in.</summary>
       <div class="body"><p>Their starting password is their email followed by their birth month and day, so their date
         of birth must be on file. Or use <span class="btn-name">Set password</span> on their record.</p></div></details>

@@ -23,6 +23,8 @@ const PHONE = { viewport: { width: 327, height: 708 }, deviceScaleFactor: 2, isM
 const settle = (page, ms = 900) => page.waitForTimeout(ms);
 
 async function session(browser, email, device, extra = {}) {
+  const { password = PASSWORD, ...contextExtra } = extra;
+  extra = contextExtra;
   const context = await browser.newContext({
     ...device,
     locale: "en-MY",
@@ -34,7 +36,7 @@ async function session(browser, email, device, extra = {}) {
   for (let attempt = 0; ; attempt++) {
     await page.goto(FRONT);
     await page.getByPlaceholder("your@email.com").fill(email);
-    await page.getByPlaceholder("Enter your password").fill(PASSWORD);
+    await page.getByPlaceholder("Enter your password").fill(password);
     await page.keyboard.press("Enter");
     try {
       await page.getByRole("button", { name: "Account menu" }).waitFor({ timeout: 20000 });
@@ -126,6 +128,52 @@ const admin = {
   "manage-employee": async (page) => {
     await go(page, "company/manage-employee");
     await shoot(page, "admin", "manage-employee");
+  },
+  // Needs `node setup.mjs transfers` (Priya has a transfer queued). The header
+  // with Transfer / Duplicate and the banner with Cancel transfer.
+  "employee-transfer-pending": async (page) => {
+    await go(page, "company/manage-employee");
+    await clickText(page, "Priya Devi");
+    await page.getByText("Cancel transfer").first().waitFor({ timeout: 15000 });
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-transfer-pending");
+  },
+  // The employee list with the "Transfer →" tag on Priya's row.
+  "employee-transfer-list": async (page) => {
+    await go(page, "company/manage-employee");
+    await page.getByText(/Transfer → /).first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "Priya Devi", 220);
+    await shoot(page, "admin", "employee-transfer-list");
+  },
+  // Header with the Transfer and Duplicate buttons (someone with nothing queued).
+  "employee-transfer-buttons": async (page) => {
+    await go(page, "company/manage-employee");
+    await clickText(page, "Chan Mei Ling");
+    await page.getByRole("button", { name: "Duplicate", exact: true }).waitFor({ timeout: 15000 });
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-transfer-buttons");
+  },
+  // The Transfer dialog for someone with no transfer queued (Chan Mei Ling).
+  "employee-transfer-dialog": async (page) => {
+    await go(page, "company/manage-employee");
+    await clickText(page, "Chan Mei Ling");
+    await page.getByRole("button", { name: "Transfer", exact: true }).click();
+    await page.getByText("Transfer to another company").waitFor();
+    await page.getByLabel("Target company").selectOption({ index: 1 }).catch(async () => {
+      await page.locator("select").first().selectOption({ index: 1 });
+    });
+    await settle(page);
+    await shoot(page, "admin", "employee-transfer-dialog");
+    await page.getByRole("button", { name: "Cancel", exact: true }).filter({ visible: true }).last().click();
+  },
+  // Employment tab, scrolled to the Employment history list (Aisyah has a
+  // leave, a restore and a second company).
+  "employee-history": async (page) => {
+    await go(page, "company/manage-employee");
+    await clickText(page, "Aisyah Binti Rahman");
+    await clickText(page, "Employment");
+    await scrollTo(page, "Employment history", 120, true);
+    await shoot(page, "admin", "employee-history");
   },
   "employee-employment": async (page) => {
     await go(page, "company/manage-employee");
@@ -301,6 +349,32 @@ const sara = {
   },
 };
 
+// Needs `node setup.mjs former-employee`. Nadia works at the second demo
+// company now and is a former employee of Demo Co.
+const nadia = {
+  "former-switcher": async (page) => {
+    await go(page, "dashboard");
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByText("Former · payslips only").first().waitFor({ timeout: 10000 });
+    await shoot(page, "employee", "former-switcher");
+    await page.keyboard.press("Escape");
+  },
+  "former-company": async (page) => {
+    await go(page, "dashboard");
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByText("Former · payslips only").first().click();
+    await page.getByText(/You no longer work at/).waitFor({ timeout: 15000 });
+    await settle(page, 1200);
+    await shoot(page, "employee", "former-company");
+  },
+  "former-leave-confirm": async (page) => {
+    await page.getByRole("button", { name: "Leave company" }).click();
+    await page.getByText(/^Leave .*\?$/).first().waitFor();
+    await shoot(page, "employee", "former-leave-confirm");
+    await page.getByRole("button", { name: "Cancel" }).filter({ visible: true }).last().click();
+  },
+};
+
 const wanted = process.argv.slice(2);
 const want = (group, name) => wanted.includes("all") || wanted.includes(group) || wanted.includes(name);
 
@@ -310,6 +384,7 @@ for (const [group, email, device, extra, steps] of [
   ["admin", "admin@altomate.com", DESKTOP, {}, admin],
   ["evan", "employee@altomate.com", PHONE, { geolocation: SITE_A, permissions: ["geolocation"] }, evan],
   ["sara", "supervisor@altomate.com", PHONE, {}, sara],
+  ["nadia", "nadia.demo@altomate.com", PHONE, { password: "nadia.demo@altomate.com0517" }, nadia],
 ]) {
   const names = Object.keys(steps).filter((n) => want(group, n));
   if (names.length === 0) continue;

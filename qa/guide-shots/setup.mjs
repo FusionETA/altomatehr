@@ -207,6 +207,60 @@ const steps = {
       console.log("after file:", after.status, after.data?.message ?? "");
     }
   },
+
+  // A transfer queued for two weeks' time on Priya Devi (Demo Co → the second
+  // demo company) for the pending-transfer banner and the list tag. Needs a
+  // second company the demo admin also owns ("Demo Transfer Co"). Rerunnable.
+  transfers: async () => {
+    const opts = await call(admin, "GET", "/employees/usr-demo-priya/transfer");
+    if (opts.data?.pending) { console.log("transfer already queued for Priya"); return; }
+    const target = opts.data?.targets?.find((t) => !t.employeeActiveHere);
+    if (!target) { console.log("no second company to transfer into", JSON.stringify(opts.data)); process.exit(1); }
+    const r = await call(admin, "POST", "/employees/usr-demo-priya/transfer", {
+      targetOrganizationId: target.id,
+      targetPolicyId: target.policies[0].id,
+      effectiveDate: `${mytDate(14)}T00:00:00`,
+      copyPayrollInfo: true,
+      notes: "Moving to the Penang office",
+    });
+    console.log("queue transfer:", r.status, r.data?.transfer?.status ?? JSON.stringify(r.data));
+  },
+
+  // Cancels the queued demo transfer again (after the shots).
+  "transfers-cancel": async () => {
+    const opts = await call(admin, "GET", "/employees/usr-demo-priya/transfer");
+    if (!opts.data?.pending) return;
+    const r = await call(admin, "DELETE", `/employees/usr-demo-priya/transfer/${opts.data.pending.id}`);
+    console.log("cancel transfer:", r.status);
+  },
+
+  // Nadia Demo: joined Demo Co, then moved to the second demo company today, so
+  // in Demo Co she is a FORMER employee (payslips only) and her current company
+  // is the other one. Sign in as nadia.demo@altomate.com. Rerunnable.
+  "former-employee": async () => {
+    const email = "nadia.demo@altomate.com";
+    const list = (await call(admin, "GET", "/employees")).data ?? [];
+    let nadia = list.find((e) => e.email === email);
+    if (!nadia) {
+      const r = await call(admin, "POST", "/employees", {
+        email, name: "Nadia Demo", employeeNumber: "D-900", jobTitle: "Admin Executive",
+        joinDate: "2025-03-03T00:00:00", dateOfBirth: "1994-05-17T00:00:00", role: "Employee",
+      });
+      console.log("create Nadia:", r.status, r.data?.id ?? JSON.stringify(r.data));
+      nadia = r.data;
+    }
+    if (!nadia?.id) process.exit(1);
+    const opts = await call(admin, "GET", `/employees/${nadia.id}/transfer`);
+    const target = opts.data?.targets?.find((t) => !t.employeeActiveHere);
+    if (!target) { console.log("already moved (or no target)"); return; }
+    const r = await call(admin, "POST", `/employees/${nadia.id}/transfer`, {
+      targetOrganizationId: target.id,
+      targetPolicyId: target.policies[0].id,
+      effectiveDate: `${mytDate(0)}T00:00:00`,
+      copyPayrollInfo: false,
+    });
+    console.log("transfer Nadia out:", r.status, r.data?.executedImmediately);
+  },
 };
 
 const wanted = process.argv.slice(2);
