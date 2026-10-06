@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Policies</title>
+  <meta name="description" content="List, create, edit, archive and set the default employee policy, and send a company's bulk policy and leave setup in one call, with a company API key." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Documented from backend/Modules/Policies/PoliciesController.cs and
+  backend/Modules/Onboarding/OnboardingController.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html" aria-current="page">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Policies</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Policies</h1>
+    <p class="lead">
+      Employee policies (attendance rules, overtime, leave entitlements) and the one-call bulk
+      setup an integration sends when it provisions a company.
+    </p>
+    </div>
+
+    <section class="section" id="policies">
+      <h2>Policies</h2>
+      <p>
+        A policy is a bundle of rules an employee is put on: which self-service areas they can
+        use, how clock-in is checked, how overtime is calculated and paid, and how many days of
+        each leave type they get. Everyone not assigned a policy falls back to the
+        company's <strong>default</strong> policy. A new company starts with two, Monthly
+        Workers and Hourly Workers.
+      </p>
+      <div class="callout warn">
+        <code>PUT /policies/{id}</code> <strong>replaces the whole policy</strong>. Any field you
+        leave out goes back to its default (see the table below), including every switch and
+        every overtime rate, and <code>leaveEntitlements</code> is replaced by what you send,
+        so omitting it empties the policy's entitlements. Read the policy with
+        <code>GET /policies</code>, change what you need, and send the whole thing back.
+      </div>
+      <p>Policy endpoints:</p>
+
+      <section class="endpoint" id="list-policies">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/policies</span>
+          <span class="tag scope">policies:read</span>
+        </div>
+        <p>Every policy in the company, archived ones included, ordered by name.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module, held to the plan only. Unlike the write endpoints, an admin grant that leaves Policies out does not block this read, because other screens use it as a lookup.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of policies:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Policy id.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td></td></tr>
+            <tr><td><code>description</code></td><td>string | null</td><td></td></tr>
+            <tr><td><code>isDefault</code></td><td>boolean</td><td>The policy used for anyone not assigned one. At most one non-archived policy is the default.</td></tr>
+            <tr><td><code>isArchived</code></td><td>boolean</td><td>Archived policies are still returned by <code>GET /policies</code>.</td></tr>
+            <tr><td><code>canAccessAttendance</code>, <code>canAccessClaims</code>, <code>canAccessLeave</code></td><td>boolean</td><td>Which self-service areas people on this policy can use.</td></tr>
+            <tr><td><code>requireGeofence</code></td><td>boolean</td><td>Clock-in must be inside a geofence.</td></tr>
+            <tr><td><code>requireSelfie</code>, <code>requireClockOutSelfie</code></td><td>boolean</td><td>Selfie required at clock-in / clock-out.</td></tr>
+            <tr><td><code>captureLocationOnBreakStart</code>, <code>captureLocationOnBreakEnd</code></td><td>boolean</td><td>Record location when a break starts / ends.</td></tr>
+            <tr><td><code>requireIpWhitelist</code></td><td>boolean</td><td></td></tr>
+            <tr><td><code>geolocationEnabled</code>, <code>captureLocationOnClockIn</code>, <code>captureLocationOnClockOut</code></td><td>boolean</td><td>Location capture switches for attendance.</td></tr>
+            <tr><td><code>autoClockOutEnabled</code></td><td>boolean</td><td></td></tr>
+            <tr><td><code>autoClockOutAfterMinutes</code></td><td>number | null</td><td>Minutes after clock-in to clock out automatically.</td></tr>
+            <tr><td><code>salaryType</code></td><td>string</td><td><code>HOURLY</code> or <code>MONTHLY</code>.</td></tr>
+            <tr><td><code>otEnabled</code></td><td>boolean</td><td>Overtime is paid for people on this policy.</td></tr>
+            <tr><td><code>otDailyThresholdMinutes</code></td><td>number</td><td>Minutes worked in a day before overtime starts.</td></tr>
+            <tr><td><code>otMethod</code></td><td>string</td><td><code>CASH</code> or <code>TIME_BANK</code>.</td></tr>
+            <tr><td><code>otRateNormalDay</code>, <code>otRateRestDay</code>, <code>otRatePublicHoliday</code></td><td>number</td><td>Overtime multipliers (e.g. <code>1.50</code>).</td></tr>
+            <tr><td><code>otRateRestDayInShift</code>, <code>otRatePublicHolidayInShift</code></td><td>number</td><td>Multipliers for a rest day / public holiday that falls inside the person's shift.</td></tr>
+            <tr><td><code>otSalaryThreshold</code></td><td>number | null</td><td>Salary ceiling for overtime eligibility, if any.</td></tr>
+            <tr><td><code>temporary</code></td><td>boolean</td><td></td></tr>
+            <tr><td><code>leaveEntitlements</code></td><td>object[]</td><td>Days per leave type for this policy: <code>{ "leaveTypeId": string, "defaultDays": number }</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/policies \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="create-policy">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/policies</span>
+          <span class="tag scope">policies:write</span>
+        </div>
+        <p>Create a policy.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+            <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>1 to 80 chars. Trimmed. Must be unique in the company, archived policies included.</td></tr>
+            <tr><td><code>description</code></td><td>string | null</td><td>No</td><td>Max 400 chars.</td></tr>
+            <tr><td><code>canAccessAttendance</code>, <code>canAccessClaims</code>, <code>canAccessLeave</code></td><td>boolean</td><td>No</td><td>Default <code>true</code>.</td></tr>
+            <tr><td><code>requireGeofence</code></td><td>boolean</td><td>No</td><td>Default <code>true</code>.</td></tr>
+            <tr><td><code>requireSelfie</code>, <code>requireClockOutSelfie</code>, <code>requireIpWhitelist</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+            <tr><td><code>captureLocationOnBreakStart</code>, <code>captureLocationOnBreakEnd</code>, <code>geolocationEnabled</code>, <code>captureLocationOnClockIn</code>, <code>captureLocationOnClockOut</code></td><td>boolean</td><td>No</td><td>Default <code>true</code>.</td></tr>
+            <tr><td><code>autoClockOutEnabled</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+            <tr><td><code>autoClockOutAfterMinutes</code></td><td>number | null</td><td>No</td><td>1 to 1440.</td></tr>
+            <tr><td><code>salaryType</code></td><td>string</td><td>No</td><td><code>HOURLY</code> (default) or <code>MONTHLY</code>.</td></tr>
+            <tr><td><code>otEnabled</code></td><td>boolean</td><td>No</td><td>Default <code>true</code>.</td></tr>
+            <tr><td><code>otDailyThresholdMinutes</code></td><td>number</td><td>No</td><td>0 to 1440. Default <code>480</code>.</td></tr>
+            <tr><td><code>otMethod</code></td><td>string</td><td>No</td><td><code>CASH</code> (default) or <code>TIME_BANK</code>.</td></tr>
+            <tr><td><code>otRateNormalDay</code></td><td>number</td><td>No</td><td>0 to 99.99. Default <code>1.50</code>.</td></tr>
+            <tr><td><code>otRatePublicHoliday</code></td><td>number</td><td>No</td><td>0 to 99.99. Default <code>3.00</code>.</td></tr>
+            <tr><td><code>otRateRestDay</code></td><td>number</td><td>No</td><td>0 to 99.99. Default <code>2.00</code>.</td></tr>
+            <tr><td><code>otRatePublicHolidayInShift</code></td><td>number</td><td>No</td><td>0 to 99.99. Default <code>2.00</code>.</td></tr>
+            <tr><td><code>otRateRestDayInShift</code></td><td>number</td><td>No</td><td>0 to 99.99. Default <code>1.00</code>.</td></tr>
+            <tr><td><code>otSalaryThreshold</code></td><td>number | null</td><td>No</td><td>0 to 99999999.99.</td></tr>
+            <tr><td><code>temporary</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+            <tr><td><code>leaveEntitlements</code></td><td>object[]</td><td>No</td><td><code>{ "leaveTypeId": string, "defaultDays": number }</code>. Rows with an empty <code>leaveTypeId</code> are dropped. The leave type id is not checked against the company's leave types. Default <code>[]</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          Note <code>200</code>, not <code>201</code>. The body is the created policy, with the
+          fields in the <a href="#list-policies">list table</a>.
+        </p>
+        <div class="callout">
+          If the company has no non-archived default policy, the new policy becomes the
+          default automatically. It is not the default otherwise.
+        </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/policies \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Office Staff",
+    "salaryType": "MONTHLY",
+    "otDailyThresholdMinutes": 480,
+    "otRateNormalDay": 1.5,
+    "leaveEntitlements": [{ "leaveTypeId": "leavetype_123", "defaultDays": 14 }]
+  }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> a field failed validation (<code>{ "errors": { … } }</code>), e.g. a missing or over-long <code>name</code>, or a value outside its range.</li>
+          <li><code>400</code> <code>{ "message": "A policy named \"Office Staff\" already exists." }</code>. Note this shape: <code>message</code>, not <code>error</code>.</li>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="update-policy">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/policies/{id}</span>
+          <span class="tag scope">policies:write</span>
+        </div>
+        <p>Replace a policy's settings and leave entitlements.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <h3>Request</h3>
+        <p>
+          <code>id</code> in the path is the policy id. The body is the same as
+          <a href="#create-policy">POST /policies</a>.
+        </p>
+        <div class="callout warn">
+          This is a full replace, not a merge: omitted fields revert to the defaults listed
+          for <code>POST /policies</code>, and <code>leaveEntitlements</code> is replaced
+          wholesale (an omitted or empty list removes them all). It does not change
+          <code>isDefault</code> or <code>isArchived</code>; use the endpoints below for those.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated policy, as for <code>POST /policies</code>.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/policies/policy_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Office Staff",
+    "salaryType": "MONTHLY",
+    "otRateNormalDay": 1.5,
+    "leaveEntitlements": [{ "leaveTypeId": "leavetype_123", "defaultDays": 16 }]
+  }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> a field failed validation (<code>{ "errors": { … } }</code>), e.g. a missing or over-long <code>name</code>, or a value outside its range.</li>
+          <li><code>400</code> <code>{ "message": "A policy named \"Office Staff\" already exists." }</code>. Note this shape: <code>message</code>, not <code>error</code>. Another policy already has that name.</li>
+          <li><code>404</code> no policy with that id in this company (empty body).</li>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="set-default-policy">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/policies/{id}/default</span>
+          <span class="tag scope">policies:write</span>
+        </div>
+        <p>Make a policy the company default.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <div class="callout">The previous default is cleared, so there is exactly one. An archived policy cannot be made the default.</div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/policies/policy_123/default \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> no such policy in this company, <strong>or the policy is archived</strong> (empty body).</li>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="archive-policy">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/policies/{id}/archive</span>
+          <span class="tag scope">policies:write</span>
+        </div>
+        <p>Archive a policy.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <div class="callout warn">Archiving the default policy also clears its default flag, and nothing replaces it, so the company is left with no default until you call <code>POST /policies/{id}/default</code> on another. Employees assigned to the policy are not reassigned.</div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/policies/policy_123/archive \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> no such policy in this company (empty body).</li>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="restore-policy">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/policies/{id}/restore</span>
+          <span class="tag scope">policies:write</span>
+        </div>
+        <p>Bring an archived policy back.</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <div class="callout">A restored policy is not the default again; set that explicitly if you want it.</div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/policies/policy_123/restore \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> no such policy in this company (empty body).</li>
+          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="onboarding">
+      <h2>Bulk setup</h2>
+      <p>
+        One call that sets a company's working days, pay calculation, overtime rates, working
+        hours and leave entitlements, for an integration that has just created the company and
+        collected the client's answers. Every block is optional; send only what the client
+        answered.
+      </p>
+
+      <section class="endpoint" id="apply-onboarding">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/onboarding</span>
+          <span class="tag scope">organizations:write</span>
+          <span class="tag scope">policies:write</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>Apply the company's initial policy, working-time and leave setup in one request.</p>
+        <p>
+          <strong>Scopes:</strong> the key needs <strong>all three</strong> scopes above, not
+          one of them. <strong>Module gate:</strong> none, so it works whether or not the plan
+          includes the Policies module.
+        </p>
+        <div class="callout">
+          <strong>Check for support first.</strong> A deployment advertises this endpoint by
+          listing <code>onboarding.bulk</code> in <code>features</code> on
+          <a href="index.html#whoami">GET /whoami</a>. Probe that before relying on it, rather
+          than finding out from a failed call.
+        </div>
+        <h3>Request</h3>
+        <p>
+          A JSON object with up to five optional blocks: <code>settings</code>,
+          <code>calculation</code>, <code>overtime</code>, <code>workSchedule</code>,
+          <code>leave</code>. The fields below are written as <code>block.field</code>.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+            <tr><td><code>settings.workingDays</code></td><td>string[]</td><td>No</td><td>Weekday names that <em>are</em> worked, e.g. <code>["MONDAY", …]</code>. Case-insensitive. Send this <strong>or</strong> <code>nonWorkingDays</code>, never both.</td></tr>
+            <tr><td><code>settings.nonWorkingDays</code></td><td>string[]</td><td>No</td><td>Weekday names that are not worked; the rest become working days.</td></tr>
+            <tr><td><code>calculation.prorationBasis</code></td><td>string</td><td>No</td><td><code>TWENTY_SIX</code> or <code>CALENDAR</code> (case-insensitive): the day count a month is divided into when pro-rating pay.</td></tr>
+            <tr><td><code>calculation.hrdf.contribute</code></td><td>boolean</td><td>No</td><td>Whether the company contributes to HRDF.</td></tr>
+            <tr><td><code>calculation.hrdf.rate</code></td><td>number</td><td>When <code>contribute</code> is <code>true</code></td><td>Must be greater than 0 when contributing.</td></tr>
+            <tr><td><code>overtime.normalDay</code>, <code>overtime.restDay</code>, <code>overtime.publicHoliday</code>, <code>overtime.restDayInShift</code>, <code>overtime.publicHolidayInShift</code></td><td>number</td><td>No</td><td>Overtime multipliers. Same names and meaning as <code>otRateNormalDay</code> etc. on <a href="#list-policies">GET /policies</a>, without the <code>ot</code> prefix. Only the ones you send are changed. No range check is applied here.</td></tr>
+            <tr><td><code>overtime.dailyThresholdMinutes</code></td><td>number</td><td>No</td><td>Accepted but <strong>not applied</strong> by the current code (see the note below).</td></tr>
+            <tr><td><code>workSchedule.workingHoursStart</code>, <code>workSchedule.workingHoursEnd</code></td><td>string</td><td>No</td><td>Stored as sent (the default is <code>"09:00"</code> and <code>"18:00"</code>). Empty strings are ignored.</td></tr>
+            <tr><td><code>workSchedule.lunchBreakMinutes</code></td><td>number</td><td>No</td><td>Minutes.</td></tr>
+            <tr><td><code>leave.entitlements</code></td><td>object</td><td>No</td><td>Map of leave-type code to default days per year, e.g. <code>{ "ANNUAL": 16 }</code>. Codes are case-insensitive.</td></tr>
+            <tr><td><code>leave.carryForward</code></td><td>object</td><td>No</td><td>Map of leave-type code to <code>{ "enabled": boolean, "expiryMonth": number, "maxDays": number }</code>. <code>expiryMonth</code> is 1 to 12 and required when <code>enabled</code> is <code>true</code>. When <code>enabled</code> is <code>false</code>, the stored expiry month and max days are cleared.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> or <code>409</code></h3>
+        <p>
+          <code>200</code> when every block you sent was applied; <code>409</code> when at least
+          one failed. Both carry the same body:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+            <tr><td><code>applied</code></td><td>string[]</td><td>Blocks that were written, from <code>settings</code>, <code>calculation</code>, <code>overtime</code>, <code>workSchedule</code>, <code>leave</code>.</td></tr>
+            <tr><td><code>failed</code></td><td>string[]</td><td>Blocks that threw and were not written. Empty on <code>200</code>.</td></tr>
+            <tr><td><code>policiesUpdated</code></td><td>string[]</td><td>Ids of the policies the overtime block touched.</td></tr>
+            <tr><td><code>leaveTypesUpdated</code></td><td>string[]</td><td>Codes of the leave types the leave block changed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "applied": ["settings", "overtime", "leave"],
+  "failed": [],
+  "policiesUpdated": ["policy_123", "policy_456"],
+  "leaveTypesUpdated": ["ANNUAL"]
+}</code></pre>
+        <h3>Things that bite</h3>
+        <div class="callout warn">
+          <strong>It is not atomic.</strong> Blocks run in a fixed order (settings, calculation,
+          overtime, workSchedule, leave) with no surrounding transaction, and one failing does
+          not stop the rest. On a <code>409</code>, the blocks listed in <code>applied</code>
+          did land. Fix the cause and <strong>re-send the same body</strong>: every block is
+          idempotent, so the ones that already applied simply apply again.
+        </div>
+        <div class="callout warn">
+          <strong>Overtime goes to every non-archived policy</strong>, not just the default.
+          A new company has two policies (monthly and hourly), and setting rates on one would
+          leave the other on statutory rates. That also makes this a provisioning tool: after
+          go-live, use <a href="#update-policy">PUT /policies/{id}</a> per policy, because
+          re-sending this would flatten policies an admin set apart on purpose.
+        </div>
+        <ul>
+          <li>The body is checked before anything is written. A bad request returns <code>400</code> and changes nothing.</li>
+          <li>An empty body <code>{}</code> returns <code>200</code> with empty lists.</li>
+          <li>Leave codes that don't match one of the company's leave types are <strong>skipped silently</strong>, with no error. Check <code>leaveTypesUpdated</code> to see what was matched. A new company starts with <code>ANNUAL</code>, <code>MEDICAL</code>, <code>COMPASSIONATE</code>, <code>HOSPITALIZATION</code>, <code>MARRIAGE</code>, <code>MATERNITY</code>, <code>PATERNITY</code> and <code>UNPAID</code>.</li>
+          <li>The leave block writes the leave types directly. It does <strong>not</strong> run the checks the leave-type endpoints make (such as carry-forward only on <code>ANNUAL</code>, or no negative days), so a value you send is stored as sent.</li>
+          <li><code>overtime.dailyThresholdMinutes</code> is accepted in the body but the current code does not write it to any policy. Set the threshold with <code>PUT /policies/{id}</code> (<code>otDailyThresholdMinutes</code>).</li>
+          <li>The settings block writes working days to the organization; the calculation block writes the pro-rating basis and HRDF settings to the payroll settings, creating them if the company has none yet.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/onboarding \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settings": { "nonWorkingDays": ["SATURDAY", "SUNDAY"] },
+    "calculation": { "prorationBasis": "TWENTY_SIX", "hrdf": { "contribute": true, "rate": 1.0 } },
+    "overtime": { "normalDay": 1.5, "restDay": 2.0, "publicHoliday": 3.0 },
+    "workSchedule": { "workingHoursStart": "09:00", "workingHoursEnd": "18:00", "lunchBreakMinutes": 60 },
+    "leave": {
+      "entitlements": { "ANNUAL": 16, "MEDICAL": 14 },
+      "carryForward": { "ANNUAL": { "enabled": true, "expiryMonth": 3, "maxDays": 5 } }
+    }
+  }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "…" }</code> the body was refused before anything ran: both <code>workingDays</code> and <code>nonWorkingDays</code> sent; a name that is not a weekday; <code>hrdf.rate</code> not above 0 when <code>contribute</code> is <code>true</code>; an unknown <code>prorationBasis</code>; <code>expiryMonth</code> missing on an enabled carry-forward. Note <code>message</code>, not <code>error</code>.</li>
+          <li><code>400</code> <code>{ "errors": { … } }</code> <code>expiryMonth</code> outside 1 to 12.</li>
+          <li><code>409</code> some blocks applied and some failed. The body is the response above, not an error object.</li>
+          <li><code>403</code> the key lacks one of the three scopes.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>GET /policies/mine/modules</code> (which modules the signed-in employee's own policy
+        allows) is for people only and answers <code>403</code> to any key.
+      </p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

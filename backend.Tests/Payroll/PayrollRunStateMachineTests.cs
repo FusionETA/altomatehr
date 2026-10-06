@@ -306,7 +306,10 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Equal([1, 2, 3], payload.SubmittedMonths);
         Assert.Equal(9, payload.MissingMonths.Count);
 
-        foreach (var kind in Enum.GetValues<PayrollAnnualReportKind>())
+        // Every return that declares the whole year. PCB 2(II) is a statement
+        // of deductions so far and is issued mid-year (Pcb2Bulk_IsProducedMidYear).
+        foreach (var kind in Enum.GetValues<PayrollAnnualReportKind>()
+                     .Where(k => PayrollAnnualReports.All[k].RequiresFullYear))
         {
             var result = await _annual.RenderAsync(kind, 2026);
             Assert.False(result.Ok);
@@ -327,6 +330,87 @@ public class PayrollRunStateMachineTests : IDisposable
 
         Assert.Equal([1, 2, 3], row.Months.Select(m => m.Month));
         Assert.Equal(row.TotalPcb, row.Months.Sum(m => m.Pcb));
+    }
+
+    // CP8D fields 5 and 6 read the employee's recorded terms: a contract
+    // employee files as status 3 with their contract end; someone with
+    // nothing recorded files as permanent, retiring at 60.
+    [Fact]
+    public async Task Cp8d_ReadsTheProfilesEmploymentStatusAndContractEnd()
+    {
+        var contract = AddEmployee("usr-1", "Aisyah");
+        contract.EmploymentStatus = EmploymentStatus.CONTRACT;
+        contract.ContractEndDate = new DateTime(2027, 6, 30);
+        AddEmployee("usr-2", "Tan");
+        await _db.SaveChangesAsync();
+        for (var month = 1; month <= 12; month++) await SubmittedRunAsync(2026, month);
+
+        var file = await _annual.RenderAsync(PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT, 2026);
+        Assert.True(file.Ok, file.Error);
+        var rows = System.Text.Encoding.UTF8.GetString(file.Content!)
+            .Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
+            .Select(r => r.Split('|'))
+            .ToDictionary(c => c[0]);
+
+        Assert.Equal("3", rows["AISYAH"][4]);
+        Assert.Equal("30-06-2027", rows["AISYAH"][5]);
+        Assert.Equal("2", rows["TAN"][4]);
+        Assert.Equal("15-06-2050", rows["TAN"][5]);   // born 15 Jun 1990, retires at 60
+    }
+
+    // PCB 2(II) is a statement of what has been deducted SO FAR, issued on
+    // request mid-year — it must not wait for December like the returns do.
+    [Fact]
+    public async Task Pcb2Bulk_IsProducedMidYear()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        for (var month = 1; month <= 3; month++) await SubmittedRunAsync(2026, month);
+
+        Assert.False((await _annual.RenderAsync(PayrollAnnualReportKind.FORM_EA_BULK_PDF, 2026)).Ok);
+        Assert.True((await _annual.RenderAsync(PayrollAnnualReportKind.PCB2II_BULK_PDF, 2026)).Ok);
+    }
+
+    // ─── LHDN receipts ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LhdnReceipts_AreRecordedOnAnApprovedMonth_AndReachTheYear()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);
+
+        var result = await _service.SetLhdnReceiptsAsync(run.Id, new SetLhdnReceiptsDto
+        {
+            PcbReceiptNo = "  CP39-202601-88812 ",
+            PcbReceiptDate = new DateTime(2026, 2, 12, 15, 30, 0),
+            Cp38ReceiptNo = "",
+        });
+
+        Assert.True(result.Ok);
+        Assert.Equal("CP39-202601-88812", result.Run!.PcbReceiptNo);
+        Assert.Equal(new DateTime(2026, 2, 12), result.Run.PcbReceiptDate);
+        Assert.Null(result.Run.Cp38ReceiptNo);   // blank clears it
+        Assert.True(_audit.Recorded(AuditActions.PayrollRunLhdnReceipts));
+
+        var receipts = (await _annual.LoadAsync(2026)).Receipts[1];
+        Assert.Equal("CP39-202601-88812", receipts.PcbReceiptNo);
+    }
+
+    // A receipt is for money already paid, so a month that is not filed yet
+    // cannot have one — and recording it must not make the run stale.
+    [Fact]
+    public async Task LhdnReceipts_AreRefusedBeforeApproval_AndNeverMakeARunStale()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var filed = await SubmittedRunAsync(2026, 1);
+        var draft = await GeneratedRunAsync(2026, 2);
+
+        var refused = await _service.SetLhdnReceiptsAsync(draft.Id, new SetLhdnReceiptsDto { PcbReceiptNo = "X" });
+        Assert.False(refused.Ok);
+        Assert.NotNull(refused.Error);
+
+        var saved = await _service.SetLhdnReceiptsAsync(filed.Id, new SetLhdnReceiptsDto { PcbReceiptNo = "X" });
+        Assert.False(saved.Run!.IsStale);
+        Assert.Null((await _runs.GetByIdAsync(filed.Id))!.LastMutatedAt);
     }
 
     [Fact]

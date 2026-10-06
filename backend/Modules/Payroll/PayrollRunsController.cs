@@ -142,6 +142,18 @@ public class PayrollRunsController : ControllerBase
         return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
     }
 
+    // PUT /payroll/runs/{id}/lhdn-receipts — LHDN's receipts for the month's
+    // MTD and CP38 payments, printed on each employee's PCB 2(II).
+    [RequireScope("payroll:write")]
+    [HttpPut("{id}/lhdn-receipts")]
+    public async Task<IActionResult> SetLhdnReceipts(string id, SetLhdnReceiptsDto dto)
+    {
+        var result = await _runs.SetLhdnReceiptsAsync(id, dto);
+
+        if (result.Ok) return Ok(result.Run);
+        return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+    }
+
     // Reverting cascades to every later submitted month in the same year, so
     // the response reports the whole set, not just the run asked for.
     [RequireScope("payroll:write")]
@@ -510,7 +522,7 @@ public class PayrollRunsController : ControllerBase
     [HttpDelete("{id}/claims/{claimId}")]
     public async Task<IActionResult> DetachClaim(string id, string claimId)
     {
-        var result = await _claims.DetachAsync(claimId);
+        var result = await _claims.DetachAsync(id, claimId);
 
         if (!result.Found) return NotFound();
         return result.Ok ? NoContent() : Conflict(new { error = result.Error });
@@ -526,6 +538,7 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> EmailPayslip(string id, string employeeProfileId)
     {
         var result = await _payslipEmail.EmailPayslipAsync(id, employeeProfileId);
+        if (result.NotFound) return NotFound(new { error = result.Error });
         return result.Ok ? Ok(result) : Conflict(new { error = result.Error });
     }
 
@@ -534,6 +547,7 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> EmailRunPayslips(string id)
     {
         var result = await _payslipEmail.EmailPayslipsForRunAsync(id);
+        if (result.NotFound) return NotFound(new { error = result.Error });
         return result.Error is null ? Ok(result) : Conflict(new { error = result.Error });
     }
 }

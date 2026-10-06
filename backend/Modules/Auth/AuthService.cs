@@ -134,7 +134,7 @@ public class AuthService : IAuthService
     // customer's log as "System (Support)", with the real person in the
     // internal support log (AuditService).
 
-    public async Task<AuthResult?> EnterSupportAsync(string userId, string organizationId)
+    public async Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false)
     {
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null || _superadmins?.IsSuperadmin(user.Email) != true) return null;
@@ -142,7 +142,7 @@ public class AuthService : IAuthService
         var org = await _organizations.GetByIdAsync(organizationId);
         if (org is null) return null;
 
-        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true);
+        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true, sso: sso);
 
         // Written into the CUSTOMER's log — masked, like every support action —
         // so a company can see that support was in, and when.
@@ -159,7 +159,7 @@ public class AuthService : IAuthService
 
     // Back to the superadmin's own org (their first membership), as a normal
     // session. Null when they belong to none — the caller signs them out.
-    public async Task<AuthResult?> ExitSupportAsync(string userId)
+    public async Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false)
     {
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
@@ -167,10 +167,10 @@ public class AuthService : IAuthService
         var home = (await _directory.GetMembershipsByUserAsync(userId)).FirstOrDefault();
         if (home is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId);
+        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso);
     }
 
-    public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId)
+    public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false)
     {
         // Only if the account is actually a member of the target org.
         var membership = await _directory.GetMembershipAsync(organizationId, userId);
@@ -179,7 +179,7 @@ public class AuthService : IAuthService
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId);
+        return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso);
     }
 
     public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId)
@@ -217,13 +217,14 @@ public class AuthService : IAuthService
             if (_superadmins?.IsSuperadmin(stored.Email) == true)
             {
                 return await IssueTokensAsync(
-                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true);
+                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true, sso: stored.IsSso);
             }
 
-            return await ExitSupportAsync(stored.UserId);
+            return await ExitSupportAsync(stored.UserId, stored.IsSso);
         }
 
-        return await IssueTokensAsync(stored.UserId, stored.Email, stored.Role, stored.OrganizationId);
+        return await IssueTokensAsync(
+            stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso);
     }
 
     public async Task LogoutAsync(string refreshToken)
@@ -332,8 +333,14 @@ public class AuthService : IAuthService
     // ResetPasswordAsync. The wrong-password message is specific here, unlike
     // the reset path: the caller is already authenticated, so telling them the
     // current password is wrong reveals nothing they don't know.
-    public async Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+    public async Task<string?> ChangePasswordAsync(
+        string userId, string currentPassword, string newPassword, bool viaSso = false)
     {
+        // As the previous system did: an SSO session belongs to an account that
+        // signs in through Altomate, so there is no password here to change.
+        if (viaSso)
+            return "This account signs in via Altomate and has no password here to change.";
+
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return "Account not found.";
 
@@ -387,9 +394,9 @@ public class AuthService : IAuthService
     }
 
     private async Task<AuthResult> IssueTokensAsync(
-        string userId, string email, string role, string organizationId, bool support = false)
+        string userId, string email, string role, string organizationId, bool support = false, bool sso = false)
     {
-        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support);
+        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support, sso);
 
         var refresh = new RefreshToken
         {
@@ -399,6 +406,7 @@ public class AuthService : IAuthService
             Role = role,
             OrganizationId = organizationId,
             IsSupport = support,
+            IsSso = sso,
             ExpiresAt = DateTime.UtcNow.AddDays(_refreshDays),
             CreatedAt = DateTime.UtcNow,
         };
@@ -412,6 +420,7 @@ public class AuthService : IAuthService
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
             SupportMode: support,
-            OrganizationName: orgName);
+            OrganizationName: orgName,
+            ViaSso: sso);
     }
 }

@@ -100,7 +100,10 @@ public class InboundSsoTests
         var (sso, _) = Make(Member("usr-admin", "Admin"));
         var ticket = (await sso.MintAsync("admin@acme.com", Org))!.Ticket;
 
-        Assert.NotNull(await sso.RedeemAsync(ticket));
+        var session = await sso.RedeemAsync(ticket);
+        Assert.NotNull(session);
+        // Marked as SSO, so the app hides New company, Change password and Log out.
+        Assert.True(session!.ViaSso);
         // A ticket left in a browser history or a referrer header is dead.
         Assert.Null(await sso.RedeemAsync(ticket));
     }
@@ -179,13 +182,13 @@ public class InboundSsoTests
 
     private sealed class StubAuth : IAuthService
     {
-        public Task<AuthResult?> EnterSupportAsync(string userId, string organizationId) => throw new NotSupportedException();
-        public Task<AuthResult?> ExitSupportAsync(string userId) => throw new NotSupportedException();
+        public Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false) => throw new NotSupportedException();
+        public Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false) => throw new NotSupportedException();
 
-        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId) =>
+        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false) =>
             Task.FromResult<AuthResult?>(new AuthResult(
                 "access", "admin@acme.com", "Admin", organizationId,
-                "refresh", DateTime.UtcNow.AddDays(7)));
+                "refresh", DateTime.UtcNow.AddDays(7), ViaSso: sso));
 
         public Task<AltomateHR.Api.Modules.Auth.Entities.User?> VerifyPasswordAsync(string email, string password) =>
             Task.FromResult<AltomateHR.Api.Modules.Auth.Entities.User?>(null);
@@ -198,7 +201,7 @@ public class InboundSsoTests
             throw new NotSupportedException();
         public Task<string?> ResetPasswordAsync(string email, string otp, string newPassword) =>
             throw new NotSupportedException();
-        public Task<string?> ChangePasswordAsync(string userId, string current, string next) =>
+        public Task<string?> ChangePasswordAsync(string userId, string current, string next, bool viaSso = false) =>
             throw new NotSupportedException();
     }
 

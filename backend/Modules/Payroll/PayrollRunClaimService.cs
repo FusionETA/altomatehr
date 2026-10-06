@@ -200,10 +200,11 @@ public class PayrollRunClaimService : IPayrollRunClaimService
         }, null);
     }
 
-    public async Task<PayrollRunClaimDetachResult> DetachAsync(string claimId)
+    public async Task<PayrollRunClaimDetachResult> DetachAsync(string runId, string claimId)
     {
         var existing = await _attachments.GetByClaimIdAsync(claimId);
-        if (existing is null) return new PayrollRunClaimDetachResult(false, false, null);
+        if (existing is null || existing.PayrollRunId != runId)
+            return new PayrollRunClaimDetachResult(false, false, null);
 
         var run = await _runs.GetByIdAsync(existing.PayrollRunId);
 

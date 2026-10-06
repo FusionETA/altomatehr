@@ -129,6 +129,38 @@ short **"Changed files"** section listing each path touched **in that response**
 (repo-relative) with a one-word note (added / edited / deleted). This lets the user
 review exactly what moved before accepting it. Only list files changed in that turn.
 
+## Merging to main: run the agents first (one PR, one merge)
+
+When asked to merge a branch to main, do this **on the branch, before the
+merge**, so their output ships in the same PR:
+
+1. Commit the change on the branch.
+2. Bring the branch up to date with main, so teammates' merged work is in it.
+3. Run **bug-check** (`.claude/agents/bug-check.md`) on the branch's own
+   changes. Fix confirmed bugs, or show them to the user, before going on.
+4. Run **whats-new**. It writes up everything after its bookmark in
+   `frontend/src/features/whats-new/lib/entries.ts`, from any branch.
+5. If anything under `backend/Modules` changed since the bookmark in
+   `api-docs/index.html`, run **api-docs**.
+6. If anything a user sees or does changed since the bookmark in the
+   `user-guide/` pages, run **user-guide**. It retakes the affected
+   screenshots on the local demo data. List any it couldn't take.
+7. Commit their edits on the branch, push, open the PR, merge once.
+
+### Which agent when
+
+The main session decides; agents don't call each other.
+
+| Agent | Run it when | Writes |
+|---|---|---|
+| `bug-check` | before any merge to main; after a large change; "check for bugs" | nothing (report) |
+| `whats-new` | before a merge to main (every time; it skips invisible changes) | `frontend/src/features/whats-new/lib/entries.ts` |
+| `api-docs` | before a merge when `backend/Modules` changed; "document the API" | `api-docs/` |
+| `user-guide` | before a merge when a screen or flow changed; "update the guide" | `user-guide/` (text + screenshots, retaken via `qa/guide-shots/` on local demo data) |
+
+Independent ones (`whats-new`, `api-docs`, `user-guide`) can run in parallel
+after `bug-check` passes.
+
 ## Verify before saying done
 
 - Backend: `cd backend && dotnet build` (0 errors).

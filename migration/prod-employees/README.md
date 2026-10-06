@@ -111,3 +111,29 @@ plus attendance, claims, leave applications and payroll runs.
 `TeamMemberships` table and the teams themselves are already migrated. Mind the trap: its
 `employeeProfileId` is an **EmployeeProfile id**, not a user id, unlike `Claim` and
 `AttendanceRecord` which carry user ids.
+
+## 2026-09-24 re-sync (policies, people, team rosters, shifts, work schedule)
+
+Method: copied the affected v2 tables into a scratch db (`mig_dry`), ran `00-peoplemap`,
+the EmployeePolicies/PolicyLeaveEntitlements block of `../prod-settings/02-settings.sql`,
+`01-people` and `02-profiles` there with `altomatehr.` rewritten, then diffed scratch vs live
+column by column and applied only the differences. Headcount in v1 was unchanged except one
+new hire.
+
+Applied: 1 User + 2 memberships + 1 profile (a Legacy Accelerator new hire, new in
+v1 2026-09-21; plus a GLOBE supervisor's Supervisor membership in GLOBE EXPRESS), 6 profile updates
+(that supervisor's duplicate account archived as merged, EPF/IdNumber/nationality/payroll-doc edits made
+in v1 after 09-18), 1 policy (GLOBE ENGINEERING "Monthly Workers" OtRateRestDay 2.00→1.00,
+changed in v1 2026-09-19), 7 TeamMemberships (6 remapped Fusion ETA + the new hire; Layer =
+v1 layer − 1), 1 Shift (v1's only one, "[TESTING] PR1 SDN BHD").
+
+Already identical, nothing to do: PolicyLeaveEntitlements, org working hours/days, holidays.
+No v2 home: EmployeeProjectAssignment (678 rows in scope).
+
+**Skipped on purpose — v2 is ahead:** 3 Peak Bridges profiles
+that the org's admin edited in v2 on
+2026-09-24 (AuditLogs `employee.update`, TargetId = user id), and every org with a v2
+`XeroConnections` row (GSL, Fusioneta Sdn Bhd). Always diff + check AuditLogs before
+re-running these upserts — they overwrite v2-side edits.
+
+Backup: `/var/backups/altomatehr-v2/altomatehr-people-policies-pre-resync-20260924-171951.sql`

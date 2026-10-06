@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Teams</title>
+  <meta name="description" content="Create and edit teams, manage their members and layers, preview approval chains and set per-employee approver overrides." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Source: backend/Modules/Teams/TeamsController.cs, TeamService.cs,
+  ApprovalChainService.cs, Dtos/TeamDtos.cs, Entities/Team.cs,
+  Entities/TeamMembership.cs, Entities/TeamApprovalOverride.cs,
+  Modules/Approvals/ApprovalReconciliationService.cs.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html" aria-current="page">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Teams</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Teams</h1>
+    <p class="lead">
+      A team belongs to one project and arranges its members in layers, from the bottom
+      layer up. The layers above an employee are who approves that employee's claims, leave,
+      overtime and attendance requests. These endpoints manage teams, who sits in which
+      layer, and who exactly approves for a given employee.
+    </p>
+    </div>
+
+    <section class="section" id="teams-overview">
+      <h2>How teams work</h2>
+      <p>
+        Needs the <code>teams</code> module on the company's plan — every endpoint below
+        answers <code>403</code> with
+        <code>This organization's plan does not include the 'teams' module.</code> otherwise.
+      </p>
+      <ul>
+        <li><strong>Layers</strong> are numbered from <code>0</code> (the bottom) up to
+          <code>layerCount - 1</code>. A request from someone at layer <em>n</em> goes to the
+          members at layer <em>n + 1</em>, then <em>n + 2</em>, and so on. Any one member of a
+          layer approving moves the request to the next layer.</li>
+        <li><strong>Employee ids</strong> on this page are <em>user ids</em> — the
+          <code>id</code> from <code>GET /employees</code>, not the payroll
+          <code>employeeProfileId</code>.</li>
+        <li><strong>Admins and owners are never approvers.</strong> They can be on a team's
+          roster, but they are left out of every chain and every candidate list.</li>
+        <li><strong>Empty layers are skipped.</strong> If nobody is eligible at a layer, the
+          chain moves on to the next one.</li>
+      </ul>
+
+      <h3>The team object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Team id.</td></tr>
+            <tr><td><code>projectId</code></td><td>string</td><td>The project this team belongs to. Fixed when the team is created.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Display name, unique within the project.</td></tr>
+            <tr><td><code>layerCount</code></td><td>integer</td><td>Number of layers, 1–6.</td></tr>
+            <tr><td><code>layerLabels</code></td><td>string[]</td><td>Names for the layers, bottom first, e.g. <code>["Staff", "Team Lead", "Manager"]</code>. Returned exactly as saved. Where a label is missing or blank, chain and approver-option responses show <code>"Layer N"</code> (layer index plus one).</td></tr>
+            <tr><td><code>moduleApprovalConfig</code></td><td>object</td><td>Which layers must approve, per module. Keys are module names (<code>CLAIMS</code>, <code>LEAVE</code>, <code>OT</code>, <code>ATTENDANCE</code>), values are arrays of layer numbers, e.g. <code>{ "LEAVE": [1, 2] }</code>. A module that isn't listed is approved by all layers above the requester. A module listed with an empty array has no approval step at all.</td></tr>
+            <tr><td><code>members</code></td><td>array</td><td>The roster, highest layer first. Each entry is <code>{ employeeId, email, layer }</code>. <code>employeeId</code> is the user id; <code>email</code> is null if it can't be resolved.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "id": "team_123",
+  "projectId": "prj_123",
+  "name": "Site crew",
+  "layerCount": 3,
+  "layerLabels": ["Staff", "Team Lead", "Manager"],
+  "moduleApprovalConfig": { "LEAVE": [1, 2] },
+  "members": [
+    { "employeeId": "emp_456", "email": "john@example.com", "layer": 2 },
+    { "employeeId": "emp_123", "email": "jane@example.com", "layer": 0 }
+  ]
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>Editing a team can approve pending requests.</strong> Updating or deleting a
+        team, adding, moving or removing a member, and setting or clearing an approver override
+        all re-check the company's pending claims, leave, overtime and attendance requests. Any
+        request whose current approval step no longer has an approver is
+        <strong>approved automatically</strong> (and the change is written to the activity log).
+        This covers the whole company, not just the team you edited, and happens before the
+        response returns. Creating a team does not do this. If the re-check itself fails, your
+        edit is still saved and you still get the success response.
+      </div>
+      <div class="callout">
+        <strong>Error bodies on this page.</strong> A <code>400</code> for a rule the request
+        broke (duplicate name, bad layer, ineligible approver, …) comes back as
+        <code>{ "message": "…" }</code> — note <code>message</code>, not the
+        <code>error</code> key described on the <a href="index.html#errors">overview</a>. A
+        <code>400</code> for a field that failed validation is still
+        <code>{ "errors": { "Field": ["message"] } }</code>. A <code>404</code> has an empty body.
+      </div>
+    </section>
+
+    <section class="section" id="teams">
+      <h2>Teams</h2>
+
+      <section class="endpoint" id="get-teams">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/teams</span>
+          <span class="tag scope">teams:read</span>
+        </div>
+        <p>Every team in the company, each with its roster.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#teams-overview">team objects</a>.</p>
+<pre><code>curl https://&lt;api-host&gt;/teams \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="create-team">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/teams</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>Create a team in a project. The new team starts with no members.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>projectId</code></td><td>string</td><td>yes</td><td>Max 40 characters. Not checked against the company's projects, so make sure it's a real project id from <a href="projects.html">Projects</a>.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 120 characters. Surrounding spaces are trimmed. Must be unique within the project.</td></tr>
+              <tr><td><code>layerCount</code></td><td>integer</td><td>no</td><td>1–6. Defaults to <code>1</code>.</td></tr>
+              <tr><td><code>layerLabels</code></td><td>string[]</td><td>no</td><td>Layer names, bottom first. Defaults to none. Not checked against <code>layerCount</code>.</td></tr>
+              <tr><td><code>moduleApprovalConfig</code></td><td>object</td><td>no</td><td>See <a href="#teams-overview">the team object</a>. Defaults to <code>{}</code> (every layer approves every module). Keys and layer numbers are saved as sent, without validation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The created <a href="#teams-overview">team object</a>. The status is <code>200</code>, not <code>201</code>.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/teams \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "prj_123",
+    "name": "Site crew",
+    "layerCount": 3,
+    "layerLabels": ["Staff", "Team Lead", "Manager"],
+    "moduleApprovalConfig": { "LEAVE": [1, 2] }
+  }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": … }</code> — a field is missing or out of range.</li>
+          <li><code>400</code> <code>{ "message": "This project already has a team named \"…\"." }</code></li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="update-team">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/teams/{id}</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>Rename a team and change its layers and approval config. The roster is edited separately, with the <a href="#members">member endpoints</a>.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 120 characters, trimmed, unique within the team's project (the team itself doesn't clash with its own name).</td></tr>
+              <tr><td><code>layerCount</code></td><td>integer</td><td>no</td><td>1–6. <strong>Defaults to <code>1</code> if you leave it out.</strong></td></tr>
+              <tr><td><code>layerLabels</code></td><td>string[]</td><td>no</td><td>Replaces the saved labels. Leaving it out clears them.</td></tr>
+              <tr><td><code>moduleApprovalConfig</code></td><td>object</td><td>no</td><td>Replaces the saved config. Leaving it out resets it to <code>{}</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          This replaces the whole team, it doesn't merge. Fetch the team first and send back
+          every field you want to keep, or an omitted <code>layerCount</code> silently becomes
+          <code>1</code>. <code>projectId</code> can't be changed.
+        </div>
+        <div class="callout warn">
+          Lowering <code>layerCount</code> deletes every approver override on layers that no
+          longer exist. Members already sitting on a removed layer are not moved or removed:
+          fix their layer yourself. Pending requests left without an approver are approved
+          automatically (see the warning at the top).
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#teams-overview">team object</a>.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/teams/team_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Site crew",
+    "layerCount": 3,
+    "layerLabels": ["Staff", "Team Lead", "Manager"],
+    "moduleApprovalConfig": { "LEAVE": [1, 2] }
+  }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": … }</code> — a field is missing or out of range.</li>
+          <li><code>400</code> <code>{ "message": "This project already has a team named \"…\"." }</code></li>
+          <li><code>404</code> — no team with that id in this company.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="delete-team">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/teams/{id}</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>Delete a team together with its whole roster and every approver override on it.</p>
+        <div class="callout warn">
+          Everyone on the team loses the approval chain that came from it. Pending requests
+          that then have no approver are approved automatically (see the warning at the top).
+          This can't be undone.
+        </div>
+        <h3>Response <code>204</code></h3>
+        <p>No body.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> — no team with that id in this company.</p>
+      </section>
+    </section>
+
+    <section class="section" id="members">
+      <h2>Members</h2>
+
+      <section class="endpoint" id="add-member">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/teams/{id}/members</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>
+          Add an employee to a team at a layer, or move someone already on it to a different
+          layer. One employee has one row per team, so sending an existing member changes their
+          layer.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>string</td><td>yes</td><td>The employee's user id. Max 40 characters. Must belong to this company.</td></tr>
+              <tr><td><code>layer</code></td><td>integer</td><td>no</td><td>0–5, and below the team's <code>layerCount</code>. <strong>Defaults to <code>0</code> if you leave it out.</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          Only people whose role is Supervisor, Admin or Owner can sit above layer <code>0</code>.
+          A plain Employee is refused: everyone below them would route requests to someone who
+          can't open the approvals screens. Change their role first (see
+          <a href="employees.html">Employees</a>), then add them. Moving a member down a layer
+          can leave requests without an approver, which triggers the automatic approval described
+          at the top.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The <a href="#teams-overview">team object</a> with its updated roster.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/teams/team_123/members \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "employeeId": "emp_456", "layer": 2 }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": … }</code> — <code>employeeId</code> missing or too long, or <code>layer</code> outside 0–5.</li>
+          <li><code>400</code> <code>{ "message": "That layer doesn't exist on this team." }</code> — <code>layer</code> is at or above the team's <code>layerCount</code>.</li>
+          <li><code>400</code> <code>{ "message": "That employee doesn't exist in this organization." }</code></li>
+          <li><code>400</code> <code>{ "message": "… is an Employee, so they cannot be placed above the bottom layer …" }</code></li>
+          <li><code>404</code> — no team with that id.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="remove-member">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/teams/{id}/members/{employeeId}</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>
+          Take an employee off a team. Their approver overrides on this team are deleted with
+          them, so adding them back later starts from the default.
+        </p>
+        <div class="callout warn">
+          Removing the last person from a layer empties it, and the chain skips empty layers,
+          which shortens the path for everyone below. Pending requests left without an approver
+          are approved automatically (see the warning at the top).
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The <a href="#teams-overview">team object</a> with its updated roster. Removing
+          someone who isn't on the team is not an error; you get the unchanged team back.
+        </p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123/members/emp_456 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> — no team with that id.</p>
+      </section>
+    </section>
+
+    <section class="section" id="approvals">
+      <h2>Approval chains and approvers</h2>
+      <p>
+        For each layer above an employee, the people who approve are by default everyone else
+        at that layer (administrators excluded). An <strong>override</strong> replaces that
+        default for one employee at one layer with a hand-picked list.
+      </p>
+
+      <section class="endpoint" id="get-chain">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/teams/chain/{employeeId}</span>
+          <span class="tag scope">teams:read</span>
+        </div>
+        <p>
+          Preview the approval chain an employee's requests would follow for one module, with
+          the team's module config and any overrides applied.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Parameter</th><th>In</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeId</code></td><td>path</td><td>yes</td><td>The employee's user id.</td></tr>
+              <tr><td><code>module</code></td><td>query</td><td>no</td><td><code>CLAIMS</code> (default), <code>LEAVE</code>, <code>OT</code> or <code>ATTENDANCE</code>. Any other value is a <code>400</code> validation error.</td></tr>
+              <tr><td><code>projectId</code></td><td>query</td><td>no</td><td>Picks the team when the employee is on more than one. If it's missing or matches none of their teams, the team whose project name sorts first alphabetically is used.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array of steps, nearest approver first. The array is empty if the employee is on
+          no team, already sits at or above the top approving layer, or the module is
+          configured to skip approval. An unknown <code>employeeId</code> also gives
+          <code>[]</code>, not a <code>404</code>.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>step</code></td><td>integer</td><td>Position in the chain, from <code>0</code>. Skipped layers don't leave gaps.</td></tr>
+              <tr><td><code>layerLabel</code></td><td>string</td><td>The layer's label, or <code>"Layer N"</code> if it has none.</td></tr>
+              <tr><td><code>approvers</code></td><td>array</td><td><code>{ employeeId, email }</code> for each person who can approve at this step. Any one of them is enough.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>[
+  {
+    "step": 0,
+    "layerLabel": "Team Lead",
+    "approvers": [
+      { "employeeId": "emp_456", "email": "john@example.com" }
+    ]
+  }
+]</code></pre>
+<pre><code>curl "https://&lt;api-host&gt;/teams/chain/emp_123?module=LEAVE&amp;projectId=prj_123" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-approver-options">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/teams/{id}/members/{employeeId}/approver-options</span>
+          <span class="tag scope">teams:read</span>
+        </div>
+        <p>
+          For one team member, every layer above theirs: who could approve there, who does
+          approve right now, and whether that's a custom list.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array with one entry per layer above the member's own, lowest first. It's empty
+          for a member at the top layer.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>layer</code></td><td>integer</td><td>Layer number.</td></tr>
+              <tr><td><code>layerLabel</code></td><td>string</td><td>The layer's label, or <code>"Layer N"</code>.</td></tr>
+              <tr><td><code>candidates</code></td><td>array</td><td>People who can be picked at this layer: the other members there, minus administrators. Each is <code>{ employeeId, email }</code>.</td></tr>
+              <tr><td><code>effectiveApproverIds</code></td><td>string[]</td><td>User ids that approve at this layer right now: the override if there is one (limited to people still among the candidates), otherwise all the candidates.</td></tr>
+              <tr><td><code>isOverridden</code></td><td>boolean</td><td>True when a custom list is set for this member at this layer.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>[
+  {
+    "layer": 1,
+    "layerLabel": "Team Lead",
+    "candidates": [
+      { "employeeId": "emp_456", "email": "john@example.com" }
+    ],
+    "effectiveApproverIds": ["emp_456"],
+    "isOverridden": false
+  }
+]</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/teams/team_123/members/emp_123/approver-options \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such team, or the employee isn't a member of it.</p>
+      </section>
+
+      <section class="endpoint" id="set-approver-override">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/teams/{id}/members/{employeeId}/approvers/{layer}</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>
+          Choose exactly who approves for this employee at one layer, instead of everyone at
+          that layer. <code>{layer}</code> is the layer number as an integer.
+        </p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>approverIds</code></td><td>string[]</td><td>no</td><td>User ids of the approvers. Each must be a member of this team at exactly <code>{layer}</code> and not an administrator. Duplicates are dropped. Defaults to an empty list.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          This replaces any earlier list for that employee and layer. An <strong>empty
+          list</strong> is deliberate: nobody approves at this layer for this person, and the
+          chain skips the layer. That is different from having no override, which means
+          "everyone at the layer". Use the DELETE below to go back to the default. Leaving
+          out <code>approverIds</code> counts as an empty list. Because an override changes
+          who is asked next, pending requests left without an approver are approved
+          automatically (see the warning at the top).
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The same array as <a href="#get-approver-options">approver-options</a>, with the change applied.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/teams/team_123/members/emp_123/approvers/1 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "approverIds": ["emp_456"] }'</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "That layer isn't above this employee's own layer." }</code> — also returned when the layer is at or above the team's <code>layerCount</code>.</li>
+          <li><code>400</code> <code>{ "message": "Every approver must be a member of this team at that exact layer." }</code></li>
+          <li><code>404</code> — no such team, or the employee isn't a member of it. A <code>{layer}</code> that isn't an integer also gives <code>404</code>.</li>
+        </ul>
+      </section>
+
+      <section class="endpoint" id="clear-approver-override">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/teams/{id}/members/{employeeId}/approvers/{layer}</span>
+          <span class="tag scope">teams:write</span>
+        </div>
+        <p>
+          Remove the custom approver list for this employee at one layer, so the default
+          (everyone else at that layer) applies again.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The same array as <a href="#get-approver-options">approver-options</a>. Clearing a
+          layer that has no override isn't an error. Like setting one, this can trigger the
+          automatic approval described at the top.
+        </p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123/members/emp_123/approvers/1 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>404</code> — no such team, or the employee isn't a member of it.</p>
+      </section>
+    </section>
+
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>None: every action in the teams controller can be called with a key that has the scope.</p>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

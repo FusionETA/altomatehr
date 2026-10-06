@@ -145,6 +145,62 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task RefreshAsync_KeepsAnSsoSession_MarkedAsSso()
+    {
+        // A refresh must not bring back the Log out an Altomate hand-off hides.
+        var existing = new RefreshToken
+        {
+            Token = "sso-refresh-token",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            OrganizationId = "org-1",
+            IsSso = true,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+        };
+        var service = CreateService(
+            users: [],
+            refreshTokens: out var refreshTokens,
+            existingRefreshTokens: [existing]);
+
+        var result = await service.RefreshAsync("sso-refresh-token");
+
+        Assert.NotNull(result);
+        Assert.True(result.ViaSso);
+        Assert.True(refreshTokens.Tokens.Single(t => t.Token == result.RefreshToken).IsSso);
+    }
+
+    [Fact]
+    public async Task SwitchOrgAsync_InAnSsoSession_StaysSso()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "x")],
+            refreshTokens: out _,
+            memberships:
+            [
+                Membership("usr-admin", "Admin", "org-1"),
+                Membership("usr-admin", "Admin", "org-2"),
+            ]);
+
+        Assert.True((await service.SwitchOrgAsync("usr-admin", "org-2", sso: true))!.ViaSso);
+        Assert.False((await service.SwitchOrgAsync("usr-admin", "org-2"))!.ViaSso);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_InAnSsoSession_IsRefused()
+    {
+        var user = CreateUser(password: "old-password");
+        var hash = user.PasswordHash;
+        var service = CreateService(users: [user], refreshTokens: out _);
+
+        var error = await service.ChangePasswordAsync("usr-admin", "old-password", "a-new-password-1", viaSso: true);
+
+        Assert.NotNull(error);
+        Assert.Equal(hash, user.PasswordHash);
+    }
+
+    [Fact]
     public async Task RefreshAsync_WithRevokedToken_ReturnsNull()
     {
         var existing = new RefreshToken
@@ -448,6 +504,52 @@ public class AuthServiceTests
 
         Assert.Equal("org-1", home!.OrganizationId);
         Assert.False(home.SupportMode);
+    }
+
+    // A superadmin who arrived through the SSO hand-off stays SSO through
+    // support mode — entering, refreshing and leaving it must not shed the
+    // flag, or with it the SSO restrictions (no New company, Change password
+    // or Log out).
+    [Fact]
+    public async Task SupportMode_FromAnSsoSession_StaysSso()
+    {
+        var service = CreateService([CreateUser("pw")], out _, superadminEmails: "admin@altomate.com");
+
+        var entered = await service.EnterSupportAsync("usr-admin", "org-2", sso: true);
+        Assert.True(entered!.ViaSso);
+
+        var refreshed = await service.RefreshAsync(entered.RefreshToken);
+        Assert.True(refreshed!.SupportMode);
+        Assert.True(refreshed.ViaSso);
+
+        var home = await service.ExitSupportAsync("usr-admin", sso: true);
+        Assert.False(home!.SupportMode);
+        Assert.True(home.ViaSso);
+    }
+
+    // Taken off the list mid-session, the refresh that ends support mode keeps
+    // an SSO session SSO.
+    [Fact]
+    public async Task Refresh_EndingSupport_KeepsAnSsoSessionSso()
+    {
+        var supportToken = new RefreshToken
+        {
+            Token = "sso-support-refresh",
+            UserId = "usr-admin",
+            Email = "admin@altomate.com",
+            Role = "Admin",
+            OrganizationId = "org-2",
+            IsSupport = true,
+            IsSso = true,
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+        };
+        var service = CreateService([CreateUser("pw")], out _, existingRefreshTokens: [supportToken],
+            superadminEmails: string.Empty);
+
+        var refreshed = await service.RefreshAsync("sso-support-refresh");
+
+        Assert.False(refreshed!.SupportMode);
+        Assert.True(refreshed.ViaSso);
     }
 
     // --- helpers ---

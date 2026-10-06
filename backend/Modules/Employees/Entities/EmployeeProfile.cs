@@ -56,6 +56,11 @@ public class EmployeeProfile : ITenantScoped
     [MaxLength(120)] public string? Location { get; set; }
     [MaxLength(120)] public string? WorkSchedule { get; set; }
 
+    // Employment terms, reported on CP8D (fields 5 and 6). Null status reads
+    // as permanent; a contract end is the date the contract runs to.
+    public EmploymentStatus? EmploymentStatus { get; set; }
+    public DateTime? ContractEndDate { get; set; }
+
     // ---- Spouse / tax relief ----
     public bool? SpouseWorking { get; set; }
     public bool? SpouseDisabled { get; set; }
@@ -106,6 +111,11 @@ public class EmployeeProfile : ITenantScoped
     public DateTime? SpecialTaxTo { get; set; }
     public bool PcbBorneByEmployer { get; set; }
     [MaxLength(40)] public string? SsfwNumber { get; set; }
+
+    // A foreign worker's Immigration work permit (PLKS) — a separate document
+    // from the SSFW/SOCSO number above. Kept so HR can see when it lapses.
+    [MaxLength(40)] public string? WorkPermitNumber { get; set; }
+    public DateTime? WorkPermitExpiry { get; set; }
 
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;

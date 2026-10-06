@@ -328,7 +328,7 @@ public class YtdImportService : IYtdImportService
     // ─── Matching ───────────────────────────────────────────────────────
 
     private sealed record MatchedEmployee(
-        YtdImportParser.YtdEmployeeRows Parsed, EmployeeProfile Profile, string Name);
+        YtdImportParser.YtdEmployeeRows Parsed, EmployeeProfile Profile, string Name, string? EmployeeNumber);
 
     // By IC first, then by name. The IC is the reliable key — two people can
     // share a name, and a spreadsheet from another system will not carry our
@@ -337,6 +337,14 @@ public class YtdImportService : IYtdImportService
         IReadOnlyList<YtdImportParser.YtdEmployeeRows> parsed)
     {
         var (profiles, users) = await RosterAsync();
+
+        // The staff number lives on the membership. Snapshotted onto the
+        // payslip as a generated one is, so an imported month shows the same
+        // "Employee ID" rather than an internal id.
+        var numbers = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => !string.IsNullOrWhiteSpace(m.EmployeeNumber))
+            .GroupBy(m => m.UserId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().EmployeeNumber, StringComparer.Ordinal);
 
         var byIc = profiles
             .Where(p => !string.IsNullOrWhiteSpace(p.IdNumber))
@@ -371,7 +379,8 @@ public class YtdImportService : IYtdImportService
                 continue;
             }
 
-            matched.Add(new MatchedEmployee(row, profile, row.EmployeeName));
+            matched.Add(new MatchedEmployee(
+                row, profile, row.EmployeeName, numbers.GetValueOrDefault(profile.UserId)));
         }
 
         return (matched, unmatched);
@@ -491,7 +500,7 @@ public class YtdImportService : IYtdImportService
             EmployeeProfileId = employee.Profile.Id,
             UserId = employee.Profile.UserId,
             SnapshotName = employee.Name,
-            SnapshotEmployeeNumber = employee.Profile.Id,
+            SnapshotEmployeeNumber = employee.EmployeeNumber,
             SnapshotSalaryType = employee.Profile.SalaryType,
             SnapshotMonthlySalary = amounts.BasicSalary,
 
@@ -554,6 +563,7 @@ public class YtdImportService : IYtdImportService
         run.TotalEmployeeSkbbk = payslips.Sum(p => p.SkbbkEmployee);
         run.TotalEmployerEis = payslips.Sum(p => p.EisEmployer);
         run.TotalPcb = payslips.Sum(p => p.Pcb);
+        run.TotalCp38 = payslips.Sum(p => p.Cp38);
         run.TotalZakat = payslips.Sum(p => p.Zakat);
         run.TotalHrdf = payslips.Sum(p => p.Hrdf);
         run.TotalCostToEmployer = payslips.Sum(p => p.TotalCostToEmployer);

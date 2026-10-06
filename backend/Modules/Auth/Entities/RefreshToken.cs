@@ -24,6 +24,10 @@ public class RefreshToken
     // removing someone from it ends their support access at the next refresh.
     public bool IsSupport { get; set; }
 
+    // Re-mint as an SSO session (see TokenService.SsoClaim), so a refresh does
+    // not bring back the Log out an Altomate hand-off hides.
+    public bool IsSso { get; set; }
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? RevokedAt { get; set; }             // null = still valid

@@ -126,7 +126,8 @@ export function PayrollAnnualTab() {
           </p>
           <p className="mt-1">
             The annual forms cover the full January–December year. Approve every month to
-            enable the downloads.
+            enable the downloads. PCB 2(II) is a statement of deductions so far, so it is
+            available now.
           </p>
           <p className="mt-1 text-xs">
             Missing: {payload.missingMonths.map(monthShort).join(", ")}
@@ -237,7 +238,7 @@ export function PayrollAnnualTab() {
           />
           <Group
             title="LHDN e-CP8D upload"
-            subtitle="The pipe-delimited pair the portal expects. Upload both."
+            subtitle="LHDN's C.P.8D Pin. 2025 layout. e-Data Praisi / e-CP8D takes the employee file (P) only; the employer master (M) is kept for reference."
             items={kinds.filter((k) => k.group === "LHDN_TXT")}
             busy={busy}
             disabled={!payload?.canGenerate}
@@ -317,7 +318,8 @@ function Group({
   subtitle: string;
   items: PayrollAnnualReportMeta[];
   busy: string | null;
-  // Off until the year is complete; the panel above says which months.
+  // The year is incomplete; the panel above says which months. Only the
+  // forms that declare the whole year wait for it — PCB 2(II) does not.
   disabled: boolean;
   onPick: (meta: PayrollAnnualReportMeta) => void;
 }) {
@@ -336,7 +338,7 @@ function Group({
             <button
               type="button"
               className={`${BUTTON_GHOST} h-auto w-full items-start justify-start gap-3 rounded-2xl p-3 text-left`}
-              disabled={disabled || busy !== null}
+              disabled={(disabled && meta.requiresFullYear !== false) || busy !== null}
               onClick={() => onPick(meta)}
             >
               <span className="mt-0.5 shrink-0 text-muted-foreground">

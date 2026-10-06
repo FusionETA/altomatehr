@@ -1,6 +1,7 @@
 using AltomateHR.Api.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Policies;
 
@@ -32,6 +33,7 @@ public class MyPolicyController : ControllerBase
     // An administrative seat gets everything: their access comes from their
     // role, and an org whose default policy happens to exclude a module should
     // not lose the screens that configure it.
+    [HumanOnly]
     [HttpGet("modules")]
     public async Task<IActionResult> Modules()
     {

@@ -20,6 +20,7 @@ public class ShiftsController : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] string? projectId) =>
         Ok(projectId is null ? await _shifts.GetAllAsync() : await _shifts.GetForProjectAsync(projectId));
 
+    [RequireScope("attendance:write")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateShiftDto dto)
     {
@@ -27,6 +28,7 @@ public class ShiftsController : ControllerBase
         return result.Ok ? Ok(result.Shift) : BadRequest(new { message = result.Error });
     }
 
+    [RequireScope("attendance:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateShiftDto dto)
     {
@@ -35,6 +37,7 @@ public class ShiftsController : ControllerBase
         return result.Ok ? Ok(result.Shift) : BadRequest(new { message = result.Error });
     }
 
+    [RequireScope("attendance:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -46,9 +49,11 @@ public class ShiftsController : ControllerBase
 
     // POST /shifts/{id}/archive — soft-archive; also drops the default flag.
     // POST /shifts/{id}/restore — bring it back (it does NOT regain the default).
+    [RequireScope("attendance:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id) => await SetArchived(id, true);
 
+    [RequireScope("attendance:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id) => await SetArchived(id, false);
 
@@ -59,6 +64,7 @@ public class ShiftsController : ControllerBase
         return result.Ok ? Ok(result.Shift) : BadRequest(new { message = result.Error });
     }
 
+    [RequireScope("attendance:write")]
     [HttpPost("{id}/default")]
     public async Task<IActionResult> SetDefault(string id)
     {

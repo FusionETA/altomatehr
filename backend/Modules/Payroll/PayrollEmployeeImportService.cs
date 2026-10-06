@@ -238,6 +238,11 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         profile.Department = Text("department", 120) ?? profile.Department;
         profile.EpfNumber = Text("epfNumber", 40) ?? profile.EpfNumber;
         profile.SocsoNumber = Text("socsoNumber", 40) ?? profile.SocsoNumber;
+        // A blank SOCSO number takes the IC / passport, as in the previous
+        // system: in Malaysia most employees' SOCSO number IS their IC. Only
+        // fills a blank — a SOCSO number already on file is never replaced.
+        if (string.IsNullOrWhiteSpace(profile.SocsoNumber) && !string.IsNullOrWhiteSpace(profile.IdNumber))
+            profile.SocsoNumber = profile.IdNumber;
         profile.IncomeTaxNumber = Text("incomeTaxNumber", 40) ?? profile.IncomeTaxNumber;
         profile.BankName = Text("bankName", 120) ?? profile.BankName;
         profile.BankAccountNumber = Text("bankAccountNumber", 60) ?? profile.BankAccountNumber;

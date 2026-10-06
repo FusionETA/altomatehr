@@ -160,6 +160,8 @@ public class EmployeeImportService : IEmployeeImportService
                 ["hasPr"] = TabularSheet.Bool(p.HasPr),
                 ["isResident"] = TabularSheet.Bool(p.IsResident),
                 ["isOku"] = TabularSheet.Bool(p.IsOku),
+                ["workPermitNumber"] = p.WorkPermitNumber,
+                ["workPermitExpiry"] = TabularSheet.Date(p.WorkPermitExpiry),
                 ["phone"] = p.Phone,
                 ["alternateEmail"] = p.AlternateEmail,
                 ["addressLine1"] = p.AddressLine1,
@@ -454,6 +456,8 @@ public class EmployeeImportService : IEmployeeImportService
         c.Flag("hasPr", "Malaysian PR", false, v => p.HasPr = v);
         c.Flag("isResident", "Tax Resident", true, v => p.IsResident = v);
         c.Flag("isOku", "OKU", false, v => p.IsOku = v);
+        c.Text("workPermitNumber", 40, v => p.WorkPermitNumber = v);
+        c.Date("workPermitExpiry", v => p.WorkPermitExpiry = v);
 
         c.Text("phone", 40, v => p.Phone = v);
         c.Text("alternateEmail", 120, v => p.AlternateEmail = v);
@@ -507,6 +511,12 @@ public class EmployeeImportService : IEmployeeImportService
         // raises nobody gave. A real raise goes through the employee's salary
         // prompt or the salary adjustment import, which ask for both.
         p.SalaryChangeIsCorrection = true;
+
+        // A blank SOCSO number takes the IC / passport, as in the previous
+        // system: in Malaysia most employees' SOCSO number IS their IC. Only
+        // fills a blank — a SOCSO number already on file is never replaced.
+        if (string.IsNullOrWhiteSpace(p.SocsoNumber) && !string.IsNullOrWhiteSpace(p.IdNumber))
+            p.SocsoNumber = p.IdNumber;
     }
 
     private static IReadOnlyList<IReadOnlyList<string>>? PickDataSheet(IReadOnlyList<TabularSheetContent> sheets)

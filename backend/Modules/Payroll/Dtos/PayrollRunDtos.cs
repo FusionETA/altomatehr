@@ -88,6 +88,12 @@ public class PayrollRunDto
     // is refused while it is true.
     public bool IsStale { get; set; }
 
+    // LHDN's receipts for this month's MTD and CP38 payments (PCB 2(II)).
+    public string? PcbReceiptNo { get; set; }
+    public DateTime? PcbReceiptDate { get; set; }
+    public string? Cp38ReceiptNo { get; set; }
+    public DateTime? Cp38ReceiptDate { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -209,6 +215,19 @@ public class SkippedEmployeeDto
 
 // An approver sending a pending run back. The reason is optional but strongly
 // wanted — it is the only thing the submitter sees explaining the bounce.
+// The LHDN receipts for a filed month's MTD and CP38 payments. Every field is
+// optional: a blank one clears it, since the payment may not have been made yet.
+public class SetLhdnReceiptsDto
+{
+    [MaxLength(60)]
+    public string? PcbReceiptNo { get; set; }
+    public DateTime? PcbReceiptDate { get; set; }
+
+    [MaxLength(60)]
+    public string? Cp38ReceiptNo { get; set; }
+    public DateTime? Cp38ReceiptDate { get; set; }
+}
+
 public class RejectPayrollRunDto
 {
     [MaxLength(1000)]

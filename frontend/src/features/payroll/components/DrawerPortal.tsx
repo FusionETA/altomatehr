@@ -20,9 +20,13 @@ export function DrawerPortal({
 }) {
   // Escape closes. A layer that only dismisses on an outside click strands
   // anyone working from the keyboard.
+  //
+  // Unless something inside already used that Escape: a Radix dropdown open
+  // in the drawer closes itself on it and marks it `defaultPrevented`.
+  // Closing the drawer too threw away everything typed into it.
   const escape = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) onClose();
     },
     [onClose],
   );

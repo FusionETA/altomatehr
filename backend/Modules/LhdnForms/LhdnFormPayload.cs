@@ -58,6 +58,12 @@ public class LhdnFormMonthPcb
     public decimal Mtd { get; set; }
     public decimal Cp38 { get; set; }
     public decimal Zakat { get; set; }
+
+    // LHDN's receipts for the company's payment of this month's MTD / CP38.
+    public string? MtdReceiptNo { get; set; }
+    public DateTime? MtdReceiptDate { get; set; }
+    public string? Cp38ReceiptNo { get; set; }
+    public DateTime? Cp38ReceiptDate { get; set; }
 }
 
 public class LhdnFormYtd

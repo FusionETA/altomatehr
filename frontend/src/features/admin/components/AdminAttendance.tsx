@@ -207,12 +207,12 @@ function startOfMonth() {
   return `${businessToday().slice(0, 8)}01`;
 }
 
-// Beyond the geofence. 200m matches the threshold the clock-in path itself
-// uses, so the board agrees with what the employee was told at the time.
-const OFF_SITE_METERS = 200;
-
+// Beyond the geofence — as the SERVER decided it, with the organization's own
+// radius, the same one the clock-in check uses. A fixed 200m here labelled
+// people off-site who were well inside a 500m geofence, and were never asked
+// for the reason and photo an off-site clock-in requires.
 function isOffSite(record: AttendanceRecord | null | undefined): boolean {
-  return (record?.clockInDistanceMeters ?? 0) > OFF_SITE_METERS;
+  return record?.offSite ?? false;
 }
 
 function metreLabel(metres: number | null): string {

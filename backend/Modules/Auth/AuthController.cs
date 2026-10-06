@@ -4,6 +4,7 @@ using AltomateHR.Api.Modules.Auth.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Auth;
 
@@ -106,6 +107,7 @@ public class AuthController : ControllerBase
     // server has already thrown away, and the next silent refresh would fail
     // for no visible reason.
     [Authorize]
+    [HumanOnly]
     [HttpPost("change-password")]
     [EnableRateLimiting("auth-forgot-password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
@@ -113,7 +115,7 @@ public class AuthController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
 
-        var error = await _auth.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword);
+        var error = await _auth.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword, viaSso: _currentUser.IsSso);
         if (error is not null) return BadRequest(new { message = error });
 
         Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = "/auth" });
@@ -122,13 +124,14 @@ public class AuthController : ControllerBase
 
     // POST /auth/switch-org/{organizationId} — re-mint the token for another org you belong to.
     [Authorize]
+    [HumanOnly]
     [HttpPost("switch-org/{organizationId}")]
     public async Task<ActionResult<AuthResponseDto>> SwitchOrg(string organizationId)
     {
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.SwitchOrgAsync(userId, organizationId);
+        var result = await _auth.SwitchOrgAsync(userId, organizationId, sso: _currentUser.IsSso);
         if (result is null)
             return Forbid();   // you're not a member of that org
 
@@ -139,13 +142,14 @@ public class AuthController : ControllerBase
     // POST /auth/support/enter/{organizationId} — Fusioneta support: act as an
     // Admin inside ANY org. Superadmins only (SUPERADMIN_EMAILS).
     [Authorize(Policy = AuthPolicies.Superadmin)]
+    [HumanOnly]
     [HttpPost("support/enter/{organizationId}")]
     public async Task<ActionResult<AuthResponseDto>> EnterSupport(string organizationId)
     {
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.EnterSupportAsync(userId, organizationId);
+        var result = await _auth.EnterSupportAsync(userId, organizationId, sso: _currentUser.IsSso);
         if (result is null) return NotFound(new { message = "No such organization." });
 
         SetRefreshCookie(result);
@@ -154,13 +158,14 @@ public class AuthController : ControllerBase
 
     // POST /auth/support/exit — back to your own org.
     [Authorize]
+    [HumanOnly]
     [HttpPost("support/exit")]
     public async Task<ActionResult<AuthResponseDto>> ExitSupport()
     {
         var userId = _currentUser.UserId;
         if (userId is null) return Unauthorized();
 
-        var result = await _auth.ExitSupportAsync(userId);
+        var result = await _auth.ExitSupportAsync(userId, sso: _currentUser.IsSso);
         if (result is null) return Unauthorized(new { message = "You have no organization of your own to return to." });
 
         SetRefreshCookie(result);
@@ -169,6 +174,7 @@ public class AuthController : ControllerBase
 
     // GET /auth/orgs — the orgs this account can switch into.
     [Authorize]
+    [HumanOnly]
     [HttpGet("orgs")]
     public async Task<ActionResult<IReadOnlyList<UserOrgDto>>> Orgs()
     {
@@ -204,5 +210,6 @@ public class AuthController : ControllerBase
             ActiveOrganizationName = result.OrganizationName,
             IsSuperadmin = result.IsSuperadmin,
             SupportMode = result.SupportMode,
+            ViaSso = result.ViaSso,
         };
 }

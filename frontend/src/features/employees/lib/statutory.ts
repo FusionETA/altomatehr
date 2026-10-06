@@ -18,11 +18,33 @@ export function calculateAge(dateOfBirth: string | null | undefined): number {
   return Math.max(0, age);
 }
 
-/** Accepts "Malaysian" / "Malaysia" / "MY" / "MYS" variants, case-insensitively. */
+// Every spelling the backend's Nationalities treats as Malaysian
+// (backend/Modules/Payroll/Nationalities.cs). Keep the two in step: payroll
+// taxes a Malaysian as a resident, and this decides whether the screen shows
+// them as one — two lists let the screen and PCB disagree.
+const MALAYSIAN_SPELLINGS = new Set([
+  "malaysian",
+  "malaysia",
+  "my",
+  "mys",
+  "warganegara malaysia",
+  "rakyat malaysia",
+  "malaysian citizen",
+  "malaysia citizen",
+  "warganegara",
+]);
+
+/** True for any accepted spelling of Malaysian — normalised exactly as the
+ * backend's Nationalities.Key does: spaces collapsed, curly apostrophe folded,
+ * trailing full stops dropped, case ignored. */
 export function isMalaysianNationality(nationality: string | null | undefined): boolean {
-  const v = (nationality ?? "").toLowerCase().trim();
-  if (v === "") return false;
-  return v === "malaysian" || v === "malaysia" || v === "my" || v === "mys";
+  const v = (nationality ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\u2019/g, "'")
+    .replace(/\.+$/, "")
+    .toLowerCase();
+  return MALAYSIAN_SPELLINGS.has(v);
 }
 
 /**
@@ -158,4 +180,22 @@ export function epfBranchInfo(branch: EpfBranch, monthlySalary: number | null): 
             : "13% (≤ RM 5,000) or 12% (> RM 5,000)",
       };
   }
+}
+
+/**
+ * The work-permit expiry line under the date field: "Expired 3 Oct 2026",
+ * "Expires in 23 days (28 Oct 2026)" inside 60 days, else the plain date.
+ * Calendar days in the viewer's time zone — HR reads it as a date, not a time.
+ */
+export function workPermitExpiryHint(expiry: string | null | undefined, today = new Date()): string {
+  if (!expiry) return "When the permit lapses — shown here so a renewal isn't missed.";
+  const [y, m, d] = expiry.slice(0, 10).split("-").map(Number);
+  const end = new Date(y, m - 1, d);
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  const label = end.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  if (days < 0) return `Expired ${label}.`;
+  if (days === 0) return `Expires today (${label}).`;
+  if (days <= 60) return `Expires in ${days} day${days === 1 ? "" : "s"} (${label}).`;
+  return `Valid until ${label}.`;
 }

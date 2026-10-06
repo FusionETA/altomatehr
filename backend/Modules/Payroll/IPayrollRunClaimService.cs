@@ -19,7 +19,8 @@ public interface IPayrollRunClaimService
 
     Task<PayrollRunClaimAttachResult> AttachAsync(string runId, string claimId);
 
-    // Detaches from whichever run holds the claim — the caller does not have to
-    // know which, and a claim can only ever be on one.
-    Task<PayrollRunClaimDetachResult> DetachAsync(string claimId);
+    // Detaches the claim from `runId`. A claim can only ever be on one run, but
+    // the route names the run, so a claim held by a DIFFERENT run is "not found"
+    // rather than silently taken off whichever run actually has it.
+    Task<PayrollRunClaimDetachResult> DetachAsync(string runId, string claimId);
 }

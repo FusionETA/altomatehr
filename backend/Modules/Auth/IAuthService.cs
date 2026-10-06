@@ -14,13 +14,17 @@ public interface IAuthService
     Task<AuthResult?> RefreshAsync(string refreshToken);
 
     // Re-mint the token for another org the user belongs to. Null = not a member.
-    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId);
+    // `sso`: keep the session marked as an Altomate SSO hand-off.
+    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false);
 
     // Support mode (Fusioneta superadmins only). Enter: null when the caller is
     // not on SUPERADMIN_EMAILS or the org does not exist. Exit: back to the
     // caller's own org; null when they have none.
-    Task<AuthResult?> EnterSupportAsync(string userId, string organizationId);
-    Task<AuthResult?> ExitSupportAsync(string userId);
+    // sso: the current session came through the SSO hand-off. It's carried into
+    // the support session and back out, so entering and leaving support mode
+    // can't shed it (and with it the SSO-only restrictions).
+    Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false);
+    Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false);
 
     // Every org the user can switch into (id + their role there).
     Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId);
@@ -37,5 +41,5 @@ public interface IAuthService
 
     // Change your own password using the current one. Null on success,
     // otherwise a message safe to show the caller.
-    Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
+    Task<string?> ChangePasswordAsync(string userId, string currentPassword, string newPassword, bool viaSso = false);
 }

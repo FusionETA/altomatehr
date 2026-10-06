@@ -75,6 +75,7 @@ public class AttendanceController : ControllerBase
     // Same underlying logic AutoClockOutBackgroundService calls on its timer.
     // The cutoff is no longer a parameter — it comes from each employee's
     // policy (AutoClockOutEnabled + AutoClockOutAfterMinutes).
+    [RequireScope("attendance:write")]
     [HttpPost("cron/auto-clockout/run")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> RunAutoClockOutSweep([FromQuery] int? maxCandidates) =>
@@ -240,6 +241,7 @@ public class AttendanceController : ControllerBase
 
     // GET /attendance/import/template?format=csv|xlsx — PDF is refused here on
     // purpose: a template exists to be filled in.
+    [RequireScope("attendance:read")]
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
     public IActionResult ImportTemplate([FromQuery] string? format)
@@ -261,6 +263,7 @@ public class AttendanceController : ControllerBase
     // POST /attendance/import — multipart upload of historical daily records.
     // 200 with a per-row report even when some rows failed; only an unusable
     // FILE is a 400.
+    [RequireScope("attendance:write")]
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     [RequestSizeLimit(8 * 1024 * 1024)]
@@ -295,11 +298,22 @@ public class AttendanceController : ControllerBase
     }
 
     // POST /attendance/clock-in
+    [HumanOnly]
     [HttpPost("clock-in")]
     public async Task<IActionResult> ClockIn(ClockInDto dto) =>
         ToResponse(await _attendance.ClockInAsync(GetUserId(), dto));
 
+    // GET /attendance/geofence-check?projectId=&lat=&lng= — where the caller
+    // stands against the project's geofence right now (the clock card's live
+    // "On site · 45 m away" line). No projectId checks today's open shift.
+    [HumanOnly]
+    [HttpGet("geofence-check")]
+    public async Task<IActionResult> CheckGeofence(
+        [FromQuery] string? projectId, [FromQuery] double? lat, [FromQuery] double? lng) =>
+        Ok(await _attendance.CheckGeofenceAsync(GetUserId(), projectId, lat, lng));
+
     // POST /attendance/clock-out
+    [HumanOnly]
     [HttpPost("clock-out")]
     public async Task<IActionResult> ClockOut(ClockOutDto dto) =>
         ToResponse(await _attendance.ClockOutAsync(GetUserId(), dto));
@@ -308,6 +322,7 @@ public class AttendanceController : ControllerBase
     // clock-in and/or clock-out time. Takes effect on the record only once a
     // supervisor approves it via the normal POST /attendance/{id}/approve flow —
     // rejecting it just leaves the record unchanged.
+    [HumanOnly]
     [HttpPost("adjustments")]
     public async Task<IActionResult> SubmitAdjustment(SubmitTimeAdjustmentDto dto)
     {
@@ -317,12 +332,14 @@ public class AttendanceController : ControllerBase
 
     // POST /attendance/{id}/approve — {id} is an AttendanceApprovalRequest id
     // (CLOCK_IN/CLOCK_OUT only). Current-step approver only.
+    [RequireScope("attendance:write")]
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id) =>
         ToTransitionResponse(await _attendance.ApproveAsync(id, GetUserId()));
 
     // POST /attendance/{id}/reject — same id space as Approve above.
+    [RequireScope("attendance:write")]
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectAttendanceDto dto) =>
@@ -330,12 +347,14 @@ public class AttendanceController : ControllerBase
 
     // POST /attendance/bulk/approve — approve many approval requests (records
     // and/or breaks) in one call. Independent per-id success/failure.
+    [RequireScope("attendance:write")]
     [HttpPost("bulk/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> BulkApprove(BulkApproveDto dto) =>
         Ok(await _attendance.BulkApproveAsync(dto.Ids, GetUserId()));
 
     // POST /attendance/bulk/reject
+    [RequireScope("attendance:write")]
     [HttpPost("bulk/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> BulkReject(BulkRejectDto dto) =>
@@ -349,23 +368,27 @@ public class AttendanceController : ControllerBase
         Ok(await _attendance.GetAuditLogAsync(employeeId, from, to));
 
     // POST /attendance/break/start — start a break on today's active session.
+    [HumanOnly]
     [HttpPost("break/start")]
     public async Task<IActionResult> StartBreak(StartBreakDto dto) =>
         ToBreakResponse(await _attendance.StartBreakAsync(GetUserId(), dto));
 
     // POST /attendance/break/end — end the currently-open break.
+    [HumanOnly]
     [HttpPost("break/end")]
     public async Task<IActionResult> EndBreak(EndBreakDto dto) =>
         ToBreakResponse(await _attendance.EndBreakAsync(GetUserId(), dto));
 
     // POST /attendance/break/{id}/approve — {id} is an AttendanceApprovalRequest
     // id (BREAK_START/BREAK_END only). Current-step approver only.
+    [RequireScope("attendance:write")]
     [HttpPost("break/{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> ApproveBreak(string id) =>
         ToBreakTransitionResponse(await _attendance.ApproveBreakAsync(id, GetUserId()));
 
     // POST /attendance/break/{id}/reject — current-step approver only.
+    [RequireScope("attendance:write")]
     [HttpPost("break/{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> RejectBreak(string id, RejectBreakDto dto) =>
@@ -395,6 +418,7 @@ public class AttendanceController : ControllerBase
 
     // POST /attendance/selfies/delete-range — bulk-delete stored selfies within
     // an inclusive date range and clear the record's photo URL(s).
+    [RequireScope("attendance:write")]
     [HttpPost("selfies/delete-range")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> DeleteSelfiesInRange(DeleteSelfiesInRangeDto dto)
@@ -407,6 +431,7 @@ public class AttendanceController : ControllerBase
 
     // POST /attendance/photo — off-site proof photo. Returns { photoUrl } to
     // include in the clock-in/out request.
+    [HumanOnly]
     [HttpPost("photo")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     public async Task<IActionResult> UploadPhoto(IFormFile? photo)

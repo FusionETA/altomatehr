@@ -87,8 +87,9 @@ public class InboundSsoService : IInboundSsoService
         var membership = await _directory.GetMembershipAsync(data.OrganizationId, data.UserId);
         if (membership is null || !OrgRoles.IsAdministrative(membership.Role)) return null;
 
-        // Mints the same access + refresh pair a login does, for that org.
-        return await _auth.SwitchOrgAsync(data.UserId, data.OrganizationId);
+        // Mints the same access + refresh pair a login does, for that org —
+        // marked as SSO, so the app hides what Altomate manages instead.
+        return await _auth.SwitchOrgAsync(data.UserId, data.OrganizationId, sso: true);
     }
 
     // The account must be an ADMIN OR OWNER of this org. Matched on the

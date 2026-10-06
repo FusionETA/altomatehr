@@ -16,7 +16,9 @@ public record AuthResult(
     bool IsSuperadmin = false,
     // This session is support mode inside OrganizationId.
     bool SupportMode = false,
-    string? OrganizationName = null);
+    string? OrganizationName = null,
+    // Arrived through the Altomate SSO hand-off.
+    bool ViaSso = false);
 
 // An org the signed-in account can act in (drives the org switcher). Role is the
 // account's role IN THAT org — Employee here, Supervisor there, etc. Name is the

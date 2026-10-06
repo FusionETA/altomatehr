@@ -39,21 +39,29 @@ export function useCachedQuery<T>(
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
+  // The path on screen now. An answer that lands after the caller has moved
+  // to another path (a slow 2027 arriving once the user is back on 2026)
+  // belongs to a screen nobody is looking at, and must not overwrite this one.
+  const pathRef = useRef(path);
+  pathRef.current = path;
+
   const load = useCallback(
     async (showSpinner: boolean) => {
       if (!enabled || !path) return;
       if (showSpinner) setLoading(true);
       try {
         const next = await fetcherRef.current();
+        if (pathRef.current !== path) return;
         setData(next);
         setError(null);
       } catch (e) {
+        if (pathRef.current !== path) return;
         // A failed refresh keeps the data already on screen: stale rows beat an
         // error page for something the user can still read. A failed FIRST load
         // has nothing to fall back on, so that one surfaces.
         setError(e instanceof Error ? e.message : "Could not load this.");
       } finally {
-        setLoading(false);
+        if (pathRef.current === path) setLoading(false);
       }
     },
     [enabled, path],
@@ -62,6 +70,14 @@ export function useCachedQuery<T>(
   useEffect(() => {
     if (!enabled || !path) return;
     const hit = cache.peek<T>(path);
+    // `data` is seeded from the cache only on the first render. When the path
+    // changes (a year picker, a different record) the screen has to switch to
+    // THIS path's answer — or to nothing — here; otherwise a fresh cache hit
+    // skips the fetch below and the previous path's rows stay on screen under
+    // the new label.
+    setData(hit?.data);
+    setError(null);
+    setLoading(hit === null);
     // Nothing cached  → fetch, with the spinner; it's the only honest thing to
     //                   show when there is nothing yet.
     // Cached but old   → show it and refresh behind it.

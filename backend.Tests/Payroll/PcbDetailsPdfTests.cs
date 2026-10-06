@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Pdf;
 using QuestPDF.Fluent;
@@ -260,4 +261,123 @@ public class PcbDetailsPdfTests
             ImageFormat = ImageFormat.Png,
             RasterDpi = 40,
         }).Count();
+
+    // ─── 5. From the formula to the payslip ────────────────────────────
+
+    // The formula's PCB is before this month's zakat; the payslip's is after
+    // it. The page must end on the payslip's figure (the reported case:
+    // 2,944.05 formula PCB, RM 1,000 zakat, 1,944.05 on the payslip).
+    [Fact]
+    public void ThisMonthsZakat_IsTakenOff_SoThePageEndsOnThePayslipPcb()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 1000m, 0m);
+
+        Assert.Equal(["PCB", "- Zakat", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(1000m, rows[1].Amount);
+        Assert.Equal(1944.05m, rows[^1].Amount);
+        Assert.True(rows[^1].Bold);
+    }
+
+    // The reported case (LHDN Q2, March): 3,985.00 formula PCB, RM 12,000
+    // zakat paid. The row shows what was PAID, PCB payable is 0.00, and the
+    // 8,015.00 the PCB could not absorb is named as carried forward.
+    [Fact]
+    public void ZakatAboveThePcb_ShowsWhatWasPaid_AndWhatCarriesForward()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(3985m, 12000m, 0m);
+
+        Assert.Equal(["PCB", "- Zakat", "Zakat carried forward", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(12000m, rows[1].Amount);
+        Assert.Equal(8015m, rows[2].Amount);
+        Assert.Equal(0m, rows[^1].Amount);
+    }
+
+    // Zakat paid in a month with no PCB at all still shows, all of it carried.
+    [Fact]
+    public void ZakatWithNoPcb_IsAllCarriedForward()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(0m, 500m, 0m);
+
+        Assert.Equal(500m, rows.Single(r => r.Label == "Zakat carried forward").Amount);
+        Assert.Equal(0m, rows[^1].Amount);
+    }
+
+    // ─── P before the floor ────────────────────────────────────────────
+
+    // Reliefs larger than the normal remuneration: P is floored to 0 for the
+    // tax, but the page shows the negative figure Section 3 builds on
+    // (reported case: 0 − (9,000 + 16,000 + 3,500) = −28,500).
+    [Fact]
+    public void ANegativeP_IsShownBeforeTheFloor()
+    {
+        var b = new PcbBreakdown { Formula = PcbFormula.Resident, P = 0m, PBeforeFloor = -28500m, D = 9000m, Q = 2000m, C = 8m, Lp1 = 3500m, N = 9 };
+        Assert.Equal(-28500m, PcbCalculationDetailsPdf.PBeforeFloor(b));
+    }
+
+    // A snapshot from before PBeforeFloor was recorded: the figure is the
+    // arithmetic printed beside P.
+    [Fact]
+    public void AnOlderSnapshot_DerivesPFromItsOwnComponents()
+    {
+        var b = new PcbBreakdown { Formula = PcbFormula.Resident, P = 0m, D = 9000m, Q = 2000m, C = 8m, Lp1 = 3500m, N = 9 };
+        Assert.Equal(-28500m, PcbCalculationDetailsPdf.PBeforeFloor(b));
+    }
+
+    [Fact]
+    public void APositiveP_IsUnchanged()
+    {
+        Assert.Equal(52000m, PcbCalculationDetailsPdf.PBeforeFloor(new PcbBreakdown { Formula = PcbFormula.Resident, P = 52000m }));
+    }
+
+    [Fact]
+    public void WithNoZakatAndNoAdditionalPcb_ThereIsOneRow()
+    {
+        var row = Assert.Single(PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 0m, 0m));
+        Assert.Equal(2944.05m, row.Amount);
+        Assert.True(row.Bold);
+    }
+
+    [Fact]
+    public void ZakatAndAdditionalPcb_BothShow()
+    {
+        var rows = PcbCalculationDetailsPdf.NetPcbRows(2944.05m, 1000m, 200m);
+
+        Assert.Equal(["PCB", "- Zakat", "+ Add. PCB", "PCB payable"], rows.Select(r => r.Label));
+        Assert.Equal(2144.05m, rows[^1].Amount);
+    }
+
+    [Fact]
+    public void APageWithZakat_StillRenders()
+    {
+        var model = new PcbDetailsModel
+        {
+            OrganizationName = "Acme Engineering",
+            PeriodLabel = "November 2026",
+            Employees = [new PcbDetailsEmployee { Name = "Employee A", Breakdown = Resident(), CurrentMonthZakat = 1000m }],
+        };
+
+        Assert.True(PcbCalculationDetailsPdf.Render(model).Length > 0);
+    }
+
+    // ─── 15% approvals: each in its own spec's words ───────────────────
+
+    // Q1 is the C-suite case: a reviewer must see D.b.5 / Table 4 and a
+    // formula with no rebate, not the REP wording.
+    [Fact]
+    public void CSuite_CitesTable4_WithNoRebate()
+    {
+        Assert.Equal("D.b.5, Table 4", PcbCalculationDetailsPdf.SchemeSection(SpecialTaxScheme.C_SUITE));
+        Assert.Contains("C-suite", PcbCalculationDetailsPdf.SchemeName(SpecialTaxScheme.C_SUITE));
+        Assert.Equal("[(P × R) − (Z + X)] ÷ (n + 1)", PcbCalculationDetailsPdf.SchemeFormula(SpecialTaxScheme.C_SUITE));
+    }
+
+    [Theory]
+    [InlineData(SpecialTaxScheme.RETURNING_EXPERT, "D.b.3, Table 2", "Returning Expert")]
+    [InlineData(SpecialTaxScheme.KNOWLEDGE_WORKER, "D.b.4, Table 3", "knowledge worker")]
+    public void RepAndKnowledgeWorkers_KeepTheRebate(SpecialTaxScheme scheme, string section, string name)
+    {
+        Assert.Equal(section, PcbCalculationDetailsPdf.SchemeSection(scheme));
+        Assert.Contains(name, PcbCalculationDetailsPdf.SchemeName(scheme));
+        Assert.Equal("[(P × R − T) − (Z + X)] ÷ (n + 1)", PcbCalculationDetailsPdf.SchemeFormula(scheme));
+    }
 }

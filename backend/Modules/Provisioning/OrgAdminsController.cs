@@ -1,12 +1,6 @@
-using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.ApiKeys;
-using AltomateHR.Api.Modules.Auth;
-using AltomateHR.Api.Modules.Auth.Entities;
-using AltomateHR.Api.Modules.Employees;
-using AltomateHR.Api.Modules.Employees.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using BC = BCrypt.Net.BCrypt;
 
 namespace AltomateHR.Api.Modules.Provisioning;
 
@@ -27,26 +21,18 @@ namespace AltomateHR.Api.Modules.Provisioning;
 [Authorize]
 public class OrgAdminsController : ControllerBase
 {
-    private readonly IUserRepository _users;
-    private readonly IOrganizationMembershipRepository _memberships;
-    private readonly IDirectoryService _directory;
+    private readonly IOrgAdminService _admins;
 
-    public OrgAdminsController(
-        IUserRepository users,
-        IOrganizationMembershipRepository memberships,
-        IDirectoryService directory)
-    {
-        _users = users;
-        _memberships = memberships;
-        _directory = directory;
-    }
+    public OrgAdminsController(IOrgAdminService admins) => _admins = admins;
 
-    // POST /admin/admins — make this email an admin of the calling key's org.
+    // POST /admin/admins — make this email an administrator of the calling
+    // key's org. The first person given a seat in a company with nobody
+    // administering it becomes its Owner; everyone after is an Admin.
     //
     // Idempotent: `created` says whether a new account was made, `linked`
-    // whether an existing one gained the seat. Re-sending for someone who is
-    // already an admin is a harmless no-op, which is what lets the caller retry
-    // a failed SSO mint without checking first.
+    // whether an existing one gained the seat, `role` which seat they hold.
+    // Re-sending for someone who is already an admin is a harmless no-op, which
+    // is what lets the caller retry a failed SSO mint without checking first.
     [RequireScope("organizations:write")]
     [HttpPost("admins")]
     public async Task<IActionResult> GrantAdmin(GrantAdminRequest request)
@@ -58,52 +44,8 @@ public class OrgAdminsController : ControllerBase
         var email = (request.Email ?? string.Empty).Trim();
         if (email.Length == 0) return BadRequest(new { message = "Email is required." });
 
-        var user = await _users.GetByEmailAsync(email);
-        var created = false;
-
-        if (user is null)
-        {
-            // No password is set, and none is asked for. This account exists to
-            // be entered through the SSO hand-off, so a password would be a
-            // second way in that nobody chose and nobody would rotate.
-            // BCrypt of a random secret, so the column is never a usable blank.
-            user = new User
-            {
-                Email = email,
-                Name = NameFor(request.Name, email),
-                PasswordHash = BC.HashPassword(Guid.NewGuid().ToString("N")),
-                CreatedAt = DateTime.UtcNow,
-            };
-            await _users.AddAsync(user);
-            created = true;
-        }
-
-        var membership = await _directory.GetMembershipAsync(organizationId, user.Id);
-        var linked = false;
-
-        if (membership is null)
-        {
-            await _memberships.AddAsync(new OrganizationMembership
-            {
-                OrganizationId = organizationId,
-                UserId = user.Id,
-                Role = OrgRoles.Admin,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            });
-            linked = true;
-        }
-        else if (!OrgRoles.IsAdministrative(membership.Role))
-        {
-            // An existing employee being promoted. The seat changes; the
-            // account and its history do not.
-            membership.Role = OrgRoles.Admin;
-            membership.UpdatedAt = DateTime.UtcNow;
-            await _memberships.UpdateAsync(membership);
-            linked = true;
-        }
-
-        return Ok(new { email = user.Email, created, linked, role = OrgRoles.Admin });
+        var result = await _admins.GrantAsync(organizationId, email, request.Name);
+        return Ok(new { email = result.Email, created = result.Created, linked = result.Linked, role = result.Role });
     }
 
     // GET /admin/users?role=OWNER,ADMIN&limit=1 — who administers this org.
@@ -115,26 +57,8 @@ public class OrgAdminsController : ControllerBase
     [HttpGet("users")]
     public async Task<IActionResult> ListAdmins([FromQuery] string? role, [FromQuery] int? limit)
     {
-        var wanted = ParseRoles(role);
-
-        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => OrgRoles.IsAdministrative(m.Role))
-            .Where(m => wanted.Count == 0 || wanted.Contains(m.Role))
-            .ToList();
-
-        var users = (await _directory.GetUsersAsync()).ToDictionary(u => u.Id);
-
-        var rows = memberships
-            .Select(m => new
-            {
-                userId = m.UserId,
-                email = users.TryGetValue(m.UserId, out var u) ? u.Email : null,
-                name = users.TryGetValue(m.UserId, out var n) ? n.Name : null,
-                role = m.Role,
-            })
-            .Where(r => r.email is not null)
-            .OrderBy(r => r.email, StringComparer.OrdinalIgnoreCase)
-            .Take(limit is > 0 ? limit.Value : int.MaxValue)
+        var rows = (await _admins.ListAsync(ParseRoles(role), limit))
+            .Select(r => new { userId = r.UserId, email = r.Email, name = r.Name, role = r.Role })
             .ToList();
 
         return Ok(new { data = rows, total = rows.Count });
@@ -151,16 +75,6 @@ public class OrgAdminsController : ControllerBase
             if (trimmed.Length > 0) wanted.Add(trimmed);
         }
         return wanted;
-    }
-
-    // Falls back to the email local part, so a name is never empty.
-    private static string NameFor(string? name, string email)
-    {
-        var trimmed = name?.Trim();
-        if (!string.IsNullOrEmpty(trimmed)) return trimmed[..Math.Min(trimmed.Length, 120)];
-
-        var local = email.Split('@')[0];
-        return local.Length == 0 ? "Admin" : local[..Math.Min(local.Length, 120)];
     }
 }
 

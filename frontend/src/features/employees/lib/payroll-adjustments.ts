@@ -79,7 +79,7 @@ export const DEDUCTION_CATEGORIES: AdjustmentCategory[] = [
   { code: "deduct_tp1_dental", label: "TP1 · Dental Exam & Treatment (Self / Spouse / Child)", group: "Deductions" },
   { code: "deduct_tp1_medical_exam", label: "TP1 · Full Medical Exam / Mental Health / Test Kits", group: "Deductions" },
   { code: "deduct_tp1_learning_disability", label: "TP1 · Learning Disability Diagnosis & Intervention (Child)", group: "Deductions" },
-  { code: "deduct_tp1_lifestyle", label: "TP1 · Lifestyle (Books / PC / Internet)", group: "Deductions" },
+  { code: "deduct_tp1_lifestyle", label: "TP1 · Lifestyle (Books / Computer / Smartphone / Tablet / Internet / Courses)", group: "Deductions" },
   { code: "deduct_tp1_sports_equipment", label: "TP1 · Sports Equipment / Gym", group: "Deductions" },
   { code: "deduct_tp1_breastfeeding", label: "TP1 · Breastfeeding Equipment", group: "Deductions" },
   { code: "deduct_tp1_childcare_fees", label: "TP1 · Childcare / Kindergarten / After-school Centre Fees", group: "Deductions" },

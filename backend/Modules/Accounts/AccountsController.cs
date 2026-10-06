@@ -27,6 +27,7 @@ public class AccountsController : ControllerBase
     // 409, not 400: the input is fine, the org's state forbids it — Xero owns
     // the chart of accounts while it is connected.
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("accounts:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SaveChartOfAccountDto dto)
     {
@@ -41,6 +42,7 @@ public class AccountsController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("accounts:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveChartOfAccountDto dto)
     {
@@ -49,6 +51,7 @@ public class AccountsController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("accounts:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
@@ -57,6 +60,7 @@ public class AccountsController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("accounts:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {

@@ -29,6 +29,7 @@ public class ProjectsController : ControllerBase
     // allowlist without having to look it up, and it's the SAME value the
     // clock-in IP check compares against, so it will actually match.
     [Authorize(Roles = "Admin,Owner")]
+    [HumanOnly]
     [HttpGet("my-ip")]
     public IActionResult MyIp() =>
         Ok(new { ip = _currentUser.IpAddress ?? HttpContext.Connection.RemoteIpAddress?.ToString() });
@@ -42,6 +43,7 @@ public class ProjectsController : ControllerBase
     // entries. The list endpoint above omits both: it renders a grid of names,
     // and loading every project's child rows to draw that would be a query per
     // project for data the screen never shows.
+    [RequireScope("projects:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
@@ -61,12 +63,23 @@ public class ProjectsController : ControllerBase
 
     // POST /projects — Admins only.
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("projects:write")]
     [HttpPost]
-    public async Task<IActionResult> Create(SaveProjectDto dto) =>
-        Ok(await _projects.CreateAsync(dto));
+    public async Task<IActionResult> Create(SaveProjectDto dto)
+    {
+        try
+        {
+            return Ok(await _projects.CreateAsync(dto));
+        }
+        catch (ArgumentException ex)
+        {
+            return InvalidAllowlist(ex);
+        }
+    }
 
     // PUT /projects/{id} — rename (Admins only).
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("projects:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SaveProjectDto dto)
     {
@@ -77,17 +90,21 @@ public class ProjectsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            // A malformed allowlist entry is the admin's typo, not a fault:
-            // 400 with the offending value, not the global handler's 500.
-            // ValidationProblem so the message lands in `errors`, which is
-            // where the client reads the real reason from.
-            return ValidationProblem(new ValidationProblemDetails(
-                new Dictionary<string, string[]> { ["allowedIpEntries"] = [ex.Message] }));
+            return InvalidAllowlist(ex);
         }
     }
 
+    // A malformed allowlist entry is the admin's typo, not a fault: 400 with
+    // the offending value, not the global handler's 500. ValidationProblem so
+    // the message lands in `errors`, which is where the client reads the real
+    // reason from.
+    private IActionResult InvalidAllowlist(ArgumentException ex) =>
+        ValidationProblem(new ValidationProblemDetails(
+            new Dictionary<string, string[]> { ["allowedIpEntries"] = [ex.Message] }));
+
     // POST /projects/{id}/archive — soft-archive (Admins only).
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("projects:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
@@ -97,6 +114,7 @@ public class ProjectsController : ControllerBase
 
     // POST /projects/{id}/restore — un-archive (Admins only).
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("projects:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {

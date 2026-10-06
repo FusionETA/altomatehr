@@ -110,6 +110,20 @@ public class EmployeeProfileService : IEmployeeProfileService
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 
+    public async Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() =>
+        [.. (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => p.WorkPermitExpiry is not null)
+            .Select(p => new WorkPermitDto
+            {
+                UserId = p.UserId,
+                Nationality = p.Nationality,
+                HasPr = p.HasPr,
+                IsArchived = p.IsArchived,
+                LeaveDate = p.LeaveDate,
+                WorkPermitNumber = p.WorkPermitNumber,
+                WorkPermitExpiry = p.WorkPermitExpiry!.Value.Date,
+            })];
+
     private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
 
     private static bool HadASalary(EmployeeProfile before) =>
@@ -144,6 +158,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         e.JoinDate = d.JoinDate; e.LeaveDate = d.LeaveDate;
         e.Department = d.Department; e.Location = d.Location; e.WorkSchedule = d.WorkSchedule;
+        e.EmploymentStatus = d.EmploymentStatus; e.ContractEndDate = d.ContractEndDate?.Date;
 
         e.SpouseWorking = d.SpouseWorking; e.SpouseDisabled = d.SpouseDisabled;
         e.SpousePcbNumber = d.SpousePcbNumber; e.SpouseIdNumber = d.SpouseIdNumber;
@@ -171,6 +186,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         e.IncomeTaxNumber = d.IncomeTaxNumber; e.PcbBorneByEmployer = d.PcbBorneByEmployer;
         e.SsfwNumber = d.SsfwNumber;
+        e.WorkPermitNumber = d.WorkPermitNumber; e.WorkPermitExpiry = d.WorkPermitExpiry?.Date;
 
         e.PaymentMethod = d.PaymentMethod; e.BankName = d.BankName;
         e.BankAccountHolderName = d.BankAccountHolderName; e.BankAccountNumber = d.BankAccountNumber;
@@ -211,6 +227,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         JoinDate = e.JoinDate, LeaveDate = e.LeaveDate,
         Department = e.Department, Location = e.Location, WorkSchedule = e.WorkSchedule,
+        EmploymentStatus = e.EmploymentStatus, ContractEndDate = e.ContractEndDate,
 
         SpouseWorking = e.SpouseWorking, SpouseDisabled = e.SpouseDisabled,
         SpousePcbNumber = e.SpousePcbNumber, SpouseIdNumber = e.SpouseIdNumber,
@@ -235,6 +252,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         IncomeTaxNumber = e.IncomeTaxNumber, PcbBorneByEmployer = e.PcbBorneByEmployer,
         SsfwNumber = e.SsfwNumber,
+        WorkPermitNumber = e.WorkPermitNumber, WorkPermitExpiry = e.WorkPermitExpiry,
 
         PaymentMethod = e.PaymentMethod, BankName = e.BankName,
         BankAccountHolderName = e.BankAccountHolderName, BankAccountNumber = e.BankAccountNumber,

@@ -15,6 +15,11 @@ public enum PayrollAnnualReportKind
     // The two pipe-delimited files LHDN's e-CP8D upload expects.
     CP8D_EMPLOYER_TXT,
     CP8D_EMPLOYEE_TXT,
+
+    // One PCB 2(II) per employee, concatenated — the statement of the MTD and
+    // CP38 deducted from them. Issued on request at any point in the year, so
+    // unlike the others it does not wait for all twelve months.
+    PCB2II_BULK_PDF,
 }
 
 public static class PayrollAnnualReports
@@ -28,7 +33,10 @@ public static class PayrollAnnualReports
         // the documents an employer keeps or distributes itself.
         string? Portal,
         string Extension,
-        string MimeType);
+        string MimeType,
+        // False for a statement of what has been deducted SO FAR (PCB 2(II)),
+        // which is issued mid-year; the returns declare the whole year.
+        bool RequiresFullYear = true);
 
     public const string GroupForms = "FORMS";
     public const string GroupLhdnTxt = "LHDN_TXT";
@@ -56,15 +64,25 @@ public static class PayrollAnnualReports
                 PayrollAnnualReportKind.CP8D_EMPLOYER_TXT,
                 GroupLhdnTxt,
                 "CP8D employer master (M)",
-                "Pipe-delimited employer master record.",
+                "Pipe-delimited employer master record. No longer uploaded: since C.P.8D Pin. 2025 "
+                + "LHDN takes the employee file only.",
                 "LHDN e-CP8D upload", "txt", "text/plain"),
 
             [PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT] = new(
                 PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT,
                 GroupLhdnTxt,
                 "CP8D employee particulars (P)",
-                "Pipe-delimited per-employee rows.",
+                "Pipe-delimited per-employee rows in LHDN's C.P.8D Pin. 2025 layout (22 fields), "
+                + "matching each employee's Form EA. Upload through e-Data Praisi / e-CP8D.",
                 "LHDN e-CP8D upload", "txt", "text/plain"),
+
+            [PayrollAnnualReportKind.PCB2II_BULK_PDF] = new(
+                PayrollAnnualReportKind.PCB2II_BULK_PDF,
+                GroupForms,
+                "PCB 2(II) (bulk)",
+                "One PCB 2(II) statement per employee: the MTD and CP38 deducted from them in each "
+                + "approved month, with LHDN's receipt numbers. Available at any point in the year.",
+                null, "pdf", "application/pdf", RequiresFullYear: false),
         };
 
     // LHDN's own filename convention for the upload pair: the employer number
@@ -80,6 +98,7 @@ public static class PayrollAnnualReports
             PayrollAnnualReportKind.FORM_E_CP8D_PDF => $"Form_E_CP8D_{year}.pdf",
             PayrollAnnualReportKind.CP8D_EMPLOYER_TXT => $"M{stem}_{year}.TXT",
             PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT => $"P{stem}_{year}.TXT",
+            PayrollAnnualReportKind.PCB2II_BULK_PDF => $"PCB2II_{year}_Bulk.pdf",
             _ => $"payroll-annual-{year}.txt",
         };
     }
@@ -129,6 +148,19 @@ public static class PayrollAnnualReports
 
         return qualifyingChildren > 0 ? "3" : "1";
     }
+
+    // CP8D field 5, "Status Pekerja". Null when the profile has none, which
+    // the file then reports as permanent (Cp8dTxt.DefaultStatus).
+    public static int? Cp8dStatus(EmploymentStatus? status) => status switch
+    {
+        Employees.Entities.EmploymentStatus.MANAGEMENT => 1,
+        Employees.Entities.EmploymentStatus.PERMANENT => 2,
+        Employees.Entities.EmploymentStatus.CONTRACT => 3,
+        Employees.Entities.EmploymentStatus.PART_TIME => 4,
+        Employees.Entities.EmploymentStatus.INDUSTRIAL_TRAINEE => 5,
+        Employees.Entities.EmploymentStatus.OTHER => 6,
+        _ => null,
+    };
 
     // The E-number reduced to the digits LHDN's filenames are built from.
     public static string EmployerNumber(string? employerTin) =>

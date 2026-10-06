@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<!--
+  AltomateHR user guide. Static HTML; screenshots in shots/ use demo data only
+  ("AltomateHR Demo Co") — this repo is PUBLIC, never a real company or person.
+
+  Maintained by the `user-guide` agent (.claude/agents/user-guide.md).
+  Bookmark: this page is correct as of this commit on main. The next update
+  re-checks every user-visible change after it — from any branch — then
+  moves it forward.
+  user-guide-covered-up-to: 7ae4fe4
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltomateHR — Admin guide</title>
+<style>
+  :root{
+    --ink:#111827; --ink-2:#374151; --muted:#6b7280; --line:#e5e7eb;
+    --bg:#ffffff; --bg-soft:#f7f7fb;
+    --brand:#4C1A86; --brand-2:#6d28d9; --brand-wash:#f4effa;
+    --mint:#0f766e; --mint-wash:#eafaf5;
+    --admin:#4C1A86; --admin-wash:#f4effa;
+    --staff:#0f766e; --staff-wash:#eafaf5;
+    --month:#b45309; --month-wash:#fffbeb;
+    --addon:#1d4ed8; --addon-wash:#eff4ff;
+    --warn:#b45309; --warn-wash:#fffbeb; --warn-line:#fde68a;
+    --stop:#b91c1c; --stop-wash:#fef2f2; --stop-line:#fecaca;
+    --ok:#047857; --ok-wash:#ecfdf5; --ok-line:#a7f3d0;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand)}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:250px 1fr;gap:44px}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr;gap:0;padding:0 18px}}
+
+  /* ---------- masthead ---------- */
+  .masthead{background:#4C1A86;color:#fff;padding:52px 0 44px;margin-bottom:32px}
+  .masthead .wrap{display:block}
+  .mh-eyebrow{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:600}
+  .masthead h1{margin:10px 0 12px;font-size:38px;line-height:1.15;font-weight:750;letter-spacing:-.02em}
+  .masthead p{margin:0;max-width:660px;font-size:17px;opacity:.93}
+  .mh-meta{margin-top:22px;font-size:13px;opacity:.8;max-width:660px}
+  .mh-rule{height:3px;width:64px;background:#9AFAE3;border-radius:2px;margin:20px 0 0}
+
+  /* ---------- sidebar ---------- */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:8px 0 40px}
+  @media (max-width:900px){nav.toc{position:static;max-height:none;border-bottom:1px solid var(--line);margin-bottom:24px}}
+  .toc-group{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;
+             margin:20px 0 6px;padding-left:10px}
+  .toc-group:first-of-type{margin-top:4px}
+  .toc a{display:block;padding:6px 10px;border-radius:7px;color:var(--ink-2);text-decoration:none;font-size:14px;
+         border-left:2px solid transparent}
+  .toc a:hover{background:var(--bg-soft);color:var(--ink)}
+  .toc a.active{background:var(--brand-wash);color:var(--brand);font-weight:600;border-left-color:var(--brand)}
+  .toc a .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--month);margin-right:7px;vertical-align:1px}
+
+  .panel{background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px}
+  .panel-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px}
+  .panel button{
+    display:block;width:100%;text-align:left;margin-bottom:5px;padding:7px 10px;border-radius:7px;
+    border:1px solid var(--line);background:#fff;color:var(--ink-2);font:inherit;font-size:13.5px;cursor:pointer
+  }
+  .panel button:last-child{margin-bottom:0}
+  .panel button:hover{border-color:var(--brand-2)}
+  .panel button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .panel .row{display:flex;gap:6px}
+  .panel .row button{margin-bottom:0}
+
+  /* ---------- collapsible topics ---------- */
+  main{padding-bottom:100px;min-width:0}
+  details.topic{border-top:1px solid var(--line);scroll-margin-top:14px}
+  details.topic:first-of-type{border-top:none}
+  details.topic > summary{
+    cursor:pointer;list-style:none;padding:20px 0 14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap
+  }
+  details.topic > summary::-webkit-details-marker{display:none}
+  details.topic > summary::before{
+    content:"";flex:0 0 auto;width:9px;height:9px;margin-top:9px;border-right:2px solid var(--brand);
+    border-bottom:2px solid var(--brand);transform:rotate(-45deg);transition:transform .15s ease
+  }
+  details.topic[open] > summary::before{transform:rotate(45deg)}
+  details.topic > summary h2{margin:0;font-size:25px;letter-spacing:-.015em;font-weight:700;flex:1 1 auto}
+  details.topic > summary:hover h2{color:var(--brand)}
+  .topic-body{padding:0 0 30px 19px}
+  @media (max-width:640px){.topic-body{padding-left:0}}
+  .topic-lede{font-size:16.5px;color:var(--ink-2);margin:0 0 4px}
+
+  h3{font-size:18.5px;margin:28px 0 8px;letter-spacing:-.01em}
+  h4{font-size:15.5px;margin:22px 0 6px;color:var(--ink-2)}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--bg-soft);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13.5px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  strong{font-weight:650}
+
+  /* ---------- badges ---------- */
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+         padding:2.5px 8px;border-radius:999px;white-space:nowrap}
+  h2 .badge,h3 .badge,h4 .badge,td .badge,p .badge,li .badge{margin-left:8px;vertical-align:2px}
+  .badge.admin{background:var(--admin-wash);color:var(--admin);border:1px solid #ddd6fe}
+  .badge.staff{background:var(--staff-wash);color:var(--staff);border:1px solid #99f6e4}
+  .badge.both{background:var(--bg-soft);color:var(--ink-2);border:1px solid var(--line)}
+  .badge.month{background:var(--month-wash);color:var(--month);border:1px solid var(--warn-line)}
+  .badge.addon{background:var(--addon-wash);color:var(--addon);border:1px solid #c7d8fe}
+  summary .badge{align-self:center;margin-left:0}
+
+  /* ---------- callouts ---------- */
+  .note{border-radius:10px;padding:14px 16px;margin:18px 0;border:1px solid var(--line);background:var(--bg-soft);font-size:15px}
+  .note .nt{display:block;font-weight:700;font-size:12px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:5px}
+  .note p:first-of-type{margin-top:0}
+  .note p:last-child{margin-bottom:0}
+  .note.warn{background:var(--warn-wash);border-color:var(--warn-line)}
+  .note.warn .nt{color:var(--warn)}
+  .note.stop{background:var(--stop-wash);border-color:var(--stop-line)}
+  .note.stop .nt{color:var(--stop)}
+  .note.ok{background:var(--ok-wash);border-color:var(--ok-line)}
+  .note.ok .nt{color:var(--ok)}
+  .note.tip .nt{color:var(--brand)}
+  .note.brand{background:var(--brand-wash);border-color:#ddd6fe}
+  .note.brand .nt{color:var(--brand)}
+
+  /* ---------- tables ---------- */
+  .tbl-scroll{overflow-x:auto;margin:18px 0;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--bg-soft);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+           font-weight:700;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .yes{color:var(--ok);font-weight:650}
+  .no{color:var(--muted)}
+
+  /* ---------- steps ---------- */
+  .steps{counter-reset:s;list-style:none;padding:0;margin:20px 0}
+  .steps > li{counter-increment:s;position:relative;padding:0 0 24px 46px;border-left:2px solid var(--line);margin-left:14px}
+  .steps > li:last-child{border-left-color:transparent;padding-bottom:4px}
+  .steps > li::before{
+    content:counter(s);position:absolute;left:-15px;top:-2px;width:28px;height:28px;border-radius:50%;
+    background:var(--brand);color:#fff;font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center
+  }
+  .steps h4{margin:1px 0 6px;font-size:16.5px;color:var(--ink)}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:20px 0}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fff}
+  .card h4{margin:0 0 4px;font-size:16px;color:var(--ink)}
+  .card p{margin:0;font-size:14.5px;color:var(--ink-2)}
+  .card .price{font-size:22px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+  .card .price small{font-size:13px;font-weight:500;color:var(--muted)}
+  .card .kicker{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---------- faq ---------- */
+  details.qa{border:1px solid var(--line);border-radius:10px;margin:9px 0;background:#fff;overflow:hidden}
+  details.qa[open]{background:var(--bg-soft)}
+  details.qa > summary{cursor:pointer;font-weight:600;padding:13px 16px;list-style:none;font-size:15.5px}
+  details.qa > summary::-webkit-details-marker{display:none}
+  details.qa > summary::before{content:"+";display:inline-block;width:18px;color:var(--brand);font-weight:700}
+  details.qa[open] > summary::before{content:"\2013"}
+  details.qa .body{padding:0 16px 14px 34px;font-size:15px;color:var(--ink-2)}
+  details.qa .body p:first-child{margin-top:0}
+
+  /* ---------- screenshot slots ---------- */
+  figure.shot{margin:22px 0;padding:0}
+  .shot-frame{
+    position:relative;border:2px dashed #ddd6fe;border-radius:12px;background:var(--bg-soft);
+    min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:34px 20px 24px;color:var(--brand)
+  }
+  .shot-frame::before{
+    content:attr(data-shot);position:absolute;top:10px;left:12px;background:var(--brand);color:#fff;
+    font-size:11px;font-weight:700;letter-spacing:.09em;padding:3px 9px;border-radius:999px
+  }
+  .shot-frame p{margin:6px 0 0;font-size:14.5px;color:var(--ink-2);max-width:460px}
+  .shot-file{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#fff;
+             border:1px solid #ddd6fe;border-radius:6px;padding:3px 9px;color:var(--brand)}
+  /* multi-shot grid — column count is set from the slot count by the script */
+  .shot-grid{display:grid;gap:12px;align-items:start}
+  .shot-grid[data-count="1"]{grid-template-columns:1fr}
+  .shot-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shot-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .shot-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shot-grid[data-count="5"],.shot-grid[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  /* phone screenshots are tall and thin — cap the width so they don't tower */
+  .shot-grid[data-orient="phone"]{grid-template-columns:repeat(auto-fit,minmax(0,190px));justify-content:start}
+  .shot-item{min-width:0}
+  .shot-item img{width:100%;display:block;border:1px solid var(--line);border-radius:10px}
+  .shot-item .shot-cap{margin:6px 0 0;font-size:12.5px;font-style:normal;color:var(--ink-2)}
+  .shot-cap-main{margin-top:10px}
+  .shot-grid[data-orient="phone"] .shot-frame{min-height:300px;padding:30px 12px 18px}
+  .shot-grid[data-orient="phone"] .shot-file{font-size:11px;word-break:break-all}
+  .shot-grid[data-orient="phone"] .shot-frame p{font-size:13px}
+  @media (max-width:720px){
+    .shot-grid[data-count]{grid-template-columns:1fr}
+    .shot-grid[data-orient="phone"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  figure.shot img{width:100%;display:block;border:1px solid var(--line);border-radius:12px}
+  .shot-cap{margin:8px 0 0;font-size:13.5px;color:var(--muted);font-style:italic}
+  figcaption{margin-top:12px}
+  ol.callouts{list-style:none;counter-reset:c;padding:0;margin:0;
+              display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:4px 20px}
+  ol.callouts li{counter-increment:c;position:relative;padding-left:30px;font-size:14.5px;color:var(--ink-2);margin:4px 0}
+  ol.callouts li::before{
+    content:counter(c);position:absolute;left:0;top:1px;width:21px;height:21px;border-radius:50%;
+    background:var(--brand-wash);border:1.5px solid var(--brand);color:var(--brand);
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center
+  }
+
+  /* ---------- monthly rhythm strip ---------- */
+  .rhythm{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:20px 0}
+  .rhythm a{
+    display:block;text-decoration:none;border:1px solid var(--line);border-radius:11px;padding:14px;background:#fff;color:inherit
+  }
+  .rhythm a:hover{border-color:var(--brand-2);background:var(--brand-wash)}
+  .rhythm .n{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .rhythm .t{font-weight:650;margin-top:3px;font-size:15.5px}
+  .rhythm .w{font-size:13.5px;color:var(--muted);margin-top:2px}
+
+  .hidden-by-filter{display:none !important}
+  footer{border-top:1px solid var(--line);margin-top:50px;padding:24px 0 60px;color:var(--muted);font-size:13.5px}
+  .kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 7px;font-size:13px;background:#fff;
+       font-weight:600;white-space:nowrap}
+
+  @media print{
+    nav.toc,.panel{display:none}
+    .wrap{display:block;max-width:none;padding:0}
+    .masthead{background:none;color:#000;padding:0 0 20px;border-bottom:2px solid #000}
+    details.topic{page-break-inside:avoid}
+    details .topic-body,details.qa .body{display:block !important}
+    details.topic > summary::before,details.qa > summary::before{display:none}
+  }
+</style>
+
+<style>
+  .shot-frame strong{display:block;font-size:15px;color:var(--ink);margin-bottom:6px}
+  .shot-frame .shot-file{margin-top:4px}
+  .btn-name{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:7px;
+            padding:1px 8px;background:#fff;font-weight:600;font-size:14px;white-space:nowrap}
+  .badge.optional{background:var(--addon-wash);color:var(--addon);border:1px solid #c7d8fe}
+  .badge.owner{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+  .badge.sup{background:var(--admin-wash);color:var(--admin);border:1px solid #ddd6fe}
+  .howto{font-size:14px;color:var(--ink-2)}
+  .howto code{font-size:12.5px}
+</style>
+
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="mh-eyebrow">AltomateHR · Admin guide</div>
+    <h1>Running your company in AltomateHR</h1>
+    <p>For owners and admins: setting the company up once, then the monthly routine — attendance, claims,
+       leave and payroll — through to the files KWSP, PERKESO, LHDN and your bank ask for.</p>
+    <div class="mh-meta">Click any heading to open or close a topic, or jump from the list on the left.
+      Topics marked <strong>Optional</strong> only apply if your company has that module.</div>
+    <div class="mh-rule"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <div class="panel">
+      <div class="panel-label">Topics</div>
+      <div class="row">
+        <button id="expandAll">Expand all</button>
+        <button id="collapseAll">Collapse all</button>
+      </div>
+    </div>
+
+    <div class="toc-group">Start here</div>
+    <a href="#portal">The admin portal</a>
+    <a href="#signin">Signing in &amp; finding your way</a>
+    <a href="#overview">Executive Overview</a>
+
+    <div class="toc-group">Set up once</div>
+    <a href="#settings">System Settings</a>
+    <a href="#payroll-settings">Payroll settings</a>
+    <a href="#employees">Employees</a>
+    <a href="#structure">Company Structure &amp; approvals</a>
+
+    <div class="toc-group">Every month</div>
+    <a href="#rhythm"><span class="dot"></span>The monthly routine</a>
+    <a href="#attendance"><span class="dot"></span>Attendance</a>
+    <a href="#claims"><span class="dot"></span>Claims</a>
+    <a href="#leave"><span class="dot"></span>Leave</a>
+    <a href="#payroll"><span class="dot"></span>Running payroll</a>
+    <a href="#files"><span class="dot"></span>Files &amp; payslips</a>
+    <a href="#loans">Loans &amp; advances</a>
+
+    <div class="toc-group">Every year</div>
+    <a href="#annual">Annual tax forms</a>
+    <a href="#lhdn-forms">Per-employee LHDN forms</a>
+    <a href="#ytd">Starting mid-year</a>
+
+    <div class="toc-group">Connected</div>
+    <a href="#xero">Xero</a>
+    <a href="#notifications">Notifications &amp; the app</a>
+    <a href="#audit">Activity Log</a>
+
+    <div class="toc-group">Help</div>
+    <a href="#faq">Common questions</a>
+  </nav>
+
+  <main>
+
+  <!-- =================================================== START HERE -->
+
+  <details class="topic" id="portal" open>
+    <summary><h2>The admin portal</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">AltomateHR has two sides in one app. Owners and admins land in the <strong>admin
+      portal</strong>, where the company is set up and payroll is run. Everyone else — employees and
+      supervisors — lands in the <strong>employee app</strong>, where they clock in, claim, apply for leave and
+      approve their team.</p>
+
+    <div class="cards">
+      <div class="card"><div class="kicker">Always on</div><h4>Payroll</h4>
+        <p>Monthly runs worked out line by line — PCB, EPF, SOCSO, EIS, SKBBK and HRD Corp — then approved,
+          filed and downloaded as the files each portal and your bank need.</p></div>
+      <div class="card"><div class="kicker">Always on</div><h4>Leave</h4>
+        <p>Leave types, entitlements, carry-forward and balances. Unpaid leave feeds straight into payroll.</p></div>
+      <div class="card"><div class="kicker">Optional</div><h4>Claims</h4>
+        <p>Expense and mileage claims, spend limits, and paying them out through Xero or through payroll.</p></div>
+      <div class="card"><div class="kicker">Optional</div><h4>Attendance</h4>
+        <p>Phone clock-in with a location check, shifts, breaks, overtime, and the daily roll call.</p></div>
+    </div>
+
+    <div class="note brand"><span class="nt">The one thing to know first</span>
+      <p><strong>Admins oversee — they don't approve.</strong> Claims, leave, attendance and overtime are approved
+        by the supervisors set up in <a href="#structure">Company Structure</a>, from their own queues in the
+        employee app. The admin portal shows you where every request is and who it's waiting on.</p>
+    </div>
+
+    <h3>Owner and Admin</h3>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th></th><th>Owner</th><th>Admin</th></tr></thead>
+      <tbody>
+        <tr><td>Everything in the admin portal</td><td class="yes">Yes</td><td>Yes, unless the owner narrows it — a page an admin hasn't been given doesn't appear in their sidebar</td></tr>
+        <tr><td>System Settings → Admins (add admins, choose what they see)</td><td class="yes">Yes</td><td class="no">No</td></tr>
+        <tr><td>Set another person's password</td><td class="yes">Yes</td><td>Yes — except an owner's</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Claims</strong> and <strong>Attendance</strong> are add-on modules. If your company doesn't have one, its
+      page tells you the plan doesn't include it, and the Executive Overview leaves its cards out.</p>
+    </div>
+  </details>
+
+  <details class="topic" id="signin" open>
+    <summary><h2>Signing in &amp; finding your way</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Go to <strong>hr.altomate.io</strong> and sign in with your work email and password.</p>
+    <ul>
+      <li><strong>Forgot your password?</strong> — enter your work email, and a <strong>6-digit code</strong> is
+        emailed to you. Enter it with a new password (at least 8 characters).</li>
+      <li><strong>Coming from Altomate?</strong> — the "open altomate HR" button signs you straight in. If that link
+        has expired or was already used, the sign-in page says so; go back and press it again. Because your account
+        is managed in Altomate, <span class="btn-name">New company</span> and <span class="btn-name">Log out</span>
+        aren't shown here — sign out from Altomate.</li>
+      <li>The first time, you're asked to <span class="btn-name">Enable</span> notifications — say yes if you want
+        to hear about approvals and requests as they happen.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Signing in">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/login.png" alt="The Login screen at hr.altomate.io with Email, Password and Forgot your password?" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Signing in</p>
+    </figure>
+
+
+    <h3>The layout</h3>
+    <ol class="callouts">
+      <li>The sidebar: Executive Overview, Attendance, Claims, Payroll, Leave, Company/Employee, Activity Log,
+        System Settings</li>
+      <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
+        company</span> creates one with you as its owner.</li>
+      <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
+      <li>The ⋮ menu — push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
+        the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
+        <span class="btn-name">Launch Appraisify</span>, and <span class="btn-name">Log out</span></li>
+    </ol>
+    
+    <figure class="shot" data-place="Layout">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/layout-switcher.png" alt="The company switcher open, with New company" loading="lazy">
+          <p class="shot-cap">Company switcher</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/layout-bell.png" alt="The notifications bell open" loading="lazy">
+          <p class="shot-cap">Notifications bell</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
+          <p class="shot-cap">⋮ menu</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The admin portal — sidebar, company switcher, bell and account menu</p>
+    </figure>
+
+    <p>On a phone the sidebar becomes a row of pills across the top, with a second row for sub-pages.</p>
+    <div class="note"><span class="nt">When a new version is out</span>
+      <p>A bar appears — “A new version of AltomateHR is available.” Press <span class="btn-name">Reload</span>.</p>
+    </div>
+    </div>
+  </details>
+
+  <details class="topic" id="overview" open>
+    <summary><h2>Executive Overview</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Where you land. Built around what needs a decision, not vanity totals.</p>
+    <ul>
+      <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
+        Accounts and Projects.</li>
+      <li><strong>Work permits</strong> — shown first, and only when it applies: foreign workers whose work permit
+        has expired or runs out within 60 days, soonest first, with the permit number and how many days are left
+        (or how long ago it expired). With nothing to renew, the card isn't there.</li>
+      <li><strong>Project claims</strong> — this month's spend per project. <span class="badge optional">Claims</span></li>
+      <li><strong>Attendance health</strong> — on-time rate per project over 30 days, with late, missing and
+        on-leave counts. <span class="badge optional">Attendance</span></li>
+      <li><strong>Slow OT approvers</strong> — who averages more than a day to decide overtime.</li>
+      <li><strong>Stale pending claims</strong> — claims waiting more than 7 days.</li>
+      <li><strong>Upcoming claim run</strong> — days to your claim cutoff, and the value queued.</li>
+      <li><strong>Most-overturned approvers</strong> — supervisors whose approvals are later rejected higher up.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Executive Overview">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/executive-overview.png" alt="Executive Overview with quick actions, then the Work permits card listing an expired permit and one expiring soon, above the analytics cards" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Executive Overview — the Work permits card comes first</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== SET UP ONCE -->
+
+  <details class="topic" id="settings" open>
+    <summary><h2>System Settings</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Done once, and revisited when something changes. Work through the pages in order.</p>
+    <ol class="steps">
+      <li><h4>Organization</h4>
+        <p>The company name, and the <strong>Xero connection</strong> card — see <a href="#xero">Xero</a>.</p></li>
+      <li><h4>Accounts</h4>
+        <p>The chart of accounts, in two tabs:</p>
+        <ul>
+          <li><strong>Expenses</strong> — what a claim is coded to. Each can be <em>Selectable for claims</em>,
+            carry a <strong>spend limit</strong>, and <em>Allow mileage</em> at its own rate. A <strong>Type</strong>
+            column and a row of filters — <em>All</em>, <em>Depreciation</em>, <em>Direct Costs</em>,
+            <em>Expense</em>, <em>Overhead</em> — match how Xero groups them; only the types you actually have are shown.</li>
+          <li><strong>Bank accounts</strong> — what a company-paid claim was paid <em>from</em>. Tick
+            <strong>Offer for company-paid claims</strong> on the ones employees should be able to pick.</li>
+        </ul>
+        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles). With Xero
+          connected, Xero owns the list — press <span class="btn-name">Sync from Xero</span> after changing it there.</p></li>
+      <li><h4>Projects</h4>
+        <p>Your work sites. Open a project with <span class="btn-name">Edit</span> to set:</p>
+        <ul>
+          <li><strong>Geofenced sites</strong> — one or more locations; <span class="btn-name">Use my location</span>
+            fills in where you're standing.</li>
+          <li><strong>IP allowlist</strong> — office networks (<span class="btn-name">Use my IP</span>). Only checked for
+            employees whose policy requires it.</li>
+          <li><strong>Work schedule</strong> — hours and working days that override the company default for this site.</li>
+        </ul>
+        <p><strong>Active</strong> and <strong>Archived</strong> tabs keep old sites out of the way. The
+          <strong>Geofence radius</strong> card sets how close counts as on-site (200 m by default).</p></li>
+      <li><h4>Work Schedule</h4>
+        <p>The company's default hours and working days, and the <strong>public holidays</strong> —
+          pick a <strong>Country</strong> and <strong>Year</strong> and press <span class="btn-name">Import</span>, then add
+          or remove any by hand. The calendar shows working days, rest days and holidays at a glance.</p></li>
+      <li><h4>Policies</h4>
+        <p>Reusable rules you assign to people instead of setting each one individually: which modules they
+          can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
+          overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
+          <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
+          choose another.</p></li>
+      <li><h4>Admins <span class="badge owner">Owner only</span></h4>
+        <p>Add admins and choose what each one can see — full access, or only the modules you tick
+          (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Activity
+          log). Anything you leave out disappears from that admin's sidebar and they can't open it. Owners are listed
+          too, marked <em>Owner · full access</em> — an owner's access can't be restricted.</p></li>
+    </ol>
+    
+    <figure class="shot" data-place="System Settings">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/accounts-bank.png" alt="System Settings → Accounts: the Expenses list with its Type filter (Depreciation, Direct Costs, Expense, Overhead) and Type column" loading="lazy">
+          <p class="shot-cap">Accounts</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/project-editor.png" alt="System Settings → Projects with Active / Archived tabs and the geofence radius" loading="lazy">
+          <p class="shot-cap">Projects</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Accounts and Projects</p>
+    </figure>
+
+    
+    <figure class="shot" data-place="System Settings">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/public-holidays.png" alt="System Settings → Work Schedule: default hours, working days and public holidays import" loading="lazy">
+          <p class="shot-cap">Work Schedule</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies with the default Full-time policy" loading="lazy">
+          <p class="shot-cap">Policies</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="payroll-settings" open>
+    <summary><h2>Payroll settings</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Under <strong>Payroll → Settings</strong>. Four sections, each marked Completed, Required or
+      Optional so you can see what's left.</p>
+    <h3>General</h3>
+    <ul>
+      <li><strong>Working-days rule</strong> — calendar days in the month, or 26 days.</li>
+      <li><strong>EPF defaults</strong> and your <strong>EPF employer no.</strong></li>
+      <li><strong>HRD Corp levy</strong> — whether you pay it, the rate, and your HRD Corp employer no.</li>
+      <li><strong>PCB compliance</strong> — auto-apply the RM 350 SOCSO + EIS relief.</li>
+      <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank or Hong Leong, with the account
+        details. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
+        salaries another way.</li>
+      <li><strong>Xero sync on submit</strong> — post the payroll journal to Xero when a run is approved.</li>
+    </ul>
+    <h3>Form E (LHDN)</h3>
+    <p>Your employer particulars: employer name, <strong>LHDN employer no. (E number)</strong>, SSM registration no.,
+      income tax reference type and no., PERKESO employer code, KWSP and HRD Corp numbers, contact details and
+      address, zakat no., employer category and status, CP8D furnish type — then the declarant who signs Form E and
+      your tax agent and firm, if you use one.</p>
+    <div class="note warn"><span class="nt">Fill these in before your first run</span>
+      <p>Employer name, E number, SSM number and PERKESO code are required. A run can't be sent for approval while
+        any is missing — the app tells you while you're still preparing the run, not when you try to download.</p>
+    </div>
+    <h3>Credentials</h3>
+    <p>Store your KWSP i-Akaun, PERKESO ASSIST and LHDN e-PCB logins so whoever runs payroll has them. They're
+      encrypted, but anyone who can open this page can reveal them.</p>
+    <h3>Xero sync</h3>
+    <p>With Xero connected: how expense lines are grouped, the tracking category for projects, and which Xero
+      accounts each payroll line posts to.</p>
+    <p>Changes are saved with the bar that appears at the bottom — <span class="btn-name">Save changes</span>.</p>
+    
+    <figure class="shot" data-place="Payroll settings">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-settings-general.png" alt="Payroll → Settings → General: working-days rule and EPF defaults" loading="lazy">
+          <p class="shot-cap">General</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-settings-forme.png" alt="Payroll → Settings → Form E (LHDN): employer details with required fields" loading="lazy">
+          <p class="shot-cap">Form E (LHDN)</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Payroll settings</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="employees" open>
+    <summary><h2>Employees</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Company/Employee → Manage Employee.</strong> Everyone you pay, and everything
+      payroll needs to know about them.</p>
+    <h3>The list</h3>
+    <ul>
+      <li>Search, filter by <strong>role</strong>, and by <strong>status</strong> — <em>Active</em> (the default),
+        <em>Archived</em> or <em>All statuses</em>.</li>
+      <li>People are split into three boxes: <strong>need payroll setup</strong> (something's missing),
+        <strong>ready for payroll</strong> (who a run will include), and <strong>archived</strong> (left the company —
+        kept for their records, left out of runs).</li>
+      <li>Anyone with no salary on file is named in a warning — they'd get a zero payslip, which stops the run
+        being submitted.</li>
+    </ul>
+    <h3>Adding people</h3>
+    <ul>
+      <li><span class="btn-name">Add employee</span> — name, employee ID (required), job title, join date, email, date
+        of birth, role and policy. The policy starts on your default one. Their <strong>starting password</strong> is
+        their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
+        Tick <em>Send a welcome email</em> to have it sent to them.</li>
+      <li><span class="btn-name">Import</span> — one spreadsheet to add new people <em>or</em> update everyone at once,
+        payroll, bank and statutory details included.
+        <ol>
+          <li><strong>Step 1</strong> — <span class="btn-name">Blank template</span> for new hires, or
+            <span class="btn-name">Export current</span> to update people already here. The file's
+            <strong>READ ME</strong> sheet explains every column.</li>
+          <li><strong>Step 2</strong> — choose what a blank cell does: <em>Keep existing values</em> (the safe default —
+            a partly filled file can't wipe anything) or <em>Erase existing values</em> (use only when the file is the
+            full, up-to-date record; you're asked to confirm, and Name, Role, Employee No, Salary Type and EPF/EIS can't
+            be erased).</li>
+          <li><strong>Step 3</strong> — upload it. An email already in the company updates that person. Rows that
+            were imported but need a look — for example a nationality it didn't recognise, kept as typed — are listed
+            as warnings. New passwords are shown once — copy them then.</li>
+        </ol></li>
+      <li><span class="btn-name">Export</span> — <strong>Export employee details</strong> as Excel or PDF. Choose
+        <em>All fields</em> or <em>Choose fields</em>, and tick <em>Include archived employees</em> if you want them.
+        A PDF page fits about a handful of columns, so use Excel for a wide export.</li>
+      <li><span class="btn-name">Salary adjustments</span> — shown only if your access includes Payroll. A
+        pay round for many people at once. <span class="btn-name">Download template</span> (everyone with their current
+        salary), fill in <em>New Salary</em> — and optionally Effective Date, Reason and Notes — only for people whose
+        pay is changing, then upload it. A new salary applies straight away, so the effective date can be today or
+        earlier, not later. It's all or nothing: if any row has a problem, nothing is saved and the rows are listed.
+        Each change goes into the person's salary history, and draft payroll runs are marked for
+        a re-run.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/manage-employee.png" alt="Manage Employee with Import, Export, Salary adjustments and Add employee, the search and filters, and the need-payroll-setup box" loading="lazy">
+          <p class="shot-cap">Manage Employee</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-import.png" alt="The Import employees dialog: Step 1 templates, Step 2 Keep or Erase existing values for blank cells, Step 3 upload" loading="lazy">
+          <p class="shot-cap">Import</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Manage Employee</p>
+    </figure>
+
+    <h3>An employee's record</h3>
+    <p>Click anyone to open their record. Five tabs, each showing how many required fields are still empty
+      (outlined in red):</p>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Personal</strong></td><td>Contact, identity (nationality is picked from a list), PR / tax resident /
+          OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
+          the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
+        <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
+          fixed allowances and deductions, join date, <strong>employment status</strong> and contract end date,
+          previous employment this year (TP3), and <strong>Archive</strong> — last day and reason</td></tr>
+        <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, the
+          <strong>Special tax rate (15%)</strong>, <strong>Bank / payout</strong>, and the
+          <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
+        <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, and which projects,
+          teams and approval level they sit in</td></tr>
+        <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates</td></tr>
+      </tbody>
+    </table></div>
+    <h3>Work permits</h3>
+    <p>For a foreign worker, keep their Immigration work permit on file so a renewal isn't missed.</p>
+    <ol class="steps">
+      <li><h4>Set the nationality first</h4>
+        <p>Open the person, go to <strong>Personal</strong> and, under <strong>Identity</strong>, pick their
+          <strong>Nationality</strong>. The work permit fields appear only for someone who isn't Malaysian and has no
+          PR — a citizen or PR has no permit to renew.</p></li>
+      <li><h4>Fill in the permit</h4>
+        <p>Type the <strong>Work permit number</strong> (the Immigration work permit, not the SSFW number) and pick the
+          <strong>Work permit expiry</strong> date, then save. Under the date, a line tells you where it stands:
+          <em>Valid until</em> a date, <em>Expires in N days</em> once it's within 60 days, <em>Expires today</em>, or
+          <em>Expired</em>.</p></li>
+      <li><h4>Watch the Executive Overview</h4>
+        <p>Once a permit is expired or within 60 days of expiring, the person is listed on the
+          <strong>Work permits</strong> card of the <a href="#overview">Executive Overview</a>. Archived employees and
+          people who have already left aren't listed.</p></li>
+    </ol>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-work-permit.png" alt="The Identity section of a foreign worker's Personal tab, with Work permit number, Work permit expiry and the line under it saying the permit expires in 24 days" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Work permit number and expiry, under Identity on the Personal tab</p>
+    </figure>
+    <p>The import spreadsheet has <strong>Work Permit No</strong> and <strong>Work Permit Expiry</strong> columns
+      (date as YYYY-MM-DD, foreign workers only), so permits can be filled in for many people at once with
+      <span class="btn-name">Import</span>.</p>
+    <div class="note warn"><span class="nt">Pick the bank from the list</span>
+      <p>Under Bank / payout, choose the employee's bank from the dropdown of Malaysian banks. The bank file refuses
+        the <strong>whole run</strong> if anyone's bank isn't recognised — so a typo would stop everyone being paid.</p>
+    </div>
+    <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
+      password for them — hand it over outside email.</p>
+    <h3>Changing a salary</h3>
+    <p>Change the salary on the Employment tab and press save, and you're asked <strong>Why is the salary
+      changing?</strong></p>
+    <ul>
+      <li><strong>Typo correction</strong> — the old figure was a mistake. It's fixed, and nothing is added to the history.</li>
+      <li><strong>Salary adjustment</strong> — a raise, promotion or restructure. Pick the <strong>Effective from</strong>
+        date (today or earlier — the new salary applies straight away), a <strong>Reason</strong> (Raise, Promotion,
+        Demotion, Restructure or Other) and optional notes, then <span class="btn-name">Save salary</span>. A date inside
+        a month that's already on a payroll run is flagged on that run.</li>
+    </ul>
+    <p><span class="btn-name">Salary history</span>, under the salary, lists every real change with its date, reason and
+      the old and new figure.</p>
+
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/salary-change.png" alt="The Why is the salary changing? dialog, from RM 5,500.00 to RM 5,800.00 a month, with Typo correction and Salary adjustment" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Why is the salary changing?</p>
+    </figure>
+    <h3>Other things worth knowing on the record</h3>
+    <ul>
+      <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
+        taxed as a resident.</li>
+      <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
+        the Personal tab, since for most employees it's the same.</li>
+      <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
+        for each tax-exempt allowance or TP1 relief the previous employer already gave this year, with the amount. It
+        uses up that item's yearly limit here.</li>
+      <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
+        or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
+        them PCB goes back to the normal resident rates.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-statutory.png" alt="An employee record on the Statutory tab, with the EPF section" loading="lazy">
+          <p class="shot-cap">Statutory tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-employment.png" alt="An employee record on the Employment tab, with compensation, Salary history and fixed adjustments" loading="lazy">
+          <p class="shot-cap">Employment tab</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">An employee's record</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="structure" open>
+    <summary><h2>Company Structure &amp; approvals</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Company/Employee → Company Structure</strong> decides who approves what. Get this
+      right and every request goes to the right person automatically.</p>
+    <ol class="steps">
+      <li><h4>Pick a project, then a team</h4><p>Or press <span class="btn-name">New</span> to create a team — it's
+        created in the project you've selected. Deleting a team asks you to confirm: its members are unassigned and
+        their claims and leave stop routing through it.</p></li>
+      <li><h4>Set the layers</h4><p>1 to 6 levels (type a number in the <strong>Layers</strong> box), each with a
+        label — e.g. <em>Staff</em>, <em>Supervisor</em>, <em>Manager</em>.</p></li>
+      <li><h4>Tick who approves each module</h4><p>For Claims, OT, Leave and Attendance, tick which layers must
+        approve. A request climbs from the person's own level up through each ticked layer.</p></li>
+      <li><h4>Add members</h4><p>Add each employee at their level. People with the Employee role go in the bottom
+        layer.</p></li>
+    </ol>
+    <p>You can also place someone from their own record — <strong>Company</strong> tab → <em>Add a project</em>.</p>
+    <div class="note"><span class="nt">Admins aren't approvers</span>
+      <p>Owners and admins are never put in an approval chain. If a request has no one who can approve it, the
+        admin portal flags it as “Nobody can approve” so you can fix the team.</p>
+    </div>
+    
+    <figure class="shot" data-place="Company Structure">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/company-structure.png" alt="Company Structure: projects, teams, and the new-team panel with layers and the approval grid" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Company Structure — teams, layers and who approves</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== EVERY MONTH -->
+
+  <details class="topic" id="rhythm" open>
+    <summary><h2>The monthly routine</h2><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <div class="rhythm">
+      <a href="#attendance"><div class="n">All month · Staff</div><div class="t">Clock, claim, apply</div><div class="w">In the employee app</div></a>
+      <a href="#structure"><div class="n">All month · Supervisors</div><div class="t">Approve</div><div class="w">Claims, leave, OT, attendance</div></a>
+      <a href="#payroll"><div class="n">Payroll day · Admin</div><div class="t">Run payroll</div><div class="w">Check and adjust</div></a>
+      <a href="#payroll"><div class="n">Payroll day · Approver</div><div class="t">Approve and file</div><div class="w">Locks the figures</div></a>
+      <a href="#files"><div class="n">After approval</div><div class="t">Download &amp; upload</div><div class="w">Bank + statutory</div></a>
+    </div>
+    </div>
+  </details>
+
+  <details class="topic" id="attendance" open>
+    <summary><h2>Attendance</h2><span class="badge optional">Optional</span><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Staff clock in from their phones; you see the whole company's day here. Four tabs.</p>
+    <h3>Overview</h3>
+    <ul>
+      <li><strong>Today</strong> — the roll call. Status chips with live counts: <em>On time</em>, <em>Late</em>,
+        <em>On-site</em>, <em>Off-site</em>, <em>No clock-in</em>, <em>On leave</em>. Click one to filter. Off-site rows show
+        how far away they were and the reason they gave, with photos and a map link.</li>
+      <li><strong>Analytics</strong> — hours worked against the schedule: normal, expected, beyond shift, approved OT,
+        rest day and holiday.</li>
+      <li><strong>Performance</strong> — how long each supervisor takes to decide.</li>
+      <li><strong>History</strong> — the approval trail and attendance records, exportable as CSV, XLSX or PDF.</li>
+    </ul>
+    <p>Filter by project, team or name, and pick a date range.</p>
+    
+    <figure class="shot" data-place="Attendance">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/attendance-today.png" alt="Attendance → Overview → Today with status chips and the roll call" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The day's roll call</p>
+    </figure>
+
+    <h3>Employees</h3>
+    <p>A card per person. Open one for their year at a glance — a heatmap of on-time, late, absent and leave days
+      — plus hours worked, recent attendance, and PDF exports.</p>
+    <h3>Overtime</h3>
+    <p>Every overtime submission with its before-work and after-work photos or PDFs (an employee can attach up to ten
+      of each), filterable by status. Read-only — supervisors approve overtime from their own queue.</p>
+    <h3>Shifts</h3>
+    <p>Define shifts per project (e.g. Day 8:00–17:00), with working days and unpaid break minutes. Whether someone
+      is late, and how many hours they were expected to work, come from their shift.</p>
+    
+    <figure class="shot" data-place="Attendance">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/attendance-employee.png" alt="Attendance → Employees → one person: the activity heatmap and hours" loading="lazy">
+          <p class="shot-cap">Employee attendance</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/attendance-shifts.png" alt="Attendance → Shifts with a project&#x27;s shifts listed" loading="lazy">
+          <p class="shot-cap">Shifts</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">An employee's year, and shifts</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="claims" open>
+    <summary><h2>Claims</h2><span class="badge optional">Optional</span><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Employees submit claims from the app; supervisors approve them. Here you watch the queue
+      and decide how approved claims are paid.</p>
+    <h3>Overview</h3>
+    <p>What's stuck: claims pending over 7 days, the queue awaiting approval, claims over their spend limit, who
+      each late claim is waiting on, where the money is going this month, and approvals later overturned. Every
+      number opens the matching claims.</p>
+    <h3>All claims</h3>
+    <p>Filter by project, employee, own-money or company-money, and dates. The last column tells you where each
+      claim stands — who it's waiting with, “In Xero”, “In the payroll run”, or a button to retry a Xero push that
+      failed.</p>
+    <h3>Settings</h3>
+    <ul>
+      <li><strong>Default currency</strong>.</li>
+      <li><strong>How approved claims are paid</strong> — one route for the whole company:
+        <strong>Sync to Xero as a bill</strong> (choose Awaiting payment or Draft), or <strong>Add to payroll</strong>
+        so they're reimbursed through the employee's pay.</li>
+      <li><strong>Claim run cutoff</strong> — the day of the month claims are cut off.</li>
+    </ul>
+    <p>Export the list as CSV, XLSX or PDF from the button beside the tabs.</p>
+    
+    <figure class="shot" data-place="Claims">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/claims-overview.png" alt="Claims → Overview with the stuck, awaiting and over-limit tiles" loading="lazy">
+          <p class="shot-cap">Overview</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/claims-settings.png" alt="Claims → Settings: currency, how approved claims are paid, and the cutoff day" loading="lazy">
+          <p class="shot-cap">Settings</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Claims</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="leave" open>
+    <summary><h2>Leave</h2><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Employees apply from the app; supervisors approve. Here you set the rules and see
+      everyone's balance.</p>
+    <ul>
+      <li><strong>Overview</strong> — pending approvals, who's on leave today, what's been approved this year, and
+        days used by type.</li>
+      <li><strong>History</strong> — every application, filtered by person, type, dates and status. An approved leave
+        an employee has asked to cancel shows a <em>Cancellation requested</em> tag (or <em>Cancellation declined</em>
+        if their approver said no).</li>
+      <li><strong>Balances</strong> — everyone's remaining days per leave type. Open a person to
+        <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
+        entitlement, or export their leave report.</li>
+      <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid), and for Annual Leave:
+        lump sum or pro-rated, and carry-forward with its expiry month and maximum days.</li>
+    </ul>
+    <h3>Cancelling someone's leave</h3>
+    <p>Open an application in <strong>History</strong> and press <span class="btn-name">Cancel this leave</span> — it works
+      on a pending request or on approved leave. Add a <strong>Reason</strong> if you like (the employee sees it), then
+      <span class="btn-name">Cancel leave</span> (or <span class="btn-name">Keep it</span> to back out). Approved days go
+      back into their balance and they're notified; it can't be undone, so they'd need to apply again. If they'd already
+      asked to cancel, cancelling here completes it at once. Cancelling approved <em>unpaid</em> leave marks any open
+      payroll draft for those dates for a re-run; a payroll already submitted isn't changed. The cancellation is recorded
+      in the <a href="#audit">Activity Log</a>.</p>
+
+    <figure class="shot" data-place="Leave">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/leave-cancel.png" alt="The Cancel this approved leave? dialog with the leave, an optional reason, and Cancel leave or Keep it" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Cancelling approved leave</p>
+    </figure>
+    <p><span class="btn-name">Import</span> brings in entitlements from a spreadsheet. Year rollover and monthly accrual
+      run by themselves; the buttons under <em>Maintenance</em> are there if you need to run them early.</p>
+    <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
+      <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
+        payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>.</p>
+    </div>
+    
+    <figure class="shot" data-place="Leave">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/leave-balances.png" alt="Leave → Balances with the grid of remaining days" loading="lazy">
+          <p class="shot-cap">Balances</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/leave-types.png" alt="Leave → Types with the leave types listed" loading="lazy">
+          <p class="shot-cap">Types</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Leave balances and types</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="payroll" open>
+    <summary><h2>Running payroll</h2><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Payroll → Payroll runs.</strong> One run per month: draft it, run payroll, check
+      it, send it for approval, then approve and file.</p>
+    <ol class="steps">
+      <li><h4>Create the draft</h4>
+        <p><span class="btn-name">Create draft</span> — pick the month and year, and which policies and employees to
+          include. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
+          owners and admins aren't.</p></li>
+      <li><h4>Run payroll</h4>
+        <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
+          allowances, loan repayments, and every statutory line — from their current records and the month's
+          approved overtime, leave and claims.</p></li>
+      <li><h4>Check and adjust</h4>
+        <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
+          or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
+          approved claims waiting to be paid — add them to this run. Unpaid leave isn't offered as an adjustment — it's
+          deducted automatically from approved unpaid leave. The <strong>Needs attention</strong> tab lists anyone
+          whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
+          out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
+          watermarked <strong>DRAFT</strong>.</p></li>
+      <li><h4>Re-run if anything changed</h4>
+        <p>After an adjustment, just press <span class="btn-name">Re-run payroll</span>. Adjustments carry over; the
+          payslip lines are rebuilt from them.</p></li>
+      <li><h4>Send for approval</h4>
+        <p><span class="btn-name">Send for approval</span>. The approver either presses
+          <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p></li>
+    </ol>
+    <div class="note warn"><span class="nt">“Run payroll again before submitting”</span>
+      <p>If something a draft uses changes after payroll was run, the run is marked <strong>Stale</strong> and can't
+        be sent for approval until you press <span class="btn-name">Re-run payroll</span>. That happens when any of
+        these change:</p>
+      <ul>
+        <li>an employee's payroll details, or a salary change</li>
+        <li>a loan</li>
+        <li>approved unpaid leave or overtime in that month</li>
+        <li>payroll settings, or year-to-date figures imported</li>
+        <li>an adjustment or an attached claim</li>
+      </ul>
+    </div>
+    <div class="note stop"><span class="nt">What stops a run being sent</span>
+      <ul>
+        <li>It's stale — re-run it.</li>
+        <li>Someone's net pay would be negative — their deductions are more than their pay. (RM 0.00 is allowed, for
+          example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
+        <li>A required employer or employee field is missing.</li>
+        <li>The previous month hasn't been filed yet — months are filed in order.</li>
+      </ul>
+    </div>
+    <p>Once a run is approved, a <strong>LHDN payment receipts</strong> card appears on it. Enter the receipt number and
+      date LHDN issued when you paid that month's PCB (MTD) — and CP38, if you had any — and press
+      <span class="btn-name">Save receipts</span>. They're printed on each employee's PCB 2(II) statement; no figure changes.</p>
+    <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
+      months that were worked out from it go back to draft too — the app lists them before you confirm.</p>
+    
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-run.png" alt="Payroll → Payroll runs with Create draft and the import of earlier 2026 payroll" loading="lazy">
+          <p class="shot-cap">Payroll runs</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one employee: working hours, overtime and one-off line items" loading="lazy">
+          <p class="shot-cap">Adjustments drawer</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">A payroll run</p>
+    </figure>
+
+    
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-stale.png" alt="A draft run showing “Run payroll again before submitting”" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">When a run needs re-running</p>
+    </figure>
+
+    <h3>The Payroll Overview</h3>
+    <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
+      the latest run's totals, and everything filed so far this year.</p>
+    </div>
+  </details>
+
+  <details class="topic" id="files" open>
+    <summary><h2>Files &amp; payslips</h2><span class="badge month">Every month</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Once a run is approved, <strong>Documents and files</strong> opens. Tick what you need and
+      <span class="btn-name">Download selected</span>.</p>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
+      <tbody>
+        <tr><td>Reports</td><td>Payroll Summary, Payment Schedule, PCB Calculation Details</td><td>Your records / approver</td></tr>
+        <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
+        <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
+        <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
+        <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB</td></tr>
+        <tr><td></td><td>TP1 / TP3 Claims List</td><td>Your records — everyone who claimed reliefs on Borang PCB/TP1 this month, or declared a previous employer on TP3</td></tr>
+        <tr><td>Payslips</td><td>Bulk payslips (a ZIP of PDFs), or <span class="btn-name">Email all</span> to each employee</td><td>Employees</td></tr>
+        <tr><td>Bank</td><td>The bulk payment file for your payroll bank</td><td>Your bank's portal</td></tr>
+      </tbody>
+    </table></div>
+    <h3>The bank file follows your bank</h3>
+    <ul>
+      <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
+      <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
+      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (.txt)</li>
+      <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
+    </ul>
+    <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
+      bank setting is missing or an employee's bank isn't recognised. If your payroll bank is “Other”, no bank file
+      is produced.</p>
+    <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed. Each row also has
+      a button for that person's <strong>Borang PCB/TP1</strong> (the reliefs they claimed, this month and year to date).
+      <span class="btn-name">Email all</span> asks you to confirm first — payslips can't be recalled once sent.</p>
+    
+    <figure class="shot" data-place="Files">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog: statutory uploads (EPF, both SOCSO + EIS files, PCB) and the TP1 / TP3 Claims List" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Downloading the month's files</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="loans" open>
+    <summary><h2>Loans &amp; advances</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Payroll → Loans.</strong> Money lent to an employee, repaid from their pay.</p>
+    <p><span class="btn-name">Record a loan</span> — the employee, the amount, and either <em>over a number of months</em> or
+      <em>a fixed amount each month</em>, starting from the month you choose. Each payroll run deducts the instalment
+      by itself. The table shows what's outstanding and the repayment schedule, with a warning under a loan if
+      repayments run past the employee's leaving date or loans together are over half their monthly salary.</p>
+    <p>Once repayments have been taken, the amount lent and the months already filed are locked — but you can still change
+      what's left:</p>
+    <ul>
+      <li><span class="btn-name">Re-plan</span> — spread the balance <em>over a number of months</em>, as <em>a fixed
+        amount each month</em>, <em>set each month</em>, or <em>settle it all next payroll</em>. Months already submitted
+        or awaiting approval can't change; the page names the earliest month that can.</li>
+      <li><span class="btn-name">Pause</span> — <em>skip a number of months</em>, or pause <em>until I resume it</em>,
+        from the month you pick. Nothing is forgiven: what was due moves into the next months that aren't skipped, so the
+        loan ends later. Skipped months show as “skipped” in the schedule.</li>
+      <li><span class="btn-name">Resume</span> — on a paused loan, choose the month to start deducting again.</li>
+      <li><span class="btn-name">Cancel</span> — stops the remaining deductions.</li>
+    </ul>
+    <p>A loan can only be recorded for someone who has saved payroll details.</p>
+    
+    <figure class="shot" data-place="Loans">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/loans.png" alt="Payroll → Loans: a paused loan with Resume and Cancel, and its repayment schedule showing paid and paused months" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Loans and advances</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== EVERY YEAR -->
+
+  <details class="topic" id="annual" open>
+    <summary><h2>Annual tax forms</h2><span class="badge month">Every year</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Payroll → Annual forms.</strong> Pick the filing year — only approved runs count.</p>
+    <ul>
+      <li><strong>Form EA (bulk)</strong> — every employee's EA in LHDN's C.P.8A layout, one page each, to hand out by
+        28 February.</li>
+      <li><strong>PCB 2(II) (bulk)</strong> — each employee's statement of PCB deducted, in LHDN's own layout, with the
+        receipt numbers you saved on each month. Unlike the returns it doesn't wait for the whole year, so you can
+        download it any time.</li>
+      <li><strong>Form E + CP8D</strong> — the employer's return and its employee list.</li>
+      <li><strong>LHDN e-CP8D upload</strong> — in LHDN's current 22-field layout. LHDN's e-CP8D takes the employee file
+        (P) only; the employer master (M) is there for your records.</li>
+      <li><strong>CP8D converter</strong> — for a year you didn't run in AltomateHR: type the figures in and download
+        the upload files. Each row also needs a <strong>Status</strong>, a <strong>Retire / contract end</strong> date
+        (or the date they left) and their <strong>PERKESO</strong> amount (SOCSO and EIS together).</li>
+    </ul>
+    <p>CP8D needs your LHDN employer number — the page warns you if it's missing. Each employee's status and contract
+      end date come from the Employment tab of their record; if left blank they count as permanent, with retirement at 60.</p>
+    
+    <figure class="shot" data-place="Annual forms">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: Form EA, Form E + CP8D, PCB 2(II) (bulk) and the e-CP8D upload files" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Annual tax forms</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="lhdn-forms" open>
+    <summary><h2>Per-employee LHDN forms</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">In an employee's record, <strong>Statutory → LHDN Forms</strong>: pick the year and download
+      <strong>PCB 2(II)</strong>, <strong>CP22</strong> (new employee), <strong>CP22A</strong> (leaving),
+      <strong>CP21</strong> (leaving the country) or <strong>PCB/TP3</strong>. CP22A and CP21 open as soon as you've set
+      their <strong>Last day</strong> (Employment tab → Archive) — you don't have to archive them first — and show a
+      deadline badge counting down to 30 days before that date.</p>
+    </div>
+  </details>
+
+  <details class="topic" id="ytd" open>
+    <summary><h2>Starting mid-year</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Joined partway through the year? Bring in what's already been paid so PCB carries on
+      correctly instead of starting from zero.</p>
+    <p>At the bottom of <strong>Payroll runs</strong>, <strong>Import earlier payroll</strong>: download the template for
+      the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
+      never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
+      by name and check their figures.</p>
+    <p>For someone who joined from another employer this year, fill in <strong>Previous employment (TP3)</strong> on the
+      Employment tab of their record.</p>
+    </div>
+  </details>
+
+  <!-- =================================================== CONNECTED -->
+
+  <details class="topic" id="xero" open>
+    <summary><h2>Xero</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Connect in <strong>System Settings → Organization</strong>. Each company connects to its own
+      Xero organisation.</p>
+    <ul>
+      <li><strong>Connect</strong> — sign in to Xero and choose <em>only this company's</em> organisation.</li>
+      <li><strong>Chart of accounts</strong> — Xero owns it while connected; <span class="btn-name">Sync from Xero</span> in
+        Accounts. Accounts no longer in Xero are archived.</li>
+      <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.
+        Once you choose a category, it <em>is</em> the project list: projects made by hand, or not in that category, are
+        hidden from the pickers (clearing the category brings them back).</li>
+      <li><strong>Claims</strong> — approved claims become a bill (own money) or a spend-money transaction (company money).</li>
+      <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on. In
+        <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables
+        (EPF, SOCSO, EIS, PCB, net salary) offer liability accounts — sync from Xero first if a list is empty. A saved
+        account of the wrong type is flagged so you can pick again.</li>
+      <li><strong>Reconnect</strong> if the card says the connection has stopped working; <strong>Disconnect</strong>
+        removes AltomateHR from that Xero organisation.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Xero">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/xero-connection.png" alt="System Settings → Organization with the Xero connection card" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The Xero connection</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="notifications" open>
+    <summary><h2>Notifications &amp; the app</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">The bell shows requests and decisions as they happen. If your browser supports it, turn on push notifications from the
+      ⋮ menu to get them on your phone or computer even when AltomateHR isn't open. The same menu has
+      <span class="btn-name">What's new</span> for our release notes and <span class="btn-name">Guide</span> to open this
+      guide.</p>
+    <p>AltomateHR runs in the browser. On a phone, add it to your home screen (iPhone: Share → Add to Home Screen;
+      Android: menu → Install app) and it opens like an app.</p>
+    </div>
+  </details>
+
+  <details class="topic" id="audit" open>
+    <summary><h2>Activity Log</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Who did what, and when — sign-ins, settings, people, teams, accounts, projects and Xero, and
+      any leave that was cancelled (filter by <em>Leave cancellations</em>). Open a row to see what changed, before and
+      after.</p>
+    
+    <figure class="shot" data-place="Activity Log">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/activity-log.png" alt="Activity Log with search, activity and outcome filters" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Activity Log</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== HELP -->
+
+  <details class="topic" id="faq" open>
+    <summary><h2>Common questions</h2></summary>
+    <div class="topic-body">
+    <details class="qa"><summary>Why can't I approve a claim or leave from the admin portal?</summary>
+      <div class="body"><p>Approvals belong to the supervisors in <a href="#structure">Company Structure</a>, from their
+        queue in the employee app. The admin portal shows who each request is waiting on — if it says “Nobody can
+        approve”, add an approver to that person's team.</p></div></details>
+    <details class="qa"><summary>Why can't I send the payroll run for approval?</summary>
+      <div class="body"><p>The message beside the button says why: the run needs re-running, someone's net pay would be
+        negative, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
+    <details class="qa"><summary>The bank file was refused.</summary>
+      <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
+        app recognises — pick it from the dropdown in their record, then download again.</p></div></details>
+    <details class="qa"><summary>Someone left. Do I delete them?</summary>
+      <div class="body"><p>No — archive them (Employment tab → Archive, with their last day). They drop out of future
+        runs but keep every payslip and form.</p></div></details>
+    <details class="qa"><summary>A new employee can't sign in.</summary>
+      <div class="body"><p>Their starting password is their email followed by their birth month and day, so their date
+        of birth must be on file. Or use <span class="btn-name">Set password</span> on their record.</p></div></details>
+    </div>
+  </details>
+
+  </main>
+</div>
+<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of October 2026.</footer></div>
+<script>
+(function(){
+  var topics = Array.prototype.slice.call(document.querySelectorAll('details.topic'));
+
+  /* ---------- screenshot grids: layout + labels from the slot count ------
+     Add or remove a shot-item block and everything below adjusts itself —
+     the column count, and the "3a / 3b" labels on each slot. */
+  Array.prototype.slice.call(document.querySelectorAll('figure.shot')).forEach(function(fig, i){
+    var grid = fig.querySelector('.shot-grid');
+    if(!grid) return;
+    var items = Array.prototype.slice.call(grid.querySelectorAll('.shot-item'));
+    grid.setAttribute('data-count', String(Math.min(items.length, 6)));
+    items.forEach(function(item, j){
+      var frame = item.querySelector('.shot-frame');
+      if(!frame) return;
+      frame.setAttribute('data-shot', items.length > 1
+        ? (i + 1) + String.fromCharCode(97 + j)
+        : String(i + 1));
+    });
+    /* once real images are dropped in, tall ones re-flow as phone shots */
+    var imgs = Array.prototype.slice.call(grid.querySelectorAll('img'));
+    if(imgs.length){
+      var check = function(){
+        var loaded = imgs.filter(function(im){ return im.naturalWidth > 0 });
+        if(!loaded.length) return;
+        var portrait = loaded.every(function(im){ return im.naturalHeight > im.naturalWidth });
+        grid.setAttribute('data-orient', portrait ? 'phone' : 'screen');
+      };
+      imgs.forEach(function(im){ im.addEventListener('load', check) });
+      check();
+    }
+  });
+
+  /* ---------- expand / collapse all ---------- */
+  document.getElementById('expandAll').addEventListener('click', function(){
+    topics.forEach(function(d){ if(!d.classList.contains('hidden-by-filter')) d.open = true; });
+  });
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    topics.forEach(function(d){ d.open = false; });
+  });
+
+  /* ---------- audience filter ---------- */
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.panel button[data-plan]'));
+  function applyFilter(plan){
+    document.querySelectorAll('[data-plan]').forEach(function(el){
+      if(el.tagName === 'BUTTON') return;
+      var want = el.getAttribute('data-plan');
+      el.classList.toggle('hidden-by-filter', plan !== 'all' && want !== plan);
+    });
+    document.querySelectorAll('[data-plan-link]').forEach(function(el){
+      var want = el.getAttribute('data-plan-link');
+      el.classList.toggle('hidden-by-filter', plan !== 'all' && want !== plan);
+    });
+    buttons.forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-plan') === plan));
+    });
+  }
+  buttons.forEach(function(b){
+    b.addEventListener('click', function(){ applyFilter(b.getAttribute('data-plan')); });
+  });
+
+  /* ---------- open a topic when linked to ---------- */
+  function openTarget(hash){
+    if(!hash) return;
+    var el = document.querySelector(hash);
+    if(!el) return;
+    if(el.tagName === 'DETAILS') el.open = true;
+    var parent = el.closest ? el.closest('details.topic') : null;
+    if(parent) parent.open = true;
+  }
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(){ openTarget(a.getAttribute('href')); });
+  });
+  if(location.hash) openTarget(location.hash);
+
+  /* ---------- scrollspy ---------- */
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+  function spy(){
+    var pos = window.scrollY + 100, current = null;
+    links.forEach(function(a){
+      var s = document.querySelector(a.getAttribute('href'));
+      if(s && s.offsetTop <= pos) current = a.getAttribute('href');
+    });
+    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === current); });
+  }
+  window.addEventListener('scroll', spy, {passive:true});
+  spy();
+})();
+</script>
+
+</body>
+</html>

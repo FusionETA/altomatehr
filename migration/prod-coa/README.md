@@ -71,7 +71,7 @@ are filed against any of them**.
 
 `id`→`Id`, `organizationId`→`OrganizationId` (through the org map),
 `code`→`Code`, `name`→`Name`, `xeroAccountId`→`XeroAccountId`, `status`→`XeroStatus`,
-`isSelectable`→`IsSelectable`, `limitAmount`→`LimitAmount`,
+`isSelectable`→`IsSelectable` (expense accounts) / `isBankAccount`→`IsSelectable` (banks — fixed 2026-09-24, see below), `limitAmount`→`LimitAmount`,
 `allowMileageClaim`→`AllowMileageClaim`, `mileageRate`→`MileageRate`,
 `createdAt`→`CreatedAt`, and `isDisabled`→`IsArchived` (same rename as
 `../prod-settings`).
@@ -81,9 +81,7 @@ are filed against any of them**.
 
 ### Dropped, and why it costs nothing
 
-- `isCustom`, `isBankAccount`, `archivedByXeroConnect`, `updatedAt` — no v2 column.
-  `isBankAccount` is redundant with `type='BANK'`: exactly one row of 1169 disagrees,
-  and the type wins, which is the rule v2 applies anyway.
+- `isCustom`, `archivedByXeroConnect`, `updatedAt` — no v2 column.
 - `limitPeriod`, `limitScope` — no v2 column. **Zero rows in `hr_prod` set either**,
   and zero set `limitAmount` or `mileageRate`, so the limit model carries no data at
   all. Two rows have `allowMileageClaim = 1`; both migrated.
@@ -136,3 +134,19 @@ neither masks a real failure nor gets silently "fixed" by a data migration.
 
 Commit this directory. The repo has unrelated uncommitted work around it, so never
 `git add -A` here.
+
+## 2026-09-24 re-sync: bank ticks were lost
+
+The first run treated `isBankAccount` as redundant with `type='BANK'`. It is not: it is the
+admin's "enable this bank for company-paid claims" tick, and v1 only lists ticked banks.
+Because v1 keeps `isSelectable = 0` on every bank, the original mapping unticked all of them
+in v2. `01-coa.sql` now maps banks from `isBankAccount`.
+
+Applied as a targeted diff-update, not a full re-run: 161 rows in 5 orgs (159 bank ticks +
+3 Peak Bridges expense ticks changed in v1 on 2026-09-21), plus 5 `ProjectGeofencePoints`
+for the two remapped Fusion ETA projects that had none. Projects otherwise matched v1.
+**Orgs with a live v2 `XeroConnections` row were excluded** (GLOBE SUCCESS LEARNING,
+Fusioneta Sdn Bhd): GSL's admin had already re-synced from Xero and set its bank ticks in
+v2 by hand, so v1 is no longer its source of truth. Do not re-run the full script over a
+Xero-connected org.
+Backup: `/var/backups/altomatehr-v2/altomatehr-coa-projects-pre-resync-20260924-171054.sql`

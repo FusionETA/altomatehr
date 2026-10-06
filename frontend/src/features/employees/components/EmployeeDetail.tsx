@@ -16,6 +16,7 @@ import {
   ID_TYPES,
   ID_TYPE_LABELS,
   MARITAL_STATUSES,
+  EMPLOYMENT_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
   STAFF_ROLES,
@@ -84,6 +85,7 @@ import {
   pickEpfBranch,
   recommendSocsoScheme,
   socsoSchemeNeedsManualChoice,
+  workPermitExpiryHint,
 } from "../lib/statutory";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
@@ -944,6 +946,30 @@ export function EmployeeDetail({
                       }))}
                     />
                   </Field>
+                  {/* Only for a foreign worker — a citizen or PR has no work permit. */}
+                  {profile.nationality && isForeignWorker ? (
+                    <>
+                      <Field
+                        label="Work permit number"
+                        hint="The Immigration work permit (PLKS) — not the SSFW number."
+                      >
+                        <Text
+                          value={profile.workPermitNumber}
+                          onChange={(v) => set("workPermitNumber", v)}
+                        />
+                      </Field>
+                      <Field
+                        label="Work permit expiry"
+                        hint={workPermitExpiryHint(profile.workPermitExpiry)}
+                      >
+                        <Text
+                          type="date"
+                          value={profile.workPermitExpiry}
+                          onChange={(v) => set("workPermitExpiry", v)}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
                   <Field label="Race">
                     <Text value={profile.race} onChange={(v) => set("race", v)} />
                   </Field>
@@ -1298,7 +1324,6 @@ export function EmployeeDetail({
                 <Group
                   title="Employment dates"
                   hint="The join date pro-rates a partial first month. An end date belongs to Archive, below."
-                  columns={1}
                 >
                   <Field label="Join date">
                     <Text
@@ -1310,6 +1335,25 @@ export function EmployeeDetail({
                         setPlacement((p) => ({ ...p, joinDate: v ?? "" }));
                         set("joinDate", v);
                       }}
+                    />
+                  </Field>
+                  <Field label="Employment status" hint="Reported to LHDN on CP8D. Not set counts as permanent.">
+                    <Picker
+                      value={profile.employmentStatus}
+                      onChange={(v) => set("employmentStatus", v)}
+                      allowNone
+                      placeholder="Not set"
+                      options={EMPLOYMENT_STATUSES}
+                    />
+                  </Field>
+                  <Field
+                    label="Contract end date"
+                    hint="When the contract runs to. Reported on CP8D; left blank, retirement at 60 is used."
+                  >
+                    <Text
+                      type="date"
+                      value={profile.contractEndDate}
+                      onChange={(v) => set("contractEndDate", v)}
                     />
                   </Field>
                 </Group>
@@ -1522,7 +1566,27 @@ export function EmployeeDetail({
 
                 <Group title="SOCSO, EIS & SKBBK">
                   <Field label="SOCSO number">
-                    <Text value={profile.socsoNumber} onChange={(v) => set("socsoNumber", v)} />
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Text value={profile.socsoNumber} onChange={(v) => set("socsoNumber", v)} />
+                      </div>
+                      {/* Quick-fill, as in the previous system: in Malaysia most
+                          employees' SOCSO number IS their IC. Reads the ID
+                          number as typed on the Personal section. */}
+                      <button
+                        type="button"
+                        disabled={!profile.idNumber?.trim()}
+                        onClick={() => set("socsoNumber", profile.idNumber?.trim() ?? null)}
+                        title={
+                          profile.idNumber?.trim()
+                            ? "Copy the IC / passport number from the Personal section into this field."
+                            : "Fill in the IC / passport number on the Personal section first."
+                        }
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-foreground"
+                      >
+                        Use ID number
+                      </button>
+                    </div>
                   </Field>
                   <Field label="Scheme">
                     <Picker

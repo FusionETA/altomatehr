@@ -81,6 +81,9 @@ public class ProjectService : IProjectService
 
     public async Task<ProjectDto> CreateAsync(SaveProjectDto dto)
     {
+        // Same check as UpdateAsync, before anything is written.
+        ValidateAllowedIps(dto);
+
         var project = new Project
         {
             Name = dto.Name,
@@ -104,7 +107,10 @@ public class ProjectService : IProjectService
             TargetId: project.Id,
             Metadata: new { project.Name, project.Latitude, project.Longitude }));
 
-        return ToDto(project);
+        // Create used to ignore these, so a project created with sites or an
+        // allowlist came back without them and a second PUT was needed.
+        await ReplaceSitesAndAllowlistAsync(project, dto);
+        return await ToDtoWithListsAsync(project);
     }
 
     public async Task<ProjectDto?> UpdateAsync(string id, SaveProjectDto dto)
@@ -122,38 +128,10 @@ public class ProjectService : IProjectService
         project.WorkingDays = dto.WorkingDays;
         project.LunchBreakMinutes = dto.LunchBreakMinutes;
 
-        // Rejected before anything is written, not dropped at match time: a
-        // silently discarded entry looks saved on the settings screen while the
-        // network it names is quietly not allowed.
-        var badEntry = dto.AllowedIpEntries.FirstOrDefault(e => !IpAllowlist.IsValidEntry(e.Cidr));
-        if (badEntry is not null)
-            throw new ArgumentException(
-                $"\"{badEntry.Cidr}\" is not a valid IPv4 address or CIDR range.");
+        ValidateAllowedIps(dto);
 
         await _repo.UpdateAsync(project);
-
-        // SortOrder is assigned from the submitted order — the sites are walked
-        // in it and the first inside the radius wins, so dragging a site up the
-        // list is a change to enforcement, not to presentation.
-        await _repo.ReplaceGeofencePointsAsync(project.Id, dto.GeofencePoints.Select((g, i) =>
-            new ProjectGeofencePoint
-            {
-                OrganizationId = project.OrganizationId,
-                ProjectId = project.Id,
-                Label = g.Label.Trim(),
-                Latitude = g.Latitude,
-                Longitude = g.Longitude,
-                SortOrder = i,
-            }).ToList());
-
-        await _repo.ReplaceAllowedIpsAsync(project.Id, dto.AllowedIpEntries.Select(e =>
-            new ProjectAllowedIp
-            {
-                OrganizationId = project.OrganizationId,
-                ProjectId = project.Id,
-                Label = e.Label.Trim(),
-                Cidr = e.Cidr.Trim(),
-            }).ToList());
+        await ReplaceSitesAndAllowlistAsync(project, dto);
 
         // The geofence centre and the IP allowlist both decide whether an
         // attendance clock-in is accepted, so a change to either is worth being
@@ -193,11 +171,52 @@ public class ProjectService : IProjectService
             TargetType: "Project",
             TargetId: project.Id));
 
-        return ToDto(project);
+        // With its sites and allowlist, like every other single-project
+        // response; the bare DTO reported them empty.
+        return await ToDtoWithListsAsync(project);
     }
 
-    // The lists are attached only where a caller needs them (GetByIdAsync and
-    // UpdateAsync). GetAllAsync deliberately doesn't: it renders a grid of
+    // Rejected before anything is written, not dropped at match time: a
+    // silently discarded entry looks saved on the settings screen while the
+    // network it names is quietly not allowed.
+    private static void ValidateAllowedIps(SaveProjectDto dto)
+    {
+        var badEntry = dto.AllowedIpEntries.FirstOrDefault(e => !IpAllowlist.IsValidEntry(e.Cidr));
+        if (badEntry is not null)
+            throw new ArgumentException(
+                $"\"{badEntry.Cidr}\" is not a valid IPv4 address or CIDR range.");
+    }
+
+    // A project's geofence sites and IP allowlist, replaced wholesale from the
+    // DTO — on create as well as update.
+    private async Task ReplaceSitesAndAllowlistAsync(Project project, SaveProjectDto dto)
+    {
+        // SortOrder is assigned from the submitted order — the sites are walked
+        // in it and the first inside the radius wins, so dragging a site up the
+        // list is a change to enforcement, not to presentation.
+        await _repo.ReplaceGeofencePointsAsync(project.Id, dto.GeofencePoints.Select((g, i) =>
+            new ProjectGeofencePoint
+            {
+                OrganizationId = project.OrganizationId,
+                ProjectId = project.Id,
+                Label = g.Label.Trim(),
+                Latitude = g.Latitude,
+                Longitude = g.Longitude,
+                SortOrder = i,
+            }).ToList());
+
+        await _repo.ReplaceAllowedIpsAsync(project.Id, dto.AllowedIpEntries.Select(e =>
+            new ProjectAllowedIp
+            {
+                OrganizationId = project.OrganizationId,
+                ProjectId = project.Id,
+                Label = e.Label.Trim(),
+                Cidr = e.Cidr.Trim(),
+            }).ToList());
+    }
+
+    // The lists are attached only to single-project responses (get, create,
+    // update, archive/restore). GetAllAsync deliberately doesn't: it renders a grid of
     // names, and loading every project's sites to draw that would be a query
     // per project for data the screen never shows.
     private async Task<ProjectDto> ToDtoWithListsAsync(Project p)

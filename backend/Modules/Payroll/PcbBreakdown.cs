@@ -90,6 +90,13 @@ public sealed record PcbBreakdown
     //     [(Y − K) + (Y1 − K1) + (Y2 − K2 × N)] − (D + S + Du + Su + QC + ΣLP + LP1)
     public decimal P { get; init; }
 
+    // P before it is floored at zero. Reliefs larger than the normal
+    // remuneration make it negative: there is then no tax on the normal part
+    // (P above is 0), but an additional remuneration is added to THIS figure,
+    // not to 0 — so it is what Section 3 builds on. Null on snapshots taken
+    // before it was recorded.
+    public decimal? PBeforeFloor { get; init; }
+
     // The band containing P: M is its lower bound, R the marginal rate, B the
     // cumulative tax at M less any rebate. (P − M) × R + B is the annual tax.
     public decimal M { get; init; }

@@ -69,6 +69,7 @@ public class ClaimsController : ControllerBase
 
     // POST /claims
     [RequirePolicyModule(PolicyModules.Claims)]
+    [HumanOnly]
     [HttpPost]
     public async Task<IActionResult> Create(CreateClaimDto dto)
     {
@@ -85,6 +86,7 @@ public class ClaimsController : ControllerBase
 
     // POST /claims/receipts
     [RequirePolicyModule(PolicyModules.Claims)]
+    [HumanOnly]
     [HttpPost("receipts")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     public async Task<ActionResult<UploadReceiptResponseDto>> UploadReceipt(IFormFile? receiptFile)
@@ -123,6 +125,7 @@ public class ClaimsController : ControllerBase
     // A failed extraction is NOT a failed upload — the file is already stored, so
     // the response still carries the ReceiptUrl and the client can fall back to
     // manual entry rather than making the user upload again.
+    [HumanOnly]
     [HttpPost("receipts/analyze")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     [EnableRateLimiting("ocr")]
@@ -234,11 +237,13 @@ public class ClaimsController : ControllerBase
     // GET /claims/settings — the claims module's own org settings.
     // Readable by any authenticated caller: the cutoff day is what tells an
     // employee whether a claim they file today makes this month's run.
+    [RequireScope("claims:read")]
     [HttpGet("settings")]
     public async Task<IActionResult> GetSettings() =>
         Ok(await _claims.GetSettingsAsync());
 
     // PUT /claims/settings — change the claim-run cutoff (Admins only).
+    [RequireScope("claims:write")]
     [HttpPut("settings")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> UpdateSettings(UpdateClaimSettingsDto dto)
@@ -273,6 +278,7 @@ public class ClaimsController : ControllerBase
 
     // GET /claims/import/template?format=csv|xlsx — the blank import template.
     // PDF is refused here on purpose: a template exists to be filled in.
+    [RequireScope("claims:read")]
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]
     public IActionResult ImportTemplate([FromQuery] string? format)
@@ -296,6 +302,7 @@ public class ClaimsController : ControllerBase
     // Always 200, even when rows failed: the body is a per-row report, and a 4xx
     // would tell the client "nothing happened" when in fact 98 of 100 rows
     // landed. A genuinely unusable FILE (wrong type, no header) still 400s.
+    [RequireScope("claims:write")]
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     [RequestSizeLimit(8 * 1024 * 1024)]
@@ -316,6 +323,7 @@ public class ClaimsController : ControllerBase
     }
 
     // PUT /claims/{id}
+    [HumanOnly]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, CreateClaimDto dto)
     {
@@ -332,6 +340,7 @@ public class ClaimsController : ControllerBase
 
     // DELETE /claims/{id}  — Admins only (RBAC)
     [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("claims:write")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -340,6 +349,7 @@ public class ClaimsController : ControllerBase
     }
 
     // POST /claims/{id}/approve — the current-step approver in the claimant's chain.
+    [RequireScope("claims:write")]
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Approve(string id)
@@ -353,6 +363,7 @@ public class ClaimsController : ControllerBase
     //
     // Idempotent — a claim already billed returns 200 with alreadySynced, not
     // an error, so a double-click cannot produce a second bill.
+    [RequireScope("claims:write")]
     [HttpPost("{id}/xero-sync")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SyncToXero(string id, SyncClaimToXeroDto? dto)
@@ -371,6 +382,7 @@ public class ClaimsController : ControllerBase
     // POST /claims/bulk/xero-sync — push a set of approved claims in one call.
     // Always 200: the body reports per claim, because a run where eighteen of
     // twenty landed is not a failed request.
+    [RequireScope("claims:write")]
     [HttpPost("bulk/xero-sync")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> BulkSyncToXero(BulkSyncClaimsToXeroDto dto) =>
@@ -381,12 +393,14 @@ public class ClaimsController : ControllerBase
     // body is a report: always 200, even when some ids failed.
     //
     // No bulk reject counterpart on purpose — see BulkApproveClaimsDto.
+    [RequireScope("claims:write")]
     [HttpPost("bulk/approve")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> BulkApprove(BulkApproveClaimsDto dto) =>
         Ok(await _claims.BulkApproveAsync(dto.Ids, GetUserId()));
 
     // POST /claims/{id}/reject — the current-step approver in the claimant's chain.
+    [RequireScope("claims:write")]
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "Supervisor,Admin,Owner")]
     public async Task<IActionResult> Reject(string id, RejectClaimDto dto)

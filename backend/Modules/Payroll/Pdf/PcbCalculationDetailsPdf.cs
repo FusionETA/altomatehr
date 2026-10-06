@@ -107,7 +107,7 @@ public static class PcbCalculationDetailsPdf
 
             if (breakdown.Formula == PcbFormula.NonResident)
             {
-                NonResident(column, breakdown, employee.VoluntaryPcb);
+                NonResident(column, breakdown, employee.CurrentMonthZakat, employee.VoluntaryPcb);
                 return;
             }
 
@@ -124,14 +124,14 @@ public static class PcbCalculationDetailsPdf
                 SectionArPcb(column, ar, breakdown.Z);
             }
 
-            SectionNetPcb(column, breakdown, employee.VoluntaryPcb);
+            SectionNetPcb(column, breakdown, employee.CurrentMonthZakat, employee.VoluntaryPcb);
             SectionAllowableDeductions(column, breakdown);
         });
 
     // Non-residents are a flat withholding with no reliefs and no bands.
     // Printing an M, an R or a relief here would imply the 30% came from
     // somewhere it did not.
-    private static void NonResident(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb)
+    private static void NonResident(ColumnDescriptor column, PcbBreakdown b, decimal zakat, decimal voluntaryPcb)
     {
         SectionTitle(column, "Non-resident — flat-rate withholding");
 
@@ -147,7 +147,10 @@ public static class PcbCalculationDetailsPdf
             "Bonus, commission, arrears and other one-off payments this month.", b.AdditionalTaxable);
         Variable(column, "PCB — additional",
             "Flat-rate withholding on additional remuneration.", b.PcbAdditional);
-        NetPcbRows(column, b.PcbTotal, voluntaryPcb);
+        foreach (var row in NetPcbRows(b.PcbTotal, zakat, voluntaryPcb))
+        {
+            Variable(column, row.Label, row.Description, row.Amount, bold: row.Bold);
+        }
     }
 
     // ─── 1. PCB(A) — the normal monthly deduction ───────────────────────
@@ -197,28 +200,40 @@ public static class PcbCalculationDetailsPdf
             "Other accumulated allowable deductions including from previous employment (if any).", b.SumLp);
         Variable(column, "LP₁", "Other allowable deductions for current month.", b.Lp1);
 
-        // A 15% approval swaps "(P − M)R + B" for "P × 15% − T" (MTD Spec
-        // D.b.3–5). Said plainly, so a reader does not look for a band.
+        // A 15% approval swaps "(P − M)R + B" for a flat 15% of P (MTD Spec
+        // D.b.3–5), each category in its own spec's words so a reviewer sees
+        // the formula for the approval actually on file. REP and knowledge
+        // workers keep the rebate T when P is RM35,000 or less; C-suite
+        // (Table 4) has no rebate at all, so its formula has no T.
         if (b.SpecialTaxScheme is { } scheme)
         {
             column.Item().PaddingBottom(6).Text(
                     $"Taxed at a flat 15% under {SchemeName(scheme)} (LHDN MTD specification, "
-                    + $"{SchemeSection(scheme)}): Monthly Tax Deduction = [(P × R − T) − (Z + X)] ÷ (n + 1). "
-                    + "M is 0 and B is −T, the individual and spouse rebate"
+                    + $"{SchemeSection(scheme)}): Monthly Tax Deduction = {SchemeFormula(scheme)}. "
                     + (scheme == SpecialTaxScheme.C_SUITE
-                        ? ", which does not apply to this category."
-                        : " allowed when P is RM35,000 or less."))
+                        ? "M is 0 and B is 0: no individual or spouse rebate applies to this category."
+                        : "M is 0 and B is −T, the individual and spouse rebate allowed when P is RM35,000 or less."))
                 .FontSize(8.5f).FontColor(PayrollPdfShared.Muted);
         }
 
-        Variable(column, "P", ExpandP(b), b.P, bold: true);
+        var p = PBeforeFloor(b);
+        Variable(column, "P",
+            p < 0m
+                ? ExpandP(b) + " — negative: the reliefs exceed the normal remuneration, so no tax is due on it "
+                  + "and the yearly tax below takes P as 0.00. An additional remuneration is added to this figure "
+                  + "(Section 3)."
+                : ExpandP(b),
+            p, bold: true);
         Variable(column, "M",
             "Amount of first chargeable income for every range of chargeable income a year.", b.M);
         Variable(column, "R", $"Percentage of tax rates. ({b.R * 100m:0.00}%)", b.R, raw: true);
         Variable(column, "B",
-            b.SpecialTaxScheme is null
-                ? "Amount of tax on M less tax rebate for individual and spouse (if qualified)."
-                : "−T: the individual and spouse rebate (if qualified).",
+            b.SpecialTaxScheme switch
+            {
+                null => "Amount of tax on M less tax rebate for individual and spouse (if qualified).",
+                SpecialTaxScheme.C_SUITE => "No individual or spouse rebate for the C-suite category.",
+                _ => "−T: the individual and spouse rebate (if qualified).",
+            },
             b.B);
         Variable(column, "Z",
             "Accumulated Zakat/Fitrah/Levy paid other than Zakat/Fitrah/Levy for current month.", b.Z);
@@ -232,6 +247,21 @@ public static class PcbCalculationDetailsPdf
             $"Current Month PCB = (Yearly Tax - Z - X) ÷ (n + 1) = ({Amount(b.YearlyTax)} - {Amount(b.Z)} "
             + $"- {Amount(b.X)}) ÷ {b.N + 1}",
             b.CurrentMonthPcb, bold: true);
+    }
+
+    // P as the formula gives it, before the floor at zero — what Section 3 adds
+    // the additional remuneration to. Snapshots taken before PBeforeFloor was
+    // recorded only kept the floored P; for those, a floored (zero) P is shown
+    // as the arithmetic printed beside it evaluates, and only when that is
+    // negative, so the page still reads true without re-running the month.
+    public static decimal PBeforeFloor(PcbBreakdown b)
+    {
+        if (b.PBeforeFloor is { } recorded) return recorded;
+        if (b.P > 0m) return b.P;
+
+        var derived = (b.Y - b.K) + (b.Y1 - b.K1) + (b.Y2 - b.K2 * b.N)
+            - (b.D + b.S + b.Du + b.Su + b.Q * b.C + b.SumLp + b.Lp1);
+        return derived < 0m ? Money.Round2(derived) : b.P;
     }
 
     // The arithmetic for P, written out with the numbers substituted, so the
@@ -279,7 +309,7 @@ public static class PcbCalculationDetailsPdf
         // to anyone subtracting the figure printed on their payslip.
         Variable(section, "P",
             "Total chargeable income for a year including AR — Section 1's P with Yt added and Kt "
-            + $"deducted = {Amount(b.P)} + {Amount(ar.Yt)} - {Amount(ar.KtEffective)} "
+            + $"deducted = {Amount(PBeforeFloor(b))} + {Amount(ar.Yt)} - {Amount(ar.KtEffective)} "
             + $"(Kt {Amount(ar.Kt)} capped at the remaining RM 4,000 allowance = {Amount(ar.KtEffective)})",
             ar.ChargeableWithAr, bold: true);
 
@@ -314,7 +344,7 @@ public static class PcbCalculationDetailsPdf
 
     // ─── 5. What was actually deducted ──────────────────────────────────
 
-    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b, decimal voluntaryPcb) =>
+    private static void SectionNetPcb(ColumnDescriptor column, PcbBreakdown b, decimal zakat, decimal voluntaryPcb) =>
         column.Item().ShowEntire().Column(section =>
         {
         SectionTitle(section, "5. PCB Current Month");
@@ -322,34 +352,67 @@ public static class PcbCalculationDetailsPdf
         Formula(section, "PCB (A) + PCB (C)");
         Formula(section, $"{Amount(b.PcbNormal)} + {Amount(b.PcbAdditional)}");
 
-        NetPcbRows(section, b.PcbTotal, voluntaryPcb);
+        foreach (var row in NetPcbRows(b.PcbTotal, zakat, voluntaryPcb))
+        {
+            Variable(section, row.Label, row.Description, row.Amount, bold: row.Bold);
+        }
     });
 
-    // The formula's PCB, then — only when there is one — the manual Additional
-    // PCB and their sum, so the bold figure is always what left the employee's
-    // pay and went into CP39's PCB field.
-    private static void NetPcbRows(ColumnDescriptor column, decimal formulaPcb, decimal voluntaryPcb)
+    public sealed record NetPcbRow(string Label, string Description, decimal Amount, bool Bold);
+
+    // From the formula's PCB to what actually left the employee's pay: less
+    // this month's zakat (ringgit for ringgit, never below zero — as the
+    // payslip computes it), plus any manual Additional PCB. The bold last row
+    // is always the payslip's PCB and what went into CP39's PCB field.
+    public static IReadOnlyList<NetPcbRow> NetPcbRows(decimal formulaPcb, decimal zakat, decimal voluntaryPcb)
     {
-        if (voluntaryPcb <= 0m)
+        var zakatOffset = Math.Min(formulaPcb, Math.Max(0m, zakat));
+
+        if (zakat <= 0m && voluntaryPcb <= 0m)
         {
-            Variable(column, "PCB",
+            return [new("PCB",
                 "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN.",
-                formulaPcb, bold: true);
-            return;
+                formulaPcb, true)];
         }
 
-        Variable(column, "PCB",
-            "Formula PCB this month — before the manual Additional PCB added below.",
-            formulaPcb);
-        Variable(column, "+ Add. PCB",
-            "Additional PCB (Employment Income) — a manual top-up added directly to this month's PCB, "
-            + "remitted via the standard PCB field of the CP39 file. NOT part of the LHDN MTD formula, so "
-            + "it does not carry into next month's calculation.",
-            voluntaryPcb);
-        Variable(column, "PCB payable",
-            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN "
-            + "(formula PCB + Additional PCB).",
-            formulaPcb + voluntaryPcb, bold: true);
+        var rows = new List<NetPcbRow>
+        {
+            new("PCB", "Formula PCB this month — before the adjustments below.", formulaPcb, false),
+        };
+
+        if (zakat > 0m)
+        {
+            // The whole amount paid, as on the payslip — not only the part the
+            // PCB could absorb.
+            rows.Add(new("- Zakat",
+                "Zakat / fitrah / levy paid for the current month, taken off this month's PCB ringgit for "
+                + "ringgit. PCB cannot go below zero.",
+                zakat, false));
+
+            var carriedForward = zakat - zakatOffset;
+            if (carriedForward > 0m)
+            {
+                rows.Add(new("Zakat carried forward",
+                    $"The part of this month's zakat larger than the PCB ({Amount(zakat)} paid, {Amount(zakatOffset)} "
+                    + "used). It is not lost: it counts in Z, the accumulated zakat, from next month.",
+                    carriedForward, false));
+            }
+        }
+
+        if (voluntaryPcb > 0m)
+        {
+            rows.Add(new("+ Add. PCB",
+                "Additional PCB (Employment Income) — a manual top-up added directly to this month's PCB, "
+                + "remitted via the standard PCB field of the CP39 file. NOT part of the LHDN MTD formula, so "
+                + "it does not carry into next month's calculation.",
+                voluntaryPcb, false));
+        }
+
+        rows.Add(new("PCB payable",
+            "Net PCB this month — the amount actually deducted from the employee's pay and remitted to LHDN, "
+            + "as on the payslip.",
+            Money.Round2(formulaPcb - zakatOffset + voluntaryPcb), true));
+        return rows;
     }
 
     private static void SectionAllowableDeductions(ColumnDescriptor column, PcbBreakdown b) =>
@@ -416,14 +479,19 @@ public static class PcbCalculationDetailsPdf
     private static string Raw(decimal value) =>
         value.ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static string SchemeName(SpecialTaxScheme scheme) => scheme switch
+    public static string SchemeName(SpecialTaxScheme scheme) => scheme switch
     {
         SpecialTaxScheme.RETURNING_EXPERT => "the Returning Expert Programme (REP)",
         SpecialTaxScheme.KNOWLEDGE_WORKER => "the knowledge worker (specified region) approval",
         _ => "the resident non-citizen C-suite approval",
     };
 
-    private static string SchemeSection(SpecialTaxScheme scheme) => scheme switch
+    // The MTD formula as each approval's own table states it.
+    public static string SchemeFormula(SpecialTaxScheme scheme) => scheme == SpecialTaxScheme.C_SUITE
+        ? "[(P × R) − (Z + X)] ÷ (n + 1)"
+        : "[(P × R − T) − (Z + X)] ÷ (n + 1)";
+
+    public static string SchemeSection(SpecialTaxScheme scheme) => scheme switch
     {
         SpecialTaxScheme.RETURNING_EXPERT => "D.b.3, Table 2",
         SpecialTaxScheme.KNOWLEDGE_WORKER => "D.b.4, Table 3",

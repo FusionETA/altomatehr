@@ -50,3 +50,84 @@ public sealed record ChildRelief
     // relief — under-claiming is recoverable at year end, over-claiming is not.
     public ChildPcbDeductionLevel PcbDeduction { get; init; } = ChildPcbDeductionLevel.NONE;
 }
+
+// Reads `EmployeeProfile.ChildReliefJson` the way the previous system did.
+//
+// Profiles migrated from v1 carry the shapes v1 accepted over its life: a
+// `currentlyStudying` of null, or the retired PRESCHOOL / PRIMARY / SECONDARY /
+// NONE / HIGHER_ED codes, sometimes with an `age`. Strict deserialisation
+// rejects a null or unknown enum, and one bad child used to make the whole
+// list read as empty — silently dropping every child's relief (C = 0) while
+// the profile screen still showed them.
+//
+// So each field is read leniently, with v1's own mapping
+// (normaliseChildStudyingLevel / parseChildReliefJson):
+//   · studying: legacy and missing → UNDER_18, HIGHER_ED → DIPLOMA_MALAYSIA
+//   · ability:  anything but DISABLED → NORMAL
+//   · claim:    anything but FULL / HALF → NONE (no claim, never an over-claim)
+// A list that isn't JSON at all still reads as no children.
+public static class ChildReliefJson
+{
+    public static IReadOnlyList<ChildRelief> Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+
+        System.Text.Json.JsonDocument doc;
+        try
+        {
+            doc = System.Text.Json.JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
+
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return [];
+
+            var children = new List<ChildRelief>();
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                children.Add(new ChildRelief
+                {
+                    AbilityStatus = Text(item, "abilityStatus") == "DISABLED"
+                        ? ChildAbilityStatus.DISABLED
+                        : ChildAbilityStatus.NORMAL,
+                    CurrentlyStudying = StudyingLevel(Text(item, "currentlyStudying")),
+                    PcbDeduction = Text(item, "pcbDeduction") switch
+                    {
+                        "FULL" => ChildPcbDeductionLevel.FULL,
+                        "HALF" => ChildPcbDeductionLevel.HALF,
+                        _ => ChildPcbDeductionLevel.NONE,
+                    },
+                });
+            }
+            return children;
+        }
+    }
+
+    public static ChildStudyingLevel StudyingLevel(string? raw) => raw switch
+    {
+        "PRE_UNIVERSITY" => ChildStudyingLevel.PRE_UNIVERSITY,
+        "DIPLOMA_MALAYSIA" or "HIGHER_ED" => ChildStudyingLevel.DIPLOMA_MALAYSIA,
+        "DEGREE_ABROAD" => ChildStudyingLevel.DEGREE_ABROAD,
+        // UNDER_18, and v1's retired PRESCHOOL / PRIMARY / SECONDARY / NONE / missing.
+        _ => ChildStudyingLevel.UNDER_18,
+    };
+
+    // A property's string value, matched case-insensitively and upper-cased;
+    // null when absent or not a string.
+    private static string? Text(System.Text.Json.JsonElement item, string name)
+    {
+        foreach (var prop in item.EnumerateObject())
+        {
+            if (!string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
+            return prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                ? prop.Value.GetString()?.Trim().ToUpperInvariant()
+                : null;
+        }
+        return null;
+    }
+}

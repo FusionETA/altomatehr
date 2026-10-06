@@ -14,7 +14,7 @@ namespace AltomateHR.Api.Tests.Payroll;
 // there.
 public class Cp8dConverterTests
 {
-    private const int ExpectedColumns = 16;
+    private const int ExpectedColumns = 22;
 
     private static Cp8dConvertRowDto Row(
         string name = "Ahmad Bin Ali",
@@ -45,7 +45,7 @@ public class Cp8dConverterTests
         new()
         {
             EmployerNo = "E 1234567890",
-            EmployerName = "Globe Engineering Sdn Bhd",
+            EmployerName = "Acme Engineering Sdn Bhd",
             Year = 2026,
             Employees = rows.Length == 0 ? [Row()] : [.. rows],
         };
@@ -85,11 +85,11 @@ public class Cp8dConverterTests
     {
         var files = Unzip(Service().ConvertCp8d(Request()).Content!);
 
-        Assert.Equal("1234567890|GLOBE ENGINEERING SDN BHD|2026\r\n", files["M1234567890_2026.TXT"]);
+        Assert.Equal("1234567890|ACME ENGINEERING SDN BHD|2026\r\n", files["M1234567890_2026.TXT"]);
     }
 
     [Fact]
-    public void AnEmployeeRowKeepsTheSixteenColumnContract()
+    public void AnEmployeeRowKeepsTheCp8dFieldContract()
     {
         var files = Unzip(Service().ConvertCp8d(Request()).Content!);
         var line = files["P1234567890_2026.TXT"].Split("\r\n")[0];
@@ -102,12 +102,13 @@ public class Cp8dConverterTests
         Assert.Equal("12345678", cols[1]);         // 2  tax ref, digits only
         Assert.Equal("900101015523", cols[2]);     // 3  IC, dashes stripped
         Assert.Equal("2", cols[3]);                // 4  category, as typed
-        Assert.Equal("2", cols[4]);                // 5  tax borne by employer: no
-        Assert.Equal("2", cols[5]);                // 6  qualifying children
-        Assert.Equal("4000", cols[6]);             // 7  child relief, whole ringgit
-        Assert.Equal("72000", cols[7]);            // 8  annual gross, whole ringgit
-        Assert.Equal("7920", cols[13]);            // 14 EPF, whole ringgit
-        Assert.Equal("1234.56", cols[15]);         // 16 PCB, two decimals
+        Assert.Equal("2", cols[4]);                // 5  status: permanent by default
+        Assert.Equal("2", cols[6]);                // 7  tax borne by employer: no
+        Assert.Equal("2", cols[7]);                // 8  qualifying children
+        Assert.Equal("4000", cols[8]);             // 9  child relief, whole ringgit
+        Assert.Equal("72000", cols[9]);            // 10 annual gross, whole ringgit
+        Assert.Equal("7920", cols[16]);            // 17 EPF, whole ringgit
+        Assert.Equal("1234.56", cols[18]);         // 19 PCB, two decimals
     }
 
     // The whole reason for the override: there is no profile behind a typed
@@ -126,12 +127,36 @@ public class Cp8dConverterTests
     }
 
     [Fact]
-    public void TaxBorneByTheEmployerFlipsColumnFive()
+    public void TaxBorneByTheEmployerFlipsFieldSeven()
     {
         var files = Unzip(Service().ConvertCp8d(Request(Row(taxBorne: true))).Content!);
         var cols = files["P1234567890_2026.TXT"].Split("\r\n")[0].Split('|');
 
-        Assert.Equal("1", cols[4]);
+        Assert.Equal("1", cols[6]);
+    }
+
+    // The Pin. 2025 fields a typed row can carry: status, the retirement or
+    // contract-end date, and the amounts with columns of their own.
+    [Fact]
+    public void TheNewFieldsAreWrittenAsTyped()
+    {
+        var row = Row();
+        row.Status = 3;
+        row.RetirementDate = new DateTime(2027, 3, 31);
+        row.BenefitsInKind = 2400m;
+        row.TaxExempt = 600m;
+        row.Cp38 = 250.50m;
+        row.Perkeso = 415.80m;
+
+        var cols = Unzip(Service().ConvertCp8d(Request(row)).Content!)["P1234567890_2026.TXT"]
+            .Split("\r\n")[0].Split('|');
+
+        Assert.Equal("3", cols[4]);
+        Assert.Equal("31-03-2027", cols[5]);
+        Assert.Equal("2400", cols[10]);
+        Assert.Equal("600", cols[13]);
+        Assert.Equal("250.50", cols[19]);
+        Assert.Equal("416", cols[21]);
     }
 
     [Fact]

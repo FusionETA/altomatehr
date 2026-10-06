@@ -75,6 +75,7 @@ public static class AuditActions
     public const string PayrollRunSubmitForApproval = "payroll.run.submit-for-approval";
     public const string PayrollRunApprove = "payroll.run.approve";
     public const string PayrollRunRejectApproval = "payroll.run.reject-approval";
+    public const string PayrollRunLhdnReceipts = "payroll.run.lhdn-receipts";
     public const string PayrollRunRevertToDraft = "payroll.run.revert-to-draft";
     public const string PayrollRunDelete = "payroll.run.delete";
 

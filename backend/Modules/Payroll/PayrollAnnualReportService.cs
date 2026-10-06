@@ -43,8 +43,12 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         var payload = await LoadAsync(year);
 
         // The year gate, enforced here and not only on the page, so no direct
-        // URL or API caller gets a partial-year return either.
-        if (!payload.CanGenerate)
+        // URL or API caller gets a partial-year return either. PCB 2(II) is a
+        // statement of deductions so far, and is exempt.
+        var meta = PayrollAnnualReports.All.GetValueOrDefault(kind);
+        if (meta is null) return StatutoryFileResult.Refused("Unknown annual report.");
+
+        if (meta.RequiresFullYear && !payload.CanGenerate)
         {
             var missing = string.Join(", ", payload.MissingMonths.Select(m =>
                 System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(m)));
@@ -61,6 +65,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             PayrollAnnualReportKind.CP8D_EMPLOYEE_TXT => Cp8dTxt.RenderEmployees(payload),
             PayrollAnnualReportKind.FORM_EA_BULK_PDF => Pdf(
                 kind, payload, FormEaPdf.Render(payload), FormEaPdf.ContentType),
+            PayrollAnnualReportKind.PCB2II_BULK_PDF => Pdf(
+                kind, payload,
+                LhdnForms.Pdf.Pcb2IiPdf.Render([.. payload.Employees
+                    .Select(e => LhdnForms.Pdf.Pcb2IiStatement.From(payload, e, DateTime.UtcNow))]),
+                LhdnForms.Pdf.Pcb2IiPdf.ContentType),
             PayrollAnnualReportKind.FORM_E_CP8D_PDF => Pdf(
                 kind, payload,
                 FormECp8dPdf.Render(payload, await PartAAsync(year)),
@@ -99,6 +108,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             CompanyInfo = info,
             EmployerNo = PayrollAnnualReports.EmployerNumber(info?.EmployerTin),
             SubmittedMonths = [.. runs.Select(r => r.PeriodMonth).Distinct().Order()],
+            Receipts = runs
+                .GroupBy(r => r.PeriodMonth)
+                .ToDictionary(g => g.Key, g => new LhdnMonthReceipts(
+                    g.First().PcbReceiptNo, g.First().PcbReceiptDate,
+                    g.First().Cp38ReceiptNo, g.First().Cp38ReceiptDate)),
         };
 
         if (runs.Count == 0) return payload;
@@ -151,6 +165,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Bonus { get; set; }
         public decimal Bik { get; set; }
         public decimal Pcb { get; set; }
+        public decimal Mtd { get; set; }
         public decimal Cp38 { get; set; }
         public decimal Zakat { get; set; }
         public decimal Epf { get; set; }
@@ -158,6 +173,9 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Eis { get; set; }
 
         public SortedDictionary<int, (decimal Pcb, decimal Cp38, decimal Zakat)> Months { get; } = new();
+
+        // Form EA, line by line (FormEaLines).
+        public FormEaFigures Ea { get; } = new();
     }
 
     private static void Accumulate(
@@ -169,6 +187,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         acc.Months[month] = (m.Pcb + payslip.Pcb + payslip.VoluntaryPcb, m.Cp38 + payslip.Cp38, m.Zakat + payslip.Zakat);
 
         acc.Pcb += payslip.Pcb;
+        acc.Mtd += payslip.Pcb + payslip.VoluntaryPcb;
         acc.Cp38 += payslip.Cp38;
         acc.Zakat += payslip.Zakat;
         acc.Epf += payslip.EpfEmployee;
@@ -196,6 +215,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
         acc.Bonus += bonus;
         acc.Bik += bik;
+        acc.Ea.Add(FormEaLines.For(payslip, lineItems));
 
         // Gross on the payslip already includes the bonus and excludes BIK,
         // so the salary line is gross less what is reported separately.
@@ -250,25 +270,20 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             TotalEisEmployee = Money.Round2(acc.Eis),
             Months = [.. acc.Months.Select(kv => new AnnualMonth(
                 kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat)))],
+            Ea = acc.Ea.Rounded(),
+            JoinDate = profile?.JoinDate,
+            LeaveDate = profile?.LeaveDate,
+            TotalMtdRemitted = Money.Round2(acc.Mtd),
+            DateOfBirth = profile?.DateOfBirth,
+            Cp8dStatusOverride = PayrollAnnualReports.Cp8dStatus(profile?.EmploymentStatus),
+            Cp8dRetirementDateOverride = profile?.ContractEndDate,
         };
     }
 
-    // Malformed JSON reads as no children rather than failing the filing. An
-    // under-claimed relief is recoverable by the employee on their own return;
-    // a filing that cannot be produced at all is not.
-    private static IReadOnlyList<ChildRelief> ParseChildren(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return [];
-
-        try
-        {
-            return JsonSerializer.Deserialize<List<ChildRelief>>(json, ProfileJson) ?? [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
+    // Same lenient read as payroll, so EA / CP8D count the children PCB
+    // relieved — including v1's legacy values (see ChildReliefJson).
+    private static IReadOnlyList<ChildRelief> ParseChildren(string? json) =>
+        ChildReliefJson.Parse(json);
 
     // The JSON on EmployeeProfile was written by the reference app, so reads
     // are case-insensitive and enums arrive as names.
@@ -324,17 +339,34 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                 EmployeeName = row.Name.Trim(),
                 IncomeTaxNumber = row.TaxRef,
                 IdNumber = row.NewIc,
-                IdType = IdType.NRIC,
+                // A number with letters in it is a passport (or police / army
+                // number), which CP8D files as written rather than as digits.
+                IdType = row.NewIc.Any(char.IsLetter) ? IdType.PASSPORT : IdType.NRIC,
                 Cp8dCategoryOverride = row.Category,
+                Cp8dStatusOverride = row.Status,
+                Cp8dRetirementDateOverride = row.RetirementDate,
                 PcbBorneByEmployer = row.TaxBorneByEmployer,
                 QualifyingChildren = row.Children,
                 AnnualChildRelief = row.ChildRelief,
-                // TotalIncome is salary + additional remuneration + BIK, so the
-                // single figure the admin typed goes in as salary and the other
-                // two stay zero — the sum is what CP8D column 8 reports.
+                // The typed gross is field 10 as it stands: the remuneration
+                // other than what fields 11–14 report separately.
                 GrossSalary = row.AnnualGross,
+                Ea = new FormEaFigures
+                {
+                    B1a = row.AnnualGross,
+                    B3 = row.BenefitsInKind,
+                    B4 = row.LivingAccommodation,
+                    B1e = row.Esos,
+                    F = row.TaxExempt,
+                    D5aTp1Relief = row.Tp1Relief,
+                    D5bZakatSelfPaid = row.Tp1Zakat,
+                    D3ZakatViaSalary = row.Zakat,
+                },
                 TotalEpfEmployee = row.Epf,
                 TotalPcb = row.Pcb,
+                TotalMtdRemitted = row.Pcb,
+                TotalCp38 = row.Cp38,
+                TotalSocsoEmployee = row.Perkeso,
             }).ToList(),
         };
 

@@ -177,8 +177,9 @@ public static class PcbCalculator
         // gate as the RM 4,000 S relief.
         var spouseClaimable = input.SpouseWorking == false;
 
-        var chargeableNormal = Math.Max(0m,
-            annualTaxable - epf.Normal - perkesoRelief - allowableDeductions - reliefs);
+        var chargeableBeforeFloor =
+            annualTaxable - epf.Normal - perkesoRelief - allowableDeductions - reliefs;
+        var chargeableNormal = Math.Max(0m, chargeableBeforeFloor);
 
         var annualTaxNormal = PcbTaxBands.AnnualTax(chargeableNormal, spouseClaimable, input.SpecialTaxScheme);
         var (m, r, bandB) = PcbTaxBands.BandFor(chargeableNormal, spouseClaimable, input.SpecialTaxScheme);
@@ -241,6 +242,7 @@ public static class PcbCalculator
             Lp1 = lp1,
 
             P = chargeableNormal,
+            PBeforeFloor = Money.Round2(chargeableBeforeFloor),
             M = m,
             R = r,
             B = bandB,

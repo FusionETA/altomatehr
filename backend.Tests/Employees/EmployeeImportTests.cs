@@ -162,6 +162,46 @@ public class EmployeeImportTests
         Assert.Equal("CIMB", saved.Dto.BankName);
     }
 
+    [Fact]
+    public async Task AWorkPermitInTheSheet_IsSavedToTheProfile()
+    {
+        var h = Make();
+
+        await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("workPermitNumber", "PLKS-0001"), ("workPermitExpiry", "2027-03-31")])),
+            TabularFormat.Csv);
+
+        var saved = Assert.Single(h.Profiles.Saves);
+        Assert.Equal("PLKS-0001", saved.Dto.WorkPermitNumber);
+        Assert.Equal(new DateTime(2027, 3, 31), saved.Dto.WorkPermitExpiry);
+    }
+
+    // As in the previous system: a blank SOCSO number takes the IC, since in
+    // Malaysia most employees' SOCSO number IS their IC.
+    [Fact]
+    public async Task ABlankSocsoNumber_TakesTheIc()
+    {
+        var h = Make();
+
+        await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("idNumber", "900101-14-5567")])),
+            TabularFormat.Csv);
+
+        Assert.Equal("900101-14-5567", Assert.Single(h.Profiles.Saves).Dto.SocsoNumber);
+    }
+
+    [Fact]
+    public async Task ASocsoNumberInTheSheet_IsKept()
+    {
+        var h = Make();
+
+        await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("idNumber", "900101-14-5567"), ("socsoNumber", "A1234567")])),
+            TabularFormat.Csv);
+
+        Assert.Equal("A1234567", Assert.Single(h.Profiles.Saves).Dto.SocsoNumber);
+    }
+
     // The whole point of returning them: they are shown once and stored nowhere.
     [Fact]
     public async Task ReturnsThePasswordForEachAccountItCreated()
@@ -760,6 +800,9 @@ public class EmployeeImportTests
     // that fails and is never saved can't leave its edits behind in the store.
     private sealed class FakeProfileService(IEnumerable<EmployeeProfile> profiles) : IEmployeeProfileService
     {
+        public Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() =>
+            Task.FromResult<IReadOnlyList<WorkPermitDto>>([]);
+
         public Dictionary<string, EmployeeProfile> Store { get; } =
             profiles.ToDictionary(p => p.UserId);
 

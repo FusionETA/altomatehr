@@ -30,6 +30,11 @@ public sealed record PayrollAnnualPayload
     // Which months of the year have an APPROVED (submitted) run, 1–12.
     public IReadOnlyList<int> SubmittedMonths { get; init; } = [];
 
+    // LHDN's MTD / CP38 payment receipts for each approved month, for PCB 2(II).
+    // A receipt belongs to the company's monthly remittance, not to a person.
+    public IReadOnlyDictionary<int, LhdnMonthReceipts> Receipts { get; init; } =
+        new Dictionary<int, LhdnMonthReceipts>();
+
     public IReadOnlyList<int> MissingMonths =>
         [.. Enumerable.Range(1, 12).Where(m => !SubmittedMonths.Contains(m))];
 
@@ -100,9 +105,36 @@ public sealed record AnnualEmployeeRow
 
     // Month by month, for PCB 2(II)'s table. Only months with a submitted run.
     public IReadOnlyList<AnnualMonth> Months { get; init; } = [];
+
+    // Form EA's income, deduction and exemption lines (FormEaLines).
+    public FormEaFigures Ea { get; init; } = new();
+
+    // EA A9: printed only when the employment began or ended within the year.
+    public DateTime? JoinDate { get; init; }
+    public DateTime? LeaveDate { get; init; }
+
+    // Everything remitted to LHDN as MTD in CP39's PCB field: the formula
+    // PCB plus any Additional PCB the employee asked for. The MTD spec keeps
+    // the additional part out of next month's X, but it is still tax paid by
+    // the employee — LHDN credits what CP39 carried — so EA D1 and CP8D
+    // field 19 report this, as PCB 2(II)'s table does. `TotalPcb` stays the
+    // formula PCB alone.
+    public decimal TotalMtdRemitted { get; init; }
+
+    // CP8D field 6 falls back to the statutory retirement age from this.
+    public DateTime? DateOfBirth { get; init; }
+
+    // CP8D fields 5 and 6: the profile's employment status and contract end (or
+    // the converter's typed values). Null reads the defaults.
+    public int? Cp8dStatusOverride { get; init; }
+    public DateTime? Cp8dRetirementDateOverride { get; init; }
 }
 
 // One submitted month for one employee. `Pcb` is what went to LHDN in CP39's
 // PCB field — the formula PCB plus any Additional PCB the employee asked for;
 // CP38 arrears are remitted in their own column.
 public sealed record AnnualMonth(int Month, decimal Pcb, decimal Cp38, decimal Zakat);
+
+// The receipts LHDN issued for one month's MTD (CP39) and CP38 payments.
+public sealed record LhdnMonthReceipts(
+    string? PcbReceiptNo, DateTime? PcbReceiptDate, string? Cp38ReceiptNo, DateTime? Cp38ReceiptDate);

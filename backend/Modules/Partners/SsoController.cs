@@ -1,6 +1,7 @@
 using AltomateHR.Api.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AltomateHR.Api.Modules.ApiKeys;
 
 namespace AltomateHR.Api.Modules.Partners;
 
@@ -32,6 +33,7 @@ public class SsoController : ControllerBase
     // after redemption instead of the partner's default home — e.g. a
     // notification relay linking straight to the appraisal it's about. Invalid
     // values are silently dropped (see MintLaunchTicketAsync), never rejected.
+    [HumanOnly]
     [HttpGet("launch/{app}")]
     public async Task<IActionResult> Launch(string app, [FromQuery] string? dest = null)
     {

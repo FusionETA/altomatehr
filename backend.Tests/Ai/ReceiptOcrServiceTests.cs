@@ -234,7 +234,7 @@ public class ReceiptOcrServiceTests
                 Id = organizationId, Name = "Fusioneta", DefaultCurrency = "MYR",
             });
 
-        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId) =>
+        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false) =>
             throw new NotSupportedException();
         public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>
             throw new NotSupportedException();

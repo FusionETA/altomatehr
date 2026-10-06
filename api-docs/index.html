@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API</title>
+  <meta name="description" content="How to call the AltomateHR API with a company API key: authentication, scopes, errors and conventions." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Bookmark: the pages that exist are correct as of this commit on main. The
+  next update re-checks every controller/DTO changed after it — from any
+  branch — then moves it forward.
+  api-docs-covered-up-to: 06770b7
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html" aria-current="page">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Overview</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>AltomateHR API</h1>
+    <p class="lead">
+      Read and write a company's HR and payroll data from your own system: employees,
+      projects, claims, leave, attendance, overtime and payroll runs. Every request acts
+      inside one company, with the permissions its API key was given.
+    </p>
+    </div>
+
+    <section class="section" id="authentication">
+      <h2>Authentication</h2>
+    <p>
+      A company's admin creates an API key in AltomateHR. A key starts with
+      <code>wp_live_</code>, belongs to <strong>one company</strong>, and is shown only once.
+      Send it as a bearer token on every request:
+    </p>
+<pre><code>curl https://&lt;api-host&gt;/whoami \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+    <ul>
+      <li>Every call is limited to the key's own company. There is no way to read or change
+        another company's data with it.</li>
+      <li>A key acts with <strong>admin</strong> rights in that company, narrowed by its
+        <a href="#scopes">scopes</a>.</li>
+      <li>An unknown or revoked key, or one whose company no longer exists, gets
+        <code>401</code>. The response doesn't say which, deliberately.</li>
+      <li>Some endpoints are for people only and answer <code>403</code> to any key: a
+        person's own actions (clocking in, applying for leave, filing a claim or overtime,
+        notifications), account actions (passwords, switching company) and platform settings
+        (managing API keys and admin access, the activity log, accounting connections).</li>
+      <li>Every other endpoint needs a scope, listed on its page. Only <code>GET /whoami</code>
+        and <code>GET /pending</code> work with any key.</li>
+    </ul>
+    <div class="callout warn">
+      Treat a key like a password: keep it on your server, never in a browser or app bundle.
+      If one leaks, revoke it in AltomateHR and create a new one.
+    </div>
+    </section>
+
+    <section class="section" id="scopes">
+      <h2>Scopes</h2>
+    <p>
+      A key carries a set of scopes chosen when it's created. Each endpoint page lists the scope
+      it needs; a key without it gets <code>403</code> with
+      <code>Caller is missing required scope: …</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Area</th><th>Read</th><th>Write</th></tr></thead>
+        <tbody>
+          <tr><td>Employees</td><td><code>employees:read</code></td><td><code>employees:write</code></td></tr>
+          <tr><td>Claims</td><td><code>claims:read</code></td><td><code>claims:write</code></td></tr>
+          <tr><td>Leave</td><td><code>leave:read</code></td><td><code>leave:write</code></td></tr>
+          <tr><td>Attendance</td><td><code>attendance:read</code></td><td><code>attendance:write</code></td></tr>
+          <tr><td>Overtime</td><td><code>overtime:read</code></td><td><code>overtime:write</code></td></tr>
+          <tr><td>Projects</td><td><code>projects:read</code></td><td><code>projects:write</code></td></tr>
+          <tr><td>Teams</td><td><code>teams:read</code></td><td><code>teams:write</code></td></tr>
+          <tr><td>Accounts (chart of accounts)</td><td><code>accounts:read</code></td><td><code>accounts:write</code></td></tr>
+          <tr><td>Policies</td><td><code>policies:read</code></td><td><code>policies:write</code></td></tr>
+          <tr><td>Organization</td><td><code>organizations:read</code></td><td><code>organizations:write</code></td></tr>
+          <tr><td>Payroll</td><td><code>payroll:read</code></td><td><code>payroll:write</code></td></tr>
+          <tr><td>Notifications</td><td>—</td><td><code>notifications:write</code></td></tr>
+          <tr><td>Single sign-on hand-off</td><td>—</td><td><code>sso:write</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <code>payroll:write</code> covers creating and running payroll, adjustments, submitting,
+      approving, rejecting and reverting runs, and payroll settings. A payroll run is money
+      leaving a company, so only grant it to a system that needs it.
+    </p>
+    <p>
+      Some areas are also part of a company's plan. If the plan doesn't include a module, its
+      endpoints answer <code>403</code> with
+      <code>This organization's plan does not include the '…' module.</code>, whatever the
+      key's scopes.
+    </p>
+    </section>
+
+    <section class="section" id="errors">
+      <h2>Errors</h2>
+    <p>Errors come back as JSON in one of four shapes. Read the status code first.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+        <tbody>
+          <tr><td><code>400</code></td><td>A field failed validation</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
+          <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has a run)</td><td><code>{ "error": "message" }</code></td></tr>
+          <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
+          <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
+          <tr><td><code>403</code></td><td>Missing scope, module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
+          <tr><td><code>404</code></td><td>Not found in this company</td><td>empty or <code>{ "error": "…" }</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      A robust client reads <code>error</code> when it's a string, <code>error.message</code>
+      when it's an object, <code>message</code> when present, and the first entry of
+      <code>errors</code> otherwise.
+    </p>
+    </section>
+
+    <section class="section" id="conventions">
+      <h2>Conventions</h2>
+    <ul>
+      <li><strong>JSON</strong> request and response bodies, with <code>camelCase</code> field
+        names. Send <code>Content-Type: application/json</code>.</li>
+      <li><strong>Ids</strong> are strings. Employees have two: the <em>user id</em> (from
+        <code>/employees</code>) and the <em>payroll profile id</em>
+        (<code>employeeProfileId</code>, from <code>/payroll/employees</code>). Payroll
+        endpoints take the profile id; each endpoint page says which one it needs.</li>
+      <li><strong>Enums</strong> are strings, such as <code>"DRAFT"</code> or
+        <code>"MONTHLY"</code>.</li>
+      <li><strong>Money</strong> is a number with two decimal places, in Malaysian ringgit.</li>
+      <li><strong>Dates</strong> are ISO 8601. A payroll month is given as
+        <code>periodYear</code> + <code>periodMonth</code> (1–12).</li>
+      <li><strong>Rate limits</strong>: none on API-key requests today. Keep calls sequential
+        for writes to the same payroll run.</li>
+    </ul>
+    </section>
+
+    <section class="section" id="whoami">
+      <h2>Check a key</h2>
+    <section class="endpoint">
+      <div class="endpoint-head">
+        <span class="method get">GET</span>
+        <span class="path">/whoami</span>
+        <span class="tag">No scope needed</span>
+      </div>
+      <p>
+        What the key is and what it may do. Use it to confirm a pasted key belongs to the
+        company you expect before storing it.
+      </p>
+      <h3>Response <code>200</code></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>organizationId</code></td><td>string</td><td>The company the key belongs to.</td></tr>
+            <tr><td><code>apiKeyId</code></td><td>string</td><td>The key's id.</td></tr>
+            <tr><td><code>tokenName</code></td><td>string</td><td>The label the key was given in AltomateHR.</td></tr>
+            <tr><td><code>role</code></td><td>string</td><td>Always <code>"Admin"</code> for a key.</td></tr>
+            <tr><td><code>scopes</code></td><td>string[]</td><td>The key's scopes, sorted.</td></tr>
+            <tr><td><code>features</code></td><td>string[]</td><td>Optional capabilities this deployment supports. Check here before sending an optional field your integration added later.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>{
+  "organizationId": "org_123",
+  "apiKeyId": "key_123",
+  "tokenName": "Payroll converter",
+  "role": "Admin",
+  "scopes": ["employees:read", "payroll:read", "payroll:write"],
+  "features": ["onboarding.bulk", "sso.inbound"]
+}</code></pre>
+      <p><code>401</code> when the key is unknown, revoked, or its company no longer exists.</p>
+    </section>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<!--
+  AltomateHR user guide. Static HTML; screenshots in shots/ use demo data only
+  ("AltomateHR Demo Co") — this repo is PUBLIC, never a real company or person.
+
+  Maintained by the `user-guide` agent (.claude/agents/user-guide.md).
+  Bookmark: this page is correct as of this commit on main. The next update
+  re-checks every user-visible change after it — from any branch — then
+  moves it forward.
+  user-guide-covered-up-to: 7ae4fe4
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltomateHR — Employee guide</title>
+<style>
+  :root{
+    --ink:#111827; --ink-2:#374151; --muted:#6b7280; --line:#e5e7eb;
+    --bg:#ffffff; --bg-soft:#f7f7fb;
+    --brand:#4C1A86; --brand-2:#6d28d9; --brand-wash:#f4effa;
+    --mint:#0f766e; --mint-wash:#eafaf5;
+    --admin:#4C1A86; --admin-wash:#f4effa;
+    --staff:#0f766e; --staff-wash:#eafaf5;
+    --month:#b45309; --month-wash:#fffbeb;
+    --addon:#1d4ed8; --addon-wash:#eff4ff;
+    --warn:#b45309; --warn-wash:#fffbeb; --warn-line:#fde68a;
+    --stop:#b91c1c; --stop-wash:#fef2f2; --stop-line:#fecaca;
+    --ok:#047857; --ok-wash:#ecfdf5; --ok-line:#a7f3d0;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand)}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:250px 1fr;gap:44px}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr;gap:0;padding:0 18px}}
+
+  /* ---------- masthead ---------- */
+  .masthead{background:#4C1A86;color:#fff;padding:52px 0 44px;margin-bottom:32px}
+  .masthead .wrap{display:block}
+  .mh-eyebrow{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:600}
+  .masthead h1{margin:10px 0 12px;font-size:38px;line-height:1.15;font-weight:750;letter-spacing:-.02em}
+  .masthead p{margin:0;max-width:660px;font-size:17px;opacity:.93}
+  .mh-meta{margin-top:22px;font-size:13px;opacity:.8;max-width:660px}
+  .mh-rule{height:3px;width:64px;background:#9AFAE3;border-radius:2px;margin:20px 0 0}
+
+  /* ---------- sidebar ---------- */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:8px 0 40px}
+  @media (max-width:900px){nav.toc{position:static;max-height:none;border-bottom:1px solid var(--line);margin-bottom:24px}}
+  .toc-group{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;
+             margin:20px 0 6px;padding-left:10px}
+  .toc-group:first-of-type{margin-top:4px}
+  .toc a{display:block;padding:6px 10px;border-radius:7px;color:var(--ink-2);text-decoration:none;font-size:14px;
+         border-left:2px solid transparent}
+  .toc a:hover{background:var(--bg-soft);color:var(--ink)}
+  .toc a.active{background:var(--brand-wash);color:var(--brand);font-weight:600;border-left-color:var(--brand)}
+  .toc a .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--month);margin-right:7px;vertical-align:1px}
+
+  .panel{background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px}
+  .panel-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px}
+  .panel button{
+    display:block;width:100%;text-align:left;margin-bottom:5px;padding:7px 10px;border-radius:7px;
+    border:1px solid var(--line);background:#fff;color:var(--ink-2);font:inherit;font-size:13.5px;cursor:pointer
+  }
+  .panel button:last-child{margin-bottom:0}
+  .panel button:hover{border-color:var(--brand-2)}
+  .panel button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .panel .row{display:flex;gap:6px}
+  .panel .row button{margin-bottom:0}
+
+  /* ---------- collapsible topics ---------- */
+  main{padding-bottom:100px;min-width:0}
+  details.topic{border-top:1px solid var(--line);scroll-margin-top:14px}
+  details.topic:first-of-type{border-top:none}
+  details.topic > summary{
+    cursor:pointer;list-style:none;padding:20px 0 14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap
+  }
+  details.topic > summary::-webkit-details-marker{display:none}
+  details.topic > summary::before{
+    content:"";flex:0 0 auto;width:9px;height:9px;margin-top:9px;border-right:2px solid var(--brand);
+    border-bottom:2px solid var(--brand);transform:rotate(-45deg);transition:transform .15s ease
+  }
+  details.topic[open] > summary::before{transform:rotate(45deg)}
+  details.topic > summary h2{margin:0;font-size:25px;letter-spacing:-.015em;font-weight:700;flex:1 1 auto}
+  details.topic > summary:hover h2{color:var(--brand)}
+  .topic-body{padding:0 0 30px 19px}
+  @media (max-width:640px){.topic-body{padding-left:0}}
+  .topic-lede{font-size:16.5px;color:var(--ink-2);margin:0 0 4px}
+
+  h3{font-size:18.5px;margin:28px 0 8px;letter-spacing:-.01em}
+  h4{font-size:15.5px;margin:22px 0 6px;color:var(--ink-2)}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--bg-soft);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13.5px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  strong{font-weight:650}
+
+  /* ---------- badges ---------- */
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+         padding:2.5px 8px;border-radius:999px;white-space:nowrap}
+  h2 .badge,h3 .badge,h4 .badge,td .badge,p .badge,li .badge{margin-left:8px;vertical-align:2px}
+  .badge.admin{background:var(--admin-wash);color:var(--admin);border:1px solid #ddd6fe}
+  .badge.staff{background:var(--staff-wash);color:var(--staff);border:1px solid #99f6e4}
+  .badge.both{background:var(--bg-soft);color:var(--ink-2);border:1px solid var(--line)}
+  .badge.month{background:var(--month-wash);color:var(--month);border:1px solid var(--warn-line)}
+  .badge.addon{background:var(--addon-wash);color:var(--addon);border:1px solid #c7d8fe}
+  summary .badge{align-self:center;margin-left:0}
+
+  /* ---------- callouts ---------- */
+  .note{border-radius:10px;padding:14px 16px;margin:18px 0;border:1px solid var(--line);background:var(--bg-soft);font-size:15px}
+  .note .nt{display:block;font-weight:700;font-size:12px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:5px}
+  .note p:first-of-type{margin-top:0}
+  .note p:last-child{margin-bottom:0}
+  .note.warn{background:var(--warn-wash);border-color:var(--warn-line)}
+  .note.warn .nt{color:var(--warn)}
+  .note.stop{background:var(--stop-wash);border-color:var(--stop-line)}
+  .note.stop .nt{color:var(--stop)}
+  .note.ok{background:var(--ok-wash);border-color:var(--ok-line)}
+  .note.ok .nt{color:var(--ok)}
+  .note.tip .nt{color:var(--brand)}
+  .note.brand{background:var(--brand-wash);border-color:#ddd6fe}
+  .note.brand .nt{color:var(--brand)}
+
+  /* ---------- tables ---------- */
+  .tbl-scroll{overflow-x:auto;margin:18px 0;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--bg-soft);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+           font-weight:700;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .yes{color:var(--ok);font-weight:650}
+  .no{color:var(--muted)}
+
+  /* ---------- steps ---------- */
+  .steps{counter-reset:s;list-style:none;padding:0;margin:20px 0}
+  .steps > li{counter-increment:s;position:relative;padding:0 0 24px 46px;border-left:2px solid var(--line);margin-left:14px}
+  .steps > li:last-child{border-left-color:transparent;padding-bottom:4px}
+  .steps > li::before{
+    content:counter(s);position:absolute;left:-15px;top:-2px;width:28px;height:28px;border-radius:50%;
+    background:var(--brand);color:#fff;font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center
+  }
+  .steps h4{margin:1px 0 6px;font-size:16.5px;color:var(--ink)}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:20px 0}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fff}
+  .card h4{margin:0 0 4px;font-size:16px;color:var(--ink)}
+  .card p{margin:0;font-size:14.5px;color:var(--ink-2)}
+  .card .price{font-size:22px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+  .card .price small{font-size:13px;font-weight:500;color:var(--muted)}
+  .card .kicker{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---------- faq ---------- */
+  details.qa{border:1px solid var(--line);border-radius:10px;margin:9px 0;background:#fff;overflow:hidden}
+  details.qa[open]{background:var(--bg-soft)}
+  details.qa > summary{cursor:pointer;font-weight:600;padding:13px 16px;list-style:none;font-size:15.5px}
+  details.qa > summary::-webkit-details-marker{display:none}
+  details.qa > summary::before{content:"+";display:inline-block;width:18px;color:var(--brand);font-weight:700}
+  details.qa[open] > summary::before{content:"\2013"}
+  details.qa .body{padding:0 16px 14px 34px;font-size:15px;color:var(--ink-2)}
+  details.qa .body p:first-child{margin-top:0}
+
+  /* ---------- screenshot slots ---------- */
+  figure.shot{margin:22px 0;padding:0}
+  .shot-frame{
+    position:relative;border:2px dashed #ddd6fe;border-radius:12px;background:var(--bg-soft);
+    min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:34px 20px 24px;color:var(--brand)
+  }
+  .shot-frame::before{
+    content:attr(data-shot);position:absolute;top:10px;left:12px;background:var(--brand);color:#fff;
+    font-size:11px;font-weight:700;letter-spacing:.09em;padding:3px 9px;border-radius:999px
+  }
+  .shot-frame p{margin:6px 0 0;font-size:14.5px;color:var(--ink-2);max-width:460px}
+  .shot-file{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#fff;
+             border:1px solid #ddd6fe;border-radius:6px;padding:3px 9px;color:var(--brand)}
+  /* multi-shot grid — column count is set from the slot count by the script */
+  .shot-grid{display:grid;gap:12px;align-items:start}
+  .shot-grid[data-count="1"]{grid-template-columns:1fr}
+  .shot-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shot-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .shot-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shot-grid[data-count="5"],.shot-grid[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  /* phone screenshots are tall and thin — cap the width so they don't tower */
+  .shot-grid[data-orient="phone"]{grid-template-columns:repeat(auto-fit,minmax(0,190px));justify-content:start}
+  .shot-item{min-width:0}
+  .shot-item img{width:100%;display:block;border:1px solid var(--line);border-radius:10px}
+  .shot-item .shot-cap{margin:6px 0 0;font-size:12.5px;font-style:normal;color:var(--ink-2)}
+  .shot-cap-main{margin-top:10px}
+  .shot-grid[data-orient="phone"] .shot-frame{min-height:300px;padding:30px 12px 18px}
+  .shot-grid[data-orient="phone"] .shot-file{font-size:11px;word-break:break-all}
+  .shot-grid[data-orient="phone"] .shot-frame p{font-size:13px}
+  @media (max-width:720px){
+    .shot-grid[data-count]{grid-template-columns:1fr}
+    .shot-grid[data-orient="phone"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  figure.shot img{width:100%;display:block;border:1px solid var(--line);border-radius:12px}
+  .shot-cap{margin:8px 0 0;font-size:13.5px;color:var(--muted);font-style:italic}
+  figcaption{margin-top:12px}
+  ol.callouts{list-style:none;counter-reset:c;padding:0;margin:0;
+              display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:4px 20px}
+  ol.callouts li{counter-increment:c;position:relative;padding-left:30px;font-size:14.5px;color:var(--ink-2);margin:4px 0}
+  ol.callouts li::before{
+    content:counter(c);position:absolute;left:0;top:1px;width:21px;height:21px;border-radius:50%;
+    background:var(--brand-wash);border:1.5px solid var(--brand);color:var(--brand);
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center
+  }
+
+  /* ---------- monthly rhythm strip ---------- */
+  .rhythm{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:20px 0}
+  .rhythm a{
+    display:block;text-decoration:none;border:1px solid var(--line);border-radius:11px;padding:14px;background:#fff;color:inherit
+  }
+  .rhythm a:hover{border-color:var(--brand-2);background:var(--brand-wash)}
+  .rhythm .n{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .rhythm .t{font-weight:650;margin-top:3px;font-size:15.5px}
+  .rhythm .w{font-size:13.5px;color:var(--muted);margin-top:2px}
+
+  .hidden-by-filter{display:none !important}
+  footer{border-top:1px solid var(--line);margin-top:50px;padding:24px 0 60px;color:var(--muted);font-size:13.5px}
+  .kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 7px;font-size:13px;background:#fff;
+       font-weight:600;white-space:nowrap}
+
+  @media print{
+    nav.toc,.panel{display:none}
+    .wrap{display:block;max-width:none;padding:0}
+    .masthead{background:none;color:#000;padding:0 0 20px;border-bottom:2px solid #000}
+    details.topic{page-break-inside:avoid}
+    details .topic-body,details.qa .body{display:block !important}
+    details.topic > summary::before,details.qa > summary::before{display:none}
+  }
+</style>
+
+<style>
+  /* ---------- employee-guide additions ---------- */
+  .masthead{background:#0f766e}
+  .toc a.active{background:var(--mint-wash);color:var(--mint);border-left-color:var(--mint)}
+  .panel button[aria-pressed="true"]{background:var(--mint);border-color:var(--mint)}
+  .panel button:hover{border-color:var(--mint)}
+  .steps > li::before{background:var(--mint)}
+  details.topic > summary::before{border-right-color:var(--mint);border-bottom-color:var(--mint)}
+  details.topic > summary:hover h2{color:var(--mint)}
+  details.qa > summary::before{color:var(--mint)}
+  a{color:var(--mint)}
+  ol.callouts li::before{background:var(--mint-wash);border-color:var(--mint);color:var(--mint)}
+  .note.tip .nt,.note.brand .nt{color:var(--mint)}
+  .note.brand{background:var(--mint-wash);border-color:#99f6e4}
+  .shot-frame{border-color:#99f6e4;color:var(--mint)}
+  .shot-frame::before{background:var(--mint)}
+  .rhythm a:hover{border-color:var(--mint);background:var(--mint-wash)}
+  .badge.sup{background:var(--admin-wash);color:var(--admin);border:1px solid #ddd6fe}
+  .badge.optional{background:var(--addon-wash);color:var(--addon);border:1px solid #c7d8fe}
+  /* tappable label, e.g. a button name in the app */
+  .btn-name{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:7px;
+            padding:1px 8px;background:#fff;font-weight:600;font-size:14px;white-space:nowrap}
+
+</style>
+<style>
+  .shot-frame strong{display:block;font-size:15px;color:var(--ink);margin-bottom:6px}
+  .shot-frame .shot-file{margin-top:4px}
+  .btn-name{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:7px;
+            padding:1px 8px;background:#fff;font-weight:600;font-size:14px;white-space:nowrap}
+  .badge.optional{background:var(--addon-wash);color:var(--addon);border:1px solid #c7d8fe}
+  .badge.owner{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+  .badge.sup{background:var(--admin-wash);color:var(--admin);border:1px solid #ddd6fe}
+  .howto{font-size:14px;color:var(--ink-2)}
+  .howto code{font-size:12.5px}
+</style>
+
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="mh-eyebrow">AltomateHR · Employee guide</div>
+    <h1>Your guide to the employee app</h1>
+    <p>Everything you'll do in AltomateHR — sign in, clock in and out, claim overtime, apply for leave, submit a
+       claim and pick up your payslip. Written for a phone, and short enough to read in one sitting.</p>
+    <div class="mh-meta">Use the list on the left, or click a heading to open just that topic. Anything marked
+      <strong>Optional</strong> may not be switched on at your company — if you can't see the tab, it isn't part of
+      your setup.</div>
+    <div class="mh-rule"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <div class="panel">
+      <div class="panel-label">Show content for</div>
+      <button data-plan="all" aria-pressed="true">Everything</button>
+      <button data-plan="staff" aria-pressed="false">Just my own tasks</button>
+      <button data-plan="sup" aria-pressed="false">Approving for a team</button>
+    </div>
+    <div class="panel">
+      <div class="panel-label">Topics</div>
+      <div class="row">
+        <button id="expandAll">Expand all</button>
+        <button id="collapseAll">Collapse all</button>
+      </div>
+    </div>
+
+    <div class="toc-group">Day one</div>
+    <a href="#start">What you'll use it for</a>
+    <a href="#signin">Signing in the first time</a>
+    <a href="#install">Putting it on your phone</a>
+    <a href="#tour">Finding your way around</a>
+
+    <div class="toc-group">Every day</div>
+    <a href="#clock" data-plan-link="staff"><span class="dot"></span>Clocking in and out</a>
+    <a href="#fix" data-plan-link="staff"><span class="dot"></span>Fixing a wrong time</a>
+    <a href="#history" data-plan-link="staff"><span class="dot"></span>Your attendance</a>
+    <a href="#overtime" data-plan-link="staff"><span class="dot"></span>Claiming overtime</a>
+
+    <div class="toc-group">When you need it</div>
+    <a href="#leave" data-plan-link="staff">Applying for leave</a>
+    <a href="#claims" data-plan-link="staff">Submitting a claim</a>
+    <a href="#claim-track" data-plan-link="staff">Tracking your claims</a>
+    <a href="#payslips" data-plan-link="staff">Your payslips</a>
+
+    <div class="toc-group">Your account</div>
+    <a href="#account">Password, alerts &amp; companies</a>
+
+    <div class="toc-group">If you approve</div>
+    <a href="#supervisor" data-plan-link="sup">Approving for your team</a>
+    <a href="#team" data-plan-link="sup">Your team's day &amp; balances</a>
+
+    <div class="toc-group">Stuck?</div>
+    <a href="#faq">Common questions</a>
+  </nav>
+
+  <main>
+
+  <!-- =================================================== DAY ONE -->
+
+  <details class="topic" id="start" open>
+    <summary><h2>What you'll use it for</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">AltomateHR is where your company keeps attendance, leave, claims and pay. On your phone
+      there are five tabs along the bottom — that's all you need.</p>
+    <div class="cards">
+      <div class="card"><h4>Dashboard</h4><p>Where you land. Clock in and out, take breaks, see your latest payslip,
+        and start a claim or leave request.</p></div>
+      <div class="card"><h4>Claims <span class="badge optional">Optional</span></h4><p>Photograph a receipt and submit
+        it — mileage too — then track it until you're paid.</p></div>
+      <div class="card"><h4>Attendance <span class="badge optional">Optional</span></h4><p>Your hours this week and
+        month, your history, and overtime.</p></div>
+      <div class="card"><h4>Leave</h4><p>Your balances, and applying for leave with an MC attached.</p></div>
+      <div class="card"><h4>Payslips</h4><p>Every payslip you've been issued, with the breakdown and a PDF.</p></div>
+    </div>
+    <div class="note tip"><span class="nt">Nothing to download from an app store</span>
+      <p>AltomateHR runs in your phone's browser. Open the link once and add it to your home screen — after that it
+        opens like any other app. <a href="#install">How to do that</a>.</p>
+    </div>
+    
+    <figure class="shot" data-place="The app">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/dashboard.png" alt="The Dashboard: greeting, the Right now clock card and the bottom tabs" loading="lazy">
+          <p class="shot-cap">Dashboard</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/claims.png" alt="My claims list with status filters" loading="lazy">
+          <p class="shot-cap">Claims</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/attendance-tab.png" alt="Attendance → Dashboard with this week and this month" loading="lazy">
+          <p class="shot-cap">Attendance</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/leave.png" alt="Leave → My Balances" loading="lazy">
+          <p class="shot-cap">Leave</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/payslips.png" alt="The Payslips list with net pay and View breakdown / PDF" loading="lazy">
+          <p class="shot-cap">Payslips</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The screens you'll live in</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="signin" open>
+    <summary><h2>Signing in the first time</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Your account already exists — HR created it. You just need the link and your starting
+      password.</p>
+    <ol class="steps">
+      <li><h4>Open the link</h4>
+        <p>Go to <strong>hr.altomate.io</strong> in your phone's browser — the same link is in your welcome email
+          (<span class="btn-name">Sign in to AltomateHR</span>). Use Safari on iPhone or Chrome on Android.</p></li>
+      <li><h4>Sign in with your work email</h4>
+        <p>Your <strong>starting password</strong> is your <strong>email address followed by the month and day you were
+          born</strong> — four digits, no spaces. (Your welcome email says if HR set a different one.)</p>
+        <div class="note"><span class="nt">Example</span>
+          <p>Email <code>ali@company.com</code>, born <strong>23 November</strong> → <code>ali@company.com1123</code>
+            — month first (<code>11</code>), then day (<code>23</code>).</p></div></li>
+      <li><h4>Change it straight away</h4>
+        <p>Open the ⋮ menu and choose <span class="btn-name">Change password</span>. Enter your current password, then a
+          new one (at least 8 characters) twice. This signs you out of every device, including this one — sign back
+          in with the new password. (If you signed in through Altomate, your password is managed there, so this isn't
+          in the menu.)</p></li>
+    </ol>
+    <h3>Forgotten your password</h3>
+    <ol class="steps">
+      <li><h4>Tap “Forgot your password?”</h4><p>Enter your work email and tap <span class="btn-name">Send code</span>.</p></li>
+      <li><h4>Check your email</h4><p>A <strong>6-digit code</strong> arrives. It doesn't last long, and too many wrong
+        guesses cancel it — tap <span class="btn-name">Send a new code</span> if needed. Check spam if it's not there.</p></li>
+      <li><h4>Set a new password</h4><p>Enter the code and a new password twice, then
+        <span class="btn-name">Set new password</span>, and sign in.</p></li>
+    </ol>
+    <div class="note"><span class="nt">Opened from Altomate?</span>
+      <p>If you came in through the Altomate app and see “That sign-in link has expired or was already used”, go back
+        to Altomate and open altomate HR again — each link works once, for two minutes.</p>
+    </div>
+    
+    <figure class="shot" data-place="Signing in">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/login.png" alt="The Login screen: Email, Password and Forgot your password?" loading="lazy">
+          <p class="shot-cap">Sign in</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/reset-code.png" alt="The Check your email step with the 6-digit code and new password" loading="lazy">
+          <p class="shot-cap">Reset code</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Signing in, and resetting a forgotten password</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="install" open>
+    <summary><h2>Putting it on your phone</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Two taps, and AltomateHR sits on your home screen with its own icon.</p>
+    <h3>iPhone (Safari)</h3>
+    <ol><li>Open <strong>hr.altomate.io</strong> in <strong>Safari</strong>.</li>
+      <li>Tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li></ol>
+    <h3>Android (Chrome)</h3>
+    <ol><li>Open <strong>hr.altomate.io</strong> in <strong>Chrome</strong>.</li>
+      <li>Tap the <strong>⋮</strong> menu, then <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li></ol>
+    <div class="note"><span class="nt">When there's an update</span>
+      <p>A bar says “A new version of AltomateHR is available.” Tap <span class="btn-name">Reload</span>.</p>
+    </div>
+    
+    <figure class="shot" data-place="Installing">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/install-iphone.png" alt="Safari&#x27;s Share sheet with Add to Home Screen" loading="lazy">
+          <p class="shot-cap">Add to Home Screen</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/install-icon.png" alt="The AltomateHR icon on a phone&#x27;s home screen" loading="lazy">
+          <p class="shot-cap">On the home screen</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Installing on a phone</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="tour" open>
+    <summary><h2>Finding your way around</h2></summary>
+    <div class="topic-body">
+    <ul>
+      <li><strong>Bottom tabs</strong> — Dashboard, Claims, Attendance, Leave, Payslips. Some tabs have sub-pages in a
+        strip just under the header (e.g. Attendance → Dashboard, Overtime, History).</li>
+      <li><strong>The bell</strong> — approvals and decisions about your requests. Tap one to go straight to it.</li>
+      <li><strong>The ⋮ menu</strong> — change password, notifications, <span class="btn-name">What's new</span> (our
+        release notes — a dot shows on the menu until you've read the latest), <span class="btn-name">Guide</span> (opens
+        this guide in a new tab), switch company, Appraisify, log out.</li>
+    </ul>
+    <p>Supervisors see extra sub-pages and red number badges for what's waiting on them — see
+      <a href="#supervisor">Approving for your team</a>.</p>
+    
+    <figure class="shot" data-place="Finding your way">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/account-menu.png" alt="The ⋮ account menu open: Change password, What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
+          <p class="shot-cap">The ⋮ menu</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/sup-more-menu.png" alt="A supervisor&#x27;s Attendance tabs with the ⋯ menu open: History and Team" loading="lazy">
+          <p class="shot-cap">Supervisors: extra sub-pages under ⋯</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The account menu, and the supervisor ⋯ menu</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== EVERY DAY -->
+
+  <details class="topic" id="clock" data-plan="staff" open>
+    <summary><h2>Clocking in and out</h2><span class="badge optional">Optional</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">From the <strong>Dashboard</strong>, on the <strong>Right now</strong> card.</p>
+    <ol class="steps">
+      <li><h4>Pick your project</h4><p>Choose where you're working from <strong>Project</strong>. You only see the projects
+        you're assigned to.</p></li>
+      <li><h4>Tap to Clock In</h4><p>Allow location when your phone asks. Under the project, a small line already tells
+        you where you stand — <em>On site · 45 m away</em>, or <em>Off site · 612 m away (limit 500 m)</em> — so an
+        off-site clock-in asking for a reason and photo is no surprise. Tap the little refresh arrow beside it to check
+        again. Your clock-in goes to your supervisor for approval.</p></li>
+      <li><h4>Breaks</h4><p>While you're on the clock, <span class="btn-name">Start break</span> and
+        <span class="btn-name">End break</span> sit under the button.</p></li>
+      <li><h4>Tap to Clock Out</h4><p>A summary shows your hours. Tap <span class="btn-name">Clock out now</span>.</p></li>
+    </ol>
+    <h3>Not at the site?</h3>
+    <p>If you're further from the site than your company allows, or your phone couldn't read your location, a box
+      asks <strong>why</strong> and for a <strong>photo</strong>. Add both and you're clocked in — your supervisor sees
+      the note and photo when approving.</p>
+    <div class="note warn"><span class="nt">“Not on an approved network”</span>
+      <p>Some sites only allow clocking in from the office Wi-Fi. If you see this message, connect to the site's
+        network and try again. If you can't, tell your supervisor.</p>
+    </div>
+    <h3>More than one shift a day</h3>
+    <p>After clocking out you can <span class="btn-name">Start another shift</span>. Today's shifts are listed with your
+      total hours.</p>
+    <h3>Forgot to clock out yesterday?</h3>
+    <p>The Dashboard says so. Close that shift first — you can correct its end time on the way out (see
+      <a href="#fix">Fixing a wrong time</a>). If your company has switched on automatic clock-out, a shift left open
+      too long is closed for you and sent for approval.</p>
+    
+    <figure class="shot" data-place="Clocking in">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/clock-in.png" alt="Dashboard → Right now card with a project picked, the On site line with the distance, and Tap to Clock In" loading="lazy">
+          <p class="shot-cap">Before clocking in</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/on-clock.png" alt="The Right now card while on shift, with Tap to Clock Out and the break panel" loading="lazy">
+          <p class="shot-cap">On the clock</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/clock-offsite.png" alt="The Clock in from here box asking why and for a photo" loading="lazy">
+          <p class="shot-cap">Off-site box</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/clock-out-summary.png" alt="The Clock out box Summary tab with Clock out now" loading="lazy">
+          <p class="shot-cap">Clocking out</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Clocking in, on the clock, off-site, and clocking out</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="fix" data-plan="staff" open>
+    <summary><h2>Fixing a wrong time</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">Forgot to clock out on time? Correct it as you clock out.</p>
+    <ol class="steps">
+      <li><h4>Tap to Clock Out</h4><p>In the Clock out box, open the <strong>Request adjustment</strong> tab.</p></li>
+      <li><h4>Enter the right time</h4><p>The <strong>corrected date and time</strong> you actually finished, and a
+        <strong>reason</strong>.</p></li>
+      <li><h4>Tap “Clock out &amp; request”</h4><p>You're clocked out now, and your supervisor decides whether to use the
+        corrected time. Until then your history shows it as awaiting approval.</p></li>
+    </ol>
+    
+    <figure class="shot" data-place="Fixing a time">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/clockout-adjustment.png" alt="The Clock out box on the Request adjustment tab with a corrected time and reason" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Correcting your clock-out time</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="history" data-plan="staff" open>
+    <summary><h2>Your attendance</h2><span class="badge optional">Optional</span></summary>
+    <div class="topic-body">
+    <ul>
+      <li><strong>Attendance → Dashboard</strong> — today's clock-ins (on-site or off-site), and your hours this week
+        and month against what's expected: break time taken off, time beyond your shift, rest days, holidays and
+        overtime.</li>
+      <li><strong>Attendance → History</strong> — every day, month by month, with late, missing, on-leave and off-site
+        marked. Turn on <em>Needs attention</em> to see only the problem days, and
+        <span class="btn-name">Download PDF</span> for a copy.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Your attendance">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/attendance-dashboard.png" alt="Attendance → Dashboard with today&#x27;s shifts and this week&#x27;s hours" loading="lazy">
+          <p class="shot-cap">Dashboard</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/attendance-history.png" alt="Attendance → History for this month" loading="lazy">
+          <p class="shot-cap">History</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Your hours and history</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="overtime" data-plan="staff" open>
+    <summary><h2>Claiming overtime</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Attendance → Overtime</strong>, then the <strong>+</strong> button. Overtime is always
+      claimed by you — it isn't created from your clock times.</p>
+    <ol class="steps">
+      <li><h4>Fill it in</h4><p>Project, date, start and end time, and what the extra work was for.</p></li>
+      <li><h4>Add before-work photos or files</h4><p>Required — at least one photo or PDF from before the work started.
+        Choose several at once or <em>Add more</em>, up to 10 files of 8 MB each; the small × beside a file takes it off.
+        The form shows the rate it'll be paid at (normal day, rest day or public holiday). If your company banks
+        overtime as time off, it says so. Before files can't be changed after you submit.</p></li>
+      <li><h4>Attach the after-work files</h4><p>When the work's done, open the overtime and <span class="btn-name">Attach
+        after</span> (then <span class="btn-name">Add more</span> for extras). It can't be approved without at least one.
+        While it's still pending you can remove a file with the ×, and confirm.</p></li>
+    </ol>
+    <p>Filter your list by Pending, Approved, Rejected or Cancelled. A rejected one shows the reviewer's note.</p>
+    
+    <figure class="shot" data-place="Overtime">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/overtime-form.png" alt="The Submit overtime form with a reason and two before-work files attached" loading="lazy">
+          <p class="shot-cap">Submit overtime</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/overtime-list.png" alt="Attendance → Overtime: a pending request with its Before and After files and Add more" loading="lazy">
+          <p class="shot-cap">Overtime list</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Claiming overtime</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== WHEN YOU NEED IT -->
+
+  <details class="topic" id="leave" data-plan="staff" open>
+    <summary><h2>Applying for leave</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Leave → My Leave.</strong> <em>My Balances</em> shows what you have left of each type —
+      the live figure — and <em>History</em> lists every request.</p>
+    <ol class="steps">
+      <li><h4>Tap + (Apply for leave)</h4><p>Or <span class="btn-name">Request leave</span> on the Dashboard.</p></li>
+      <li><h4>Pick the type and dates</h4><p>Your balance for that type shows as you choose. Unpaid leave has no balance.</p></li>
+      <li><h4>Add a reason and attachment</h4><p>Both optional — attach your MC here (a photo or PDF, up to 8 MB).</p></li>
+      <li><h4>Submit</h4><p>It goes to your supervisor. You'll get a notification when it's decided.</p></li>
+    </ol>
+    <div class="note"><span class="nt">How days are counted</span>
+      <p>Only your <strong>working days</strong> count — weekends and public holidays in the range are left out. If you
+        ask for more than your balance, it's refused.</p>
+    </div>
+    <h3>Changing your mind</h3>
+    <p>While it's still pending, open it and tap <span class="btn-name">Cancel</span> — then apply again with the right
+      dates.</p>
+    <p>Once it's approved, and hasn't started yet, tap <span class="btn-name">Request cancellation</span>. Add a reason if
+      you like and tap <span class="btn-name">Send request</span> (or <span class="btn-name">Keep my leave</span> to back
+      out). Your approver reviews it like the original request. Your leave stays booked, and its days stay taken, until
+      they agree — then it's cancelled and the days go back into your balance. The leave shows a
+      <em>Cancellation requested</em> tag meanwhile; change your mind and tap <span class="btn-name">Withdraw request</span>.
+      If they say no you'll see <em>Cancellation declined</em>, and the leave goes ahead. Leave that has already started
+      can't be cancelled here — ask HR.</p>
+    
+    <figure class="shot" data-place="Leave">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/leave-balances.png" alt="Leave → My Balances" loading="lazy">
+          <p class="shot-cap">My Balances</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/leave-apply.png" alt="The Apply for leave form with a type, dates and an attachment field" loading="lazy">
+          <p class="shot-cap">Apply for leave</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/leave-request-cancel.png" alt="The Ask to cancel this leave? dialog with the leave, an optional reason, and Send request or Keep my leave" loading="lazy">
+          <p class="shot-cap">Ask to cancel</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Balances, applying and asking to cancel</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="claims" data-plan="staff" open>
+    <summary><h2>Submitting a claim</h2><span class="badge optional">Optional</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Claims → +</strong>, or <span class="btn-name">Submit new claim</span> on the Dashboard.
+      A few taps, and the receipt fills in the form for you.</p>
+    <ol class="steps">
+      <li><h4>Who paid?</h4><p><strong>My own money</strong> (you'll be reimbursed) or <strong>Company money</strong>
+        (a company card or account).</p></li>
+      <li><h4>What kind?</h4><p><strong>Expense claim</strong> or <strong>Mileage claim</strong>.</p></li>
+      <li><h4>Upload the receipt</h4><p>For an expense, upload the main receipt and tap
+        <span class="btn-name">Read receipt &amp; continue</span>. The app reads it and fills in the details.</p></li>
+      <li><h4>Check the details, then submit</h4><p><strong>Check every field — especially the amount.</strong> Then
+        <span class="btn-name">Submit claim</span>.</p></li>
+    </ol>
+    <h3>The fields worth getting right</h3>
+    <ul>
+      <li><strong>Chart of account</strong> — what the expense was for. Your company decides which ones you can pick.</li>
+      <li><strong>Project</strong> — the site or job it belongs to.</li>
+      <li><strong>Company bank account</strong> — for company money: which card or account paid.</li>
+      <li><strong>Spending at</strong> — the shop or supplier (required for company money).</li>
+      <li><strong>Supporting documents</strong> — anything else, like an invoice.</li>
+    </ul>
+    <h3>Mileage claims</h3>
+    <p>Enter the distance, the date, and where you went from and to. The amount is worked out from your company's
+      mileage rate.</p>
+    <div class="note warn"><span class="nt">Over the limit?</span>
+      <p>If a claim is over the spend limit for that account, you can still submit it — it's flagged for your approver
+        to look at.</p>
+    </div>
+    
+    <figure class="shot" data-place="Claims">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/claim-step1.png" alt="Step 1 of the claim wizard: My own money / Company money" loading="lazy">
+          <p class="shot-cap">Who paid?</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/claim-receipt.png" alt="The receipt upload step with Read receipt &amp; continue" loading="lazy">
+          <p class="shot-cap">Reading the receipt</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/claim-details.png" alt="The final step, filled in from the receipt" loading="lazy">
+          <p class="shot-cap">Claim details</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Submitting a claim</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="claim-track" data-plan="staff" open>
+    <summary><h2>Tracking your claims</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Claims → My claims</strong>, filtered by Pending, Approved or Rejected.</p>
+    <ul>
+      <li>Open a claim to see its details, the receipt, and the reviewer's note if it was rejected.</li>
+      <li><strong>Changing it:</strong> while it's pending, open it and tap <span class="btn-name">Edit claim</span>.</li>
+      <li>The Dashboard shows what you've been reimbursed this year.</li>
+    </ul>
+    </div>
+  </details>
+
+  <details class="topic" id="payslips" data-plan="staff" open>
+    <summary><h2>Your payslips</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">The <strong>Payslips</strong> tab lists every payslip once payroll is finalised — net pay,
+      gross, EPF, SOCSO, EIS and PCB on each.</p>
+    <ul>
+      <li><span class="btn-name">View breakdown</span> — earnings, deductions and every line item.</li>
+      <li><span class="btn-name">PDF</span> — download it.</li>
+      <li><span class="btn-name">TP1</span> — download your Borang PCB/TP1, the tax reliefs you've claimed for that month.</li>
+      <li>Your latest payslip is also on the Dashboard. Your company may email it to you as well.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Payslips">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/payslip-breakdown.png" alt="A payslip&#x27;s breakdown: net pay, earnings and deductions" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">A payslip</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== ACCOUNT -->
+
+  <details class="topic" id="account" open>
+    <summary><h2>Password, alerts &amp; companies</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede">All in the <strong>⋮</strong> menu at the top.</p>
+    <ul>
+      <li><strong>Change password</strong> — signs you out of every device afterwards. Not shown if you signed in
+        through Altomate — your password is managed there.</li>
+      <li><strong>Notifications</strong> — <span class="btn-name">Enable push notifications</span> to hear about approvals
+        and decisions even when the app is closed (shown only if your browser supports it). You're also asked once, the first time you sign in.</li>
+      <li><strong>What's new</strong> — what we've added or changed lately, newest first. A dot shows on the ⋮ menu
+        until you've read the latest.</li>
+      <li><strong>Guide</strong> — opens this guide in a new tab.</li>
+      <li><strong>Switch company</strong> — if you work for more than one company in the group, pick another here. On a
+        computer it's the company name at the top instead.</li>
+      <li><strong>Launch Appraisify</strong> — opens your company's appraisal app, already signed in.</li>
+      <li><strong>Log out</strong>. (Not shown if you signed in through Altomate — sign out there.)</li>
+    </ul>
+    </div>
+  </details>
+
+  <!-- =================================================== IF YOU APPROVE -->
+
+  <details class="topic" id="supervisor" data-plan="sup" open>
+    <summary><h2>Approving for your team</h2><span class="badge sup">Supervisors</span></summary>
+    <div class="topic-body">
+    <p class="topic-lede">If you're a supervisor, requests from your team come to you. Red badges on the tabs show how
+      many are waiting, and the Dashboard has a card for each queue.</p>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Queue</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>Claims</td><td>Claims → Claims queue</td></tr>
+        <tr><td>Leave</td><td>Leave → Approvals</td></tr>
+        <tr><td>Clock-ins, clock-outs and time corrections</td><td>Attendance → Approvals → Attendance</td></tr>
+        <tr><td>Overtime</td><td>Attendance → Approvals → Overtime</td></tr>
+      </tbody>
+    </table></div>
+    <h3>Approving and rejecting</h3>
+    <ul>
+      <li><span class="btn-name">Approve</span> or <span class="btn-name">Reject</span> each one. Rejecting always asks
+        for a reason — it's what your team member sees.</li>
+      <li><strong>Several at once:</strong> tap <span class="btn-name">Select</span>, pick them (or <em>Select all</em>),
+        and approve together. Rejections are always one at a time.</li>
+      <li>A claim over its spend limit has to be approved on its own.</li>
+      <li>Overtime can only be approved once an after-work photo or file is attached. You can open every before and
+        after file from the request.</li>
+      <li>For attendance, you see each shift with its location (on-site or off-site), any note and photo, and any
+        corrected clock-out time requested.</li>
+      <li>Leave shows who else is off in the same period.</li>
+      <li><strong>Cancellation requests</strong> — when someone asks to cancel approved leave, it appears in
+        <strong>Leave → Approvals</strong> tagged <em>Cancellation request</em>, with their reason and the approval trail.
+        The buttons are <span class="btn-name">Approve cancellation</span> and <span class="btn-name">Decline</span>
+        (a reason is required, so they know why the leave still stands). These are decided one at a time, not with
+        <em>Select</em>, and they count in the red badge on Leave.</li>
+    </ul>
+    <p>If your company has more than one level of approval, your approval passes the request to the next level. If
+      something isn't yours to decide, the row says who it's with.</p>
+    
+    <figure class="shot" data-place="Approving">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/sup-claims-queue.png" alt="Claims → Claims queue with Select / Approve" loading="lazy">
+          <p class="shot-cap">Claims queue</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/sup-attendance.png" alt="Attendance → Approvals with one employee&#x27;s day expanded" loading="lazy">
+          <p class="shot-cap">Attendance approvals</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/sup-leave-cancel.png" alt="Leave → Approvals with an approved leave tagged Cancellation request, and Approve cancellation or Decline" loading="lazy">
+          <p class="shot-cap">Leave cancellation request</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Approving for your team</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <details class="topic" id="team" data-plan="sup" open>
+    <summary><h2>Your team's day &amp; balances</h2><span class="badge sup">Supervisors</span></summary>
+    <div class="topic-body">
+    <ul>
+      <li><strong>Attendance → Team</strong> — who's on shift, done or not in, one project at a time, with a team PDF.</li>
+      <li><strong>Leave → Team Balances</strong> — your team's remaining leave by type, for any year.</li>
+    </ul>
+    
+    <figure class="shot" data-place="Team">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/sup-team.png" alt="Attendance → Team showing On shift / Done" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Your team today</p>
+    </figure>
+
+    </div>
+  </details>
+
+  <!-- =================================================== STUCK -->
+
+  <details class="topic" id="faq" open>
+    <summary><h2>Common questions</h2></summary>
+    <div class="topic-body">
+    <details class="qa"><summary>I can't see the Claims (or Attendance) tab.</summary>
+      <div class="body"><p>It isn't switched on for you. Ask HR if you think it should be.</p></div></details>
+    <details class="qa"><summary>“No project assigned” — I can't clock in.</summary>
+      <div class="body"><p>You haven't been added to a project yet. Ask your supervisor or HR to add you.</p></div></details>
+    <details class="qa"><summary>My location won't load.</summary>
+      <div class="body"><p>Allow location for your browser (or the installed app) in your phone's settings and try
+        again. If it still won't, add a note and a photo in the box that appears and clock in anyway.</p></div></details>
+    <details class="qa"><summary>I clocked out at the wrong time.</summary>
+      <div class="body"><p>Corrections are made when you clock out — the <a href="#fix">Request adjustment</a> tab. If you've
+        already clocked out, ask your supervisor.</p></div></details>
+    <details class="qa"><summary>Where's my payslip?</summary>
+      <div class="body"><p>Payslips appear once payroll for that month is finalised. If it's past payday and it isn't
+        there, ask HR.</p></div></details>
+    <details class="qa"><summary>I'm not getting notifications.</summary>
+      <div class="body"><p>Open the ⋮ menu and turn on push notifications (if you don't see the option, your browser doesn't support it). On iPhone, install the app to your home screen
+        first — notifications only work from the installed app.</p></div></details>
+    </div>
+  </details>
+
+  </main>
+</div>
+<div class="wrap"><footer>AltomateHR v2 · Written for hr.altomate.io · Screens and wording as of October 2026.</footer></div>
+<script>
+(function(){
+  var topics = Array.prototype.slice.call(document.querySelectorAll('details.topic'));
+
+  /* ---------- screenshot grids: layout + labels from the slot count ------
+     Add or remove a shot-item block and everything below adjusts itself —
+     the column count, and the "3a / 3b" labels on each slot. */
+  Array.prototype.slice.call(document.querySelectorAll('figure.shot')).forEach(function(fig, i){
+    var grid = fig.querySelector('.shot-grid');
+    if(!grid) return;
+    var items = Array.prototype.slice.call(grid.querySelectorAll('.shot-item'));
+    grid.setAttribute('data-count', String(Math.min(items.length, 6)));
+    items.forEach(function(item, j){
+      var frame = item.querySelector('.shot-frame');
+      if(!frame) return;
+      frame.setAttribute('data-shot', items.length > 1
+        ? (i + 1) + String.fromCharCode(97 + j)
+        : String(i + 1));
+    });
+    /* once real images are dropped in, tall ones re-flow as phone shots */
+    var imgs = Array.prototype.slice.call(grid.querySelectorAll('img'));
+    if(imgs.length){
+      var check = function(){
+        var loaded = imgs.filter(function(im){ return im.naturalWidth > 0 });
+        if(!loaded.length) return;
+        var portrait = loaded.every(function(im){ return im.naturalHeight > im.naturalWidth });
+        grid.setAttribute('data-orient', portrait ? 'phone' : 'screen');
+      };
+      imgs.forEach(function(im){ im.addEventListener('load', check) });
+      check();
+    }
+  });
+
+  /* ---------- expand / collapse all ---------- */
+  document.getElementById('expandAll').addEventListener('click', function(){
+    topics.forEach(function(d){ if(!d.classList.contains('hidden-by-filter')) d.open = true; });
+  });
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    topics.forEach(function(d){ d.open = false; });
+  });
+
+  /* ---------- audience filter ---------- */
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.panel button[data-plan]'));
+  function applyFilter(plan){
+    document.querySelectorAll('[data-plan]').forEach(function(el){
+      if(el.tagName === 'BUTTON') return;
+      var want = el.getAttribute('data-plan');
+      el.classList.toggle('hidden-by-filter', plan !== 'all' && want !== plan);
+    });
+    document.querySelectorAll('[data-plan-link]').forEach(function(el){
+      var want = el.getAttribute('data-plan-link');
+      el.classList.toggle('hidden-by-filter', plan !== 'all' && want !== plan);
+    });
+    buttons.forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-plan') === plan));
+    });
+  }
+  buttons.forEach(function(b){
+    b.addEventListener('click', function(){ applyFilter(b.getAttribute('data-plan')); });
+  });
+
+  /* ---------- open a topic when linked to ---------- */
+  function openTarget(hash){
+    if(!hash) return;
+    var el = document.querySelector(hash);
+    if(!el) return;
+    if(el.tagName === 'DETAILS') el.open = true;
+    var parent = el.closest ? el.closest('details.topic') : null;
+    if(parent) parent.open = true;
+  }
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(){ openTarget(a.getAttribute('href')); });
+  });
+  if(location.hash) openTarget(location.hash);
+
+  /* ---------- scrollspy ---------- */
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+  function spy(){
+    var pos = window.scrollY + 100, current = null;
+    links.forEach(function(a){
+      var s = document.querySelector(a.getAttribute('href'));
+      if(s && s.offsetTop <= pos) current = a.getAttribute('href');
+    });
+    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === current); });
+  }
+  window.addEventListener('scroll', spy, {passive:true});
+  spy();
+})();
+</script>
+
+</body>
+</html>

@@ -19,6 +19,12 @@ public class AttendanceRecordDto
     public double? ClockInLat { get; set; }
     public double? ClockInLng { get; set; }
     public double? ClockInDistanceMeters { get; set; }
+
+    // Clocked in beyond the organization's geofence radius — the same radius
+    // the clock-in check itself used, so the admin board labels a day
+    // off-site exactly when the employee was asked for a reason and photo.
+    public bool OffSite { get; set; }
+
     public double? ClockOutLat { get; set; }
     public double? ClockOutLng { get; set; }
     public double? ClockOutDistanceMeters { get; set; }

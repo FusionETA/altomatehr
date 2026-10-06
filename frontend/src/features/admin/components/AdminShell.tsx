@@ -4,16 +4,20 @@ import { ExternalLink, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisify } from "@/features/appraisify/api";
+import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
+import { ApiIntegrationsSettings } from "@/features/settings/components/ApiIntegrationsSettings";
+import { ApiMonitoringPanel } from "@/features/api-monitoring/components/ApiMonitoringPanel";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
 import { WorkScheduleSettings } from "@/features/settings/components/WorkScheduleSettings";
 import { CompanyStructure } from "@/features/settings/components/CompanyStructure";
 import { buildInitials, personName } from "@/features/employee-portal/lib/employee-formatters";
 import { HorizontalScrollArea } from "@/shared/components/HorizontalScrollArea";
+import { GuideMenuItem } from "@/shared/components/GuideMenuItem";
 import type { SignedInUser } from "@/shared/types/session";
 import {
   defaultChildOf,
@@ -53,18 +57,19 @@ export function AdminShell({
   // typing its id into the address bar. Captured once, which is fine: a role
   // does not change for the life of a mounted shell.
   const isOwner = user.role === "Owner";
+  const isSuperadmin = user.isSuperadmin === true;
   // What this admin's grant (and the org's plan) lets them see. The URL is
   // normalised against it at mount, and the view is re-checked on every render
   // below: the modules usually land AFTER the first read of the URL, and a
   // bookmark to a module the grant leaves out must not stay open once they do.
   const enabledModules = useEnabledModules();
   const visibleNav = useMemo(
-    () => visibleAdminNav(isOwner, enabledModules),
-    [isOwner, enabledModules],
+    () => visibleAdminNav(isOwner, enabledModules, isSuperadmin),
+    [isOwner, enabledModules, isSuperadmin],
   );
   const normalise = useCallback(
-    (candidate: UrlNav) => normaliseAdminNav(candidate, isOwner, enabledModules),
-    [isOwner, enabledModules],
+    (candidate: UrlNav) => normaliseAdminNav(candidate, isOwner, enabledModules, isSuperadmin),
+    [isOwner, enabledModules, isSuperadmin],
   );
   const [urlNav, go] = useUrlNav(NAV_FALLBACK, normalise);
   const nav = normalise(urlNav);
@@ -72,6 +77,7 @@ export function AdminShell({
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const whatsNew = useWhatsNew(user.email);
 
   // Coming back from Xero's consent screen. The app has no router, so the
   // return URL is only ever the app root — without this a successful connect
@@ -200,7 +206,9 @@ export function AdminShell({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <OrgSwitcher />
+              {/* Altomate provisions an SSO customer's companies itself, so
+                  one made here would be unknown to it. */}
+              <OrgSwitcher allowCreate={!user.viaSso} />
 
               <div className="hidden sm:block">
                 <NotificationBell onNavigate={navigateFromNotification} />
@@ -222,9 +230,12 @@ export function AdminShell({
                   aria-label="Account menu"
                   aria-expanded={accountMenuOpen}
                   onClick={() => setAccountMenuOpen((open) => !open)}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
                   <MoreVertical className="h-4 w-4" />
+                  {whatsNew.unseen ? (
+                    <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" aria-hidden />
+                  ) : null}
                 </button>
 
                 {accountMenuOpen ? (
@@ -236,6 +247,21 @@ export function AdminShell({
 
                     <PushToggleMenuItem
                       onClose={() => setAccountMenuOpen(false)}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
+
+                    <WhatsNewMenuItem
+                      unseen={whatsNew.unseen}
+                      onSelect={() => {
+                        setAccountMenuOpen(false);
+                        whatsNew.show();
+                      }}
+                      className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
+                    />
+
+                    <GuideMenuItem
+                      audience="admin"
+                      onSelect={() => setAccountMenuOpen(false)}
                       className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
                     />
 
@@ -267,17 +293,21 @@ export function AdminShell({
                       Launch Appraisify
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        onLogout();
-                      }}
-                      className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
-                    >
-                      <LogOut className="h-4 w-4 shrink-0" />
-                      Log out
-                    </button>
+                    {/* An Altomate (SSO) session signs out from Altomate, not
+                        here — as in the previous system. */}
+                    {user.viaSso ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onLogout();
+                        }}
+                        className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+                      >
+                        <LogOut className="h-4 w-4 shrink-0" />
+                        Log out
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -352,6 +382,7 @@ export function AdminShell({
           </div>
         </main>
       </div>
+      {whatsNew.panel}
     </div>
   );
 }
@@ -388,6 +419,10 @@ function AdminContent({
       return <PoliciesSettings />;
     case "settings-admins":
       return <AdminsSettings />;
+    case "settings-api":
+      return <ApiIntegrationsSettings organizationName={user.activeOrganizationName} />;
+    case "settings-api-monitoring":
+      return <ApiMonitoringPanel />;
 
     // Org-wide attendance roll-call — the backend already returns every
     // employee's records to admins.
