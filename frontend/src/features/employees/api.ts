@@ -564,7 +564,7 @@ export const downloadEmployeeDocument = (id: string, doc: EmployeeDocument) =>
 
 // ---- LHDN statutory forms ----
 //
-// Auto-generated per-employee PDFs (PCB 2(II), CP22, CP22A, CP21, PCB/TP3),
+// Auto-generated per-employee PDFs (PCB 2(II), EA, CP22, CP22A, CP21, PCB/TP3),
 // summarising the LHDN-required fields in our own layout — HR transcribes
 // onto the official LHDN form before submission, or pastes into e-PCB.
 
@@ -581,8 +581,10 @@ export type LhdnFormDescriptor = {
   badgeVariant: string | null;
 };
 
-export const getLhdnForms = (id: string) =>
-  apiGet<LhdnFormDescriptor[]>(`/employees/${id}/lhdn-forms`);
+// `year` drives the year-scoped cards: EA is enabled only once that year is
+// final for this employee, and says why not otherwise.
+export const getLhdnForms = (id: string, year: number) =>
+  apiGet<LhdnFormDescriptor[]>(`/employees/${id}/lhdn-forms?year=${year}`);
 
 export const downloadLhdnForm = (id: string, kind: string, year: number | null) => {
   const query = year !== null ? `?year=${year}` : "";

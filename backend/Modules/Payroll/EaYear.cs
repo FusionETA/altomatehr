@@ -30,4 +30,17 @@ public sealed record EaYear(int ThroughMonth, int ApprovedMonths, bool Ready)
 
         return new EaYear(through, approved, approved == through && !hasUnsubmittedPay);
     }
+
+    // Why the form is not ready yet, for whoever is looking (the employee or HR).
+    public string NotReadyReason(int year)
+    {
+        var month = System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(ThroughMonth);
+
+        if (ApprovedMonths == ThroughMonth)
+            return $"The {year} EA form will be ready once the payroll run still holding pay for {year} is approved.";
+
+        return ThroughMonth == 12
+            ? $"The {year} EA form will be ready once all 12 months of {year} payroll are approved."
+            : $"The {year} EA form will be ready once {year} payroll is approved up to {month}.";
+    }
 }

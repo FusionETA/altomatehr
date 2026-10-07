@@ -3,14 +3,12 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
-using AltomateHR.Api.Modules.Payroll.Pdf;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
 public class EmployeePayrollService : IEmployeePayrollService
 {
     private readonly IPayslipRepository _payslips;
-    private readonly IPayrollRunRepository _runs;
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IPayrollAnnualReportService _annual;
     private readonly IStatutoryFileService _statutory;
@@ -19,7 +17,6 @@ public class EmployeePayrollService : IEmployeePayrollService
 
     public EmployeePayrollService(
         IPayslipRepository payslips,
-        IPayrollRunRepository runs,
         IEmployeeProfileRepository profiles,
         IPayrollAnnualReportService annual,
         IStatutoryFileService statutory,
@@ -28,7 +25,6 @@ public class EmployeePayrollService : IEmployeePayrollService
     {
         _tp1 = tp1;
         _payslips = payslips;
-        _runs = runs;
         _profiles = profiles;
         _annual = annual;
         _statutory = statutory;
@@ -87,44 +83,14 @@ public class EmployeePayrollService : IEmployeePayrollService
 
     // ─── Form EA ────────────────────────────────────────────────────────
 
+    // The rule and the rendering are payroll's (shared with the admin's
+    // per-employee EA); this only pins them to the caller's own profile.
     public async Task<IReadOnlyList<EmployeeEaFormDto>> GetMyEaFormsAsync()
     {
         var profile = await MyProfileAsync();
         if (profile is null) return [];
 
-        // GetForEmployeeAsync returns submitted runs only, so a year paid
-        // only in drafts does not appear.
-        var lastPaidMonth = (await _payslips.GetForEmployeeAsync(profile.Id))
-            .GroupBy(row => row.Run.PeriodYear)
-            .ToDictionary(g => g.Key, g => g.Max(row => row.Run.PeriodMonth));
-
-        if (lastPaidMonth.Count == 0) return [];
-
-        // Approval is the company's, not the employee's: a month counts once
-        // its run is submitted, whoever was on it.
-        var submitted = (await _runs.GetAllAsync())
-            .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
-            .GroupBy(r => r.PeriodYear)
-            .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(r => r.PeriodMonth).ToHashSet());
-
-        var forms = new List<EmployeeEaFormDto>();
-
-        foreach (var (year, lastPaid) in lastPaidMonth.OrderByDescending(kv => kv.Key))
-        {
-            var ea = EaYear.For(
-                year, profile.LeaveDate, lastPaid, submitted.GetValueOrDefault(year) ?? [],
-                await _payslips.HasUnsubmittedForEmployeeAsync(profile.Id, year));
-
-            forms.Add(new EmployeeEaFormDto
-            {
-                Year = year,
-                Available = ea.Ready,
-                RequiredMonths = ea.ThroughMonth,
-                ApprovedMonths = ea.ApprovedMonths,
-            });
-        }
-
-        return forms;
+        return await _annual.GetEmployeeEaYearsAsync(profile.Id, profile.LeaveDate);
     }
 
     public async Task<StatutoryFileResult> RenderMyEaFormAsync(int year)
@@ -132,31 +98,7 @@ public class EmployeePayrollService : IEmployeePayrollService
         var profileId = await MyProfileIdAsync();
         if (profileId is null) return new StatutoryFileResult(false, null, null, null, null);
 
-        var payload = await _annual.LoadAsync(year);
-
-        // Not paid that year is a 404, the same as someone else's payslip.
-        var mine = payload.Employees.FirstOrDefault(e =>
-            string.Equals(e.EmployeeProfileId, profileId, StringComparison.Ordinal));
-        if (mine is null) return new StatutoryFileResult(false, null, null, null, null);
-
-        // Held here too, not only on the list, so a direct URL cannot fetch a
-        // part-year form that under-declares.
-        var ea = EaYear.For(
-            year, mine.LeaveDate, mine.Months.Max(m => m.Month), payload.SubmittedMonths,
-            await _payslips.HasUnsubmittedForEmployeeAsync(profileId, year));
-
-        if (!ea.Ready)
-        {
-            return StatutoryFileResult.Refused(ea.ThroughMonth == 12
-                ? $"Your {year} EA form will be ready once all 12 months of {year} payroll are approved."
-                : $"Your {year} EA form will be ready once {year} payroll is approved up to "
-                  + $"{System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(ea.ThroughMonth)}.");
-        }
-
-        // Only the caller's own page: the bulk form is every employee's pay.
-        var bytes = FormEaPdf.Render(payload with { Employees = [mine] });
-
-        return new StatutoryFileResult(true, $"Form_EA_{year}.pdf", bytes, FormEaPdf.ContentType, null);
+        return await _annual.RenderEmployeeEaAsync(profileId, year);
     }
 
     // ─── Scoping ────────────────────────────────────────────────────────

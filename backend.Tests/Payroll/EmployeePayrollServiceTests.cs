@@ -36,7 +36,6 @@ public class EmployeePayrollServiceTests : IDisposable
 
         _service = new EmployeePayrollService(
             new PayslipRepository(_db),
-            new PayrollRunRepository(_db),
             profiles,
             new PayrollAnnualReportService(
                 new PayrollRunRepository(_db),
