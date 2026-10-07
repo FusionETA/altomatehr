@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: e979acc
+// whats-new-covered-up-to: 5e4cf24
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
