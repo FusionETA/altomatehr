@@ -189,6 +189,9 @@ export type SetAdminAccess = {
   canChangeSettings: boolean;
 };
 export const getAdmins = () => apiGet<AdminAccess[]>("/organizations/admins");
+// Owner-only: take an Admin out of this company. Their login stays (they may
+// run other companies); their access here ends at once.
+export const removeAdmin = (userId: string) => apiDelete<void>(`/organizations/admins/${userId}`);
 export const setAdminAccess = (userId: string, body: SetAdminAccess) =>
   apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, body);
 

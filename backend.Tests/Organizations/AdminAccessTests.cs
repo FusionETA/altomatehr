@@ -96,6 +96,25 @@ public class AdminAccessTests
         Assert.True(mine.HasFullEmployeeScope);
     }
 
+    // Removed by the Owner while their access token is still live: nothing,
+    // not everything. An API key (no membership by design) is unaffected.
+    [Theory]
+    [InlineData("usr-gone", ModuleLevel.None)]
+    [InlineData("apikey:key-1", ModuleLevel.Manage)]
+    public async Task An_admin_without_a_membership_gets_nothing_unless_it_is_a_key(string userId, ModuleLevel expected)
+    {
+        using var db = Db();
+        AddOrg(db);
+        db.SaveChanges();
+
+        var access = new ModuleAccessService(
+            new OrganizationRepository(db),
+            TestDirectory.Over(new OrganizationMembershipRepository(db)),
+            new StubCurrentUser { UserId = userId, Role = "Admin" });
+
+        Assert.Equal(expected, await access.GetModuleLevelAsync("payroll"));
+    }
+
     // ─── Gates ──────────────────────────────────────────────────────────
 
     [Theory]

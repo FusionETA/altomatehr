@@ -233,8 +233,11 @@ public class AuthService : IAuthService
 
         // A company they removed from their account no longer refreshes into
         // itself: move to their home company, or end the session.
+        // Removed from this company (an admin the Owner removed), or hid it as a
+        // former employee: don't refresh into it — move to their home company,
+        // or end the session.
         var membership = await _directory.GetMembershipAsync(stored.OrganizationId, stored.UserId);
-        if (membership?.HiddenByEmployeeAt is not null)
+        if (membership is null || membership.HiddenByEmployeeAt is not null)
         {
             var home = await PickHomeAsync(stored.UserId);
             return home is null

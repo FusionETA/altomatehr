@@ -23,6 +23,7 @@ public class OrganizationService : IOrganizationService
     private readonly IDirectoryService _directory;
     private readonly IOrganizationDefaultsService _defaults;
     private readonly Policies.IEmployeePolicyRepository? _policies;
+    private readonly AltomateHR.Api.Common.ICurrentUser? _currentUser;
 
     public OrganizationService(
         IOrganizationRepository repo,
@@ -32,9 +33,11 @@ public class OrganizationService : IOrganizationService
         ILeaveTypeService leaveTypes,
         IDirectoryService directory,
         IOrganizationDefaultsService defaults,
-        Policies.IEmployeePolicyRepository? policies = null)
+        Policies.IEmployeePolicyRepository? policies = null,
+        AltomateHR.Api.Common.ICurrentUser? currentUser = null)
     {
         _policies = policies;
+        _currentUser = currentUser;
         _repo = repo;
         _memberships = memberships;
         _audit = audit;
@@ -88,6 +91,31 @@ public class OrganizationService : IOrganizationService
             PolicyIds = isOwner || m.PolicyScope is null ? null : OrgModules.Split(m.PolicyScope).ToList(),
             CanChangeSettings = isOwner || m.CanChangeSettings,
         };
+    }
+
+    public async Task<(bool NotFound, string? Error)> RemoveAdminAsync(string userId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return (true, null);
+
+        if (string.Equals(membership.Role, "Owner", StringComparison.OrdinalIgnoreCase))
+            return (false, "The owner can't be removed.");
+        if (!string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return (true, null);   // staff are archived from their profile, not removed here
+        if (userId == _currentUser?.UserId)
+            return (false, "You can't remove yourself.");
+
+        await _memberships.DeleteAsync(membership);
+
+        var user = (await _directory.GetUsersAsync()).FirstOrDefault(u => u.Id == userId);
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            $"Removed admin {user?.Email ?? userId}",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId }));
+
+        return (false, null);
     }
 
     public async Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto)

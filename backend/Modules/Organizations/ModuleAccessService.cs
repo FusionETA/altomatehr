@@ -58,6 +58,20 @@ public class ModuleAccessService : IModuleAccessService
         var userId = _currentUser.UserId;
         var membership = userId is null ? null : await _directory.GetMembershipForUserAsync(userId);
 
+        // A signed-in Admin with no membership here was REMOVED by the Owner
+        // while their access token was still live (up to its lifetime). Give
+        // them nothing rather than everything. API keys (synthetic "apikey:"
+        // ids, role Admin, no membership) and Fusioneta support keep theirs.
+        if (membership is null
+            && userId is not null
+            && !userId.StartsWith("apikey:", StringComparison.Ordinal)
+            && !_currentUser.IsSupport
+            && string.Equals(_currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            _access = new AdminAccess(true, new Dictionary<string, ModuleLevel>(), false, []);
+            return _access;
+        }
+
         _access = membership is null
                   || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase)
             ? AdminAccess.Full

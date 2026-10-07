@@ -46,6 +46,12 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
         await _db.SaveChangesAsync();
     }
 
+    public async Task DeleteAsync(OrganizationMembership membership)
+    {
+        _db.OrganizationMemberships.Remove(membership);
+        await _db.SaveChangesAsync();
+    }
+
     public async Task UpdateAsync(OrganizationMembership membership)
     {
         membership.UpdatedAt = DateTime.UtcNow;

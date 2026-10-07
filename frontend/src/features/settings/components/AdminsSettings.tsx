@@ -4,11 +4,13 @@ import { LoaderCircle, ShieldCheck, UserPlus, X } from "lucide-react";
 import {
   getAdmins,
   getModuleAccess,
+  removeAdmin,
   setAdminAccess,
   type AdminAccess,
   type ModuleLevel,
 } from "../api";
 import { getPolicies } from "@/features/policies/api";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { createEmployee } from "@/features/employees/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -43,6 +45,31 @@ export function AdminsSettings() {
   const modulesQuery = useCachedQuery("/organizations/modules", getModuleAccess);
   const [editing, setEditing] = useState<AdminAccess | null>(null);
   const [tab, setTab] = useState<"manage" | "add">("manage");
+  const [confirm, confirmDialog] = useConfirm();
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  async function handleRemove(admin: AdminAccess) {
+    const who = admin.name || admin.email;
+    const ok = await confirm({
+      title: `Remove ${who} as an admin?`,
+      message:
+        "They lose access to this company straight away. Their login isn't deleted — if they administer another company, that stays. You can add them again later.",
+      confirmLabel: "Remove admin",
+      destructive: true,
+    });
+    if (!ok) return;
+    setRemovingId(admin.userId);
+    setRemoveError(null);
+    try {
+      await removeAdmin(admin.userId);
+      await adminsQuery.refresh();
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : "Could not remove the admin.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   // The list carries Owners too, so the page does not read "no admins" while an
   // Owner runs the org. They are shown read-only: an Owner's access cannot be
@@ -101,6 +128,7 @@ export function AdminsSettings() {
           {adminsQuery.error ? (
             <p className="text-sm font-medium text-destructive">{adminsQuery.error}</p>
           ) : null}
+          {removeError ? <p className="text-sm font-medium text-destructive">{removeError}</p> : null}
 
           {!adminsQuery.loading && owners.length > 0 ? (
             <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-muted/30">
@@ -151,13 +179,24 @@ export function AdminsSettings() {
                       <span className="truncate">{describeAccess(admin)}</span>
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditing(admin)}
-                    className="shrink-0 rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    Manage access
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(admin)}
+                      className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Manage access
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemove(admin)}
+                      disabled={removingId === admin.userId}
+                      className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-card px-3 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                    >
+                      {removingId === admin.userId ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
+                      Remove
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -173,6 +212,8 @@ export function AdminsSettings() {
           }}
         />
       )}
+
+      {confirmDialog}
 
       {editing ? (
         <AccessDialog

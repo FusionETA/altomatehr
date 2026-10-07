@@ -78,6 +78,18 @@ public class OrganizationsController : ControllerBase
         }
     }
 
+    // DELETE /organizations/admins/{userId} — remove an Admin from this company.
+    // Owners only. Their login stays; their access here ends at once.
+    [Authorize(Roles = "Owner")]
+    [HumanOnly]
+    [HttpDelete("admins/{userId}")]
+    public async Task<IActionResult> RemoveAdmin(string userId)
+    {
+        var (notFound, error) = await _organizations.RemoveAdminAsync(userId);
+        if (notFound) return NotFound();
+        return error is null ? NoContent() : BadRequest(new { message = error });
+    }
+
     // PUT /organizations/current — update org settings (Admins only).
     [Authorize(Roles = "Admin,Owner")]
     [RequireScope("organizations:write")]
