@@ -224,6 +224,9 @@ export function EmployeeDetail({
   const [lhdnFormsLoading, setLhdnFormsLoading] = useState(true);
   const [lhdnFormsError, setLhdnFormsError] = useState<string | null>(null);
   const [lhdnYear, setLhdnYear] = useState<number>(new Date().getFullYear());
+  // Bumped after a save so the LHDN cards re-read through the same
+  // cancellable effect as a year change.
+  const [lhdnReload, setLhdnReload] = useState(0);
   const [downloadingLhdnKind, setDownloadingLhdnKind] = useState<string | null>(null);
 
   // Team/approval-chain assignment — its own API surface (Teams feature),
@@ -334,14 +337,30 @@ export function EmployeeDetail({
       .finally(() => setDocumentsLoading(false));
   }, [employee.id]);
 
+  // Skeleton only for a new employee. Changing the year re-reads the cards in
+  // place (EA's state depends on it) without blanking the grid.
   useEffect(() => {
     setLhdnFormsLoading(true);
-    setLhdnFormsError(null);
-    getLhdnForms(employee.id)
-      .then(setLhdnForms)
-      .catch((e: unknown) => setLhdnFormsError(message(e, "Could not load LHDN forms.")))
-      .finally(() => setLhdnFormsLoading(false));
   }, [employee.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLhdnFormsError(null);
+    getLhdnForms(employee.id, lhdnYear)
+      .then((forms) => {
+        if (!cancelled) setLhdnForms(forms);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLhdnFormsError(message(e, "Could not load LHDN forms."));
+      })
+      .finally(() => {
+        if (!cancelled) setLhdnFormsLoading(false);
+      });
+    // Typing a year fires several reads; only the latest may land.
+    return () => {
+      cancelled = true;
+    };
+  }, [employee.id, lhdnYear, lhdnReload]);
 
   // Teams and projects are org-wide reference data, not this employee's — they
   // were being refetched for every person an admin opened. The profile itself
@@ -767,12 +786,7 @@ export function EmployeeDetail({
       // Archive status, join date, and other saved fields all drive which
       // LHDN forms are enabled and what badge they show — refetch so the
       // card reflects what was just saved instead of the pre-save state.
-      getLhdnForms(employee.id)
-        .then(setLhdnForms)
-        .catch(() => {
-          // Non-fatal: the profile save already succeeded. The card just
-          // keeps showing its last-known state until the next reload.
-        });
+      setLhdnReload((n) => n + 1);
     } catch (e: unknown) {
       setError(message(e, "Could not save this employee."));
     } finally {
@@ -2327,7 +2341,7 @@ export function EmployeeDetail({
                   </p>
 
                   <div className="mt-4 max-w-[140px]">
-                    <Field label="Year" hint="Only used by year-scoped forms, like PCB 2(II).">
+                    <Field label="Year" hint="Used by the year-scoped forms: PCB 2(II) and EA.">
                       <Num
                         value={lhdnYear}
                         min={2000}

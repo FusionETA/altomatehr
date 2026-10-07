@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: b2eae2e
+// whats-new-covered-up-to: 5e4cf24
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -31,6 +31,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Payroll → Run downloads: new \"Manual Payments\" Excel lists everyone paid outside the bank file (other bank, cash, cheque, or missing bank details), with amounts and a total.",
       "Payroll → Payment Schedule PDF: split into Bank file and Paid manually, each with a total that together equal the run's net pay.",
       "Claims → Settings → How approved claims are paid: new option \"Don't send anywhere\" — approved claims stay in AltomateHR and you reimburse them your own way.",
+      "Payslips → Form EA: lists each year you were paid in; downloadable once all 12 months are approved. Until then it shows when ready and the count of approved months.",
+      "Admins: Employee profile → Documents → LHDN Forms: Form EA for each year an employee was paid in, using the year picker. Enabled when all 12 months are approved; disabled with the reason, or \"No approved payroll for this employee in <year>\". File name EA_<employee no>_<year>.pdf.",
     ],
   },
   {

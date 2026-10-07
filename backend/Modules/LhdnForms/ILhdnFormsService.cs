@@ -4,8 +4,9 @@ namespace AltomateHR.Api.Modules.LhdnForms;
 
 public interface ILhdnFormsService
 {
-    // null → not a member of this org (404).
-    Task<IEnumerable<LhdnFormDescriptorDto>?> GetDescriptorsAsync(string userId);
+    // null → not a member of this org (404). `year` drives the year-scoped
+    // cards' state (EA); it defaults to the current year.
+    Task<IEnumerable<LhdnFormDescriptorDto>?> GetDescriptorsAsync(string userId, int? year = null);
 
     // (false, ..., null) → not a member of this org (404).
     // (false, ..., error) → form not available right now (400) — archive gate.

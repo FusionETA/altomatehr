@@ -84,6 +84,60 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             PayrollAnnualReports.FileName(kind, payload.Year, payload.EmployerNo),
             bytes, mime, null);
 
+    // ─── One employee's Form EA ─────────────────────────────────────────
+
+    public async Task<IReadOnlyList<EmployeeEaFormDto>> GetEmployeeEaYearsAsync(string employeeProfileId)
+    {
+        // GetForEmployeeAsync returns submitted runs only, so a year paid
+        // only in drafts does not appear.
+        var years = (await _payslips.GetForEmployeeAsync(employeeProfileId))
+            .Select(row => row.Run.PeriodYear)
+            .Distinct()
+            .ToList();
+
+        if (years.Count == 0) return [];
+
+        // Approval is the company's, not the employee's: a month counts once
+        // its run is submitted, whoever was on it.
+        var submitted = (await _runs.GetAllAsync())
+            .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
+            .GroupBy(r => r.PeriodYear)
+            .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(r => r.PeriodMonth).ToHashSet());
+
+        return [.. years
+            .OrderDescending()
+            .Select(year =>
+            {
+                var ea = EaYear.For(submitted.GetValueOrDefault(year) ?? []);
+                return new EmployeeEaFormDto
+                {
+                    Year = year,
+                    Available = ea.Ready,
+                    ApprovedMonths = ea.ApprovedMonths,
+                    NotReadyReason = ea.Ready ? null : EaYear.NotReadyReason(year),
+                };
+            })];
+    }
+
+    public async Task<StatutoryFileResult> RenderEmployeeEaAsync(string employeeProfileId, int year)
+    {
+        var payload = await LoadAsync(year);
+
+        var row = payload.Employees.FirstOrDefault(e =>
+            string.Equals(e.EmployeeProfileId, employeeProfileId, StringComparison.Ordinal));
+        if (row is null) return new StatutoryFileResult(false, null, null, null, null);
+
+        // Held here, not only on the lists, so a direct URL cannot fetch a
+        // part-year form that under-declares.
+        if (!EaYear.For(payload.SubmittedMonths).Ready)
+            return StatutoryFileResult.Refused(EaYear.NotReadyReason(year));
+
+        // Only this employee's page: the bulk form is every employee's pay.
+        var bytes = FormEaPdf.Render(payload with { Employees = [row] });
+
+        return new StatutoryFileResult(true, $"Form_EA_{year}.pdf", bytes, FormEaPdf.ContentType, null);
+    }
+
     // ─── Loading the year ───────────────────────────────────────────────
 
     // One row per employee, summed across the year's SUBMITTED runs.

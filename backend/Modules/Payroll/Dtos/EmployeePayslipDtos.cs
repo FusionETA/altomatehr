@@ -22,3 +22,23 @@ public class EmployeePayslipSummaryDto
     // When the run went live. The date the payslip became real.
     public DateTime? SubmittedAt { get; set; }
 }
+
+// A year the employee was paid in, for their own Form EA.
+//
+// The form declares the whole January–December year, so it is downloadable
+// only once all twelve months are approved (EaYear) — leavers included. Until
+// then the row still appears, so "not yet" is visible rather than looking
+// like the form is missing.
+public class EmployeeEaFormDto
+{
+    public int Year { get; set; }
+
+    public bool Available { get; set; }
+
+    // How many of the twelve months are approved so far, for the "not yet" line.
+    public int ApprovedMonths { get; set; }
+
+    // Why it is not ready yet, in words (EaYear.NotReadyReason). Null when
+    // available. The server's, so the page never guesses the blocker.
+    public string? NotReadyReason { get; set; }
+}

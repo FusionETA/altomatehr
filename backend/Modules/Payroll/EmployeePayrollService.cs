@@ -1,5 +1,6 @@
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
 
@@ -9,6 +10,7 @@ public class EmployeePayrollService : IEmployeePayrollService
 {
     private readonly IPayslipRepository _payslips;
     private readonly IEmployeeProfileRepository _profiles;
+    private readonly IPayrollAnnualReportService _annual;
     private readonly IStatutoryFileService _statutory;
     private readonly ICurrentUser _currentUser;
     private readonly ITp1FormService? _tp1;
@@ -16,6 +18,7 @@ public class EmployeePayrollService : IEmployeePayrollService
     public EmployeePayrollService(
         IPayslipRepository payslips,
         IEmployeeProfileRepository profiles,
+        IPayrollAnnualReportService annual,
         IStatutoryFileService statutory,
         ICurrentUser currentUser,
         ITp1FormService? tp1 = null)
@@ -23,6 +26,7 @@ public class EmployeePayrollService : IEmployeePayrollService
         _tp1 = tp1;
         _payslips = payslips;
         _profiles = profiles;
+        _annual = annual;
         _statutory = statutory;
         _currentUser = currentUser;
     }
@@ -77,6 +81,26 @@ public class EmployeePayrollService : IEmployeePayrollService
         return await _tp1.RenderFormAsync(payslip.PayrollRunId, payslip.EmployeeProfileId);
     }
 
+    // ─── Form EA ────────────────────────────────────────────────────────
+
+    // The rule and the rendering are payroll's (shared with the admin's
+    // per-employee EA); this only pins them to the caller's own profile.
+    public async Task<IReadOnlyList<EmployeeEaFormDto>> GetMyEaFormsAsync()
+    {
+        var profile = await MyProfileAsync();
+        if (profile is null) return [];
+
+        return await _annual.GetEmployeeEaYearsAsync(profile.Id);
+    }
+
+    public async Task<StatutoryFileResult> RenderMyEaFormAsync(int year)
+    {
+        var profileId = await MyProfileIdAsync();
+        if (profileId is null) return new StatutoryFileResult(false, null, null, null, null);
+
+        return await _annual.RenderEmployeeEaAsync(profileId, year);
+    }
+
     // ─── Scoping ────────────────────────────────────────────────────────
 
     // The three ways this can fail — no such payslip, not the caller's, run
@@ -103,11 +127,13 @@ public class EmployeePayrollService : IEmployeePayrollService
 
     // The caller's OWN profile in the current org, from the token. Never an id
     // off the request — that is the whole boundary this service exists to hold.
-    private async Task<string?> MyProfileIdAsync()
+    private async Task<EmployeeProfile?> MyProfileAsync()
     {
         var userId = _currentUser.UserId;
         if (string.IsNullOrWhiteSpace(userId)) return null;
 
-        return (await _profiles.GetByUserAsync(userId))?.Id;
+        return await _profiles.GetByUserAsync(userId);
     }
+
+    private async Task<string?> MyProfileIdAsync() => (await MyProfileAsync())?.Id;
 }

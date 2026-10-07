@@ -41,12 +41,14 @@ public class LhdnFormsService : ILhdnFormsService
         _annual = annual;
     }
 
-    public async Task<IEnumerable<LhdnFormDescriptorDto>?> GetDescriptorsAsync(string userId)
+    public async Task<IEnumerable<LhdnFormDescriptorDto>?> GetDescriptorsAsync(string userId, int? year = null)
     {
         var profile = await _profiles.GetAsync(userId);
         if (profile is null) return null;
 
         var today = DateTime.UtcNow;
+        var ea = await EaStateAsync(profile, year ?? today.Year);
+
         return LhdnFormMeta.All.Values.Select(meta =>
         {
             var available = LhdnFormMeta.IsAvailable(meta.Kind, profile.IsArchived, profile.LeaveDate);
@@ -65,6 +67,11 @@ public class LhdnFormsService : ILhdnFormsService
                     _ => null,
                 },
             };
+            if (meta.Kind == LhdnFormKind.EA)
+            {
+                dto.Enabled = ea.Ready;
+                dto.DisabledReason = ea.Ready ? null : ea.Reason;
+            }
             if (available && meta.Kind is LhdnFormKind.CP22 or LhdnFormKind.CP22A or LhdnFormKind.CP21)
             {
                 var badge = meta.Kind == LhdnFormKind.CP22
@@ -95,6 +102,20 @@ public class LhdnFormsService : ILhdnFormsService
         }
 
         var resolvedYear = year ?? DateTime.UtcNow.Year;
+
+        // EA is payroll's own form, rendered by payroll: the same page the
+        // employee downloads and the bulk EA holds, under the same rule.
+        if (kind == LhdnFormKind.EA)
+        {
+            if (profile.EmployeeProfileId is null) return (false, null, null, NotPaid(resolvedYear));
+
+            var ea = await _annual.RenderEmployeeEaAsync(profile.EmployeeProfileId, resolvedYear);
+            if (!ea.Ok) return (false, null, null, ea.Error ?? NotPaid(resolvedYear));
+
+            var code = FirstNonBlank((await _directory.GetMembershipForUserAsync(userId))?.EmployeeNumber, profile.Name, userId);
+            return (true, ea.Content, LhdnFormMeta.FileName(kind, code, resolvedYear), null);
+        }
+
         var payload = await BuildPayloadAsync(userId, profile, resolvedYear);
         var bytes = kind switch
         {
@@ -211,6 +232,21 @@ public class LhdnFormsService : ILhdnFormsService
             GeneratedAt = DateTime.UtcNow,
         };
     }
+
+    // Whether this employee's EA for the year can be downloaded, and why not.
+    private async Task<(bool Ready, string? Reason)> EaStateAsync(EmployeeProfileDto profile, int year)
+    {
+        if (profile.EmployeeProfileId is null) return (false, NotPaid(year));
+
+        var form = (await _annual.GetEmployeeEaYearsAsync(profile.EmployeeProfileId))
+            .FirstOrDefault(f => f.Year == year);
+
+        if (form is null) return (false, NotPaid(year));
+
+        return (form.Available, form.NotReadyReason);
+    }
+
+    private static string NotPaid(int year) => $"No approved payroll for this employee in {year}.";
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
