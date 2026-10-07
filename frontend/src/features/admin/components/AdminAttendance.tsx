@@ -36,7 +36,7 @@ import { AttendancePhotoButton } from "@/features/attendance/components/Attendan
 import { displayStatus } from "@/features/attendance/lib/attendance-status";
 import { dayOffsetLabel } from "@/features/attendance/lib/attendance-time";
 import { OvertimeStatusBadge } from "@/features/overtime/components/OvertimeStatusBadge";
-import { getEmployees, type Employee } from "@/features/employees/api";
+import { getEmployees, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import { exportEmployeeLeaveSummaryPdf } from "@/features/leave/api";
 import { getProjects } from "@/features/settings/api";
 import { getTeams, type TeamMember } from "@/features/teams/api";
@@ -315,7 +315,11 @@ export function AdminAttendance() {
   useEffect(() => {
     const employees = employeesQuery.data ?? [];
     setEmails(new Map(employees.map((e) => [e.id, e.email])));
-    setRoster(employees);
+    // Staff only — the people expected to clock in. The Owner and admins
+    // administer the company; listing them made every new company's roll call
+    // open on its owner as "No clock-in". (Names below still cover everyone,
+    // so an admin who approved something is labelled.)
+    setRoster(employees.filter((e) => (STAFF_ROLES as readonly string[]).includes(e.role)));
   }, [employeesQuery.data]);
   useEffect(() => {
     const projectList = projectsQuery.data ?? [];
@@ -396,11 +400,11 @@ export function AdminAttendance() {
   const names = useMemo(
     () =>
       new Map(
-        roster
+        (employeesQuery.data ?? [])
           .filter((e) => e.name.trim().length > 0)
           .map((e) => [e.id, e.name] as const),
       ),
-    [roster],
+    [employeesQuery.data],
   );
 
   // The person's real name where the org has one, falling back to the address
