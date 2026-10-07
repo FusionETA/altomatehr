@@ -227,15 +227,20 @@ public class XeroCallbackRedirectTests
     [Fact]
     public async Task A_repeat_of_a_sign_in_that_connected_still_says_connected()
     {
+        // A RECONNECT: the connection's ConnectedAt is from its first connect,
+        // months ago — what matters is that this sign-in's tenant is live.
         var spent = new DateTime(2026, 10, 7, 1, 0, 0, DateTimeKind.Utc);
         var repo = new FakeXeroRepository
         {
-            Connection = new XeroConnection { OrganizationId = "org-1", ConnectedAt = spent },
+            Connection = new XeroConnection
+            {
+                OrganizationId = "org-1", TenantId = "tenant-a", ConnectedAt = spent.AddMonths(-3),
+            },
         };
         repo.States.Add(new XeroOAuthState
         {
             OrganizationId = "org-1", State = "state-1", ReturnUrl = "http://localhost:5173/",
-            ExpiresAt = spent.AddMinutes(10), UsedAt = spent,
+            ExpiresAt = spent.AddMinutes(10), UsedAt = spent, ConnectedTenantId = "tenant-a",
         });
 
         var url = await Create(repo).CompleteCallbackAsync("code-1", "state-1");
@@ -243,15 +248,15 @@ public class XeroCallbackRedirectTests
         Assert.EndsWith("?xero=connected", url);
     }
 
-    // Spent by an attempt that did NOT connect (a refusal, or an older
-    // connection): still a failure.
+    // Spent by an attempt that did NOT connect (a refusal records no tenant)
+    // — even with a live connection from earlier: still a failure.
     [Fact]
     public async Task A_repeat_of_a_sign_in_that_did_not_connect_still_says_failed()
     {
         var spent = new DateTime(2026, 10, 7, 1, 0, 0, DateTimeKind.Utc);
         var repo = new FakeXeroRepository
         {
-            Connection = new XeroConnection { OrganizationId = "org-1", ConnectedAt = spent.AddDays(-3) },
+            Connection = new XeroConnection { OrganizationId = "org-1", TenantId = "tenant-a", ConnectedAt = spent },
         };
         repo.States.Add(new XeroOAuthState
         {
