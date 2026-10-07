@@ -76,6 +76,11 @@ public class EmployeesController : ControllerBase
         }
     }
 
+    // GET /employees/next-number — what a blank employee ID would be assigned.
+    [RequireScope("employees:read")]
+    [HttpGet("next-number")]
+    public async Task<IActionResult> NextNumber() => Ok(new { employeeNumber = await _employees.NextEmployeeNumberAsync() });
+
     // POST /employees — add a member to THIS org (the admin's active org). If the
     // email already belongs to a user, that identity is reused (second-org case).
     [RequireScope("employees:write")]

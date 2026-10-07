@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiGetFile, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
+import { apiDelete, apiGet, apiGetFile, apiGetFresh, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
 import type { SalaryChangeReason } from "@/features/payroll/api";
 
 export type Employee = {
@@ -96,6 +96,11 @@ export type CreateEmployee = {
 };
 
 export const createEmployee = (body: CreateEmployee) => apiPost<Employee>("/employees", body);
+
+// What a blank employee ID is assigned on create: the next number in this
+// company's own pattern ("GE-0043" after "GE-0042"). Admins get none.
+export const getNextEmployeeNumber = () =>
+  apiGetFresh<{ employeeNumber: string }>("/employees/next-number");
 
 /**
  * Overwrite an employee's login password with one the admin types.

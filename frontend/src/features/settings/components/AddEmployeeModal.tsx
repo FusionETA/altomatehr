@@ -1,7 +1,7 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
-import { createEmployee, STAFF_ROLES, type Employee } from "@/features/employees/api";
+import { createEmployee, getNextEmployeeNumber, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
 import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import {
@@ -40,6 +40,14 @@ export function AddEmployeeModal({
 }) {
   const [name, setName] = useState("");
   const [employeeNumber, setEmployeeNumber] = useState("");
+  // What a blank ID will be assigned — shown as the placeholder so the admin
+  // knows the field can be left empty and what they'll get.
+  const [nextNumber, setNextNumber] = useState<string | null>(null);
+  useEffect(() => {
+    getNextEmployeeNumber()
+      .then((r) => setNextNumber(r.employeeNumber))
+      .catch(() => setNextNumber(null));
+  }, []);
   const [jobTitle, setJobTitle] = useState("");
   const [joinDate, setJoinDate] = useState("");
   const [email, setEmail] = useState("");
@@ -140,12 +148,14 @@ export function AddEmployeeModal({
                 </label>
                 <input
                   id="add-employee-number"
-                  required
                   className={INPUT}
                   value={employeeNumber}
                   onChange={(e) => setEmployeeNumber(e.target.value)}
-                  placeholder="EMP-001"
+                  placeholder={nextNumber ? `${nextNumber} (auto)` : "Auto-assigned if blank"}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to use the next number{nextNumber ? ` — ${nextNumber}` : ""}.
+                </p>
               </div>
               <div className="space-y-2">
                 <label htmlFor="add-job-title" className={LABEL}>

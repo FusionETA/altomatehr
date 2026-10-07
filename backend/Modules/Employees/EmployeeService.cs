@@ -151,7 +151,9 @@ public class EmployeeService : IEmployeeService
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
-            EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim(),
+            EmployeeNumber = !string.IsNullOrWhiteSpace(dto.EmployeeNumber)
+                ? dto.EmployeeNumber.Trim()
+                : OrgRoles.IsOnPayroll(role) ? await NextEmployeeNumberAsync() : null,
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
@@ -178,6 +180,9 @@ public class EmployeeService : IEmployeeService
 
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null, welcomeSent);
     }
+
+    public async Task<string> NextEmployeeNumberAsync() =>
+        EmployeeNumbers.Next((await _memberships.GetForCurrentOrgAsync()).Select(m => m.EmployeeNumber));
 
     private async Task<bool> TrySendWelcomeAsync(User user, WelcomeEmail.PasswordMode mode)
     {
