@@ -510,7 +510,72 @@ public class BankFileFormatsTests
         var result = RenderBy(which, model);
 
         Assert.False(result.Ok);
-        Assert.Contains("Nothing to disburse", result.Error!);
+        Assert.Contains("Nothing to put in the bank file", result.Error!);
+    }
+
+    // Other bank / e-wallet, Cash and Cheque are paid by hand: left out of the
+    // bank file, and an overseas bank or Merchantrade no longer blocks it.
+    [Theory]
+    [MemberData(nameof(Renderers))]
+    public void EveryFormatLeavesManualPaymentsOutAndStillPaysTheRest(string which)
+    {
+        var model = Model([
+            Row(name: "Bank Person", net: 2000m),
+            Row(name: "Wallet Person", bankName: "Merchantrade", net: 1500m) with
+            {
+                PaymentMethod = AltomateHR.Api.Modules.Employees.Entities.PaymentMethod.OTHER_TRANSFER,
+            },
+            Row(name: "Cash Person", net: 1200m) with
+            {
+                PaymentMethod = AltomateHR.Api.Modules.Employees.Entities.PaymentMethod.CASH,
+            },
+        ]);
+
+        var result = RenderBy(which, model);
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    // A bank-transfer employee whose bank isn't Malaysian is still a refusal —
+    // a typo must not quietly skip someone — and the message points at the fix.
+    [Fact]
+    public void An_unrecognised_bank_on_a_bank_transfer_still_refuses_and_says_why()
+    {
+        var model = Model([Row(name: "Typo Person", bankName: "Union Bank of the Philippines")]);
+
+        var result = RenderBy("mbb", model);
+
+        Assert.False(result.Ok);
+        Assert.Contains("Other bank / e-wallet", result.Error!);
+    }
+
+    // The manual list is everyone owed pay who isn't in the bank file — so the
+    // two together account for every ringgit, and a missing account is flagged.
+    [Fact]
+    public void Manual_payments_are_everyone_the_bank_file_does_not_pay()
+    {
+        var model = Model([
+            Row(name: "Bank Person", net: 2000m),
+            Row(name: "No Account", accountNumber: null, net: 900m),
+            Row(name: "Wallet Person", bankName: "Merchantrade", net: 1500m) with
+            {
+                PaymentMethod = AltomateHR.Api.Modules.Employees.Entities.PaymentMethod.OTHER_TRANSFER,
+            },
+            Row(name: "Zero Person", net: 0m) with
+            {
+                PaymentMethod = AltomateHR.Api.Modules.Employees.Entities.PaymentMethod.CASH,
+            },
+        ]);
+
+        var manual = PayrollPayments.Manual(model);
+
+        Assert.Equal(["No Account", "Wallet Person"], manual.Select(m => m.Row.EmployeeName).OrderBy(n => n).ToArray());
+        Assert.NotNull(manual.Single(m => m.Row.EmployeeName == "No Account").Issue);
+        Assert.Equal(
+            model.Rows.Sum(r => r.Payslip.NetPay),
+            model.Rows.Where(PayrollPayments.InBankFile).Sum(r => r.Payslip.NetPay) + manual.Sum(m => m.Row.Payslip.NetPay));
+
+        Assert.NotEmpty(ManualPaymentsXlsx.Render(model));
     }
 
     [Theory]

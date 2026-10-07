@@ -328,6 +328,14 @@ public class PayrollRunsController : ControllerBase
         [FromQuery] HlbChannel? channel) =>
         File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
 
+    // Everyone the bank file doesn't pay (other banks / e-wallets, cash,
+    // cheque, missing accounts), as an Excel sheet to pay from by hand.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/manual-payments")]
+    public Task<IActionResult> ManualPayments(string id) =>
+        File(_statutory.RenderManualPaymentsXlsxAsync(id));
+
     // A missing employer code or IC is the admin's data to fix, so it is a 409
     // with the specific reason — not a 500, and not a silently truncated file.
     private async Task<IActionResult> File(Task<StatutoryFileResult> render)

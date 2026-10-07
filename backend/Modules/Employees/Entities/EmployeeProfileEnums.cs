@@ -58,7 +58,12 @@ public enum SpecialTaxScheme
 
 public enum PaymentMethod
 {
+    // A Malaysian bank account — paid through the company's bank payroll file.
     BANK_TRANSFER,
     CASH,
     CHEQUE,
+    // A bank or e-wallet the payroll file can't reach — Merchantrade, an
+    // overseas bank (Union Bank, a Bangladeshi or Nepali bank …). Paid by hand
+    // from the run's Manual payments sheet, never put in the bank file.
+    OTHER_TRANSFER,
 }
