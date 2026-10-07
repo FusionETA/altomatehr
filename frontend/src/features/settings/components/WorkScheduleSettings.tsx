@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMyAccess } from "@/features/settings/lib/module-access";
+import { SettingsReadOnlyNote } from "@/features/settings/components/SettingsReadOnlyNote";
 import { CalendarDays, ChevronLeft, ChevronRight, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import {
   createHoliday,
@@ -79,12 +81,14 @@ function formatHolidayDate(iso: string): string {
 // on the Organization tab because it pairs with holidays: together they define
 // what counts as a working day. A project with its own schedule overrides this.
 export function WorkScheduleSettings() {
+  const { canChangeSettings } = useMyAccess();
   return (
-    <div className="space-y-5">
+    <fieldset disabled={!canChangeSettings} className="min-w-0 space-y-5">
+      {!canChangeSettings ? <SettingsReadOnlyNote /> : null}
       <ScheduleCard />
       <HolidaysCard />
       <CalendarCard />
-    </div>
+    </fieldset>
   );
 }
 

@@ -159,7 +159,8 @@ public class LeaveService : ILeaveService
     // same way, with a bulk reader behind the grid.
     public async Task<IEnumerable<EmployeeLeaveBalancesDto>> GetOrgBalancesAsync(int year)
     {
-        var members = await _directory.GetMembershipsForCurrentOrgAsync();
+        // In scope: a policy-limited admin's grid is their people.
+        var members = await _directory.GetMembershipsInScopeAsync();
         if (members.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
 
         var userIds = members.Select(m => m.UserId).Distinct().ToList();
@@ -546,7 +547,7 @@ public class LeaveService : ILeaveService
     public async Task<LeaveExportResult> ExportBulkSummaryZipAsync(
         int year, IReadOnlyList<string>? employeeIds)
     {
-        var members = await _directory.GetMembershipsForCurrentOrgAsync();
+        var members = await _directory.GetMembershipsInScopeAsync();
         var wanted = employeeIds is { Count: > 0 } ? employeeIds.ToHashSet() : null;
         var targets = members
             .Select(m => m.UserId)

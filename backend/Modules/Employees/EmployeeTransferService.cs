@@ -753,8 +753,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         var orgIds = (await _memberships.GetByUserAsync(adminId))
             .Where(m => m.OrganizationId != currentOrg
                         && OrgRoles.IsAdministrative(m.Role)
-                        && (m.Modules is null
-                            || OrgModules.Split(m.Modules).Contains(OrgModules.Employees, StringComparer.OrdinalIgnoreCase)))
+                        && ManagesEmployeesUnlimited(m))
             .Select(m => m.OrganizationId)
             .Distinct()
             .ToList();
@@ -786,6 +785,16 @@ public class EmployeeTransferService : IEmployeeTransferService
         return targets.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    // Moving someone INTO a company is managing employees there with no limit:
+    // Employees at Manage, and every employee in scope (a scoped admin there
+    // could otherwise place people outside what they're allowed to see).
+    // Owners have no limits.
+    private static bool ManagesEmployeesUnlimited(OrganizationMembership m) =>
+        string.Equals(m.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase)
+        || (m.PolicyScope is null
+            && (m.Modules is null
+                || OrgModules.ParseGrant(m.Modules).GetValueOrDefault(OrgModules.Employees) == ModuleLevel.Manage));
+
     // Admin/Owner at the org with the Employees module — the same rule
     // ListTargetsAsync applies to the signed-in admin.
     private async Task<bool> AdministersTargetAsync(string userId, string orgId)
@@ -793,8 +802,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         var m = await _memberships.GetAsync(orgId, userId);
         return m is not null
                && OrgRoles.IsAdministrative(m.Role)
-               && (m.Modules is null
-                   || OrgModules.Split(m.Modules).Contains(OrgModules.Employees, StringComparer.OrdinalIgnoreCase));
+               && ManagesEmployeesUnlimited(m);
     }
 
     private async Task<bool> ActiveAtTargetAsync(string targetOrgId, string userId)

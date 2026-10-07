@@ -314,6 +314,7 @@ public class LeaveController : ControllerBase
     // 200 with a per-row report even when some rows failed; only an unusable
     // FILE is a 400.
     [RequireScope("leave:write")]
+    [RequireFullEmployeeScope]   // a bulk import matches rows against every employee
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     [RequestSizeLimit(8 * 1024 * 1024)]

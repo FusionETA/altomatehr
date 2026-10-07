@@ -10,6 +10,9 @@ namespace AltomateHR.Api.Modules.Employees;
 
 [ApiController]
 [Route("employees")]
+// A policy-limited admin reaches only their own people; anyone else is 404.
+[EmployeeInScope("id")]
+[EmployeeInScope("userId")]
 [RequireModule(OrgModules.Employees)]
 [Authorize(Roles = "Admin,Owner")]   // employee admin is admin/owner only
 public class EmployeesController : ControllerBase
@@ -296,6 +299,7 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> ExportFields() => Ok(await _import.ExportFieldsAsync());
 
     [RequireScope("employees:write")]
+    [RequireFullEmployeeScope]   // a bulk import matches rows against every employee
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Import(

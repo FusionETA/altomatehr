@@ -85,6 +85,7 @@ public class PayrollController : ControllerBase
     public async Task<IActionResult> GetSettings() => Ok(await _settings.GetAsync());
 
     [RequireScope("payroll:write")]
+    [RequireSettings]
     [HttpPut("settings")]
     public async Task<IActionResult> SaveSettings(SavePayrollSettingsDto dto) =>
         Ok(await _settings.SaveAsync(dto));
@@ -94,6 +95,7 @@ public class PayrollController : ControllerBase
     public async Task<IActionResult> GetCompanyInfo() => Ok(await _companyInfo.GetAsync());
 
     [RequireScope("payroll:write")]
+    [RequireSettings]
     [HttpPut("company-info")]
     public async Task<IActionResult> SaveCompanyInfo(SavePayrollCompanyInfoDto dto) =>
         Ok(await _companyInfo.SaveAsync(dto));

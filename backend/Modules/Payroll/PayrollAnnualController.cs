@@ -13,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // the payslips surface, not here.
 [ApiController]
 [Route("payroll/annual")]
+[RequireFullEmployeeScope(IncludeReads = true)]   // annual returns cover every employee
 [RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollAnnualController : ControllerBase
@@ -36,6 +37,7 @@ public class PayrollAnnualController : ControllerBase
     // M + P pair out. Nothing is read from or written to payroll: this is for
     // the years the system did not run.
     [RequireScope("payroll:write")]
+    [ReadOnlyAction]   // converts an uploaded file; changes nothing
     [HttpPost("cp8d/convert")]
     public IActionResult ConvertCp8d(Cp8dConvertRequestDto request)
     {

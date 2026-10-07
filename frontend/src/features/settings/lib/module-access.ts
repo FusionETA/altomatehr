@@ -10,3 +10,29 @@ export function useEnabledModules(): ReadonlySet<string> | null {
   const query = useCachedQuery("/organizations/modules", getModuleAccess);
   return useMemo(() => (query.data ? new Set(query.data.enabled) : null), [query.data]);
 }
+
+// The signed-in admin's limits beyond which modules they have, for hiding
+// controls the server would refuse anyway:
+//   · canManage(m)      — module m at Manage, not just View;
+//   · canChangeSettings — the "Change settings" switch;
+//   · allEmployees      — false when limited to some policies, which also
+//                         makes company-wide payroll (runs, filings) view-only.
+// Everything allowed while loading or on a failed read: the backend still
+// refuses, so a missing hint only costs a clear error message.
+export type MyAccess = {
+  canManage: (module: string) => boolean;
+  canChangeSettings: boolean;
+  allEmployees: boolean;
+};
+
+export function useMyAccess(): MyAccess {
+  const query = useCachedQuery("/organizations/modules", getModuleAccess);
+  return useMemo(() => {
+    const data = query.data;
+    return {
+      canManage: (m: string) => !data || data.levels?.[m] !== "View",
+      canChangeSettings: data?.canChangeSettings ?? true,
+      allEmployees: data?.allEmployees ?? true,
+    };
+  }, [query.data]);
+}

@@ -14,6 +14,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // what someone earns.
 [ApiController]
 [Route("payroll/salary-changes")]
+[EmployeeInScope("employeeProfileId")]
 [RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class SalaryChangesController : ControllerBase
@@ -41,6 +42,7 @@ public class SalaryChangesController : ControllerBase
     // POST /payroll/salary-changes/import — new salaries for many people at
     // once, each recorded in the history. All or nothing.
     [RequireScope("payroll:write")]
+    [RequireFullEmployeeScope]
     [HttpPost("import")]
     public async Task<IActionResult> Import(IFormFile? file)
     {

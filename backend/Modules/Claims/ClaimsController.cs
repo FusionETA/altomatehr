@@ -244,6 +244,7 @@ public class ClaimsController : ControllerBase
 
     // PUT /claims/settings — change the claim-run cutoff (Admins only).
     [RequireScope("claims:write")]
+    [RequireSettings]
     [HttpPut("settings")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> UpdateSettings(UpdateClaimSettingsDto dto)
@@ -303,6 +304,7 @@ public class ClaimsController : ControllerBase
     // would tell the client "nothing happened" when in fact 98 of 100 rows
     // landed. A genuinely unusable FILE (wrong type, no header) still 400s.
     [RequireScope("claims:write")]
+    [RequireFullEmployeeScope]   // a bulk import matches rows against every employee
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Owner")]
     [RequestSizeLimit(8 * 1024 * 1024)]

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Holidays.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -7,6 +8,7 @@ namespace AltomateHR.Api.Modules.Holidays;
 
 [ApiController]
 [Route("holidays")]
+[RequireSettings]   // changing the holiday calendar is company configuration (reads stay open)
 [Authorize]
 public class HolidaysController : ControllerBase
 {

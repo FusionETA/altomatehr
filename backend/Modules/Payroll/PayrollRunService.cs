@@ -45,6 +45,10 @@ public class PayrollRunService : IPayrollRunService
     // transfer ran; submitting (or reverting) that month re-carries their
     // year-to-date to the new company.
     private readonly Employees.IEmployeeTransferService? _transfers;
+    // A policy-limited admin sees only their people's payslips; the run's
+    // stored totals are company-wide, so for them they're re-summed from what
+    // they can see.
+    private readonly IEmployeeScope? _scope;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -63,8 +67,10 @@ public class PayrollRunService : IPayrollRunService
         IPayrollXeroSyncService xeroSync,
         IEmployeeLoanService loans,
         Overtime.IApprovedOvertimeService approvedOvertime,
-        Employees.IEmployeeTransferService? transfers = null)
+        Employees.IEmployeeTransferService? transfers = null,
+        IEmployeeScope? scope = null)
     {
+        _scope = scope;
         _transfers = transfers;
         _approvedOvertime = approvedOvertime;
         _statutory = statutory;
@@ -98,7 +104,39 @@ public class PayrollRunService : IPayrollRunService
     public async Task<List<PayrollRunDto>> GetAllAsync()
     {
         var runs = await _runs.GetAllAsync();
-        return runs.Select(ToDto).ToList();
+        if (_scope is not { IsLimited: true }) return runs.Select(ToDto).ToList();
+
+        var result = new List<PayrollRunDto>(runs.Count);
+        foreach (var run in runs)
+            result.Add(WithTotalsOf(run, await _payslips.GetForRunAsync(run.Id)));   // filtered to scope
+        return result;
+    }
+
+    // The run as a limited admin may see it: the stored totals replaced by the
+    // sums of the payslips in their scope.
+    private static PayrollRunDto WithTotalsOf(PayrollRun run, IReadOnlyList<Payslip> visible)
+    {
+        var dto = ToDto(run);
+        var t = new PayrollRun();
+        ApplyTotals(t, visible.ToList());
+        dto.EmployeeCount = t.EmployeeCount;
+        dto.TotalGross = t.TotalGross;
+        dto.TotalNet = t.TotalNet;
+        dto.TotalEmployeeEpf = t.TotalEmployeeEpf;
+        dto.TotalEmployerEpf = t.TotalEmployerEpf;
+        dto.TotalEmployeeSocso = t.TotalEmployeeSocso;
+        dto.TotalEmployerSocso = t.TotalEmployerSocso;
+        dto.TotalEmployeeEis = t.TotalEmployeeEis;
+        dto.TotalEmployerEis = t.TotalEmployerEis;
+        dto.TotalEmployeeSkbbk = t.TotalEmployeeSkbbk;
+        dto.TotalPcb = t.TotalPcb;
+        dto.TotalCp38 = t.TotalCp38;
+        dto.TotalZakat = t.TotalZakat;
+        dto.TotalHrdf = t.TotalHrdf;
+        dto.EmployeesSubjectToHrdf = t.EmployeesSubjectToHrdf;
+        dto.TotalWagesSubjectToHrdf = t.TotalWagesSubjectToHrdf;
+        dto.TotalCostToEmployer = t.TotalCostToEmployer;
+        return dto;
     }
 
     public async Task<PayrollRunDetailDto?> GetAsync(string id)
@@ -112,7 +150,9 @@ public class PayrollRunService : IPayrollRunService
             .Select(m => m.EmployeeProfileId)
             .ToList();
 
-        return BuildDetail(run, payslips, lineItems, memberIds);
+        var detail = BuildDetail(run, payslips, lineItems, memberIds);
+        if (_scope is { IsLimited: true }) detail.Run = WithTotalsOf(run, payslips);
+        return detail;
     }
 
     public async Task<PayrollRunSaveResult> CreateAsync(CreatePayrollRunDto dto)

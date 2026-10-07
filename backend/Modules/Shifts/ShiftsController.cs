@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Shifts.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -7,6 +8,7 @@ namespace AltomateHR.Api.Modules.Shifts;
 
 [ApiController]
 [Route("shifts")]
+[RequireSettings]   // the work schedule is company configuration
 [Authorize(Roles = "Admin,Owner")]
 public class ShiftsController : ControllerBase
 {

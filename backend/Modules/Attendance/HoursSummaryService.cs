@@ -68,7 +68,8 @@ public class HoursSummaryService : IHoursSummaryService
     public async Task<HoursSummaryDto> GetOrgHoursSummaryAsync(
         DateTime from, DateTime to, string? teamId, string? projectId = null, string? q = null)
     {
-        var members = await _directory.GetMembershipsForCurrentOrgAsync();
+        // In scope: a policy-limited admin's report covers their people.
+        var members = await _directory.GetMembershipsInScopeAsync();
         var staff = members.Where(m => m.Role is "Employee" or "Supervisor").ToList();
 
         // Narrowed through the same resolver the other admin reports use, so a
