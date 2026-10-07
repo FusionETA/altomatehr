@@ -13,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // list first is how the wrong people get someone else's history.
 [ApiController]
 [Route("payroll/ytd-import")]
+[RequireFullEmployeeScope(IncludeReads = true)]   // a year-to-date import loads every employee's history
 [RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class YtdImportController : ControllerBase
@@ -30,6 +31,7 @@ public class YtdImportController : ControllerBase
     }
 
     [RequireScope("payroll:write")]
+    [ReadOnlyAction]
     [HttpPost("{year:int}/preview")]
     public async Task<IActionResult> Preview(int year, IFormFile file) =>
         await WithUpload(file, async (content, format) =>

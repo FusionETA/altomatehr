@@ -157,7 +157,7 @@ public static class EmployeeImportSheet
         (new("pcbBorneByEmployer", "PCB Borne by Employer", false, "No"), "Yes or No."),
 
         // ---- Payment ----
-        (new("paymentMethod", "Payment Method", false, "BANK_TRANSFER"), "BANK_TRANSFER, CASH or CHEQUE."),
+        (new("paymentMethod", "Payment Method", false, "BANK_TRANSFER"), "BANK_TRANSFER (Malaysian bank, in the bank file), OTHER_TRANSFER (other bank / e-wallet such as Merchantrade, paid manually), CASH or CHEQUE."),
         (new("bankName", "Bank Name", false, "Maybank", ["bank"]), "Free text."),
         (new("bankAccountNumber", "Bank Account No", false, "112233445566", ["account no", "bank account"]),
             "Free text."),

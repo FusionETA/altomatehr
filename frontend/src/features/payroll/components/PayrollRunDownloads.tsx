@@ -4,6 +4,7 @@ import {
   downloadAllPayslips,
   downloadBankFile,
   downloadEpfCsv,
+  downloadManualPayments,
   downloadPaymentSchedule,
   downloadPayrollSummary,
   downloadPcbDetails,
@@ -63,6 +64,19 @@ type Item = {
   download: (runId: string, ctx: DownloadContext) => Promise<{ blob: Blob; fileName: string }>;
 };
 
+// Always offered, whatever the company's payroll bank: the people the bank file
+// never pays — Other bank / e-wallet (Merchantrade, overseas banks), Cash,
+// Cheque, and anyone missing bank details.
+const MANUAL_PAYMENTS_ITEM: Item = {
+  key: "manual-payments",
+  group: "BANK",
+  title: "Manual Payments (Excel)",
+  description:
+    "Everyone not in the bank file — other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account, amount and totals, to pay by hand.",
+  portal: null,
+  download: (runId) => downloadManualPayments(runId),
+};
+
 // What the bank files need beyond the run itself. Only Hong Leong reads the
 // reference; the date reaches every format.
 type DownloadContext = {
@@ -85,7 +99,7 @@ const ITEMS: Item[] = [
     group: "REPORTS",
     title: "Payment Schedule",
     description:
-      "Per-employee net pay and statutory remittances. Shows each account in full, and flags anyone the bank file cannot pay.",
+      "Who is paid what, split into the bank file and those paid manually, with each account in full. The sheet finance signs before releasing pay.",
     portal: null,
     download: (runId) => downloadPaymentSchedule(runId),
   },
@@ -337,12 +351,14 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   const items = useMemo(
     () => {
-      const all = [...ITEMS, ...bankItems(bankName)];
+      const all = [...ITEMS, ...bankItems(bankName), MANUAL_PAYMENTS_ITEM];
       return imported ? all.filter((item) => item.group === "PAYSLIPS") : all;
     },
     [bankName, imported],
   );
   const needsReference = formatFor(bankName) === "HlbConnect";
+  // Whether this company's payroll bank produces an upload file at all.
+  const hasBankFile = bankItems(bankName).length > 0;
 
   const grouped = useMemo(
     () =>
@@ -482,7 +498,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
               {/* The bank file writes this date into the sheet and into the
                   filename the portal parses, so it is chosen here rather than
                   silently defaulted. */}
-              {group === "BANK" && items.length > ITEMS.length ? (
+              {group === "BANK" && hasBankFile ? (
                 <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
                   <div className="w-44">
                     <label className={`${LABEL} text-xs`} htmlFor="paymentDate">
@@ -523,7 +539,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
               {/* No bank file at all. Which of the two reasons it is matters:
                   one is a setting nobody filled in, the other is a decision
                   already taken. */}
-              {group === "BANK" && items.length === ITEMS.length ? (
+              {group === "BANK" && !hasBankFile && !imported ? (
                 <p className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                   {bankName
                     ? "This company's payroll bank produces no bulk-upload file. Pay the salaries through your bank's own process — the Payment Schedule above lists every account and amount."

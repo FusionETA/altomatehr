@@ -163,21 +163,48 @@ export const createOrganization = (name: string) =>
   apiPost<Organization>("/organizations", { name });
 
 // --- Admin access control (Owner only) ---
+//
+// Three independent limits the Owner sets on each Admin:
+//   · levels         — per module View (see, download) or Manage (also act).
+//                      null = every module at Manage; a module left out is Off.
+//   · policyIds      — only employees on these policies. null = everyone.
+//                      A limited admin also can't run company-wide payroll.
+//   · canChangeSettings — may change the company's configuration.
+export type ModuleLevel = "None" | "View" | "Manage";
+
 export type AdminAccess = {
   userId: string;
   name: string;
   email: string;
   role: string;
-  // null = full access (everything the plan enables); a list narrows the admin
-  // to those modules; an empty list locks them out.
+  /** Raw grant entries ("payroll", "payroll:view"); null = full access. */
   modules: string[] | null;
+  levels: Record<string, ModuleLevel> | null;
+  policyIds: string[] | null;
+  canChangeSettings: boolean;
+};
+export type SetAdminAccess = {
+  levels: Record<string, ModuleLevel> | null;
+  policyIds: string[] | null;
+  canChangeSettings: boolean;
 };
 export const getAdmins = () => apiGet<AdminAccess[]>("/organizations/admins");
-export const setAdminAccess = (userId: string, modules: string[] | null) =>
-  apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, { modules });
+// Owner-only: take an Admin out of this company. Their login stays (they may
+// run other companies); their access here ends at once.
+export const removeAdmin = (userId: string) => apiDelete<void>(`/organizations/admins/${userId}`);
+export const setAdminAccess = (userId: string, body: SetAdminAccess) =>
+  apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, body);
 
-// Every grantable module key, plus the caller's own effective enabled set.
-export type ModuleAccess = { all: string[]; enabled: string[] };
+// Every grantable module key, plus the caller's OWN access: which modules
+// they have and at what level, whether they may change settings, and whether
+// they see every employee (false = limited to some policies).
+export type ModuleAccess = {
+  all: string[];
+  enabled: string[];
+  levels: Record<string, ModuleLevel>;
+  canChangeSettings: boolean;
+  allEmployees: boolean;
+};
 export const getModuleAccess = () => apiGet<ModuleAccess>("/organizations/modules");
 
 // --- Public holidays ---

@@ -40,6 +40,13 @@ public interface IDirectoryService
     // (Default keeps hand-written test doubles compiling; DirectoryService overrides.)
     Task<List<EmployeeProfile>> GetProfilesByUserAsync(string userId) => Task.FromResult(new List<EmployeeProfile>());
 
+    // The current org's memberships THIS REQUEST may list: everyone, unless the
+    // caller is a policy-limited admin (IEmployeeScope), then only their people.
+    // For screens that LIST people. Business rules (routing, counts that guard
+    // a delete, payroll generation) keep GetMembershipsForCurrentOrgAsync.
+    async Task<List<OrganizationMembership>> GetMembershipsInScopeAsync() =>
+        await GetMembershipsForCurrentOrgAsync();
+
     // A former employee removes a company from their own account (see
     // OrganizationMembership.HiddenByEmployeeAt). The one write here: the
     // membership is Employees' data, and Auth must not reach its repository.

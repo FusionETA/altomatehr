@@ -26,7 +26,8 @@ export type Claim = {
   xeroSyncError?: string | null;
   xeroSyncedAt?: string | null;
   // How this claim gets paid out. XERO_BILL pushes it to Xero; PAYROLL takes it
-  // out of Xero entirely and into the payroll reimbursement run.
+  // out of Xero entirely and into the payroll reimbursement run; NONE does
+  // neither — the company reimburses it outside the app.
   settlement: ClaimSettlement;
   // Position in the approval chain. A REJECTED claim with currentStep > 0 got
   // past its first-line approver before a later layer turned it down — that is
@@ -130,11 +131,12 @@ export const bulkSyncClaimsToXero = (ids: string[], status?: XeroBillStage) =>
   apiPost<ClaimsBulkResult>("/claims/bulk/xero-sync", status ? { ids, status } : { ids });
 // ---- Settlement route ----
 
-export type ClaimSettlement = "XERO_BILL" | "PAYROLL";
+export type ClaimSettlement = "XERO_BILL" | "PAYROLL" | "NONE";
 
 export const claimSettlementLabels: Record<ClaimSettlement, string> = {
   XERO_BILL: "Sync to Xero as a bill",
   PAYROLL: "Add to payroll",
+  NONE: "Don't send anywhere",
 };
 
 export const claimSettlementHints: Record<ClaimSettlement, string> = {
@@ -142,6 +144,8 @@ export const claimSettlementHints: Record<ClaimSettlement, string> = {
     "Approved claims are pushed to Xero — a bill for out-of-pocket claims, a spend-money transaction for company-paid ones.",
   PAYROLL:
     "Approved out-of-pocket claims are reimbursed through the employee's pay and collected in the payroll export instead of going to Xero.",
+  NONE:
+    "Approved claims stay approved here and go nowhere — reimburse them your own way. You can still add one to a payroll run by hand.",
 };
 
 export const rejectClaim = (id: string, reviewNotes: string) =>

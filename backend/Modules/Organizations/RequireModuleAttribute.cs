@@ -16,6 +16,7 @@ namespace AltomateHR.Api.Modules.Organizations;
 //   · A ROLE-RESTRICTED endpoint — any [Authorize(Roles = ...)] on it or its
 //     controller, i.e. an admin or supervisor surface — also needs the caller's
 //     admin grant to include it. That is the Owner's "Manage access" choice.
+//     At View level only reads pass (GET, or a [ReadOnlyAction] POST).
 //
 // The split is what lets one attribute sit on a controller that mixes the two.
 // Filing a claim has no role restriction, so an Admin whose grant leaves out
@@ -44,11 +45,19 @@ public sealed class RequireModuleAttribute : Attribute, IAsyncActionFilter
 
         if (NeedsAdminGrant(context))
         {
-            var enabled = await access.GetEnabledModulesAsync();
-            if (!enabled.Contains(_module, StringComparer.OrdinalIgnoreCase))
+            var level = await access.GetModuleLevelAsync(_module);
+            if (level == ModuleLevel.None)
             {
                 context.Result = Forbidden(
                     $"Your admin access doesn't include the '{_module}' module. Ask the organization's owner to grant it.");
+                return;
+            }
+
+            // View: see and download, never change.
+            if (level == ModuleLevel.View && !AccessGate.IsRead(context))
+            {
+                context.Result = Forbidden(
+                    $"Your admin access to '{_module}' is view only. Ask the organization's owner for manage access.");
                 return;
             }
         }

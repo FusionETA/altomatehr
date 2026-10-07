@@ -186,7 +186,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "summary", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+        ["bank-file", "manual-payments", "summary", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -242,6 +242,7 @@ public class StatutoryFileService : IStatutoryFileService
         string document, string runId, DateTime? paymentDate) => document switch
         {
             "bank-file" => RenderBankFileAsync(runId, paymentDate),
+            "manual-payments" => RenderManualPaymentsXlsxAsync(runId),
             "summary" => RenderSummaryPdfAsync(runId),
             "payslips" => RenderAllPayslipsZipAsync(runId),
             "epf" => RenderEpfCsvAsync(runId),
@@ -292,6 +293,24 @@ public class StatutoryFileService : IStatutoryFileService
         var fileName = $"Payment_Schedule_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
             true, fileName, PaymentSchedulePdf.Render(model), PaymentSchedulePdf.ContentType, null);
+    }
+
+    public async Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId)
+    {
+        var model = await LoadDocumentAsync(runId);
+        if (model is null) return NotFound();
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
+
+        if (PayrollPayments.Manual(model).Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "No manual payments this month — everyone owed pay is in the bank file.");
+        }
+
+        var fileName = $"Manual_Payments_{MonthYear(model.Run)}.xlsx";
+        return new StatutoryFileResult(
+            true, fileName, ManualPaymentsXlsx.Render(model), ManualPaymentsXlsx.ContentType, null);
     }
 
     // The LHDN MTD §E worksheet, one page per employee.

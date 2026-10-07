@@ -23,15 +23,14 @@ public class CreateEmployeeDtoTests
         EmployeeNumber = employeeNumber,
     };
 
+    // Optional now: a blank one is assigned (EmployeeNumbers.Next), so the
+    // add form no longer has to refuse it.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("   ")]
-    public void Missing_employee_number_is_rejected(string? number)
+    public void A_missing_employee_number_is_allowed(string? number)
     {
-        var errors = Validate(Dto(number));
-
-        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(CreateEmployeeDto.EmployeeNumber)));
+        Assert.Empty(Validate(Dto(number)));
     }
 
     [Fact]

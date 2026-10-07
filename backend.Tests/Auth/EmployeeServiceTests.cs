@@ -139,6 +139,77 @@ public class EmployeeServiceTests
         Assert.Null(membership.JobTitle);
     }
 
+    // Only the Owner decides who administers the company. A limited Admin
+    // could otherwise create an unlimited Admin (or an Owner) and step around
+    // every limit set on them.
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Owner")]
+    public async Task A_limited_admin_cannot_create_an_admin_or_owner(string role)
+    {
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), LimitedAdmin());
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "boss@altomate.com", Name = "Boss", Password = "irrelevant-but-required", Role = role,
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("owner", result.Error);
+    }
+
+    [Fact]
+    public async Task A_limited_admin_cannot_change_someone_s_module_access()
+    {
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), LimitedAdmin());
+
+        var result = await service.UpdateAsync("usr-super", new UpdateEmployeeDto
+        {
+            Role = "Supervisor", Modules = ["payroll"],
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("module access", result.Error);
+    }
+
+    [Fact]
+    public async Task A_limited_admin_can_still_add_an_employee()
+    {
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), LimitedAdmin());
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "staff@altomate.com", Name = "Staff", Password = "irrelevant-but-required", Role = "Employee",
+        });
+
+        Assert.True(result.Ok);
+    }
+
+    // Setting an admin's password is signing in as them — only the Owner may.
+    [Fact]
+    public async Task An_admin_cannot_set_another_admin_s_password()
+    {
+        var service = MakeService(out var memberships, out _, out _);
+        memberships.Add(Membership("usr-admin2", "Admin"));
+
+        var result = await service.SetPasswordAsync("usr-admin2", "a-new-password-1");
+
+        Assert.False(result.Ok);
+        Assert.Contains("owner", result.Error);
+    }
+
+    private static AltomateHR.Api.Modules.Organizations.IModuleAccessService LimitedAdmin() =>
+        new LimitedAccess();
+
+    private sealed class LimitedAccess : AltomateHR.Api.Modules.Organizations.IModuleAccessService
+    {
+        public Task<IReadOnlyCollection<string>> GetEnabledModulesAsync() =>
+            Task.FromResult<IReadOnlyCollection<string>>(["employees"]);
+        public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => GetEnabledModulesAsync();
+        public Task<AltomateHR.Api.Modules.Organizations.AdminAccess> GetAccessAsync() =>
+            Task.FromResult(new AltomateHR.Api.Modules.Organizations.AdminAccess(true, null, true, null));
+    }
+
     // --- helpers ---
 
     // The join date is stored twice: on the membership, which pro-rates leave,
@@ -283,7 +354,8 @@ public class EmployeeServiceTests
         out List<OrganizationMembership> memberships,
         out List<EmployeeProfile> profiles,
         out List<User> users,
-        FakeApproverPositions positions)
+        FakeApproverPositions positions,
+        AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null)
     {
         users = new List<User>
         {
@@ -308,7 +380,8 @@ public class EmployeeServiceTests
             new CapturingEmailSender(),
             new FakeOrgRepositoryForWelcome(),
             positions,
-            Options.Create(new PortalOptions()));
+            Options.Create(new PortalOptions()),
+            access);
     }
 
     private static User User(string id, string email) => new()

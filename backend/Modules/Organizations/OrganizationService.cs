@@ -22,6 +22,8 @@ public class OrganizationService : IOrganizationService
     private readonly ILeaveTypeService _leaveTypes;
     private readonly IDirectoryService _directory;
     private readonly IOrganizationDefaultsService _defaults;
+    private readonly Policies.IEmployeePolicyRepository? _policies;
+    private readonly AltomateHR.Api.Common.ICurrentUser? _currentUser;
 
     public OrganizationService(
         IOrganizationRepository repo,
@@ -30,8 +32,12 @@ public class OrganizationService : IOrganizationService
         IXeroService xero,
         ILeaveTypeService leaveTypes,
         IDirectoryService directory,
-        IOrganizationDefaultsService defaults)
+        IOrganizationDefaultsService defaults,
+        Policies.IEmployeePolicyRepository? policies = null,
+        AltomateHR.Api.Common.ICurrentUser? currentUser = null)
     {
+        _policies = policies;
+        _currentUser = currentUser;
         _repo = repo;
         _memberships = memberships;
         _audit = audit;
@@ -63,20 +69,98 @@ public class OrganizationService : IOrganizationService
             .Select(m =>
             {
                 users.TryGetValue(m.UserId, out var user);
-                return new AdminAccessDto
-                {
-                    UserId = m.UserId,
-                    Name = user?.Name ?? string.Empty,
-                    Email = user?.Email ?? string.Empty,
-                    Role = m.Role,
-                    Modules = m.Modules is null
-                        || string.Equals(m.Role, "Owner", StringComparison.OrdinalIgnoreCase)
-                        ? null
-                        : OrgModules.Split(m.Modules).ToList(),
-                };
+                return ToAccessDto(m, user?.Name, user?.Email);
             })
             .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    // An Owner is shown with full access whatever the columns hold — the grant
+    // only ever narrows an Admin.
+    private static AdminAccessDto ToAccessDto(Employees.Entities.OrganizationMembership m, string? name, string? email)
+    {
+        var isOwner = string.Equals(m.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+        return new AdminAccessDto
+        {
+            UserId = m.UserId,
+            Name = name ?? string.Empty,
+            Email = email ?? string.Empty,
+            Role = m.Role,
+            Modules = isOwner || m.Modules is null ? null : OrgModules.Split(m.Modules).ToList(),
+            Levels = isOwner || m.Modules is null ? null : OrgModules.ParseGrant(m.Modules).ToDictionary(kv => kv.Key, kv => kv.Value),
+            PolicyIds = isOwner || m.PolicyScope is null ? null : OrgModules.Split(m.PolicyScope).ToList(),
+            CanChangeSettings = isOwner || m.CanChangeSettings,
+        };
+    }
+
+    public async Task<(bool NotFound, string? Error)> RemoveAdminAsync(string userId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return (true, null);
+
+        if (string.Equals(membership.Role, "Owner", StringComparison.OrdinalIgnoreCase))
+            return (false, "The owner can't be removed.");
+        if (!string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return (true, null);   // staff are archived from their profile, not removed here
+        if (userId == _currentUser?.UserId)
+            return (false, "You can't remove yourself.");
+
+        await _memberships.DeleteAsync(membership);
+
+        var user = (await _directory.GetUsersAsync()).FirstOrDefault(u => u.Id == userId);
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            $"Removed admin {user?.Email ?? userId}",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId }));
+
+        return (false, null);
+    }
+
+    public async Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null
+            || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (dto.Levels is not null)
+        {
+            var unknown = dto.Levels.Keys.FirstOrDefault(m => !OrgModules.IsKnownModule(m));
+            if (unknown is not null) throw new ArgumentException($"Unknown module '{unknown}'.");
+        }
+
+        List<string>? policyIds = null;
+        if (dto.PolicyIds is not null)
+        {
+            policyIds = dto.PolicyIds.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
+            if (_policies is not null)
+            {
+                // Tenant-filtered: a policy id from another company doesn't resolve.
+                var known = (await _policies.GetAllAsync()).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+                var stray = policyIds.FirstOrDefault(p => !known.Contains(p));
+                if (stray is not null) throw new ArgumentException($"Unknown policy '{stray}'.");
+            }
+        }
+
+        // null → full access. A map → "key" / "key:view" entries; None and Off
+        // are simply left out (an empty map stores "" — deliberately locked out).
+        membership.Modules = dto.Levels is null ? null : OrgModules.FormatGrant(dto.Levels);
+        membership.PolicyScope = policyIds is null ? null : OrgModules.Join(policyIds);
+        membership.CanChangeSettings = dto.CanChangeSettings;
+        await _memberships.UpdateAsync(membership);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            "Updated an admin's access",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId, membership.Modules, membership.PolicyScope, membership.CanChangeSettings }));
+
+        var users = (await _directory.GetUsersAsync()).ToDictionary(u => u.Id, StringComparer.Ordinal);
+        users.TryGetValue(userId, out var u);
+        return ToAccessDto(membership, u?.Name, u?.Email);
     }
 
     public async Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules)

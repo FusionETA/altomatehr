@@ -1942,7 +1942,37 @@ export function EmployeeDetail({
                         />
                       </Field>
                     </>
-                  ) : null}
+                  ) : profile.paymentMethod === "OTHER_TRANSFER" ? (
+                    <>
+                      {/* Not in the bank file, so not matched against the
+                          Malaysian bank register — Merchantrade, an overseas
+                          bank, whatever finance will pay into by hand. */}
+                      <Field
+                        label="Bank / provider"
+                        hint="E.g. Merchantrade, Union Bank of the Philippines. Paid by hand from the run's Manual payments sheet."
+                        span
+                      >
+                        <Text value={profile.bankName} onChange={(v) => set("bankName", v)} />
+                      </Field>
+                      <Field label="Account / wallet number">
+                        <Text
+                          value={profile.bankAccountNumber}
+                          onChange={(v) => set("bankAccountNumber", v)}
+                        />
+                      </Field>
+                      <Field label="Account holder">
+                        <Text
+                          value={profile.bankAccountHolderName}
+                          onChange={(v) => set("bankAccountHolderName", v)}
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground sm:col-span-2">
+                      Not in the bank payroll file — this person is listed on the run's Manual
+                      payments sheet, to be paid by {profile.paymentMethod === "CASH" ? "cash" : "cheque"}.
+                    </p>
+                  )}
                 </Group>
               </>
             ) : section === "company" ? (

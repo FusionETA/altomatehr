@@ -142,7 +142,7 @@
               <tr><td><code>sendWelcomeEmail</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
               <tr><td><code>dateOfBirth</code></td><td>string (date)</td><td>Only for a new account if <code>password</code> is omitted</td><td>The first password is then the email followed by the birthday as <code>MMDD</code>.</td></tr>
               <tr><td><code>name</code></td><td>string</td><td>Only for a new account</td><td>Max 160 chars. Ignored when reusing an existing identity.</td></tr>
-              <tr><td><code>employeeNumber</code></td><td>string</td><td>Yes</td><td>Max 40 chars. Payroll's statutory files key on it.</td></tr>
+              <tr><td><code>employeeNumber</code></td><td>string</td><td>No</td><td>Max 40 chars. Payroll's statutory files key on it. When blank, an <code>Employee</code> or <code>Supervisor</code> is assigned the next number in the company's own pattern (see <a href="#next-number">GET /employees/next-number</a>); an <code>Admin</code> or <code>Owner</code> gets none, as they are not on payroll.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string</td><td>No</td><td>Max 120 chars.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date)</td><td>No</td><td>Drives pro-rated leave accrual.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted.</td></tr>
@@ -178,6 +178,32 @@
     "employeeNumber": "EMP-042",
     "role": "Employee"
   }'</code></pre>
+      </section>
+
+      <section class="endpoint" id="next-number">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/next-number</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>The employee number a blank <code>employeeNumber</code> would be assigned right now.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeNumber</code></td><td>string</td><td>The next number, continuing the pattern most of the company's numbers already use (prefix and digit width): <code>GE-0042</code> gives <code>GE-0043</code>. A company with no numbers yet starts at <code>EMP-001</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          A preview, not a reservation: it is not held for you, and another add can take it first.
+          Omit <code>employeeNumber</code> on <code>POST /employees</code> and the server picks
+          the number at that moment.
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/employees/next-number \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+<pre><code>{ "employeeNumber": "EMP-043" }</code></pre>
       </section>
 
       <section class="endpoint" id="update-employee">
@@ -449,7 +475,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentMethod</code></td><td>string</td><td><code>BANK_TRANSFER</code> (default), <code>CASH</code> or <code>CHEQUE</code>.</td></tr>
+              <tr><td><code>paymentMethod</code></td><td>string</td><td><code>BANK_TRANSFER</code> (default), <code>CASH</code>, <code>CHEQUE</code> or <code>OTHER_TRANSFER</code> (other bank / e-wallet the payroll bank file can't reach, such as an overseas bank). Only <code>BANK_TRANSFER</code> employees with an account number go in the payroll bank file; everyone else is listed on the run's <a href="payroll-runs.html#doc-manual-payments">manual payments</a> sheet.</td></tr>
               <tr><td><code>bankName</code></td><td>string | null</td><td>Matched against a bank-name lookup when payroll builds a bank file; an unrecognised name blocks that file, not this save.</td></tr>
               <tr><td><code>bankAccountHolderName</code> / <code>bankAccountNumber</code></td><td>string | null</td><td></td></tr>
             </tbody>

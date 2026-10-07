@@ -52,7 +52,7 @@ export function ClaimSettings() {
   // silently re-route every future claim.
   const stranded = !xeroConnected && route === "XERO_BILL";
   const routes: ClaimSettlement[] =
-    xeroConnected || stranded ? ["XERO_BILL", "PAYROLL"] : ["PAYROLL"];
+    xeroConnected || stranded ? ["XERO_BILL", "PAYROLL", "NONE"] : ["PAYROLL", "NONE"];
   useEffect(() => {
     const settings = query.data;
     if (!settings) return;
@@ -165,7 +165,7 @@ export function ClaimSettings() {
                       Xero isn&apos;t connected, so nothing can be pushed to it right now. This is
                       still the saved route — connect Xero under{" "}
                       <span className="font-semibold text-foreground">System Settings → Xero</span>,
-                      or switch to payroll below.
+                      or choose another route below.
                     </p>
                   </div>
                 ) : null}
@@ -300,7 +300,9 @@ export function ClaimSettings() {
         {error ? <p className="text-sm font-semibold text-destructive">{error}</p> : null}
         {saved ? (
           <p className="text-sm font-semibold text-primary">
-            Saved — approved claims go to {claimSettlementLabels[route].toLowerCase()}
+            {route === "NONE"
+              ? "Saved — approved claims aren't sent anywhere"
+              : `Saved — approved claims go to ${claimSettlementLabels[route].toLowerCase()}`}
             {route === "XERO_BILL" ? ` as ${xeroBillStageLabels[stage].toLowerCase()}` : ""}, and the
             run closes on day {cutoffDay} of each month.
           </p>

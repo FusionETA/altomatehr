@@ -14,6 +14,7 @@ import {
 } from "../api";
 import { BUTTON, BUTTON_DANGER, BUTTON_GHOST, HINT, LABEL, LINK_BUTTON, TEXTAREA, WARN_PANEL } from "../lib/ui";
 import { CheckBox } from "./PayrollCheckbox";
+import { useMyAccess } from "@/features/settings/lib/module-access";
 
 // WARN_PANEL's colours at a single line's weight — a reason next to a button,
 // not a panel of its own.
@@ -57,6 +58,10 @@ export function PayrollRunActions({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Running payroll is company-wide: Manage on Payroll AND every employee in
+  // scope. Anyone else sees the run, not its buttons (the server refuses too).
+  const access = useMyAccess();
+  const canRun = access.allEmployees && access.canManage("payroll");
 
   // The cascade a revert will cause, fetched before it happens so the admin
   // sees which later months go back to draft with it.
@@ -126,6 +131,16 @@ export function PayrollRunActions({
         : blockingCount > 0
           ? `${blockingCount === 1 ? "1 required field needs" : `${blockingCount} required fields need`} fixing before this can be sent for approval.`
           : null;
+
+  if (!canRun) {
+    return (
+      <p className={HINT}>
+        {access.allEmployees
+          ? "Your payroll access is view only, so this run can't be changed from your account."
+          : "Your access covers some employees, not the whole company, so you can view this run and your people's payslips but not run, submit or change it."}
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-3">

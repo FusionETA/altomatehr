@@ -26,10 +26,16 @@ public class AppDbContext : DbContext
 {
     private readonly ICurrentUser _currentUser;
 
-    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser currentUser)
+    // The request's employee scope (a policy-limited admin). Unlimited when
+    // absent — background jobs, seeding, and tests that build the context.
+    private readonly IEmployeeScope _scope;
+
+    public AppDbContext(
+        DbContextOptions<AppDbContext> options, ICurrentUser currentUser, IEmployeeScope? scope = null)
         : base(options)
     {
         _currentUser = currentUser;
+        _scope = scope ?? new EmployeeScope();
     }
 
     public DbSet<Organization> Organizations => Set<Organization>();
@@ -359,13 +365,16 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.UserId);
 
         // ---- Multi-tenant global query filters ----
+        // Employee-keyed rows also carry the request's EMPLOYEE SCOPE (a
+        // policy-limited admin — see IEmployeeScope): a no-op unless limited.
         // Every query on a tenant-scoped entity is auto-restricted to the current org.
         // When there's no current org (startup/seeding, or the unauthenticated login/refresh
         // calls), the filter is a no-op so those flows still work.
         modelBuilder.Entity<AuditLog>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Claim>().HasQueryFilter(
-            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+            c => (_currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(c.EmployeeId)));
         // User is global (not tenant-scoped) — a login account reaches its orgs
         // through OrganizationMembership, which carries the org filter instead.
         modelBuilder.Entity<OrganizationMembership>().HasQueryFilter(
@@ -375,21 +384,28 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ChartOfAccount>().HasQueryFilter(
             a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(
-            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+            r => (_currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(r.EmployeeId)));
         modelBuilder.Entity<AttendanceSession>().HasQueryFilter(
-            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+            s => (_currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(s.EmployeeId)));
         modelBuilder.Entity<AttendanceBreak>().HasQueryFilter(
-            b => _currentUser.OrganizationId == null || b.OrganizationId == _currentUser.OrganizationId);
+            b => (_currentUser.OrganizationId == null || b.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(b.EmployeeId)));
         modelBuilder.Entity<AttendanceApprovalRequest>().HasQueryFilter(
-            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+            a => (_currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(a.EmployeeId)));
         modelBuilder.Entity<LeaveType>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<LeaveApplication>().HasQueryFilter(
-            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+            a => (_currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(a.EmployeeId)));
         modelBuilder.Entity<LeaveEntitlement>().HasQueryFilter(
-            e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
+            e => (_currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(e.EmployeeId)));
         modelBuilder.Entity<OvertimeRequest>().HasQueryFilter(
-            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
+            r => (_currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(r.EmployeeId)));
         modelBuilder.Entity<EmployeePolicy>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PolicyLeaveEntitlement>().HasQueryFilter(
@@ -420,17 +436,22 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
-            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+            p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(p.UserId)));
         modelBuilder.Entity<EmployeeTransfer>().HasQueryFilter(
-            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+            t => (_currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(t.UserId)));
         modelBuilder.Entity<EmploymentPeriod>().HasQueryFilter(
-            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+            p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(p.UserId)));
         modelBuilder.Entity<PayrollSettings>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeeLoan>().HasQueryFilter(
-            l => _currentUser.OrganizationId == null || l.OrganizationId == _currentUser.OrganizationId);
+            l => (_currentUser.OrganizationId == null || l.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(l.EmployeeProfileId)));
         modelBuilder.Entity<SalaryChange>().HasQueryFilter(
-            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+            c => (_currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(c.EmployeeProfileId)));
         modelBuilder.Entity<PayrollPortalCredential>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PayrollCompanyInfo>().HasQueryFilter(
@@ -441,15 +462,19 @@ public class AppDbContext : DbContext
         // inheriting the run's. The reference schema keys them off the employee
         // profile alone, which would leave both tables outside this filter.
         modelBuilder.Entity<Payslip>().HasQueryFilter(
-            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+            p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(p.EmployeeProfileId)));
         modelBuilder.Entity<PayslipLineItem>().HasQueryFilter(
             li => _currentUser.OrganizationId == null || li.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PayrollRunAdjustment>().HasQueryFilter(
-            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+            a => (_currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(a.EmployeeProfileId)));
         modelBuilder.Entity<PayrollRunClaim>().HasQueryFilter(
-            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+            c => (_currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(c.EmployeeProfileId)));
         modelBuilder.Entity<PayrollRunMember>().HasQueryFilter(
-            m => _currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId);
+            m => (_currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(m.EmployeeProfileId)));
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
     }

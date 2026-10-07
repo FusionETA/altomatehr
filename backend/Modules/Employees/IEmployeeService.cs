@@ -5,6 +5,10 @@ public interface IEmployeeService
 {
     Task<IEnumerable<EmployeeDto>> GetAllAsync();
     Task<EmployeeSaveResult> CreateAsync(CreateEmployeeDto dto);
+
+    // What a blank employee ID would be assigned — the next in this company's
+    // pattern. Shown as the add form's placeholder.
+    Task<string> NextEmployeeNumberAsync() => Task.FromResult(EmployeeNumbers.FirstNumber);   // default for test doubles
     Task<EmployeeSaveResult> UpdateAsync(string id, UpdateEmployeeDto dto);
 
     // Overwrite an employee's login password with one the admin types, for the

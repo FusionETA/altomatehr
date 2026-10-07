@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useMyAccess } from "@/features/settings/lib/module-access";
+import { SettingsReadOnlyNote } from "@/features/settings/components/SettingsReadOnlyNote";
 import { CircleAlert } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import * as cache from "@/shared/lib/api-cache";
@@ -78,6 +80,7 @@ const ID_TYPE_LABELS: Record<IdType, string> = {
 };
 
 export function PayrollSettingsForm() {
+  const { canChangeSettings } = useMyAccess();
   const [section, setSection] = useState<SettingsSection>("general");
   // Seeded straight from the cache so a revisit renders the form on the first
   // frame. These are a WORKING COPY — patchSettings/patchInfo edit them and
@@ -289,6 +292,8 @@ export function PayrollSettingsForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-24">
+      <fieldset disabled={!canChangeSettings} className="min-w-0 space-y-6">
+      {!canChangeSettings ? <SettingsReadOnlyNote /> : null}
       {!settings.isConfigured ? (
         <section className={NOTE_PANEL}>
           Payroll has not been set up for this organisation yet. Nothing is missing on the
@@ -914,6 +919,7 @@ export function PayrollSettingsForm() {
           saveLabel={dirty ? "Save changes" : "Save payroll settings"}
         />
       ) : null}
+      </fieldset>
     </form>
   );
 }

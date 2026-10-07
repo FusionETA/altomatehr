@@ -490,12 +490,54 @@
           <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
           choose another.</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
-        <p>Add admins and choose what each one can see — full access, or only the modules you tick
-          (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Activity
-          log). Anything you leave out disappears from that admin's sidebar and they can't open it. Owners are listed
-          too, marked <em>Owner · full access</em> — an owner's access can't be restricted.</p></li>
+        <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
+          an owner's access can't be restricted. Each admin row shows a one-line summary (for example
+          <em>5 modules (3 view only) · 1 policy · no settings</em>) and two buttons:</p>
+        <ul>
+          <li><span class="btn-name">Manage access</span> — opens a dialog with three tabs, then
+            <span class="btn-name">Save</span>:
+            <ul>
+              <li><strong>Modules</strong> — tick <em>All modules, full control</em>, or set each module
+                (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Activity
+                log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
+                <span class="btn-name">Manage</span>. <em>View</em> lets them see the screens and download what's
+                there; <em>Manage</em> also lets them edit, approve and run. A module set to Off disappears from that
+                admin's sidebar.</li>
+              <li><strong>Employees</strong> — <em>All employees</em>, or <em>Only employees on these policies</em>
+                with the policies ticked. Everyone else is hidden from that admin in employees, payroll, claims, leave
+                and attendance. Payroll covers the whole company, so an admin limited to some employees can view
+                payroll runs (and only their people's payslips) but can't run payroll or download company-wide files.</li>
+              <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
+                (run payroll, approve, edit employees) without changing how the company is set up. It covers
+                Organization, Work Schedule, Payroll settings, company and statutory details, portal logins and the Xero
+                connection. Accounts, Projects and Policies follow their own module level.</li>
+            </ul></li>
+          <li><span class="btn-name">Remove</span> — takes the person off as an admin straight away (you confirm
+            first). Their login isn't deleted, and you can add them again later.</li>
+        </ul>
+        <p>To add someone, open the <strong>Add admin</strong> tab, enter their name and email (and a temporary password
+          for a new account), and press <span class="btn-name">Add admin</span>. <strong>Manage access</strong> opens
+          straight away so you can set their limits — a new admin starts with full access until you do.</p></li>
     </ol>
     
+    <figure class="shot" data-place="System Settings">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/admins-list.png" alt="System Settings → Admins: the owner marked full access, and an admin row with Manage access and Remove buttons" loading="lazy">
+          <p class="shot-cap">Admins</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/admins-access-modules.png" alt="The Manage access dialog on its Modules tab, with Off, View and Manage for each module" loading="lazy">
+          <p class="shot-cap">Modules tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/admins-access-employees.png" alt="The Manage access dialog on its Employees tab, limited to employees on the Full-time policy, with the payroll note" loading="lazy">
+          <p class="shot-cap">Employees tab</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Admins and Manage access</p>
+    </figure>
+
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
@@ -523,6 +565,28 @@
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
+    </figure>
+
+    <div class="note"><span class="nt">What a limited admin sees</span>
+      <p>An admin without <em>Can change company settings</em> sees a <strong>View only</strong> note above
+        Organization, Work Schedule and Payroll settings, and those forms are greyed out. If their payroll access is
+        view only, or they cover only some employees, the Payroll runs page shows a short message instead of
+        <span class="btn-name">Create draft</span> and the run's action buttons. On the Employees page,
+        <span class="btn-name">Add employee</span> needs Manage on Employees, and <span class="btn-name">Import</span>
+        also needs <em>All employees</em>.</p>
+    </div>
+    <figure class="shot" data-place="System Settings">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/limited-settings.png" alt="System Settings → Organization for a limited admin: a View only note above the greyed-out company name" loading="lazy">
+          <p class="shot-cap">Organization</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/limited-payroll-runs.png" alt="Payroll runs for an admin who covers only some employees: a message in place of the Create draft button" loading="lazy">
+          <p class="shot-cap">Payroll runs</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">What a limited admin sees</p>
     </figure>
 
     </div>
@@ -597,7 +661,7 @@
     </ul>
     <h3>Adding people</h3>
     <ul>
-      <li><span class="btn-name">Add employee</span> — name, employee ID (required), job title, join date, email, date
+      <li><span class="btn-name">Add employee</span> — name, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
         of birth, role and policy. The policy starts on your default one. Their <strong>starting password</strong> is
         their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
         Tick <em>Send a welcome email</em> to have it sent to them.</li>
@@ -690,10 +754,31 @@
     <p>The import spreadsheet has <strong>Work Permit No</strong> and <strong>Work Permit Expiry</strong> columns
       (date as YYYY-MM-DD, foreign workers only), so permits can be filled in for many people at once with
       <span class="btn-name">Import</span>.</p>
+    <h3>Bank / payout</h3>
+    <p>On the Statutory tab, <strong>Bank / payout</strong> starts with a <strong>Method</strong>:</p>
+    <ul>
+      <li><strong>Bank transfer (Malaysian bank)</strong> — pick the bank from the dropdown and fill in the account
+        number and holder. This person is in the bank file.</li>
+      <li><strong>Other bank / e-wallet (paid manually)</strong> — type the <strong>Bank / provider</strong> (for example
+        Merchantrade or an overseas bank), the <strong>Account / wallet number</strong> and the
+        <strong>Account holder</strong>. Nothing is checked against the Malaysian bank list.</li>
+      <li><strong>Cash (paid manually)</strong> and <strong>Cheque (paid manually)</strong> — no details needed.</li>
+    </ul>
+    <p>Everyone except Bank transfer is left out of the bank file and listed on the run's
+      <a href="#files">Manual Payments</a> sheet instead.</p>
     <div class="note warn"><span class="nt">Pick the bank from the list</span>
-      <p>Under Bank / payout, choose the employee's bank from the dropdown of Malaysian banks. The bank file refuses
-        the <strong>whole run</strong> if anyone's bank isn't recognised — so a typo would stop everyone being paid.</p>
+      <p>For Bank transfer, choose the employee's bank from the dropdown of Malaysian banks. The bank file refuses
+        the <strong>whole run</strong> if anyone's bank isn't recognised — so a typo would stop everyone being paid.
+        For anyone paid another way, use one of the manual methods above.</p>
     </div>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-payout.png" alt="Bank / payout on the Statutory tab with Other bank / e-wallet (paid manually), a provider, an account number and an account holder" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Bank / payout set to Other bank / e-wallet</p>
+    </figure>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
     <h3>Archiving, and employment history</h3>
@@ -931,8 +1016,9 @@
     <ul>
       <li><strong>Default currency</strong>.</li>
       <li><strong>How approved claims are paid</strong> — one route for the whole company:
-        <strong>Sync to Xero as a bill</strong> (choose Awaiting payment or Draft), or <strong>Add to payroll</strong>
-        so they're reimbursed through the employee's pay.</li>
+        <strong>Sync to Xero as a bill</strong> (choose Awaiting payment or Draft), <strong>Add to payroll</strong>
+        so they're reimbursed through the employee's pay, or <strong>Don't send anywhere</strong> — claims stay
+        approved in AltomateHR and you reimburse them your own way (you can still add one to a payroll run by hand).</li>
       <li><strong>Claim run cutoff</strong> — the day of the month claims are cut off.</li>
     </ul>
     <p>Export the list as CSV, XLSX or PDF from the button beside the tabs.</p>
@@ -1112,7 +1198,7 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
       <tbody>
-        <tr><td>Reports</td><td>Payroll Summary, Payment Schedule, PCB Calculation Details</td><td>Your records / approver</td></tr>
+        <tr><td>Reports</td><td>Payroll Summary, Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details</td><td>Your records / approver</td></tr>
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
@@ -1120,6 +1206,7 @@
         <tr><td></td><td>TP1 / TP3 Claims List</td><td>Your records — everyone who claimed reliefs on Borang PCB/TP1 this month, or declared a previous employer on TP3</td></tr>
         <tr><td>Payslips</td><td>Bulk payslips (a ZIP of PDFs), or <span class="btn-name">Email all</span> to each employee</td><td>Employees</td></tr>
         <tr><td>Bank</td><td>The bulk payment file for your payroll bank</td><td>Your bank's portal</td></tr>
+        <tr><td></td><td>Manual Payments (Excel)</td><td>Your finance team — pay these by hand</td></tr>
       </tbody>
     </table></div>
     <h3>The bank file follows your bank</h3>
@@ -1132,6 +1219,9 @@
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
       bank setting is missing or an employee's bank isn't recognised. If your payroll bank is “Other”, no bank file
       is produced.</p>
+    <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
+      other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
+      amount and totals, so you can pay them yourself.</p>
     <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed. Each row also has
       a button for that person's <strong>Borang PCB/TP1</strong> (the reliefs they claimed, this month and year to date).
       <span class="btn-name">Email all</span> asks you to confirm first — payslips can't be recalled once sent.</p>
@@ -1328,7 +1418,7 @@
         negative, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
-        app recognises — pick it from the dropdown in their record, then download again.</p></div></details>
+        app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>
     <details class="qa"><summary>Someone left. Do I delete them?</summary>
       <div class="body"><p>No — archive them (Employment tab → Archive, with their last day). Payroll pays them up to
         that day, then they drop out of future runs but keep every payslip and form.</p></div></details>

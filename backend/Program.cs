@@ -54,7 +54,12 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- Services: the DI container ----
-builder.Services.AddControllers(o => o.Filters.Add<PartnerAccessFilter>())   // deny-by-default for partner tokens
+builder.Services.AddControllers(o =>
+    {
+        o.Filters.Add<PartnerAccessFilter>();   // deny-by-default for partner tokens
+        // A policy-limited admin reaches no employee outside their scope by id.
+        o.Filters.Add<AltomateHR.Api.Modules.Organizations.EmployeeScopeRouteFilter>();
+    })
     .AddJsonOptions(o =>
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
@@ -246,6 +251,9 @@ builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<IOrganizationDefaultsService, OrganizationDefaultsService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
+// The request's employee scope, read by AppDbContext's filters; filled by EmployeeScopeMiddleware.
+builder.Services.AddScoped<AltomateHR.Api.Common.EmployeeScope>();
+builder.Services.AddScoped<AltomateHR.Api.Common.IEmployeeScope>(sp => sp.GetRequiredService<AltomateHR.Api.Common.EmployeeScope>());
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IChartOfAccountRepository, ChartOfAccountRepository>();
@@ -501,7 +509,8 @@ app.UseCors("frontend");
 app.UseRateLimiter();
 app.UseAuthentication();   // WHO are you?  (JWT or wp_live_ key) — MUST be before UseAuthorization
 app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
-app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();  // a former employer's company is view-only
+app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();
+app.UseMiddleware<AltomateHR.Api.Modules.Employees.EmployeeScopeMiddleware>();  // a policy-limited admin sees only their employees  // a former employer's company is view-only
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 

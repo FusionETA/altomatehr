@@ -119,6 +119,46 @@ const admin = {
     await page.mouse.move(5, 5); // no hover ring on a field
     await shoot(page, "admin", "employee-work-permit");
   },
+  // System Settings → Admins: each admin row with Manage access and Remove.
+  "admins-list": async (page) => {
+    await go(page, "settings/settings-admins");
+    await page.getByRole("button", { name: "Manage access" }).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "admins-list");
+  },
+  // The Manage access dialog on its Modules tab (Off / View / Manage), then Employees.
+  "admins-access-modules": async (page) => {
+    await go(page, "settings/settings-admins");
+    await page.getByRole("button", { name: "Manage access" }).first().click();
+    await page.getByText("Manage access", { exact: true }).last().waitFor();
+    await settle(page);
+    await shoot(page, "admin", "admins-access-modules");
+  },
+  "admins-access-employees": async (page) => {
+    await go(page, "settings/settings-admins");
+    await page.getByRole("button", { name: "Manage access" }).first().click();
+    await page.getByRole("tab", { name: "Employees" }).click();
+    await settle(page);
+    await shoot(page, "admin", "admins-access-employees");
+  },
+  "employee-add": async (page) => {
+    await go(page, "company/manage-employee");
+    await page.getByRole("button", { name: "Add employee" }).click();
+    await page.getByText(/\(auto\)/).first().waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+    await settle(page, 1500);
+    await shoot(page, "admin", "employee-add");
+    await page.keyboard.press("Escape");
+  },
+  // Priya is on Other bank / e-wallet (Merchantrade): free-text provider, account, holder.
+  "employee-payout": async (page) => {
+    await go(page, "company/manage-employee");
+    await clickText(page, "Priya Devi");
+    await clickText(page, "Statutory");
+    await page.getByText("Bank / payout").first().waitFor();
+    await scrollTo(page, "Bank / payout", 80, true);
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-payout");
+  },
   "layout-menu": async (page) => {
     await go(page, "overview");
     await page.getByRole("button", { name: "Account menu" }).click();
@@ -235,7 +275,7 @@ const admin = {
     await page.getByRole("button", { name: "Download files" }).click();
     await page.getByText("Statutory uploads").first().waitFor();
     await settle(page);
-    await scrollTo(page, "Statutory uploads", 20, true);
+    await scrollTo(page, "Manual Payments (Excel)", 260);
     await shoot(page, "admin", "payroll-downloads");
     await page.keyboard.press("Escape");
   },
@@ -378,11 +418,29 @@ const nadia = {
 const wanted = process.argv.slice(2);
 const want = (group, name) => wanted.includes("all") || wanted.includes(group) || wanted.includes(name);
 
+// ─── Limited admin (desktop) ─────────────────────────────────────────────
+const exec = {
+  "limited-settings": async (page) => {
+    await go(page, "settings/settings-organization");
+    await page.getByText(/View only/).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "limited-settings");
+  },
+  "limited-payroll-runs": async (page) => {
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByText(/view runs but not start one|view only/i).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "limited-payroll-runs");
+  },
+};
+
 const browser = await chromium.launch();
 const failures = [];
 for (const [group, email, device, extra, steps] of [
   ["admin", "admin@altomate.com", DESKTOP, {}, admin],
   ["evan", "employee@altomate.com", PHONE, { geolocation: SITE_A, permissions: ["geolocation"] }, evan],
+  ["exec", "exec.demo@altomate.com", DESKTOP, {}, exec],
   ["sara", "supervisor@altomate.com", PHONE, {}, sara],
   ["nadia", "nadia.demo@altomate.com", PHONE, { password: "nadia.demo@altomate.com0517" }, nadia],
 ]) {

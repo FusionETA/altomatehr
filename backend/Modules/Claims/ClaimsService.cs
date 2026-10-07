@@ -436,6 +436,14 @@ public class ClaimsService : IClaimsService
                      + "Switch it to a Xero bill first if you want it billed instead.");
         }
 
+        // "Don't send anywhere": the company reimburses it outside the app.
+        if (claim.Settlement == ClaimSettlement.NONE)
+        {
+            return new ClaimXeroSyncResult(true, false, claim,
+                Error: "Claims are set not to be sent anywhere, so this one isn't billed to Xero. "
+                     + "Change the route under Claim settings to bill it.");
+        }
+
         var directory = await _employees.GetSnapshotAsync();
         var identity = directory.ById(claim.EmployeeId);
         var contactName = identity?.Name is { Length: > 0 } name
@@ -1262,6 +1270,7 @@ public class ClaimsService : IClaimsService
     private async Task<Claim> SettleAsync(Claim claim)
     {
         // PAYROLL pushes nowhere — the payroll reimbursement export collects it.
+        // NONE pushes nowhere at all — the company reimburses it outside the app.
         if (claim.Settlement != ClaimSettlement.XERO_BILL) return claim;
 
         // Already billed (a re-approval, or an import that arrived synced).

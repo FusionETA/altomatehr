@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { useEnabledModules } from "../lib/module-access";
+import { useEnabledModules, useMyAccess } from "../lib/module-access";
 import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import {
   CLAIMS_PAGE_SIZE,
@@ -137,6 +137,11 @@ export function EmployeesSettings() {
   // roster 403s, and the badges and the bulk-fill panel below are payroll's.
   const enabledModules = useEnabledModules();
   const canPayroll = enabledModules?.has("payroll") ?? false;
+  // Bulk imports match against every employee, so they need full scope as
+  // well as Manage; adding someone needs Manage on Employees.
+  const access = useMyAccess();
+  const canEditEmployees = access.canManage("employees");
+  const canImport = canEditEmployees && access.allEmployees;
   const payrollQuery = useCachedQuery(
     canPayroll ? "/payroll/employees?all" : null,
     () => getPayrollEmployees(true),
@@ -346,14 +351,16 @@ export function EmployeesSettings() {
               the rarer act. It is also the one bulk path — adding people and
               updating every field, payroll details included. */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowImport(true)}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
-            >
-              <Upload className="h-4 w-4" />
-              Import
-            </button>
+            {canImport ? (
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                <Upload className="h-4 w-4" />
+                Import
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setShowExport(true)}
@@ -364,7 +371,7 @@ export function EmployeesSettings() {
             </button>
             {/* An increment round for many people at once — payroll's, so only
                 for an admin whose grant includes Payroll. */}
-            {canPayroll ? (
+            {canPayroll && access.canManage("payroll") && access.allEmployees ? (
               <button
                 type="button"
                 onClick={() => setShowSalaryImport(true)}
@@ -374,14 +381,16 @@ export function EmployeesSettings() {
                 Salary adjustments
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setShowAdd(true)}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
-            >
-              <Plus className="h-4 w-4" />
-              Add employee
-            </button>
+            {canEditEmployees ? (
+              <button
+                type="button"
+                onClick={() => setShowAdd(true)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" />
+                Add employee
+              </button>
+            ) : null}
           </div>
         </div>
 

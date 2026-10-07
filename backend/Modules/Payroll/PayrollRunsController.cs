@@ -14,6 +14,11 @@ namespace AltomateHR.Api.Modules.Payroll;
 // employee-facing read here.
 [ApiController]
 [Route("payroll/runs")]
+// A run is company-wide: an admin limited to some policies may VIEW runs (seeing
+// only their people's payslips) but not change one. The org-wide files below
+// are gated individually, reads included.
+[RequireFullEmployeeScope]
+[EmployeeInScope("employeeProfileId")]
 [RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PayrollRunsController : ControllerBase
@@ -198,18 +203,22 @@ public class PayrollRunsController : ControllerBase
     // just one rendering of them.
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/files/epf")]
     public Task<IActionResult> EpfCsv(string id) => File(_statutory.RenderEpfCsvAsync(id));
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/files/socso-eis")]
     public Task<IActionResult> PerkesoTxt(string id) => File(_statutory.RenderPerkesoTxtAsync(id));
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/files/socso-eis-skbbk")]
     public Task<IActionResult> PerkesoSkbbkTxt(string id) => File(_statutory.RenderPerkesoSkbbkTxtAsync(id));
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/files/pcb")]
     public Task<IActionResult> PcbTxt(string id) => File(_statutory.RenderPcbTxtAsync(id));
 
@@ -250,6 +259,7 @@ public class PayrollRunsController : ControllerBase
     // The month's list of employees who claimed TP1 or declared a previous
     // employer on TP3 — printable, as the MTD spec requires.
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/tp1-claims")]
     public Task<IActionResult> Tp1Claims(string id) => File(_tp1.RenderClaimsListAsync(id));
 
@@ -261,17 +271,20 @@ public class PayrollRunsController : ControllerBase
         File(_statutory.RenderAllPayslipsZipAsync(id));
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/summary")]
     public Task<IActionResult> Summary(string id) =>
         File(_statutory.RenderSummaryPdfAsync(id));
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/payment-schedule")]
     public Task<IActionResult> PaymentSchedule(string id) =>
         File(_statutory.RenderPaymentSchedulePdfAsync(id));
 
     // The LHDN MTD §E worksheet, one page per employee.
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/pcb-details")]
     public Task<IActionResult> PcbDetails(string id) =>
         File(_statutory.RenderPcbDetailsPdfAsync(id));
@@ -284,6 +297,7 @@ public class PayrollRunsController : ControllerBase
     // caller can tell "no bank file configured" from "the zip is fine" without
     // unpacking it first.
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/download")]
     [HttpGet("{id}/download")]
     public async Task<IActionResult> Download(string id, [FromQuery] DateTime? paymentDate)
@@ -305,6 +319,7 @@ public class PayrollRunsController : ControllerBase
     // payroll period. `recipientReference` and `channel` apply to Hong Leong
     // only — every other bank ignores them.
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/bank-file")]
     public Task<IActionResult> BankFile(
         string id,
@@ -312,6 +327,14 @@ public class PayrollRunsController : ControllerBase
         [FromQuery] string? recipientReference,
         [FromQuery] HlbChannel? channel) =>
         File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
+
+    // Everyone the bank file doesn't pay (other banks / e-wallets, cash,
+    // cheque, missing accounts), as an Excel sheet to pay from by hand.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/manual-payments")]
+    public Task<IActionResult> ManualPayments(string id) =>
+        File(_statutory.RenderManualPaymentsXlsxAsync(id));
 
     // A missing employer code or IC is the admin's data to fix, so it is a 409
     // with the specific reason — not a 500, and not a silently truncated file.
@@ -352,6 +375,7 @@ public class PayrollRunsController : ControllerBase
         Ok(await _xero.GetTrackingCategoriesAsync());
 
     [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/xero/preview")]
     public async Task<IActionResult> XeroPreview(string id)
     {
