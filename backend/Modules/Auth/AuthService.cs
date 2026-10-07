@@ -103,9 +103,9 @@ public class AuthService : IAuthService
         var user = await VerifyPasswordAsync(email, password);
         if (user is null) return null;
 
-        // Log the account into its default (first) org. Role comes from that membership.
-        var memberships = await _directory.GetMembershipsByUserAsync(user.Id);
-        var active = memberships.FirstOrDefault();
+        // Log the account into its home org — the company they work at NOW (see
+        // PickHomeAsync). Role comes from that membership.
+        var active = await PickHomeAsync(user.Id);
         if (active is null)
             return null;   // valid credentials, but not a member of any org yet
 
@@ -164,7 +164,7 @@ public class AuthService : IAuthService
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
 
-        var home = (await _directory.GetMembershipsByUserAsync(userId)).FirstOrDefault();
+        var home = await PickHomeAsync(userId);
         if (home is null) return null;
 
         return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso);
@@ -172,9 +172,10 @@ public class AuthService : IAuthService
 
     public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false)
     {
-        // Only if the account is actually a member of the target org.
+        // Only if the account is actually a member of the target org — and
+        // hasn't removed it from their account as a former employee.
         var membership = await _directory.GetMembershipAsync(organizationId, userId);
-        if (membership is null) return null;
+        if (membership is null || membership.HiddenByEmployeeAt is not null) return null;
 
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
@@ -188,12 +189,19 @@ public class AuthService : IAuthService
         // by name. Organizations are the tenant root (no org query filter), so a
         // cross-tenant GetByIdAsync is fine here even though the memberships came
         // from a filter-ignoring lookup.
-        var memberships = await _directory.GetMembershipsByUserAsync(userId);
+        //
+        // Current employers first, former ones (left / transferred out) after —
+        // the same rule sign-in uses to choose.
+        var memberships = (await _directory.GetMembershipsByUserAsync(userId))
+            .Where(m => m.HiddenByEmployeeAt is null)
+            .ToList();
+        var former = await FormerOrgIdsAsync(userId, memberships);
         var orgs = new List<UserOrgDto>(memberships.Count);
-        foreach (var m in memberships)
+        foreach (var m in OrderByHome(memberships, former))
         {
             var org = await _organizations.GetByIdAsync(m.OrganizationId);
-            orgs.Add(new UserOrgDto(m.OrganizationId, org?.Name ?? m.OrganizationId, m.Role));
+            orgs.Add(new UserOrgDto(
+                m.OrganizationId, org?.Name ?? m.OrganizationId, m.Role, former.Contains(m.OrganizationId)));
         }
         return orgs;
     }
@@ -223,8 +231,53 @@ public class AuthService : IAuthService
             return await ExitSupportAsync(stored.UserId, stored.IsSso);
         }
 
+        // A company they removed from their account no longer refreshes into
+        // itself: move to their home company, or end the session.
+        var membership = await _directory.GetMembershipAsync(stored.OrganizationId, stored.UserId);
+        if (membership?.HiddenByEmployeeAt is not null)
+        {
+            var home = await PickHomeAsync(stored.UserId);
+            return home is null
+                ? null
+                : await IssueTokensAsync(stored.UserId, stored.Email, home.Role, home.OrganizationId, sso: stored.IsSso);
+        }
+
         return await IssueTokensAsync(
             stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso);
+    }
+
+    public async Task<LeaveOrgResult> LeaveFormerOrgAsync(
+        string userId, string organizationId, string? activeOrganizationId, bool sso = false)
+    {
+        var membership = await _directory.GetMembershipAsync(organizationId, userId);
+        if (membership is null || membership.HiddenByEmployeeAt is not null)
+            return new LeaveOrgResult("You're not part of that company.");
+
+        // Only a FORMER employer: someone still employed there would lose
+        // their clock-in, claims and leave with one tap.
+        var former = await FormerOrgIdsAsync(userId, [membership]);
+        if (!former.Contains(organizationId))
+            return new LeaveOrgResult("You still work at this company, so it can't be removed.");
+
+        await _directory.HideMembershipForEmployeeAsync(organizationId, userId);
+
+        // Recorded in that company's log: HR should know the person can no
+        // longer read their payslips there themselves.
+        var user = await _userRepo.GetByIdAsync(userId);
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeLeftCompany,
+            $"{user?.Email ?? userId} removed this company from their account",
+            TargetType: "User",
+            TargetId: userId,
+            OrganizationId: organizationId));
+
+        if (activeOrganizationId != organizationId) return new LeaveOrgResult(null);
+
+        var home = await PickHomeAsync(userId);
+        if (home is null || user is null) return new LeaveOrgResult(null, SignOut: true);
+
+        return new LeaveOrgResult(
+            null, await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso));
     }
 
     public async Task LogoutAsync(string refreshToken)
@@ -393,10 +446,66 @@ public class AuthService : IAuthService
             preheader: $"Your code is {code}. It expires in {minutes} minutes.");
     }
 
+    // ─── Home company ───────────────────────────────────────────────────
+    //
+    // Someone can belong to several companies — and after a transfer, to one
+    // they have LEFT (their profile there is archived, kept so they can still
+    // read its payslips). Signing in must land them where they work now, not
+    // wherever the database happens to list first.
+
+    // The org to sign into: a current employer before a former one. Otherwise
+    // the order is left as it was, so an owner of several companies, or someone
+    // genuinely employed by two, signs in exactly where they always did.
+    private async Task<Employees.Entities.OrganizationMembership?> PickHomeAsync(string userId)
+    {
+        // A company they removed from their account ("Leave company") is never home.
+        var memberships = (await _directory.GetMembershipsByUserAsync(userId))
+            .Where(m => m.HiddenByEmployeeAt is null)
+            .ToList();
+        if (memberships.Count <= 1) return memberships.FirstOrDefault();
+
+        var former = await FormerOrgIdsAsync(userId, memberships);
+        return OrderByHome(memberships, former).First();
+    }
+
+    private static IEnumerable<Employees.Entities.OrganizationMembership> OrderByHome(
+        IEnumerable<Employees.Entities.OrganizationMembership> memberships, IReadOnlySet<string> former) =>
+        // OrderBy is stable: within each group the original order holds.
+        memberships.OrderBy(m => former.Contains(m.OrganizationId));
+
+    // Orgs where this person is a FORMER employee: staff (not an admin
+    // account) whose profile there is archived. An admin/owner membership is
+    // never former — administering a company isn't employment in it.
+    private async Task<IReadOnlySet<string>> FormerOrgIdsAsync(
+        string userId, IEnumerable<Employees.Entities.OrganizationMembership> memberships)
+    {
+        var archivedOrgs = (await _directory.GetProfilesByUserAsync(userId))
+            .Where(p => p.IsArchived)
+            .Select(p => p.OrganizationId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return memberships
+            .Where(m => !OrgRoles.IsAdministrative(m.Role) && archivedOrgs.Contains(m.OrganizationId))
+            .Select(m => m.OrganizationId)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     private async Task<AuthResult> IssueTokensAsync(
         string userId, string email, string role, string organizationId, bool support = false, bool sso = false)
     {
-        var accessToken = _tokens.CreateToken(userId, email, role, organizationId, support, sso);
+        // Re-checked on every mint, refresh included: archive or restore
+        // someone and their next refresh carries the change.
+        var former = !support
+                     && !OrgRoles.IsAdministrative(role)
+                     && (await _directory.GetProfilesByUserAsync(userId))
+                         .Any(p => p.OrganizationId == organizationId && p.IsArchived);
+
+        // In a former company they are nobody's supervisor any more: the
+        // middleware only stops writes, and a Supervisor role would still
+        // read their old team's attendance, leave and overtime. The REFRESH
+        // token keeps the real role, so a restore gives it back on refresh.
+        var sessionRole = former ? OrgRoles.Employee : role;
+        var accessToken = _tokens.CreateToken(userId, email, sessionRole, organizationId, support, sso, former);
 
         var refresh = new RefreshToken
         {
@@ -416,11 +525,12 @@ public class AuthService : IAuthService
         // from the email — "admin@…" read as a person called "Admin".
         var name = (await _userRepo.GetByIdAsync(userId))?.Name;
         var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
-        return new AuthResult(accessToken, email, role, organizationId, refresh.Token, refresh.ExpiresAt,
+        return new AuthResult(accessToken, email, sessionRole, organizationId, refresh.Token, refresh.ExpiresAt,
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
             SupportMode: support,
             OrganizationName: orgName,
-            ViaSso: sso);
+            ViaSso: sso,
+            FormerEmployee: former);
     }
 }

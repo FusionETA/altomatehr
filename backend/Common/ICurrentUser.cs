@@ -29,4 +29,9 @@ public interface ICurrentUser
     // Arrived through the Altomate SSO hand-off (claim "sso") rather than a
     // password sign-in here. The account is managed in Altomate.
     bool IsSso => false;
+
+    // Signed into a company they no longer work at (claim "former"): archived
+    // there after leaving or a transfer. View-only — see
+    // FormerEmployeeReadOnlyMiddleware.
+    bool IsFormer => false;
 }

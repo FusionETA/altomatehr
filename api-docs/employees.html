@@ -233,6 +233,38 @@
   -d '{ "role": "Supervisor", "jobTitle": "Site Lead" }'</code></pre>
       </section>
 
+
+      <section class="endpoint" id="history">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/employees/{id}/history</span>
+          <span class="tag scope">employees:read</span>
+        </div>
+        <p>Every stretch of employment this person has had at this company: joins, leaves, transfers in and out, restores. The profile only holds the current dates; this keeps the ones that were overwritten. <code>{id}</code> is the user id.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array, newest first.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>[].joinDate</code></td><td>string (date-time) | null</td><td>First day. <code>null</code> when no join date was ever recorded.</td></tr>
+              <tr><td><code>[].leaveDate</code></td><td>string (date-time) | null</td><td>Last day. <code>null</code> for the current period.</td></tr>
+              <tr><td><code>[].startReason</code></td><td>string | null</td><td>Free text such as <code>"Restored"</code> or <code>"Transferred from &hellip;"</code>. <code>null</code> for a first hire.</td></tr>
+              <tr><td><code>[].endReason</code></td><td>string | null</td><td>Free text such as <code>"Resigned"</code> or <code>"Leave date passed"</code>. <code>null</code> while current.</td></tr>
+              <tr><td><code>[].isCurrent</code></td><td>boolean</td><td>True for the open period.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          Someone with no recorded history (never left, or hired before history was kept) gets one
+          synthesised current period built from their profile. Reasons are display text, not an enum &mdash;
+          do not match on them.
+        </div>
+        <h3>Errors</h3>
+        <p><code>404</code> &mdash; <code>{id}</code> is not a member of this organization (empty body).</p>
+<pre><code>curl https://&lt;api-host&gt;/employees/usr_123/history \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
     </section>
 
     <section class="section" id="profile">
@@ -939,6 +971,14 @@
         <code>POST /employees/{userId}/password</code> is marked <code>[HumanOnly]</code> — a key can
         never call it. Overwriting a member's login password is for a signed-in Admin/Owner only,
         since a key that could set a password could take the account over.
+      </p>
+      <p>
+        The company-transfer endpoints are <code>[HumanOnly]</code> too: <code>GET /employees/transfers</code>,
+        <code>GET</code>/<code>POST /employees/{userId}/transfer</code>,
+        <code>DELETE /employees/{userId}/transfer/{transferId}</code> and
+        <code>POST /employees/{userId}/duplicate</code>. They choose the destination from the signed-in
+        admin's own company memberships, which an organization's API key does not have. A completed
+        transfer does show up in <a href="#history">GET /employees/{id}/history</a>.
       </p>
     </section>
 

@@ -142,13 +142,34 @@ public class PayslipRepository : IPayslipRepository
                 StringComparer.Ordinal);
     }
 
-    public async Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeAsync(
-        int year, string? excludeRunId)
+    public Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeAsync(
+        int year, string? excludeRunId) =>
+        ComputeYtdAsync(year, excludeRunId, organizationId: null, beforeMonth: null);
+
+    public Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeInOrgAsync(
+        string organizationId, int year, int? beforeMonth = null) =>
+        ComputeYtdAsync(year, excludeRunId: null, organizationId, beforeMonth);
+
+    // `organizationId` null = the current org (tenant filter). Set = that org
+    // exactly, ignoring the filter — for a transfer, which reads two companies.
+    private async Task<IReadOnlyDictionary<string, PayrollYtdTotals>> ComputeYtdAsync(
+        int year, string? excludeRunId, string? organizationId, int? beforeMonth)
     {
+        var runsQuery = organizationId is null
+            ? _db.PayrollRuns
+            : _db.PayrollRuns.IgnoreQueryFilters().Where(r => r.OrganizationId == organizationId);
+        var payslipsQuery = organizationId is null
+            ? _db.Payslips
+            : _db.Payslips.IgnoreQueryFilters().Where(p => p.OrganizationId == organizationId);
+        var lineItemsQuery = organizationId is null
+            ? _db.PayslipLineItems
+            : _db.PayslipLineItems.IgnoreQueryFilters().Where(li => li.OrganizationId == organizationId);
+
         // Only SUBMITTED runs. A draft is not tax withheld, and the run being
         // generated right now must not feed its own YTD baseline.
-        var runIds = await _db.PayrollRuns
+        var runIds = await runsQuery
             .Where(r => r.PeriodYear == year
+                        && (beforeMonth == null || r.PeriodMonth < beforeMonth)
                         && r.Status == PayrollRunStatus.SUBMITTED
                         && (excludeRunId == null || r.Id != excludeRunId))
             .Select(r => r.Id)
@@ -156,7 +177,7 @@ public class PayslipRepository : IPayslipRepository
 
         if (runIds.Count == 0) return new Dictionary<string, PayrollYtdTotals>();
 
-        var payslips = await _db.Payslips
+        var payslips = await payslipsQuery
             .Where(p => runIds.Contains(p.PayrollRunId))
             .Select(p => new
             {
@@ -178,7 +199,7 @@ public class PayslipRepository : IPayslipRepository
         var employeeByPayslip = payslips.ToDictionary(
             p => p.Id, p => p.EmployeeProfileId, StringComparer.Ordinal);
 
-        var lineItems = await _db.PayslipLineItems
+        var lineItems = await lineItemsQuery
             .Where(li => employeeByPayslip.Keys.Contains(li.PayslipId))
             .Select(li => new
             {

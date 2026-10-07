@@ -40,6 +40,11 @@ public class PayrollRunService : IPayrollRunService
     private readonly IPayrollXeroSyncService _xeroSync;
     private readonly IEmployeeLoanService _loans;
     private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
+    // Optional so hand-built instances in tests need not supply it. A leaver
+    // transferred to another company is paid their final month here after the
+    // transfer ran; submitting (or reverting) that month re-carries their
+    // year-to-date to the new company.
+    private readonly Employees.IEmployeeTransferService? _transfers;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -57,8 +62,10 @@ public class PayrollRunService : IPayrollRunService
         IAuditService audit,
         IPayrollXeroSyncService xeroSync,
         IEmployeeLoanService loans,
-        Overtime.IApprovedOvertimeService approvedOvertime)
+        Overtime.IApprovedOvertimeService approvedOvertime,
+        Employees.IEmployeeTransferService? transfers = null)
     {
+        _transfers = transfers;
         _approvedOvertime = approvedOvertime;
         _statutory = statutory;
         _hours = hours;
@@ -129,7 +136,8 @@ public class PayrollRunService : IPayrollRunService
 
         // Freeze the admin's chosen roster (policies − unticked employees).
         // Generation reads this back; a run with no rows means "everyone".
-        var members = await ResolveScopeAsync(dto.PolicyIds, dto.ExcludedEmployeeProfileIds);
+        var members = await ResolveScopeAsync(
+            dto.PolicyIds, dto.ExcludedEmployeeProfileIds, dto.PeriodYear, dto.PeriodMonth);
         if (members.Count > 0)
             await _runMembers.ReplaceForRunAsync(run.Id, members);
 
@@ -182,10 +190,10 @@ public class PayrollRunService : IPayrollRunService
     // scope a run to, each carrying the payable (complete, non-archived)
     // employees under it. Employees with no effective policy are omitted — a run
     // is scoped through a policy, so they cannot be selected.
-    public async Task<PayrollRunPickerDto> GetPickerAsync()
+    public async Task<PayrollRunPickerDto> GetPickerAsync(int? year = null, int? month = null)
     {
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
@@ -236,10 +244,10 @@ public class PayrollRunService : IPayrollRunService
     // Included = payable employees under the selected policies, minus the ones
     // the admin unticked. A null/empty policy list means "every policy".
     private async Task<List<string>> ResolveScopeAsync(
-        List<string>? policyIds, List<string>? excludedProfileIds)
+        List<string>? policyIds, List<string>? excludedProfileIds, int year, int month)
     {
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => !p.IsArchived && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
             .ToList();
 
         var policyByUser = await _policies.GetEffectivePoliciesForEmployeesAsync(
@@ -584,6 +592,9 @@ public class PayrollRunService : IPayrollRunService
         run.SubmittedById = _currentUser.UserId;
         await _runs.UpdateAsync(run);
 
+        if (_transfers is not null)
+            await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
+
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunApprove,
             $"Approved the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
@@ -706,6 +717,9 @@ public class PayrollRunService : IPayrollRunService
             TargetId: run.Id,
             Metadata: new { run.PeriodYear, run.PeriodMonth, AlsoReverted = alsoReverted }));
 
+        if (_transfers is not null)
+            await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
+
         return new PayrollRunRevertResult(true, ToDto(run), alsoReverted, null);
     }
 
@@ -772,9 +786,37 @@ public class PayrollRunService : IPayrollRunService
 
     // Null means "include them". Everything else is a legitimate absence, not an
     // error — which is why the caller reports these rather than failing.
+    // ─── Archived ≠ unpaid ──────────────────────────────────────────────
+    //
+    // Archiving records that someone has left; it does not cancel what they
+    // earned before going. A person archived on the 15th — by hand, by the
+    // past-leaver sweep the day after their leave date, or by a transfer to
+    // another company — is still owed the 1st to their last day. So payroll
+    // follows the LAST DAY, not the archive flag:
+    //
+    //   last day = their leave date; for an archived profile with none, the
+    //              day it was archived.
+    //
+    // They stay on runs for any month up to and including that day (prorated
+    // to it) and drop off after. Archived with neither date: nothing to go
+    // on, so they're left out, as before.
+    public static DateTime? LastPayableDay(EmployeeProfile p) =>
+        p.LeaveDate ?? (p.IsArchived ? p.ArchivedAt?.Date : null);
+
+    // Whether the profile can be on a run for this month. With no month (an
+    // old caller), archived means no. Public so every service that decides
+    // "is this person on the run" (claims, adjustment imports) agrees with
+    // generation.
+    public static bool PayableIn(EmployeeProfile p, int? year, int? month)
+    {
+        if (!p.IsArchived) return true;
+        if (year is null || month is null) return false;
+        return LastPayableDay(p) is { } last && last.Date >= new DateTime(year.Value, month.Value, 1);
+    }
+
     private static string? SkipReasonFor(EmployeeProfile profile, PayrollRun run)
     {
-        if (profile.IsArchived) return "Archived";
+        if (profile.IsArchived && LastPayableDay(profile) is null) return "Archived";
 
         // There is deliberately no "reported to LHDN" reason. The previous
         // system stored such a flag and kept paying; orgs migrated from it had
@@ -791,7 +833,7 @@ public class PayrollRunService : IPayrollRunService
 
         var calendarDays = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
         var workedDays = PayPeriod.EffectiveWorkedDays(
-            run.PeriodYear, run.PeriodMonth, profile.JoinDate, profile.LeaveDate, calendarDays);
+            run.PeriodYear, run.PeriodMonth, profile.JoinDate, LastPayableDay(profile), calendarDays);
 
         // Joined after the period ended, or left before it started.
         return workedDays is null ? "Not employed during this period" : null;
@@ -897,7 +939,7 @@ public class PayrollRunService : IPayrollRunService
                     profile, unpaidLeaveDays, workingDaysBasis),
                 loanRepayment),
             JoinDate = profile.JoinDate,
-            LeaveDate = profile.LeaveDate,
+            LeaveDate = LastPayableDay(profile),
             SkipProration = run.SkipProration,
 
             Nationality = profile.Nationality,

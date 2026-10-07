@@ -149,7 +149,7 @@ public class PayrollRunClaimService : IPayrollRunClaimService
         var people = await LoadPeopleAsync();
         var person = people.ByUserId.GetValueOrDefault(claim.EmployeeId);
 
-        var blocked = BlockedReasonFor(claim, person);
+        var blocked = BlockedReasonFor(claim, person, run);
         if (blocked is not null) return new PayrollRunClaimAttachResult(true, false, null, blocked);
 
         // Before the attachment exists: once it is routed to PAYROLL, Xero will
@@ -247,7 +247,9 @@ public class PayrollRunClaimService : IPayrollRunClaimService
     // just in the list: the endpoint takes any claim id, so a pending or
     // company-paid claim must be refused here rather than trusted to the UI.
     // The settlement route is NOT checked — attaching re-routes it.
-    private static string? BlockedReasonFor(Claim claim, Person? person)
+    // `run` null = the attachable list, which isn't for one run yet: an archived
+    // leaver with a last day is only blocked once attached to a month after it.
+    private static string? BlockedReasonFor(Claim claim, Person? person, PayrollRun? run = null)
     {
         if (claim.Status != ClaimStatus.APPROVED)
         {
@@ -266,9 +268,14 @@ public class PayrollRunClaimService : IPayrollRunClaimService
             return "The claim's submitter has no employee profile, so they cannot be paid through payroll.";
         }
 
+        // Archived is not "unpaid": a leaver is on runs up to their last day
+        // (PayrollRunService.LastPayableDay), and their final claims go with it.
         if (person.IsArchived)
         {
-            return "The claim's submitter is archived and is not on this payroll.";
+            if (person.LastPayableDay is not { } last)
+                return "The claim's submitter is archived with no last day, so they are not on this payroll.";
+            if (run is not null && last.Date < new DateTime(run.PeriodYear, run.PeriodMonth, 1))
+                return "The claim's submitter is archived and left before this payroll period, so they are not on this payroll.";
         }
 
         // Already billed through Xero, so the money has gone out that way.
@@ -284,7 +291,8 @@ public class PayrollRunClaimService : IPayrollRunClaimService
     // ─── Roster lookup ──────────────────────────────────────────────────
 
     private sealed record Person(
-        string ProfileId, string UserId, string Name, string? EmployeeNumber, bool IsArchived);
+        string ProfileId, string UserId, string Name, string? EmployeeNumber, bool IsArchived,
+        DateTime? LastPayableDay);
 
     private sealed record People(
         IReadOnlyDictionary<string, Person> ByUserId,
@@ -308,7 +316,8 @@ public class PayrollRunClaimService : IPayrollRunClaimService
                 profile.UserId,
                 users.TryGetValue(profile.UserId, out var user) ? user.Name : string.Empty,
                 memberships.GetValueOrDefault(profile.UserId)?.EmployeeNumber,
-                profile.IsArchived);
+                profile.IsArchived,
+                PayrollRunService.LastPayableDay(profile));
 
             byUserId[profile.UserId] = person;
             byProfileId[profile.Id] = person;

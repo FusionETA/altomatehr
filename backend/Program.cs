@@ -374,6 +374,11 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeImportService, EmployeeImportService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();
 builder.Services.AddScoped<IEmployeeProfileService, EmployeeProfileService>();
+builder.Services.AddScoped<IEmployeeTransferRepository, EmployeeTransferRepository>();
+builder.Services.AddScoped<IEmploymentPeriodRepository, EmploymentPeriodRepository>();
+builder.Services.AddScoped<IEmploymentHistory, EmploymentHistory>();
+builder.Services.AddScoped<IEmployeeTransferService, EmployeeTransferService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.Employees.Cron.ExecuteDueTransfersBackgroundService>();
 builder.Services.AddScoped<IEmployeeDocumentStorage, EmployeeDocumentStorage>();
 builder.Services.AddScoped<IEmployeeDocumentService, EmployeeDocumentService>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.LhdnForms.ILhdnFormsService, AltomateHR.Api.Modules.LhdnForms.LhdnFormsService>();
@@ -496,6 +501,7 @@ app.UseCors("frontend");
 app.UseRateLimiter();
 app.UseAuthentication();   // WHO are you?  (JWT or wp_live_ key) — MUST be before UseAuthorization
 app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
+app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();  // a former employer's company is view-only
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
 app.MapControllers();
 

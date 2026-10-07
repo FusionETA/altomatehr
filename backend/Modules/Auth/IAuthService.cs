@@ -29,6 +29,12 @@ public interface IAuthService
     // Every org the user can switch into (id + their role there).
     Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId);
 
+    // A former employee removes a company they no longer work at from their
+    // own account. Refused for a company they still work at. When it was the
+    // ACTIVE company, Next is a session in their home company — or null when
+    // they have none left, and the caller signs them out.
+    Task<LeaveOrgResult> LeaveFormerOrgAsync(string userId, string organizationId, string? activeOrganizationId, bool sso = false);
+
     Task LogoutAsync(string refreshToken);
 
     // Issues a one-time reset code and emails it. Returns nothing and never

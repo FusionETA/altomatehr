@@ -196,6 +196,8 @@ public class InboundSsoTests
             throw new NotSupportedException();
         public Task<AuthResult?> RefreshAsync(string refreshToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId) => throw new NotSupportedException();
+        public Task<LeaveOrgResult> LeaveFormerOrgAsync(string userId, string organizationId, string? activeOrganizationId, bool sso = false) =>
+            throw new NotSupportedException();
         public Task LogoutAsync(string refreshToken) => throw new NotSupportedException();
         public Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

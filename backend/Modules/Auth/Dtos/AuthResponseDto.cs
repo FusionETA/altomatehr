@@ -22,4 +22,8 @@ public class AuthResponseDto
     // app hides New company, Change password and Log out — as the previous
     // system did.
     public bool ViaSso { get; set; }
+
+    // The active company is one they no longer work at (archived there after
+    // leaving or a transfer). The portal shows payslips only; writes are refused.
+    public bool FormerEmployee { get; set; }
 }

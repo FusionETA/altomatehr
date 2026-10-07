@@ -227,7 +227,7 @@ td { border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
 }
 .method.get { background: var(--secondary); color: var(--secondary-foreground); }
 .method.post { background: var(--primary); color: var(--primary-foreground); }
-.method.put { background: var(--warning); color: var(--warning-foreground); }
+.method.put, .method.patch { background: var(--warning); color: var(--warning-foreground); }
 .method.delete { background: color-mix(in srgb, var(--destructive) 14%, transparent); color: var(--destructive); }
 .path { font: 700 15px var(--mono); }
 

@@ -29,6 +29,11 @@ public interface IPayrollDraftStaleness
     // month's pending and submitted runs, which show nothing until they're
     // sent back or reverted to draft — then they read as needing a re-run.
     Task MarkDraftsCoveringAsync(DateTime from, DateTime to);
+
+    // Every generated draft in a NAMED org — for a change made from outside
+    // that org (an employee transfer touches two companies; the transfer job
+    // has no current org at all). Default keeps test doubles compiling.
+    Task MarkAllDraftsForOrgAsync(string organizationId) => Task.CompletedTask;
 }
 
 public class PayrollDraftStaleness : IPayrollDraftStaleness
@@ -49,6 +54,19 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
     public Task MarkDraftsCoveringAsync(DateTime from, DateTime to) =>
         MarkAsync(MonthsBetween(from, to));
+
+    public async Task MarkAllDraftsForOrgAsync(string organizationId)
+    {
+        if (string.IsNullOrEmpty(organizationId)) return;
+        try
+        {
+            await _runs.MarkDraftsMutatedAsync(organizationId, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not mark payroll drafts stale for org {OrganizationId}", organizationId);
+        }
+    }
 
     // Every (year, month) from `from` to `to`, whichever order they arrive in.
     public static IReadOnlyCollection<(int Year, int Month)> MonthsBetween(DateTime from, DateTime to)

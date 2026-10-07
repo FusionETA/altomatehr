@@ -58,7 +58,8 @@ public class PayrollRunsController : ControllerBase
     // Literal segment, so it wins over the {id} route below.
     [RequireScope("payroll:read")]
     [HttpGet("picker")]
-    public async Task<IActionResult> GetPicker() => Ok(await _runs.GetPickerAsync());
+    public async Task<IActionResult> GetPicker([FromQuery] int? year, [FromQuery] int? month) =>
+        Ok(await _runs.GetPickerAsync(year, month));
 
     [RequireScope("payroll:read")]
     [HttpGet("{id}")]

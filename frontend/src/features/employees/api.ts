@@ -108,6 +108,105 @@ export const createEmployee = (body: CreateEmployee) => apiPost<Employee>("/empl
 export const setEmployeePassword = (id: string, newPassword: string) =>
   apiPost<void>(`/employees/${id}/password`, { newPassword });
 
+// ---- Transfer to another company ----
+//
+// Moves an employee to another company the signed-in admin also runs. The
+// server lists the targets (only companies where this admin is Admin/Owner and
+// that have a policy) and enforces every rule; on the effective date the
+// profile here is archived and one is created — or, on a return, reopened —
+// at the target. Personal details always go across; payroll setup and this
+// year's YTD go across when `copyPayrollInfo` is on.
+
+export type TransferStatus = "PENDING" | "EXECUTED" | "CANCELLED" | "FAILED";
+
+export type TransferTarget = {
+  id: string;
+  name: string;
+  /** This employee already works there — can't be transferred or duplicated into it. */
+  employeeActiveHere: boolean;
+  policies: { id: string; name: string; isDefault: boolean }[];
+};
+
+export type EmployeeTransfer = {
+  id: string;
+  userId: string;
+  targetOrganizationId: string;
+  targetOrganizationName: string;
+  targetPolicyId: string;
+  effectiveDate: string;
+  copyPayrollInfo: boolean;
+  notes: string | null;
+  status: TransferStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  executedAt: string | null;
+};
+
+export type TransferOptions = {
+  targets: TransferTarget[];
+  /** The queued transfer (PENDING, or FAILED and retrying), if any. */
+  pending: EmployeeTransfer | null;
+};
+
+export type CreateTransfer = {
+  targetOrganizationId: string;
+  targetPolicyId: string;
+  /** yyyy-mm-dd. Today runs it now; a later day queues it. */
+  effectiveDate: string;
+  copyPayrollInfo: boolean;
+  notes: string | null;
+};
+
+export const getTransferOptions = (id: string) =>
+  apiGet<TransferOptions>(`/employees/${id}/transfer`);
+
+/** Every queued transfer in this company, for the employee list. */
+export const getOpenTransfers = () => apiGet<EmployeeTransfer[]>("/employees/transfers");
+
+export const createTransfer = (id: string, body: CreateTransfer) =>
+  apiPost<{ transfer: EmployeeTransfer; executedImmediately: boolean }>(
+    `/employees/${id}/transfer`,
+    body,
+  );
+
+// One tenure at this company. The profile keeps only the CURRENT join and
+// leave dates; a return (transfer back, restore) overwrites them, and this keeps
+// what was overwritten.
+export type EmploymentPeriod = {
+  joinDate: string | null;
+  leaveDate: string | null;
+  /** "Transferred from X", "Restored"; null = joined. */
+  startReason: string | null;
+  /** "Transferred to X", "Resigned", "Leave date passed"; null while current. */
+  endReason: string | null;
+  isCurrent: boolean;
+};
+
+export const getEmploymentHistory = (id: string) =>
+  apiGet<EmploymentPeriod[]>(`/employees/${id}/history`);
+
+// "Duplicate": add the same person to another company this admin runs while
+// they KEEP working here (concurrent employment). Same login. Personal details
+// always go across; statutory numbers + bank when `copyStatutoryAndBank`.
+// Salary never does (each company pays its own), nor YTD (concurrent jobs are
+// taxed by each employer separately).
+export type DuplicateEmployee = {
+  targetOrganizationId: string;
+  targetPolicyId: string;
+  /** yyyy-mm-dd — their first day at the other company. */
+  joinDate: string;
+  copyStatutoryAndBank: boolean;
+};
+
+export const duplicateEmployee = (id: string, body: DuplicateEmployee) =>
+  apiPost<{ targetOrganizationId: string; targetOrganizationName: string }>(
+    `/employees/${id}/duplicate`,
+    body,
+  );
+
+export const cancelTransfer = (id: string, transferId: string) =>
+  apiDelete<EmployeeTransfer>(`/employees/${id}/transfer/${transferId}`);
+
 // ---- Full HR profile ----
 //
 // The backend has carried this since the module landed and nothing reached it:

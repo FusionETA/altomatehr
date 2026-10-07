@@ -172,6 +172,35 @@ public class AuthController : ControllerBase
         return Ok(ToResponse(result));
     }
 
+    // POST /auth/leave-org/{organizationId} — a former employee removes a
+    // company they no longer work at from their account. If it was the active
+    // one, the session moves to their home company (200 with the new session),
+    // or ends when none is left (204, cookie cleared).
+    [Authorize]
+    [HumanOnly]
+    [HttpPost("leave-org/{organizationId}")]
+    public async Task<IActionResult> LeaveOrg(string organizationId)
+    {
+        var userId = _currentUser.UserId;
+        if (userId is null) return Unauthorized();
+
+        var result = await _auth.LeaveFormerOrgAsync(
+            userId, organizationId, _currentUser.OrganizationId, sso: _currentUser.IsSso);
+        if (result.Error is not null) return BadRequest(new { error = result.Error });
+
+        if (result.SignOut)
+        {
+            if (Request.Cookies.TryGetValue(RefreshCookie, out var cookie)) await _auth.LogoutAsync(cookie);
+            Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = "/auth" });
+            return NoContent();
+        }
+
+        if (result.Next is null) return Ok(new { switched = false });
+
+        SetRefreshCookie(result.Next);
+        return Ok(ToResponse(result.Next));
+    }
+
     // GET /auth/orgs — the orgs this account can switch into.
     [Authorize]
     [HumanOnly]
@@ -211,5 +240,6 @@ public class AuthController : ControllerBase
             IsSuperadmin = result.IsSuperadmin,
             SupportMode = result.SupportMode,
             ViaSso = result.ViaSso,
+            FormerEmployee = result.FormerEmployee,
         };
 }

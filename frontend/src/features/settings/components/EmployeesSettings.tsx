@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Archive, ChevronRight, CircleAlert, CircleCheck, Download, Plus, TrendingUp, Upload, Users } from "lucide-react";
-import { getEmployees, type Employee } from "@/features/employees/api";
+import { Archive, ArrowRightLeft, ChevronRight, CircleAlert, CircleCheck, Download, Plus, TrendingUp, Upload, Users } from "lucide-react";
+import { getEmployees, getOpenTransfers, type Employee, type EmployeeTransfer } from "@/features/employees/api";
 import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -90,6 +90,16 @@ export function EmployeesSettings() {
   // it. Both paths are the cache keys apiGet uses.
   const employeesQuery = useCachedQuery("/employees", getEmployees);
   const policiesQuery = useCachedQuery("/policies", getPolicies);
+  // Queued moves to another company, flagged on the person's row. The list
+  // stays mounted under an open employee, where transfers are scheduled and
+  // cancelled — so it re-reads on that write rather than on the next visit.
+  const transfersQuery = useCachedQuery("/employees/transfers", getOpenTransfers, {
+    refetchOnInvalidate: true,
+  });
+  const pendingTransfer = useMemo(() => {
+    const byUser = new Map((transfersQuery.data ?? []).map((t) => [t.userId, t]));
+    return (userId: string) => byUser.get(userId);
+  }, [transfersQuery.data]);
   const loading = employeesQuery.loading || policiesQuery.loading;
   // Seeded from the cache so the first frame of a revisit is the real thing
   // rather than the empty default; the effect below keeps it in step with a
@@ -496,6 +506,7 @@ export function EmployeesSettings() {
                 isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
+                pendingTransfer={pendingTransfer}
                 onOpen={setSelectedId}
               />
               <PaginationControls
@@ -525,6 +536,7 @@ export function EmployeesSettings() {
                 isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
+                pendingTransfer={pendingTransfer}
                 onOpen={setSelectedId}
               />
               <PaginationControls
@@ -554,6 +566,7 @@ export function EmployeesSettings() {
                 isDefaultPolicy={isDefaultPolicy}
                 setupGap={setupGap}
                 isArchived={isArchived}
+                pendingTransfer={pendingTransfer}
                 onOpen={setSelectedId}
               />
               <PaginationControls
@@ -616,6 +629,7 @@ function EmployeeRows({
   isDefaultPolicy,
   setupGap,
   isArchived,
+  pendingTransfer,
   onOpen,
 }: {
   rows: Employee[];
@@ -623,6 +637,7 @@ function EmployeeRows({
   isDefaultPolicy: (id: string | null) => boolean;
   setupGap: (userId: string) => string | null;
   isArchived: (userId: string) => boolean;
+  pendingTransfer: (userId: string) => EmployeeTransfer | undefined;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -640,6 +655,7 @@ function EmployeeRows({
         <tbody>
           {rows.map((emp) => {
             const gap = setupGap(emp.id);
+            const transfer = pendingTransfer(emp.id);
             return (
               <tr
                 key={emp.id}
@@ -661,6 +677,13 @@ function EmployeeRows({
                     <p className="truncate text-xs text-muted-foreground">
                       {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") || emp.email}
                     </p>
+                    {transfer ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-warning-foreground/25 bg-warning px-2 py-0.5 text-[11px] font-bold text-warning-foreground">
+                        <ArrowRightLeft className="size-3" aria-hidden />
+                        {transfer.status === "FAILED" ? "Transfer failed" : "Transfer"} →{" "}
+                        {transfer.targetOrganizationName} on {transfer.effectiveDate.slice(0, 10)}
+                      </p>
+                    ) : null}
                   </div>
                 </td>
                 <td className={TD}>

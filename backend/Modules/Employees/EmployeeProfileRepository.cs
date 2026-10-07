@@ -25,6 +25,13 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
             .Take(max)
             .ToListAsync();
 
+    public Task<EmployeeProfile?> GetByUserInOrgAsync(string organizationId, string userId) =>
+        _db.EmployeeProfiles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.OrganizationId == organizationId && p.UserId == userId);
+
+    public Task<List<EmployeeProfile>> GetByUserAcrossOrgsAsync(string userId) =>
+        _db.EmployeeProfiles.IgnoreQueryFilters().Where(p => p.UserId == userId).ToListAsync();
+
     public Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync() =>
         _db.EmployeeProfiles.ToListAsync();
 

@@ -217,10 +217,12 @@ function NewRunPicker({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  // Load the roster once, and default every policy that has members to ticked.
+  // Load the roster for the chosen month (who's payable depends on it — a
+  // leaver is owed their last month), and default every policy with members
+  // to ticked.
   useEffect(() => {
     let live = true;
-    getPayrollRunPicker()
+    getPayrollRunPicker(year, month)
       .then((data) => {
         if (!live) return;
         setPolicies(data.policies);
@@ -232,7 +234,7 @@ function NewRunPicker({
     return () => {
       live = false;
     };
-  }, []);
+  }, [year, month]);
 
   const trimmed = query.trim().toLowerCase();
 

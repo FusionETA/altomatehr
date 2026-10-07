@@ -76,6 +76,8 @@ public class AppDbContext : DbContext
         Set<Modules.ApiMonitoring.Entities.ApiRequestLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
+    public DbSet<EmployeeTransfer> EmployeeTransfers => Set<EmployeeTransfer>();
+    public DbSet<EmploymentPeriod> EmploymentPeriods => Set<EmploymentPeriod>();
     public DbSet<EmployeeLoan> EmployeeLoans => Set<EmployeeLoan>();
     public DbSet<SalaryChange> SalaryChanges => Set<SalaryChange>();
     public DbSet<PayrollPortalCredential> PayrollPortalCredentials => Set<PayrollPortalCredential>();
@@ -259,6 +261,16 @@ public class AppDbContext : DbContext
         profile.Property(p => p.SpecialTaxScheme).HasConversion<string>().HasMaxLength(30);
         profile.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(20);
 
+        // EmployeeTransfer — the employee screen asks "is one pending for this
+        // person?"; the daily job asks "which are due?".
+        var transfer = modelBuilder.Entity<EmployeeTransfer>();
+        transfer.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+        transfer.HasIndex(t => new { t.OrganizationId, t.UserId, t.Status });
+        transfer.HasIndex(t => new { t.Status, t.EffectiveDate });
+
+        // EmploymentPeriod — read per person, and "the open one" per (org, person).
+        modelBuilder.Entity<EmploymentPeriod>().HasIndex(p => new { p.OrganizationId, p.UserId, p.LeaveDate });
+
         // Payroll config — exactly one row per org, so the tenant column is the
         // unique key rather than merely an index.
         // One run can only ever be the journal it posted.
@@ -408,6 +420,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
+            p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<EmployeeTransfer>().HasQueryFilter(
+            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<EmploymentPeriod>().HasQueryFilter(
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PayrollSettings>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);

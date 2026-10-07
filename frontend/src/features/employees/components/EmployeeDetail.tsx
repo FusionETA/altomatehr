@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { KeyRound } from "lucide-react";
+import { ArrowRightLeft, Copy, KeyRound } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
+import { TransferDialog } from "./TransferDialog";
+import { DuplicateDialog } from "./DuplicateDialog";
 import { SalaryChangeDialog, salaryText, type SalaryClassification } from "./SalaryChangeDialog";
 import { SalaryHistoryDialog } from "./SalaryHistoryDialog";
 import { ArrowLeft, Check, CircleAlert, History, LoaderCircle, Plus, Trash2 } from "lucide-react";
@@ -26,12 +28,15 @@ import {
   SPECIAL_TAX_SCHEMES,
   SPECIAL_TAX_SCHEME_LABELS,
   isAdultChild,
+  cancelTransfer,
   deleteEmployeeDocument,
   downloadEmployeeDocument,
   downloadLhdnForm,
   getEmployeeDocuments,
   getEmployeeProfile,
+  getEmploymentHistory,
   getLhdnForms,
+  getTransferOptions,
   parseChildRelief,
   parseFixedAllowances,
   parsePreviousEmployerItems,
@@ -45,7 +50,9 @@ import {
   type EmployeeDocument,
   type EmployeeProfile,
   type FixedAllowance,
+  type EmploymentPeriod,
   type LhdnFormDescriptor,
+  type TransferOptions,
 } from "../api";
 import { saveFile } from "@/shared/lib/api-client";
 import type { Policy } from "@/features/policies/api";
@@ -177,6 +184,21 @@ export function EmployeeDetail({
   const [askingSalary, setAskingSalary] = useState(false);
   const [salaryHistoryOpen, setSalaryHistoryOpen] = useState(false);
   const [passwordSetFor, setPasswordSetFor] = useState<string | null>(null);
+  // Transfer to another company. Options carry where this admin can move the
+  // person and any transfer already queued; null = not loaded or unavailable,
+  // which simply hides the action.
+  const [transferOptions, setTransferOptions] = useState<TransferOptions | null>(null);
+  const [transferring, setTransferring] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const [cancellingTransfer, setCancellingTransfer] = useState(false);
+  const [transferNotice, setTransferNotice] = useState<string | null>(null);
+  // Bumped after a transfer that ran immediately: the profile here was just
+  // archived server-side, so it has to be read again.
+  const [profileReload, setProfileReload] = useState(0);
+  // Every tenure here. Re-read after a save (archiving or restoring adds a row)
+  // and after a transfer.
+  const [history, setHistory] = useState<EmploymentPeriod[] | null>(null);
+  const [historyReload, setHistoryReload] = useState(0);
   const [section, setSection] = useState<SectionId>("personal");
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   // The last-saved state, to tell "changed" from "loaded".
@@ -262,7 +284,46 @@ export function EmployeeDetail({
       })
       .catch((e: unknown) => setError(message(e, "Could not load this employee's profile.")))
       .finally(() => setLoading(false));
-  }, [employee.id, employee.joinDate]);
+  }, [employee.id, employee.joinDate, profileReload]);
+
+  useEffect(() => {
+    getEmploymentHistory(employee.id)
+      .then(setHistory)
+      .catch(() => setHistory(null));
+  }, [employee.id, profileReload, historyReload]);
+
+  // Bumped after a Duplicate: the target now counts as "already works here".
+  const [optionsReload, setOptionsReload] = useState(0);
+  useEffect(() => {
+    setTransferOptions(null);
+    // Best-effort: without options there is just no Transfer / Duplicate button.
+    getTransferOptions(employee.id)
+      .then(setTransferOptions)
+      .catch(() => setTransferOptions(null));
+  }, [employee.id, optionsReload]);
+  useEffect(() => setTransferNotice(null), [employee.id]);
+
+  // Transfer and Duplicate share the same gate: staff only, another company
+  // this admin runs that the person doesn't already work at, nothing queued.
+  const canMoveCompanies =
+    !!transferOptions &&
+    transferOptions.targets.some((t) => !t.employeeActiveHere) &&
+    !transferOptions.pending &&
+    !["owner", "admin"].includes(employee.role?.toLowerCase() ?? "");
+
+  async function handleCancelTransfer(transferId: string) {
+    setCancellingTransfer(true);
+    setError(null);
+    try {
+      await cancelTransfer(employee.id, transferId);
+      setTransferOptions((cur) => (cur ? { ...cur, pending: null } : cur));
+      setTransferNotice("Transfer cancelled.");
+    } catch (e) {
+      setError(message(e, "Could not cancel the transfer."));
+    } finally {
+      setCancellingTransfer(false);
+    }
+  }
 
   useEffect(() => {
     setDocumentsLoading(true);
@@ -701,6 +762,7 @@ export function EmployeeDetail({
       setBaseline(savedProfile);
       setPlacementBase(placement);
       onSaved(updated);
+      setHistoryReload((n) => n + 1);
 
       // Archive status, join date, and other saved fields all drive which
       // LHDN forms are enabled and what badge they show — refetch so the
@@ -824,8 +886,86 @@ export function EmployeeDetail({
               {passwordSetFor === employee.id ? "Password updated" : "Set password"}
             </button>
           ) : null}
+
+          {/* Beside Set password for the same reason: it acts on the whole
+              person, not on one section. Only for staff (admins are separate
+              accounts), only when this admin runs another company, and not
+              while a transfer is already queued — the banner below owns that. */}
+          {canMoveCompanies ? (
+            <button
+              type="button"
+              onClick={() => setTransferring(true)}
+              disabled={!profile || profile.isArchived}
+              title={profile?.isArchived ? "Restore this employee before transferring them." : undefined}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              Transfer
+            </button>
+          ) : null}
+
+          {/* Transfer's sibling for someone who works at BOTH companies:
+              nothing ends here. */}
+          {canMoveCompanies ? (
+            <button
+              type="button"
+              onClick={() => setDuplicating(true)}
+              disabled={!profile || profile.isArchived}
+              title={profile?.isArchived ? "Restore this employee first, or use Transfer." : undefined}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
+            </button>
+          ) : null}
         </div>
       </section>
+
+      {transferOptions?.pending ? (
+        <section
+          className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${
+            transferOptions.pending.status === "FAILED"
+              ? "border-destructive/20 bg-destructive/5"
+              : "border-warning bg-warning/40"
+          }`}
+        >
+          <ArrowRightLeft className="h-4 w-4 shrink-0 text-foreground" />
+          <p className="min-w-0 flex-1 font-medium text-foreground">
+            {transferOptions.pending.status === "FAILED" ? "Transfer to " : "Transferring to "}
+            <strong>{transferOptions.pending.targetOrganizationName}</strong> on{" "}
+            <strong>{transferOptions.pending.effectiveDate.slice(0, 10)}</strong>
+            {transferOptions.pending.status === "FAILED" ? (
+              <span className="block text-xs text-destructive">
+                Didn't go through: {transferOptions.pending.errorMessage ?? "unknown error"}. It
+                retries automatically — cancel it if it no longer applies.
+              </span>
+            ) : (
+              <span className="block text-xs text-muted-foreground">
+                Runs automatically that day
+                {transferOptions.pending.copyPayrollInfo
+                  ? ", with personal details and payroll settings."
+                  : ", with personal details only."}{" "}
+                Cancel to change the company, policy or date.
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            disabled={cancellingTransfer}
+            onClick={() => void handleCancelTransfer(transferOptions.pending!.id)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+          >
+            {cancellingTransfer ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+            Cancel transfer
+          </button>
+        </section>
+      ) : null}
+
+      {transferNotice ? (
+        <p className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+          {transferNotice}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive">
@@ -1488,7 +1628,7 @@ export function EmployeeDetail({
                   <Field label="Archived" span>
                     <Toggle
                       label="Archive this employee"
-                      hint="Keeps their history and payslips, but leaves them out of new payroll runs."
+                      hint="Keeps their history and payslips. Payroll still pays them up to their last day, then leaves them out."
                       checked={profile.isArchived}
                       onChange={(v) => set("isArchived", v)}
                     />
@@ -1501,6 +1641,35 @@ export function EmployeeDetail({
                       />
                     </Field>
                   ) : null}
+                </Group>
+
+                <Group
+                  title="Employment history"
+                  hint="Every stretch of employment here. Leaving, a transfer, or a restore adds a line — the dates above only show the current one."
+                  columns={1}
+                >
+                  {!history || history.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No history yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-border/60 rounded-2xl border border-border/60">
+                      {history.map((period, i) => (
+                        <li key={i} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm">
+                          <span className="font-semibold text-foreground">
+                            {period.joinDate?.slice(0, 10) ?? "—"} →{" "}
+                            {period.isCurrent ? "present" : (period.leaveDate?.slice(0, 10) ?? "—")}
+                          </span>
+                          {period.isCurrent ? (
+                            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-bold text-success">
+                              Current
+                            </span>
+                          ) : null}
+                          <span className="min-w-0 flex-1 text-muted-foreground">
+                            {[period.startReason ?? "Joined", period.endReason].filter(Boolean).join(" · ")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </Group>
               </>
             ) : section === "statutory" ? (
@@ -2308,6 +2477,44 @@ export function EmployeeDetail({
           loading={salaryHistoryQuery.loading}
           error={salaryHistoryQuery.error}
           onClose={() => setSalaryHistoryOpen(false)}
+        />
+      ) : null}
+
+      {duplicating && transferOptions ? (
+        <DuplicateDialog
+          employeeId={employee.id}
+          employeeName={employee.name || employee.email}
+          targets={transferOptions.targets}
+          onClose={() => setDuplicating(false)}
+          onDone={(targetName) => {
+            setDuplicating(false);
+            setTransferNotice(
+              `Added to ${targetName} as well. They keep working here and can switch between the two companies with the same login — set their salary there.`,
+            );
+            setOptionsReload((n) => n + 1);
+          }}
+        />
+      ) : null}
+
+      {transferring && transferOptions ? (
+        <TransferDialog
+          employeeId={employee.id}
+          employeeName={employee.name || employee.email}
+          targets={transferOptions.targets}
+          onClose={() => setTransferring(false)}
+          onDone={(transfer, executedImmediately) => {
+            setTransferring(false);
+            if (executedImmediately) {
+              setTransferOptions((cur) => (cur ? { ...cur, pending: null } : cur));
+              setTransferNotice(
+                `Moved to ${transfer.targetOrganizationName}. Their profile here is now archived; switch to that company to see the new one.`,
+              );
+              setProfileReload((n) => n + 1);
+            } else {
+              setTransferOptions((cur) => (cur ? { ...cur, pending: transfer } : cur));
+              setTransferNotice(null);
+            }
+          }}
         />
       ) : null}
 

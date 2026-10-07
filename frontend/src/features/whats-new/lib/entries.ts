@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 06770b7
+// whats-new-covered-up-to: ffff693
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,20 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-06",
+    new: [
+      "Admins: Employee profile → Transfer: move an employee to another company you run, now or on a date you set. Personal details always transfer; payroll, bank and this year's year-to-date transfer when you tick them. The employee list shows a \"Transfer → company on date\" tag; you can cancel a pending transfer.",
+      "Admins: Employee profile → Duplicate: employ the same person at another company you run, keeping them active here. Personal details and staff number transfer; statutory numbers and bank transfer when you tick them. Salary and history stay separate per company.",
+      "Employee profile → Employment: a history of joins, leaves, transfers between companies and restores from archive.",
+      "Payroll: archived employees are paid up to their last day; the run picker shows employees per month.",
+      "Payroll → Run: \"Pay figures are final\" flag for ABPay runs. When set, hours sent are paid exactly as received, with no extra proration.",
+    ],
+    improved: [
+      "Sign-in lands on the company you work for today. Former companies show as \"Former · payslips only\" (read-only); you can remove them with \"Leave company\".",
+      "Transferring or duplicating an employee marks payroll drafts stale in both companies. When the old company submits, the new company's carried year-to-date is recalculated.",
+    ],
+  },
   {
     date: "2026-10-05",
     new: [

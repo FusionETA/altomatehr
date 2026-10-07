@@ -19,6 +19,16 @@ public interface IEmployeeProfileRepository
     // every org in one pass.
     Task<List<EmployeeProfile>> GetUnarchivedPastLeaversAsync(DateTime before, int max);
 
+    // One user's profile in a NAMED org, ignoring the tenant filter — the
+    // employee transfer reads the source and target sides of a move at once.
+    // (Defaults keep hand-written test doubles compiling; the real repository overrides.)
+    Task<EmployeeProfile?> GetByUserInOrgAsync(string organizationId, string userId) =>
+        Task.FromResult<EmployeeProfile?>(null);
+
+    // Every profile this user has, in every org (ignores the tenant filter) —
+    // sign-in reads it to tell a current employer from a former one.
+    Task<List<EmployeeProfile>> GetByUserAcrossOrgsAsync(string userId) => Task.FromResult(new List<EmployeeProfile>());
+
     Task<EmployeeProfile> AddAsync(EmployeeProfile profile);
     Task UpdateAsync(EmployeeProfile profile);
 }

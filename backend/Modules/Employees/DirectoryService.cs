@@ -35,6 +35,17 @@ public class DirectoryService : IDirectoryService
     public Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId) =>
         _memberships.GetByUserAsync(userId);
 
+    public Task<List<EmployeeProfile>> GetProfilesByUserAsync(string userId) =>
+        _profiles.GetByUserAcrossOrgsAsync(userId);
+
+    public async Task HideMembershipForEmployeeAsync(string organizationId, string userId)
+    {
+        var membership = await _memberships.GetAsync(organizationId, userId);
+        if (membership is null || membership.HiddenByEmployeeAt is not null) return;
+        membership.HiddenByEmployeeAt = DateTime.UtcNow;
+        await _memberships.UpdateAsync(membership);
+    }
+
     public Task<int> CountMembershipsByShiftAsync(string shiftId) =>
         _memberships.CountByShiftIdAsync(shiftId);
 

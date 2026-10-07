@@ -19,19 +19,25 @@ public class EmployeesController : ControllerBase
     private readonly IEmployeeProfileService _profiles;
     private readonly IEmployeeDocumentService _documents;
     private readonly ILhdnFormsService _lhdnForms;
+    private readonly IEmployeeTransferService _transfers;
+    private readonly IEmploymentHistory _history;
 
     public EmployeesController(
         IEmployeeService employees,
         IEmployeeImportService import,
         IEmployeeProfileService profiles,
         IEmployeeDocumentService documents,
-        ILhdnFormsService lhdnForms)
+        ILhdnFormsService lhdnForms,
+        IEmployeeTransferService transfers,
+        IEmploymentHistory history)
     {
         _employees = employees;
         _import = import;
         _profiles = profiles;
         _documents = documents;
         _lhdnForms = lhdnForms;
+        _transfers = transfers;
+        _history = history;
     }
 
     // GET /employees — everyone in the org, with their role + assigned supervisor.
@@ -161,6 +167,68 @@ public class EmployeesController : ControllerBase
         Response.Headers.CacheControl = "no-store";
         return File(result.Bytes!, "application/pdf", result.FileName);
     }
+    // GET /employees/{id}/history — every tenure at this company: joins,
+    // leaves, transfers in and out, restores. The profile keeps only the
+    // current dates; this keeps what they overwrote.
+    [RequireScope("employees:read")]
+    [HttpGet("{id}/history")]
+    public async Task<IActionResult> GetHistory(string id)
+    {
+        var history = await _history.GetAsync(id);
+        return history is null ? NotFound() : Ok(history);
+    }
+
+    // ─── Transfer to another company ────────────────────────────────────
+    //
+    // Moving someone to another company the same admin runs. Human only: the
+    // target is chosen from the signed-in admin's OWN memberships, which an
+    // org-scoped API key doesn't have.
+
+    // GET /employees/transfers — every queued transfer in this org (list chip).
+    [HumanOnly]
+    [HttpGet("transfers")]
+    public async Task<IActionResult> ListTransfers() => Ok(await _transfers.ListOpenAsync());
+
+    // GET /employees/{userId}/transfer — where they can go + any queued transfer.
+    [HumanOnly]
+    [HttpGet("{userId}/transfer")]
+    public async Task<IActionResult> GetTransfer(string userId)
+    {
+        var options = await _transfers.GetOptionsAsync(userId);
+        return options is null ? NotFound() : Ok(options);
+    }
+
+    // POST /employees/{userId}/transfer — schedule; dated today, it runs now.
+    [HumanOnly]
+    [HttpPost("{userId}/transfer")]
+    public async Task<IActionResult> CreateTransfer(string userId, CreateEmployeeTransferDto dto)
+    {
+        var result = await _transfers.CreateAsync(userId, dto);
+        if (result.Ok) return Ok(new { transfer = result.Transfer, executedImmediately = result.ExecutedImmediately });
+        return result.Error is null ? NotFound() : BadRequest(new { error = result.Error });
+    }
+
+    // POST /employees/{userId}/duplicate — add the same person to another
+    // company this admin runs, keeping them here too (concurrent employment).
+    [HumanOnly]
+    [HttpPost("{userId}/duplicate")]
+    public async Task<IActionResult> Duplicate(string userId, DuplicateEmployeeDto dto)
+    {
+        var (ok, result, error) = await _transfers.DuplicateAsync(userId, dto);
+        if (ok) return Ok(result);
+        return error is null ? NotFound() : BadRequest(new { error });
+    }
+
+    // DELETE /employees/{userId}/transfer/{transferId} — cancel a queued transfer.
+    [HumanOnly]
+    [HttpDelete("{userId}/transfer/{transferId}")]
+    public async Task<IActionResult> CancelTransfer(string userId, string transferId)
+    {
+        var result = await _transfers.CancelAsync(userId, transferId);
+        if (result.Ok) return Ok(result.Transfer);
+        return result.Error is null ? NotFound() : BadRequest(new { error = result.Error });
+    }
+
     // ─── Bulk import ────────────────────────────────────────────────────
     //
     // Creating the account and the membership — the step BEFORE the payroll

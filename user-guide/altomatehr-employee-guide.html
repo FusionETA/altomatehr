@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 7ae4fe4
+  user-guide-covered-up-to: ffff693
 -->
 <html lang="en">
 <head>
@@ -798,10 +798,39 @@
         until you've read the latest.</li>
       <li><strong>Guide</strong> — opens this guide in a new tab.</li>
       <li><strong>Switch company</strong> — if you work for more than one company in the group, pick another here. On a
-        computer it's the company name at the top instead.</li>
+        computer it's the company name at the top instead. When you sign in you land on the company you work at now.
+        A company you've left or been transferred out of is marked <em>Former · payslips only</em>, and is listed after
+        your current ones.</li>
       <li><strong>Launch Appraisify</strong> — opens your company's appraisal app, already signed in.</li>
       <li><strong>Log out</strong>. (Not shown if you signed in through Altomate — sign out there.)</li>
     </ul>
+    <h3>A company you no longer work at</h3>
+    <p>Pick a <em>Former · payslips only</em> company and you'll see only <strong>Payslips</strong>, with a notice at the
+      top: you can still open and download your old payslips, but clocking in, claims and leave are only in your current
+      company — switch back from the company menu.</p>
+    <ul>
+      <li><span class="btn-name">Leave company</span> — in that notice. You're asked <strong>Leave …?</strong> to confirm
+        (press <span class="btn-name">Leave company</span> again). The company disappears from your account and you can no
+        longer open its payslips from here, so download any you need first. The company keeps your records; ask HR if you
+        need something later.</li>
+    </ul>
+    <figure class="shot" data-place="Companies">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/former-switcher.png" alt="The account menu with Switch company, listing the current company ticked and AltomateHR Demo Co marked Former · payslips only" loading="lazy">
+          <p class="shot-cap">Company menu</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/former-company.png" alt="The Payslips tab of a former company, with the notice that you no longer work there and a Leave company button" loading="lazy">
+          <p class="shot-cap">Former company</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/former-leave-confirm.png" alt="The Leave company confirmation dialog with Cancel and Leave company" loading="lazy">
+          <p class="shot-cap">Confirm</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">A company you no longer work at</p>
+    </figure>
     </div>
   </details>
 
@@ -898,6 +927,9 @@
     <details class="qa"><summary>I clocked out at the wrong time.</summary>
       <div class="body"><p>Corrections are made when you clock out — the <a href="#fix">Request adjustment</a> tab. If you've
         already clocked out, ask your supervisor.</p></div></details>
+    <details class="qa"><summary>I only see Payslips.</summary>
+      <div class="body"><p>You've opened a company you no longer work at. Switch to your current company from the company
+        menu — see <a href="#account">Password, alerts &amp; companies</a>.</p></div></details>
     <details class="qa"><summary>Where's my payslip?</summary>
       <div class="body"><p>Payslips appear once payroll for that month is finalised. If it's past payday and it isn't
         there, ask HR.</p></div></details>

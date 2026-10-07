@@ -362,6 +362,25 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Contains(result.SkippedEmployees, s => s.Name == "Archived");
     }
 
+    // Archiving records that someone left; it doesn't cancel what they earned
+    // first. Archived on the 16th with a last day of the 15th (the past-leaver
+    // sweep, or a transfer out) is still owed 1–15 January, and not February.
+    [Fact]
+    public async Task GenerateAsync_PaysAnArchivedLeaverUpToTheirLastDay()
+    {
+        AddEmployee("usr-1", "Stayer");
+        var leaver = AddEmployee("usr-2", "Leaver", isArchived: true, leaveDate: new DateTime(2026, 1, 15));
+
+        var january = (await _service.GenerateAsync((await CreateRunAsync(2026, 1)).Id)).Result!;
+        Assert.Equal(2, january.PayslipCount);
+        var paid = _db.Payslips.Single(p => p.EmployeeProfileId == leaver.Id);
+        var full = _db.Payslips.Single(p => p.EmployeeProfileId != leaver.Id);
+        Assert.True(paid.ProratedPay > 0m && paid.ProratedPay < full.ProratedPay);
+
+        var february = (await _service.GenerateAsync((await CreateRunAsync(2026, 2)).Id)).Result!;
+        Assert.Equal(1, february.PayslipCount);
+    }
+
     // Someone who joined mid-period still belongs on the run — prorated.
     [Fact]
     public async Task GenerateAsync_IncludesAMidPeriodJoinerAtTheProratedAmount()

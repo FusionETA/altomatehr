@@ -138,8 +138,10 @@ export function OrgSwitcher({
                     >
                       <span className="min-w-0 flex-1 truncate">
                         {o.name}
-                        <span className="block text-xs font-normal capitalize text-muted-foreground">
-                          {o.role.toLowerCase()}
+                        <span
+                          className={`block text-xs font-normal text-muted-foreground ${o.isFormer ? "" : "capitalize"}`}
+                        >
+                          {o.isFormer ? "Former · payslips only" : o.role.toLowerCase()}
                         </span>
                       </span>
                       {switchingId === o.organizationId ? (
@@ -204,7 +206,14 @@ export function OrgSwitcherMenuList({ className = "" }: { className?: string }) 
                 }`}
               >
                 <Building2 className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {o.name}
+                  {o.isFormer ? (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      Former · payslips only
+                    </span>
+                  ) : null}
+                </span>
                 {switchingId === o.organizationId ? (
                   <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-primary" />
                 ) : active ? (

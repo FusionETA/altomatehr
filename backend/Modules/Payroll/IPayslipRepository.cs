@@ -68,6 +68,13 @@ public interface IPayslipRepository
     Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeAsync(
         int year, string? excludeRunId);
 
+    // The same, for one NAMED org regardless of the current one (ignores the
+    // tenant filter) — an employee transfer reads both companies' figures.
+    // `beforeMonth`: only runs for months before it (what a company paid
+    // someone BEFORE they transferred in, not after).
+    Task<IReadOnlyDictionary<string, PayrollYtdTotals>> GetYtdByEmployeeInOrgAsync(
+        string organizationId, int year, int? beforeMonth = null);
+
     // Year-to-date as a PAYSLIP shows it — gross, net and each contribution
     // split employee/employer — through and including `month`.
     //

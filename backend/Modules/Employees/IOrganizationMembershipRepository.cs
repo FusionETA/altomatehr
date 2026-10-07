@@ -20,6 +20,11 @@ public interface IOrganizationMembershipRepository
     // One user's membership in the CURRENT (active) org — tenant-filtered.
     Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId);
 
+    // Whether a staff number is already used in a NAMED org (bypasses the
+    // tenant filter) — a transferred employee keeps theirs unless it clashes.
+    // (Default keeps hand-written test doubles compiling; the real repository overrides.)
+    Task<bool> EmployeeNumberExistsAsync(string organizationId, string employeeNumber) => Task.FromResult(false);
+
     Task AddAsync(OrganizationMembership membership);
     Task UpdateAsync(OrganizationMembership membership);
 

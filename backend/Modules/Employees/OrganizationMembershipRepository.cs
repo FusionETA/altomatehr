@@ -34,6 +34,10 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
     public Task<int> CountByShiftIdAsync(string shiftId) =>
         _db.OrganizationMemberships.CountAsync(m => m.ShiftId == shiftId);
 
+    public Task<bool> EmployeeNumberExistsAsync(string organizationId, string employeeNumber) =>
+        _db.OrganizationMemberships.IgnoreQueryFilters()
+            .AnyAsync(m => m.OrganizationId == organizationId && m.EmployeeNumber == employeeNumber);
+
     public async Task AddAsync(OrganizationMembership membership)
     {
         membership.CreatedAt = membership.CreatedAt == default ? DateTime.UtcNow : membership.CreatedAt;

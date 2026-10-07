@@ -19,9 +19,11 @@ public class EmployeeProfileService : IEmployeeProfileService
         IOrganizationMembershipRepository memberships,
         IDirectoryService directory,
         Payroll.ISalaryChangeService salaryChanges,
-        Payroll.IPayrollDraftStaleness? drafts = null)
+        Payroll.IPayrollDraftStaleness? drafts = null,
+        IEmploymentHistory? history = null)
     {
         _drafts = drafts;
+        _history = history;
         _profiles = profiles;
         _memberships = memberships;
         _directory = directory;
@@ -32,6 +34,9 @@ public class EmployeeProfileService : IEmployeeProfileService
     // Optional so hand-built instances in tests need not supply it; the app
     // always does. See PayrollDraftStaleness for why saves here mark drafts.
     private readonly Payroll.IPayrollDraftStaleness? _drafts;
+    // Optional for the same reason. Records a tenure when archiving ends it
+    // and when a restore starts a new one — see EmploymentPeriod.
+    private readonly IEmploymentHistory? _history;
 
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
     {
@@ -78,7 +83,30 @@ public class EmployeeProfileService : IEmployeeProfileService
             // afterwards would compare the new values with themselves.
             var before = SalarySnapshot(profile);
 
+            // The tenure as it stood, for the history: Apply overwrites it.
+            var (wasArchived, oldJoin, oldLeave, oldReason) =
+                (profile.IsArchived, profile.JoinDate, profile.LeaveDate, profile.ArchiveReason);
+
             Apply(dto, profile);
+
+            // Archiving ends a tenure; restoring starts a new one. Staged here
+            // and written by the UpdateAsync below, in the same commit.
+            if (_history is not null && wasArchived != profile.IsArchived)
+            {
+                if (profile.IsArchived)
+                {
+                    await _history.CloseAsync(
+                        profile.OrganizationId, userId, profile.JoinDate, profile.LeaveDate,
+                        string.IsNullOrWhiteSpace(profile.ArchiveReason) ? "Archived" : profile.ArchiveReason);
+                }
+                else
+                {
+                    await _history.RecordEndedIfMissingAsync(profile.OrganizationId, userId, oldJoin, oldLeave, oldReason);
+                    await _history.OpenAsync(profile.OrganizationId, userId, profile.JoinDate, "Restored");
+                    await UnhideForEmployeeAsync(userId);
+                }
+            }
+
             await _profiles.UpdateAsync(profile);
 
             // Only writes a row when the salary actually moved — a no-op
@@ -106,6 +134,16 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
+    }
+
+    // A restored employee works here again: if they had removed this company
+    // from their own list as a former employee, it comes back.
+    private async Task UnhideForEmployeeAsync(string userId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership?.HiddenByEmployeeAt is null) return;
+        membership.HiddenByEmployeeAt = null;
+        await _memberships.UpdateAsync(membership);
     }
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
