@@ -23,6 +23,20 @@ public interface IOrganizationService
     // is not an Admin in this org; throws ArgumentException on an unknown module.
     Task<AdminAccessDto?> SetAdminModulesAsync(string userId, List<string>? modules);
 
+    // Owner-only "Remove admin": take an Admin out of this company. Their login
+    // stays (they may run other companies); their access here ends at once.
+    // Refuses the caller themselves and any Owner. Null error = removed;
+    // NotFound = no such Admin here.
+    Task<(bool NotFound, string? Error)> RemoveAdminAsync(string userId) =>
+        Task.FromResult<(bool, string?)>((true, null));
+
+    // Set an admin's full access: module levels, employee scope (policies) and
+    // the settings switch. Null if the user is not an Admin here; throws
+    // ArgumentException on an unknown module or a policy not in this org.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto) =>
+        Task.FromResult<AdminAccessDto?>(null);
+
     Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto);
 
     // Sets the org's claim settings: the day of month that closes the claims run

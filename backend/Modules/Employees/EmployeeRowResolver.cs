@@ -13,8 +13,10 @@ public class EmployeeRowResolver : IEmployeeRowResolver
     {
         // Memberships are tenant-filtered, so this can only ever see the caller's
         // own org — which is what stops an import from resolving an email to
-        // somebody in a different tenant.
-        var members = await _directory.GetMembershipsForCurrentOrgAsync();
+        // somebody in a different tenant. And in scope: the admin reports and
+        // roll-calls built on this list a policy-limited admin's people only
+        // (imports, which must see everyone, are closed to such an admin).
+        var members = await _directory.GetMembershipsInScopeAsync();
         var usersById = (await _directory.GetUsersAsync()).ToDictionary(u => u.Id, StringComparer.Ordinal);
 
         var identities = members

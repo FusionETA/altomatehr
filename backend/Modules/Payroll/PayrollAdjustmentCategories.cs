@@ -271,8 +271,8 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = false, SubjectToHrdf = true,
             },
 
-            // Childcare for a child under 12 — exempt to RM 2,400/year under
-            // PR 5/2019 §7.2.4.
+            // Childcare for a child aged 12 or under — PCB-exempt to a yearly
+            // ceiling (PR 5/2019 §7.2.4; the figure is below).
             new PayrollAdjustmentCategoryMeta
             {
                 Code = AllowanceChildcare,

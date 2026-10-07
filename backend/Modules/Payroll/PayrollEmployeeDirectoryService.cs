@@ -30,7 +30,8 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
         // whole job is "who is not ready to file" silently omitted the people
         // furthest from ready, and an org of twelve showed four.
         // Employees and Supervisors only — an Admin or Owner is not on payroll.
-        var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
+        // In scope only: a policy-limited admin's list is their people.
+        var memberships = (await _directory.GetMembershipsInScopeAsync())
             .Where(m => OrgRoles.IsOnPayroll(m.Role))
             .ToList();
 

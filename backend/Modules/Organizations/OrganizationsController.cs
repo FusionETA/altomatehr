@@ -39,12 +39,19 @@ public class OrganizationsController : ControllerBase
     // their own access.
     [RequireScope("organizations:read")]
     [HttpGet("modules")]
-    public async Task<IActionResult> GetModules([FromServices] IModuleAccessService access) =>
-        Ok(new ModuleAccessDto
+    public async Task<IActionResult> GetModules([FromServices] IModuleAccessService access)
+    {
+        var enabled = await access.GetEnabledModulesAsync();
+        var mine = await access.GetAccessAsync();
+        return Ok(new ModuleAccessDto
         {
             All = OrgModules.AllModules,
-            Enabled = await access.GetEnabledModulesAsync(),
+            Enabled = enabled,
+            Levels = enabled.ToDictionary(m => m, mine.LevelFor, StringComparer.OrdinalIgnoreCase),
+            CanChangeSettings = mine.CanChangeSettings,
+            AllEmployees = mine.HasFullEmployeeScope,
         });
+    }
 
     // GET /organizations/admins — the org's admins with their module grant.
     // Owners only: controlling who sees what is the Owner's call, not an admin's.
@@ -62,7 +69,7 @@ public class OrganizationsController : ControllerBase
     {
         try
         {
-            var result = await _organizations.SetAdminModulesAsync(userId, dto.Modules);
+            var result = await _organizations.SetAdminAccessAsync(userId, dto);
             return result is null ? NotFound() : Ok(result);
         }
         catch (ArgumentException ex)
@@ -71,9 +78,22 @@ public class OrganizationsController : ControllerBase
         }
     }
 
+    // DELETE /organizations/admins/{userId} — remove an Admin from this company.
+    // Owners only. Their login stays; their access here ends at once.
+    [Authorize(Roles = "Owner")]
+    [HumanOnly]
+    [HttpDelete("admins/{userId}")]
+    public async Task<IActionResult> RemoveAdmin(string userId)
+    {
+        var (notFound, error) = await _organizations.RemoveAdminAsync(userId);
+        if (notFound) return NotFound();
+        return error is null ? NoContent() : BadRequest(new { message = error });
+    }
+
     // PUT /organizations/current — update org settings (Admins only).
     [Authorize(Roles = "Admin,Owner")]
     [RequireScope("organizations:write")]
+    [RequireSettings]
     [HttpPut("current")]
     public async Task<IActionResult> UpdateCurrent(UpdateOrganizationDto dto)
     {

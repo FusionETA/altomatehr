@@ -29,6 +29,7 @@ public class ApprovalsController : ControllerBase
     // rather than making a judgement on any individual request. Admins remain
     // outside every approval chain (see OrgRoles).
     [HumanOnly]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]   // runs over every employee
     [HttpPost("reconcile")]
     public async Task<ActionResult<ApprovalReconciliationDto>> Reconcile([FromQuery] bool apply = false) =>
         Ok(await _reconciliation.RunAsync(apply));

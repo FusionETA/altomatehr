@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useMyAccess } from "@/features/settings/lib/module-access";
+import { SettingsReadOnlyNote } from "@/features/settings/components/SettingsReadOnlyNote";
 import { LoaderCircle } from "lucide-react";
 import {
   getOrganization,
@@ -17,6 +19,7 @@ const INPUT =
 const LABEL = "block text-sm font-semibold text-foreground";
 
 export function OrganizationSettings() {
+  const { canChangeSettings } = useMyAccess();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -70,7 +73,8 @@ export function OrganizationSettings() {
   }
 
   return (
-    <div className="space-y-5">
+    <fieldset disabled={!canChangeSettings} className="min-w-0 space-y-5">
+      {!canChangeSettings ? <SettingsReadOnlyNote /> : null}
       {/* Integrations sit with the company, not with the accounts they happen to
           own — and the claims screen sends admins to System Settings to connect. */}
       <XeroConnectionCard />
@@ -114,6 +118,6 @@ export function OrganizationSettings() {
           Save changes
         </button>
       </form>
-    </div>
+    </fieldset>
   );
 }

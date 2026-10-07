@@ -91,11 +91,11 @@ public class CreateEmployeeDto
     [MaxLength(160)]
     public string? Name { get; set; }
 
-    // Required: the profile flags a missing number as blocking payroll (LHDN's
-    // CP39 has a mandatory employee-number column), so the add form must not let
-    // an employee in without one. The XLSX import builds this DTO in-process, so
-    // this attribute only gates POST /employees — the import keeps its own rules.
-    [Required(ErrorMessage = "Enter an employee ID."), MaxLength(40)]
+    // Optional. Payroll needs every employee to have one (LHDN's CP39 has a
+    // mandatory employee-number column), so a blank one is ASSIGNED — the next
+    // in the company's own pattern (EmployeeNumbers.Next). Admins and Owners
+    // aren't on payroll and get none unless one is typed.
+    [MaxLength(40)]
     public string? EmployeeNumber { get; set; }
 
     [MaxLength(120)]

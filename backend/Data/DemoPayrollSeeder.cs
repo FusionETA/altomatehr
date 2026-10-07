@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.Security.Claims;
 using System.Text.Json;
 using AltomateHR.Api.Modules.Attendance;
@@ -10,8 +11,9 @@ using AltomateHR.Api.Modules.Policies.Entities;
 
 namespace AltomateHR.Api.Data;
 
-// Demo payslips for Evan (usr-emp), so the employee portal's Payslips page and
-// the admin's payroll screens have real months to show.
+// Demo payslips for the demo company's staff, so the employee portal's
+// Payslips page and the admin's payroll screens have real months — with a
+// whole team on each run, not one person — to show.
 //
 // The payslips are produced by the REAL pipeline — create → generate → submit
 // → approve on IPayrollRunService — rather than written by hand. That is the
@@ -24,15 +26,19 @@ namespace AltomateHR.Api.Data;
 // the actor from ICurrentUser, and at startup there is no request to supply one.
 //
 // Safe on every boot:
-//   - Evan's profile and the company info are created or have BLANK fields
-//     filled; nothing typed by hand is overwritten.
+//   - Every staff member's profile (Evan's with his fixed demo values, the
+//     rest with made-up ones), their employee IDs, and the company info are
+//     created or have BLANK fields filled; nothing typed by hand is
+//     overwritten. That makes every demo employee payable, so each run
+//     covers the whole team.
 //   - January up to last month are seeded, oldest first (runs are submitted
 //     in order), and a month that already has a run — whoever made it — is
 //     left alone. From JANUARY, not just the last few months: PCB projects
 //     the year from its year-to-date, so a year whose first payslip is June
 //     is taxed as a mid-year joiner and the demo shows a false RM 0 PCB.
-//   - Each run is scoped to Evan alone, so a half-finished profile someone
-//     else created can never block the submission.
+//   - Each run takes everyone payable — the run picker's own rule leaves out
+//     a profile that is still incomplete (someone added by hand later), so it
+//     can never block the submission.
 //   - Any refusal stops the seed quietly: demo data must never stop the API
 //     from starting.
 public static class DemoPayrollSeeder
@@ -58,8 +64,9 @@ public static class DemoPayrollSeeder
         IPayrollRunService runs,
         ILogger logger)
     {
-        var profile = await EnsureEmployeeProfileAsync(profiles);
+        await EnsureEmployeeProfileAsync(profiles);
         await EnsureEmployeeNumberAsync(memberships);
+        await EnsureStaffProfilesAsync(profiles, memberships);
         await EnsureCompanyInfoAsync(companyInfo);
 
         // January to last month of last month's year, in Malaysian time — in
@@ -67,12 +74,6 @@ public static class DemoPayrollSeeder
         var today = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(
             DateTime.UtcNow, AttendanceTime.DefaultTimeZone);
         var lastMonth = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
-
-        // Everyone but Evan, so the run is his alone.
-        var others = (await profiles.GetAllForCurrentOrgAsync())
-            .Where(p => p.Id != profile.Id)
-            .Select(p => p.Id)
-            .ToList();
 
         for (var month = 1; month <= lastMonth.Month; month++)
         {
@@ -83,7 +84,6 @@ public static class DemoPayrollSeeder
             {
                 PeriodYear = period.Year,
                 PeriodMonth = period.Month,
-                ExcludedEmployeeProfileIds = others,
             });
 
             // Already a run for this month — hand-made or seeded earlier. Leave it.
@@ -155,6 +155,70 @@ public static class DemoPayrollSeeder
         if (existing is null) return await profiles.AddAsync(p);
         await profiles.UpdateAsync(p);
         return p;
+    }
+
+    // The rest of the demo staff — Employees and Supervisors other than Evan —
+    // made payable with obviously fake values, varied per person so the run
+    // reads like a team: salary, birthday, bank. Blanks only, like Evan's.
+    private static async Task EnsureStaffProfilesAsync(
+        IEmployeeProfileRepository profiles, IOrganizationMembershipRepository memberships)
+    {
+        string[] banks = ["Maybank", "CIMB Bank", "Public Bank", "RHB Bank", "Hong Leong Bank"];
+        var staff = (await memberships.GetForCurrentOrgAsync())
+            .Where(m => m.UserId != EmployeeUserId && OrgRoles.IsOnPayroll(m.Role))
+            .OrderBy(m => m.UserId, StringComparer.Ordinal)
+            .ToList();
+
+        var i = 0;
+        foreach (var m in staff)
+        {
+            i++;
+            if (string.IsNullOrWhiteSpace(m.EmployeeNumber))
+            {
+                m.EmployeeNumber = EmployeeNumbers.Next((await memberships.GetForCurrentOrgAsync()).Select(x => x.EmployeeNumber));
+                m.UpdatedAt = DateTime.UtcNow;
+                await memberships.UpdateAsync(m);
+            }
+
+            var existing = await profiles.GetByUserAsync(m.UserId);
+            var p = existing ?? new EmployeeProfile
+            {
+                OrganizationId = DemoOrgId,
+                UserId = m.UserId,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            var dob = new DateTime(1985 + (i * 3) % 15, 1 + i % 12, 1 + (i * 7) % 27);
+            var ic = $"{dob:yyMMdd}-14-{5000 + i:0000}";
+
+            p.Gender ??= i % 2 == 1 ? Gender.MALE : Gender.FEMALE;
+            p.DateOfBirth ??= dob;
+            p.Nationality ??= "Malaysian";
+            p.IdType ??= IdType.NRIC;
+            p.IdNumber ??= ic;
+            p.MaritalStatus ??= MaritalStatus.SINGLE;
+            p.JoinDate ??= new DateTime(2025, 1, 6);
+            p.Phone ??= $"+6012-{3000000 + i * 1111:0000000}";
+            p.AddressLine1 ??= $"{10 + i} Jalan Demo {i}";
+            p.City ??= "Kuala Lumpur";
+            p.Postcode ??= "50450";
+            p.State ??= "Kuala Lumpur";
+
+            if (p.SalaryType == SalaryType.MONTHLY) p.MonthlySalary ??= 3000m + i * 250m;
+            if (p.EpfEmployeeRate == 0m) p.EpfEmployeeRate = 11m;
+            p.EpfNumber ??= $"{20000000 + i}";
+            p.SocsoNumber ??= ic.Replace("-", "");
+            p.SocsoScheme ??= SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY;
+            p.IncomeTaxNumber ??= $"IG{30000000000L + i}";
+
+            p.BankName ??= banks[i % banks.Length];
+            p.BankAccountHolderName ??= $"DEMO EMPLOYEE {i}";
+            p.BankAccountNumber ??= $"{51400000000L + i * 7}";
+
+            p.UpdatedAt = DateTime.UtcNow;
+            if (existing is null) await profiles.AddAsync(p);
+            else await profiles.UpdateAsync(p);
+        }
     }
 
     // CP39's mandatory employee-number column — submission refuses without it.

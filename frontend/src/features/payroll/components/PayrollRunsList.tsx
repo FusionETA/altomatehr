@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMyAccess } from "@/features/settings/lib/module-access";
 import {
   ChevronDown,
   ChevronRight,
@@ -61,6 +62,8 @@ export function PayrollRunsList({
   onCreated: () => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const access = useMyAccess();
+  const canRun = access.allEmployees && access.canManage("payroll");
 
   return (
     <div className="space-y-6">
@@ -73,10 +76,18 @@ export function PayrollRunsList({
               nothing is calculated until you run payroll.
             </p>
           </div>
-          <button type="button" className={BUTTON} onClick={() => setPickerOpen(true)}>
-            <Plus className="size-4" aria-hidden />
-            Create draft
-          </button>
+          {canRun ? (
+            <button type="button" className={BUTTON} onClick={() => setPickerOpen(true)}>
+              <Plus className="size-4" aria-hidden />
+              Create draft
+            </button>
+          ) : (
+            <p className="max-w-xs text-xs text-muted-foreground">
+              {access.allEmployees
+                ? "Your payroll access is view only."
+                : "Runs cover the whole company; your access covers some employees, so you can view runs but not start one."}
+            </p>
+          )}
         </header>
       </section>
 

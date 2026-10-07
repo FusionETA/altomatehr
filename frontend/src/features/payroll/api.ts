@@ -567,6 +567,11 @@ export const downloadAllPayslips = (runId: string) =>
 export const downloadPayrollSummary = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/summary`, "payroll-summary.pdf");
 
+// Everyone the bank file doesn't pay — other banks / e-wallets, cash, cheque,
+// and anyone missing bank details — to pay by hand.
+export const downloadManualPayments = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/manual-payments`, "manual-payments.xlsx");
+
 export const downloadPaymentSchedule = (runId: string) =>
   download(
     `/payroll/runs/${runId}/documents/payment-schedule`,
@@ -643,7 +648,7 @@ export const downloadPcbTxt = (runId: string) =>
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
-export type PaymentMethod = "BANK_TRANSFER" | "CASH" | "CHEQUE";
+export type PaymentMethod = "BANK_TRANSFER" | "OTHER_TRANSFER" | "CASH" | "CHEQUE";
 
 // Keyed by employeeProfileId, NOT the user id that `/employees` returns —
 // payslips, loans and salary changes all reference the profile, so this is

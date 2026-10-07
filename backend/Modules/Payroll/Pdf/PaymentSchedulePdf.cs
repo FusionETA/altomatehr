@@ -48,14 +48,17 @@ public static class PaymentSchedulePdf
 
     private static void Body(IContainer container, PayrollDocumentModel model)
     {
-        // Only people who are actually owed money. A zero-net payslip is a
-        // real payslip but not a payment, and listing it invites someone to
-        // "fix" a missing bank account that does not matter.
-        var payable = model.Rows.Where(r => r.Payslip.NetPay > 0m).ToList();
+        // Two lists, by the same rule the bank file and the Manual payments
+        // sheet use (PayrollPayments), so what the approver signs matches what
+        // actually moves: the bank file's rows, then everyone paid by hand.
+        // Zero-net payslips are not payments and appear in neither.
+        var bankFile = model.Rows.Where(PayrollPayments.InBankFile).ToList();
+        var manual = PayrollPayments.Manual(model);
 
         container.PaddingTop(8).Column(col =>
         {
-            col.Item().Table(table =>
+            col.Item().Text($"Bank payroll file — {bankFile.Count} payment(s)").FontSize(9.5f).Bold();
+            col.Item().PaddingTop(4).Table(table =>
             {
                 table.ColumnsDefinition(c =>
                 {
@@ -75,58 +78,92 @@ public static class PaymentSchedulePdf
                     Th(h, "Net pay", right: true);
                 });
 
-                foreach (var row in payable)
+                foreach (var row in bankFile)
                 {
                     var bank = MalaysianBanks.Find(row.BankName);
-
                     Td(table, row.EmployeeCode);
                     Td(table, row.EmployeeName);
                     // The canonical name when the free text resolves, and the
                     // admin's own text when it does not — so an unrecognised
-                    // bank is visible here rather than only failing later at
-                    // bank-file time.
+                    // bank is visible here rather than only failing at bank-file time.
                     Td(table, bank?.Name ?? row.BankName ?? "—");
                     Td(table, row.BankAccountNumber ?? "—");
                     table.Cell().PaddingVertical(2).AlignRight()
                         .Text(PayrollPdfShared.Rm(row.Payslip.NetPay)).FontSize(8.5f);
                 }
 
-                table.Cell().ColumnSpan(4).PaddingTop(5)
-                    .BorderTop(1).BorderColor(PayrollPdfShared.Ink).PaddingTop(3)
-                    .Text($"Total — {payable.Count} payment(s)").FontSize(9).Bold();
-                table.Cell().PaddingTop(5)
-                    .BorderTop(1).BorderColor(PayrollPdfShared.Ink).PaddingTop(3)
-                    .AlignRight().Text(PayrollPdfShared.Rm(payable.Sum(r => r.Payslip.NetPay)))
-                    .FontSize(9).Bold();
+                TotalRow(table, 4, "Bank file total", bankFile.Sum(r => r.Payslip.NetPay));
             });
 
-            // Anyone the bank file will not be able to pay, called out where
-            // the approver is looking rather than discovered on upload.
-            var unpayable = payable
-                .Where(r => string.IsNullOrWhiteSpace(r.BankAccountNumber)
-                            || MalaysianBanks.Find(r.BankName) is null)
-                .ToList();
+            col.Item().PaddingTop(14).Text($"Paid manually — {manual.Count} payment(s)").FontSize(9.5f).Bold();
+            col.Item().Text("Not in the bank file: other banks and e-wallets, cash, cheque, and anyone missing bank details.")
+                .FontSize(7.5f).FontColor(PayrollPdfShared.Muted);
 
-            if (unpayable.Count > 0)
+            if (manual.Count == 0)
             {
-                col.Item().PaddingTop(14).Background("#fffbeb")
-                    .Border(1).BorderColor("#fcd34d").Padding(8).Column(warn =>
-                    {
-                        warn.Item().Text($"{unpayable.Count} employee(s) cannot be paid by bank transfer")
-                            .FontSize(8.5f).SemiBold().FontColor("#b45309");
-
-                        foreach (var row in unpayable)
-                        {
-                            var reason = string.IsNullOrWhiteSpace(row.BankAccountNumber)
-                                ? "no bank account on file"
-                                : $"unrecognised bank \"{row.BankName}\"";
-
-                            warn.Item().Text($"• {row.EmployeeName} — {reason}")
-                                .FontSize(8).FontColor("#b45309");
-                        }
-                    });
+                col.Item().PaddingTop(4).Text("None — everyone owed pay is in the bank file.").FontSize(8.5f);
             }
+            else
+            {
+                col.Item().PaddingTop(4).Table(table =>
+                {
+                    table.ColumnsDefinition(c =>
+                    {
+                        c.ConstantColumn(50);    // no
+                        c.RelativeColumn(1.8f);  // name
+                        c.RelativeColumn(1.3f);  // method
+                        c.RelativeColumn(1.5f);  // bank / provider
+                        c.RelativeColumn(1.3f);  // account
+                        c.ConstantColumn(70);    // net
+                    });
+
+                    table.Header(h =>
+                    {
+                        Th(h, "Emp no.");
+                        Th(h, "Employee");
+                        Th(h, "Method");
+                        Th(h, "Bank / provider");
+                        Th(h, "Account");
+                        Th(h, "Net pay", right: true);
+                    });
+
+                    foreach (var m in manual)
+                    {
+                        Td(table, m.Row.EmployeeCode);
+                        table.Cell().PaddingVertical(2).Column(c =>
+                        {
+                            c.Item().Text(m.Row.EmployeeName).FontSize(8.5f);
+                            if (m.Issue is not null)
+                                c.Item().Text(m.Issue).FontSize(7).FontColor("#b45309");
+                        });
+                        Td(table, m.Method);
+                        Td(table, m.Row.BankName ?? "—");
+                        Td(table, m.Row.BankAccountNumber ?? "—");
+                        table.Cell().PaddingVertical(2).AlignRight()
+                            .Text(PayrollPdfShared.Rm(m.Row.Payslip.NetPay)).FontSize(8.5f);
+                    }
+
+                    TotalRow(table, 5, "Manual total", manual.Sum(m => m.Row.Payslip.NetPay));
+                });
+            }
+
+            var all = bankFile.Sum(r => r.Payslip.NetPay) + manual.Sum(m => m.Row.Payslip.NetPay);
+            col.Item().PaddingTop(12).BorderTop(1.5f).BorderColor(PayrollPdfShared.Ink).PaddingTop(4).Row(row =>
+            {
+                row.RelativeItem().Text($"Total net pay — {bankFile.Count + manual.Count} payment(s)").FontSize(9.5f).Bold();
+                row.ConstantItem(90).AlignRight().Text(PayrollPdfShared.Rm(all)).FontSize(9.5f).Bold();
+            });
         });
+    }
+
+    private static void TotalRow(TableDescriptor table, int labelSpan, string label, decimal amount)
+    {
+        table.Cell().ColumnSpan((uint)labelSpan).PaddingTop(5)
+            .BorderTop(1).BorderColor(PayrollPdfShared.Ink).PaddingTop(3)
+            .Text(label).FontSize(9).Bold();
+        table.Cell().PaddingTop(5)
+            .BorderTop(1).BorderColor(PayrollPdfShared.Ink).PaddingTop(3)
+            .AlignRight().Text(PayrollPdfShared.Rm(amount)).FontSize(9).Bold();
     }
 
     private static void Th(TableCellDescriptor header, string text, bool right = false)

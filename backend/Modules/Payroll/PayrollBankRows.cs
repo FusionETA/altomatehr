@@ -28,9 +28,11 @@ internal static class PayrollBankRows
     internal static (IReadOnlyList<BankPayRow> Rows, StatutoryFileResult? Refusal) Select(
         PayrollDocumentModel model)
     {
-        var candidates = model.Rows
-            .Where(r => r.Payslip.NetPay > 0m && !string.IsNullOrWhiteSpace(r.BankAccountNumber))
-            .ToList();
+        // Bank-transfer employees only (PayrollPayments.InBankFile): Cash,
+        // Cheque and Other bank / e-wallet are paid by hand from the Manual
+        // payments sheet, so an overseas bank or Merchantrade no longer blocks
+        // the file.
+        var candidates = model.Rows.Where(PayrollPayments.InBankFile).ToList();
 
         var unmatched = candidates
             .Where(r => MalaysianBanks.Find(r.BankName) is null)
@@ -40,16 +42,19 @@ internal static class PayrollBankRows
         if (unmatched.Count > 0)
         {
             return ([], StatutoryFileResult.Refused(
-                "These employees' banks could not be matched to a recognised Malaysian bank: "
+                "These employees are paid by bank transfer, but their banks could not be matched to "
+                + "a recognised Malaysian bank: "
                 + string.Join("; ", unmatched)
-                + ". Correct the bank name on each affected employee's profile."));
+                + ". Correct the bank name — or, for a non-Malaysian bank or an e-wallet such as "
+                + "Merchantrade, set their payment method to \"Other bank / e-wallet\" so they are "
+                + "paid from the Manual payments sheet instead."));
         }
 
         if (candidates.Count == 0)
         {
             return ([], StatutoryFileResult.Refused(
-                "Nothing to disburse — every employee on this run has zero net pay or no bank "
-                + "account on file."));
+                "Nothing to put in the bank file — nobody on this run is paid by bank transfer to a "
+                + "Malaysian account. Everyone owed pay is on the Manual payments sheet."));
         }
 
         var rows = candidates

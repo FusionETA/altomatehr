@@ -51,9 +51,24 @@ public class OrganizationMembership : ITenantScoped
 
     // Per-admin module grant (csv of OrgModules keys) — narrows what THIS admin can access
     // below the org's plan ceiling. null = no restriction (full access, e.g. owners).
-    // Empty string = locked out. Ignored for non-admins.
+    // Empty string = locked out. Ignored for non-admins. An entry is "key" (Manage)
+    // or "key:view" (View only) — see OrgModules.ParseGrant.
     [MaxLength(300)]
     public string? Modules { get; set; }
+
+    // Which employees this ADMIN can see and act on: a csv of EmployeePolicy ids
+    // — only people whose policy is one of these. null = every employee (the
+    // default, and always for Owners). Empty = nobody. Ignored for non-admins.
+    // An admin limited this way also can't run company-wide payroll (runs,
+    // statutory files), since those must cover everyone. See IEmployeeScope.
+    [MaxLength(4000)]
+    public string? PolicyScope { get; set; }
+
+    // Whether this ADMIN may change the company's configuration: organisation
+    // details, work schedule and holidays, payroll settings / company info /
+    // portal logins. Owners always may. Default true so existing admins keep
+    // what they had. See RequireSettingsAttribute.
+    public bool CanChangeSettings { get; set; } = true;
 
     // When this person joined THIS org — per-membership, because someone can
     // join two orgs on different dates. Distinct from CreatedAt, which is when

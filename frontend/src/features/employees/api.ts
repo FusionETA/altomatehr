@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiGetFile, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
+import { apiDelete, apiGet, apiGetFile, apiGetFresh, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
 import type { SalaryChangeReason } from "@/features/payroll/api";
 
 export type Employee = {
@@ -96,6 +96,11 @@ export type CreateEmployee = {
 };
 
 export const createEmployee = (body: CreateEmployee) => apiPost<Employee>("/employees", body);
+
+// What a blank employee ID is assigned on create: the next number in this
+// company's own pattern ("GE-0043" after "GE-0042"). Admins get none.
+export const getNextEmployeeNumber = () =>
+  apiGetFresh<{ employeeNumber: string }>("/employees/next-number");
 
 /**
  * Overwrite an employee's login password with one the admin types.
@@ -233,7 +238,11 @@ export const SPECIAL_TAX_SCHEME_LABELS: Record<SpecialTaxScheme, string> = {
 };
 
 export type SocsoScheme = "EMPLOYMENT_INJURY_INVALIDITY" | "EMPLOYMENT_INJURY_ONLY";
-export type PaymentMethod = "BANK_TRANSFER" | "CASH" | "CHEQUE";
+// BANK_TRANSFER = a Malaysian bank, paid through the bank payroll file.
+// OTHER_TRANSFER = a bank or e-wallet the file can't reach (Merchantrade, an
+// overseas bank) — like Cash and Cheque, paid by hand from the run's Manual
+// payments sheet.
+export type PaymentMethod = "BANK_TRANSFER" | "OTHER_TRANSFER" | "CASH" | "CHEQUE";
 export type SalaryType = "HOURLY" | "MONTHLY";
 
 export const GENDERS: Gender[] = ["MALE", "FEMALE"];
@@ -262,7 +271,7 @@ export const SOCSO_SCHEMES: SocsoScheme[] = [
   "EMPLOYMENT_INJURY_INVALIDITY",
   "EMPLOYMENT_INJURY_ONLY",
 ];
-export const PAYMENT_METHODS: PaymentMethod[] = ["BANK_TRANSFER", "CASH", "CHEQUE"];
+export const PAYMENT_METHODS: PaymentMethod[] = ["BANK_TRANSFER", "OTHER_TRANSFER", "CASH", "CHEQUE"];
 export const SALARY_TYPES: SalaryType[] = ["MONTHLY", "HOURLY"];
 
 export const SOCSO_SCHEME_LABELS: Record<SocsoScheme, string> = {
@@ -270,9 +279,10 @@ export const SOCSO_SCHEME_LABELS: Record<SocsoScheme, string> = {
   EMPLOYMENT_INJURY_ONLY: "Injury only (Second Category)",
 };
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  BANK_TRANSFER: "Bank transfer",
-  CASH: "Cash",
-  CHEQUE: "Cheque",
+  BANK_TRANSFER: "Bank transfer (Malaysian bank)",
+  OTHER_TRANSFER: "Other bank / e-wallet (paid manually)",
+  CASH: "Cash (paid manually)",
+  CHEQUE: "Cheque (paid manually)",
 };
 
 export const ID_TYPE_LABELS: Record<IdType, string> = {

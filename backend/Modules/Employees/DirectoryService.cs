@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -13,11 +14,15 @@ public class DirectoryService : IDirectoryService
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IUserRepository _users;
 
+    private readonly IEmployeeScope? _scope;
+
     public DirectoryService(
         IOrganizationMembershipRepository memberships,
         IEmployeeProfileRepository profiles,
-        IUserRepository users)
+        IUserRepository users,
+        IEmployeeScope? scope = null)
     {
+        _scope = scope;
         _memberships = memberships;
         _profiles = profiles;
         _users = users;
@@ -31,6 +36,12 @@ public class DirectoryService : IDirectoryService
 
     public Task<OrganizationMembership?> GetMembershipAsync(string organizationId, string userId) =>
         _memberships.GetAsync(organizationId, userId);
+
+    public async Task<List<OrganizationMembership>> GetMembershipsInScopeAsync()
+    {
+        var all = await _memberships.GetForCurrentOrgAsync();
+        return _scope is { IsLimited: true } ? all.Where(m => _scope.Contains(m.UserId)).ToList() : all;
+    }
 
     public Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId) =>
         _memberships.GetByUserAsync(userId);

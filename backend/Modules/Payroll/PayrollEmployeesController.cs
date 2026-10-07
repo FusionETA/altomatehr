@@ -54,6 +54,7 @@ public class PayrollEmployeesController : ControllerBase
     // one pass/fail for the whole file — the same contract the attendance,
     // leave and claims imports use.
     [RequireScope("payroll:write")]
+    [RequireFullEmployeeScope]   // a bulk import matches against every employee
     [HttpPost("import")]
     public async Task<IActionResult> Import(IFormFile? file)
     {

@@ -26,6 +26,11 @@ public interface IOrganizationMembershipRepository
     Task<bool> EmployeeNumberExistsAsync(string organizationId, string employeeNumber) => Task.FromResult(false);
 
     Task AddAsync(OrganizationMembership membership);
+
+    // Removes an ADMIN's membership (the Owner's "Remove admin"). Never used for
+    // staff, whose membership carries payroll and leave history.
+    // (Default keeps hand-written test doubles compiling.)
+    Task DeleteAsync(OrganizationMembership membership) => throw new NotSupportedException();
     Task UpdateAsync(OrganizationMembership membership);
 
     // How many current-org memberships have this shift assigned — used to block

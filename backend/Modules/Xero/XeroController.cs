@@ -36,6 +36,7 @@ public class XeroController : ControllerBase
         Ok(await _xero.GetCurrenciesAsync());
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
     [HttpPost("connect-url")]
     public async Task<ActionResult<XeroConnectUrlDto>> ConnectUrl([FromQuery] string? returnUrl = null) =>
         Ok(await _xero.CreateConnectUrlAsync(returnUrl));
@@ -57,6 +58,7 @@ public class XeroController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
     [HttpPost("disconnect")]
     public async Task<IActionResult> Disconnect()
     {
@@ -87,6 +89,7 @@ public class XeroController : ControllerBase
 
     [Authorize(Roles = "Admin,Owner")]
     [RequireModule(OrgModules.Projects)]
+    [RequireSettings]
     [HttpPut("project-tracking")]
     public async Task<IActionResult> SetProjectTracking([FromBody] XeroSetProjectTrackingDto dto)
     {

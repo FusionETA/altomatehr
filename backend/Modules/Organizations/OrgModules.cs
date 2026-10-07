@@ -5,6 +5,8 @@ namespace AltomateHR.Api.Modules.Organizations;
 //   1. The ORG package (plan + tier + addons) → the modules the org is entitled to (a ceiling).
 //   2. A per-admin grant (OrganizationMembership.Modules) → narrows below the ceiling.
 // Effective access = ceiling ∩ grant. Ports the monolith's deriveOrgEnabledModules.
+public enum ModuleLevel { None = 0, View = 1, Manage = 2 }
+
 public static class OrgModules
 {
     // Module keys. Also the valid entries in an admin's module grant.
@@ -71,6 +73,39 @@ public static class OrgModules
             .Where(m => adminGrant.Contains(m, StringComparer.OrdinalIgnoreCase))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
+
+    // ─── Per-module level ─────────────────────────────────────────────
+    //
+    // An admin's grant (OrganizationMembership.Modules) is a csv of entries:
+    //   "payroll"       → Manage: see it and act (edit, approve, run).
+    //   "payroll:view"  → View: see it and download; every change is refused.
+    // A module not listed is Off. Plain keys predate levels and keep meaning
+    // Manage, so every existing grant reads exactly as it did.
+    public const string ViewSuffix = ":view";
+
+    public static IReadOnlyDictionary<string, ModuleLevel> ParseGrant(string? csv)
+    {
+        var grant = new Dictionary<string, ModuleLevel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in Split(csv))
+        {
+            var isView = entry.EndsWith(ViewSuffix, StringComparison.OrdinalIgnoreCase);
+            var key = isView ? entry[..^ViewSuffix.Length] : entry;
+            if (!IsKnownModule(key)) continue;
+            // Manage wins if a key somehow appears at both levels.
+            if (!grant.TryGetValue(key, out var existing) || existing < (isView ? ModuleLevel.View : ModuleLevel.Manage))
+                grant[key] = isView ? ModuleLevel.View : ModuleLevel.Manage;
+        }
+        return grant;
+    }
+
+    public static string FormatGrant(IEnumerable<KeyValuePair<string, ModuleLevel>> grant) =>
+        Join(grant
+            .Where(g => g.Value != ModuleLevel.None)
+            .Select(g => g.Value == ModuleLevel.View ? g.Key + ViewSuffix : g.Key));
+
+    // The module keys a grant opens at any level — what the nav and the
+    // plan-ceiling intersection work with.
+    public static IReadOnlyList<string> GrantedKeys(string? csv) => ParseGrant(csv).Keys.ToList();
 
     // csv column <-> list. Blank → empty (never [""]).
     public static IReadOnlyList<string> Split(string? csv) =>

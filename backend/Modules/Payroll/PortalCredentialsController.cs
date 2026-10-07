@@ -13,6 +13,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 // there is no employee-facing read of any kind here.
 [ApiController]
 [Route("payroll/portal-credentials")]
+[RequireSettings]
 [RequireModule(OrgModules.Payroll)]
 [Authorize(Roles = "Admin,Owner")]
 public class PortalCredentialsController : ControllerBase

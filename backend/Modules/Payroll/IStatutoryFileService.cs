@@ -39,6 +39,12 @@ public interface IStatutoryFileService
     // against the bank file before releasing it.
     Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId);
 
+    // Everyone the bank file doesn't pay — other banks / e-wallets, cash,
+    // cheque, missing accounts — as an Excel sheet to pay from by hand.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // The LHDN MTD §E worksheet — one page per employee showing the whole PCB
     // calculation, so an employee or an officer can re-derive the deduction by
     // hand. Reads the payslip's stored breakdown; never recomputes it.

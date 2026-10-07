@@ -33,6 +33,11 @@ public class EmployeeService : IEmployeeService
     private readonly IOrganizationRepository _organizations;
     private readonly Teams.IApproverPositions _approverPositions;
     private readonly PortalOptions _portal;
+    // Optional so hand-built instances in tests need not supply them: without
+    // them nobody is treated as a limited admin.
+    private readonly IModuleAccessService? _access;
+    private readonly Policies.IEmployeePolicyRepository? _policies;
+    private readonly IEmployeeScope? _scope;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
@@ -44,8 +49,14 @@ public class EmployeeService : IEmployeeService
         IEmailSender email,
         IOrganizationRepository organizations,
         Teams.IApproverPositions approverPositions,
-        IOptions<PortalOptions> portal)
+        IOptions<PortalOptions> portal,
+        IModuleAccessService? access = null,
+        Policies.IEmployeePolicyRepository? policies = null,
+        IEmployeeScope? scope = null)
     {
+        _scope = scope;
+        _access = access;
+        _policies = policies;
         _memberships = memberships;
         _profiles = profiles;
         _users = users;
@@ -61,6 +72,8 @@ public class EmployeeService : IEmployeeService
     public async Task<IEnumerable<EmployeeDto>> GetAllAsync()
     {
         var members = await _memberships.GetForCurrentOrgAsync();
+        // A policy-limited admin sees only their own people (and themselves).
+        if (_scope is { IsLimited: true }) members = members.Where(m => _scope.Contains(m.UserId)).ToList();
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
         return members.Select(m => ToDto(m, usersById));
     }
@@ -70,6 +83,9 @@ public class EmployeeService : IEmployeeService
         var role = AllowedRoles.FirstOrDefault(r => string.Equals(r, dto.Role, StringComparison.OrdinalIgnoreCase));
         if (role is null)
             return new EmployeeSaveResult(false, null, $"Role must be one of: {string.Join(", ", AllowedRoles)}.");
+
+        if (await AdminLimitErrorAsync(fromRole: null, toRole: role, dto.Modules, policyId: dto.PolicyId) is { } limit)
+            return new EmployeeSaveResult(false, null, limit);
 
         var email = dto.Email.Trim();
         if (email.Length == 0)
@@ -135,7 +151,9 @@ public class EmployeeService : IEmployeeService
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
-            EmployeeNumber = string.IsNullOrWhiteSpace(dto.EmployeeNumber) ? null : dto.EmployeeNumber.Trim(),
+            EmployeeNumber = !string.IsNullOrWhiteSpace(dto.EmployeeNumber)
+                ? dto.EmployeeNumber.Trim()
+                : OrgRoles.IsOnPayroll(role) ? await NextEmployeeNumberAsync() : null,
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
@@ -162,6 +180,9 @@ public class EmployeeService : IEmployeeService
 
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null, welcomeSent);
     }
+
+    public async Task<string> NextEmployeeNumberAsync() =>
+        EmployeeNumbers.Next((await _memberships.GetForCurrentOrgAsync()).Select(m => m.EmployeeNumber));
 
     private async Task<bool> TrySendWelcomeAsync(User user, WelcomeEmail.PasswordMode mode)
     {
@@ -209,6 +230,15 @@ public class EmployeeService : IEmployeeService
         var (modulesOk, modulesError, modulesCsv) = NormalizeModules(dto.Modules);
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
+
+        var policyChanging = !string.Equals(
+            string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId, membership.PolicyId, StringComparison.Ordinal);
+        if (await AdminLimitErrorAsync(
+                membership.Role, role,
+                ModulesChanged(membership.Modules, modulesCsv) ? dto.Modules : null,
+                policyChanging ? dto.PolicyId : null,
+                checkPolicy: policyChanging) is { } limit)
+            return new EmployeeSaveResult(false, null, limit);
 
         // The other half of the rule Teams enforces on placement. Without this
         // the guard is a formality: place someone correctly as a Supervisor,
@@ -416,12 +446,55 @@ public class EmployeeService : IEmployeeService
 
     // null grant → no restriction (stored as null). Otherwise every entry must be a known
     // module; an empty list is valid and means "locked out" (stored as "").
+    // ─── What a limited Admin may not do here ───────────────────────────
+    //
+    // Only the Owner decides who administers the company and how far: an Admin
+    // could otherwise make a new Admin with full access, or an Owner, and
+    // step around every limit the Owner set on them. So for an Admin caller:
+    //   · no creating, promoting to, demoting from or editing the role of an
+    //     Admin or Owner;
+    //   · no changing anyone's module access;
+    //   · when limited to some policies, people can only be placed on those
+    //     policies (or left on the default when it is one of them).
+    // Owners (and support, and callers with no limits) pass untouched.
+    private async Task<string?> AdminLimitErrorAsync(
+        string? fromRole, string toRole, List<string>? modulesChange, string? policyId, bool checkPolicy = true)
+    {
+        if (_access is null || !string.Equals(_currentUser.Role, OrgRoles.Admin, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var access = await _access.GetAccessAsync();
+        if (!access.Restricted) return null;
+
+        if (OrgRoles.IsAdministrative(toRole) || (fromRole is not null && OrgRoles.IsAdministrative(fromRole)))
+            return "Only the organization's owner can add admins or change an admin's role and access.";
+        if (modulesChange is not null)
+            return "Only the organization's owner can change module access.";
+
+        if (checkPolicy && access.PolicyScope is { } scope)
+        {
+            var effective = string.IsNullOrWhiteSpace(policyId)
+                ? (_policies is null ? null : (await _policies.GetDefaultAsync())?.Id)
+                : policyId;
+            if (effective is null || !scope.Contains(effective, StringComparer.Ordinal))
+                return "You can only place employees on the policies your admin access covers.";
+        }
+
+        return null;
+    }
+
+    private static bool ModulesChanged(string? before, string? after) =>
+        !string.Equals(before ?? "\0", after ?? "\0", StringComparison.Ordinal);
+
     private static (bool ok, string? error, string? csv) NormalizeModules(List<string>? modules)
     {
         if (modules is null) return (true, null, null);
 
+        // Entries are "key" (manage) or "key:view" — see OrgModules.ParseGrant.
         var cleaned = modules.Select(m => m.Trim()).Where(m => m.Length > 0).Distinct().ToList();
-        var unknown = cleaned.Where(m => !OrgModules.IsKnownModule(m)).ToList();
+        var unknown = cleaned
+            .Where(m => !OrgModules.IsKnownModule(
+                m.EndsWith(OrgModules.ViewSuffix, StringComparison.OrdinalIgnoreCase) ? m[..^OrgModules.ViewSuffix.Length] : m))
+            .ToList();
         if (unknown.Count > 0)
             return (false, $"Unknown module(s): {string.Join(", ", unknown)}.", null);
 
@@ -465,6 +538,27 @@ public class EmployeeService : IEmployeeService
         {
             return new SetPasswordResult(false,
                 "Owner accounts cannot be changed from here. Contact support.");
+        }
+
+        // An Admin's account administers this company, possibly others too.
+        // Setting its password means signing in as it: a limited admin would
+        // step around every limit the Owner set — so only the Owner may.
+        if (OrgRoles.IsAdministrative(membership.Role)
+            && !string.Equals(_currentUser.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            return new SetPasswordResult(false,
+                "Only the organization's owner can set an admin's password.");
+        }
+
+        // A login is ONE account across every company it belongs to. If this
+        // person administers another company, a password set here would hand
+        // that company over too — refuse, whoever is asking.
+        var elsewhere = (await _memberships.GetByUserAsync(userId))
+            .Any(m => m.OrganizationId != membership.OrganizationId && OrgRoles.IsAdministrative(m.Role));
+        if (elsewhere)
+        {
+            return new SetPasswordResult(false,
+                "This person administers another company, so their password can't be changed from here. They can use Forgot password.");
         }
 
         var user = await _users.GetByIdAsync(userId);
