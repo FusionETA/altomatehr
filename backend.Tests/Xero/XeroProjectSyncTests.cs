@@ -222,9 +222,50 @@ public class XeroCallbackRedirectTests
         Assert.EndsWith("?xero=failed", url);
     }
 
-    private static XeroService Create() => new(
+    // The same return URL loaded twice (a refresh, a doubled redirect): the
+    // first load connected, so the second must not report a failure above it.
+    [Fact]
+    public async Task A_repeat_of_a_sign_in_that_connected_still_says_connected()
+    {
+        var spent = new DateTime(2026, 10, 7, 1, 0, 0, DateTimeKind.Utc);
+        var repo = new FakeXeroRepository
+        {
+            Connection = new XeroConnection { OrganizationId = "org-1", ConnectedAt = spent },
+        };
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-1", State = "state-1", ReturnUrl = "http://localhost:5173/",
+            ExpiresAt = spent.AddMinutes(10), UsedAt = spent,
+        });
+
+        var url = await Create(repo).CompleteCallbackAsync("code-1", "state-1");
+
+        Assert.EndsWith("?xero=connected", url);
+    }
+
+    // Spent by an attempt that did NOT connect (a refusal, or an older
+    // connection): still a failure.
+    [Fact]
+    public async Task A_repeat_of_a_sign_in_that_did_not_connect_still_says_failed()
+    {
+        var spent = new DateTime(2026, 10, 7, 1, 0, 0, DateTimeKind.Utc);
+        var repo = new FakeXeroRepository
+        {
+            Connection = new XeroConnection { OrganizationId = "org-1", ConnectedAt = spent.AddDays(-3) },
+        };
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-1", State = "state-1", ExpiresAt = spent.AddMinutes(10), UsedAt = spent,
+        });
+
+        var url = await Create(repo).CompleteCallbackAsync("code-1", "state-1");
+
+        Assert.EndsWith("?xero=failed", url);
+    }
+
+    private static XeroService Create(FakeXeroRepository? repo = null) => new(
         new FakeXeroCurrentUser(),
-        new FakeXeroRepository(),
+        repo ?? new FakeXeroRepository(),
         new FakeXeroProjectsClient([]),
         DataProtectionProvider.Create("AltomateHR.Tests"),
         Options.Create(new XeroOptions { FailureRedirectUrl = "http://localhost:5173/" }),

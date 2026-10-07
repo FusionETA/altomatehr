@@ -67,7 +67,24 @@ public class XeroService : IXeroService
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var storedState = await _repo.GetStateAsync(state);
-        if (storedState is null || storedState.UsedAt is not null || storedState.ExpiresAt < DateTime.UtcNow)
+
+        // The same return URL loaded a second time — a refresh, the back
+        // button, a doubled redirect. If the first load CONNECTED, say so
+        // again: answering "failed" here showed "Xero didn't finish
+        // connecting" above a connection made seconds earlier. (Matched on
+        // the connection being stamped when this sign-in was spent; a refused
+        // sign-in also spends it but connects nothing, and stays a failure.)
+        if (storedState?.UsedAt is { } usedAt)
+        {
+            var current = await _repo.GetConnectionAsync(storedState.OrganizationId);
+            var thisSignInConnected = current is { IsConnected: true }
+                                      && Math.Abs((current.ConnectedAt - usedAt).TotalMinutes) < 2;
+            return thisSignInConnected
+                ? WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "connected")
+                : WithOutcome(_options.FailureRedirectUrl, "failed");
+        }
+
+        if (storedState is null || storedState.ExpiresAt < DateTime.UtcNow)
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var token = await _client.ExchangeCodeAsync(code);
