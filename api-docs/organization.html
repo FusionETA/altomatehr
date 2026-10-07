@@ -246,6 +246,9 @@
             <tbody>
               <tr><td><code>all</code></td><td>string[]</td><td>Every module key: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>policies</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>claims</code>, <code>attendance</code>.</td></tr>
               <tr><td><code>enabled</code></td><td>string[]</td><td>The modules the company's plan includes. For a key this is the plan's full set: a key isn't narrowed by any per-admin grant, only by its <a href="index.html#scopes">scopes</a>. The order isn't guaranteed.</td></tr>
+              <tr><td><code>levels</code></td><td>object</td><td>The caller's access per enabled module: <code>"Manage"</code> or <code>"View"</code>. For a key every enabled module is <code>"Manage"</code>.</td></tr>
+              <tr><td><code>canChangeSettings</code></td><td>boolean</td><td>Always <code>true</code> for a key.</td></tr>
+              <tr><td><code>allEmployees</code></td><td>boolean</td><td>Always <code>true</code> for a key: it sees every employee. (A signed-in admin limited to some policies would get <code>false</code>.)</td></tr>
             </tbody>
           </table>
         </div>
@@ -256,7 +259,10 @@
         </div>
 <pre><code>{
   "all": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"],
-  "enabled": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit"]
+  "enabled": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit"],
+  "levels": { "employees": "Manage", "leave": "Manage", "payroll": "Manage" },
+  "canChangeSettings": true,
+  "allEmployees": true
 }</code></pre>
         <h3>Errors</h3>
         <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
@@ -474,7 +480,8 @@
       <h2>Not available to API keys</h2>
       <p>
         Listing admins and setting their module access (<code>GET /organizations/admins</code>,
-        <code>PUT /organizations/admins/{userId}/access</code>), creating a company
+        <code>PUT /organizations/admins/{userId}/access</code>), removing an admin
+        (<code>DELETE /organizations/admins/{userId}</code>), creating a company
         (<code>POST /organizations</code>) and changing a company's plan
         (<code>PUT /organizations/{organizationId}/plan</code>) answer <code>403</code> to any
         key.

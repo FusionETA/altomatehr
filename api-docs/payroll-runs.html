@@ -1204,7 +1204,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}/documents/bank-file</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info).</p>
+        <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info). It lists only employees paid by <code>BANK_TRANSFER</code> with a bank account number and net pay above 0. Everyone else owed pay is on <a href="#doc-manual-payments">manual-payments</a>.</p>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1227,6 +1227,29 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
       </section>
 
+      <section class="endpoint" id="doc-manual-payments">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/manual-payments</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          An Excel sheet of everyone the bank file does not pay, to pay by hand: employees on
+          <code>OTHER_TRANSFER</code> (other bank / e-wallet), <code>CASH</code> or <code>CHEQUE</code>,
+          and <code>BANK_TRANSFER</code> employees with no account number on file (flagged, so they
+          are not silently unpaid). Zero net pay appears in neither this sheet nor the bank file.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>Manual_Payments_{month-year}.xlsx</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported, or nobody has a manual payment this month (<code>"No manual payments this month — everyone owed pay is in the bank file."</code>).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/manual-payments \
+  -H "Authorization: Bearer wp_live_xxx" -o manual-payments.xlsx</code></pre>
+      </section>
+
       <section class="endpoint" id="doc-download">
         <div class="endpoint-head">
           <span class="method get">GET</span>
@@ -1235,7 +1258,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          Every document this run produces, zipped: the bank file, the summary, all payslips, and the
+          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary, all payslips, and the
           three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
           payroll bank configured) is left out of the zip rather than failing the whole bundle.
         </p>
@@ -1255,7 +1278,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>X-Bundle-File-Count</code></td><td>How many documents made it into the zip.</td></tr>
-              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>summary</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
             </tbody>
           </table>
         </div>

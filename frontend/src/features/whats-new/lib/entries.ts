@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: ffff693
+// whats-new-covered-up-to: b2eae2e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,18 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-07",
+    new: [
+      "Admins: System Settings → Admins → Manage access (three tabs): per-module Off / View / Manage; Employees (all or only those on chosen policies); Settings (change company settings). View-only admins can read and download but not create/edit/delete. Limited admins see only their policy's employees everywhere, can view runs but not run payroll or download company-wide files. Only the Owner can add, remove or change an admin's role.",
+      "Admins: the Owner can now remove an admin (System Settings → Admins → Remove). Their access to this company ends at once; their login stays for any other company. Only the Owner can set an admin's password.",
+      "Adding an employee: leave Employee ID blank to get the next number in your company's pattern automatically. Admins and owners don't need an employee ID.",
+      "Employee profile → Payroll → Bank / payout: new payment method \"Other bank / e-wallet\" (Merchantrade, overseas banks) for people paid by hand. The bank payroll file now only includes Malaysian bank transfers.",
+      "Payroll → Run downloads: new \"Manual Payments\" Excel lists everyone paid outside the bank file (other bank, cash, cheque, or missing bank details), with amounts and a total.",
+      "Payroll → Payment Schedule PDF: split into Bank file and Paid manually, each with a total that together equal the run's net pay.",
+      "Claims → Settings → How approved claims are paid: new option \"Don't send anywhere\" — approved claims stay in AltomateHR and you reimburse them your own way.",
+    ],
+  },
   {
     date: "2026-10-06",
     new: [
