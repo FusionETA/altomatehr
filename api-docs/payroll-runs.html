@@ -699,6 +699,11 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           is why the template arrives pre-filled. The salary columns are the opposite — blank means
           "leave this salary alone".
         </div>
+        <p>
+          Rows are matched against the employees who can be on this run, by the same rule as
+          <a href="#generate">generation</a>: an archived leaver is included while the run's month is on or
+          before their last day, so a leaver's final month can be adjusted.
+        </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
           <table>
@@ -929,7 +934,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>amount</code> / <code>spentAt</code></td><td>number / string</td><td>ISO 8601 date.</td></tr>
               <tr><td><code>userId</code> / <code>employeeProfileId</code> / <code>employeeName</code> / <code>employeeNumber</code></td><td>string</td><td></td></tr>
               <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach.</td></tr>
-              <tr><td><code>blockedReason</code></td><td>string or null</td><td>Why it cannot be attached right now (e.g. the claimant has no payroll profile). Null means it can.</td></tr>
+              <tr><td><code>blockedReason</code></td><td>string or null</td><td>Why it cannot be attached right now (e.g. the claimant has no payroll profile, or is an archived leaver with no last day). Null means it can. Here, with no run in view, an archived claimant who has a last day is not blocked; see the leaver rule under <a href="#attach-claim">attach</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -962,6 +967,15 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "…" }</code> — one of: the run is no longer a draft; the claim id does not resolve in this org; it is already attached to another run (names which one); or it is blocked (e.g. the claimant has no payroll profile).</li>
         </ul>
+        <div class="callout">
+          <strong>Leavers.</strong> An archived claimant is not refused outright: like payroll
+          generation, a leaver is on runs up to their last day (leave date, else the day they were
+          archived), so their final claims can go on their final run. Attaching is refused with a
+          <code>409</code> only when the claimant is archived with no last day
+          (<code>"The claim's submitter is archived with no last day, so they are not on this payroll."</code>)
+          or the run's month starts after it
+          (<code>"The claim's submitter is archived and left before this payroll period, so they are not on this payroll."</code>).
+        </div>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/claims \
   -H "Authorization: Bearer wp_live_xxx" \
   -H "Content-Type: application/json" \

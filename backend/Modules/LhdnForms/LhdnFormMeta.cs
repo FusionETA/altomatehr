@@ -31,6 +31,15 @@ public static class LhdnFormMeta
                 "Monthly MTD (PCB) deductions paid for this employee. Generate on LHDN's request, e.g. during tax clearance or to reconcile a misallocated PCB payment.",
                 LhdnFormAvailability.Any,
                 NeedsYearPicker: true),
+            // Availability is per YEAR (EaYear), not per profile, so the
+            // service decides it — "Any" here only means no profile gate.
+            [LhdnFormKind.EA] = new(
+                LhdnFormKind.EA,
+                "EA",
+                "Statement of remuneration",
+                "The employee's Form EA for the year: pay, deductions and tax, for their income tax return. Ready once all 12 months of the year are approved. The employee can also download it from their Payslips page.",
+                LhdnFormAvailability.Any,
+                NeedsYearPicker: true),
             [LhdnFormKind.CP22] = new(
                 LhdnFormKind.CP22,
                 "CP22",
@@ -71,8 +80,8 @@ public static class LhdnFormMeta
         };
 
     /// Mirrors the EA bulk-export pattern: predictable for admins downloading
-    /// multiple files. Year is only appended for year-scoped forms (today,
-    /// just PCB 2(II)) — the others are event-scoped, not year-scoped.
+    /// multiple files. Year is only appended for year-scoped forms (PCB 2(II)
+    /// and EA) — the others are event-scoped, not year-scoped.
     public static string FileName(LhdnFormKind kind, string employeeCode, int? year)
     {
         var meta = All[kind];

@@ -5,6 +5,7 @@ import { saveFile } from "@/shared/lib/api-client";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
 import { downloadMyPayslipPdf, downloadMyTp1Form, getMyPayslips, type PayslipSummary } from "../api";
+import { EaFormsCard } from "./EaFormsCard";
 import { PayslipDetailModal } from "./PayslipDetailModal";
 
 const CARD =
@@ -85,6 +86,8 @@ export function PayslipsView() {
   return (
     <>
       {error ? <p className="mb-4 text-sm font-medium text-destructive">{error}</p> : null}
+
+      <EaFormsCard />
 
       <ul className="space-y-3">
         {payslips.map((payslip) => (

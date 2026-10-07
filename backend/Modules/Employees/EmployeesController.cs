@@ -150,13 +150,14 @@ public class EmployeesController : ControllerBase
         return deleted ? NoContent() : NotFound();
     }
 
-    // GET /employees/{id}/lhdn-forms — the card grid: which of the 5 statutory
-    // forms are available right now, and why not when they aren't.
+    // GET /employees/{id}/lhdn-forms?year=2026 — the card grid: which of the
+    // statutory forms are available right now, and why not when they aren't.
+    // The year drives the year-scoped cards (EA).
     [RequireScope("employees:read")]
     [HttpGet("{id}/lhdn-forms")]
-    public async Task<IActionResult> GetLhdnForms(string id)
+    public async Task<IActionResult> GetLhdnForms(string id, [FromQuery] int? year)
     {
-        var descriptors = await _lhdnForms.GetDescriptorsAsync(id);
+        var descriptors = await _lhdnForms.GetDescriptorsAsync(id, year);
         return descriptors is null ? NotFound() : Ok(descriptors);
     }
 

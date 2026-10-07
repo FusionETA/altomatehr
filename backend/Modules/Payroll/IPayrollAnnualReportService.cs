@@ -18,6 +18,15 @@ public interface IPayrollAnnualReportService
     // before anyone downloads anything.
     Task<PayrollAnnualPayload> LoadAsync(int year);
 
+    // One employee's Form EA: the years they were paid in, each saying whether
+    // it is final yet (EaYear), and their own page of the bulk form. Shared by
+    // the employee's Payslips page and the admin's per-employee LHDN forms.
+    Task<IReadOnlyList<Dtos.EmployeeEaFormDto>> GetEmployeeEaYearsAsync(string employeeProfileId);
+
+    // Not found (Error null) when they were not paid that year; refused with
+    // the reason when the year is not final yet.
+    Task<StatutoryFileResult> RenderEmployeeEaAsync(string employeeProfileId, int year);
+
     // The CP8D converter: hand-entered rows rather than a year of runs, zipped
     // as the M + P pair. Renders through the same Cp8dTxt the real downloads
     // use, so a converted file and a generated one can't drift apart.

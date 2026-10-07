@@ -28,6 +28,24 @@ public class PayslipsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMine() => Ok(await _payroll.GetMyPayslipsAsync());
 
+    // The years the caller has a Form EA for, and whether each is ready yet.
+    // Literal segments, so these win over {id} below.
+    [RequireScope("payroll:read")]
+    [HttpGet("ea-forms")]
+    public async Task<IActionResult> GetMyEaForms() => Ok(await _payroll.GetMyEaFormsAsync());
+
+    // The caller's own Form EA for that year.
+    [RequireScope("payroll:read")]
+    [HttpGet("ea-forms/{year:int}")]
+    public async Task<IActionResult> EaForm(int year)
+    {
+        var result = await _payroll.RenderMyEaFormAsync(year);
+
+        if (!result.Ok) return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+
+        return File(result.Content!, result.ContentType!, result.FileName);
+    }
+
     [RequireScope("payroll:read")]
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
