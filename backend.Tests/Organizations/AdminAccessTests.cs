@@ -172,6 +172,23 @@ public class AdminAccessTests
             await Run(new EmployeeInScopeAttribute("id"), new FixedAccess(AdminAccess.Full), "GET", [], scope, ("id", "usr-out")));
     }
 
+    // Global: any route naming an employee — leave entitlements, on-behalf
+    // leave, team members, payroll adjustments — is out of reach outside scope.
+    [Theory]
+    [InlineData("employeeId", "usr-out", true)]
+    [InlineData("userId", "usr-out", true)]
+    [InlineData("employeeProfileId", "prof-out", true)]
+    [InlineData("employeeId", "usr-in", false)]
+    public async Task Every_route_naming_an_employee_is_scoped(string key, string value, bool notFound)
+    {
+        var scope = new EmployeeScope();
+        scope.Limit(["usr-in"], ["prof-in"]);
+
+        var result = await Run(new EmployeeScopeRouteFilter(), new FixedAccess(AdminAccess.Full), "PUT", [], scope, (key, value));
+
+        Assert.Equal(notFound, result is NotFoundResult);
+    }
+
     // ─── The database filter ────────────────────────────────────────────
 
     [Fact]

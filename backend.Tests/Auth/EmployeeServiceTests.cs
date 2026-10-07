@@ -185,6 +185,19 @@ public class EmployeeServiceTests
         Assert.True(result.Ok);
     }
 
+    // Setting an admin's password is signing in as them — only the Owner may.
+    [Fact]
+    public async Task An_admin_cannot_set_another_admin_s_password()
+    {
+        var service = MakeService(out var memberships, out _, out _);
+        memberships.Add(Membership("usr-admin2", "Admin"));
+
+        var result = await service.SetPasswordAsync("usr-admin2", "a-new-password-1");
+
+        Assert.False(result.Ok);
+        Assert.Contains("owner", result.Error);
+    }
+
     private static AltomateHR.Api.Modules.Organizations.IModuleAccessService LimitedAdmin() =>
         new LimitedAccess();
 

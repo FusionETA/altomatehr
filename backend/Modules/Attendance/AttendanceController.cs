@@ -76,6 +76,7 @@ public class AttendanceController : ControllerBase
     // The cutoff is no longer a parameter — it comes from each employee's
     // policy (AutoClockOutEnabled + AutoClockOutAfterMinutes).
     [RequireScope("attendance:write")]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]   // runs over every employee
     [HttpPost("cron/auto-clockout/run")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> RunAutoClockOutSweep([FromQuery] int? maxCandidates) =>

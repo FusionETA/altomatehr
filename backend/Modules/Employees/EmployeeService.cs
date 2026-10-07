@@ -540,6 +540,27 @@ public class EmployeeService : IEmployeeService
                 "Owner accounts cannot be changed from here. Contact support.");
         }
 
+        // An Admin's account administers this company, possibly others too.
+        // Setting its password means signing in as it: a limited admin would
+        // step around every limit the Owner set — so only the Owner may.
+        if (OrgRoles.IsAdministrative(membership.Role)
+            && !string.Equals(_currentUser.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            return new SetPasswordResult(false,
+                "Only the organization's owner can set an admin's password.");
+        }
+
+        // A login is ONE account across every company it belongs to. If this
+        // person administers another company, a password set here would hand
+        // that company over too — refuse, whoever is asking.
+        var elsewhere = (await _memberships.GetByUserAsync(userId))
+            .Any(m => m.OrganizationId != membership.OrganizationId && OrgRoles.IsAdministrative(m.Role));
+        if (elsewhere)
+        {
+            return new SetPasswordResult(false,
+                "This person administers another company, so their password can't be changed from here. They can use Forgot password.");
+        }
+
         var user = await _users.GetByIdAsync(userId);
         if (user is null) return new SetPasswordResult(false, null);
 

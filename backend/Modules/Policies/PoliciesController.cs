@@ -8,6 +8,10 @@ namespace AltomateHR.Api.Modules.Policies;
 
 [ApiController]
 [Route("policies")]
+// Changing a policy — or which one is the default, which decides the policy of
+// everyone without one — reaches every employee on it, and moves who is in a
+// policy-limited admin's scope. So writes need every employee in scope.
+[AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]
 [RequireModule(OrgModules.Policies)]
 [Authorize(Roles = "Admin,Owner")]   // policies are an admin/owner concern
 public class PoliciesController : ControllerBase

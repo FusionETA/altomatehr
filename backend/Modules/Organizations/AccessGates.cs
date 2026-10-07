@@ -102,3 +102,34 @@ public sealed class EmployeeInScopeAttribute : Attribute, IAsyncActionFilter
         await next();
     }
 }
+
+// The same check as [EmployeeInScope], applied to EVERY action: any route value
+// named for an employee — employeeId, userId, employeeProfileId — must be in a
+// policy-limited admin's scope, or the request is a 404. Registered globally
+// (Program.cs) so a new per-employee route is covered without anyone having to
+// remember an attribute; per-controller [EmployeeInScope] adds other names
+// (e.g. EmployeesController's "id").
+public sealed class EmployeeScopeRouteFilter : IAsyncActionFilter
+{
+    private static readonly string[] EmployeeRouteKeys = ["employeeId", "userId", "employeeProfileId"];
+
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var scope = context.HttpContext.RequestServices.GetRequiredService<IEmployeeScope>();
+        if (scope.IsLimited)
+        {
+            foreach (var key in EmployeeRouteKeys)
+            {
+                if (context.RouteData.Values.TryGetValue(key, out var raw)
+                    && raw?.ToString() is { Length: > 0 } id
+                    && !scope.Contains(id))
+                {
+                    context.Result = new NotFoundResult();
+                    return;
+                }
+            }
+        }
+
+        await next();
+    }
+}

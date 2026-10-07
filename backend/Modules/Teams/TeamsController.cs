@@ -9,6 +9,9 @@ namespace AltomateHR.Api.Modules.Teams;
 
 [ApiController]
 [Route("teams")]
+// Teams are the company's approval structure: an edit re-routes and heals
+// approvals for everyone on them, so writes need every employee in scope.
+[AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]
 [RequireModule(OrgModules.Teams)]
 [Authorize(Roles = "Admin,Owner")]   // org structure is an admin/owner concern
 public class TeamsController : ControllerBase

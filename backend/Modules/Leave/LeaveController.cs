@@ -534,6 +534,7 @@ public class LeaveController : ControllerBase
     // past year or to pre-open the next one. Safe to re-run: existing rows are
     // skipped, never duplicated (the DB unique index backs that up).
     [RequireScope("leave:write")]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]   // runs over every employee
     [HttpPost("cron/year-rollover")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> YearRollover([FromQuery, Range(2000, 2100)] int? year)
@@ -554,6 +555,7 @@ public class LeaveController : ControllerBase
 
     // POST /leave/cron/monthly-accrual — force a monthly accrual + expiry sweep.
     [RequireScope("leave:write")]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]   // runs over every employee
     [HttpPost("cron/monthly-accrual")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> MonthlyAccrual()
