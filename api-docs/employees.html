@@ -634,7 +634,7 @@
     <section class="section" id="lhdn-forms">
       <h2>LHDN forms</h2>
       <p>
-        The five per-employee statutory PDFs (CP22, CP22A, CP21, TP3, PCB 2(II)) — summaries
+        The six per-employee statutory PDFs (CP22, CP22A, CP21, TP3, PCB 2(II) and Form EA) — summaries
         HR transcribes onto the official LHDN form or pastes into e-PCB. <code>{id}</code> is
         the user id.
       </p>
@@ -645,25 +645,41 @@
           <span class="path">/<wbr>employees/<wbr>{id}/<wbr>lhdn-forms</span>
           <span class="tag scope">employees:read</span>
         </div>
-        <p>Which of the 5 forms can be generated right now, and why not when they can't.</p>
-        <h3>Response <code>200</code></h3>
+        <p>Which of the 6 forms can be generated right now, and why not when they can't.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>number (query)</td><td>No</td><td>Defaults to the current year. Drives the year-scoped <code>EA</code> card: its <code>enabled</code> / <code>disabledReason</code> are worked out for this year. The other cards ignore it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> — array of</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>kind</code></td><td>string</td><td><code>PCB2II</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code> or <code>TP3</code> — use with the download endpoint below.</td></tr>
+              <tr><td><code>kind</code></td><td>string</td><td><code>PCB2II</code>, <code>EA</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code> or <code>TP3</code> — use with the download endpoint below.</td></tr>
               <tr><td><code>code</code></td><td>string</td><td>e.g. <code>"CP22"</code>, <code>"PCB 2(II)"</code>, <code>"PCB/TP3"</code>.</td></tr>
               <tr><td><code>title</code></td><td>string</td><td>e.g. <code>"New-employee notification"</code>.</td></tr>
               <tr><td><code>description</code></td><td>string</td><td></td></tr>
-              <tr><td><code>needsYearPicker</code></td><td>boolean</td><td><code>true</code> only for <code>PCB2II</code>.</td></tr>
+              <tr><td><code>needsYearPicker</code></td><td>boolean</td><td><code>true</code> for <code>PCB2II</code> and <code>EA</code> (the year-scoped forms; send <code>year</code> when you download).</td></tr>
               <tr><td><code>enabled</code></td><td>boolean</td><td>Whether the form can be generated for this person right now.</td></tr>
-              <tr><td><code>disabledReason</code></td><td>string | null</td><td>Set when <code>enabled</code> is <code>false</code>: <code>"Available once a leave date is set"</code> (CP22A/CP21/TP3) or <code>"Available only for active employees"</code> (CP22).</td></tr>
+              <tr><td><code>disabledReason</code></td><td>string | null</td><td>Set when <code>enabled</code> is <code>false</code>: <code>"Available once a leave date is set"</code> (CP22A/CP21/TP3) or <code>"Available only for active employees"</code> (CP22). For <code>EA</code>: <code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>, or <code>"No approved payroll for this employee in 2026."</code> when they weren't paid that year.</td></tr>
               <tr><td><code>badge</code></td><td>string | null</td><td>CP22/CP22A/CP21 only, e.g. <code>"Due in 12 days"</code> or <code>"Overdue by 3 days"</code>.</td></tr>
               <tr><td><code>badgeVariant</code></td><td>string | null</td><td>One of <code>success</code>, <code>pending</code>, <code>rejected</code>, <code>outline</code>.</td></tr>
             </tbody>
           </table>
         </div>
         <p><code>404</code> (empty) when <code>{id}</code> is not a member of this organization.</p>
+        <div class="callout">
+          <code>EA</code> is the employee's Form EA (statement of remuneration) for the year. It is
+          <code>enabled</code> only once <strong>all 12 months</strong> of that year's payroll runs are
+          approved, for every employee &mdash; leavers included &mdash; and only if they were paid in that year.
+          It does not depend on the leave date or on whether the employee is archived.
+        </div>
+        <p>One element of the array (a <code>CP22</code> card):</p>
 <pre><code>{
   "kind": "CP22",
   "code": "CP22",
@@ -688,8 +704,8 @@
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td><code>kind</code></td><td>string (route)</td><td>Yes</td><td>One of <code>PCB2II</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code>, <code>TP3</code> (case-insensitive).</td></tr>
-              <tr><td><code>year</code></td><td>number (query)</td><td>No</td><td><code>PCB2II</code> only; defaults to the current year.</td></tr>
+              <tr><td><code>kind</code></td><td>string (route)</td><td>Yes</td><td>One of <code>PCB2II</code>, <code>EA</code>, <code>CP22</code>, <code>CP22A</code>, <code>CP21</code>, <code>TP3</code> (case-insensitive).</td></tr>
+              <tr><td><code>year</code></td><td>number (query)</td><td>No</td><td><code>PCB2II</code> and <code>EA</code> only; defaults to the current year.</td></tr>
             </tbody>
           </table>
         </div>
@@ -700,7 +716,7 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
-              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set). For <code>EA</code>: not all 12 months of <code>year</code> are approved (<code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>), or they weren't paid that year (<code>"No approved payroll for this employee in 2026."</code>)</td><td><code>{ "error": "…" }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>
@@ -708,6 +724,9 @@
 <pre><code>curl https://&lt;api-host&gt;/employees/usr_123/lhdn-forms/CP22/download \
   -H "Authorization: Bearer wp_live_xxx" \
   -o CP22_EMP-042.pdf</code></pre>
+<pre><code>curl "https://&lt;api-host&gt;/employees/usr_123/lhdn-forms/EA/download?year=2025" \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -o EA_EMP-042_2025.pdf</code></pre>
       </section>
     </section>
 

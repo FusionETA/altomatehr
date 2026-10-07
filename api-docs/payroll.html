@@ -432,10 +432,13 @@
         <strong>An API key has no payslips of its own.</strong> A key authenticates as a
         synthetic machine identity in its org, not as any one employee, so it has no
         <code>EmployeeProfile</code> to resolve "me" against. <code>GET /payslips</code> always
-        returns an empty array for a key, and <code>GET /payslips/{id}</code>,
-        <code>/pdf</code> and <code>/tp1</code> always <code>404</code>. To read or file a
+        returns an empty array for a key, <code>GET /payslips/ea-forms</code> likewise returns
+        an empty array, and <code>GET /payslips/{id}</code>, <code>/pdf</code>, <code>/tp1</code>
+        and <code>GET /payslips/ea-forms/{year}</code> always <code>404</code>. To read or file a
         specific employee's payslips as an integrator, use the admin endpoints on the
-        <a href="payroll-runs.html">Payroll runs</a> page. These endpoints also need the
+        <a href="payroll-runs.html">Payroll runs</a> page; for one employee's Form EA, use the
+        <code>EA</code> kind under
+        <a href="employees.html#lhdn-forms">Employees &rarr; LHDN forms</a>. These endpoints also need the
         org's plan to include <strong>Payroll</strong>, like the rest of this page.
       </div>
 
@@ -461,6 +464,75 @@
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="endpoint" id="my-ea-forms">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips/ea-forms</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The years the caller was paid in and has a Form EA for, newest first, each saying whether the form is final yet.</p>
+        <p>
+          A year appears once the caller has at least one submitted payslip in it, even if the form
+          isn't ready, so "not yet" is visible. The form declares the whole January&ndash;December
+          year, so it is <code>available</code> only once <strong>all 12 months</strong> of that year's
+          runs are approved (<code>SUBMITTED</code>) &mdash; the company's runs, whoever was on them.
+          That holds for leavers too: someone who leaves can return the same year, so a form issued
+          at their last month could under-declare.
+        </p>
+        <h3>Response <code>200</code> — array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>int</td><td>e.g. <code>2026</code>.</td></tr>
+              <tr><td><code>available</code></td><td>boolean</td><td>True once all 12 months of the year are approved.</td></tr>
+              <tr><td><code>approvedMonths</code></td><td>int</td><td>How many of the 12 months are approved so far (0&ndash;12).</td></tr>
+              <tr><td><code>notReadyReason</code></td><td>string?</td><td>Why it isn't ready, in words (e.g. <code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>). <code>null</code> when <code>available</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>An empty array when the caller has no payslips, or has no employee profile (always the case for an API key).</p>
+<pre><code>curl https://&lt;api-host&gt;/payslips/ea-forms \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+<pre><code>[
+  { "year": 2026, "available": false, "approvedMonths": 9,
+    "notReadyReason": "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved." },
+  { "year": 2025, "available": true, "approvedMonths": 12, "notReadyReason": null }
+]</code></pre>
+      </section>
+
+      <section class="endpoint" id="my-ea-form">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payslips/ea-forms/{year}</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The caller's own Form EA for that year, as a PDF containing only their page.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>int (route)</td><td>Yes</td><td>The year, e.g. <code>2026</code>. A non-integer matches no route.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>application/pdf</code>, filename <code>Form_EA_{year}.pdf</code>.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>404</code></td><td>The caller was not paid in that year, or has no employee profile</td><td>empty</td></tr>
+              <tr><td><code>409</code></td><td>Not all 12 months of the year are approved yet</td><td><code>{ "error": "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved." }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payslips/ea-forms/2025 \
+  -H "Authorization: Bearer wp_live_xxx" -o form-ea-2025.pdf</code></pre>
       </section>
 
       <section class="endpoint">

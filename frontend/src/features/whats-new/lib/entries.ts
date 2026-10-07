@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: ffff693
+// whats-new-covered-up-to: e979acc
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,13 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-07",
+    new: [
+      "Payslips → Form EA: lists each year you were paid in; downloadable once all 12 months are approved. Until then it shows when ready and the count of approved months.",
+      "Admins: Employee profile → Documents → LHDN Forms: Form EA for each year an employee was paid in, using the year picker. Enabled when all 12 months are approved; disabled with the reason, or \"No approved payroll for this employee in <year>\". File name EA_<employee no>_<year>.pdf.",
+    ],
+  },
   {
     date: "2026-10-06",
     new: [
