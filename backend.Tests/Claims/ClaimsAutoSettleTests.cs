@@ -80,6 +80,25 @@ public class ClaimsAutoSettleTests
         Assert.Equal(XeroSyncStatus.NOT_SYNCED, claim.XeroSyncStatus);
     }
 
+    // "Don't send anywhere": approved, and nothing else happens — no Xero bill,
+    // no error, and a manual push is refused rather than billing it anyway.
+    [Fact]
+    public async Task AClaimRoutedNowhere_IsApprovedAndNeverPushedToXero()
+    {
+        var claim = NewClaim("claim-1", "usr-emp");
+        claim.Settlement = ClaimSettlement.NONE;
+        var xero = new FakeXeroBillService();
+        var service = CreateService([claim], router: SingleApprover(), xero: xero);
+
+        await service.ApproveAsync("claim-1", "usr-approver");
+        var push = await service.SyncToXeroAsync("claim-1");
+
+        Assert.Equal(ClaimStatus.APPROVED, claim.Status);
+        Assert.Empty(xero.Created);
+        Assert.Equal(XeroSyncStatus.NOT_SYNCED, claim.XeroSyncStatus);
+        Assert.False(push.Ok);
+    }
+
     [Fact]
     public async Task WhenXeroIsNotConnected_TheClaimIsStillApprovedAndNotMarkedFailed()
     {

@@ -8,8 +8,9 @@ namespace AltomateHR.Api.Modules.Employees;
 // prefix and digit width), so a stray manual number doesn't hijack it. A
 // company with no numbers yet starts at "EMP-001".
 //
-// Pure: the caller checks the result against the database and asks again if
-// someone took it meanwhile.
+// Pure. Nothing reserves the number: two employees added at the same moment can
+// be given the same one (there is no unique index on it) — rare, and fixable by
+// editing the ID afterwards.
 public static partial class EmployeeNumbers
 {
     public const string FirstNumber = "EMP-001";

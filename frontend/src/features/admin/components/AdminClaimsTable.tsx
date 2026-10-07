@@ -667,6 +667,11 @@ function ClaimPayout({
     return <span className="text-xs text-muted-foreground">In the payroll run</span>;
   }
 
+  // The company reimburses these outside the app — nothing to push.
+  if (claim.settlement === "NONE") {
+    return <span className="text-xs text-muted-foreground">Not sent anywhere</span>;
+  }
+
   // The push failed — this is the one case that still needs a human, because
   // the fix is usually elsewhere (recode the account, connect Xero, subscribe
   // to the currency) and only then is a retry worth anything.

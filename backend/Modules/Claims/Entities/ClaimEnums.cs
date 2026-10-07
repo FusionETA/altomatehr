@@ -19,7 +19,11 @@ public enum ClaimType { EXPENSE, MILEAGE }
 //
 // PAYROLL is only meaningful for PERSONAL claims: a COMPANY-paid claim's money
 // already left a company account, so there is nothing to reimburse.
-public enum ClaimSettlement { XERO_BILL, PAYROLL }
+// How an approved claim is paid out. XERO_BILL pushes it to Xero; PAYROLL
+// reimburses it through the employee's pay; NONE does neither — it stays
+// approved here and the company reimburses it its own way (an admin can still
+// add one to a payroll run by hand).
+public enum ClaimSettlement { XERO_BILL, PAYROLL, NONE }
 
 public enum PaymentType { PERSONAL, COMPANY }
 
