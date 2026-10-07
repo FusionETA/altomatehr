@@ -39,15 +39,15 @@ export const downloadMyTp1Form = (id: string, label: string) =>
   apiGetFile(`/payslips/${id}/tp1`, `TP1-${label}.pdf`);
 
 // A year the employee was paid in, for their own Form EA. The form covers
-// their whole year with the company, so it is downloadable only once every
-// month of it is approved — until then `available` is false.
+// the whole January–December year, so it is downloadable only once all
+// twelve months are approved — until then `available` is false.
 export type EaFormYear = {
   year: number;
   available: boolean;
-  /** January through this month must be approved: 12, or earlier for a leaver. */
-  requiredMonths: number;
-  /** How many of those are approved so far. */
+  /** How many of the twelve months are approved so far. */
   approvedMonths: number;
+  /** Why it isn't ready yet, from the server. Null when available. */
+  notReadyReason: string | null;
 };
 
 export const getMyEaForms = () => apiGet<EaFormYear[]>("/payslips/ea-forms");

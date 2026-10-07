@@ -29,14 +29,6 @@ public class PayslipRepository : IPayslipRepository
         return [.. rows.Select(x => (x.Payslip, x.Run))];
     }
 
-    public Task<bool> HasUnsubmittedForEmployeeAsync(string employeeProfileId, int year) =>
-        (from p in _db.Payslips
-         join r in _db.PayrollRuns on p.PayrollRunId equals r.Id
-         where p.EmployeeProfileId == employeeProfileId
-            && r.PeriodYear == year
-            && r.Status != PayrollRunStatus.SUBMITTED
-         select p.Id).AnyAsync();
-
     public async Task<(Payslip Payslip, PayrollRun Run)?> GetWithRunAsync(string payslipId)
     {
         var pair = await (from p in _db.Payslips

@@ -86,16 +86,16 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
     // ─── One employee's Form EA ─────────────────────────────────────────
 
-    public async Task<IReadOnlyList<EmployeeEaFormDto>> GetEmployeeEaYearsAsync(
-        string employeeProfileId, DateTime? leaveDate)
+    public async Task<IReadOnlyList<EmployeeEaFormDto>> GetEmployeeEaYearsAsync(string employeeProfileId)
     {
         // GetForEmployeeAsync returns submitted runs only, so a year paid
         // only in drafts does not appear.
-        var lastPaidMonth = (await _payslips.GetForEmployeeAsync(employeeProfileId))
-            .GroupBy(row => row.Run.PeriodYear)
-            .ToDictionary(g => g.Key, g => g.Max(row => row.Run.PeriodMonth));
+        var years = (await _payslips.GetForEmployeeAsync(employeeProfileId))
+            .Select(row => row.Run.PeriodYear)
+            .Distinct()
+            .ToList();
 
-        if (lastPaidMonth.Count == 0) return [];
+        if (years.Count == 0) return [];
 
         // Approval is the company's, not the employee's: a month counts once
         // its run is submitted, whoever was on it.
@@ -104,24 +104,19 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             .GroupBy(r => r.PeriodYear)
             .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(r => r.PeriodMonth).ToHashSet());
 
-        var forms = new List<EmployeeEaFormDto>();
-
-        foreach (var (year, lastPaid) in lastPaidMonth.OrderByDescending(kv => kv.Key))
-        {
-            var ea = EaYear.For(
-                year, leaveDate, lastPaid, submitted.GetValueOrDefault(year) ?? [],
-                await _payslips.HasUnsubmittedForEmployeeAsync(employeeProfileId, year));
-
-            forms.Add(new EmployeeEaFormDto
+        return [.. years
+            .OrderDescending()
+            .Select(year =>
             {
-                Year = year,
-                Available = ea.Ready,
-                RequiredMonths = ea.ThroughMonth,
-                ApprovedMonths = ea.ApprovedMonths,
-            });
-        }
-
-        return forms;
+                var ea = EaYear.For(submitted.GetValueOrDefault(year) ?? []);
+                return new EmployeeEaFormDto
+                {
+                    Year = year,
+                    Available = ea.Ready,
+                    ApprovedMonths = ea.ApprovedMonths,
+                    NotReadyReason = ea.Ready ? null : EaYear.NotReadyReason(year),
+                };
+            })];
     }
 
     public async Task<StatutoryFileResult> RenderEmployeeEaAsync(string employeeProfileId, int year)
@@ -134,11 +129,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
         // Held here, not only on the lists, so a direct URL cannot fetch a
         // part-year form that under-declares.
-        var ea = EaYear.For(
-            year, row.LeaveDate, row.Months.Max(m => m.Month), payload.SubmittedMonths,
-            await _payslips.HasUnsubmittedForEmployeeAsync(employeeProfileId, year));
-
-        if (!ea.Ready) return StatutoryFileResult.Refused(ea.NotReadyReason(year));
+        if (!EaYear.For(payload.SubmittedMonths).Ready)
+            return StatutoryFileResult.Refused(EaYear.NotReadyReason(year));
 
         // Only this employee's page: the bulk form is every employee's pay.
         var bytes = FormEaPdf.Render(payload with { Employees = [row] });

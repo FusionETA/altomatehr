@@ -90,7 +90,7 @@ public class EmployeePayrollService : IEmployeePayrollService
         var profile = await MyProfileAsync();
         if (profile is null) return [];
 
-        return await _annual.GetEmployeeEaYearsAsync(profile.Id, profile.LeaveDate);
+        return await _annual.GetEmployeeEaYearsAsync(profile.Id);
     }
 
     public async Task<StatutoryFileResult> RenderMyEaFormAsync(int year)

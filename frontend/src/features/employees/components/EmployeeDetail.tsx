@@ -224,6 +224,9 @@ export function EmployeeDetail({
   const [lhdnFormsLoading, setLhdnFormsLoading] = useState(true);
   const [lhdnFormsError, setLhdnFormsError] = useState<string | null>(null);
   const [lhdnYear, setLhdnYear] = useState<number>(new Date().getFullYear());
+  // Bumped after a save so the LHDN cards re-read through the same
+  // cancellable effect as a year change.
+  const [lhdnReload, setLhdnReload] = useState(0);
   const [downloadingLhdnKind, setDownloadingLhdnKind] = useState<string | null>(null);
 
   // Team/approval-chain assignment — its own API surface (Teams feature),
@@ -357,7 +360,7 @@ export function EmployeeDetail({
     return () => {
       cancelled = true;
     };
-  }, [employee.id, lhdnYear]);
+  }, [employee.id, lhdnYear, lhdnReload]);
 
   // Teams and projects are org-wide reference data, not this employee's — they
   // were being refetched for every person an admin opened. The profile itself
@@ -783,12 +786,7 @@ export function EmployeeDetail({
       // Archive status, join date, and other saved fields all drive which
       // LHDN forms are enabled and what badge they show — refetch so the
       // card reflects what was just saved instead of the pre-save state.
-      getLhdnForms(employee.id, lhdnYear)
-        .then(setLhdnForms)
-        .catch(() => {
-          // Non-fatal: the profile save already succeeded. The card just
-          // keeps showing its last-known state until the next reload.
-        });
+      setLhdnReload((n) => n + 1);
     } catch (e: unknown) {
       setError(message(e, "Could not save this employee."));
     } finally {

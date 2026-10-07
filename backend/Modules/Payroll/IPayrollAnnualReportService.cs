@@ -21,8 +21,7 @@ public interface IPayrollAnnualReportService
     // One employee's Form EA: the years they were paid in, each saying whether
     // it is final yet (EaYear), and their own page of the bulk form. Shared by
     // the employee's Payslips page and the admin's per-employee LHDN forms.
-    Task<IReadOnlyList<Dtos.EmployeeEaFormDto>> GetEmployeeEaYearsAsync(
-        string employeeProfileId, DateTime? leaveDate);
+    Task<IReadOnlyList<Dtos.EmployeeEaFormDto>> GetEmployeeEaYearsAsync(string employeeProfileId);
 
     // Not found (Error null) when they were not paid that year; refused with
     // the reason when the year is not final yet.

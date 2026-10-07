@@ -238,13 +238,12 @@ public class LhdnFormsService : ILhdnFormsService
     {
         if (profile.EmployeeProfileId is null) return (false, NotPaid(year));
 
-        var form = (await _annual.GetEmployeeEaYearsAsync(profile.EmployeeProfileId, profile.LeaveDate))
+        var form = (await _annual.GetEmployeeEaYearsAsync(profile.EmployeeProfileId))
             .FirstOrDefault(f => f.Year == year);
 
         if (form is null) return (false, NotPaid(year));
-        if (form.Available) return (true, null);
 
-        return (false, new EaYear(form.RequiredMonths, form.ApprovedMonths, false).NotReadyReason(year));
+        return (form.Available, form.NotReadyReason);
     }
 
     private static string NotPaid(int year) => $"No approved payroll for this employee in {year}.";

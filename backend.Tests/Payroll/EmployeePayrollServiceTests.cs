@@ -304,87 +304,43 @@ public class EmployeePayrollServiceTests : IDisposable
 
     // ─── Form EA for leavers ────────────────────────────────────────────
 
-    private void Leave(DateTime on, string profileId = "emp-1")
-    {
-        _db.EmployeeProfiles.Single(p => p.Id == profileId).LeaveDate = on;
-        _db.SaveChanges();
-    }
-
-    // A leaver's year ends when they left, so they need not wait for December.
+    // A leaver waits for the full year like everyone else: they can come back
+    // the same year, and a form issued when they left would then under-declare.
     [Fact]
-    public async Task ALeaver_GetsTheirEa_OnceTheirLeavingMonthIsApproved()
+    public async Task ALeaver_StillWaitsForTheFullYear()
     {
         SeedPayslip(2026, 1);
         SeedPayslip(2026, 2);
         SeedPayslip(2026, 3);
-        Leave(new DateTime(2026, 3, 15));
-
-        var form = Assert.Single(await _service.GetMyEaFormsAsync());
-        Assert.True(form.Available);
-        Assert.Equal(3, form.RequiredMonths);
-        Assert.Equal(3, form.ApprovedMonths);
-
-        Assert.True((await _service.RenderMyEaFormAsync(2026)).Ok);
-    }
-
-    [Fact]
-    public async Task ALeaver_StillWaits_ForTheirLeavingMonth()
-    {
-        SeedPayslip(2026, 1);
-        SeedPayslip(2026, 2);
-        Leave(new DateTime(2026, 3, 15));
+        _db.EmployeeProfiles.Single(p => p.Id == "emp-1").LeaveDate = new DateTime(2026, 3, 15);
+        _db.SaveChanges();
 
         var form = Assert.Single(await _service.GetMyEaFormsAsync());
         Assert.False(form.Available);
-        Assert.Equal(3, form.RequiredMonths);
-        Assert.Equal(2, form.ApprovedMonths);
+        Assert.Equal(3, form.ApprovedMonths);
+        Assert.Equal(
+            "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved.",
+            form.NotReadyReason);
 
         var pdf = await _service.RenderMyEaFormAsync(2026);
         Assert.False(pdf.Ok);
-        Assert.Contains("up to March", pdf.Error);
+        Assert.Equal(form.NotReadyReason, pdf.Error);
     }
 
-    // Final pay approved after the leaving month belongs on the form too.
+    // Once the year closes, the leaver's form is there like anyone's.
     [Fact]
-    public async Task ALeaversLateFinalPay_ExtendsTheirYear()
+    public async Task ALeaver_GetsTheirEa_OnceTheYearIsApproved()
     {
         SeedPayslip(2026, 1);
         SeedPayslip(2026, 2);
-        SeedPayslip(2026, 4);
-        Leave(new DateTime(2026, 2, 20));
+        for (var month = 3; month <= 12; month++) SeedPayslip(2026, month, employeeProfileId: "emp-2");
+        _db.EmployeeProfiles.Single(p => p.Id == "emp-1").LeaveDate = new DateTime(2026, 2, 20);
+        _db.SaveChanges();
 
         var form = Assert.Single(await _service.GetMyEaFormsAsync());
-        Assert.Equal(4, form.RequiredMonths);
-        Assert.False(form.Available);
-
-        SeedPayslip(2026, 3, employeeProfileId: "emp-2");
-
-        Assert.True(Assert.Single(await _service.GetMyEaFormsAsync()).Available);
-    }
-
-    // Pay still waiting on an unapproved run means the year is not final.
-    [Fact]
-    public async Task ALeaverWithPayStillPending_IsNotReady()
-    {
-        SeedPayslip(2026, 1);
-        SeedPayslip(2026, 2);
-        SeedPayslip(2026, 3, PayrollRunStatus.DRAFT);
-        Leave(new DateTime(2026, 2, 28));
-
-        Assert.False(Assert.Single(await _service.GetMyEaFormsAsync()).Available);
-        Assert.False((await _service.RenderMyEaFormAsync(2026)).Ok);
-    }
-
-    // Leaving NEXT year does not shorten this one.
-    [Fact]
-    public async Task LeavingInALaterYear_StillNeedsTheFullYear()
-    {
-        SeedPayslip(2025, 1);
-        Leave(new DateTime(2026, 3, 1));
-
-        var form = Assert.Single(await _service.GetMyEaFormsAsync());
-        Assert.Equal(12, form.RequiredMonths);
-        Assert.False(form.Available);
+        Assert.True(form.Available);
+        Assert.Null(form.NotReadyReason);
+        Assert.True((await _service.RenderMyEaFormAsync(2026)).Ok);
     }
 
     // QuestPDF writes one "/Type /Page" object per page.

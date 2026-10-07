@@ -77,15 +77,8 @@ export function EaFormsCard() {
   );
 }
 
-// Someone who left during the year only waits for payroll up to their leaving
-// month, so the line names that month rather than "all 12".
+// The server's reason, with how far along the year is.
 function notReadyText(form: EaFormYear) {
-  const progress = `${form.approvedMonths} of ${form.requiredMonths} so far`;
-  if (form.requiredMonths === 12) {
-    return `Ready once all 12 months of ${form.year} payroll are approved (${progress}).`;
-  }
-  const month = new Date(form.year, form.requiredMonths - 1, 1).toLocaleString("en-GB", {
-    month: "long",
-  });
-  return `Ready once ${form.year} payroll is approved up to ${month} (${progress}).`;
+  const reason = form.notReadyReason ?? "Not ready yet.";
+  return `${reason} (${form.approvedMonths} of 12 months so far)`;
 }
