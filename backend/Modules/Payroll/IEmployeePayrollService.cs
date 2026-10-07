@@ -25,4 +25,12 @@ public interface IEmployeePayrollService
     // The caller's own Borang PCB/TP1 for that payslip's month — "employee
     // also can print and save these TP Form" (MTD Spec 2026, item 16).
     Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId);
+
+    // The years the caller was paid in, newest first, each saying whether
+    // that year's Form EA can be downloaded yet.
+    Task<IReadOnlyList<EmployeeEaFormDto>> GetMyEaFormsAsync();
+
+    // The caller's own Form EA for the year — their page of the admin's bulk
+    // EA. Refused until every month of their year is approved (see EaYear).
+    Task<StatutoryFileResult> RenderMyEaFormAsync(int year);
 }

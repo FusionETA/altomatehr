@@ -49,6 +49,10 @@ public interface IPayslipRepository
     // worked here.
     Task<List<(Payslip Payslip, PayrollRun Run)>> GetForEmployeeAsync(string employeeProfileId);
 
+    // Whether the employee is on a run in that year that is not yet approved —
+    // pay still to come, so their year is not final.
+    Task<bool> HasUnsubmittedForEmployeeAsync(string employeeProfileId, int year);
+
     // One payslip WITH its run, so the caller can check both ownership and
     // that the run is submitted before returning anything.
     Task<(Payslip Payslip, PayrollRun Run)?> GetWithRunAsync(string payslipId);

@@ -29,18 +29,27 @@ public class EmployeePayrollServiceTests : IDisposable
         _db = new AppDbContext(options, _currentUser);
 
         var profiles = new EmployeeProfileRepository(_db);
+        var directory = TestDirectory.Over(
+            new OrganizationMembershipRepository(_db),
+            new AltomateHR.Api.Modules.Auth.UserRepository(_db),
+            profiles);
 
         _service = new EmployeePayrollService(
             new PayslipRepository(_db),
+            new PayrollRunRepository(_db),
             profiles,
+            new PayrollAnnualReportService(
+                new PayrollRunRepository(_db),
+                new PayslipRepository(_db),
+                new PayrollCompanyInfoRepository(_db),
+                directory,
+                new StubPayrollOrganizations(),
+                _currentUser),
             new StatutoryFileService(
                 new PayrollRunRepository(_db),
                 new PayslipRepository(_db),
                 new PayrollCompanyInfoRepository(_db),
-                TestDirectory.Over(
-                    new OrganizationMembershipRepository(_db),
-                    new AltomateHR.Api.Modules.Auth.UserRepository(_db),
-                    profiles),
+                directory,
                 new StubPayrollOrganizations(),
                 _currentUser,
                 new PayrollSettingsService(new PayrollSettingsRepository(_db), new FakeAuditService())),
@@ -217,6 +226,172 @@ public class EmployeePayrollServiceTests : IDisposable
         Assert.False((await _service.RenderMyPayslipPdfAsync(draft)).Ok);
         Assert.False((await _service.RenderMyPayslipPdfAsync("nope")).Ok);
     }
+
+    // ─── Form EA ────────────────────────────────────────────────────────
+
+    private void SeedFullYear(int year, string employeeProfileId = "emp-1")
+    {
+        for (var month = 1; month <= 12; month++) SeedPayslip(year, month, employeeProfileId: employeeProfileId);
+    }
+
+    [Fact]
+    public async Task EaForms_ListTheYearsIWasPaid_NewestFirst_WithReadiness()
+    {
+        SeedFullYear(2025);
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2);
+
+        var forms = await _service.GetMyEaFormsAsync();
+
+        Assert.Equal([2026, 2025], forms.Select(f => f.Year));
+        Assert.False(forms[0].Available);
+        Assert.Equal(2, forms[0].ApprovedMonths);
+        Assert.True(forms[1].Available);
+    }
+
+    // Readiness is the company's: a month I was not paid in still counts once
+    // its run is approved.
+    [Fact]
+    public async Task EaForm_IsReady_WhenEveryMonthIsApproved_EvenIfIJoinedMidYear()
+    {
+        SeedFullYear(2025, employeeProfileId: "emp-2");
+        SeedPayslip(2025, 11);
+        SeedPayslip(2025, 12);
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.True(form.Available);
+
+        var pdf = await _service.RenderMyEaFormAsync(2025);
+        Assert.True(pdf.Ok);
+        Assert.Equal("Form_EA_2025.pdf", pdf.FileName);
+    }
+
+    [Fact]
+    public async Task EaForm_IsRefused_UntilTheYearIsFullyApproved()
+    {
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2, PayrollRunStatus.DRAFT);
+
+        var pdf = await _service.RenderMyEaFormAsync(2026);
+
+        Assert.False(pdf.Ok);
+        Assert.NotNull(pdf.Error);
+    }
+
+    // A year I was not paid in is a 404, even when it is ready for others.
+    [Fact]
+    public async Task EaForm_ForAYearIWasNotPaid_IsNotFound()
+    {
+        SeedFullYear(2025, employeeProfileId: "emp-2");
+
+        var pdf = await _service.RenderMyEaFormAsync(2025);
+
+        Assert.False(pdf.Ok);
+        Assert.Null(pdf.Error);
+        Assert.Empty(await _service.GetMyEaFormsAsync());
+    }
+
+    [Fact]
+    public async Task EaForm_HoldsOnlyMyPage()
+    {
+        SeedFullYear(2025);
+        SeedFullYear(2025, employeeProfileId: "emp-2");
+
+        var mine = await _service.RenderMyEaFormAsync(2025);
+
+        Assert.True(mine.Ok);
+        Assert.Equal(1, PageCount(mine.Content!));
+    }
+
+    // ─── Form EA for leavers ────────────────────────────────────────────
+
+    private void Leave(DateTime on, string profileId = "emp-1")
+    {
+        _db.EmployeeProfiles.Single(p => p.Id == profileId).LeaveDate = on;
+        _db.SaveChanges();
+    }
+
+    // A leaver's year ends when they left, so they need not wait for December.
+    [Fact]
+    public async Task ALeaver_GetsTheirEa_OnceTheirLeavingMonthIsApproved()
+    {
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2);
+        SeedPayslip(2026, 3);
+        Leave(new DateTime(2026, 3, 15));
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.True(form.Available);
+        Assert.Equal(3, form.RequiredMonths);
+        Assert.Equal(3, form.ApprovedMonths);
+
+        Assert.True((await _service.RenderMyEaFormAsync(2026)).Ok);
+    }
+
+    [Fact]
+    public async Task ALeaver_StillWaits_ForTheirLeavingMonth()
+    {
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2);
+        Leave(new DateTime(2026, 3, 15));
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.False(form.Available);
+        Assert.Equal(3, form.RequiredMonths);
+        Assert.Equal(2, form.ApprovedMonths);
+
+        var pdf = await _service.RenderMyEaFormAsync(2026);
+        Assert.False(pdf.Ok);
+        Assert.Contains("up to March", pdf.Error);
+    }
+
+    // Final pay approved after the leaving month belongs on the form too.
+    [Fact]
+    public async Task ALeaversLateFinalPay_ExtendsTheirYear()
+    {
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2);
+        SeedPayslip(2026, 4);
+        Leave(new DateTime(2026, 2, 20));
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.Equal(4, form.RequiredMonths);
+        Assert.False(form.Available);
+
+        SeedPayslip(2026, 3, employeeProfileId: "emp-2");
+
+        Assert.True(Assert.Single(await _service.GetMyEaFormsAsync()).Available);
+    }
+
+    // Pay still waiting on an unapproved run means the year is not final.
+    [Fact]
+    public async Task ALeaverWithPayStillPending_IsNotReady()
+    {
+        SeedPayslip(2026, 1);
+        SeedPayslip(2026, 2);
+        SeedPayslip(2026, 3, PayrollRunStatus.DRAFT);
+        Leave(new DateTime(2026, 2, 28));
+
+        Assert.False(Assert.Single(await _service.GetMyEaFormsAsync()).Available);
+        Assert.False((await _service.RenderMyEaFormAsync(2026)).Ok);
+    }
+
+    // Leaving NEXT year does not shorten this one.
+    [Fact]
+    public async Task LeavingInALaterYear_StillNeedsTheFullYear()
+    {
+        SeedPayslip(2025, 1);
+        Leave(new DateTime(2026, 3, 1));
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.Equal(12, form.RequiredMonths);
+        Assert.False(form.Available);
+    }
+
+    // QuestPDF writes one "/Type /Page" object per page.
+    private static int PageCount(byte[] pdf) =>
+        System.Text.RegularExpressions.Regex.Matches(
+            System.Text.Encoding.Latin1.GetString(pdf), @"/Type\s*/Page\b").Count;
 
     // ─── Tenant isolation ───────────────────────────────────────────────
 

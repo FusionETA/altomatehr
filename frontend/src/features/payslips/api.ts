@@ -37,3 +37,20 @@ export const downloadMyPayslipPdf = (id: string, label: string) =>
 // this month and year to date. LHDN requires the employee can print and save it.
 export const downloadMyTp1Form = (id: string, label: string) =>
   apiGetFile(`/payslips/${id}/tp1`, `TP1-${label}.pdf`);
+
+// A year the employee was paid in, for their own Form EA. The form covers
+// their whole year with the company, so it is downloadable only once every
+// month of it is approved — until then `available` is false.
+export type EaFormYear = {
+  year: number;
+  available: boolean;
+  /** January through this month must be approved: 12, or earlier for a leaver. */
+  requiredMonths: number;
+  /** How many of those are approved so far. */
+  approvedMonths: number;
+};
+
+export const getMyEaForms = () => apiGet<EaFormYear[]>("/payslips/ea-forms");
+
+export const downloadMyEaForm = (year: number) =>
+  apiGetFile(`/payslips/ea-forms/${year}`, `Form_EA_${year}.pdf`);
