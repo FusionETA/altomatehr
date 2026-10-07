@@ -442,8 +442,9 @@ function AccessDialog({
           ))}
         </div>
 
-        {/* A fixed floor so switching tabs doesn't make the dialog jump. */}
-        <div className="nice-scrollbar mt-4 min-h-[min(26rem,60vh)] flex-1 overflow-y-auto pr-1">
+        {/* One fixed height for all three tabs, so the dialog is the same size
+            whichever is open; the longer module list scrolls inside it. */}
+        <div className="nice-scrollbar mt-4 h-[min(30rem,60vh)] shrink-0 overflow-y-auto pr-1">
           {tab === "modules" ? (
             <div className="space-y-3">
               <label className="flex items-start gap-2 text-sm font-medium text-foreground">
