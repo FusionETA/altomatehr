@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 92017bc
+// whats-new-covered-up-to: e583a98
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -30,10 +30,13 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: Employee profile → Employment: new Probation (months) and Confirmation date fields, printed on offer and confirmation letters.",
       "Payroll → Run downloads: Payroll Summary can now be downloaded as Excel as well as PDF, with one row per employee to sort and filter, plus the totals and each person's itemised pay.",
       "Payroll → Run downloads: new AB Pay timesheet (Excel) for approved runs, for companies connected to ABPay. Each employee's pay is in AB Pay's timesheet layout, ready for ABPay to import, with a Statutory sheet (EPF, SOCSO, EIS, PCB, net pay) and notes on how Total Gross is worked out.",
+      "Payroll → Run downloads: Allowance and Deduction reports (Excel). One row per employee, one column per item, with totals. Deductions exclude EPF, SOCSO, EIS, PCB and other statutory payments; benefits in kind and from-gross items (unpaid leave, advances, salary adjustments) are listed but kept out of the cash total. Also included in the download-all zip.",
+      "Employee profile → Company tab: Work location field (next to Department) — feeds the HR letter Work location placeholder.",
     ],
     fixed: [
       "Xero: reloading the connection page after a successful connect no longer shows 'Xero didn't finish connecting'. A failed reconnection attempt while still connected shows a calm 'nothing changed — still connected' note instead of an error.",
       "Attendance (Today, Employees tab) and Leave balances/bulk export now list staff only — the Owner and admins no longer appear.",
+      "Payroll → Bank files: the Public Bank payroll file no longer refuses to download because of employees paid by Other bank / e-wallet (Merchantrade, Finexus, etc.), cash or cheque. They're left out of it and paid from the Manual payments sheet.",
     ],
   },
   {

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 92017bc
+  user-guide-covered-up-to: e583a98
 -->
 <html lang="en">
 <head>
@@ -726,7 +726,7 @@
         <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, the
           <strong>Special tax rate (15%)</strong>, <strong>Bank / payout</strong>, and the
           <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
-        <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, and which projects,
+        <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, <strong>Work location</strong> (next to Department; HR letters use it for their Work location), and which projects,
           teams and approval level they sit in</td></tr>
         <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates — and, below them, the
           <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
@@ -1206,7 +1206,7 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
       <tbody>
-        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details</td><td>Your records / approver</td></tr>
+        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details, Allowance Report (Excel), Deduction Report (Excel)</td><td>Your records / approver</td></tr>
         <tr><td></td><td>AB Pay timesheet (Excel) — only if your company is connected to ABPay</td><td>The ABPay app, and your records</td></tr>
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
@@ -1228,6 +1228,9 @@
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
       bank setting is missing or an employee's bank isn't recognised. If your payroll bank is “Other”, no bank file
       is produced.</p>
+    <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
+      leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
+      <strong>Manual Payments</strong>.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>
@@ -1236,6 +1239,16 @@
       The PDF is the one-page summary of the run's totals. The Excel file has the same figures with one row per
       employee, so you can sort and filter, plus the totals block and each employee's itemised pay on their own sheets.
       If you tick the row and press <span class="btn-name">Download selected</span>, you get both files.</p>
+    <h3>Allowance and Deduction reports (Excel)</h3>
+    <p>The Reports group also has <strong>Allowance Report (Excel)</strong> and <strong>Deduction Report (Excel)</strong>.
+      Each has one row per employee and one column per item, with a totals row at the bottom.</p>
+    <ul>
+      <li><strong>Allowance Report</strong> lists every allowance on the run. Benefits in kind are listed but not
+        counted as cash in the totals.</li>
+      <li><strong>Deduction Report</strong> lists deductions other than EPF, SOCSO, EIS and PCB, such as loans, unpaid
+        leave and advances. Unpaid leave and advances are listed but not added into the total, because the payslip
+        takes them off gross pay instead.</li>
+    </ul>
     <h3>AB Pay timesheet (Excel)</h3>
     <p>If your company is connected to ABPay, the Reports group also has <strong>AB Pay timesheet (Excel)</strong>.
       It writes the run out in the layout of the AB Pay timesheet — each employee's basic pay, unpaid leave, allowances,
@@ -1256,7 +1269,7 @@
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog: statutory uploads (EPF, both SOCSO + EIS files, PCB) and the TP1 / TP3 Claims List" loading="lazy">
+          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog, Reports group: Payroll Summary, Allowance Report (Excel), Deduction Report (Excel) and Payment Schedule" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Downloading the month's files</p>

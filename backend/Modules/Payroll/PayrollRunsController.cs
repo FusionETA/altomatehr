@@ -352,6 +352,20 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> AbPayTimesheet(string id) =>
         File(_statutory.RenderAbPayTimesheetXlsxAsync(id));
 
+    // Who received which allowance, and which non-statutory deductions came
+    // off whom — one row per employee, one column per item, as Excel.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/allowances")]
+    public Task<IActionResult> AllowanceReport(string id) =>
+        File(_statutory.RenderAllowanceReportXlsxAsync(id));
+
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/deductions")]
+    public Task<IActionResult> DeductionReport(string id) =>
+        File(_statutory.RenderDeductionReportXlsxAsync(id));
+
     // A missing employer code or IC is the admin's data to fix, so it is a 409
     // with the specific reason — not a 500, and not a silently truncated file.
     private async Task<IActionResult> File(Task<StatutoryFileResult> render)

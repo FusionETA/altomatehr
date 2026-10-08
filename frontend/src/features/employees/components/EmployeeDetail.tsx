@@ -2069,6 +2069,9 @@ export function EmployeeDetail({
                   <Field label="Department">
                     <Text value={profile.department} onChange={(v) => set("department", v)} />
                   </Field>
+                  <Field label="Work location">
+                    <Text value={profile.location} onChange={(v) => set("location", v)} />
+                  </Field>
                 </Group>
 
                 <Stack

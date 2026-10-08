@@ -194,7 +194,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "manual-payments", "summary", "summary-xlsx", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+        ["bank-file", "manual-payments", "summary", "summary-xlsx", "allowances", "deductions", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -253,6 +253,8 @@ public class StatutoryFileService : IStatutoryFileService
             "manual-payments" => RenderManualPaymentsXlsxAsync(runId),
             "summary" => RenderSummaryPdfAsync(runId),
             "summary-xlsx" => RenderSummaryXlsxAsync(runId),
+            "allowances" => RenderAllowanceReportXlsxAsync(runId),
+            "deductions" => RenderDeductionReportXlsxAsync(runId),
             "payslips" => RenderAllPayslipsZipAsync(runId),
             "epf" => RenderEpfCsvAsync(runId),
             "socso-eis" => RenderPerkesoTxtAsync(runId),
@@ -394,6 +396,40 @@ public class StatutoryFileService : IStatutoryFileService
         var name = System.Text.RegularExpressions.Regex.Replace(kept, @"\s+", " ").Trim().TrimEnd('.');
         if (name.Length > 80) name = name[..80].TrimEnd();
         return $"ABPay {(name.Length == 0 ? "Company" : name)} {run.PeriodYear}-{run.PeriodMonth:D2}.xlsx";
+    }
+
+    public Task<StatutoryFileResult> RenderAllowanceReportXlsxAsync(string runId) =>
+        RenderLineReportAsync(runId, PayrollLineReportXlsx.Report.Allowances);
+
+    public Task<StatutoryFileResult> RenderDeductionReportXlsxAsync(string runId) =>
+        RenderLineReportAsync(runId, PayrollLineReportXlsx.Report.Deductions);
+
+    private async Task<StatutoryFileResult> RenderLineReportAsync(
+        string runId, PayrollLineReportXlsx.Report report)
+    {
+        var model = await LoadDocumentAsync(runId);
+        if (model is null) return NotFound();
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
+
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(model.Run.Id))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+        var withLines = model with { LineItems = lineItems };
+
+        var allowances = report == PayrollLineReportXlsx.Report.Allowances;
+        if (!PayrollLineReportXlsx.HasAny(withLines, report))
+        {
+            return StatutoryFileResult.Refused(allowances
+                ? "No allowances on this run."
+                : "No deductions on this run other than EPF, SOCSO, EIS and PCB.");
+        }
+
+        var fileName = $"{(allowances ? "Allowance" : "Deduction")}_Report_{MonthYear(model.Run)}.xlsx";
+        return new StatutoryFileResult(
+            true, fileName, PayrollLineReportXlsx.Render(withLines, report),
+            PayrollLineReportXlsx.ContentType, null);
     }
 
     // The LHDN MTD §E worksheet, one page per employee.
