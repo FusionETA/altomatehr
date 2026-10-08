@@ -127,6 +127,31 @@ public static class AbPayTimesheetXlsx
         };
     }
 
+    // PCB offsets the employee paid to a third party themselves — self-paid
+    // zakat and the departure levy, declared on Borang TP1 (`OffsetsPcb` +
+    // `CashNeutral`). PayslipCalculator counts them in Payslip.Zakat, because
+    // they lower PCB exactly as payroll zakat does, but keeps them out of
+    // TotalDeductions: nothing left this payslip. Read from the category
+    // catalogue, the same flags the calculator routes on.
+    public static decimal SelfPaidPcbOffsets(IReadOnlyList<PayslipLineItem> lineItems) =>
+        Money.Round2(lineItems
+            .Where(li => PayrollAdjustmentCategories.Find(li.Category) is { OffsetsPcb: true, CashNeutral: true })
+            .Sum(li => li.Amount));
+
+    // Zakat that actually came out of pay (and so sits inside TotalDeductions):
+    // Payslip.Zakat less the self-paid offsets. Payslip.Zakat itself is left
+    // as it is — PCB, EA and CP39 need the full offset.
+    public static decimal ZakatFromPay(Payslip p, IReadOnlyList<PayslipLineItem> lineItems) =>
+        Money.Round2(p.Zakat - SelfPaidPcbOffsets(lineItems));
+
+    // The Statutory sheet's catch-all: every deduction off net pay that has no
+    // column of its own (loan repayments, miscellaneous, CP38 …). Zakat from
+    // pay and Additional PCB are inside TotalDeductions and shown in their own
+    // columns, so they are netted off rather than counted twice. Never
+    // negative for a generated payslip: both are subsets of TotalDeductions.
+    public static decimal OtherDeductions(Payslip p, IReadOnlyList<PayslipLineItem> lineItems) =>
+        Money.Round2(p.TotalDeductions - ZakatFromPay(p, lineItems) - p.VoluntaryPcb);
+
     // What goes in the Company column, and whether it is ABPay's own code.
     public sealed record Company(string Value, bool IsCode);
 
@@ -146,7 +171,23 @@ public static class AbPayTimesheetXlsx
         + "AltomateHR's payroll gross, which does not subtract miscellaneous deductions — see the "
         + "Statutory sheet's Gross column.";
 
-    public static IReadOnlyList<string> Notes(Company company) =>
+    // `selfPaidOffsets` is the run's total of SelfPaidPcbOffsets; the note
+    // about them appears only when someone on the run has one.
+    public static IReadOnlyList<string> Notes(Company company, decimal selfPaidOffsets = 0m)
+    {
+        var notes = NotesAlways(company).ToList();
+        if (selfPaidOffsets != 0m)
+        {
+            notes.Add(
+                "Self-paid zakat and departure levy declared on Borang TP1 (RM "
+                + selfPaidOffsets.ToString("#,##0.00", System.Globalization.CultureInfo.InvariantCulture)
+                + " in total) lowered PCB but were paid by the employee directly, not taken from pay, "
+                + "so they are not in Zakat or Other deductions.");
+        }
+        return notes;
+    }
+
+    private static IReadOnlyList<string> NotesAlways(Company company) =>
     [
         "Total Gross (Sheet1) = Basic + U/L + Travelling + Meal + Parking + OT + Comm + Bonus + Deduction, "
             + "with U/L and Deduction negative — the ABPay timesheet's own rule. AltomateHR's Gross (this sheet) "
@@ -234,6 +275,9 @@ public static class AbPayTimesheetXlsx
         IXLWorksheet sheet, PayrollDocumentModel model, IReadOnlyList<Row> rows, Company company)
     {
         var payslips = model.Rows.Select(r => r.Payslip).ToList();
+        var lineItems = payslips
+            .Select(p => model.LineItems.GetValueOrDefault(p.Id) ?? [])
+            .ToList();
 
         // Optional columns appear only when someone on the run has the figure,
         // so a company without zakat does not carry a column of dashes.
@@ -256,15 +300,17 @@ public static class AbPayTimesheetXlsx
         // PCB — as on the payslip.
         columns.Add(("PCB", i => payslips[i].Pcb + payslips[i].VoluntaryPcb));
 
-        if (payslips.Any(p => p.Zakat != 0m))
-            columns.Add(("Zakat", i => payslips[i].Zakat));
+        // Zakat taken from pay only. Self-paid (TP1) zakat and departure levy
+        // are in Payslip.Zakat but never left the payslip — see ZakatFromPay.
+        decimal Zakat(int i) => ZakatFromPay(payslips[i], lineItems[i]);
+        if (Enumerable.Range(0, payslips.Count).Any(i => Zakat(i) != 0m))
+            columns.Add(("Zakat", Zakat));
 
         // The payslip's own catch-all: every other deduction off net pay
-        // (loan repayments, miscellaneous, CP38 …). Zakat and Additional PCB
-        // are inside TotalDeductions and shown above.
-        decimal Other(Payslip p) => p.TotalDeductions - p.Zakat - p.VoluntaryPcb;
-        if (payslips.Any(p => Other(p) != 0m))
-            columns.Add(("Other deductions", i => Other(payslips[i])));
+        // (loan repayments, miscellaneous, CP38 …).
+        decimal Other(int i) => OtherDeductions(payslips[i], lineItems[i]);
+        if (Enumerable.Range(0, payslips.Count).Any(i => Other(i) != 0m))
+            columns.Add(("Other deductions", Other));
 
         columns.Add(("Net Pay", i => payslips[i].NetPay));
 
@@ -307,7 +353,8 @@ public static class AbPayTimesheetXlsx
         sheet.Cell(r, 1).Value = $"{model.OrganizationName} — {model.PeriodLabel}, from the approved payroll run.";
         sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);
         r++;
-        foreach (var note in Notes(company))
+        var selfPaid = lineItems.Sum(SelfPaidPcbOffsets);
+        foreach (var note in Notes(company, selfPaid))
         {
             sheet.Cell(r, 1).Value = "• " + note;
             sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);
