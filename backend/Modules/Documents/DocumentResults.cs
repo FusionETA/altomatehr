@@ -16,6 +16,9 @@ public sealed record TemplateSaveResult(
     public static TemplateSaveResult NotFound() => new(false, null, null);
 }
 
+// Ok=false with Error → 400 (wrong type, too large, unreadable file).
+public sealed record TemplateImportResult(bool Ok, TemplateImportDto? Import, string? Error);
+
 // Forbidden → 403 with Error: the caller's access to the EMPLOYEE record
 // (grant or API key scope) doesn't cover what the letter reads or writes.
 public sealed record ResolveResult(bool Ok, ResolvedLetterDto? Letter, string? Error, bool Forbidden = false)

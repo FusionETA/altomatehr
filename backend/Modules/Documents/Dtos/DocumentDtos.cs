@@ -42,6 +42,23 @@ public class AddSampleTemplatesResultDto
     public List<DocumentTemplateDto> Templates { get; set; } = [];
 }
 
+// A Word / text file converted to template markup, for the editor to open
+// unsaved. Nothing is stored — the editor saves through the create endpoint.
+public class TemplateImportDto
+{
+    // The first heading, else the file name.
+    public string SuggestedName { get; set; } = string.Empty;
+
+    public string Body { get; set; } = string.Empty;
+
+    // {{…}} placeholders that aren't merge fields or valid {{input.xxx}} —
+    // as written (e.g. "Employee Name"), for the editor's "Replace with…" picker.
+    public List<string> UnknownFields { get; set; } = [];
+
+    // What didn't come across ("2 images were skipped …").
+    public List<string> Warnings { get; set; } = [];
+}
+
 // ─── Merge fields ────────────────────────────────────────────────────────
 
 public class MergeFieldDto
