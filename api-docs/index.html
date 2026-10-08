@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: 48268b1
+  api-docs-covered-up-to: 92017bc
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -58,6 +58,7 @@
       <li><a href="claims.html">Claims</a></li>
       <li><a href="payroll.html">Payroll</a></li>
       <li><a href="payroll-runs.html">Payroll runs</a></li>
+      <li><a href="documents.html">Documents</a></li>
     </ul>
   </nav>
 
@@ -131,6 +132,7 @@
           <tr><td>Policies</td><td><code>policies:read</code></td><td><code>policies:write</code></td></tr>
           <tr><td>Organization</td><td><code>organizations:read</code></td><td><code>organizations:write</code></td></tr>
           <tr><td>Payroll</td><td><code>payroll:read</code></td><td><code>payroll:write</code></td></tr>
+          <tr><td>Documents (HR letters)</td><td><code>documents:read</code></td><td><code>documents:write</code></td></tr>
           <tr><td>Notifications</td><td>—</td><td><code>notifications:write</code></td></tr>
           <tr><td>Single sign-on hand-off</td><td>—</td><td><code>sso:write</code></td></tr>
         </tbody>
@@ -140,6 +142,13 @@
       <code>payroll:write</code> covers creating and running payroll, adjustments, submitting,
       approving, rejecting and reverting runs, and payroll settings. A payroll run is money
       leaving a company, so only grant it to a system that needs it.
+    </p>
+    <p>
+      <code>documents:read</code> lists letter templates and letters on file and renders previews;
+      <code>documents:write</code> edits templates and generates letters. A letter is filled from
+      an employee's record, so the endpoints that touch one also need
+      <code>employees:read</code> (and <code>employees:write</code> to save a missing detail back to
+      the record). The <a href="documents.html">Documents page</a> lists exactly which.
     </p>
     <p>
       Some areas are also part of a company's plan. If the plan doesn't include a module, its
@@ -158,9 +167,9 @@
         <tbody>
           <tr><td><code>400</code></td><td>A field failed validation</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
           <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has a run)</td><td><code>{ "error": "message" }</code></td></tr>
-          <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
+          <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Documents, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
           <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
-          <tr><td><code>403</code></td><td>Missing scope, module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
+          <tr><td><code>403</code></td><td>Missing scope (including an <code>employees:*</code> scope a Documents action needs), module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
           <tr><td><code>404</code></td><td>Not found in this company</td><td>empty or <code>{ "error": "…" }</code></td></tr>
         </tbody>
       </table>

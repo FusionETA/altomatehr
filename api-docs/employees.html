@@ -56,6 +56,7 @@
       <li><a href="claims.html">Claims</a></li>
       <li><a href="payroll.html">Payroll</a></li>
       <li><a href="payroll-runs.html">Payroll runs</a></li>
+      <li><a href="documents.html">Documents</a></li>
     </ul>
   </nav>
 
@@ -375,6 +376,8 @@
               <tr><td><code>department</code> / <code>location</code> / <code>workSchedule</code></td><td>string | null</td><td>Free text.</td></tr>
               <tr><td><code>employmentStatus</code></td><td>string | null</td><td><code>MANAGEMENT</code>, <code>PERMANENT</code>, <code>CONTRACT</code>, <code>PART_TIME</code>, <code>INDUSTRIAL_TRAINEE</code> or <code>OTHER</code>. Reported on CP8D.</td></tr>
               <tr><td><code>contractEndDate</code></td><td>string (date) | null</td><td></td></tr>
+              <tr><td><code>probationMonths</code></td><td>integer | null</td><td>Length of probation in months, 0&ndash;120 (<code>400</code> outside that range). Printed on offer and confirmation letters (see <a href="documents.html">Documents</a>); nothing is calculated from it.</td></tr>
+              <tr><td><code>confirmationDate</code></td><td>string (date) | null</td><td>The date employment is (or will be) confirmed. Stored as a date, time of day dropped. Letters only, as above.</td></tr>
             </tbody>
           </table>
         </div>

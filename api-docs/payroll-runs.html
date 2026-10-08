@@ -55,6 +55,7 @@
       <li><a href="claims.html">Claims</a></li>
       <li><a href="payroll.html">Payroll</a></li>
       <li><a href="payroll-runs.html" aria-current="page">Payroll runs</a></li>
+      <li><a href="documents.html">Documents</a></li>
     </ul>
   </nav>
 
@@ -1140,13 +1141,32 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}/documents/summary</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals.</p>
+        <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. A PDF by default, or an Excel workbook with the same figures.</p>
+        <h3>Query parameters</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>format</code></td><td>string, optional</td><td><code>pdf</code> (the default, also when empty) or <code>xlsx</code>, case-insensitive.</td></tr>
+            </tbody>
+          </table>
+        </div>
         <h3>Response <code>200</code></h3>
-        <p><code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</p>
+        <ul>
+          <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</li>
+          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code>, with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <code>Breakdown</code> (each payslip's line items under the employee's name). It is loaded and gated exactly as the PDF is, so the two always carry the same figures.</li>
+        </ul>
         <h3>Errors</h3>
-        <p><code>404</code> — no such run. <code>409</code> — run not submitted/imported, or no payslips.</p>
+        <ul>
+          <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> — any other <code>format</code>.</li>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported, or no payslips.</li>
+        </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary \
-  -H "Authorization: Bearer wp_live_xxx" -o summary.pdf</code></pre>
+  -H "Authorization: Bearer wp_live_xxx" -o summary.pdf
+
+curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o summary.xlsx</code></pre>
       </section>
 
       <section class="endpoint" id="doc-payment-schedule">
@@ -1264,6 +1284,53 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
   -H "Authorization: Bearer wp_live_xxx" -o manual-payments.xlsx</code></pre>
       </section>
 
+      <section class="endpoint" id="doc-ab-pay-timesheet">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/ab-pay-timesheet</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          The approved run written back out as an AB Pay monthly timesheet, in the layout the ABPay companion app
+          imports. <strong>Only for companies connected to ABPay</strong> &mdash; that is, a company with an
+          <em>active</em> API key whose name contains &ldquo;ABPay&rdquo; (a space, <code>-</code> or <code>_</code>
+          between &ldquo;AB&rdquo; and &ldquo;Pay&rdquo; is allowed, any case; &ldquo;AB&rdquo; must start a word, so
+          &ldquo;GrabPay payouts&rdquo; does not count). Every other company gets <code>409</code>.
+          <code>GET /payroll/settings</code> reports this as <a href="payroll.html#payroll-settings"><code>abPayEnabled</code></a>.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An Excel workbook (<code>.xlsx</code>), filename <code>ABPay {Company name} {yyyy}-{mm}.xlsx</code>
+          (characters Windows forbids in file names are dropped). Two sheets:
+        </p>
+        <ul>
+          <li><code>Sheet1</code> &mdash; ABPay's import layout, one row per employee, typed values with a frozen header row.
+            Columns: <code>Staff</code>, <code>Company</code>, <code>Group</code> (the employee's department),
+            <code>Outlet</code> (their work location), <code>Basic</code>, <code>U/L</code> (unpaid leave, a negative number),
+            <code>Travelling</code>, <code>Meal</code>, <code>Parking</code>, <code>Hours</code> (overtime hours),
+            <code>OT</code>, <code>Comm</code>, <code>Bonus</code>, <code>Deduction</code> (negative), a blank column, and
+            <code>Total Gross</code>.</li>
+          <li><code>Statutory</code> &mdash; each employee's statutory figures, ending in a Notes block.</li>
+        </ul>
+        <div class="callout warn">
+          <strong>Two things to know before re-importing.</strong> The <code>Company</code> column holds the company's
+          full name, but ABPay matches its own short code &mdash; find and replace that column first. And gross that has no
+          AB Pay column (other allowance categories, attached claims, salary adjustments, advance recoveries) is not dropped:
+          <code>Total Gross</code> still includes it, so on such a row it can differ from the sum of the columns. The
+          <code>Statutory</code> sheet names the difference in &ldquo;Not in AB Pay columns&rdquo;. ABPay reads
+          <code>Sheet1</code> only.
+        </div>
+        <p>This file is <strong>not</strong> part of the <a href="#doc-download">download bundle</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run (only reached once the company is ABPay-connected).</li>
+          <li><code>409</code> <code>{ "error": "AB Pay export is only available for companies connected to ABPay (an active API key named \"ABPay…\")." }</code> — the company has no active ABPay key. Checked before the run is looked up, so this is also what a non-ABPay company gets for an unknown run id.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted (<code>"This run has not been approved yet…"</code>), imported from a previous system, or it has no payslips (<code>"Run payroll before downloading the AB Pay timesheet — there are no payslips on this run."</code>).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/ab-pay-timesheet \
+  -H "Authorization: Bearer wp_live_xxx" -o abpay-timesheet.xlsx</code></pre>
+      </section>
+
       <section class="endpoint" id="doc-download">
         <div class="endpoint-head">
           <span class="method get">GET</span>
@@ -1272,7 +1339,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary, all payslips, and the
+          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), all payslips, and the
           three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
           payroll bank configured) is left out of the zip rather than failing the whole bundle.
         </p>
@@ -1292,7 +1359,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>X-Bundle-File-Count</code></td><td>How many documents made it into the zip.</td></tr>
-              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>summary-xlsx</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
             </tbody>
           </table>
         </div>
