@@ -342,6 +342,9 @@ export type EmployeeProfile = {
   // Reported on CP8D. Null status is treated as permanent.
   employmentStatus: EmploymentStatus | null;
   contractEndDate: string | null;
+  /** Printed on offer and confirmation letters (Documents). */
+  probationMonths: number | null;
+  confirmationDate: string | null;
 
   // Spouse / tax relief
   spouseWorking: boolean | null;

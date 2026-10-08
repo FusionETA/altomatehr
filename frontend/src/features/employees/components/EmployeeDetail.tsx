@@ -119,6 +119,7 @@ import {
 } from "./employee-profile-sections";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
+import { EmployeeLettersCard } from "@/features/documents/components/EmployeeLettersCard";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -1510,6 +1511,21 @@ export function EmployeeDetail({
                       onChange={(v) => set("contractEndDate", v)}
                     />
                   </Field>
+                  <Field label="Probation (months)" hint="Printed on offer and confirmation letters.">
+                    <Num
+                      value={profile.probationMonths}
+                      min={0}
+                      max={120}
+                      onChange={(v) => set("probationMonths", v)}
+                    />
+                  </Field>
+                  <Field label="Confirmation date" hint="When employment is (or was) confirmed after probation.">
+                    <Text
+                      type="date"
+                      value={profile.confirmationDate}
+                      onChange={(v) => set("confirmationDate", v)}
+                    />
+                  </Field>
                 </Group>
 
                 <Group
@@ -2485,6 +2501,14 @@ export function EmployeeDetail({
                   ))
                 )}
               </Stack>
+
+              {/* HR letters — admin-only, unlike the uploads above, which the
+                  employee sees in their portal. Hidden without the Documents
+                  module. */}
+              <EmployeeLettersCard
+                employeeUserId={employee.id}
+                employeeName={employee.name || employee.email}
+              />
               </>
             )}
           </div>

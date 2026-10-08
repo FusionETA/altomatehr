@@ -3,6 +3,7 @@ import {
   Banknote,
   CalendarClock,
   CalendarDays,
+  FileText,
   History,
   LayoutDashboard,
   Network,
@@ -53,6 +54,17 @@ export const adminNav: AdminNavItem[] = [
     children: [
       { id: "company-structure", label: "Company Structure", module: "teams" },
       { id: "manage-employee", label: "Manage Employee", module: "employees" },
+    ],
+  },
+  {
+    id: "documents",
+    label: "Documents",
+    icon: FileText,
+    built: true,
+    module: "documents",
+    children: [
+      { id: "documents-templates", label: "Templates" },
+      { id: "documents-letters", label: "Letters" },
     ],
   },
   { id: "audit", label: "Activity Log", icon: History, module: "audit" },

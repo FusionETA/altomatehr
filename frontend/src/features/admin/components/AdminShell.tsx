@@ -31,6 +31,10 @@ import { xeroCallbackOutcome } from "@/shared/lib/xero-callback";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { AdminAttendance } from "./AdminAttendance";
 import { AdminPayroll } from "@/features/payroll/components/AdminPayroll";
+import {
+  DocumentTemplatesView,
+  GeneratedLettersView,
+} from "@/features/documents/components/AdminDocuments";
 import { ActivityLog } from "./ActivityLog";
 import { AdminClaims } from "./AdminClaims";
 import { AdminLeave } from "./AdminLeave";
@@ -442,6 +446,13 @@ function AdminContent({
 
     case "leave":
       return <AdminLeave />;
+
+    // HR letters: the template library, and letters kept on file. `onOpen`
+    // lets a missing company detail point the admin at Payroll's settings.
+    case "documents-templates":
+      return <DocumentTemplatesView onOpen={onOpen} />;
+    case "documents-letters":
+      return <GeneratedLettersView onOpen={onOpen} />;
     case "audit":
       return <ActivityLog />;
 

@@ -61,6 +61,12 @@ public class EmployeeProfile : ITenantScoped
     public EmploymentStatus? EmploymentStatus { get; set; }
     public DateTime? ContractEndDate { get; set; }
 
+    // Probation length in months, and the date employment was (or will be)
+    // confirmed. Printed on offer and confirmation letters (Documents module);
+    // nothing calculates off them.
+    public int? ProbationMonths { get; set; }
+    public DateTime? ConfirmationDate { get; set; }
+
     // ---- Spouse / tax relief ----
     public bool? SpouseWorking { get; set; }
     public bool? SpouseDisabled { get; set; }
