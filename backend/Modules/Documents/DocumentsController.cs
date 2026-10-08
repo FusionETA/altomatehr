@@ -109,8 +109,13 @@ public class DocumentsController : ControllerBase
 
     [RequireScope("documents:read")]
     [HttpGet("generated")]
-    public async Task<IActionResult> GetGenerated([FromQuery] string? employeeUserId) =>
-        Ok(await _letters.ListAsync(employeeUserId));
+    public async Task<IActionResult> GetGenerated([FromQuery] string? employeeUserId)
+    {
+        // Letters on file print the employee's record: the service also
+        // requires Employees at View (employees:read) for list, file and delete.
+        var result = await _letters.ListAsync(employeeUserId);
+        return result.Forbidden ? AccessGate.Forbidden(result.Error!) : Ok(result.Letters);
+    }
 
     [RequireScope("documents:read")]
     [HttpGet("generated/{id}/file")]
@@ -119,8 +124,12 @@ public class DocumentsController : ControllerBase
 
     [RequireScope("documents:write")]
     [HttpDelete("generated/{id}")]
-    public async Task<IActionResult> DeleteGenerated(string id) =>
-        await _letters.DeleteAsync(id) ? NoContent() : NotFound();
+    public async Task<IActionResult> DeleteGenerated(string id)
+    {
+        var result = await _letters.DeleteAsync(id);
+        if (result.Forbidden) return AccessGate.Forbidden(result.Error!);
+        return result.Ok ? NoContent() : NotFound();
+    }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -142,5 +151,26 @@ public class DocumentsController : ControllerBase
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content!, result.ContentType!, result.FileName);
+    }
+
+    // ─── Import ──────────────────────────────────────────────────────────
+
+    // POST /documents/templates/import — multipart, field "file" (.docx,
+    // .txt, .md, up to 5 MB). Converts it to template markup for the editor
+    // to open unsaved; saving goes through POST /documents/templates. Stores
+    // nothing, so a [ReadOnlyAction] like the payroll import previews.
+    [RequireScope("documents:write")]
+    [ReadOnlyAction]
+    [HttpPost("templates/import")]
+    [RequestSizeLimit(8 * 1024 * 1024)]   // the 5 MB rule itself is the service's, with a clear 400
+    public async Task<IActionResult> ImportTemplate(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Pick a Word (.docx), .txt or .md file to upload." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var result = _templates.Import(file.FileName, buffer.ToArray());
+        return result.Ok ? Ok(result.Import) : BadRequest(new { message = result.Error });
     }
 }

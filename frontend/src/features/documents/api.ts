@@ -4,6 +4,7 @@ import {
   apiGetFile,
   apiPost,
   apiPostFile,
+  apiPostForm,
   apiPut,
   type ApiFile,
 } from "@/shared/lib/api-client";
@@ -108,6 +109,21 @@ export type AddSamplesResult = {
   templates: DocumentTemplate[];
 };
 
+/** A Word / text file converted to template markup — opened in the editor unsaved. */
+export type TemplateImport = {
+  /** The first heading, else the file name. */
+  suggestedName: string;
+  body: string;
+  /** {{…}} placeholders that aren't merge fields, as written ("Employee Name"). */
+  unknownFields: string[];
+  /** What didn't come across ("2 images were skipped …"). */
+  warnings: string[];
+};
+
+/** Upload limit, as the server enforces it. */
+export const TEMPLATE_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+export const TEMPLATE_IMPORT_ACCEPT = ".docx,.txt,.md";
+
 export const TEMPLATES_PATH = "/documents/templates";
 export const MERGE_FIELDS_PATH = "/documents/merge-fields";
 export const generatedPath = (employeeUserId?: string | null) =>
@@ -124,6 +140,13 @@ export const updateTemplate = (id: string, body: SaveDocumentTemplate) =>
   apiPut<DocumentTemplate>(`${TEMPLATES_PATH}/${id}`, body);
 export const deleteTemplate = (id: string) => apiDelete<void>(`${TEMPLATES_PATH}/${id}`);
 export const addSampleTemplates = () => apiPost<AddSamplesResult>(`${TEMPLATES_PATH}/samples`);
+
+/** Converts a .docx / .txt / .md to markup. Saves nothing — the editor saves via createTemplate. */
+export const importTemplateFile = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<TemplateImport>(`${TEMPLATES_PATH}/import`, form);
+};
 
 /** A PDF preview. With an id, `body` previews unsaved edits of that template. */
 export const previewTemplate = (

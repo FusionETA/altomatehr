@@ -22,6 +22,11 @@ public interface IDocumentTemplateService
     // Adds the sample letters this company doesn't already have.
     Task<AddSampleTemplatesResultDto> AddSamplesAsync();
 
+    // Converts an uploaded .docx / .txt / .md to template markup, in memory.
+    // Saves nothing and keeps nothing of the file. Refused (400) for another
+    // type, a file over 5 MB, or one that can't be read.
+    TemplateImportResult Import(string? fileName, byte[] content);
+
     // The merge field registry, for the editor's side panel.
     IReadOnlyList<MergeFieldDto> GetMergeFields();
 }

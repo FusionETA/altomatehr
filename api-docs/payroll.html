@@ -57,6 +57,7 @@
       <li><a href="claims.html">Claims</a></li>
       <li><a href="payroll.html" aria-current="page">Payroll</a></li>
       <li><a href="payroll-runs.html">Payroll runs</a></li>
+      <li><a href="documents.html">Documents</a></li>
     </ul>
   </nav>
 
@@ -846,7 +847,7 @@
         </div>
       </section>
 
-      <section class="endpoint">
+      <section class="endpoint" id="payroll-settings">
         <div class="endpoint-head">
           <span class="method get">GET</span>
           <span class="path">/payroll/settings</span>
@@ -863,6 +864,7 @@
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td></td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file.</td></tr>
+              <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
               <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>false</code> = these are statutory defaults, never saved.</td></tr>
               <tr><td><code>updatedAt</code></td><td>string?</td><td></td></tr>
             </tbody>
@@ -896,7 +898,7 @@
           </table>
         </div>
         <h3>Response</h3>
-        <p><code>200</code> with the saved <code>PayrollSettingsDto</code>.</p>
+        <p><code>200</code> with the saved <code>PayrollSettingsDto</code> (including the read-only <code>abPayEnabled</code>).</p>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
   -d '{"workingDaysRule":"TWENTY_SIX","defaultEpfEmployeeRate":11,"defaultEpfEmployerRate":13,"autoApplySocsoEisRelief":true}'</code></pre>

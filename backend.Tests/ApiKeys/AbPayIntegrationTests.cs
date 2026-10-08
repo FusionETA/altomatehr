@@ -97,6 +97,11 @@ public class AbPayIntegrationTests : IDisposable
     [InlineData("Xero sync", false)]
     [InlineData("AB importer", false)]
     [InlineData("Pay AB", false)]
+    [InlineData("ABPayRun", true)]
+    [InlineData("GrabPay payouts", false)]
+    [InlineData("Grab Pay", false)]
+    [InlineData("Fab Payments", false)]
+    [InlineData("Kab-Payroll", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     public void KeyName_Matching(string? name, bool expected) =>

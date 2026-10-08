@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 48268b1
+  user-guide-covered-up-to: 92017bc
 -->
 <html lang="en">
 <head>
@@ -301,6 +301,9 @@
     <a href="#lhdn-forms">Per-employee LHDN forms</a>
     <a href="#ytd">Starting mid-year</a>
 
+    <div class="toc-group">When you need it</div>
+    <a href="#letters">HR letters (Documents)</a>
+
     <div class="toc-group">Connected</div>
     <a href="#xero">Xero</a>
     <a href="#notifications">Notifications &amp; the app</a>
@@ -381,7 +384,7 @@
 
     <h3>The layout</h3>
     <ol class="callouts">
-      <li>The sidebar: Executive Overview, Attendance, Claims, Payroll, Leave, Company/Employee, Activity Log,
+      <li>The sidebar: Executive Overview, Attendance, Claims, Payroll, Leave, Company/Employee, Documents, Activity Log,
         System Settings</li>
       <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
         company</span> creates one with you as its owner.</li>
@@ -498,8 +501,8 @@
             <span class="btn-name">Save</span>:
             <ul>
               <li><strong>Modules</strong> — tick <em>All modules, full control</em>, or set each module
-                (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Activity
-                log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
+                (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Documents,
+                Activity log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
                 <span class="btn-name">Manage</span>. <em>View</em> lets them see the screens and download what's
                 there; <em>Manage</em> also lets them edit, approve and run. A module set to Off disappears from that
                 admin's sidebar.</li>
@@ -715,7 +718,9 @@
           OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
           the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
-          fixed allowances and deductions, join date, <strong>employment status</strong> and contract end date,
+          fixed allowances and deductions, join date, <strong>employment status</strong>, contract end date,
+          <strong>Probation (months)</strong> and <strong>Confirmation date</strong> (both printed on
+          <a href="#letters">offer and confirmation letters</a>),
           previous employment this year (TP3), <strong>Archive</strong> — last day and reason, and
           <strong>Employment history</strong> at the bottom</td></tr>
         <tr><td><strong>Statutory</strong></td><td>EPF, SOCSO / EIS / SKBBK, income tax, the
@@ -723,7 +728,8 @@
           <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
         <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, and which projects,
           teams and approval level they sit in</td></tr>
-        <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates</td></tr>
+        <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates — and, below them, the
+          <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
       </tbody>
     </table></div>
     <h3>Work permits</h3>
@@ -1200,7 +1206,8 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
       <tbody>
-        <tr><td>Reports</td><td>Payroll Summary, Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details</td><td>Your records / approver</td></tr>
+        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details</td><td>Your records / approver</td></tr>
+        <tr><td></td><td>AB Pay timesheet (Excel) — only if your company is connected to ABPay</td><td>The ABPay app, and your records</td></tr>
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
@@ -1224,6 +1231,24 @@
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>
+    <h3>Payroll Summary: PDF or Excel</h3>
+    <p>The Payroll Summary row has two buttons, <span class="btn-name">PDF</span> and <span class="btn-name">Excel</span>.
+      The PDF is the one-page summary of the run's totals. The Excel file has the same figures with one row per
+      employee, so you can sort and filter, plus the totals block and each employee's itemised pay on their own sheets.
+      If you tick the row and press <span class="btn-name">Download selected</span>, you get both files.</p>
+    <h3>AB Pay timesheet (Excel)</h3>
+    <p>If your company is connected to ABPay, the Reports group also has <strong>AB Pay timesheet (Excel)</strong>.
+      It writes the run out in the layout of the AB Pay timesheet — each employee's basic pay, unpaid leave, allowances,
+      overtime, commission, bonus and deductions — so ABPay can read it back in. A second sheet, <em>Statutory</em>,
+      lists each person's EPF, SOCSO, EIS, PCB and net pay.</p>
+    <div class="note"><span class="nt">Read the notes in the file</span>
+      <p>Anything in an employee's pay that has no AB Pay column — such as other allowances, claims paid through payroll
+        or an advance recovery — is still counted in <strong>Total Gross</strong>, so that row's total can be more or
+        less than its columns add up to. A note on the Total Gross heading, and the notes at the bottom of the
+        Statutory sheet, explain this and show the difference for each person.</p>
+    </div>
+    <p>You only see this file when your company is connected to ABPay. If you use ABPay and don't see it, ask your
+      AltomateHR contact to check the connection — it can't be switched on from the admin portal.</p>
     <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed. Each row also has
       a button for that person's <strong>Borang PCB/TP1</strong> (the reliefs they claimed, this month and year to date).
       <span class="btn-name">Email all</span> asks you to confirm first — payslips can't be recalled once sent.</p>
@@ -1340,6 +1365,128 @@
     </div>
   </details>
 
+  <details class="topic" id="letters" open>
+    <summary><h2>HR letters (Documents)</h2></summary>
+    <div class="topic-body">
+    <p class="topic-lede"><strong>Documents → Templates</strong> and <strong>Documents → Letters.</strong> Offer,
+      confirmation, resignation and warning letters for your company: write each one once as a template, then
+      produce a PDF for any employee with their details filled in. Letters are for admins — employees never see
+      them in their own app.</p>
+
+    <h3>Templates</h3>
+    <p>Open <strong>Documents → Templates</strong>. Each template shows its category (Offer, Confirmation, Promotion,
+      Resignation, Termination, Warning or Other), when it was last updated and how many merge fields it uses, with
+      <span class="btn-name">Generate</span>, <span class="btn-name">Edit</span> and <span class="btn-name">Delete</span>
+      beside it. Deleting a template keeps the letters already made from it.</p>
+    <ul>
+      <li><span class="btn-name">Add sample templates</span> — four ready-made letters: Offer Letter, Confirmation of
+        Employment, Resignation Acceptance and First Written Warning. They're marked <em>Sample</em>. Replace the sample
+        wording with your own before you use them. Pressing it again only adds the ones you don't have yet.</li>
+      <li><span class="btn-name">New template</span> (or <span class="btn-name">Start from blank</span> when you have none
+        yet) — write one from scratch.</li>
+      <li><span class="btn-name">Upload Word file</span> — start from a letter you already have. See below.</li>
+    </ul>
+
+    <h3>Writing a template</h3>
+    <ol class="steps">
+      <li><h4>Name it and pick a category</h4>
+        <p>Give it a <strong>Name</strong> (for example <em>Offer Letter — Executive</em>) and a
+          <strong>Category</strong>.</p></li>
+      <li><h4>Write the letter</h4>
+        <p>Type in the <strong>Write</strong> box. Start a line with <code># </code> for a heading, wrap words in
+          <code>**two stars**</code> for bold, start a line with <code>- </code> for a bullet, and leave a blank line
+          between paragraphs. Switch to <strong>Preview</strong> to see how it will read. The PDF adds your letterhead,
+          the date and the signature block, so you don't type those.</p></li>
+      <li><h4>Add merge fields where the details go</h4>
+        <p>On the right, <strong>Merge fields</strong> are grouped as Employee, Company, Signatory and Letter. Click the
+          cursor where you want a detail, then click a field — for example <em>Employee name</em>, <em>Job title</em>,
+          <em>Monthly salary</em> or <em>Company name</em> — and it's inserted as <code>{{employee.name}}</code>.
+          When the letter is made, each one is filled in from the employee's and the company's records.
+          <span class="btn-name">Copy the list of merge fields</span> copies every field name, handy for a Word file.</p></li>
+      <li><h4>Details you type each time</h4>
+        <p>For something that isn't on any record — an offer expiry date, a last working day — type a name under
+          <strong>Typed for each letter</strong> (for example <em>Last working day</em>) and press the
+          <span class="btn-name">+</span> button. The dialog will ask for it every time you make the letter. A name
+          that ends in "date" or "day" is asked for as a date.</p></li>
+      <li><h4>Preview, then save</h4>
+        <p><span class="btn-name">Preview PDF</span> downloads a sample of the letter as it stands now, saved or not.
+          <span class="btn-name">Save template</span> keeps it. If you press the back arrow with unsaved edits you're
+          asked <em>Discard changes?</em></p></li>
+    </ol>
+    <div class="note warn"><span class="nt">Only real merge fields</span>
+      <p>If the text has a <code>{{…}}</code> that isn't a merge field — a typo, say — a red box says
+        <em>These merge fields don't exist</em> and lists it. <span class="btn-name">Save template</span> and
+        <span class="btn-name">Preview PDF</span> stay switched off until you fix it: pick a replacement from the
+        <span class="btn-name">Replace with…</span> list beside it, or correct the wording.</p>
+    </div>
+
+    <h3>Starting from a Word file</h3>
+    <p><span class="btn-name">Upload Word file</span> takes a Word (<code>.docx</code>), <code>.txt</code> or
+      <code>.md</code> file up to 5 MB. An older <code>.doc</code> must be saved as <code>.docx</code> in Word first.
+      It's converted and opens in the editor as <strong>New template · from upload</strong>, so you can check it before
+      anything is kept.</p>
+    <ul>
+      <li>Tip: in Word, type placeholders such as <code>{{employee.name}}</code> where the details should go, then upload.</li>
+      <li>A yellow box under <strong>Imported from …</strong> lists what didn't come across: pictures, text boxes,
+        headers and footers (the PDF prints your company letterhead instead), tables turned into lines of text, and
+        numbered lists turned into bullets.</li>
+      <li>Any placeholder that isn't a merge field — for example <code>{{Employee Name}}</code> or
+        <code>{{IC}}</code> — is listed under <strong>Map these placeholders to merge fields</strong>. For each one,
+        choose <span class="btn-name">Replace with…</span> and pick the matching field, or the
+        <em>Typed for each letter</em> version. Every place it's used is changed at once.</li>
+      <li>Check the name and category, then press <span class="btn-name">Save template</span>. Delete the date,
+        letterhead or signature lines if they came across from your file, because the PDF adds its own.</li>
+    </ul>
+
+    <h3>Making a letter for an employee</h3>
+    <p>Press <span class="btn-name">Generate</span> next to a template, <span class="btn-name">Generate letter</span> on
+      <strong>Documents → Letters</strong>, or <span class="btn-name">Generate letter</span> on the
+      <strong>Letters</strong> card of an employee's record. Pick the <strong>Template</strong> and the
+      <strong>Employee</strong> if they aren't already chosen, and the dialog reads their records.</p>
+    <ul>
+      <li><strong>Missing details</strong> — anything the letter needs that isn't on file is highlighted with a
+        <em>Not on file</em> tag. Fill in each one, or tick <em>Leave blank on this letter</em>. A letter never goes
+        out with a gap you haven't seen: <span class="btn-name">Generate PDF</span> stays off, and the bottom of the
+        dialog lists what's still needed, until every one is dealt with.</li>
+      <li><strong>For this letter</strong> — the details you set up as <em>Typed for each letter</em>. They aren't kept
+        on any record.</li>
+      <li><strong>From the records</strong> — what was found, read-only. If one is wrong for this letter, press
+        <span class="btn-name">Edit for this letter</span> and type another; <span class="btn-name">Use record</span> puts
+        it back. Nothing on the record changes.</li>
+      <li><strong>Also save to employee record</strong> — for a missing ID number, address, job title, department,
+        work location, probation or confirmation date you can tick this to write what you typed onto the employee's
+        record as well, so you only type it once. It only fills an empty field. It needs Manage access on Employees, and
+        while you have unsaved edits on that employee's record it says <em>Save or discard your changes first</em>.</li>
+      <li><strong>Missing company details</strong> — a missing company detail (such as the address) or signatory has a hint: company
+        details are set in <strong>Payroll → Settings → Form E (LHDN) → Employer details</strong> (the signatory
+        defaults to the declarant there). <span class="btn-name">Open Payroll</span> takes you there, or you can type
+        the detail for this letter.</li>
+      <li><strong>Save a copy to the employee's file</strong> is ticked by default. Untick it to download the PDF
+        without keeping it.</li>
+    </ul>
+    <p>Press <span class="btn-name">Generate PDF</span>. The PDF downloads, and the dialog says <em>Downloaded, and kept
+      on … file (admins only)</em>. <span class="btn-name">Generate again</span> makes another.</p>
+
+    <h3>Letters on file</h3>
+    <p><strong>Documents → Letters</strong> lists every letter kept, newest first, with its category, the employee, the
+      date, who made it and its size. Use the employee list at the top to see one person's. Click a letter, or its
+      download button, to open the PDF; the bin button deletes it for good after you confirm. The same list for one
+      person is on the <strong>Letters</strong> card at the bottom of their <strong>Documents</strong> tab in
+      <a href="#employees">Manage Employee</a> — separate from the ID scans and contracts above it, which the employee
+      <em>can</em> see.</p>
+    <p>Probation and confirmation details for the letters live on the <strong>Employment</strong> tab of the record:
+      <strong>Probation (months)</strong> and <strong>Confirmation date</strong>.</p>
+
+    <div class="note"><span class="nt">Who can use it</span>
+      <p><strong>Documents</strong> is one of the modules in System Settings → Admins → Manage access. <em>View</em>
+        lets an admin see templates and letters and download them; <em>Manage</em> also lets them write and delete
+        templates and make and delete letters. Because a letter prints the employee's record, they also need access to
+        <strong>Employees</strong> — without it the Letters list says <em>You need access to Employees to view saved
+        letters</em>. An admin without the Documents module doesn't see the Documents page or the Letters card at all.</p>
+    </div>
+    </div>
+  </details>
+
   <!-- =================================================== CONNECTED -->
 
   <details class="topic" id="xero" open>
@@ -1424,6 +1571,9 @@
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>
+    <details class="qa"><summary>I can't press Generate PDF on a letter.</summary>
+      <div class="body"><p>The letter still needs details. The line at the bottom of the dialog names each one — fill
+        it in, or tick <em>Leave blank on this letter</em>. See <a href="#letters">HR letters</a>.</p></div></details>
     <details class="qa"><summary>Someone left. Do I delete them?</summary>
       <div class="body"><p>No — archive them (Employment tab → Archive, with their last day). Payroll pays them up to
         that day, then they drop out of future runs but keep every payslip and form.</p></div></details>

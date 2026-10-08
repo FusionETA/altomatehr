@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AltomateHR API — Documents</title>
+  <meta name="description" content="Letter templates, merge fields, previews and generated HR letters with a company API key." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<!--
+  AltomateHR public API docs. Static HTML, no build step: open this file or
+  host the folder anywhere.
+
+  Maintained by the `api-docs` agent (.claude/agents/api-docs.md) from the real
+  controllers and DTOs in backend/Modules. Every page shares this sidebar —
+  when a module page is added, add it to the "Endpoints" list on every page.
+
+  This repo is PUBLIC: placeholder values only (wp_live_xxx, org_123,
+  jane@example.com). Never a real key, organization, person or figure.
+
+  Documented from backend/Modules/Documents/DocumentsController.cs and its DTOs and services.
+-->
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <a class="brand" href="index.html">
+      <img src="assets/brand-logo.png" alt="AltomateHR" />
+      <small>Developer API</small>
+    </a>
+
+    <h4>Guide</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="index.html#authentication">Authentication</a></li>
+      <li><a href="index.html#scopes">Scopes</a></li>
+      <li><a href="index.html#errors">Errors</a></li>
+      <li><a href="index.html#conventions">Conventions</a></li>
+      <li><a href="index.html#whoami">Check a key</a></li>
+    </ul>
+
+    <h4>Endpoints</h4>
+    <ul>
+      <li><a href="employees.html">Employees</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="teams.html">Teams</a></li>
+      <li><a href="policies.html">Policies</a></li>
+      <li><a href="organization.html">Organization</a></li>
+      <li><a href="accounts.html">Accounts</a></li>
+      <li><a href="attendance.html">Attendance</a></li>
+      <li><a href="leave.html">Leave</a></li>
+      <li><a href="overtime.html">Overtime</a></li>
+      <li><a href="claims.html">Claims</a></li>
+      <li><a href="payroll.html">Payroll</a></li>
+      <li><a href="payroll-runs.html">Payroll runs</a></li>
+      <li><a href="documents.html" aria-current="page">Documents</a></li>
+    </ul>
+  </nav>
+
+  <div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Developer docs</div>
+        <div class="title">Documents</div>
+      </div>
+      <span class="pill">REST · JSON · API keys</span>
+    </header>
+
+  <main>
+    <div class="hero">
+    <h1>Documents</h1>
+    <p class="lead">
+      HR letters. A company keeps a library of letter templates (offer, confirmation, resignation,
+      warning, &hellip;) with <code>{{merge.fields}}</code> in the text; you generate a PDF letter for one
+      employee at a time, filled from their record, and optionally keep a copy on their file. Every
+      endpoint is for admins and keys only &mdash; employees never see these letters.
+    </p>
+    </div>
+
+    <section class="section" id="access">
+      <h2>Access</h2>
+      <ul>
+        <li><strong>Scopes.</strong> <code>documents:read</code> lists templates and letters on file and
+          renders previews; <code>documents:write</code> edits templates and generates or deletes letters.</li>
+        <li><strong>Module gate.</strong> Every endpoint needs the organization's plan to include the
+          <code>documents</code> module, else <code>403</code> with
+          <code>This organization's plan does not include the 'documents' module.</code></li>
+        <li><strong>Employee ids.</strong> <code>employeeUserId</code> is the <em>user id</em> from
+          <code>GET /employees</code> (see <a href="employees.html">Employees</a>), not the payroll
+          <code>employeeProfileId</code>.</li>
+      </ul>
+      <div class="callout warn">
+        <strong>A letter reads the employee's record</strong> (IC, address, salary), so the actions that
+        touch an employee also need an Employees scope on the key, on top of the Documents scope. Without
+        it the call answers <code>403</code> <code>{ "error": { "status": 403, "message": "Caller is missing required scope: employees:read." } }</code>
+        (or <code>employees:write</code>). <code>employees:write</code> is only counted when the key also has
+        <code>employees:read</code>.
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Action</th><th>Documents scope</th><th>Also needs</th></tr></thead>
+            <tbody>
+              <tr><td>Merge fields, templates (list, get, create, update, delete, samples, import), preview <em>without</em> an employee</td><td><code>documents:read</code> / <code>documents:write</code></td><td>nothing</td></tr>
+              <tr><td>Preview <em>with</em> <code>employeeUserId</code></td><td><code>documents:read</code></td><td><code>employees:read</code></td></tr>
+              <tr><td>Resolve</td><td><code>documents:read</code></td><td><code>employees:read</code></td></tr>
+              <tr><td>Generate</td><td><code>documents:write</code></td><td><code>employees:read</code>; plus <code>employees:write</code> when <code>saveToEmployee</code> is not empty</td></tr>
+              <tr><td>List, download or delete letters on file</td><td><code>documents:read</code> / <code>documents:write</code></td><td><code>employees:read</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p>
+        <strong>Errors on this page</strong> use these shapes: validation failures
+        <code>{ "errors": { "Field": ["…"] } }</code> (e.g. a missing or too-long <code>name</code>);
+        business-rule refusals <code>{ "message": "…" }</code>, sometimes with a list of fields
+        (<code>unknownFields</code> or <code>missingFields</code>, <code>null</code> when it does not
+        apply); <code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code>; and an empty
+        <code>404</code> for something that is not in this company. A <code>404</code> is also what an
+        employee outside the key's reach looks like. Where an endpoint lists only some of these, the others
+        cannot occur.
+      </p>
+    </section>
+
+    <section class="section" id="merge-fields">
+      <h2>Merge fields</h2>
+      <p>
+        A template body can use <code>{{key}}</code> placeholders. The registry below is the full list; a
+        template that uses any other key (other than <code>{{input.name}}</code>) is refused on save.
+      </p>
+
+      <section class="endpoint" id="list-merge-fields">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/documents/merge-fields</span>
+          <span class="tag scope">documents:read</span>
+        </div>
+        <p>The registry of merge fields a template may use.</p>
+        <h3>Response <code>200</code> &mdash; array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>key</code></td><td>string</td><td>What goes between the braces, e.g. <code>employee.name</code>.</td></tr>
+              <tr><td><code>label</code></td><td>string</td><td>Human label, e.g. <code>"Employee name"</code>.</td></tr>
+              <tr><td><code>source</code></td><td>string</td><td><code>Employee</code>, <code>Company</code>, <code>Signatory</code>, <code>System</code> or <code>Input</code>. Says where a gap is fixed.</td></tr>
+              <tr><td><code>kind</code></td><td>string</td><td><code>Text</code>, <code>Multiline</code>, <code>Date</code>, <code>Number</code> or <code>Money</code>. Dates are typed as <code>yyyy-MM-dd</code> and print as <code>8 October 2026</code>; money is typed as a number and prints as <code>RM 4,500.00</code>.</td></tr>
+              <tr><td><code>description</code></td><td>string</td><td></td></tr>
+              <tr><td><code>writableToEmployee</code></td><td>boolean</td><td>A gap in this field can be saved back to the employee's record when generating (<code>saveToEmployee</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Keys</th><th>Source</th><th>Kind</th><th>Writable to employee</th></tr></thead>
+            <tbody>
+              <tr><td><code>employee.name</code>, <code>employee.employeeNumber</code>, <code>employee.email</code>, <code>employee.employmentStatus</code></td><td>Employee</td><td>Text</td><td>no</td></tr>
+              <tr><td><code>employee.idNumber</code>, <code>employee.jobTitle</code>, <code>employee.department</code>, <code>employee.location</code></td><td>Employee</td><td>Text</td><td>yes</td></tr>
+              <tr><td><code>employee.address</code></td><td>Employee</td><td>Multiline</td><td>yes</td></tr>
+              <tr><td><code>employee.joinDate</code>, <code>employee.leaveDate</code></td><td>Employee</td><td>Date</td><td>no</td></tr>
+              <tr><td><code>employee.confirmationDate</code></td><td>Employee</td><td>Date</td><td>yes</td></tr>
+              <tr><td><code>employee.probationMonths</code></td><td>Employee</td><td>Number</td><td>yes</td></tr>
+              <tr><td><code>employee.monthlySalary</code></td><td>Employee</td><td>Money</td><td>no</td></tr>
+              <tr><td><code>company.name</code>, <code>company.registrationNo</code>, <code>company.phone</code>, <code>company.email</code></td><td>Company</td><td>Text</td><td>no</td></tr>
+              <tr><td><code>company.address</code></td><td>Company</td><td>Multiline</td><td>no</td></tr>
+              <tr><td><code>signatory.name</code>, <code>signatory.position</code></td><td>Signatory</td><td>Text</td><td>no</td></tr>
+              <tr><td><code>today</code></td><td>System</td><td>Date</td><td>no</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Besides the registry, a template may use ad-hoc <code>{{input.someName}}</code> fields (a letter
+          or letter-by-letter detail such as a last working day). The name is a letter followed by up to 59
+          letters, digits or underscores. Nothing on file answers them, so you supply a value in
+          <code>values</code> when generating. Their kind is guessed from the name: ending in
+          <code>date</code> or <code>day</code> is a <code>Date</code>, ending in <code>amount</code> or
+          <code>salary</code> is <code>Money</code>, otherwise <code>Text</code>.
+        </p>
+<pre><code>curl https://&lt;api-host&gt;/documents/merge-fields \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="templates">
+      <h2>Templates</h2>
+      <p>
+        A template's <code>body</code> is a small markdown subset: a blank line ends a paragraph;
+        <code># Heading</code> and <code>## Smaller heading</code>; <code>- item</code> bullets;
+        <code>**bold**</code>; and <code>{{merge.fields}}</code>. A single line break inside a paragraph is
+        kept (good for address blocks). Merge values are inserted as literal text, so a value containing
+        <code>**</code> never becomes formatting. The PDF prints the letter date, the company name and the
+        signature block itself, so don't repeat them.
+      </p>
+
+      <section class="endpoint" id="template-object">
+        <h3>The template object</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td></td></tr>
+              <tr><td><code>name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>category</code></td><td>string</td><td><code>OFFER</code>, <code>CONFIRMATION</code>, <code>PROMOTION</code>, <code>RESIGNATION</code>, <code>TERMINATION</code>, <code>WARNING</code> or <code>OTHER</code>. Only groups and labels the library.</td></tr>
+              <tr><td><code>body</code></td><td>string</td><td>The template text.</td></tr>
+              <tr><td><code>isSample</code></td><td>boolean</td><td>Created by <a href="#add-samples">Add sample templates</a>; its wording is placeholder text to review before use.</td></tr>
+              <tr><td><code>fields</code></td><td>string[]</td><td>The merge keys the body mentions, registry and <code>input.*</code> alike, in first-use order.</td></tr>
+              <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>string (ISO 8601, UTC)</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="endpoint" id="list-templates">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/documents/templates</span>
+          <span class="tag scope">documents:read</span>
+        </div>
+        <p>The company's template library.</p>
+        <h3>Response <code>200</code></h3>
+        <p>An array of <a href="#template-object">template objects</a>.</p>
+<pre><code>curl https://&lt;api-host&gt;/documents/templates \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-template">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/documents/templates/{id}</span>
+          <span class="tag scope">documents:read</span>
+        </div>
+        <p>One template.</p>
+        <h3>Response <code>200</code></h3>
+        <p>A <a href="#template-object">template object</a>. <code>404</code> (empty body) if it is not in this company.</p>
+<pre><code>curl https://&lt;api-host&gt;/documents/templates/tpl_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="create-template">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates</span>
+          <span class="tag scope">documents:write</span>
+        </div>
+        <p>Create a template.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Max 160. Trimmed; blank is refused.</td></tr>
+              <tr><td><code>category</code></td><td>string</td><td>No (default <code>OTHER</code>)</td><td>One of the values above.</td></tr>
+              <tr><td><code>body</code></td><td>string</td><td>Yes</td><td>Max 20,000 characters; blank is refused. Every <code>{{…}}</code> must be a registry key or a valid <code>{{input.name}}</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The saved <a href="#template-object">template object</a>. Note <code>200</code>, not <code>201</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; <code>name</code> or <code>body</code> missing or over its limit, or an unknown <code>category</code>.</li>
+          <li><code>400</code> <code>{ "message": "Give the template a name.", "unknownFields": null }</code> &mdash; also <code>"The template has no text."</code> for a blank body.</li>
+          <li><code>400</code> <code>{ "message": "These merge fields don't exist: {{employee.nmae}}. Pick fields from the list, or use {{input.yourName}} for something typed in for each letter.", "unknownFields": ["employee.nmae"] }</code></li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"name":"Confirmation of Employment","category":"CONFIRMATION","body":"Dear {{employee.name}},\n\nYour employment is confirmed with effect from **{{employee.confirmationDate}}**."}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-template">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/documents/templates/{id}</span>
+          <span class="tag scope">documents:write</span>
+        </div>
+        <p>Replace a template's name, category and body.</p>
+        <div class="callout warn">
+          <strong>This PUT replaces all three fields.</strong> An omitted <code>category</code> is saved as
+          <code>OTHER</code>, not left as it was &mdash; read the template first and send everything back.
+          Letters already generated from it keep the name and category they were made with.
+        </div>
+        <h3>Request body</h3>
+        <p>Same as <a href="#create-template">create</a>.</p>
+        <h3>Response <code>200</code></h3>
+        <p>The saved <a href="#template-object">template object</a>.</p>
+        <h3>Errors</h3>
+        <p>As <a href="#create-template">create</a>, plus <code>404</code> (empty body) when the template is not in this company.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/documents/templates/tpl_123 \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"name":"Confirmation of Employment","category":"CONFIRMATION","body":"Dear {{employee.name}},\n\nYour employment is confirmed."}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete-template">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/documents/templates/{id}</span>
+          <span class="tag scope">documents:write</span>
+        </div>
+        <p>Delete a template. Letters already generated from it stay on file, with the template's name and category as they were.</p>
+        <h3>Response</h3>
+        <p><code>204</code> on success; <code>404</code> (empty body) if it is not in this company.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/documents/templates/tpl_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="add-samples">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/samples</span>
+          <span class="tag scope">documents:write</span>
+        </div>
+        <p>
+          Add the built-in sample letters (offer letter, confirmation of employment, resignation acceptance,
+          first written warning) the company does not already have. Safe to repeat: a sample the company still
+          has is skipped, not duplicated. No request body.
+        </p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>added</code></td><td>number</td><td>How many were created.</td></tr>
+              <tr><td><code>skipped</code></td><td>number</td><td>How many the company already had.</td></tr>
+              <tr><td><code>templates</code></td><td>array</td><td>The <a href="#template-object">template objects</a> just created (<code>isSample: true</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">The sample wording is placeholder text, not legal advice. Review and edit it before sending a letter to anyone.</div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/samples \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="import-template">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/import</span>
+          <span class="tag scope">documents:write</span>
+        </div>
+        <p>
+          Convert a Word, text or markdown file into template markup. <strong>Nothing is saved</strong>: the
+          result is for review, and you save it with <a href="#create-template">create</a>.
+        </p>
+        <h3>Request</h3>
+        <p>
+          <code>multipart/form-data</code> with one part named <code>file</code>: a <code>.docx</code>,
+          <code>.txt</code> or <code>.md</code> (also <code>.markdown</code>) up to 5 MB. Text files must be
+          UTF-8. Old <code>.doc</code> files are refused.
+        </p>
+        <p>What a <code>.docx</code> keeps: paragraphs, headings (Title and Heading 1 become <code>#</code>, lower headings <code>##</code>), bold, bulleted and numbered lists (as bullets), tables (one paragraph per row, cells joined by <code> | </code>), <code>{{placeholders}}</code>, and Word mail-merge fields (<code>MERGEFIELD Name</code> becomes <code>{{Name}}</code>). Images, text boxes, headers, footers and footnotes are dropped and reported in <code>warnings</code>.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>suggestedName</code></td><td>string</td><td>The first heading, else the file name.</td></tr>
+              <tr><td><code>body</code></td><td>string</td><td>Template markup.</td></tr>
+              <tr><td><code>unknownFields</code></td><td>string[]</td><td>Placeholders in the text that are neither a registry key nor a valid <code>{{input.name}}</code>, as written (e.g. <code>"Employee Name"</code>). <a href="#create-template">Create</a> refuses a body that still contains them &mdash; replace each with a key from <a href="#list-merge-fields">the registry</a> first.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>What did not come across, e.g. skipped images.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>400</code> <code>{ "message": "…" }</code> &mdash; no file or an empty file (<code>"Pick a Word (.docx), .txt or .md file to upload."</code>), unsupported type, larger than 5 MB, unreadable or non-UTF-8 file, or no text found. The server refuses a request body over 8 MB before it gets that far.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/import \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@offer-letter.docx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="letters">
+      <h2>Preview, resolve and generate</h2>
+      <p>
+        The rule: <strong>a letter never goes out with a blank where a detail should be.</strong> Every field
+        the template uses is looked up in the records first; <em>resolve</em> shows what was found and what is
+        missing, and <em>generate</em> refuses until every gap is filled for that letter or explicitly left
+        blank. Four fields are needed by every letter whether or not the body mentions them, because the PDF
+        prints them: <code>today</code>, <code>company.name</code>, <code>signatory.name</code> and
+        <code>signatory.position</code>. The company and signatory ones come from Payroll &rarr; Settings &rarr;
+        Form E (LHDN) &rarr; Employer details (the declarant is the default signatory); a key can set them with
+        <code>PUT /payroll/company-info</code> on the <a href="payroll.html">Payroll page</a>. The letter date is
+        today in Malaysia time.
+      </p>
+
+      <section class="endpoint" id="preview-draft">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/preview</span>
+          <span class="tag scope">documents:read</span>
+        </div>
+        <p>Render an <em>unsaved</em> template as a watermarked PDF. Changes nothing, so it only needs the read scope.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>body</code></td><td>string</td><td>Yes here</td><td>Max 20,000. Blank is refused.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td>No</td><td>Max 160. Title of the PDF; defaults to <code>"Letter"</code>.</td></tr>
+              <tr><td><code>employeeUserId</code></td><td>string</td><td>No</td><td>Max 40. User id. With it the fields are filled from that person's record (needs <code>employees:read</code>); without it every field prints as its label in brackets, e.g. <code>[Employee name]</code>. A field with no value prints in brackets either way.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename <code>{name} - preview.pdf</code>, <code>Cache-Control: no-store</code>. Watermarked <em>PREVIEW</em>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "The template has no text to preview.", "missingFields": null }</code>, or <code>"These merge fields don't exist: …"</code>.</li>
+          <li><code>403</code> &mdash; <code>employeeUserId</code> sent without <code>employees:read</code>.</li>
+          <li><code>404</code> &mdash; <code>employeeUserId</code> is not a member of this company.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/preview \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"name":"Offer","body":"Dear {{employee.name}},","employeeUserId":"emp_123"}' -o preview.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="preview-template">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/{id}/preview</span>
+          <span class="tag scope">documents:read</span>
+        </div>
+        <p>The same preview for a saved template. Send <code>body</code> (and <code>name</code>) to preview unsaved edits of it; omit them to preview what is saved.</p>
+        <h3>Request body and response</h3>
+        <p>As <a href="#preview-draft">above</a>, except <code>body</code> is optional. The body may be empty (<code>{}</code>).</p>
+        <h3>Errors</h3>
+        <p>As above, plus <code>404</code> when the template is not in this company.</p>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/tpl_123/preview \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"employeeUserId":"emp_123"}' -o preview.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="resolve">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/{id}/resolve</span>
+          <span class="tag scope">documents:read</span>
+          <span class="tag">also employees:read</span>
+        </div>
+        <p>What this template needs for this employee, filled from the records, with every gap flagged. Call it before <a href="#generate">generate</a>. Changes nothing.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeUserId</code></td><td>string</td><td>Yes</td><td>Max 40. User id.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>templateId</code>, <code>templateName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeUserId</code>, <code>employeeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>fields[]</code></td><td>array</td><td>One entry per field the letter needs (the body's, plus the four always-needed ones). Below.</td></tr>
+              <tr><td><code>fields[].key</code>, <code>label</code>, <code>source</code>, <code>kind</code></td><td>string</td><td>As in <a href="#list-merge-fields">merge fields</a>.</td></tr>
+              <tr><td><code>fields[].value</code></td><td>string | null</td><td>As it will print (<code>"8 October 2026"</code>, <code>"RM 4,500.00"</code>). <code>null</code> when missing.</td></tr>
+              <tr><td><code>fields[].editValue</code></td><td>string | null</td><td>The same value in input form (<code>2026-10-08</code>, <code>4500.00</code>).</td></tr>
+              <tr><td><code>fields[].missing</code></td><td>boolean</td><td>Nothing on file. Always <code>true</code> for <code>input.*</code> fields. Must be supplied or left blank before generating.</td></tr>
+              <tr><td><code>fields[].writableToEmployee</code></td><td>boolean</td><td>The gap can be saved back to the employee's record: only for a missing, writable employee field, and only when the key has <code>employees:write</code>.</td></tr>
+              <tr><td><code>fields[].fixHint</code></td><td>string | null</td><td>Where to fix a gap at its source, e.g. a company or signatory detail.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; <code>employeeUserId</code> missing.</li>
+          <li><code>403</code> &mdash; the key lacks <code>employees:read</code>.</li>
+          <li><code>404</code> &mdash; no such template, or the person is not a member of this company.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/tpl_123/resolve \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"employeeUserId":"emp_123"}'</code></pre>
+<pre><code>{
+  "templateId": "tpl_123",
+  "templateName": "Confirmation of Employment",
+  "employeeUserId": "emp_123",
+  "employeeName": "Jane Example",
+  "fields": [
+    { "key": "employee.confirmationDate", "label": "Confirmation date", "source": "Employee", "kind": "Date",
+      "value": null, "editValue": null, "missing": true, "writableToEmployee": true, "fixHint": null },
+    { "key": "company.name", "label": "Company name", "source": "Company", "kind": "Text",
+      "value": "Example Sdn Bhd", "editValue": "Example Sdn Bhd", "missing": false, "writableToEmployee": false, "fixHint": null }
+  ]
+}</code></pre>
+      </section>
+
+      <section class="endpoint" id="generate">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/documents/templates/{id}/generate</span>
+          <span class="tag scope">documents:write</span>
+          <span class="tag">also employees:read</span>
+        </div>
+        <p>Generate the letter as a PDF for one employee, and by default keep a copy on their file.</p>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeUserId</code></td><td>string</td><td>Yes</td><td>Max 40. User id.</td></tr>
+              <tr><td><code>values</code></td><td>object (string &rarr; string | null)</td><td>No</td><td>Per-letter values keyed by merge key: what you typed for a missing field, an <code>input.*</code> field, or an override of a value on file. Dates as <code>yyyy-MM-dd</code>, money as a number; both print in letter form. Blank values count as not supplied. Max 2,000 characters each. <strong>A typed value wins over the record.</strong></td></tr>
+              <tr><td><code>leaveBlank</code></td><td>string[]</td><td>No</td><td>Keys you deliberately leave empty. Any other field with no value refuses the letter.</td></tr>
+              <tr><td><code>saveToEmployee</code></td><td>string[]</td><td>No</td><td>Keys of missing writable employee fields (<code>writableToEmployee</code> in the registry) whose typed value should also be written to the employee's record. Needs <code>employees:write</code>. A key that is not writable, not used by the template, already has a value on the record, or has no typed value, is skipped without error.</td></tr>
+              <tr><td><code>save</code></td><td>boolean</td><td>No (default <code>true</code>)</td><td>Keep a copy on the employee's file (see <a href="#list-generated">letters on file</a>). <code>false</code> returns the PDF and stores nothing.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>Content-Type: application/pdf</code>, filename <code>{template name} - {employee name} - {yyyy-MM-dd}.pdf</code>,
+          <code>Cache-Control: no-store</code>. The body is the PDF, not JSON, so the saved letter's id is not returned &mdash;
+          fetch it from <a href="#list-generated"><code>GET /documents/generated?employeeUserId=…</code></a>. It is <code>200</code>, not <code>201</code>.
+        </p>
+        <div class="callout warn">
+          <strong>Side effects.</strong> With <code>save</code> on (the default) every call stores another copy; repeating a
+          request creates a duplicate letter on file. <code>saveToEmployee</code> writes to the employee's record, but only
+          into fields that are <em>empty</em> there &mdash; it never overwrites &mdash; and it does not mark payroll drafts stale
+          (none of these fields feed a payroll calculation). Both generating and deleting a letter are written to the audit log.
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "Fill in these details, or choose to leave them blank, before generating: Confirmation date, Signatory name.", "missingFields": ["employee.confirmationDate", "signatory.name"] }</code> &mdash; gaps remain. Nothing was saved or written.</li>
+          <li><code>400</code> <code>{ "message": "…", "missingFields": null }</code> &mdash; a typed value is over 2,000 characters; the template uses merge fields that no longer exist (edit it first); or a <code>saveToEmployee</code> value is invalid (<code>employee.probationMonths</code> must be a whole number 0&ndash;120, <code>employee.confirmationDate</code> must be <code>yyyy-MM-dd</code>).</li>
+          <li><code>403</code> &mdash; missing <code>employees:read</code>, or <code>saveToEmployee</code> sent without <code>employees:write</code>. The request is refused outright, never partly done.</li>
+          <li><code>404</code> &mdash; no such template, or the person is not a member of this company.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/tpl_123/generate \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"employeeUserId":"emp_123","values":{"employee.confirmationDate":"2026-11-01"},"saveToEmployee":["employee.confirmationDate"],"save":true}' \
+  -o letter.pdf</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="on-file">
+      <h2>Letters on file</h2>
+      <p>
+        Copies kept by <a href="#generate">generate</a>. They are admin-only: they are not the employee
+        documents attached to a profile and never appear in the employee's own portal. Each endpoint here also needs
+        <code>employees:read</code> on a key, since a kept letter is the employee's record in print.
+      </p>
+
+      <section class="endpoint" id="list-generated">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/documents/generated</span>
+          <span class="tag scope">documents:read</span>
+          <span class="tag">also employees:read</span>
+        </div>
+        <p>Letters on file, newest first, at most 200.</p>
+        <h3>Query parameters</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>employeeUserId</code></td><td>string, optional</td><td>Only this employee's letters (user id). An unknown id returns an empty array.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code> &mdash; array of</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>Use it for the file and delete endpoints.</td></tr>
+              <tr><td><code>templateId</code></td><td>string | null</td><td>The template it came from; it may since have been deleted.</td></tr>
+              <tr><td><code>templateName</code></td><td>string</td><td>The template's name when the letter was made.</td></tr>
+              <tr><td><code>category</code></td><td>string</td><td>The template's category when the letter was made.</td></tr>
+              <tr><td><code>employeeUserId</code></td><td>string</td><td>User id of the addressee.</td></tr>
+              <tr><td><code>employeeName</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>generatedByName</code></td><td>string | null</td><td>Who generated it, at the time. For a key, the key has no person name, so this may be empty.</td></tr>
+              <tr><td><code>fileName</code></td><td>string</td><td>The name it downloads as.</td></tr>
+              <tr><td><code>sizeBytes</code></td><td>number</td><td></td></tr>
+              <tr><td><code>createdAt</code></td><td>string (ISO 8601, UTC)</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p><code>403</code> &mdash; the key lacks <code>employees:read</code>.</p>
+<pre><code>curl "https://&lt;api-host&gt;/documents/generated?employeeUserId=emp_123" \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="download-generated">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/documents/generated/{id}/file</span>
+          <span class="tag scope">documents:read</span>
+          <span class="tag">also employees:read</span>
+        </div>
+        <p>Download a kept letter as it was generated.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/pdf</code>, filename as in <code>fileName</code>, <code>Cache-Control: no-store</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> &mdash; the key lacks <code>employees:read</code>.</li>
+          <li><code>404</code> &mdash; no such letter in this company.</li>
+          <li><code>400</code> <code>{ "message": "The file for this letter is missing from storage.", "missingFields": null }</code> &mdash; the record exists but the stored file does not.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/documents/generated/doc_123/file \
+  -H "Authorization: Bearer wp_live_xxx" -o letter.pdf</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete-generated">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/documents/generated/{id}</span>
+          <span class="tag scope">documents:write</span>
+          <span class="tag">also employees:read</span>
+        </div>
+        <p>Delete a kept letter and its file. Cannot be undone; the deletion is written to the audit log.</p>
+        <h3>Response</h3>
+        <p><code>204</code> on success. <code>403</code> without <code>employees:read</code>. <code>404</code> (empty body) if it is not in this company.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/documents/generated/doc_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <footer>
+      Generated from the AltomateHR source. If something here disagrees with what the API
+      returns, the API is right. Tell us and we'll fix the page.
+    </footer>
+  </main>
+  </div>
+</div>
+</body>
+</html>
