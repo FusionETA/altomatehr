@@ -85,6 +85,13 @@ public class PayrollSettings : ITenantScoped
     [MaxLength(20)] public string? EcpPayorAccountNo { get; set; }
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
 
+    // When an admin first saved these settings (General) or set them in
+    // onboarding. "Configured" is this, NOT "a row exists": the row also holds
+    // things saved from elsewhere (the year-end start month), and creating it
+    // for one of those must not tell the admin the EPF / working-days / HRDF
+    // defaults have been reviewed when nobody has looked at them.
+    public DateTime? ConfiguredAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

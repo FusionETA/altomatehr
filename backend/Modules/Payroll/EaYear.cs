@@ -54,4 +54,13 @@ public sealed record EaYear(int ApprovedMonths, int RequiredMonths, int? FirstMo
     // Why the form is not ready yet, for whoever is looking (the employee or HR).
     public static string NotReadyReason(int year) =>
         $"The {year} EA form will be ready once this company's {year} payroll is approved through December.";
+
+    // RequiredMonths = 0: a year before payroll started here and with no run in
+    // it. There is nothing to approve — saying "0/0 approved, missing: " was
+    // true but read as a fault.
+    public static string NoPayrollReason(int year) =>
+        $"This company ran no payroll here in {year}, so there are no {year} year-end forms.";
+
+    public static string ReasonFor(int year, int requiredMonths) =>
+        requiredMonths == 0 ? NoPayrollReason(year) : NotReadyReason(year);
 }

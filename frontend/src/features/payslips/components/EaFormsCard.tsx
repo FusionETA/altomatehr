@@ -80,5 +80,7 @@ export function EaFormsCard() {
 // The server's reason, with how far along the year is.
 function notReadyText(form: EaFormYear) {
   const reason = form.notReadyReason ?? "Not ready yet.";
+  // No payroll ran that year: the reason says so, and "0 of 0" adds nothing.
+  if (form.requiredMonths === 0) return reason;
   return `${reason} (${form.approvedMonths} of ${form.requiredMonths} months so far)`;
 }

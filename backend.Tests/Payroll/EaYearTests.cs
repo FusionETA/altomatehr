@@ -7,6 +7,21 @@ namespace AltomateHR.Api.Tests.Payroll;
 // The service-level cases are in EmployeePayrollServiceTests.
 public class EaYearTests
 {
+    // A year before payroll started here, with no run in it, has nothing to
+    // approve: say so rather than "0/0 approved, missing: ".
+    [Fact]
+    public void A_year_before_payroll_started_here_has_nothing_to_approve()
+    {
+        var ea = EaYear.For([], [], startMonth: 13);
+
+        Assert.False(ea.Ready);
+        Assert.Equal(0, ea.RequiredMonths);
+        Assert.Empty(EaYear.Missing([], [], startMonth: 13));
+        Assert.Equal(EaYear.NoPayrollReason(2025), EaYear.ReasonFor(2025, ea.RequiredMonths));
+        Assert.Contains("no payroll here in 2025", EaYear.ReasonFor(2025, 0));
+        Assert.Equal(EaYear.NotReadyReason(2026), EaYear.ReasonFor(2026, 6));
+    }
+
     [Fact]
     public void ElevenMonths_IsNotReady()
     {
