@@ -275,7 +275,7 @@ const admin = {
     await page.getByRole("button", { name: "Download files" }).click();
     await page.getByText("Statutory uploads").first().waitFor();
     await settle(page);
-    await scrollTo(page, "Manual Payments (Excel)", 260);
+    await scrollTo(page, "Allowance Report (Excel)", 200);
     await shoot(page, "admin", "payroll-downloads");
     await page.keyboard.press("Escape");
   },

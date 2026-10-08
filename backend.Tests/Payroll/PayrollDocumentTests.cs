@@ -436,6 +436,22 @@ public class PayrollDocumentTests
         Assert.True(PayrollBankFileXlsx.Render(model, new DateTime(2026, 3, 31), "3161234567").Ok);
     }
 
+    // Merchantrade, Finexus, an overseas bank: once the payment method is
+    // "Other bank / e-wallet" they are paid from the Manual payments sheet,
+    // so an unrecognised bank name must not block the Public Bank file.
+    [Fact]
+    public void BankFile_LeavesOutOtherBankAndEwalletPayees()
+    {
+        var model = Model([
+            Row(name: "Aisyah"),
+            Row(name: "Lamyai", bankName: "Merchantrade") with { PaymentMethod = PaymentMethod.OTHER_TRANSFER },
+        ]);
+
+        var result = PayrollBankFileXlsx.Render(model, new DateTime(2026, 3, 31), "3161234567");
+
+        Assert.True(result.Ok);
+    }
+
     [Fact]
     public void BankFile_RefusesWhenThereIsNothingToDisburse()
     {
@@ -444,6 +460,6 @@ public class PayrollDocumentTests
         var result = PayrollBankFileXlsx.Render(model, new DateTime(2026, 3, 31), "3161234567");
 
         Assert.False(result.Ok);
-        Assert.Contains("Nothing to disburse", result.Error);
+        Assert.Contains("Nothing to put in the bank file", result.Error);
     }
 }

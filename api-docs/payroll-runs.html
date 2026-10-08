@@ -1232,13 +1232,49 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
   -H "Authorization: Bearer wp_live_xxx" -o tp1-claims.pdf</code></pre>
       </section>
 
+      <section class="endpoint" id="doc-allowances">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/allowances</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Who received which allowance on this run. Every allowance line on the payslips is included.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>Allowance_Report_{month-year}.xlsx</code>. One row per employee who has at least one such item, one column per payslip label, and a total column. Benefits in kind are listed (header ends with "(BIK)") but left out of the total because they are not paid in cash. Claim reimbursements are not allowances and are not included.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run is not approved yet (<code>"This run has not been approved yet, so its figures can still change. Submit and approve it before producing files."</code>); the run was imported from a previous payroll system; or there is nothing to report (<code>"No allowances on this run."</code>).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/allowances \
+  -H "Authorization: Bearer wp_live_xxx" -o allowances.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-deductions">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/deductions</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Which non-statutory deductions came off whom. EPF, SOCSO, EIS and PCB are excluded (they are in the statutory files), as are additional PCB, CP38 and tax-relief or self-paid items that deduct nothing.</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>Deduction_Report_{month-year}.xlsx</code>. One row per employee who has at least one such item, one column per payslip label, and a total column. Items that come off gross pay (unpaid leave, advances, salary adjustments) are listed with a "from gross" note in the header but left out of the total, matching the payslip.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run is not approved yet (<code>"This run has not been approved yet, so its figures can still change. Submit and approve it before producing files."</code>); the run was imported from a previous payroll system; or there is nothing to report (<code>"No deductions on this run other than EPF, SOCSO, EIS and PCB."</code>).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/deductions \
+  -H "Authorization: Bearer wp_live_xxx" -o deductions.xlsx</code></pre>
+      </section>
+
       <section class="endpoint" id="doc-bank-file">
         <div class="endpoint-head">
           <span class="method get">GET</span>
           <span class="path">/payroll/runs/{id}/documents/bank-file</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info). It lists only employees paid by <code>BANK_TRANSFER</code> with a bank account number and net pay above 0. Everyone else owed pay is on <a href="#doc-manual-payments">manual-payments</a>.</p>
+        <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info). It lists only employees paid by <code>BANK_TRANSFER</code> with a bank account number and net pay above 0. Employees on <code>OTHER_TRANSFER</code> (other bank / e-wallet), <code>CASH</code> or <code>CHEQUE</code> are left out, so an overseas bank or e-wallet name never blocks the file; they are on <a href="#doc-manual-payments">manual-payments</a>.</p>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1255,7 +1291,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
         </ul>
 <pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
@@ -1339,7 +1375,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), all payslips, and the
+          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), the allowance and deduction reports, all payslips, and the
           three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
           payroll bank configured) is left out of the zip rather than failing the whole bundle.
         </p>
@@ -1359,7 +1395,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
             <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>X-Bundle-File-Count</code></td><td>How many documents made it into the zip.</td></tr>
-              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>summary-xlsx</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>summary-xlsx</code>, <code>allowances</code>, <code>deductions</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
             </tbody>
           </table>
         </div>
