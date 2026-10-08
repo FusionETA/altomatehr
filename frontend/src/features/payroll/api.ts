@@ -585,6 +585,14 @@ export const downloadManualPayments = (runId: string) =>
 export const downloadAbPayTimesheet = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/ab-pay-timesheet`, "ABPay timesheet.xlsx");
 
+// Every allowance / every non-statutory deduction on the run, one row per
+// employee and one column per item.
+export const downloadAllowanceReport = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/allowances`, "allowance-report.xlsx");
+
+export const downloadDeductionReport = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/deductions`, "deduction-report.xlsx");
+
 export const downloadPaymentSchedule = (runId: string) =>
   download(
     `/payroll/runs/${runId}/documents/payment-schedule`,

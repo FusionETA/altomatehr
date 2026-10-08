@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, Mail, X } from "lucide-react";
 import {
+  downloadAllowanceReport,
+  downloadDeductionReport,
   downloadAbPayTimesheet,
   downloadAllPayslips,
   downloadBankFile,
@@ -99,6 +101,24 @@ const ITEMS: Item[] = [
     portal: null,
     download: (runId) => downloadPayrollSummary(runId),
     downloadXlsx: (runId) => downloadPayrollSummaryXlsx(runId),
+  },
+  {
+    key: "allowances",
+    group: "REPORTS",
+    title: "Allowance Report (Excel)",
+    description:
+      "Every allowance on the run — one row per employee, one column per allowance, with totals. Benefits in kind are listed but not counted as cash.",
+    portal: null,
+    download: (runId) => downloadAllowanceReport(runId),
+  },
+  {
+    key: "deductions",
+    group: "REPORTS",
+    title: "Deduction Report (Excel)",
+    description:
+      "Deductions other than EPF, SOCSO, EIS and PCB — loans, unpaid leave, advances — one row per employee, one column per deduction, with totals.",
+    portal: null,
+    download: (runId) => downloadDeductionReport(runId),
   },
   {
     key: "schedule",

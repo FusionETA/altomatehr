@@ -56,6 +56,13 @@ public interface IStatutoryFileService
     Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
+    // Every allowance / every non-statutory deduction on the run, one row per
+    // employee and one column per item, as Excel.
+    Task<StatutoryFileResult> RenderAllowanceReportXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+    Task<StatutoryFileResult> RenderDeductionReportXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // The LHDN MTD §E worksheet — one page per employee showing the whole PCB
     // calculation, so an employee or an officer can re-derive the deduction by
     // hand. Reads the payslip's stored breakdown; never recomputes it.
