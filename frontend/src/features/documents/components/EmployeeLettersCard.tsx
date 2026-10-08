@@ -11,12 +11,22 @@ const CARD = "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient b
 // the employee can see in their portal; these they can't.
 //
 // Hidden when the admin's access doesn't include the Documents module.
+//
+// A letter can save gaps into this employee's record, which the form around
+// this card holds a copy of. So the host says when that would clash
+// (`saveToEmployeeBlocked`, e.g. unsaved edits) and re-reads the record after
+// it happened (`onSavedToEmployee`) — else its next Save writes the stale copy
+// back over what the letter just saved.
 export function EmployeeLettersCard({
   employeeUserId,
   employeeName,
+  saveToEmployeeBlocked,
+  onSavedToEmployee,
 }: {
   employeeUserId: string;
   employeeName: string;
+  saveToEmployeeBlocked?: string | null;
+  onSavedToEmployee?: () => void;
 }) {
   const enabled = useEnabledModules();
   const access = useMyAccess();
@@ -50,7 +60,14 @@ export function EmployeeLettersCard({
       <GeneratedLettersList employeeUserId={employeeUserId} showEmployee={false} canManage={canManage} />
 
       {generating ? (
-        <GenerateLetterDialog employeeUserId={employeeUserId} onClose={() => setGenerating(false)} />
+        <GenerateLetterDialog
+          employeeUserId={employeeUserId}
+          onClose={() => setGenerating(false)}
+          saveToEmployeeBlocked={saveToEmployeeBlocked}
+          onGenerated={({ savedToEmployee }) => {
+            if (savedToEmployee.length > 0) onSavedToEmployee?.();
+          }}
+        />
       ) : null}
     </div>
   );

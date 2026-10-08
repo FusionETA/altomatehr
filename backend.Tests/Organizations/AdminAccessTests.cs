@@ -115,6 +115,62 @@ public class AdminAccessTests
         Assert.Equal(expected, await access.GetModuleLevelAsync("payroll"));
     }
 
+    // GetCallerLevelAsync, for a service reading another module's data: an API
+    // key (full grant) is capped by that module's scopes, read off the real
+    // CurrentUser claims — no :read → None, :read → View, both → Manage. A
+    // write scope alone does not let a key read.
+    [Theory]
+    [InlineData(new string[0], ModuleLevel.None)]
+    [InlineData(new[] { "employees:write" }, ModuleLevel.None)]
+    [InlineData(new[] { "employees:read" }, ModuleLevel.View)]
+    [InlineData(new[] { "employees:read", "employees:write" }, ModuleLevel.Manage)]
+    public async Task An_api_keys_caller_level_is_capped_by_its_scopes(string[] scopes, ModuleLevel expected)
+    {
+        using var db = Db();
+        AddOrg(db);
+        db.SaveChanges();
+
+        var claims = new List<System.Security.Claims.Claim>
+        {
+            new(System.Security.Claims.ClaimTypes.NameIdentifier, "apikey:key-1"),
+            new(System.Security.Claims.ClaimTypes.Role, "Admin"),
+            new("org", "org-1"),
+            new(AltomateHR.Api.Modules.ApiKeys.ApiKeyAuthenticationDefaults.ApiKeyIdClaim, "key-1"),
+        };
+        claims.AddRange(scopes.Select(s =>
+            new System.Security.Claims.Claim(AltomateHR.Api.Modules.ApiKeys.ApiKeyAuthenticationDefaults.ScopeClaim, s)));
+        var http = new DefaultHttpContext
+        {
+            User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(claims, "ApiKey")),
+        };
+        var user = new CurrentUser(new HttpContextAccessor { HttpContext = http });
+
+        var access = new ModuleAccessService(
+            new OrganizationRepository(db), TestDirectory.Over(new OrganizationMembershipRepository(db)), user);
+
+        Assert.True(user.IsScopedMachine);
+        Assert.Equal(ModuleLevel.Manage, await access.GetModuleLevelAsync("employees"));   // the grant alone
+        Assert.Equal(expected, await access.GetCallerLevelAsync("employees"));
+    }
+
+    [Fact]
+    public async Task A_people_callers_level_is_their_grant_whatever_scopes_say()
+    {
+        using var db = Db();
+        AddOrg(db);
+        db.OrganizationMemberships.Add(new OrganizationMembership
+        {
+            OrganizationId = "org-1", UserId = "usr-admin", Role = "Admin", Modules = "employees:view,documents",
+        });
+        db.SaveChanges();
+
+        var access = Service(db);
+
+        Assert.Equal(ModuleLevel.View, await access.GetCallerLevelAsync("employees"));
+        Assert.Equal(ModuleLevel.Manage, await access.GetCallerLevelAsync("documents"));
+        Assert.Equal(ModuleLevel.None, await access.GetCallerLevelAsync("payroll"));
+    }
+
     // ─── Gates ──────────────────────────────────────────────────────────
 
     [Theory]

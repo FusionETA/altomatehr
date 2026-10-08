@@ -26,6 +26,13 @@ namespace AltomateHR.Api.Modules.Documents;
 // only — unless they tick "Also save to employee record" for a gap, which goes
 // through IEmployeeProfileService (never the repository) and only ever fills
 // an EMPTY field.
+//
+// A letter is filled from the employee's record, which belongs to the
+// Employees module, not this one. So beside the Documents gate on the
+// controller, anything that reads a person's record needs Employees at View
+// (employees:read for an API key) and saving to it needs Manage
+// (employees:write) — else an admin granted Documents but not Employees could
+// read ICs and salaries, or edit the record, through a letter.
 public class GeneratedLetterService : IGeneratedLetterService
 {
     private const int MaxListed = 200;
@@ -52,6 +59,7 @@ public class GeneratedLetterService : IGeneratedLetterService
     private readonly IOrganizationRepository _organizations;
     private readonly IEmployeeProfileService _profileService;
     private readonly IEmployeeScope _scope;
+    private readonly IModuleAccessService _access;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
 
@@ -67,6 +75,7 @@ public class GeneratedLetterService : IGeneratedLetterService
         IOrganizationRepository organizations,
         IEmployeeProfileService profileService,
         IEmployeeScope scope,
+        IModuleAccessService access,
         ICurrentUser currentUser,
         IAuditService audit)
     {
@@ -81,6 +90,7 @@ public class GeneratedLetterService : IGeneratedLetterService
         _organizations = organizations;
         _profileService = profileService;
         _scope = scope;
+        _access = access;
         _currentUser = currentUser;
         _audit = audit;
     }
@@ -89,6 +99,9 @@ public class GeneratedLetterService : IGeneratedLetterService
 
     public async Task<ResolveResult> ResolveAsync(string templateId, string employeeUserId)
     {
+        var employeeLevel = await _access.GetCallerLevelAsync(OrgModules.Employees);
+        if (EmployeeRecordDenied(employeeLevel, write: false) is { } denied) return ResolveResult.Denied(denied);
+
         var template = await _templates.GetByIdAsync(templateId);
         if (template is null) return ResolveResult.NotFound();
 
@@ -111,7 +124,8 @@ public class GeneratedLetterService : IGeneratedLetterService
                 Value = found.Display,
                 EditValue = found.Edit,
                 Missing = missing,
-                WritableToEmployee = missing && def.WritableToEmployee,
+                // Only offered to a caller who could save it (Employees: Manage).
+                WritableToEmployee = missing && def.WritableToEmployee && employeeLevel >= ModuleLevel.Manage,
                 FixHint = missing ? FixHintFor(def) : null,
             };
         }).ToList();
@@ -163,6 +177,9 @@ public class GeneratedLetterService : IGeneratedLetterService
         EmployeeContext? employee = null;
         if (!string.IsNullOrWhiteSpace(dto.EmployeeUserId))
         {
+            var level = await _access.GetCallerLevelAsync(OrgModules.Employees);
+            if (EmployeeRecordDenied(level, write: false) is { } denied) return LetterFileResult.Denied(denied);
+
             employee = await LoadEmployeeAsync(dto.EmployeeUserId);
             if (employee is null) return LetterFileResult.NotFound();
         }
@@ -187,6 +204,15 @@ public class GeneratedLetterService : IGeneratedLetterService
 
     public async Task<LetterFileResult> GenerateAsync(string templateId, GenerateLetterDto dto)
     {
+        // A write-back the caller may not make is refused outright, never
+        // silently skipped: an admin who ticked "Also save to employee record"
+        // must not be told the letter worked while the record stayed as it was.
+        var employeeLevel = await _access.GetCallerLevelAsync(OrgModules.Employees);
+        if (EmployeeRecordDenied(employeeLevel, write: false) is { } cannotRead)
+            return LetterFileResult.Denied(cannotRead);
+        if (dto.SaveToEmployee is { Count: > 0 } && EmployeeRecordDenied(employeeLevel, write: true) is { } cannotWrite)
+            return LetterFileResult.Denied(cannotWrite);
+
         var template = await _templates.GetByIdAsync(templateId);
         if (template is null) return LetterFileResult.NotFound();
 
@@ -307,11 +333,13 @@ public class GeneratedLetterService : IGeneratedLetterService
 
             switch (key)
             {
-                case "employee.idNumber": dto.IdNumber = Clip(value, 40); break;
-                case "employee.address": dto.Address = Clip(value, 160); break;
-                case "employee.jobTitle": dto.JobTitle = Clip(value, 120); break;
-                case "employee.department": dto.Department = Clip(value, 120); break;
-                case "employee.location": dto.Location = Clip(value, 120); break;
+                // Fitted to the columns by FillMissingFieldsAsync, after it
+                // shapes them for storage (the address grows when joined).
+                case "employee.idNumber": dto.IdNumber = value; break;
+                case "employee.address": dto.Address = value; break;
+                case "employee.jobTitle": dto.JobTitle = value; break;
+                case "employee.department": dto.Department = value; break;
+                case "employee.location": dto.Location = value; break;
                 case "employee.probationMonths":
                     if (!int.TryParse(value, NumberStyles.Integer, Invariant, out var months) || months is < 0 or > 120)
                     {
@@ -336,7 +364,22 @@ public class GeneratedLetterService : IGeneratedLetterService
         return any ? dto : null;
     }
 
-    private static string Clip(string value, int max) => value.Length <= max ? value : value[..max];
+    // Why the caller may not read (or, with write, change) an employee's
+    // record through a letter; null = allowed. The level comes from
+    // IModuleAccessService.GetCallerLevelAsync: Owners and unrestricted admins
+    // are Manage, an API key is capped by its employees:* scopes.
+    private string? EmployeeRecordDenied(ModuleLevel level, bool write)
+    {
+        if (level >= (write ? ModuleLevel.Manage : ModuleLevel.View)) return null;
+
+        // Same wording as [RequireScope], for integrators.
+        if (_currentUser.IsScopedMachine)
+            return $"Caller is missing required scope: {OrgModules.Employees}:{(write ? "write" : "read")}.";
+
+        return write
+            ? "Saving to the employee record needs manage access to Employees. Untick \"Also save to employee record\", or ask the organization's owner for manage access."
+            : "Letters are filled from the employee's record, and your admin access doesn't include Employees. Ask the organization's owner to grant it.";
+    }
 
     // ─── Letters on file ─────────────────────────────────────────────────
 
@@ -416,11 +459,23 @@ public class GeneratedLetterService : IGeneratedLetterService
 
         var profile = await _profiles.GetByUserAsync(userId);
 
-        // A leaver restored or moved on keeps their last leave date only in
-        // the history — the newest closed period.
+        // Someone who left and was moved on keeps their last leave date only
+        // in the history — the newest closed period. Not someone REHIRED who
+        // works here now (an open period): their previous stint's last day
+        // isn't this employment's leave date, and printing it would put a
+        // resignation before the join date. For them it is missing, so the
+        // admin is asked.
         DateTime? lastLeave = null;
         if (profile?.LeaveDate is null)
-            lastLeave = (await _periods.GetForUserAsync(userId)).FirstOrDefault(p => p.LeaveDate is not null)?.LeaveDate;
+        {
+            var periods = await _periods.GetForUserAsync(userId);
+            var currentlyEmployed = periods.Any(p => p.LeaveDate is null);
+            var joined = profile?.JoinDate ?? membership.JoinDate;
+            if (!currentlyEmployed
+                && periods.FirstOrDefault(p => p.LeaveDate is not null)?.LeaveDate is { } last
+                && (joined is null || last.Date >= joined.Value.Date))
+                lastLeave = last;
+        }
 
         return new EmployeeContext(user, membership, profile, lastLeave);
     }
