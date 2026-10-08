@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 5e4cf24
+  user-guide-covered-up-to: 48268b1
 -->
 <html lang="en">
 <head>
@@ -955,7 +955,8 @@
     <ul>
       <li><strong>Today</strong> — the roll call. Status chips with live counts: <em>On time</em>, <em>Late</em>,
         <em>On-site</em>, <em>Off-site</em>, <em>No clock-in</em>, <em>On leave</em>. Click one to filter. Off-site rows show
-        how far away they were and the reason they gave, with photos and a map link.</li>
+        how far away they were and the reason they gave, with photos and a map link. Only staff (Employees and
+        Supervisors) are listed — the Owner and admins don't appear, and the <strong>Employees</strong> tab lists the same people.</li>
       <li><strong>Analytics</strong> — hours worked against the schedule: normal, expected, beyond shift, approved OT,
         rest day and holiday.</li>
       <li><strong>Performance</strong> — how long each supervisor takes to decide.</li>
@@ -1051,7 +1052,8 @@
       <li><strong>History</strong> — every application, filtered by person, type, dates and status. An approved leave
         an employee has asked to cancel shows a <em>Cancellation requested</em> tag (or <em>Cancellation declined</em>
         if their approver said no).</li>
-      <li><strong>Balances</strong> — everyone's remaining days per leave type. Open a person to
+      <li><strong>Balances</strong> — every staff member's remaining days per leave type (Employees and Supervisors; the
+        Owner and admins aren't listed, and aren't in the export either). Open a person to
         <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
         entitlement, or export their leave report.</li>
       <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid), and for Annual Leave:
@@ -1357,6 +1359,9 @@
         <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables
         (EPF, SOCSO, EIS, PCB, net salary) offer liability accounts — sync from Xero first if a list is empty. A saved
         account of the wrong type is flagged so you can pick again.</li>
+      <li><strong>If a Connect or Reconnect doesn't finish</strong> while Xero is still connected, the card shows a
+        calm note that nothing changed and the organisation is still connected. Reloading the page after a successful
+        connect no longer shows "Xero didn't finish connecting".</li>
       <li><strong>Reconnect</strong> if the card says the connection has stopped working; <strong>Disconnect</strong>
         removes AltomateHR from that Xero organisation.</li>
     </ul>

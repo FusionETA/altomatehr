@@ -22,4 +22,12 @@ public class XeroOAuthState : ITenantScoped
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime? UsedAt { get; set; }
+
+    // The Xero tenant this sign-in CONNECTED, set when the callback succeeds.
+    // Null for a sign-in that was refused or never completed. A second load of
+    // the same callback (refresh, doubled redirect) answers "connected" only
+    // while this tenant is still the org's live connection — matching on the
+    // connection's dates can't work, since ConnectedAt keeps the FIRST connect.
+    [MaxLength(80)]
+    public string? ConnectedTenantId { get; set; }
 }

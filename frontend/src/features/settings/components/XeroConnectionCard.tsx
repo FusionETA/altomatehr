@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Building2, CircleCheck, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
+import { Building2, CircleCheck, Info, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
@@ -124,7 +124,19 @@ export function XeroConnectionCard() {
         </div>
       ) : null}
 
-      {callback === "failed" ? (
+      {/* A Connect/Reconnect that didn't finish while the company is STILL
+          connected changed nothing — say that calmly instead of an error
+          banner above a working connection. (A refusal still explains itself
+          below, since it tells the admin what to pick next time.) */}
+      {callback === "failed" && !refusal && status?.connected ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-border/60 bg-muted/40 p-4 text-sm">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="text-muted-foreground">
+            The last Connect or Reconnect didn&apos;t finish, but nothing changed —{" "}
+            {status.tenantName ? `“${status.tenantName}” is` : "Xero is"} still connected.
+          </p>
+        </div>
+      ) : callback === "failed" ? (
         <div className="mt-4 flex gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div>
