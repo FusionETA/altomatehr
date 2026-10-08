@@ -389,6 +389,12 @@ builder.Services.AddScoped<IEmployeeTransferService, EmployeeTransferService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.Employees.Cron.ExecuteDueTransfersBackgroundService>();
 builder.Services.AddScoped<IEmployeeDocumentStorage, EmployeeDocumentStorage>();
 builder.Services.AddScoped<IEmployeeDocumentService, EmployeeDocumentService>();
+// HR letters from templates (Modules/Documents).
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IDocumentTemplateRepository, AltomateHR.Api.Modules.Documents.DocumentTemplateRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedDocumentRepository, AltomateHR.Api.Modules.Documents.GeneratedDocumentRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedDocumentStorage, AltomateHR.Api.Modules.Documents.GeneratedDocumentStorage>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IDocumentTemplateService, AltomateHR.Api.Modules.Documents.DocumentTemplateService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedLetterService, AltomateHR.Api.Modules.Documents.GeneratedLetterService>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.LhdnForms.ILhdnFormsService, AltomateHR.Api.Modules.LhdnForms.LhdnFormsService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IEmployeeRowResolver, EmployeeRowResolver>();

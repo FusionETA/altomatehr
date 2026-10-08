@@ -136,6 +136,11 @@ public static class AuditActions
     // in an audit ("did they change their own?" vs "who let them back in?").
     public const string UserPasswordAdminSet = "user.password.admin-set";
 
+    // HR letters (Documents). Who issued a warning or termination letter, and
+    // who removed one from an employee's file, is an audit question.
+    public const string DocumentsLetterGenerate = "documents.letter.generate";
+    public const string DocumentsLetterDelete = "documents.letter.delete";
+
     // Approvals are deliberately NOT audited here. Claims, leave, attendance and
     // overtime each show their own decisions on their own tab, with more context
     // than a one-line audit row could carry — duplicating them into this feed
@@ -197,6 +202,8 @@ public static class AuditActions
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",
         [UserPasswordAdminSet] = "Password set by an admin",
+        [DocumentsLetterGenerate] = "Letter generated",
+        [DocumentsLetterDelete] = "Letter deleted",
     };
 
     // Exact match first, then a generic prettifier — an action wired up without

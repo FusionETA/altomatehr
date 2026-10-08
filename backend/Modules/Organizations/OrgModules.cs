@@ -24,10 +24,12 @@ public static class OrgModules
     // Owner ticked. The previous system had both as grantable base modules.
     public const string Payroll = "payroll";
     public const string Audit = "audit";
+    // HR letters from templates (offer, confirmation, warning …). Admin-only.
+    public const string Documents = "documents";
 
     // Everyone gets these regardless of plan/tier/addons — core HR + admin tools.
     private static readonly string[] BaseModules =
-        { Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Payroll, Audit };
+        { Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Payroll, Audit, Documents };
 
     // Addon key → the module(s) it unlocks. Claims + Attendance are the only paid ones.
     private static readonly Dictionary<string, string[]> AddonToModules = new(StringComparer.OrdinalIgnoreCase)
