@@ -128,7 +128,8 @@ public class AbPayTimesheetXlsxTests
     {
         var (row, lines) = Employee(extraAllowance: 120m);
 
-        var bytes = AbPayTimesheetXlsx.Render(Model(row, lines), "Ayu Borneo (Management)");
+        var bytes = AbPayTimesheetXlsx.Render(
+            Model(row, lines), AbPayTimesheetXlsx.CompanyColumn(null, "Ayu Borneo (Management)"));
 
         using var workbook = new XLWorkbook(new MemoryStream(bytes));
         var sheet = workbook.Worksheet(1);
@@ -141,6 +142,13 @@ public class AbPayTimesheetXlsxTests
         ];
         Assert.Equal(expected, Enumerable.Range(1, 16).Select(c => sheet.Cell(1, c).GetString()));
         Assert.Equal(1, sheet.SheetView.SplitRow);
+
+        // The Total Gross rule is a NOTE on the header, never in the header
+        // text — ABPay finds the column by its exact name.
+        var totalGross = sheet.Cell(1, 16);
+        Assert.Equal("Total Gross", totalGross.GetString());
+        Assert.True(totalGross.HasComment);
+        Assert.Equal(AbPayTimesheetXlsx.TotalGrossNote, totalGross.GetComment().Text);
 
         // Typed numbers, not formulas or text — ABPay reads raw values.
         Assert.Equal(XLDataType.Number, sheet.Cell(2, 5).DataType);
@@ -157,5 +165,49 @@ public class AbPayTimesheetXlsxTests
         Assert.DoesNotContain("Zakat", headers);   // nobody has zakat
         Assert.Equal("00027", stat.Cell(2, 2).GetString());
         Assert.Equal(120m, stat.Cell(2, headers.IndexOf("Not in AB Pay columns") + 1).GetValue<decimal>());
+    }
+
+    // The code from Payroll Settings wins, normalised the way ABPay matches
+    // it; without one the column falls back to the organisation's name.
+    [Theory]
+    [InlineData(" abm ", "ABM", true)]
+    [InlineData(null, "Ayu Borneo (Management)", false)]
+    [InlineData("  ", "Ayu Borneo (Management)", false)]
+    public void Company_UsesTheAbPayCode_ElseTheOrganisationName(string? code, string expected, bool isCode)
+    {
+        var company = AbPayTimesheetXlsx.CompanyColumn(code, "Ayu Borneo (Management)");
+
+        Assert.Equal(expected, company.Value);
+        Assert.Equal(isCode, company.IsCode);
+    }
+
+    [Theory]
+    [InlineData("ABM")]
+    [InlineData(null)]
+    public void StatutorySheet_EndsInANotesBlock_UnderTheTotals(string? code)
+    {
+        var (row, lines) = Employee(extraAllowance: 120m);
+        var company = AbPayTimesheetXlsx.CompanyColumn(code, "Ayu Borneo (Management)");
+
+        using var workbook = new XLWorkbook(new MemoryStream(
+            AbPayTimesheetXlsx.Render(Model(row, lines), company)));
+        var sheet = workbook.Worksheet(1);
+        var stat = workbook.Worksheet("Statutory");
+
+        // Sheet1's Company column is the chosen value.
+        Assert.Equal(company.Value, sheet.Cell(2, 2).GetString());
+
+        // One employee: header, row 2, totals on row 3, a blank row, then Notes.
+        Assert.StartsWith("Total (1)", stat.Cell(3, 1).GetString());
+        Assert.Equal("", stat.Cell(4, 1).GetString());
+        Assert.Equal("Notes", stat.Cell(5, 1).GetString());
+
+        var notes = Enumerable.Range(6, 10).Select(r => stat.Cell(r, 1).GetString()).ToList();
+        Assert.Contains(notes, n => n.Contains("Total Gross (Sheet1) = Basic + U/L"));
+        Assert.Contains(notes, n => n.Contains("Not in AB Pay columns"));
+        Assert.Contains(notes, n => n.Contains("Other deductions"));
+        Assert.Contains(notes, n => code is null
+            ? n.Contains("no AB Pay company code is set")
+            : n.Contains("AB Pay company code set in Payroll Settings: ABM"));
     }
 }

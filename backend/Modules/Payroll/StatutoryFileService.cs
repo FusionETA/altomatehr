@@ -316,9 +316,9 @@ public class StatutoryFileService : IStatutoryFileService
     // The run in Ayu Borneo's monthly timesheet layout, for the ABPay companion
     // app (Sheet1), plus each employee's statutory figures (Statutory).
     //
-    // Company is the AltomateHR organisation's name. ABPay's short codes (e.g.
-    // "ABM") are set on ABPay's own Companies page and stored in its own
-    // database — nothing here knows them, so a re-import needs that column
+    // Company is the AB Pay company code from Payroll Settings (e.g. "ABM"),
+    // the value ABPay matches the column against. Unset, it falls back to the
+    // organisation's name — readable, but a re-import then needs that column
     // changed to the code first.
     public async Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId)
     {
@@ -339,11 +339,14 @@ public class StatutoryFileService : IStatutoryFileService
                 StringComparer.Ordinal);
 
         var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
-        var company = FirstNonBlank(org?.Name, model.OrganizationName) ?? string.Empty;
+        var orgName = FirstNonBlank(org?.Name, model.OrganizationName) ?? string.Empty;
+        var code = (await _settings.GetAsync()).AbPayCompanyCode;
+        var company = AbPayTimesheetXlsx.CompanyColumn(code, orgName);
 
         var content = AbPayTimesheetXlsx.Render(model with { LineItems = lineItems }, company);
+        // Named after the company, not the code — the file is for people first.
         return new StatutoryFileResult(
-            true, AbPayFileName(company, model.Run), content, AbPayTimesheetXlsx.ContentType, null);
+            true, AbPayFileName(orgName, model.Run), content, AbPayTimesheetXlsx.ContentType, null);
     }
 
     // "ABPay Ayu Borneo (Management) 2026-08.xlsx": Windows-illegal and control

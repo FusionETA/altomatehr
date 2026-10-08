@@ -39,7 +39,8 @@ namespace AltomateHR.Api.Modules.Payroll;
 // salary adjustment or advance recovery — has no ABPay column. It is not
 // dropped: Total Gross still includes it, so on that row Total Gross is more
 // (or less) than the columns add up to, and the Statutory sheet names the
-// difference in "Not in AB Pay columns".
+// difference in "Not in AB Pay columns". The Total Gross header carries a
+// cell comment saying so, and the Statutory sheet ends in a Notes block.
 public static class AbPayTimesheetXlsx
 {
     public const string ContentType =
@@ -126,13 +127,49 @@ public static class AbPayTimesheetXlsx
         };
     }
 
-    public static byte[] Render(PayrollDocumentModel model, string company)
+    // What goes in the Company column, and whether it is ABPay's own code.
+    public sealed record Company(string Value, bool IsCode);
+
+    // The AB Pay company code from Payroll Settings when one is set — that is
+    // what ABPay matches the column against — else the organisation's name.
+    public static Company CompanyColumn(string? abPayCompanyCode, string organizationName) =>
+        string.IsNullOrWhiteSpace(abPayCompanyCode)
+            ? new Company(organizationName.Trim(), IsCode: false)
+            : new Company(abPayCompanyCode.Trim().ToUpperInvariant(), IsCode: true);
+
+    // Comment on the Total Gross header. A note rather than different header
+    // text: ABPay finds the column by its exact header ("total gross"), and
+    // its parser reads cell values only, so a comment cannot affect a re-import.
+    public const string TotalGrossNote =
+        "Total Gross = Basic + U/L + Travelling + Meal + Parking + OT + Comm + Bonus + Deduction "
+        + "(deductions are negative), the same rule as the ABPay timesheet. This differs from "
+        + "AltomateHR's payroll gross, which does not subtract miscellaneous deductions — see the "
+        + "Statutory sheet's Gross column.";
+
+    public static IReadOnlyList<string> Notes(Company company) =>
+    [
+        "Total Gross (Sheet1) = Basic + U/L + Travelling + Meal + Parking + OT + Comm + Bonus + Deduction, "
+            + "with U/L and Deduction negative — the ABPay timesheet's own rule. AltomateHR's Gross (this sheet) "
+            + "does not subtract miscellaneous deductions, so it is higher by the Deduction amount.",
+        "Not in AB Pay columns: pay with no ABPay column (e.g. phone allowance, annual bonus, claims, salary "
+            + "adjustments). It is included in Sheet1's Total Gross, so that row's columns will not add up to "
+            + "it, and ABPay would not import it if the sheet were re-imported.",
+        "Loan repayments, CP38 and other deductions taken from net pay only are under Other deductions here, "
+            + "not in Sheet1's Deduction column (which is miscellaneous deductions only).",
+        company.IsCode
+            ? $"Company (Sheet1) is the AB Pay company code set in Payroll Settings: {company.Value}."
+            : "Company (Sheet1) is the company name, because no AB Pay company code is set in Payroll Settings. "
+              + "Set one there for ABPay to recognise the file on re-import.",
+        "PCB includes any Additional PCB (remitted in the same CP39 field), as on the payslip.",
+    ];
+
+    public static byte[] Render(PayrollDocumentModel model, Company company)
     {
-        var rows = BuildRows(model, company);
+        var rows = BuildRows(model, company.Value);
 
         using var workbook = new XLWorkbook();
         WriteTimesheet(workbook.AddWorksheet("Sheet1"), rows);
-        WriteStatutory(workbook.AddWorksheet("Statutory"), model, rows);
+        WriteStatutory(workbook.AddWorksheet("Statutory"), model, rows, company);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -157,6 +194,11 @@ public static class AbPayTimesheetXlsx
         staffHeader.Border.SetLeftBorder(XLBorderStyleValues.Medium)
             .Border.SetBottomBorder(XLBorderStyleValues.Medium);
         sheet.Row(1).Height = 15.75;
+
+        var note = sheet.Cell(1, 16).CreateComment();
+        note.Author = "AltomateHR";
+        note.AddText(TotalGrossNote);
+        note.Style.Size.SetWidth(40).Size.SetHeight(9);
 
         var r = 2;
         foreach (var row in rows)
@@ -189,7 +231,7 @@ public static class AbPayTimesheetXlsx
     }
 
     private static void WriteStatutory(
-        IXLWorksheet sheet, PayrollDocumentModel model, IReadOnlyList<Row> rows)
+        IXLWorksheet sheet, PayrollDocumentModel model, IReadOnlyList<Row> rows, Company company)
     {
         var payslips = model.Rows.Select(r => r.Payslip).ToList();
 
@@ -256,23 +298,19 @@ public static class AbPayTimesheetXlsx
             .Border.SetTopBorder(XLBorderStyleValues.Thin);
         sheet.Range(2, 3, r, lastColumn).Style.NumberFormat.Format = MoneyFormat;
 
-        var notes = new List<string>
-        {
-            $"{model.OrganizationName} — {model.PeriodLabel}. From the approved payroll run.",
-            "PCB includes any Additional PCB (remitted in the same CP39 field).",
-        };
-        if (columns.Any(c => c.Header == "Not in AB Pay columns"))
-        {
-            notes.Add("Not in AB Pay columns: pay in gross that Sheet1 has no column for (other allowances, "
-                      + "claims, salary adjustments). It is in Sheet1's Total Gross, so that row's columns "
-                      + "do not add up to it, and ABPay would not post it if the sheet were re-imported.");
-        }
-
+        // Notes, two rows under the totals. Each sits in column A and runs
+        // across the empty cells to its right.
         r += 2;
-        foreach (var note in notes)
+        sheet.Cell(r, 1).Value = "Notes";
+        sheet.Cell(r, 1).Style.Font.SetBold();
+        r++;
+        sheet.Cell(r, 1).Value = $"{model.OrganizationName} — {model.PeriodLabel}, from the approved payroll run.";
+        sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);
+        r++;
+        foreach (var note in Notes(company))
         {
-            sheet.Cell(r, 1).Value = note;
-            sheet.Cell(r, 1).Style.Font.SetItalic().Font.SetFontColor(XLColor.Gray);
+            sheet.Cell(r, 1).Value = "• " + note;
+            sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);
             r++;
         }
 

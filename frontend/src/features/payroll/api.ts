@@ -41,6 +41,9 @@ export type PayrollSettings = {
   payorOrganisationCode: string | null;
   ecpPayorAccountNo: string | null;
   ecpPayorBic: string | null;
+  // The company's short code in the ABPay app (e.g. "ABM"). Fills the Company
+  // column of the AB Pay timesheet export; null falls back to the company name.
+  abPayCompanyCode: string | null;
   // False until the org saves for the first time. The GET returns the
   // statutory defaults rather than 404, so the form always has something to
   // render — this is what tells it whether those are real settings.

@@ -102,7 +102,13 @@ public class PayrollSettingsService : IPayrollSettingsService
         settings.PayorOrganisationCode = dto.PayorOrganisationCode;
         settings.EcpPayorAccountNo = dto.EcpPayorAccountNo;
         settings.EcpPayorBic = dto.EcpPayorBic;
+        settings.AbPayCompanyCode = NormaliseAbPayCode(dto.AbPayCompanyCode);
     }
+
+    // ABPay upper-cases and trims the timesheet's Company column before
+    // matching, so the code is stored the same way; blank means "not set".
+    internal static string? NormaliseAbPayCode(string? code) =>
+        string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
 
     // The entity's own field initialisers are the single source of truth for
     // what "unconfigured" means, so the defaults DTO is built from a fresh one.
@@ -124,6 +130,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         PayorOrganisationCode = s.PayorOrganisationCode,
         EcpPayorAccountNo = s.EcpPayorAccountNo,
         EcpPayorBic = s.EcpPayorBic,
+        AbPayCompanyCode = s.AbPayCompanyCode,
         IsConfigured = isConfigured,
         UpdatedAt = isConfigured ? s.UpdatedAt : null,
     };

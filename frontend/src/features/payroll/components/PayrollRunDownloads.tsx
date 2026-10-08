@@ -118,7 +118,7 @@ const ITEMS: Item[] = [
     group: "REPORTS",
     title: "AB Pay timesheet (Excel)",
     description:
-      "Each employee's pay in the AB Pay timesheet layout (Basic, U/L, allowances, OT, commission, bonus, deduction, total gross), plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay.",
+      "Each employee's pay in the AB Pay timesheet layout, ready for ABPay to re-import, plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay. Notes in the file explain how Total Gross is worked out and any pay with no AB Pay column.",
     portal: null,
     download: (runId) => downloadAbPayTimesheet(runId),
   },
