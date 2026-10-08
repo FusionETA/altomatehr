@@ -18,6 +18,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
     private readonly IDirectoryService _directory;
     private readonly IOrganizationService _organizations;
     private readonly ICurrentUser _currentUser;
+    private readonly IPayrollSettingsRepository? _settings;
 
     public PayrollAnnualReportService(
         IPayrollRunRepository runs,
@@ -25,8 +26,10 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         IPayrollCompanyInfoRepository companyInfo,
         IDirectoryService directory,
         IOrganizationService organizations,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IPayrollSettingsRepository? settings = null)
     {
+        _settings = settings;
         _runs = runs;
         _payslips = payslips;
         _companyInfo = companyInfo;
@@ -99,6 +102,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
 
         // Approval is the company's, not the employee's: a month counts once
         // its run is submitted, whoever was on it.
+        var settings = _settings is null ? null : await _settings.GetAsync();
         var allRuns = await _runs.GetAllAsync();
         var submitted = allRuns
             .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
@@ -112,7 +116,9 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             .OrderDescending()
             .Select(year =>
             {
-                var ea = EaYear.For(submitted.GetValueOrDefault(year) ?? [], anyRun.GetValueOrDefault(year));
+                var ea = EaYear.For(
+                    submitted.GetValueOrDefault(year) ?? [], anyRun.GetValueOrDefault(year),
+                    settings?.YearEndStartMonth(year) ?? 1);
                 return new EmployeeEaFormDto
                 {
                     Year = year,
@@ -155,6 +161,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
     {
         var info = await _companyInfo.GetAsync();
         var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
+        var settings = _settings is null ? null : await _settings.GetAsync();
 
         var yearRuns = (await _runs.GetAllAsync()).Where(r => r.PeriodYear == year).ToList();
         var runs = yearRuns.Where(r => r.Status == PayrollRunStatus.SUBMITTED).ToList();
@@ -167,6 +174,9 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             EmployerNo = PayrollAnnualReports.EmployerNumber(info?.EmployerTin),
             SubmittedMonths = [.. runs.Select(r => r.PeriodMonth).Distinct().Order()],
             RunMonths = [.. yearRuns.Select(r => r.PeriodMonth).Distinct().Order()],
+            StartMonth = settings?.YearEndStartMonth(year) ?? 1,
+            PayrollStartYear = settings?.PayrollStartYear,
+            PayrollStartMonth = settings?.PayrollStartMonth,
             Receipts = runs
                 .GroupBy(r => r.PeriodMonth)
                 .ToDictionary(g => g.Key, g => new LhdnMonthReceipts(

@@ -35,20 +35,27 @@ public sealed record PayrollAnnualPayload
     public IReadOnlyDictionary<int, LhdnMonthReceipts> Receipts { get; init; } =
         new Dictionary<int, LhdnMonthReceipts>();
 
-    // Months with a run in ANY status (drafts included) — where the company's
-    // payroll year starts. See EaYear.
+    // Months with a run in ANY status (drafts included). See EaYear.
     public IReadOnlyList<int> RunMonths { get; init; } = [];
 
-    // The months the forms wait for: from the company's first run of the year
-    // through December. A company that started here in March owes no January.
-    public int RequiredMonths => EaYear.For(SubmittedMonths, RunMonths).RequiredMonths;
+    // The first month the forms wait for this year: January, unless the admin
+    // said payroll here started later (PayrollSettings.YearEndStartMonth).
+    public int StartMonth { get; init; } = 1;
 
-    public IReadOnlyList<int> MissingMonths => EaYear.Missing(SubmittedMonths, RunMonths);
+    // The saved "payroll here started in" setting, for the annual page.
+    public int? PayrollStartYear { get; init; }
+    public int? PayrollStartMonth { get; init; }
+
+    // How many months the forms wait for, January (or the start month)
+    // through December.
+    public int RequiredMonths => EaYear.For(SubmittedMonths, RunMonths, StartMonth).RequiredMonths;
+
+    public IReadOnlyList<int> MissingMonths => EaYear.Missing(SubmittedMonths, RunMonths, StartMonth);
 
     // The annual forms declare what this company paid in the year, so none is
-    // produced until every month it ran payroll for is approved through
-    // December (EaYear). A return built on part of it would under-declare.
-    public bool CanGenerate => EaYear.For(SubmittedMonths, RunMonths).Ready;
+    // produced until every month of it is approved through December (EaYear).
+    // A return built on part of it would under-declare.
+    public bool CanGenerate => EaYear.For(SubmittedMonths, RunMonths, StartMonth).Ready;
 }
 
 // One employee's whole year, summed across the SUBMITTED runs.

@@ -195,7 +195,7 @@ public class ClaimsService : IClaimsService
         // Stamped from the org policy at creation, not read live at payout: an
         // admin switching the policy later must not re-route a claim that has
         // already gone to Xero, which would pay the same receipt twice.
-        claim.Settlement = SettlementFor(claim.PaymentType, (await GetSettingsAsync()).SettlementRoute);
+        claim.Settlement = await SettlementForAsync(claim.PaymentType);
 
         // Nobody above them to ask → submitting is the decision. A PENDING claim
         // with no approver is invisible in every queue and undecidable by every
@@ -1201,7 +1201,7 @@ public class ClaimsService : IClaimsService
         var claim = await _repo.GetByIdAsync(claimId);
         if (claim is null || !string.IsNullOrWhiteSpace(claim.XeroBillId)) return;
 
-        var route = SettlementFor(claim.PaymentType, (await GetSettingsAsync()).SettlementRoute);
+        var route = await SettlementForAsync(claim.PaymentType);
         if (claim.Settlement == route) return;
 
         // Not billed automatically: SettleAsync only runs on approval. The claim
@@ -1214,13 +1214,25 @@ public class ClaimsService : IClaimsService
 
     // The route a claim takes under the org's setting. The Payroll route is
     // about REIMBURSING someone, which only an own-money claim needs: company
-    // money already left a company account, so under Payroll it still goes to
-    // Xero as Spend Money (XERO_BILL, which SyncToXeroAsync turns into a spend
-    // for a COMPANY claim). "Don't send anywhere" applies to both kinds.
-    public static ClaimSettlement SettlementFor(PaymentType payment, ClaimSettlement orgRoute) =>
+    // money already left a company account, so under Payroll it goes to Xero
+    // as Spend Money (XERO_BILL, which SyncToXeroAsync turns into a spend for
+    // a COMPANY claim) — when there is a Xero to go to. Without one it goes
+    // nowhere (NONE), rather than waiting forever as "not in Xero yet". "Don't
+    // send anywhere" applies to both kinds.
+    public static ClaimSettlement SettlementFor(
+        PaymentType payment, ClaimSettlement orgRoute, bool xeroConnected = true) =>
         payment == PaymentType.COMPANY && orgRoute == ClaimSettlement.PAYROLL
-            ? ClaimSettlement.XERO_BILL
+            ? xeroConnected ? ClaimSettlement.XERO_BILL : ClaimSettlement.NONE
             : orgRoute;
+
+    private async Task<ClaimSettlement> SettlementForAsync(PaymentType payment)
+    {
+        var route = (await GetSettingsAsync()).SettlementRoute;
+        // Only this case depends on Xero, so only it asks.
+        var xero = payment == PaymentType.COMPANY && route == ClaimSettlement.PAYROLL
+                   && await _xero.IsConnectedAsync();
+        return SettlementFor(payment, route, xero);
+    }
 
     public async Task<TabularExportResult> ExportPayrollReimbursementsAsync(
         TabularFormat format, string? month)

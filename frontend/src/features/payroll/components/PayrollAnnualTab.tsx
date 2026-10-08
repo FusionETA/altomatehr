@@ -4,8 +4,11 @@ import {
   downloadAnnualReport,
   getAnnualReportKinds,
   getPayrollAnnual,
+  setPayrollStart,
+  type PayrollAnnualPayload,
   type PayrollAnnualReportMeta,
 } from "../api";
+import { useMyAccess } from "@/features/settings/lib/module-access";
 import { saveFile } from "@/shared/lib/api-client";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
@@ -43,7 +46,7 @@ export function PayrollAnnualTab() {
 
   // Cached, keyed by year: flicking between filing years shows the one you
   // looked at a moment ago at once, and only a year never opened waits.
-  const { data: payload = null, loading, error } = useCachedQuery(
+  const { data: payload = null, loading, error, refresh } = useCachedQuery(
     `/payroll/annual/${year}`,
     () => getPayrollAnnual(year),
   );
@@ -117,9 +120,11 @@ export function PayrollAnnualTab() {
         </p>
       </section>
 
+      {payload ? <PayrollStartSetting year={year} payload={payload} onSaved={refresh} /> : null}
+
       {/* The forms declare what this company paid in the year, so downloads
-          stay off until every month from its first run of the year through
-          December is approved. */}
+          stay off until every month from January (or from when payroll
+          started here) through December is approved. */}
       {payload && !payload.canGenerate ? (
         <div className={WARN_PANEL}>
           <p className="font-semibold">
@@ -127,9 +132,10 @@ export function PayrollAnnualTab() {
             runs approved for {year}
           </p>
           <p className="mt-1">
-            The annual forms cover every month this company ran payroll in {year}, through
-            December. Approve those months to enable the downloads. PCB 2(II) is a statement
-            of deductions so far, so it is available now.
+            The annual forms cover everything this company paid in {year}, through December.
+            Approve those months to enable the downloads — or, if some were paid in another
+            system, import them (YTD import). PCB 2(II) is a statement of deductions so far,
+            so it is available now.
           </p>
           <p className="mt-1 text-xs">
             Missing: {payload.missingMonths.map(monthShort).join(", ")}
@@ -302,6 +308,89 @@ function Total({
       </dt>
       <dd className="tabular-nums text-foreground">{plain ? value : rm(value)}</dd>
     </div>
+  );
+}
+
+// "Payroll at this company started in <month> <year>".
+//
+// January by default, so the forms wait for the whole year. Only for a
+// company that genuinely paid nobody before then — a new company, or one staff
+// were transferred into. A company that paid earlier months in another system
+// must import them instead, or its forms would under-declare what it paid;
+// the hint says so, because nothing else can tell the two apart.
+function PayrollStartSetting({
+  year,
+  payload,
+  onSaved,
+}: {
+  year: number;
+  payload: PayrollAnnualPayload;
+  onSaved: () => void;
+}) {
+  const access = useMyAccess();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startYear = payload.payrollStartYear;
+  const startMonth = payload.payrollStartMonth;
+  const value = startYear === year && startMonth ? startMonth : 1;
+  const startedLater = startYear !== null && startYear > year;
+
+  async function change(month: number) {
+    // January for a year the setting isn't on is already the default — and
+    // clearing would wipe the start saved for another year.
+    if (month === 1 && startYear !== year) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await (month === 1 ? setPayrollStart(null, null) : setPayrollStart(year, month));
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className={CARD}>
+      <label className={LABEL} htmlFor="payrollStartMonth">
+        Payroll at this company started in
+      </label>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <div className="w-56">
+          <select
+            id="payrollStartMonth"
+            className={INPUT}
+            value={value}
+            disabled={saving || !access.canChangeSettings}
+            onChange={(e) => void change(Number(e.target.value))}
+          >
+            <option value={1}>January or earlier</option>
+            {Array.from({ length: 11 }, (_, i) => i + 2).map((m) => (
+              <option key={m} value={m}>
+                {new Date(2000, m - 1, 1).toLocaleString("en-MY", { month: "long" })}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span className="text-sm text-foreground">{year}</span>
+        {saving ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+      </div>
+      {startedLater && startMonth ? (
+        <p className={HINT}>
+          Saved as {monthShort(startMonth)} {startYear} — {year} is before payroll started here,
+          so only the months actually run count.
+        </p>
+      ) : null}
+      <p className={HINT}>
+        Leave it at January unless the company paid nobody before then — a new company, or one
+        staff were transferred into. If you paid staff earlier in {year} in another system,
+        import those months (YTD import) instead. Otherwise the EA forms, CP8D and Form E would
+        under-declare what the company paid.
+      </p>
+      {error ? <p className="mt-2 text-sm font-semibold text-destructive">{error}</p> : null}
+    </section>
   );
 }
 

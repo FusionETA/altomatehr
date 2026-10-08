@@ -307,4 +307,16 @@ public class ClaimsAutoSettleTests
     {
         Assert.Equal(expected, AltomateHR.Api.Modules.Claims.ClaimsService.SettlementFor(payment, orgRoute));
     }
+
+    // With no Xero to send it to, company money on the payroll route goes
+    // nowhere rather than waiting forever as "not in Xero yet".
+    [Theory]
+    [InlineData(PaymentType.COMPANY, ClaimSettlement.NONE)]
+    [InlineData(PaymentType.PERSONAL, ClaimSettlement.PAYROLL)]
+    public void Without_Xero_company_money_on_the_payroll_route_goes_nowhere(
+        PaymentType payment, ClaimSettlement expected)
+    {
+        Assert.Equal(expected, AltomateHR.Api.Modules.Claims.ClaimsService.SettlementFor(
+            payment, ClaimSettlement.PAYROLL, xeroConnected: false));
+    }
 }

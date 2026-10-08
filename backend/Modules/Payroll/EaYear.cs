@@ -4,11 +4,16 @@ namespace AltomateHR.Api.Modules.Payroll;
 // employee's Form EA, and the admin's bulk EA / CP8D / Form E.
 //
 // The forms declare what THIS company paid in the year, so they wait until
-// every month the company ran payroll for is approved, through December:
-// from its FIRST run of the year (any status — a draft counts, so a draft
-// January still holds the year back) to December. A company that only
-// started running payroll here in March, or that an employee was transferred
-// into in July, owes no January run and can still issue its forms.
+// every month from January through December is approved. January, not the
+// first run here: a company that paid January–June in another system and
+// moved here in July still paid those months, and must import them (YTD
+// import) — its runs alone can't tell it apart from a new employer.
+//
+// The one exception is an admin saying payroll here genuinely STARTED later
+// (PayrollSettings.PayrollStartYear/Month — a new company, or one staff were
+// transferred into): then the year starts at that month. A run earlier than
+// it (an import, or a draft) still pulls the start back, and a draft month
+// anywhere in the range holds the year back.
 //
 // It holds for leavers too: someone who leaves can come back the same year (a
 // rehire, a transfer back), and a form issued when they left would then
@@ -16,27 +21,33 @@ namespace AltomateHR.Api.Modules.Payroll;
 public sealed record EaYear(int ApprovedMonths, int RequiredMonths, int? FirstMonth, bool Ready)
 {
     // submittedMonths: months with an APPROVED run. runMonths: months with a
-    // run in ANY status (drafts included) — only used to find where the
-    // company's year starts. Omitted = the approved months alone.
-    public static EaYear For(IReadOnlyCollection<int> submittedMonths, IReadOnlyCollection<int>? runMonths = null)
+    // run in ANY status (drafts included). startMonth: where the admin says
+    // payroll here began this year (1 = January; 13 = it hadn't begun, so
+    // only the runs that exist count).
+    public static EaYear For(
+        IReadOnlyCollection<int> submittedMonths,
+        IReadOnlyCollection<int>? runMonths = null,
+        int startMonth = 1)
     {
         var first = submittedMonths.Concat(runMonths ?? [])
             .Where(m => m is >= 1 and <= 12)
-            .DefaultIfEmpty(0)
+            .Append(Math.Clamp(startMonth, 1, 13))
             .Min();
 
-        if (first == 0) return new EaYear(0, 12, null, false);
+        if (first == 13) return new EaYear(0, 0, null, false);
 
         var required = Enumerable.Range(first, 13 - first).ToList();
         var approved = required.Count(submittedMonths.Contains);
-        return new EaYear(approved, required.Count, first, approved == required.Count);
+        return new EaYear(approved, required.Count, first, approved == required.Count && approved > 0);
     }
 
     // The months still to approve, in order.
-    public static IReadOnlyList<int> Missing(IReadOnlyCollection<int> submittedMonths, IReadOnlyCollection<int>? runMonths = null)
+    public static IReadOnlyList<int> Missing(
+        IReadOnlyCollection<int> submittedMonths,
+        IReadOnlyCollection<int>? runMonths = null,
+        int startMonth = 1)
     {
-        var ea = For(submittedMonths, runMonths);
-        var first = ea.FirstMonth ?? 1;
+        var first = For(submittedMonths, runMonths, startMonth).FirstMonth ?? 13;
         return [.. Enumerable.Range(first, 13 - first).Where(m => !submittedMonths.Contains(m))];
     }
 

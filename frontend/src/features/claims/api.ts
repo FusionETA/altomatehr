@@ -149,7 +149,8 @@ export const claimSettlementHints: Record<ClaimSettlement, { own: string; compan
   },
   PAYROLL: {
     own: "Reimbursed through the employee's pay, and listed in the payroll export.",
-    company: "Spend Money in Xero, from the company bank account that paid — there's nobody to reimburse.",
+    company:
+      "Spend Money in Xero, from the company bank account that paid — there's nobody to reimburse. Without a Xero connection, it stays approved here.",
   },
   NONE: {
     own: "Stays approved here — reimburse it your own way, or add it to a payroll run by hand.",

@@ -43,7 +43,8 @@ public class EmployeePayrollServiceTests : IDisposable
                 new PayrollCompanyInfoRepository(_db),
                 directory,
                 new StubPayrollOrganizations(),
-                _currentUser),
+                _currentUser,
+                new PayrollSettingsRepository(_db)),
             new StatutoryFileService(
                 new PayrollRunRepository(_db),
                 new PayslipRepository(_db),
@@ -327,12 +328,30 @@ public class EmployeePayrollServiceTests : IDisposable
         Assert.Equal(form.NotReadyReason, pdf.Error);
     }
 
-    // A company whose first run here was July (an employee transferred in,
-    // or a company that moved onto AltomateHR mid-year) issues its EA once
-    // July–December are approved — it owes no January run.
+    // Runs alone can't tell a company that started in July from one that paid
+    // January–June in another system and never imported it, so July–December
+    // is not enough by default — the forms would under-declare.
     [Fact]
-    public async Task A_company_that_started_in_July_issues_the_EA_after_December()
+    public async Task Runs_from_July_alone_still_wait_for_January()
     {
+        for (var month = 7; month <= 12; month++) SeedPayslip(2026, month);
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.False(form.Available);
+        Assert.Equal(12, form.RequiredMonths);
+        Assert.False((await _service.RenderMyEaFormAsync(2026)).Ok);
+    }
+
+    // Once the admin says payroll here started in July (a new company, or
+    // one staff were transferred into), July–December is the whole year.
+    [Fact]
+    public async Task A_company_set_as_starting_in_July_issues_the_EA_after_December()
+    {
+        _db.PayrollSettings.Add(new PayrollSettings
+        {
+            OrganizationId = "org-1", PayrollStartYear = 2026, PayrollStartMonth = 7,
+        });
+        _db.SaveChanges();
         for (var month = 7; month <= 11; month++) SeedPayslip(2026, month);
 
         var waiting = Assert.Single(await _service.GetMyEaFormsAsync());
