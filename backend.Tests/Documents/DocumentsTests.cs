@@ -329,6 +329,92 @@ public class DocumentsTests
         Assert.Equal($"Caller is missing required scope: {scope}.", result.Error);
     }
 
+    // ─── Letters on file need Employees too ──────────────────────────────
+
+    [Fact]
+    public async Task Without_employees_access_saved_letters_cannot_be_listed_downloaded_or_deleted()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var (service, storage, audit) = Letters(db, employees: ModuleLevel.None);
+        var kept = await KeepLetter(db, storage);
+
+        var list = await service.ListAsync(null);
+        var forOne = await service.ListAsync("usr-emp");
+        var file = await service.DownloadAsync(kept.Id);
+        var delete = await service.DeleteAsync(kept.Id);
+
+        Assert.True(list.Forbidden);
+        Assert.Null(list.Letters);
+        Assert.Contains("Employees", list.Error);
+        Assert.True(forOne.Forbidden);
+        Assert.True(file.Forbidden);
+        Assert.Null(file.Content);
+        Assert.True(delete.Forbidden);
+        Assert.Single(db.GeneratedDocuments);   // still there
+        Assert.Single(storage.Files);
+        Assert.False(audit.Recorded(AuditActions.DocumentsLetterDelete));
+
+        // A missing letter reads the same as one that exists: no probing.
+        Assert.True((await service.DeleteAsync("no-such-letter")).Forbidden);
+    }
+
+    [Fact]
+    public async Task View_only_employees_access_lists_and_downloads_saved_letters()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var (service, storage, _) = Letters(db, employees: ModuleLevel.View);
+        var kept = await KeepLetter(db, storage);
+
+        var list = await service.ListAsync("usr-emp");
+        var file = await service.DownloadAsync(kept.Id);
+
+        Assert.True(list.Ok);
+        var row = Assert.Single(list.Letters!);
+        Assert.Equal(kept.Id, row.Id);
+        Assert.Equal("Siti Aminah", row.EmployeeName);
+        Assert.True(file.Ok);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(file.Content!, 0, 4));
+
+        // Deleting needs nothing more of Employees (Documents: Manage is the
+        // controller's gate).
+        Assert.True((await service.DeleteAsync(kept.Id)).Ok);
+        Assert.Empty(db.GeneratedDocuments);
+    }
+
+    [Fact]
+    public async Task An_api_key_without_employees_read_cannot_list_saved_letters()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var (service, _, _) = Letters(db, employees: ModuleLevel.None, user: new StubUser { ScopedMachine = true });
+
+        var list = await service.ListAsync(null);
+
+        Assert.True(list.Forbidden);
+        Assert.Equal("Caller is missing required scope: employees:read.", list.Error);
+    }
+
+    private static async Task<GeneratedDocument> KeepLetter(AppDbContext db, MemoryStorage storage)
+    {
+        var content = System.Text.Encoding.ASCII.GetBytes("%PDF-1.7 test");
+        var kept = new GeneratedDocument
+        {
+            OrganizationId = "org-1",
+            TemplateName = "Notice",
+            EmployeeUserId = "usr-emp",
+            GeneratedByName = "Hana Admin",
+            FileName = "Notice - Siti Aminah.pdf",
+            StoredFileName = await storage.StoreAsync("org-1", "usr-emp", content),
+            SizeBytes = content.Length,
+            CreatedAt = DateTime.UtcNow,
+        };
+        db.GeneratedDocuments.Add(kept);
+        db.SaveChanges();
+        return kept;
+    }
+
     // ─── Write-back fits the columns ─────────────────────────────────────
 
     [Fact]

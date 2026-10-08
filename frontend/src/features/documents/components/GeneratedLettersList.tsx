@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, LoaderCircle, Trash2 } from "lucide-react";
-import { saveFile } from "@/shared/lib/api-client";
+import { ApiError, saveFile } from "@/shared/lib/api-client";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { Skeleton } from "@/shared/components/Skeleton";
@@ -12,6 +12,10 @@ import {
   type GeneratedDocument,
 } from "../api";
 import { categoryLabel, formatDate, formatFileSize } from "../lib/categories";
+
+const NO_EMPLOYEES_ACCESS = "You need access to Employees to view saved letters.";
+
+const isForbidden = (e: unknown) => e instanceof ApiError && e.status === 403;
 
 // Letters kept on file — for one employee, or the whole company. Admin-only:
 // the endpoint behind this is Admin/Owner, and these never appear in the
@@ -28,13 +32,36 @@ export function GeneratedLettersList({
   emptyText?: string;
 }) {
   const path = generatedPath(employeeUserId);
-  const query = useCachedQuery(path, () => getGeneratedDocuments(employeeUserId), {
-    refetchOnInvalidate: true,
-  });
+  // A kept letter prints the employee's record, so the server also requires
+  // Employees access (View) to list, download or delete them. A 403 is shown
+  // as that, not as a failure.
+  const [forbidden, setForbidden] = useState(false);
+  const query = useCachedQuery(
+    path,
+    async () => {
+      try {
+        const rows = await getGeneratedDocuments(employeeUserId);
+        setForbidden(false);
+        return rows;
+      } catch (e) {
+        setForbidden(isForbidden(e));
+        throw e;
+      }
+    },
+    { refetchOnInvalidate: true },
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmDialog] = useConfirm();
   const letters = query.data ?? [];
+
+  if (forbidden) {
+    return (
+      <p className="rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        {NO_EMPLOYEES_ACCESS}
+      </p>
+    );
+  }
 
   async function download(doc: GeneratedDocument) {
     setBusyId(doc.id);
@@ -42,7 +69,9 @@ export function GeneratedLettersList({
     try {
       saveFile(await downloadGeneratedDocument(doc));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not download the letter.");
+      setError(
+        isForbidden(e) ? NO_EMPLOYEES_ACCESS : e instanceof Error ? e.message : "Could not download the letter.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -62,7 +91,9 @@ export function GeneratedLettersList({
       await deleteGeneratedDocument(doc.id);
       await query.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete the letter.");
+      setError(
+        isForbidden(e) ? NO_EMPLOYEES_ACCESS : e instanceof Error ? e.message : "Could not delete the letter.",
+      );
     } finally {
       setBusyId(null);
     }
