@@ -1,6 +1,8 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using AltomateHR.Api.Modules.Payroll.Pdf;
+using AltomateHR.Api.Modules.Policies.Entities;
 using ClosedXML.Excel;
 
 namespace AltomateHR.Api.Tests.Payroll;
@@ -209,5 +211,176 @@ public class AbPayTimesheetXlsxTests
         Assert.Contains(notes, n => code is null
             ? n.Contains("no AB Pay company code is set")
             : n.Contains("AB Pay company code set in Payroll Settings: ABM"));
+    }
+
+    // ─── Self-paid (TP1) PCB offsets on the Statutory sheet ─────────────
+    //
+    // Self-paid zakat and the departure levy are in Payslip.Zakat (they lower
+    // PCB) but not in TotalDeductions (nothing left the payslip). The sheet
+    // must show only zakat taken from pay, keep Other deductions >= 0, and
+    // still reconcile every row to Net Pay. The payslips come from the real
+    // PayslipCalculator so the tests follow its semantics, not a hand model.
+
+    private static (StatutoryEmployeeRow Row, List<PayslipLineItem> Lines, PayslipCalculator.Result Calc)
+        Calculated(params (string Category, decimal Amount)[] rows)
+    {
+        var calc = PayslipCalculator.Calculate(new PayslipCalculator.Input
+        {
+            PeriodYear = 2026,
+            PeriodMonth = 1,
+            SalaryType = SalaryType.MONTHLY,
+            MonthlySalary = 9000m,
+            FixedAllowances = [.. rows.Select(r => new FixedAllowance
+            {
+                Category = r.Category, Name = null, Amount = r.Amount, TreatAsRecurring = false,
+            })],
+            Nationality = "Malaysian",
+            DateOfBirth = new DateTime(1990, 6, 15),
+            IsResident = true,
+            EpfEmployeeRate = 11m,
+            SocsoScheme = SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY,
+            ContributeToEis = true,
+            IncomeTaxNumber = "SG12345678",
+            EpfNumber = "1234567",
+            SocsoNumber = "900615012345",
+            WorkingDaysRule = WorkingDaysRule.TWENTY_SIX,
+            YtdAllowanceByCategory = new Dictionary<string, decimal>(),
+        });
+
+        var payslip = new Payslip
+        {
+            Id = "ps-1",
+            SnapshotName = "RUBIAH BINTI KATIM",
+            SnapshotEmployeeNumber = "00027",
+            BasicPay = calc.BasicPay,
+            ProratedPay = calc.ProratedPay,
+            OtPay = calc.OtPay,
+            TotalAllowances = calc.TotalAllowances,
+            TotalReimbursements = calc.TotalReimbursements,
+            TotalDeductions = calc.TotalDeductions,
+            GrossPay = calc.GrossPay,
+            EpfEmployee = calc.EpfEmployee, EpfEmployer = calc.EpfEmployer,
+            SocsoEmployee = calc.SocsoEmployee, SocsoEmployer = calc.SocsoEmployer,
+            EisEmployee = calc.EisEmployee, EisEmployer = calc.EisEmployer,
+            SkbbkEmployee = calc.SkbbkEmployee,
+            Pcb = calc.Pcb,
+            VoluntaryPcb = calc.VoluntaryPcb,
+            Cp38 = calc.Cp38,
+            Zakat = calc.Zakat,
+            NetPay = calc.NetPay,
+        };
+        var lines = calc.LineItems.Select(li => new PayslipLineItem
+        {
+            PayslipId = "ps-1",
+            Category = li.Category,
+            Label = li.Label,
+            Amount = li.Amount,
+            Kind = li.Kind,
+        }).ToList();
+
+        return (new StatutoryEmployeeRow
+        {
+            Payslip = payslip,
+            EmployeeName = "Rubiah Binti Katim",
+            EmployeeCode = "00027",
+            Department = "OUTLET",
+            Location = "HQM",
+        }, lines, calc);
+    }
+
+    // The rendered Statutory sheet's first data row, by header, and the notes.
+    private static (Dictionary<string, decimal> Cells, List<string> Notes) StatutoryRow(
+        StatutoryEmployeeRow row, List<PayslipLineItem> lines)
+    {
+        using var workbook = new XLWorkbook(new MemoryStream(AbPayTimesheetXlsx.Render(
+            Model(row, lines), AbPayTimesheetXlsx.CompanyColumn("ABM", "Ayu Borneo (Management)"))));
+        var stat = workbook.Worksheet("Statutory");
+
+        var cells = new Dictionary<string, decimal>();
+        for (var c = 3; stat.Cell(1, c).GetString() is { Length: > 0 } header; c++)
+            cells[header] = stat.Cell(2, c).GetValue<decimal>();
+
+        var notes = Enumerable.Range(5, 15).Select(r => stat.Cell(r, 1).GetString()).ToList();
+        return (cells, notes);
+    }
+
+    // Gross less every employee-side column = Net Pay, to the sen.
+    private static void AssertReconciles(Dictionary<string, decimal> cells)
+    {
+        var taken = cells
+            .Where(kv => kv.Key.EndsWith("(Employee)", StringComparison.Ordinal)
+                         || kv.Key is "PCB" or "Zakat" or "Other deductions")
+            .Sum(kv => kv.Value);
+        Assert.Equal(cells["Net Pay"], cells["Gross"] - taken);
+    }
+
+    // An absent column is all zeros.
+    private static decimal Cell(Dictionary<string, decimal> cells, string header) =>
+        cells.GetValueOrDefault(header);
+
+    [Fact]
+    public void Tp1ZakatOnly_IsNotShownAsZakatFromPay_AndOtherIsNotNegative()
+    {
+        var (row, lines, calc) = Calculated((PayrollAdjustmentCategories.DeductZakatTp1, 100m));
+        Assert.Equal(100m, calc.Zakat);            // the calculator's PCB offset is untouched
+        Assert.Equal(0m, calc.TotalDeductions);
+
+        Assert.Equal(100m, AbPayTimesheetXlsx.SelfPaidPcbOffsets(lines));
+        Assert.Equal(0m, AbPayTimesheetXlsx.ZakatFromPay(row.Payslip, lines));
+        Assert.Equal(0m, AbPayTimesheetXlsx.OtherDeductions(row.Payslip, lines));
+
+        var (cells, notes) = StatutoryRow(row, lines);
+        Assert.DoesNotContain("Zakat", cells.Keys);           // nobody had zakat taken from pay
+        Assert.DoesNotContain("Other deductions", cells.Keys);
+        Assert.Equal(0m, Cell(cells, "Zakat"));
+        Assert.True(Cell(cells, "Other deductions") >= 0m);
+        AssertReconciles(cells);
+        Assert.Contains(notes, n => n.Contains("Borang TP1 (RM 100.00 in total)"));
+    }
+
+    [Fact]
+    public void Tp1ZakatPlusPayrollZakat_ShowsOnlyThePayrollZakat()
+    {
+        var (row, lines, calc) = Calculated(
+            (PayrollAdjustmentCategories.DeductZakatTp1, 100m),
+            (PayrollAdjustmentCategories.DeductZakat, 60m),
+            (PayrollAdjustmentCategories.DeductLoanRepayment, 250m));
+        Assert.Equal(160m, calc.Zakat);
+        Assert.Equal(310m, calc.TotalDeductions);  // payroll zakat + loan; TP1 is cash-neutral
+
+        var (cells, notes) = StatutoryRow(row, lines);
+        Assert.Equal(60m, cells["Zakat"]);
+        Assert.Equal(250m, cells["Other deductions"]);   // the loan, nothing netted in twice
+        Assert.True(cells["Other deductions"] >= 0m);
+        AssertReconciles(cells);
+        Assert.Contains(notes, n => n.Contains("Borang TP1 (RM 100.00 in total)"));
+    }
+
+    [Fact]
+    public void Tp1DepartureLevy_IsNotZakat_AndOtherIsNotNegative()
+    {
+        var (row, lines, calc) = Calculated((PayrollAdjustmentCategories.DeductDepartureLevyTp1, 200m));
+        Assert.Equal(200m, calc.Zakat);            // routed through the same PCB offset
+        Assert.Equal(0m, calc.TotalDeductions);
+
+        var (cells, notes) = StatutoryRow(row, lines);
+        Assert.DoesNotContain("Zakat", cells.Keys);
+        Assert.Equal(0m, Cell(cells, "Zakat"));
+        Assert.True(Cell(cells, "Other deductions") >= 0m);
+        Assert.Equal(0m, Cell(cells, "Other deductions"));
+        AssertReconciles(cells);
+        Assert.Contains(notes, n => n.Contains("Borang TP1 (RM 200.00 in total)"));
+    }
+
+    // No self-paid offsets, no note about them.
+    [Fact]
+    public void NoTp1Offsets_NoTp1Note()
+    {
+        var (row, lines, _) = Calculated((PayrollAdjustmentCategories.DeductZakat, 60m));
+
+        var (cells, notes) = StatutoryRow(row, lines);
+        Assert.Equal(60m, cells["Zakat"]);
+        AssertReconciles(cells);
+        Assert.DoesNotContain(notes, n => n.Contains("Borang TP1"));
     }
 }
