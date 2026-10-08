@@ -572,6 +572,11 @@ export const downloadPayrollSummary = (runId: string) =>
 export const downloadManualPayments = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/manual-payments`, "manual-payments.xlsx");
 
+// The run in AB Pay's timesheet layout (Sheet1, re-importable by the ABPay
+// app) with each employee's statutory figures on a second sheet.
+export const downloadAbPayTimesheet = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/ab-pay-timesheet`, "ABPay timesheet.xlsx");
+
 export const downloadPaymentSchedule = (runId: string) =>
   download(
     `/payroll/runs/${runId}/documents/payment-schedule`,

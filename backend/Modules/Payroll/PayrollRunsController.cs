@@ -336,6 +336,14 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> ManualPayments(string id) =>
         File(_statutory.RenderManualPaymentsXlsxAsync(id));
 
+    // The run as an AB Pay timesheet (Ayu Borneo's monthly import layout) on
+    // Sheet1, with each employee's statutory figures on a second sheet.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/ab-pay-timesheet")]
+    public Task<IActionResult> AbPayTimesheet(string id) =>
+        File(_statutory.RenderAbPayTimesheetXlsxAsync(id));
+
     // A missing employer code or IC is the admin's data to fix, so it is a 409
     // with the specific reason — not a 500, and not a silently truncated file.
     private async Task<IActionResult> File(Task<StatutoryFileResult> render)

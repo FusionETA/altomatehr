@@ -313,6 +313,52 @@ public class StatutoryFileService : IStatutoryFileService
             true, fileName, ManualPaymentsXlsx.Render(model), ManualPaymentsXlsx.ContentType, null);
     }
 
+    // The run in Ayu Borneo's monthly timesheet layout, for the ABPay companion
+    // app (Sheet1), plus each employee's statutory figures (Statutory).
+    //
+    // Company is the AltomateHR organisation's name. ABPay's short codes (e.g.
+    // "ABM") are set on ABPay's own Companies page and stored in its own
+    // database — nothing here knows them, so a re-import needs that column
+    // changed to the code first.
+    public async Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId)
+    {
+        var model = await LoadDocumentAsync(runId);
+        if (model is null) return NotFound();
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
+
+        if (model.Rows.Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "Run payroll before downloading the AB Pay timesheet — there are no payslips on this run.");
+        }
+
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(model.Run.Id))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+
+        var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
+        var company = FirstNonBlank(org?.Name, model.OrganizationName) ?? string.Empty;
+
+        var content = AbPayTimesheetXlsx.Render(model with { LineItems = lineItems }, company);
+        return new StatutoryFileResult(
+            true, AbPayFileName(company, model.Run), content, AbPayTimesheetXlsx.ContentType, null);
+    }
+
+    // "ABPay Ayu Borneo (Management) 2026-08.xlsx": Windows-illegal and control
+    // characters dropped, whitespace collapsed, spaces kept.
+    private static string AbPayFileName(string company, Entities.PayrollRun run)
+    {
+        var kept = new string(company
+            .Where(c => !char.IsControl(c)
+                        && c is not ('<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*'))
+            .ToArray());
+        var name = System.Text.RegularExpressions.Regex.Replace(kept, @"\s+", " ").Trim().TrimEnd('.');
+        if (name.Length > 80) name = name[..80].TrimEnd();
+        return $"ABPay {(name.Length == 0 ? "Company" : name)} {run.PeriodYear}-{run.PeriodMonth:D2}.xlsx";
+    }
+
     // The LHDN MTD §E worksheet, one page per employee.
     //
     // Every figure is DESERIALISED from the payslip's stored breakdown. The
@@ -643,6 +689,8 @@ public class StatutoryFileService : IStatutoryFileService
             BankAccountNumber = profile?.BankAccountNumber,
             BankAccountHolderName = profile?.BankAccountHolderName,
             JoinDate = profile?.JoinDate,
+            Department = profile?.Department,
+            Location = profile?.Location,
         };
     }
 }

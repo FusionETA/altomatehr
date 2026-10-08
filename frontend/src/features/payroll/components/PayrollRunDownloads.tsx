@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, Mail, X } from "lucide-react";
 import {
+  downloadAbPayTimesheet,
   downloadAllPayslips,
   downloadBankFile,
   downloadEpfCsv,
@@ -111,6 +112,15 @@ const ITEMS: Item[] = [
       "The LHDN MTD §E worksheet for each employee — numbered sections with LHDN's own variable names, audit-ready. One PDF covering the run.",
     portal: null,
     download: (runId) => downloadPcbDetails(runId),
+  },
+  {
+    key: "ab-pay-timesheet",
+    group: "REPORTS",
+    title: "AB Pay timesheet (Excel)",
+    description:
+      "Each employee's pay in the AB Pay timesheet layout (Basic, U/L, allowances, OT, commission, bonus, deduction, total gross), plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay.",
+    portal: null,
+    download: (runId) => downloadAbPayTimesheet(runId),
   },
   {
     key: "epf",
