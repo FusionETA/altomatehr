@@ -86,6 +86,9 @@ internal sealed class FakeApiKeyRepository : IApiKeyRepository
     public Task<ApiKey?> GetByIdForCurrentOrgAsync(string id) =>
         Task.FromResult(Keys.FirstOrDefault(k => k.Id == id));
 
+    public Task<List<string>> GetActiveNamesForCurrentOrgAsync() =>
+        Task.FromResult(Keys.Where(k => k.Active).Select(k => k.Name).ToList());
+
     public Task AddAsync(ApiKey key)
     {
         Keys.Add(key);

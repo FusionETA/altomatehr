@@ -152,16 +152,6 @@ public static class AbPayTimesheetXlsx
     public static decimal OtherDeductions(Payslip p, IReadOnlyList<PayslipLineItem> lineItems) =>
         Money.Round2(p.TotalDeductions - ZakatFromPay(p, lineItems) - p.VoluntaryPcb);
 
-    // What goes in the Company column, and whether it is ABPay's own code.
-    public sealed record Company(string Value, bool IsCode);
-
-    // The AB Pay company code from Payroll Settings when one is set — that is
-    // what ABPay matches the column against — else the organisation's name.
-    public static Company CompanyColumn(string? abPayCompanyCode, string organizationName) =>
-        string.IsNullOrWhiteSpace(abPayCompanyCode)
-            ? new Company(organizationName.Trim(), IsCode: false)
-            : new Company(abPayCompanyCode.Trim().ToUpperInvariant(), IsCode: true);
-
     // Comment on the Total Gross header. A note rather than different header
     // text: ABPay finds the column by its exact header ("total gross"), and
     // its parser reads cell values only, so a comment cannot affect a re-import.
@@ -173,9 +163,9 @@ public static class AbPayTimesheetXlsx
 
     // `selfPaidOffsets` is the run's total of SelfPaidPcbOffsets; the note
     // about them appears only when someone on the run has one.
-    public static IReadOnlyList<string> Notes(Company company, decimal selfPaidOffsets = 0m)
+    public static IReadOnlyList<string> Notes(decimal selfPaidOffsets = 0m)
     {
-        var notes = NotesAlways(company).ToList();
+        var notes = NotesAlways.ToList();
         if (selfPaidOffsets != 0m)
         {
             notes.Add(
@@ -187,7 +177,7 @@ public static class AbPayTimesheetXlsx
         return notes;
     }
 
-    private static IReadOnlyList<string> NotesAlways(Company company) =>
+    private static readonly IReadOnlyList<string> NotesAlways =
     [
         "Total Gross (Sheet1) = Basic + U/L + Travelling + Meal + Parking + OT + Comm + Bonus + Deduction, "
             + "with U/L and Deduction negative — the ABPay timesheet's own rule. AltomateHR's Gross (this sheet) "
@@ -197,20 +187,19 @@ public static class AbPayTimesheetXlsx
             + "it, and ABPay would not import it if the sheet were re-imported.",
         "Loan repayments, CP38 and other deductions taken from net pay only are under Other deductions here, "
             + "not in Sheet1's Deduction column (which is miscellaneous deductions only).",
-        company.IsCode
-            ? $"Company (Sheet1) is the AB Pay company code set in Payroll Settings: {company.Value}."
-            : "Company (Sheet1) is the company name, because no AB Pay company code is set in Payroll Settings. "
-              + "Set one there for ABPay to recognise the file on re-import.",
+        "Company (Sheet1) is the company name. To re-import the sheet into ABPay, find and replace it "
+            + "with the company's ABPay code first.",
         "PCB includes any Additional PCB (remitted in the same CP39 field), as on the payslip.",
     ];
 
-    public static byte[] Render(PayrollDocumentModel model, Company company)
+    // `companyName` fills Sheet1's Company column: the organisation's full name.
+    public static byte[] Render(PayrollDocumentModel model, string companyName)
     {
-        var rows = BuildRows(model, company.Value);
+        var rows = BuildRows(model, companyName.Trim());
 
         using var workbook = new XLWorkbook();
         WriteTimesheet(workbook.AddWorksheet("Sheet1"), rows);
-        WriteStatutory(workbook.AddWorksheet("Statutory"), model, rows, company);
+        WriteStatutory(workbook.AddWorksheet("Statutory"), model, rows);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -272,7 +261,7 @@ public static class AbPayTimesheetXlsx
     }
 
     private static void WriteStatutory(
-        IXLWorksheet sheet, PayrollDocumentModel model, IReadOnlyList<Row> rows, Company company)
+        IXLWorksheet sheet, PayrollDocumentModel model, IReadOnlyList<Row> rows)
     {
         var payslips = model.Rows.Select(r => r.Payslip).ToList();
         var lineItems = payslips
@@ -354,7 +343,7 @@ public static class AbPayTimesheetXlsx
         sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);
         r++;
         var selfPaid = lineItems.Sum(SelfPaidPcbOffsets);
-        foreach (var note in Notes(company, selfPaid))
+        foreach (var note in Notes(selfPaid))
         {
             sheet.Cell(r, 1).Value = "• " + note;
             sheet.Cell(r, 1).Style.Font.SetFontColor(XLColor.Gray);

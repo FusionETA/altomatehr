@@ -114,15 +114,6 @@ const ITEMS: Item[] = [
     download: (runId) => downloadPcbDetails(runId),
   },
   {
-    key: "ab-pay-timesheet",
-    group: "REPORTS",
-    title: "AB Pay timesheet (Excel)",
-    description:
-      "Each employee's pay in the AB Pay timesheet layout, ready for ABPay to re-import, plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay. Notes in the file explain how Total Gross is worked out and any pay with no AB Pay column.",
-    portal: null,
-    download: (runId) => downloadAbPayTimesheet(runId),
-  },
-  {
     key: "epf",
     group: "STATUTORY",
     title: "EPF Contribution CSV",
@@ -176,6 +167,19 @@ const ITEMS: Item[] = [
     download: (runId) => downloadAllPayslips(runId),
   },
 ];
+
+// Ayu Borneo companies only: offered when the company is connected to ABPay
+// (an active API key named "ABPay…", reported as abPayEnabled on the payroll
+// settings). The server refuses it otherwise too.
+const AB_PAY_TIMESHEET_ITEM: Item = {
+  key: "ab-pay-timesheet",
+  group: "REPORTS",
+  title: "AB Pay timesheet (Excel)",
+  description:
+    "Each employee's pay in the AB Pay timesheet layout, ready for ABPay to re-import, plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay. Notes in the file explain how Total Gross is worked out and any pay with no AB Pay column.",
+  portal: null,
+  download: (runId) => downloadAbPayTimesheet(runId),
+};
 
 // The bank rows depend on the company's OWN bank, because the layouts are not
 // interchangeable — a Maybank customer offered Public Bank's sheet downloads a
@@ -346,6 +350,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // until it loads. Cached, so reopening the modal doesn't re-fetch.
   const { data: settings } = useCachedQuery("payroll-settings", getPayrollSettings);
   const bankName = settings?.payrollBankName ?? null;
+  const abPayEnabled = settings?.abPayEnabled ?? false;
 
   // An imported month's figures were typed in from the previous system, not
   // calculated here. Its payslips render those figures faithfully, so they
@@ -361,10 +366,15 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   const items = useMemo(
     () => {
-      const all = [...ITEMS, ...bankItems(bankName), MANUAL_PAYMENTS_ITEM];
+      const all = [
+        ...ITEMS,
+        ...(abPayEnabled ? [AB_PAY_TIMESHEET_ITEM] : []),
+        ...bankItems(bankName),
+        MANUAL_PAYMENTS_ITEM,
+      ];
       return imported ? all.filter((item) => item.group === "PAYSLIPS") : all;
     },
-    [bankName, imported],
+    [bankName, abPayEnabled, imported],
   );
   const needsReference = formatFor(bankName) === "HlbConnect";
   // Whether this company's payroll bank produces an upload file at all.

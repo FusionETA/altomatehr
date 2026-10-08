@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
@@ -11,11 +12,16 @@ public class PayrollSettingsService : IPayrollSettingsService
     // Optional so hand-built instances in tests need not supply it; the app
     // always does. See PayrollDraftStaleness for why saves here mark drafts.
     private readonly IPayrollDraftStaleness? _drafts;
+    // For the read-only AbPayEnabled flag. Optional for the same reason; with
+    // none, the flag reads false (the AB Pay export is not offered).
+    private readonly IApiKeyService? _apiKeys;
 
     public PayrollSettingsService(
-        IPayrollSettingsRepository repo, IAuditService audit, IPayrollDraftStaleness? drafts = null)
+        IPayrollSettingsRepository repo, IAuditService audit, IPayrollDraftStaleness? drafts = null,
+        IApiKeyService? apiKeys = null)
     {
         _drafts = drafts;
+        _apiKeys = apiKeys;
         _repo = repo;
         _audit = audit;
     }
@@ -29,8 +35,15 @@ public class PayrollSettingsService : IPayrollSettingsService
     {
         var settings = await _repo.GetAsync();
 
-        return settings is null ? Defaults() : ToDto(settings);
+        var dto = settings is null ? Defaults() : ToDto(settings);
+        dto.AbPayEnabled = await AbPayEnabledAsync();
+        return dto;
     }
+
+    // Follows the org's API keys, not anything saved here — see
+    // IApiKeyService.HasAbPayIntegrationAsync.
+    private async Task<bool> AbPayEnabledAsync() =>
+        _apiKeys is not null && await _apiKeys.HasAbPayIntegrationAsync();
 
     // The entity the calc engine needs, materialised from defaults when the org
     // hasn't configured anything. Callers inside payroll use this rather than
@@ -77,7 +90,9 @@ public class PayrollSettingsService : IPayrollSettingsService
         // computes.
         if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
 
-        return ToDto(settings);
+        var saved = ToDto(settings);
+        saved.AbPayEnabled = await AbPayEnabledAsync();
+        return saved;
     }
 
     private static void Apply(PayrollSettings settings, SavePayrollSettingsDto dto)
@@ -102,13 +117,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         settings.PayorOrganisationCode = dto.PayorOrganisationCode;
         settings.EcpPayorAccountNo = dto.EcpPayorAccountNo;
         settings.EcpPayorBic = dto.EcpPayorBic;
-        settings.AbPayCompanyCode = NormaliseAbPayCode(dto.AbPayCompanyCode);
     }
-
-    // ABPay upper-cases and trims the timesheet's Company column before
-    // matching, so the code is stored the same way; blank means "not set".
-    internal static string? NormaliseAbPayCode(string? code) =>
-        string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
 
     // The entity's own field initialisers are the single source of truth for
     // what "unconfigured" means, so the defaults DTO is built from a fresh one.
@@ -130,7 +139,6 @@ public class PayrollSettingsService : IPayrollSettingsService
         PayorOrganisationCode = s.PayorOrganisationCode,
         EcpPayorAccountNo = s.EcpPayorAccountNo,
         EcpPayorBic = s.EcpPayorBic,
-        AbPayCompanyCode = s.AbPayCompanyCode,
         IsConfigured = isConfigured,
         UpdatedAt = isConfigured ? s.UpdatedAt : null,
     };

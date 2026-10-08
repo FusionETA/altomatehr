@@ -11,6 +11,9 @@ public interface IApiKeyRepository
     Task<List<ApiKey>> GetForCurrentOrgAsync();
     Task<ApiKey?> GetByIdForCurrentOrgAsync(string id);
 
+    // Names of the current org's ACTIVE keys (tenant filter scopes it).
+    Task<List<string>> GetActiveNamesForCurrentOrgAsync();
+
     Task AddAsync(ApiKey key);
     Task UpdateAsync(ApiKey key);
 
