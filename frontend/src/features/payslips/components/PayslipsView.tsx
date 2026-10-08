@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { saveFile } from "@/shared/lib/api-client";
+import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
 import { downloadMyPayslipPdf, downloadMyTp1Form, getMyPayslips, type PayslipSummary } from "../api";
@@ -21,8 +22,24 @@ export function PayslipsView() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [year, setYear] = useState<string | null>(null);
+
   const payslipsQuery = useCachedQuery("/payslips", getMyPayslips);
-  const payslips = payslipsQuery.data ?? [];
+  const payslips = useMemo(() => payslipsQuery.data ?? [], [payslipsQuery.data]);
+
+  // One tab per year that has a payslip, newest first. Opens on the latest
+  // year rather than every payslip ever — after a few years the full list is
+  // a long scroll to reach this month. Falls back to the latest year if the
+  // picked one is no longer in the data.
+  const years = useMemo(
+    () =>
+      [...new Set(payslips.map((p) => String(p.periodYear)))].sort(
+        (a, b) => Number(b) - Number(a),
+      ),
+    [payslips],
+  );
+  const activeYear = year && years.includes(year) ? year : (years[0] ?? null);
+  const shown = payslips.filter((p) => String(p.periodYear) === activeYear);
 
   async function download(payslip: PayslipSummary) {
     setDownloading(payslip.id);
@@ -89,8 +106,19 @@ export function PayslipsView() {
 
       <EaFormsCard />
 
+      {years.length > 1 && activeYear ? (
+        <OverflowTabList
+          items={years.map((y) => ({ id: y, label: y }))}
+          value={activeYear}
+          onChange={setYear}
+          variant="segmented"
+          className="mb-4"
+          ariaLabel="Payslip year"
+        />
+      ) : null}
+
       <ul className="space-y-3">
-        {payslips.map((payslip) => (
+        {shown.map((payslip) => (
           <li key={payslip.id}>
             <div className={`${CARD} p-5`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
