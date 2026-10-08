@@ -44,8 +44,10 @@ export const downloadMyTp1Form = (id: string, label: string) =>
 export type EaFormYear = {
   year: number;
   available: boolean;
-  /** How many of the twelve months are approved so far. */
+  /** How many of the months the form waits for are approved so far. */
   approvedMonths: number;
+  /** How many months it waits for: the company's first run of the year through December. */
+  requiredMonths: number;
   /** Why it isn't ready yet, from the server. Null when available. */
   notReadyReason: string | null;
 };

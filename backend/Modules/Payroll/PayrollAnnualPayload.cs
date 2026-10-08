@@ -35,13 +35,20 @@ public sealed record PayrollAnnualPayload
     public IReadOnlyDictionary<int, LhdnMonthReceipts> Receipts { get; init; } =
         new Dictionary<int, LhdnMonthReceipts>();
 
-    public IReadOnlyList<int> MissingMonths =>
-        [.. Enumerable.Range(1, 12).Where(m => !SubmittedMonths.Contains(m))];
+    // Months with a run in ANY status (drafts included) — where the company's
+    // payroll year starts. See EaYear.
+    public IReadOnlyList<int> RunMonths { get; init; } = [];
 
-    // The annual forms declare the whole January–December year, so — as in
-    // the previous system — none is produced until all twelve months are
-    // approved. A return built on eleven months would under-declare.
-    public bool CanGenerate => MissingMonths.Count == 0;
+    // The months the forms wait for: from the company's first run of the year
+    // through December. A company that started here in March owes no January.
+    public int RequiredMonths => EaYear.For(SubmittedMonths, RunMonths).RequiredMonths;
+
+    public IReadOnlyList<int> MissingMonths => EaYear.Missing(SubmittedMonths, RunMonths);
+
+    // The annual forms declare what this company paid in the year, so none is
+    // produced until every month it ran payroll for is approved through
+    // December (EaYear). A return built on part of it would under-declare.
+    public bool CanGenerate => EaYear.For(SubmittedMonths, RunMonths).Ready;
 }
 
 // One employee's whole year, summed across the SUBMITTED runs.

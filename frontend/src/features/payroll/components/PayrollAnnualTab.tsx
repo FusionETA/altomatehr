@@ -117,17 +117,19 @@ export function PayrollAnnualTab() {
         </p>
       </section>
 
-      {/* The forms declare the full January–December year, so downloads stay
-          off until every month is approved — as in the previous system. */}
+      {/* The forms declare what this company paid in the year, so downloads
+          stay off until every month from its first run of the year through
+          December is approved. */}
       {payload && !payload.canGenerate ? (
         <div className={WARN_PANEL}>
           <p className="font-semibold">
-            {payload.submittedMonths.length}/12 monthly runs approved for {year}
+            {payload.requiredMonths - payload.missingMonths.length}/{payload.requiredMonths} monthly
+            runs approved for {year}
           </p>
           <p className="mt-1">
-            The annual forms cover the full January–December year. Approve every month to
-            enable the downloads. PCB 2(II) is a statement of deductions so far, so it is
-            available now.
+            The annual forms cover every month this company ran payroll in {year}, through
+            December. Approve those months to enable the downloads. PCB 2(II) is a statement
+            of deductions so far, so it is available now.
           </p>
           <p className="mt-1 text-xs">
             Missing: {payload.missingMonths.map(monthShort).join(", ")}

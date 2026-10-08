@@ -319,12 +319,32 @@ public class EmployeePayrollServiceTests : IDisposable
         Assert.False(form.Available);
         Assert.Equal(3, form.ApprovedMonths);
         Assert.Equal(
-            "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved.",
+            "The 2026 EA form will be ready once this company's 2026 payroll is approved through December.",
             form.NotReadyReason);
 
         var pdf = await _service.RenderMyEaFormAsync(2026);
         Assert.False(pdf.Ok);
         Assert.Equal(form.NotReadyReason, pdf.Error);
+    }
+
+    // A company whose first run here was July (an employee transferred in,
+    // or a company that moved onto AltomateHR mid-year) issues its EA once
+    // July–December are approved — it owes no January run.
+    [Fact]
+    public async Task A_company_that_started_in_July_issues_the_EA_after_December()
+    {
+        for (var month = 7; month <= 11; month++) SeedPayslip(2026, month);
+
+        var waiting = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.False(waiting.Available);
+        Assert.Equal(5, waiting.ApprovedMonths);
+        Assert.Equal(6, waiting.RequiredMonths);
+
+        SeedPayslip(2026, 12);
+
+        var ready = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.True(ready.Available);
+        Assert.True((await _service.RenderMyEaFormAsync(2026)).Ok);
     }
 
     // Once the year closes, the leaver's form is there like anyone's.

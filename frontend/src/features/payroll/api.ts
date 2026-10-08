@@ -931,9 +931,11 @@ export type PayrollAnnualPayload = {
   // unset, which the TXT renderers treat as a refusal.
   employerNo: string;
   employees: AnnualEmployeeRow[];
-  // Months (1–12) with an approved run. The forms cover the whole year, so
-  // they can only be produced once `canGenerate` — all twelve approved.
+  // Months (1–12) with an approved run. The forms wait for every month from
+  // the company's first run of the year through December (`requiredMonths`
+  // of them); `canGenerate` once those are all approved.
   submittedMonths: number[];
+  requiredMonths: number;
   missingMonths: number[];
   canGenerate: boolean;
 };
