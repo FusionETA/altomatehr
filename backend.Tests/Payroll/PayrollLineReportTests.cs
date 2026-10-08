@@ -53,8 +53,14 @@ public class PayrollLineReportTests
         Assert.Equal(["Loan", "Unpaid leave", "Uniform"],
             lines.Where(IsOtherDeduction).Select(l => l.Label).ToArray());
 
+        // Loan, Uniform, Unpaid leave (from gross), Total. Unpaid leave comes
+        // off gross on the payslip, so it is listed but not in the total —
+        // the total matches the payslip's other deductions.
         var sheet = Open(Render(Model(("ps-1", "Aisyah", lines)), Report.Deductions));
-        Assert.Equal(210m, sheet.Cell(5, 6).GetValue<decimal>());
+        Assert.Equal("Uniform", sheet.Cell(4, 4).GetString());
+        Assert.Equal("Unpaid leave (from gross)", sheet.Cell(4, 5).GetString());
+        Assert.Equal(80m, sheet.Cell(5, 5).GetValue<decimal>());
+        Assert.Equal(130m, sheet.Cell(5, 6).GetValue<decimal>());
     }
 
     [Fact]

@@ -116,7 +116,7 @@ const ITEMS: Item[] = [
     group: "REPORTS",
     title: "Deduction Report (Excel)",
     description:
-      "Deductions other than EPF, SOCSO, EIS and PCB — loans, unpaid leave, advances — one row per employee, one column per deduction, with totals.",
+      "Deductions other than EPF, SOCSO, EIS and PCB — loans, unpaid leave, advances — one row per employee, one column per deduction. Unpaid leave and advances are listed but not totalled; the payslip takes them off gross pay.",
     portal: null,
     download: (runId) => downloadDeductionReport(runId),
   },
