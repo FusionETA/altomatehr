@@ -1,21 +1,57 @@
 namespace AltomateHR.Api.Modules.Payroll;
 
-// When one employee's own Form EA for a year is final.
+// When a company's year is final enough for its year-end forms — one
+// employee's Form EA, and the admin's bulk EA / CP8D / Form E.
 //
-// The form declares the whole January–December year, so — as with the
-// admin's bulk EA — it is ready only once all twelve monthly runs are
-// approved. That holds for leavers too: someone who leaves can come back the
-// same year (a rehire, a transfer back), and a form issued when they left
-// would then under-declare that employer's year.
-public sealed record EaYear(int ApprovedMonths, bool Ready)
+// The forms declare what THIS company paid in the year, so they wait until
+// every month from January through December is approved. January, not the
+// first run here: a company that paid January–June in another system and
+// moved here in July still paid those months, and must import them (YTD
+// import) — its runs alone can't tell it apart from a new employer.
+//
+// The one exception is an admin saying payroll here genuinely STARTED later
+// (PayrollSettings.PayrollStartYear/Month — a new company, or one staff were
+// transferred into): then the year starts at that month. A run earlier than
+// it (an import, or a draft) still pulls the start back, and a draft month
+// anywhere in the range holds the year back.
+//
+// It holds for leavers too: someone who leaves can come back the same year (a
+// rehire, a transfer back), and a form issued when they left would then
+// under-declare that employer's year. So everyone waits for December.
+public sealed record EaYear(int ApprovedMonths, int RequiredMonths, int? FirstMonth, bool Ready)
 {
-    public static EaYear For(IReadOnlyCollection<int> submittedMonths)
+    // submittedMonths: months with an APPROVED run. runMonths: months with a
+    // run in ANY status (drafts included). startMonth: where the admin says
+    // payroll here began this year (1 = January; 13 = it hadn't begun, so
+    // only the runs that exist count).
+    public static EaYear For(
+        IReadOnlyCollection<int> submittedMonths,
+        IReadOnlyCollection<int>? runMonths = null,
+        int startMonth = 1)
     {
-        var approved = Enumerable.Range(1, 12).Count(submittedMonths.Contains);
-        return new EaYear(approved, approved == 12);
+        var first = submittedMonths.Concat(runMonths ?? [])
+            .Where(m => m is >= 1 and <= 12)
+            .Append(Math.Clamp(startMonth, 1, 13))
+            .Min();
+
+        if (first == 13) return new EaYear(0, 0, null, false);
+
+        var required = Enumerable.Range(first, 13 - first).ToList();
+        var approved = required.Count(submittedMonths.Contains);
+        return new EaYear(approved, required.Count, first, approved == required.Count && approved > 0);
+    }
+
+    // The months still to approve, in order.
+    public static IReadOnlyList<int> Missing(
+        IReadOnlyCollection<int> submittedMonths,
+        IReadOnlyCollection<int>? runMonths = null,
+        int startMonth = 1)
+    {
+        var first = For(submittedMonths, runMonths, startMonth).FirstMonth ?? 13;
+        return [.. Enumerable.Range(first, 13 - first).Where(m => !submittedMonths.Contains(m))];
     }
 
     // Why the form is not ready yet, for whoever is looking (the employee or HR).
     public static string NotReadyReason(int year) =>
-        $"The {year} EA form will be ready once all 12 months of {year} payroll are approved.";
+        $"The {year} EA form will be ready once this company's {year} payroll is approved through December.";
 }

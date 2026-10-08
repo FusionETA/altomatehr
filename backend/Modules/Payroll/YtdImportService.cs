@@ -148,7 +148,12 @@ public class YtdImportService : IYtdImportService
         }
 
         var (matched, unmatched) = await MatchAsync(parsed.Employees);
-        var existing = await ExistingImportableMonthsAsync(year);
+
+        // Only the months this file would write. Import leaves every other
+        // month alone, so warning about the whole year told an admin adding
+        // September that January–August "will be replaced" when they would not.
+        var inFile = matched.SelectMany(m => m.Parsed.Months).Select(mo => mo.Month).ToHashSet();
+        var existing = (await ExistingImportableMonthsAsync(year)).Where(inFile.Contains).ToList();
 
         var rows = matched.Select(m => new YtdImportPreviewRow(
             m.Parsed.EmployeeName,
@@ -163,7 +168,7 @@ public class YtdImportService : IYtdImportService
         // Months that already have a COMPUTED run are the dangerous case:
         // importing over one would replace payroll this system produced with
         // figures typed into a spreadsheet.
-        var blocked = await BlockedMonthsAsync(year);
+        var blocked = (await BlockedMonthsAsync(year)).Where(inFile.Contains).ToList();
         if (blocked.Count > 0)
         {
             warnings.Add(

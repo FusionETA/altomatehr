@@ -889,7 +889,8 @@ export type PayrollAnnualReportMeta = {
   extension: string;
   mimeType: string;
   // False for PCB 2(II): a statement of deductions so far, issued mid-year.
-  // The returns declare the whole year and wait for all twelve months.
+  // The returns declare the whole year and wait for it to be approved
+  // through December (EaYear).
   requiresFullYear: boolean;
 };
 
@@ -931,15 +932,25 @@ export type PayrollAnnualPayload = {
   // unset, which the TXT renderers treat as a refusal.
   employerNo: string;
   employees: AnnualEmployeeRow[];
-  // Months (1–12) with an approved run. The forms cover the whole year, so
-  // they can only be produced once `canGenerate` — all twelve approved.
+  // Months (1–12) with an approved run. The forms wait for every month from
+  // January — or from when payroll started here, if the admin set that —
+  // through December (`requiredMonths` of them); `canGenerate` once those are
+  // all approved.
   submittedMonths: number[];
+  requiredMonths: number;
+  // "Payroll at this company started in <month> <year>". Null = January.
+  payrollStartYear: number | null;
+  payrollStartMonth: number | null;
   missingMonths: number[];
   canGenerate: boolean;
 };
 
 export const getAnnualReportKinds = () =>
   apiGet<PayrollAnnualReportMeta[]>("/payroll/annual/reports");
+
+// Sets when payroll started here, for the year-end forms. Both null clears it.
+export const setPayrollStart = (year: number | null, month: number | null) =>
+  apiPut<void>("/payroll/annual/start", { year, month });
 
 export const getPayrollAnnual = (year: number) =>
   apiGet<PayrollAnnualPayload>(`/payroll/annual/${year}`);

@@ -806,6 +806,41 @@ public class YtdImportServiceTests : IDisposable
         Assert.Contains(preview.Warnings, w => w.Contains("January 2026"));
     }
 
+    // Adding September to a year whose January–August were imported earlier
+    // replaces nothing, so the preview must not say it will.
+    [Fact]
+    public async Task PreviewOnlyWarnsAboutMonthsInTheFile()
+    {
+        foreach (var month in new[] { 1, 2 })
+        {
+            _db.PayrollRuns.Add(new PayrollRun
+            {
+                Id = $"run-imported-{month}", OrganizationId = "org-1",
+                PeriodYear = 2026, PeriodMonth = month,
+                Status = PayrollRunStatus.SUBMITTED, Source = PayrollRunSource.IMPORTED,
+            });
+        }
+        _db.PayrollRuns.Add(new PayrollRun
+        {
+            Id = "run-real", OrganizationId = "org-1",
+            PeriodYear = 2026, PeriodMonth = 3,
+            Status = PayrollRunStatus.SUBMITTED, Source = PayrollRunSource.COMPUTED,
+        });
+        await _db.SaveChangesAsync();
+
+        var adding = await _service.PreviewAsync(
+            2026, Sheet("Aisyah Binti Rahman", null, 4), TabularFormat.Csv);
+        Assert.Empty(adding.Warnings);
+
+        var correcting = await _service.PreviewAsync(
+            2026, Sheet("Aisyah Binti Rahman", null, 2, 3), TabularFormat.Csv);
+        var replaced = Assert.Single(correcting.Warnings, w => w.Contains("will be replaced"));
+        Assert.Contains("February 2026", replaced);
+        Assert.DoesNotContain("January 2026", replaced);
+        var skipped = Assert.Single(correcting.Warnings, w => w.Contains("will be skipped"));
+        Assert.Contains("March 2026", skipped);
+    }
+
     // ─── The template round-trips ───────────────────────────────────────
 
     // The file the system hands out must be a file it can read back. If they

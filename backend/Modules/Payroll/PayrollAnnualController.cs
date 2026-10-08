@@ -19,8 +19,13 @@ namespace AltomateHR.Api.Modules.Payroll;
 public class PayrollAnnualController : ControllerBase
 {
     private readonly IPayrollAnnualReportService _annual;
+    private readonly IPayrollSettingsService _settings;
 
-    public PayrollAnnualController(IPayrollAnnualReportService annual) => _annual = annual;
+    public PayrollAnnualController(IPayrollAnnualReportService annual, IPayrollSettingsService settings)
+    {
+        _annual = annual;
+        _settings = settings;
+    }
 
     // What can be produced. Independent of the year, so the page can render
     // its list before picking one.
@@ -32,6 +37,22 @@ public class PayrollAnnualController : ControllerBase
     [RequireScope("payroll:read")]
     [HttpGet("{year:int}")]
     public async Task<IActionResult> Get(int year) => Ok(await _annual.LoadAsync(year));
+
+    // PUT /payroll/annual/start — "payroll at this company started in <month>
+    // <year>", so that year's forms only wait for the months from then
+    // through December. Both null clears it (January). 204; the page reloads
+    // the year to see the effect.
+    [RequireScope("payroll:write")]
+    [RequireSettings]
+    [HttpPut("start")]
+    public async Task<IActionResult> SetStart(SetPayrollStartDto dto)
+    {
+        if ((dto.Year is null) != (dto.Month is null))
+            return BadRequest(new { error = "Give both the year and the month, or neither." });
+
+        await _settings.SetPayrollStartAsync(dto.Year, dto.Month);
+        return NoContent();
+    }
 
     // POST /payroll/annual/cp8d/convert — hand-entered rows in, the zipped
     // M + P pair out. Nothing is read from or written to payroll: this is for

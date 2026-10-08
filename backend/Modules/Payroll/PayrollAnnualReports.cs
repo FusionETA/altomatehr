@@ -18,7 +18,7 @@ public enum PayrollAnnualReportKind
 
     // One PCB 2(II) per employee, concatenated — the statement of the MTD and
     // CP38 deducted from them. Issued on request at any point in the year, so
-    // unlike the others it does not wait for all twelve months.
+    // unlike the others it does not wait for the year to be approved (EaYear).
     PCB2II_BULK_PDF,
 }
 

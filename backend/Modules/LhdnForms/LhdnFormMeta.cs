@@ -37,7 +37,7 @@ public static class LhdnFormMeta
                 LhdnFormKind.EA,
                 "EA",
                 "Statement of remuneration",
-                "The employee's Form EA for the year: pay, deductions and tax, for their income tax return. Ready once all 12 months of the year are approved. The employee can also download it from their Payslips page.",
+                "The employee's Form EA for the year: pay, deductions and tax, for their income tax return. Ready once the company's payroll for the year is approved through December. The employee can also download it from their Payslips page.",
                 LhdnFormAvailability.Any,
                 NeedsYearPicker: true),
             [LhdnFormKind.CP22] = new(

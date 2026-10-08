@@ -95,6 +95,35 @@ public class PayrollSettingsService : IPayrollSettingsService
         return saved;
     }
 
+    public async Task SetPayrollStartAsync(int? year, int? month)
+    {
+        if ((year is null) != (month is null))
+            throw new ArgumentException("Give both the year and the month, or neither.");
+
+        var settings = await _repo.GetAsync();
+        var isFirstSave = settings is null;
+        var now = DateTime.UtcNow;
+        settings ??= new PayrollSettings { CreatedAt = now };
+
+        // January is the default, so "started in January" is the same as unset.
+        var clear = year is null || month == 1;
+        settings.PayrollStartYear = clear ? null : year;
+        settings.PayrollStartMonth = clear ? null : month;
+        settings.UpdatedAt = now;
+
+        if (isFirstSave) await _repo.AddAsync(settings);
+        else await _repo.UpdateAsync(settings);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.PayrollSettingsUpdate,
+            clear
+                ? "Cleared when payroll started here (year-end forms need January–December)"
+                : $"Set payroll as started here in {month:D2}/{year} (year-end forms)",
+            TargetType: "PayrollSettings",
+            TargetId: settings.Id,
+            Metadata: new { settings.PayrollStartYear, settings.PayrollStartMonth }));
+    }
+
     private static void Apply(PayrollSettings settings, SavePayrollSettingsDto dto)
     {
         settings.WorkingDaysRule = dto.WorkingDaysRule;

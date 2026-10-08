@@ -37,6 +37,30 @@ public class PayrollSettings : ITenantScoped
     // there's no declaration to wait for. See PcbReliefs.PerkesoCap.
     public bool AutoApplySocsoEisRelief { get; set; } = true;
 
+    // ---- Year-end forms ----
+
+    // When this company started running its payroll here, if that was part-way
+    // through a year: a new employer, or one staff were transferred into. The
+    // year-end forms (EA, CP8D, Form E) then only wait for the months from
+    // here through December in that year (EaYear).
+    //
+    // Null = January — the safe default. A company that paid January–June in
+    // another system and moved here in July must import those months (YTD
+    // import) rather than set this, or its forms would under-declare what it
+    // paid. Only an admin who knows the company didn't pay anyone before then
+    // should set it.
+    public int? PayrollStartYear { get; set; }
+    public int? PayrollStartMonth { get; set; }
+
+    // The first month the year-end forms wait for in `year`: the start month
+    // in the start year, January in later years. Earlier years had no payroll
+    // here, so nothing is required beyond what was actually run (13).
+    public int YearEndStartMonth(int year) =>
+        PayrollStartYear is not { } startYear || PayrollStartMonth is not { } startMonth ? 1
+        : year > startYear ? 1
+        : year == startYear ? startMonth
+        : 13;
+
     // ---- Xero ----
 
     // Both are gated in the UI behind an active Xero connection.

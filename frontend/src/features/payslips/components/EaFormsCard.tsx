@@ -80,5 +80,5 @@ export function EaFormsCard() {
 // The server's reason, with how far along the year is.
 function notReadyText(form: EaFormYear) {
   const reason = form.notReadyReason ?? "Not ready yet.";
-  return `${reason} (${form.approvedMonths} of 12 months so far)`;
+  return `${reason} (${form.approvedMonths} of ${form.requiredMonths} months so far)`;
 }

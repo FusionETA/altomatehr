@@ -31,6 +31,6 @@ public interface IEmployeePayrollService
     Task<IReadOnlyList<EmployeeEaFormDto>> GetMyEaFormsAsync();
 
     // The caller's own Form EA for the year — their page of the admin's bulk
-    // EA. Refused until all twelve months of the year are approved (EaYear).
+    // EA. Refused until the company's year is approved through December (EaYear).
     Task<StatutoryFileResult> RenderMyEaFormAsync(int year);
 }

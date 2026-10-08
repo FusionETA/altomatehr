@@ -43,7 +43,8 @@ public class EmployeePayrollServiceTests : IDisposable
                 new PayrollCompanyInfoRepository(_db),
                 directory,
                 new StubPayrollOrganizations(),
-                _currentUser),
+                _currentUser,
+                new PayrollSettingsRepository(_db)),
             new StatutoryFileService(
                 new PayrollRunRepository(_db),
                 new PayslipRepository(_db),
@@ -319,12 +320,50 @@ public class EmployeePayrollServiceTests : IDisposable
         Assert.False(form.Available);
         Assert.Equal(3, form.ApprovedMonths);
         Assert.Equal(
-            "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved.",
+            "The 2026 EA form will be ready once this company's 2026 payroll is approved through December.",
             form.NotReadyReason);
 
         var pdf = await _service.RenderMyEaFormAsync(2026);
         Assert.False(pdf.Ok);
         Assert.Equal(form.NotReadyReason, pdf.Error);
+    }
+
+    // Runs alone can't tell a company that started in July from one that paid
+    // January–June in another system and never imported it, so July–December
+    // is not enough by default — the forms would under-declare.
+    [Fact]
+    public async Task Runs_from_July_alone_still_wait_for_January()
+    {
+        for (var month = 7; month <= 12; month++) SeedPayslip(2026, month);
+
+        var form = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.False(form.Available);
+        Assert.Equal(12, form.RequiredMonths);
+        Assert.False((await _service.RenderMyEaFormAsync(2026)).Ok);
+    }
+
+    // Once the admin says payroll here started in July (a new company, or
+    // one staff were transferred into), July–December is the whole year.
+    [Fact]
+    public async Task A_company_set_as_starting_in_July_issues_the_EA_after_December()
+    {
+        _db.PayrollSettings.Add(new PayrollSettings
+        {
+            OrganizationId = "org-1", PayrollStartYear = 2026, PayrollStartMonth = 7,
+        });
+        _db.SaveChanges();
+        for (var month = 7; month <= 11; month++) SeedPayslip(2026, month);
+
+        var waiting = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.False(waiting.Available);
+        Assert.Equal(5, waiting.ApprovedMonths);
+        Assert.Equal(6, waiting.RequiredMonths);
+
+        SeedPayslip(2026, 12);
+
+        var ready = Assert.Single(await _service.GetMyEaFormsAsync());
+        Assert.True(ready.Available);
+        Assert.True((await _service.RenderMyEaFormAsync(2026)).Ok);
     }
 
     // Once the year closes, the leaver's form is there like anyone's.

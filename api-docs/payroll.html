@@ -477,8 +477,11 @@
         <p>
           A year appears once the caller has at least one submitted payslip in it, even if the form
           isn't ready, so "not yet" is visible. The form declares the whole January&ndash;December
-          year, so it is <code>available</code> only once <strong>all 12 months</strong> of that year's
-          runs are approved (<code>SUBMITTED</code>) &mdash; the company's runs, whoever was on them.
+          year, so it is <code>available</code> only once the company's payroll for that year is approved
+          (<code>SUBMITTED</code>) <strong>from its first run of the year through December</strong>
+          &mdash; the company's runs, whoever was on them. That is all 12 months unless an admin set a
+          later payroll start month (see <a href="#set-payroll-start">PUT /payroll/annual/start</a>)
+          or a run exists for an earlier month, which pulls the start back.
           That holds for leavers too: someone who leaves can return the same year, so a form issued
           at their last month could under-declare.
         </p>
@@ -488,9 +491,10 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>year</code></td><td>int</td><td>e.g. <code>2026</code>.</td></tr>
-              <tr><td><code>available</code></td><td>boolean</td><td>True once all 12 months of the year are approved.</td></tr>
-              <tr><td><code>approvedMonths</code></td><td>int</td><td>How many of the 12 months are approved so far (0&ndash;12).</td></tr>
-              <tr><td><code>notReadyReason</code></td><td>string?</td><td>Why it isn't ready, in words (e.g. <code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>). <code>null</code> when <code>available</code>.</td></tr>
+              <tr><td><code>available</code></td><td>boolean</td><td>True once every required month of the year is approved.</td></tr>
+              <tr><td><code>approvedMonths</code></td><td>int</td><td>How many of the required months are approved so far.</td></tr>
+              <tr><td><code>requiredMonths</code></td><td>int</td><td>How many months the form waits for: 12 for a company that ran all year, fewer when payroll started later in the year.</td></tr>
+              <tr><td><code>notReadyReason</code></td><td>string?</td><td>Why it isn't ready, in words (e.g. <code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>). <code>null</code> when <code>available</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -498,9 +502,9 @@
 <pre><code>curl https://&lt;api-host&gt;/payslips/ea-forms \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
 <pre><code>[
-  { "year": 2026, "available": false, "approvedMonths": 9,
-    "notReadyReason": "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved." },
-  { "year": 2025, "available": true, "approvedMonths": 12, "notReadyReason": null }
+  { "year": 2026, "available": false, "approvedMonths": 9, "requiredMonths": 12,
+    "notReadyReason": "The 2026 EA form will be ready once this company's 2026 payroll is approved through December." },
+  { "year": 2025, "available": true, "approvedMonths": 12, "requiredMonths": 12, "notReadyReason": null }
 ]</code></pre>
       </section>
 
@@ -528,7 +532,7 @@
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
               <tr><td><code>404</code></td><td>The caller was not paid in that year, or has no employee profile</td><td>empty</td></tr>
-              <tr><td><code>409</code></td><td>Not all 12 months of the year are approved yet</td><td><code>{ "error": "The 2026 EA form will be ready once all 12 months of 2026 payroll are approved." }</code></td></tr>
+              <tr><td><code>409</code></td><td>The company's year is not approved through December yet</td><td><code>{ "error": "The 2026 EA form will be ready once this company's 2026 payroll is approved through December." }</code></td></tr>
             </tbody>
           </table>
         </div>
@@ -948,7 +952,10 @@
       <p>Year-end filings: Form EA, Form E + CP8D, the LHDN e-CP8D upload pair, and PCB 2(II). An employee's own EA reaches them through the payslips surface, not here.</p>
       <div class="callout warn">
         Form EA, Form E + CP8D and the two CP8D TXT files all cover a full January–December
-        year: none can be produced until all twelve months of that year are <code>SUBMITTED</code>.
+        year: none can be produced until every required month of that year is <code>SUBMITTED</code>,
+        through December. The required months start in January, or at the payroll start month an
+        admin set, and an earlier run (even a draft) pulls the start back. A draft month anywhere
+        in the range holds the year back.
         PCB 2(II) is the one exception — a statement of what has been deducted so far — and is
         available at any point in the year.
       </div>
@@ -990,12 +997,59 @@
             <tbody>
               <tr><td><code>year</code>, <code>organizationName</code>, <code>employerNo</code></td><td></td><td><code>employerNo</code> is the TIN with letters/punctuation stripped.</td></tr>
               <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved.</td></tr>
-              <tr><td><code>missingMonths</code></td><td>int[]</td><td>1–12 not yet approved.</td></tr>
-              <tr><td><code>canGenerate</code></td><td>boolean</td><td><code>missingMonths</code> is empty — the full-year forms would succeed.</td></tr>
+              <tr><td><code>runMonths</code></td><td>int[]</td><td>1–12, months that have a run in any status (drafts included).</td></tr>
+              <tr><td><code>startMonth</code></td><td>int</td><td>The first month the forms wait for this year: 1 (January) by default, or the configured start month. <code>13</code> when the configured start year is later than <code>year</code> (nothing is required beyond runs that exist).</td></tr>
+              <tr><td><code>payrollStartYear</code>, <code>payrollStartMonth</code></td><td>int | null</td><td>The saved "payroll here started in" setting. <code>null</code> when unset.</td></tr>
+              <tr><td><code>requiredMonths</code></td><td>int</td><td>How many months the forms wait for, from the first required month through December.</td></tr>
+              <tr><td><code>missingMonths</code></td><td>int[]</td><td>Required months not yet approved, in order. Follows the required range, so it is not always the 1–12 gaps.</td></tr>
+              <tr><td><code>canGenerate</code></td><td>boolean</td><td>Every required month is approved (and at least one exists) &mdash; the year-end forms would succeed.</td></tr>
               <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat }</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="endpoint" id="set-payroll-start">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/annual/start</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Tells the year-end forms that payroll at this company genuinely started part-way through a year, so that year's forms wait only for the months from then through December. Needs the Payroll module.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>int | null</td><td>With <code>month</code></td><td>2000&ndash;2100.</td></tr>
+              <tr><td><code>month</code></td><td>int | null</td><td>With <code>year</code></td><td>1&ndash;12.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Send both, or send neither (<code>{}</code> or both <code>null</code>) to clear it. A start month of January is stored as "unset", which is the default.</p>
+        <h3>Response <code>204</code></h3>
+        <p>No body. Reload <code>GET /payroll/annual/{year}</code> to see the effect.</p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>A field is out of range</td><td><code>{ "errors": { "Month": ["…"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>Only one of <code>year</code> and <code>month</code> given</td><td><code>{ "error": "Give both the year and the month, or neither." }</code></td></tr>
+              <tr><td><code>403</code></td><td>Missing scope or module, or the admin's access doesn't include changing settings</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>Only for a company that really began paying later.</strong> If staff were paid January&ndash;June in another system and moved here in July, import those months (YTD import) instead. Setting a July start would make the forms under-declare what the company paid.</li>
+          <li><strong>It replaces the saved start.</strong> The start applies to its own year; later years go back to January, and earlier years require nothing beyond runs that exist.</li>
+          <li><strong>A run for an earlier month pulls the start back</strong>, whatever you set, and a draft month in the range holds the year back.</li>
+          <li>The change is written to the audit log.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/annual/start \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"year":2026,"month":7}'</code></pre>
       </section>
 
       <section class="endpoint">
@@ -1009,8 +1063,8 @@
         <p>The file, content type and filename per that report's <code>mimeType</code>/<code>extension</code> (e.g. <code>Form_EA_2026_Bulk.pdf</code>, <code>P{employerNo}_2026.TXT</code>).</p>
         <h3>Errors</h3>
         <p>
-          <code>409</code> <code>{ "error": "x/12 monthly runs approved for 2026. The annual forms cover the full January–December year, so approve every month first (missing: …)." }</code>
-          for a full-year report with gaps; <code>409</code> naming a missing Company Info field for the forms that need one.
+          <code>409</code> <code>{ "error": "x/y monthly runs approved for 2026. The annual forms cover every month this company ran payroll through December, so approve those first (missing: …)." }</code>
+          for a full-year report with gaps (<code>y</code> is <code>requiredMonths</code>); <code>409</code> naming a missing Company Info field for the forms that need one.
         </p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/annual/2026/reports/FORM_EA_BULK_PDF \
   -H "Authorization: Bearer wp_live_xxx" -o form-ea-2026.pdf</code></pre>
@@ -1126,7 +1180,7 @@
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems.</td></tr>
-              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, months that will be skipped or replaced.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, plus months that will be skipped (already have payroll in this system) or replaced (previously imported). The skipped/replaced warnings list only months that appear in the uploaded file; other months of the year are never touched by the import and are not mentioned.</td></tr>
               <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person.</td></tr>
               <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
             </tbody>

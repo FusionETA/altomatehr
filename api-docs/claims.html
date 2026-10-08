@@ -123,7 +123,7 @@
             <tr><td><code>receiptXeroFileId</code></td><td>string | null</td><td>Set when the receipt is held in Xero Files.</td></tr>
             <tr><td><code>supportingDocumentUrls</code></td><td>string[]</td><td>Extra documents, same kind of path as <code>receiptUrl</code>. Empty when there are none.</td></tr>
             <tr><td><code>reviewNotes</code></td><td>string | null</td><td>The approver's remark. Set when a claim is rejected.</td></tr>
-            <tr><td><code>settlement</code></td><td>string</td><td>How an approved claim is paid: <code>XERO_BILL</code> (pushed to Xero) or <code>PAYROLL</code> (reimbursed through pay and picked up by the <a href="#export-payroll">payroll export</a>).</td></tr>
+            <tr><td><code>settlement</code></td><td>string</td><td>How an approved claim is paid: <code>XERO_BILL</code> (pushed to Xero) or <code>PAYROLL</code> (reimbursed through pay and picked up by the <a href="#export-payroll">payroll export</a>), or <code>NONE</code> (not sent anywhere). A company-paid claim filed under the <code>PAYROLL</code> route is <code>XERO_BILL</code> when Xero is connected (it goes to Xero as Spend Money) and <code>NONE</code> when it isn't, because there is nobody to reimburse.</td></tr>
             <tr><td><code>xeroSyncStatus</code></td><td>string</td><td><code>NOT_SYNCED</code>, <code>SYNCED</code> or <code>ERROR</code>. <code>ERROR</code> means a push was tried and failed; see <code>xeroSyncError</code>.</td></tr>
             <tr><td><code>xeroBillId</code>, <code>xeroBillRef</code></td><td>string | null</td><td>The Xero document once synced. A company-paid claim becomes a spend-money transaction rather than a bill, but the id is stored in the same field.</td></tr>
             <tr><td><code>xeroSyncError</code></td><td>string | null</td><td>Why the last push failed.</td></tr>
@@ -347,7 +347,7 @@
           <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
           <tbody>
             <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>Day of the month, 1–28, that a claims run closes. A claim submitted on or before it belongs to that month's run; a later one rolls into the next. Defaults to <code>25</code>.</td></tr>
-            <tr><td><code>settlementRoute</code></td><td>string</td><td><code>XERO_BILL</code> (default) or <code>PAYROLL</code>. How approved claims are paid out.</td></tr>
+            <tr><td><code>settlementRoute</code></td><td>string</td><td><code>XERO_BILL</code> (default), <code>PAYROLL</code> or <code>NONE</code> (don't send anywhere). How approved claims are paid out.</td></tr>
             <tr><td><code>xeroBillStage</code></td><td>string</td><td><code>AwaitingPayment</code> (default) or <code>Draft</code>. The stage a bill lands at in Xero. Only used on the <code>XERO_BILL</code> route.</td></tr>
           </tbody>
         </table>
@@ -384,7 +384,7 @@
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>no</td><td>1–28. Defaults to <code>25</code> when omitted.</td></tr>
-              <tr><td><code>settlementRoute</code></td><td>string</td><td>no</td><td><code>XERO_BILL</code> or <code>PAYROLL</code>. Defaults to <code>XERO_BILL</code> when omitted.</td></tr>
+              <tr><td><code>settlementRoute</code></td><td>string</td><td>no</td><td><code>XERO_BILL</code>, <code>PAYROLL</code> or <code>NONE</code>. Defaults to <code>XERO_BILL</code> when omitted.</td></tr>
               <tr><td><code>xeroBillStage</code></td><td>string</td><td>no</td><td><code>AwaitingPayment</code> or <code>Draft</code>. Defaults to <code>AwaitingPayment</code> when omitted.</td></tr>
             </tbody>
           </table>
@@ -398,7 +398,7 @@
         <h3>Things that bite</h3>
         <ul>
           <li><strong>It replaces all three settings.</strong> A field you leave out is reset to its default, not kept. To change one setting, read <a href="#get-claim-settings">GET /claims/settings</a> first and send all three back.</li>
-          <li><strong><code>settlementRoute</code> applies to claims filed afterwards.</strong> Each claim carries the route it was filed under, so switching it doesn't re-route claims that already exist. <code>xeroBillStage</code>, by contrast, is read each time a claim is pushed to Xero.</li>
+          <li><strong><code>settlementRoute</code> applies to claims filed afterwards.</strong> Each claim carries the route it was filed under, so switching it doesn't re-route claims that already exist. <strong>Company-paid claims never use <code>PAYROLL</code>:</strong> under the <code>PAYROLL</code> route they are stamped <code>XERO_BILL</code> (Spend Money) if Xero is connected, otherwise <code>NONE</code>; only own-money claims are reimbursed through payroll. <code>xeroBillStage</code>, by contrast, is read each time a claim is pushed to Xero.</li>
         </ul>
         <h3>Errors</h3>
         <ul>
@@ -740,7 +740,7 @@
         <h3>Things that bite</h3>
         <ul>
           <li><strong>A run is not a calendar month.</strong> It covers claims <em>submitted</em> from the day after the previous month's cutoff to the cutoff day inclusive. With a cutoff of 25, the <code>2026-01</code> run is 26 December to 25 January.</li>
-          <li>Only claims whose <code>settlement</code> is <code>PAYROLL</code> appear, so an empty file usually means the company pays through Xero, or <code>settlementRoute</code> was changed after the claims were filed.</li>
+          <li>Only claims whose <code>settlement</code> is <code>PAYROLL</code> appear, so company-paid claims never appear, and an empty file usually means the company pays through Xero, or <code>settlementRoute</code> was changed after the claims were filed.</li>
         </ul>
       </section>
 

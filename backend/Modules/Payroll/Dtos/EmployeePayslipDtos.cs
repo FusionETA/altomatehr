@@ -26,7 +26,7 @@ public class EmployeePayslipSummaryDto
 // A year the employee was paid in, for their own Form EA.
 //
 // The form declares the whole January–December year, so it is downloadable
-// only once all twelve months are approved (EaYear) — leavers included. Until
+// only once the company's year is approved through December (EaYear) — leavers included. Until
 // then the row still appears, so "not yet" is visible rather than looking
 // like the form is missing.
 public class EmployeeEaFormDto
@@ -35,8 +35,11 @@ public class EmployeeEaFormDto
 
     public bool Available { get; set; }
 
-    // How many of the twelve months are approved so far, for the "not yet" line.
+    // How many of the months the form waits for are approved so far, and how
+    // many it waits for (from the company's first run of the year through
+    // December — 12 for a company that ran all year), for the "not yet" line.
     public int ApprovedMonths { get; set; }
+    public int RequiredMonths { get; set; } = 12;
 
     // Why it is not ready yet, in words (EaYear.NotReadyReason). Null when
     // available. The server's, so the page never guesses the blocker.

@@ -68,3 +68,12 @@ public class SavePayrollSettingsDto
     [MaxLength(20)] public string? EcpPayorAccountNo { get; set; }
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
 }
+
+// "Payroll at this company started in <month> <year>" — for a company that
+// genuinely began paying staff part-way through a year (a new employer, or one
+// staff were transferred into). Both null clears it: back to January.
+public class SetPayrollStartDto
+{
+    [Range(2000, 2100)] public int? Year { get; set; }
+    [Range(1, 12)] public int? Month { get; set; }
+}
