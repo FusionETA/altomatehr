@@ -30,6 +30,11 @@ public class ApiKeyRepository : IApiKeyRepository
     public Task<ApiKey?> GetByIdForCurrentOrgAsync(string id) =>
         _db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id);
 
+    // A handful of rows per org, so the names come back and the caller matches
+    // them in code. The tenant filter keeps it to the current org.
+    public Task<List<string>> GetActiveNamesForCurrentOrgAsync() =>
+        _db.ApiKeys.Where(k => k.Active).Select(k => k.Name).ToListAsync();
+
     public async Task AddAsync(ApiKey key)
     {
         key.CreatedAt = key.CreatedAt == default ? DateTime.UtcNow : key.CreatedAt;

@@ -33,6 +33,7 @@ const MODULE_LABELS: Record<string, string> = {
   attendance: "Attendance",
   payroll: "Payroll",
   audit: "Activity log",
+  documents: "Documents",
 };
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 

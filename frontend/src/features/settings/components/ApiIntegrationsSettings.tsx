@@ -42,6 +42,8 @@ const SCOPES: { scope: string; description: string }[] = [
   { scope: "sso:write", description: "Sign an admin in from another app (SSO hand-off)" },
   { scope: "payroll:read", description: "List payroll runs, view run details, headcount" },
   { scope: "payroll:write", description: "Submit, approve, reject and revert payroll runs" },
+  { scope: "documents:read", description: "List letter templates and letters on file; preview" },
+  { scope: "documents:write", description: "Edit letter templates; generate letters" },
 ];
 
 // Settings → API integrations: the organization's wp_live_ keys, as the

@@ -34,6 +34,7 @@ import {
   downloadLhdnForm,
   getEmployeeDocuments,
   getEmployeeProfile,
+  getEmployees,
   getEmploymentHistory,
   getLhdnForms,
   getTransferOptions,
@@ -119,6 +120,7 @@ import {
 } from "./employee-profile-sections";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
+import { EmployeeLettersCard } from "@/features/documents/components/EmployeeLettersCard";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -160,6 +162,17 @@ type Placement = {
   jobTitle: string;
   joinDate: string;
 };
+
+// Pre-fill an unset SOCSO scheme with PERKESO's age-based recommendation. The
+// form's baseline gets the same seed so this alone doesn't count as a change —
+// only an actual edit shows "Unsaved changes".
+function withRecommendedSocso(p: EmployeeProfile): EmployeeProfile {
+  const recommendedScheme = recommendSocsoScheme({
+    dateOfBirth: p.dateOfBirth,
+    isMalaysianCitizen: isMalaysianNationality(p.nationality),
+  });
+  return p.socsoScheme === null && recommendedScheme ? { ...p, socsoScheme: recommendedScheme } : p;
+}
 
 // One employee's whole record.
 //
@@ -262,17 +275,7 @@ export function EmployeeDetail({
     getEmployeeProfile(employee.id)
       .then((p) => {
         setOriginalSocsoScheme(p.socsoScheme);
-        // Pre-fill an unset scheme with PERKESO's age-based recommendation.
-        // Baseline gets the same seed so this alone doesn't count as a
-        // change — only an actual edit shows "Unsaved changes".
-        const recommendedScheme = recommendSocsoScheme({
-          dateOfBirth: p.dateOfBirth,
-          isMalaysianCitizen: isMalaysianNationality(p.nationality),
-        });
-        const seeded =
-          p.socsoScheme === null && recommendedScheme
-            ? { ...p, socsoScheme: recommendedScheme }
-            : p;
+        const seeded = withRecommendedSocso(p);
         setProfile(seeded);
         setBaseline(seeded);
         // Two join dates existed before this screen did: one on the membership
@@ -288,6 +291,32 @@ export function EmployeeDetail({
       .catch((e: unknown) => setError(message(e, "Could not load this employee's profile.")))
       .finally(() => setLoading(false));
   }, [employee.id, employee.joinDate, profileReload]);
+
+  // A letter just saved gaps into this record (Documents → "Also save to
+  // employee record": ID number, address, department, location, probation,
+  // confirmation date, job title). Re-read the profile and the job title, or
+  // the next Save here would write the stale copy back over them. Only
+  // offered while nothing here is unsaved (see EmployeeLettersCard below), so
+  // replacing the form wholesale loses nothing. Quietly — no `loading`, which
+  // would unmount the letter dialog the admin is still looking at.
+  async function reloadAfterLetterWriteBack() {
+    try {
+      const [p, everyone] = await Promise.all([getEmployeeProfile(employee.id), getEmployees()]);
+      setOriginalSocsoScheme(p.socsoScheme);
+      const seeded = withRecommendedSocso(p);
+      setProfile(seeded);
+      setBaseline(seeded);
+      const fresh = everyone.find((e) => e.id === employee.id);
+      if (fresh) {
+        const jobTitle = fresh.jobTitle ?? "";
+        setPlacement((cur) => ({ ...cur, jobTitle }));
+        setPlacementBase((cur) => ({ ...cur, jobTitle }));
+        onSaved(fresh);
+      }
+    } catch {
+      setError("The letter saved details to this record, but re-reading it failed. Reload before editing.");
+    }
+  }
 
   useEffect(() => {
     getEmploymentHistory(employee.id)
@@ -1510,6 +1539,21 @@ export function EmployeeDetail({
                       onChange={(v) => set("contractEndDate", v)}
                     />
                   </Field>
+                  <Field label="Probation (months)" hint="Printed on offer and confirmation letters.">
+                    <Num
+                      value={profile.probationMonths}
+                      min={0}
+                      max={120}
+                      onChange={(v) => set("probationMonths", v)}
+                    />
+                  </Field>
+                  <Field label="Confirmation date" hint="When employment is (or was) confirmed after probation.">
+                    <Text
+                      type="date"
+                      value={profile.confirmationDate}
+                      onChange={(v) => set("confirmationDate", v)}
+                    />
+                  </Field>
                 </Group>
 
                 <Group
@@ -2485,6 +2529,16 @@ export function EmployeeDetail({
                   ))
                 )}
               </Stack>
+
+              {/* HR letters — admin-only, unlike the uploads above, which the
+                  employee sees in their portal. Hidden without the Documents
+                  module. */}
+              <EmployeeLettersCard
+                employeeUserId={employee.id}
+                employeeName={employee.name || employee.email}
+                saveToEmployeeBlocked={dirty ? "Save or discard your changes first." : null}
+                onSavedToEmployee={() => void reloadAfterLetterWriteBack()}
+              />
               </>
             )}
           </div>

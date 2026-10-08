@@ -994,6 +994,114 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("Claims");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Documents.Entities.DocumentTemplate", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("SampleKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("DocumentTemplates");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Documents.Entities.GeneratedDocument", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmployeeUserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("varchar(240)");
+
+                    b.Property<string>("GeneratedByName")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("GeneratedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoredFileName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("TemplateName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("ValuesJson")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "EmployeeUserId", "CreatedAt");
+
+                    b.ToTable("GeneratedDocuments");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Employees.Entities.EmployeeProfile", b =>
                 {
                     b.Property<string>("Id")
@@ -1036,6 +1144,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("City")
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime?>("ConfirmationDate")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("ContractEndDate")
                         .HasColumnType("datetime(6)");
@@ -1214,6 +1325,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal?>("PrevZakat")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
+
+                    b.Property<int?>("ProbationMonths")
+                        .HasColumnType("int");
 
                     b.Property<string>("Race")
                         .HasMaxLength(60)

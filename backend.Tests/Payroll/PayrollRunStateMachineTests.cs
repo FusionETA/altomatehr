@@ -214,6 +214,7 @@ public class PayrollRunStateMachineTests : IDisposable
         foreach (var result in new[]
         {
             await _statutory.RenderSummaryPdfAsync(run.Id),
+            await _statutory.RenderSummaryXlsxAsync(run.Id),
             await _statutory.RenderPaymentSchedulePdfAsync(run.Id),
             await _statutory.RenderAllPayslipsZipAsync(run.Id),
             await _statutory.RenderBankFileAsync(run.Id, null),
@@ -242,6 +243,29 @@ public class PayrollRunStateMachineTests : IDisposable
         var run = await SubmittedRunAsync();
 
         Assert.True((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
+    }
+
+    // The Excel summary is the PDF's twin: same gate, and it rides in the
+    // run's zip next to the PDF.
+    [Fact]
+    public async Task SummaryXlsx_IsProducedOnceApproved_AndBundledWithThePdf()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);
+
+        var xlsx = await _statutory.RenderSummaryXlsxAsync(run.Id);
+        Assert.True(xlsx.Ok, xlsx.Error);
+        Assert.Equal(PayrollSummaryXlsx.ContentType, xlsx.ContentType);
+        Assert.Equal("PK", System.Text.Encoding.ASCII.GetString(xlsx.Content!, 0, 2));
+
+        var bundle = await _statutory.RenderRunBundleAsync(run.Id, null);
+        Assert.True(bundle.Ok, bundle.Error);
+        Assert.Contains("summary", bundle.Included);
+        Assert.Contains("summary-xlsx", bundle.Included);
+
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(bundle.Content!));
+        Assert.Contains(archive.Entries, e => e.FullName == "Payroll_Summary_January_2026.pdf");
+        Assert.Contains(archive.Entries, e => e.FullName == "Payroll_Summary_January_2026.xlsx");
     }
 
     // A draft's single payslip may be PREVIEWED — watermarked and named as a
@@ -275,6 +299,8 @@ public class PayrollRunStateMachineTests : IDisposable
 
         Assert.Equal("Payroll_Summary_January_2026.pdf",
             (await _statutory.RenderSummaryPdfAsync(run.Id)).FileName);
+        Assert.Equal("Payroll_Summary_January_2026.xlsx",
+            (await _statutory.RenderSummaryXlsxAsync(run.Id)).FileName);
         Assert.Equal("Payment_Schedule_January_2026.pdf",
             (await _statutory.RenderPaymentSchedulePdfAsync(run.Id)).FileName);
         Assert.Equal("PCB_Calculation_Details_January_2026.pdf",
@@ -434,6 +460,7 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.True((await _service.RevertToDraftAsync(run.Id)).Ok);
 
         Assert.False((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderSummaryXlsxAsync(run.Id)).Ok);
     }
 
     // ─── Submitting for approval ────────────────────────────────────────

@@ -35,6 +35,11 @@ public interface IStatutoryFileService
     // The run on one sheet: gross, deductions and net per employee, totalled.
     Task<StatutoryFileResult> RenderSummaryPdfAsync(string runId);
 
+    // The same summary as an Excel workbook, same gating and figures.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<StatutoryFileResult> RenderSummaryXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // Who is paid what, into which account — the sheet an approver checks
     // against the bank file before releasing it.
     Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId);
@@ -43,6 +48,12 @@ public interface IStatutoryFileService
     // cheque, missing accounts — as an Excel sheet to pay from by hand.
     // (Default keeps hand-written test doubles compiling.)
     Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
+    // The run in Ayu Borneo's monthly timesheet layout — the sheet the ABPay
+    // companion app imports — plus a second sheet of statutory figures.
+    // Approved runs only. (Default keeps hand-written test doubles compiling.)
+    Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
     // The LHDN MTD §E worksheet — one page per employee showing the whole PCB

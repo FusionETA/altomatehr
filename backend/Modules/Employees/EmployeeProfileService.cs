@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees.Dtos;
@@ -136,6 +138,97 @@ public class EmployeeProfileService : IEmployeeProfileService
         return ToDto(profile, user);
     }
 
+    public async Task<IReadOnlyList<string>?> FillMissingFieldsAsync(string userId, FillEmployeeFieldsDto fields)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return null;   // not a member of this org → 404
+
+        var written = new List<string>();
+        var profile = await _profiles.GetByUserAsync(userId);
+        var isNew = profile is null;
+        profile ??= new EmployeeProfile { UserId = userId };
+
+        static bool Empty(string? v) => string.IsNullOrWhiteSpace(v);
+        static string? Clean(string? v) => Empty(v) ? null : v!.Trim();
+
+        // Every text value is fitted to its column AFTER it's been shaped for
+        // storage — the address grows when its lines are joined — or MySQL's
+        // strict mode refuses the whole write.
+        if (Clean(fields.IdNumber) is { } id && Empty(profile.IdNumber))
+        {
+            profile.IdNumber = Fit(id, IdNumberMax);
+            written.Add(nameof(fields.IdNumber));
+        }
+
+        if (Clean(fields.Address) is { } address
+            && Empty(profile.AddressLine1) && Empty(profile.AddressLine2)
+            && Empty(profile.City) && Empty(profile.Postcode) && Empty(profile.State))
+        {
+            // One typed block; line breaks would not survive a one-line field.
+            profile.AddressLine1 = Fit(string.Join(", ",
+                address.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+                AddressLine1Max);
+            written.Add(nameof(fields.Address));
+        }
+
+        if (Clean(fields.Department) is { } department && Empty(profile.Department))
+        {
+            profile.Department = Fit(department, DepartmentMax);
+            written.Add(nameof(fields.Department));
+        }
+
+        if (Clean(fields.Location) is { } location && Empty(profile.Location))
+        {
+            profile.Location = Fit(location, LocationMax);
+            written.Add(nameof(fields.Location));
+        }
+
+        if (fields.ProbationMonths is { } months && profile.ProbationMonths is null)
+        {
+            profile.ProbationMonths = months;
+            written.Add(nameof(fields.ProbationMonths));
+        }
+
+        if (fields.ConfirmationDate is { } confirmed && profile.ConfirmationDate is null)
+        {
+            profile.ConfirmationDate = confirmed.Date;
+            written.Add(nameof(fields.ConfirmationDate));
+        }
+
+        var profileChanged = written.Count > 0;
+        if (profileChanged)
+        {
+            if (isNew) await _profiles.AddAsync(profile);   // StampTenant sets OrganizationId
+            else await _profiles.UpdateAsync(profile);
+        }
+
+        // Job title lives on the membership, not the profile.
+        if (Clean(fields.JobTitle) is { } title && Empty(membership.JobTitle))
+        {
+            membership.JobTitle = Fit(title, JobTitleMax);
+            membership.UpdatedAt = DateTime.UtcNow;
+            await _memberships.UpdateAsync(membership);
+            written.Add(nameof(fields.JobTitle));
+        }
+
+        // None of these fields feed a payroll calculation, so drafts stay valid.
+        return written;
+    }
+
+    // Column widths for FillMissingFieldsAsync, read off the entities'
+    // [MaxLength] so they can't drift from the schema.
+    private static readonly int IdNumberMax = MaxLengthOf<EmployeeProfile>(nameof(EmployeeProfile.IdNumber));
+    private static readonly int AddressLine1Max = MaxLengthOf<EmployeeProfile>(nameof(EmployeeProfile.AddressLine1));
+    private static readonly int DepartmentMax = MaxLengthOf<EmployeeProfile>(nameof(EmployeeProfile.Department));
+    private static readonly int LocationMax = MaxLengthOf<EmployeeProfile>(nameof(EmployeeProfile.Location));
+    private static readonly int JobTitleMax = MaxLengthOf<OrganizationMembership>(nameof(OrganizationMembership.JobTitle));
+
+    private static int MaxLengthOf<T>(string property) =>
+        typeof(T).GetProperty(property)?.GetCustomAttribute<MaxLengthAttribute>()?.Length
+        ?? throw new InvalidOperationException($"{typeof(T).Name}.{property} has no [MaxLength].");
+
+    private static string Fit(string value, int max) => value.Length <= max ? value : value[..max].TrimEnd();
+
     // A restored employee works here again: if they had removed this company
     // from their own list as a former employee, it comes back.
     private async Task UnhideForEmployeeAsync(string userId)
@@ -197,6 +290,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         e.JoinDate = d.JoinDate; e.LeaveDate = d.LeaveDate;
         e.Department = d.Department; e.Location = d.Location; e.WorkSchedule = d.WorkSchedule;
         e.EmploymentStatus = d.EmploymentStatus; e.ContractEndDate = d.ContractEndDate?.Date;
+        e.ProbationMonths = d.ProbationMonths; e.ConfirmationDate = d.ConfirmationDate?.Date;
 
         e.SpouseWorking = d.SpouseWorking; e.SpouseDisabled = d.SpouseDisabled;
         e.SpousePcbNumber = d.SpousePcbNumber; e.SpouseIdNumber = d.SpouseIdNumber;
@@ -266,6 +360,7 @@ public class EmployeeProfileService : IEmployeeProfileService
         JoinDate = e.JoinDate, LeaveDate = e.LeaveDate,
         Department = e.Department, Location = e.Location, WorkSchedule = e.WorkSchedule,
         EmploymentStatus = e.EmploymentStatus, ContractEndDate = e.ContractEndDate,
+        ProbationMonths = e.ProbationMonths, ConfirmationDate = e.ConfirmationDate,
 
         SpouseWorking = e.SpouseWorking, SpouseDisabled = e.SpouseDisabled,
         SpousePcbNumber = e.SpousePcbNumber, SpouseIdNumber = e.SpouseIdNumber,

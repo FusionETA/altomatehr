@@ -105,6 +105,12 @@ function getErrorMessage(data: unknown, fallback: string) {
   // on — a payroll run that is stale, a claim already synced. Without it those
   // land here as "failed: 409" and the written reason is thrown away.
   if (typeof body.error === "string") return body.error;
+  // The access gates' 403 ({ error: { status, message } }) — "your admin
+  // access doesn't include …" — which otherwise reads as "failed: 403".
+  if (body.error && typeof body.error === "object") {
+    const nested = (body.error as Record<string, unknown>).message;
+    if (typeof nested === "string") return nested;
+  }
   if (typeof body.detail === "string") return body.detail;
 
   // ASP.NET's ValidationProblemDetails: `title` is always the same sentence

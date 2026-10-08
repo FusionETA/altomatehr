@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Payroll.Pdf;
@@ -20,6 +21,11 @@ public class StatutoryFileService : IStatutoryFileService
     // not on Company Info.
     private readonly IPayrollSettingsService _settings;
 
+    // Only for the AB Pay timesheet: offered to ABPay-connected companies
+    // alone. Optional so hand-built instances in tests need not supply it;
+    // with none, that export is refused (the app always supplies it).
+    private readonly IApiKeyService? _apiKeys;
+
     public StatutoryFileService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
@@ -27,8 +33,10 @@ public class StatutoryFileService : IStatutoryFileService
         IDirectoryService directory,
         IOrganizationService organizations,
         Common.ICurrentUser currentUser,
-        IPayrollSettingsService settings)
+        IPayrollSettingsService settings,
+        IApiKeyService? apiKeys = null)
     {
+        _apiKeys = apiKeys;
         _runs = runs;
         _payslips = payslips;
         _companyInfo = companyInfo;
@@ -186,7 +194,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "manual-payments", "summary", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+        ["bank-file", "manual-payments", "summary", "summary-xlsx", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -244,6 +252,7 @@ public class StatutoryFileService : IStatutoryFileService
             "bank-file" => RenderBankFileAsync(runId, paymentDate),
             "manual-payments" => RenderManualPaymentsXlsxAsync(runId),
             "summary" => RenderSummaryPdfAsync(runId),
+            "summary-xlsx" => RenderSummaryXlsxAsync(runId),
             "payslips" => RenderAllPayslipsZipAsync(runId),
             "epf" => RenderEpfCsvAsync(runId),
             "socso-eis" => RenderPerkesoTxtAsync(runId),
@@ -254,15 +263,40 @@ public class StatutoryFileService : IStatutoryFileService
 
     public async Task<StatutoryFileResult> RenderSummaryPdfAsync(string runId)
     {
+        var (summary, refused) = await LoadSummaryAsync(runId);
+        if (summary is null) return refused!;
+
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.pdf";
+        return new StatutoryFileResult(
+            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
+    }
+
+    // The same summary as a workbook. Loaded and gated exactly as the PDF is,
+    // so the two always carry the same figures.
+    public async Task<StatutoryFileResult> RenderSummaryXlsxAsync(string runId)
+    {
+        var (summary, refused) = await LoadSummaryAsync(runId);
+        if (summary is null) return refused!;
+
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.xlsx";
+        return new StatutoryFileResult(
+            true, fileName, PayrollSummaryXlsx.Render(summary), PayrollSummaryXlsx.ContentType, null);
+    }
+
+    // The summary's model (with every payslip's line items and the generated
+    // stamp), or the refusal to return instead.
+    private async Task<(PayrollDocumentModel? Summary, StatutoryFileResult? Refused)> LoadSummaryAsync(
+        string runId)
+    {
         var model = await LoadDocumentAsync(runId);
-        if (model is null) return NotFound();
-        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
-        if (RefuseIfImported(model.Run) is { } imported) return imported;
+        if (model is null) return (null, NotFound());
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return (null, refusal);
+        if (RefuseIfImported(model.Run) is { } imported) return (null, imported);
 
         if (model.Rows.Count == 0)
         {
-            return StatutoryFileResult.Refused(
-                "Run payroll before downloading the summary — there are no payslips on this run.");
+            return (null, StatutoryFileResult.Refused(
+                "Run payroll before downloading the summary — there are no payslips on this run."));
         }
 
         // The summary itemises every payslip's lines under the employee's name.
@@ -271,16 +305,12 @@ public class StatutoryFileService : IStatutoryFileService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
                 StringComparer.Ordinal);
 
-        var summary = model with
+        return (model with
         {
             LineItems = lineItems,
             GeneratedAt = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(
                 DateTime.UtcNow, Attendance.AttendanceTime.DefaultTimeZone),
-        };
-
-        var fileName = $"Payroll_Summary_{MonthYear(model.Run)}.pdf";
-        return new StatutoryFileResult(
-            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
+        }, null);
     }
 
     public async Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId)
@@ -311,6 +341,59 @@ public class StatutoryFileService : IStatutoryFileService
         var fileName = $"Manual_Payments_{MonthYear(model.Run)}.xlsx";
         return new StatutoryFileResult(
             true, fileName, ManualPaymentsXlsx.Render(model), ManualPaymentsXlsx.ContentType, null);
+    }
+
+    // The run in Ayu Borneo's monthly timesheet layout, for the ABPay companion
+    // app (Sheet1), plus each employee's statutory figures (Statutory).
+    //
+    // Ayu Borneo companies only: refused unless the company is connected to
+    // ABPay (an active API key named "ABPay…"). Company is the organisation's
+    // full name — ABPay matches its own short code, so a re-import needs a
+    // find-and-replace on that column first (the Notes say so).
+    public async Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId)
+    {
+        if (_apiKeys is null || !await _apiKeys.HasAbPayIntegrationAsync())
+        {
+            return StatutoryFileResult.Refused(
+                "AB Pay export is only available for companies connected to ABPay "
+                + "(an active API key named \"ABPay…\").");
+        }
+
+        var model = await LoadDocumentAsync(runId);
+        if (model is null) return NotFound();
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
+        if (RefuseIfImported(model.Run) is { } imported) return imported;
+
+        if (model.Rows.Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "Run payroll before downloading the AB Pay timesheet — there are no payslips on this run.");
+        }
+
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(model.Run.Id))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+
+        var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
+        var orgName = FirstNonBlank(org?.Name, model.OrganizationName) ?? string.Empty;
+
+        var content = AbPayTimesheetXlsx.Render(model with { LineItems = lineItems }, orgName);
+        return new StatutoryFileResult(
+            true, AbPayFileName(orgName, model.Run), content, AbPayTimesheetXlsx.ContentType, null);
+    }
+
+    // "ABPay Ayu Borneo (Management) 2026-08.xlsx": Windows-illegal and control
+    // characters dropped, whitespace collapsed, spaces kept.
+    private static string AbPayFileName(string company, Entities.PayrollRun run)
+    {
+        var kept = new string(company
+            .Where(c => !char.IsControl(c)
+                        && c is not ('<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*'))
+            .ToArray());
+        var name = System.Text.RegularExpressions.Regex.Replace(kept, @"\s+", " ").Trim().TrimEnd('.');
+        if (name.Length > 80) name = name[..80].TrimEnd();
+        return $"ABPay {(name.Length == 0 ? "Company" : name)} {run.PeriodYear}-{run.PeriodMonth:D2}.xlsx";
     }
 
     // The LHDN MTD §E worksheet, one page per employee.
@@ -643,6 +726,8 @@ public class StatutoryFileService : IStatutoryFileService
             BankAccountNumber = profile?.BankAccountNumber,
             BankAccountHolderName = profile?.BankAccountHolderName,
             JoinDate = profile?.JoinDate,
+            Department = profile?.Department,
+            Location = profile?.Location,
         };
     }
 }

@@ -25,6 +25,11 @@ public class PayrollSettingsDto
     public string? EcpPayorAccountNo { get; set; }
     public string? EcpPayorBic { get; set; }
 
+    // Read-only: the company is connected to ABPay (an active API key named
+    // "ABPay…"), so the AB Pay timesheet export is offered. Not saved — it
+    // follows the API keys.
+    public bool AbPayEnabled { get; set; }
+
     // False until the admin saves for the first time — the GET returns the
     // statutory defaults rather than 404, and the UI uses this to show whether
     // it is looking at real configuration or a starting point.

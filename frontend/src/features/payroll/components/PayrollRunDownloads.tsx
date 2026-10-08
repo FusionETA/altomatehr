@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, Mail, X } from "lucide-react";
 import {
+  downloadAbPayTimesheet,
   downloadAllPayslips,
   downloadBankFile,
   downloadEpfCsv,
   downloadManualPayments,
   downloadPaymentSchedule,
   downloadPayrollSummary,
+  downloadPayrollSummaryXlsx,
   downloadPcbDetails,
   downloadPcbTxt,
   downloadTp1Claims,
@@ -62,6 +64,9 @@ type Item = {
   // title so an admin can find the right file for the portal they have open.
   portal: string | null;
   download: (runId: string, ctx: DownloadContext) => Promise<{ blob: Blob; fileName: string }>;
+  // The same document as an Excel workbook, when it comes in both. The row
+  // then offers "PDF" and "Excel" buttons, and ticking it downloads both.
+  downloadXlsx?: (runId: string) => Promise<{ blob: Blob; fileName: string }>;
 };
 
 // Always offered, whatever the company's payroll bank: the people the bank file
@@ -90,9 +95,10 @@ const ITEMS: Item[] = [
     group: "REPORTS",
     title: "Payroll Summary",
     description:
-      "Internal one-pager of run totals — gross, net, EPF, SOCSO, EIS, PCB, HRDF, headcount.",
+      "Internal one-pager of run totals — gross, net, EPF, SOCSO, EIS, PCB, HRDF, headcount. As a PDF, or as Excel with one row per employee to sort and filter.",
     portal: null,
     download: (runId) => downloadPayrollSummary(runId),
+    downloadXlsx: (runId) => downloadPayrollSummaryXlsx(runId),
   },
   {
     key: "schedule",
@@ -166,6 +172,19 @@ const ITEMS: Item[] = [
     download: (runId) => downloadAllPayslips(runId),
   },
 ];
+
+// Ayu Borneo companies only: offered when the company is connected to ABPay
+// (an active API key named "ABPay…", reported as abPayEnabled on the payroll
+// settings). The server refuses it otherwise too.
+const AB_PAY_TIMESHEET_ITEM: Item = {
+  key: "ab-pay-timesheet",
+  group: "REPORTS",
+  title: "AB Pay timesheet (Excel)",
+  description:
+    "Each employee's pay in the AB Pay timesheet layout, ready for ABPay to re-import, plus a Statutory sheet with EPF, SOCSO, EIS, PCB and net pay. Notes in the file explain how Total Gross is worked out and any pay with no AB Pay column.",
+  portal: null,
+  download: (runId) => downloadAbPayTimesheet(runId),
+};
 
 // The bank rows depend on the company's OWN bank, because the layouts are not
 // interchangeable — a Maybank customer offered Public Bank's sheet downloads a
@@ -336,6 +355,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // until it loads. Cached, so reopening the modal doesn't re-fetch.
   const { data: settings } = useCachedQuery("payroll-settings", getPayrollSettings);
   const bankName = settings?.payrollBankName ?? null;
+  const abPayEnabled = settings?.abPayEnabled ?? false;
 
   // An imported month's figures were typed in from the previous system, not
   // calculated here. Its payslips render those figures faithfully, so they
@@ -351,10 +371,15 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   const items = useMemo(
     () => {
-      const all = [...ITEMS, ...bankItems(bankName), MANUAL_PAYMENTS_ITEM];
+      const all = [
+        ...ITEMS,
+        ...(abPayEnabled ? [AB_PAY_TIMESHEET_ITEM] : []),
+        ...bankItems(bankName),
+        MANUAL_PAYMENTS_ITEM,
+      ];
       return imported ? all.filter((item) => item.group === "PAYSLIPS") : all;
     },
-    [bankName, imported],
+    [bankName, abPayEnabled, imported],
   );
   const needsReference = formatFor(bankName) === "HlbConnect";
   // Whether this company's payroll bank produces an upload file at all.
@@ -383,15 +408,19 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     });
   }
 
-  async function get(item: Item) {
-    setBusy(item.key);
+  async function get(item: Item, format: "default" | "xlsx" = "default") {
+    setBusy(format === "xlsx" ? `${item.key}:xlsx` : item.key);
     setErrors((current) => {
       const { [item.key]: _gone, ...rest } = current;
       return rest;
     });
 
     try {
-      saveFile(await item.download(run.id, context));
+      saveFile(
+        format === "xlsx" && item.downloadXlsx
+          ? await item.downloadXlsx(run.id)
+          : await item.download(run.id, context),
+      );
     } catch (err) {
       setErrors((current) => ({
         ...current,
@@ -412,6 +441,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     for (const item of items.filter((entry) => picked.has(entry.key))) {
       try {
         saveFile(await item.download(run.id, context));
+        if (item.downloadXlsx) saveFile(await item.downloadXlsx(run.id));
       } catch (err) {
         setErrors((current) => ({
           ...current,
@@ -586,19 +616,52 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`${BUTTON_GHOST_SM} shrink-0`}
-                      disabled={busy !== null}
-                      onClick={() => void get(item)}
-                    >
-                      {busy === item.key ? (
-                        <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                      ) : (
-                        <Download className="size-3.5" aria-hidden />
-                      )}
-                      Download
-                    </button>
+                    {item.downloadXlsx ? (
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          type="button"
+                          className={BUTTON_GHOST_SM}
+                          disabled={busy !== null}
+                          aria-label={`Download ${item.title} as PDF`}
+                          onClick={() => void get(item)}
+                        >
+                          {busy === item.key ? (
+                            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Download className="size-3.5" aria-hidden />
+                          )}
+                          PDF
+                        </button>
+                        <button
+                          type="button"
+                          className={BUTTON_GHOST_SM}
+                          disabled={busy !== null}
+                          aria-label={`Download ${item.title} as Excel`}
+                          onClick={() => void get(item, "xlsx")}
+                        >
+                          {busy === `${item.key}:xlsx` ? (
+                            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Download className="size-3.5" aria-hidden />
+                          )}
+                          Excel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${BUTTON_GHOST_SM} shrink-0`}
+                        disabled={busy !== null}
+                        onClick={() => void get(item)}
+                      >
+                        {busy === item.key ? (
+                          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <Download className="size-3.5" aria-hidden />
+                        )}
+                        Download
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

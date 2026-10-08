@@ -6,6 +6,7 @@ using AltomateHR.Api.Modules.Attendance.Entities;
 using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Audit.Entities;
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Documents.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Holidays.Entities;
 using AltomateHR.Api.Modules.Notifications.Entities;
@@ -97,6 +98,8 @@ public class AppDbContext : DbContext
     public DbSet<PayrollRunMember> PayrollRunMembers => Set<PayrollRunMember>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
+    public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
+    public DbSet<GeneratedDocument> GeneratedDocuments => Set<GeneratedDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -364,6 +367,18 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.Endpoint).IsUnique();
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.UserId);
 
+        // HR letters (Documents module).
+        var documentTemplate = modelBuilder.Entity<DocumentTemplate>();
+        documentTemplate.Property(t => t.Category).HasConversion<string>().HasMaxLength(20);
+        documentTemplate.Property(t => t.Body).HasColumnType("longtext");
+        documentTemplate.HasIndex(t => t.OrganizationId);
+
+        var generatedDocument = modelBuilder.Entity<GeneratedDocument>();
+        generatedDocument.Property(d => d.Category).HasConversion<string>().HasMaxLength(20);
+        generatedDocument.Property(d => d.ValuesJson).HasColumnType("longtext");
+        // The two reads: one employee's letters, newest first.
+        generatedDocument.HasIndex(d => new { d.OrganizationId, d.EmployeeUserId, d.CreatedAt });
+
         // ---- Multi-tenant global query filters ----
         // Employee-keyed rows also carry the request's EMPLOYEE SCOPE (a
         // policy-limited admin — see IEmployeeScope): a no-op unless limited.
@@ -477,6 +492,13 @@ public class AppDbContext : DbContext
                  && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(m.EmployeeProfileId)));
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<DocumentTemplate>().HasQueryFilter(
+            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        // A letter is employee-keyed: a policy-limited admin sees only letters
+        // for people in their scope.
+        modelBuilder.Entity<GeneratedDocument>().HasQueryFilter(
+            d => (_currentUser.OrganizationId == null || d.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.UserIds == null || _scope.UserIds.Contains(d.EmployeeUserId)));
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

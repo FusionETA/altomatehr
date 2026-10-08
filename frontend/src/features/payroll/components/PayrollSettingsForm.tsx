@@ -203,6 +203,7 @@ export function PayrollSettingsForm() {
       const {
         isConfigured: _configured,
         updatedAt: _updated,
+        abPayEnabled: _abPayEnabled,
         ...settingsBody
       } = settings;
       const {

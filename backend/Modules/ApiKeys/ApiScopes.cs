@@ -26,6 +26,9 @@ public static class ApiScopes
         // previous system's scope. A run is money leaving a company, so a key
         // only gets it when it was explicitly granted.
         "payroll:read",       "payroll:write",
+        // HR letters: ":read" lists templates and letters on file and renders
+        // previews; ":write" edits templates and generates letters.
+        "documents:read",     "documents:write",
     };
 
     private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);

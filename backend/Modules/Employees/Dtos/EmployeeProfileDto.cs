@@ -48,6 +48,8 @@ public class EmployeeProfileDto
     public string? WorkSchedule { get; set; }
     public EmploymentStatus? EmploymentStatus { get; set; }
     public DateTime? ContractEndDate { get; set; }
+    [Range(0, 120)] public int? ProbationMonths { get; set; }
+    public DateTime? ConfirmationDate { get; set; }
 
     // ---- Spouse / tax relief ----
     public bool? SpouseWorking { get; set; }
@@ -131,4 +133,21 @@ public class EmployeeProfileDto
     public DateTime? ArchivedAt { get; set; }
     public string? ArchiveReason { get; set; }
     public DateTime? TemporaryReviewDate { get; set; }
+}
+
+// Values to write into an employee's record ONLY where it is empty today (see
+// IEmployeeProfileService.FillMissingFieldsAsync). Null = not supplied.
+public class FillEmployeeFieldsDto
+{
+    [MaxLength(40)] public string? IdNumber { get; set; }
+
+    // A whole address typed as one block; stored in AddressLine1, and only
+    // when every address part is empty.
+    [MaxLength(160)] public string? Address { get; set; }
+
+    [MaxLength(120)] public string? JobTitle { get; set; }
+    [MaxLength(120)] public string? Department { get; set; }
+    [MaxLength(120)] public string? Location { get; set; }
+    [Range(0, 120)] public int? ProbationMonths { get; set; }
+    public DateTime? ConfirmationDate { get; set; }
 }

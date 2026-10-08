@@ -59,6 +59,11 @@ public sealed record StatutoryEmployeeRow
 
     public DateTime? JoinDate { get; init; }
 
+    // Where they work, read live like the identifiers above. Only the AB Pay
+    // timesheet export uses these (its Group and Outlet columns).
+    public string? Department { get; init; }
+    public string? Location { get; init; }
+
     // PCB was withheld from them in another SUBMITTED month this year. Such an
     // employee stays "subject to MTD" in a month where the formula gives
     // RM 0.00, and LHDN wants that row in the CP39 file (MTD Testing 2026 Q4:
