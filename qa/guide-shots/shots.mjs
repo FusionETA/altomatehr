@@ -287,8 +287,15 @@ const admin = {
     await year.fill("2026");
     await year.press("Tab");
     await settle(page, 2000);
-    await scrollTo(page, "What the employer keeps", 160);
+    await scrollTo(page, "Payroll at this company started in", 150);
     await shoot(page, "admin", "annual-forms");
+  },
+  "claims-settings": async (page) => {
+    await go(page, "claims");
+    await clickText(page, "Settings");
+    await page.getByText("How approved claims are paid").first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "How approved claims are paid", 120);
+    await shoot(page, "admin", "claims-settings");
   },
   "attendance-today": async (page) => {
     await go(page, "attendance");

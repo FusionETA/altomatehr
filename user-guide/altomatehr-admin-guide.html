@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 6847c37
+  user-guide-covered-up-to: 44ff859
 -->
 <html lang="en">
 <head>
@@ -1023,9 +1023,17 @@
     <ul>
       <li><strong>Default currency</strong>.</li>
       <li><strong>How approved claims are paid</strong> — one route for the whole company:
-        <strong>Sync to Xero as a bill</strong> (choose Awaiting payment or Draft), <strong>Add to payroll</strong>
-        so they're reimbursed through the employee's pay, or <strong>Don't send anywhere</strong> — claims stay
-        approved in AltomateHR and you reimburse them your own way (you can still add one to a payroll run by hand).</li>
+        <strong>Sync to Xero</strong>, <strong>Add to payroll</strong> or
+        <strong>Don't send anywhere</strong>. Each route shows two lines, <em>Own money</em> and <em>Company money</em>:
+        <ul>
+          <li><strong>Sync to Xero</strong> — own-money claims become a bill in Xero to pay the employee back (choose
+            Awaiting payment or Draft); company-money claims become Spend Money in Xero, from the bank account that paid.</li>
+          <li><strong>Add to payroll</strong> — own-money claims are reimbursed through the employee's pay; company-money
+            claims go to Xero as Spend Money, since there's nobody to reimburse. Without a Xero connection, a
+            company-money claim stays approved in AltomateHR.</li>
+          <li><strong>Don't send anywhere</strong> — both kinds stay approved in AltomateHR and you handle them your own
+            way (you can still add an own-money claim to a payroll run by hand).</li>
+        </ul></li>
       <li><strong>Claim run cutoff</strong> — the day of the month claims are cut off.</li>
     </ul>
     <p>Export the list as CSV, XLSX or PDF from the button beside the tabs.</p>
@@ -1331,13 +1339,20 @@
         the upload files. Each row also needs a <strong>Status</strong>, a <strong>Retire / contract end</strong> date
         (or the date they left) and their <strong>PERKESO</strong> amount (SOCSO and EIS together).</li>
     </ul>
+    <p>The forms (EA, CP8D, Form E) stay greyed out until every month they cover is approved — by default January to
+      December. If the page shows <em>9/12 monthly runs approved</em>, approve the months listed under <em>Missing</em>.</p>
+    <p>The <strong>Payroll at this company started in</strong> card, above the forms, changes which months are needed.
+      It's set to <em>January or earlier</em>; pick another month and the forms wait for that month through December
+      instead. Use it only if the company paid nobody before then — a new company, or one staff were transferred into.
+      If you paid staff earlier in the year in another system, leave it at January and use the <strong>YTD import</strong>
+      for those months, or the forms would under-declare what the company paid. Admins who can change settings can edit it.</p>
     <p>CP8D needs your LHDN employer number — the page warns you if it's missing. Each employee's status and contract
       end date come from the Employment tab of their record; if left blank they count as permanent, with retirement at 60.</p>
     
     <figure class="shot" data-place="Annual forms">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: Form EA, Form E + CP8D, PCB 2(II) (bulk) and the e-CP8D upload files" loading="lazy">
+          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: the payroll start month card, the monthly runs approved warning and the employee table" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Annual tax forms</p>
@@ -1355,9 +1370,9 @@
       CP21 open as soon as you've set their <strong>Last day</strong> (Employment tab → Archive) — you don't have to
       archive them first — and show a deadline badge counting down to 30 days before that date.</p>
     <p>The <strong>Year</strong> box is used by the two year-based forms, PCB 2(II) and EA. The
-      <strong>EA — Statement of remuneration</strong> card covers the whole January–December year, so its
-      <span class="btn-name">Download PDF</span> button stays greyed out, with the reason beneath it, until all 12 months
-      of that year's payroll are approved. That includes someone who has left — they might come back the same year.
+      <strong>EA — Statement of remuneration</strong> card covers the year through December, so its
+      <span class="btn-name">Download PDF</span> button stays greyed out, with the reason beneath it, until every month
+      from January (or from the month set under <a href="#annual">Payroll at this company started in</a>) is approved. That includes someone who has left — they might come back the same year.
       Change the year and the card updates. The file is named <em>EA_&lt;employee no&gt;_&lt;year&gt;.pdf</em>. To
       print everyone's EA at once, use <strong>Form EA (bulk)</strong> under <a href="#annual">Payroll → Annual
       forms</a>; that is unchanged.</p>

@@ -704,8 +704,8 @@
         <p><code>404</code> (empty) when <code>{id}</code> is not a member of this organization.</p>
         <div class="callout">
           <code>EA</code> is the employee's Form EA (statement of remuneration) for the year. It is
-          <code>enabled</code> only once <strong>all 12 months</strong> of that year's payroll runs are
-          approved, for every employee &mdash; leavers included &mdash; and only if they were paid in that year.
+          <code>enabled</code> only once the company's payroll for that year is approved
+          <strong>through December</strong> (from its first run of the year, normally January), for every employee &mdash; leavers included &mdash; and only if they were paid in that year.
           It does not depend on the leave date or on whether the employee is archived.
         </div>
         <p>One element of the array (a <code>CP22</code> card):</p>
@@ -745,7 +745,7 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
-              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set). For <code>EA</code>: not all 12 months of <code>year</code> are approved (<code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>), or they weren't paid that year (<code>"No approved payroll for this employee in 2026."</code>)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set). For <code>EA</code>: the company's <code>year</code> payroll isn't approved through December (<code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>), or they weren't paid that year (<code>"No approved payroll for this employee in 2026."</code>)</td><td><code>{ "error": "…" }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>

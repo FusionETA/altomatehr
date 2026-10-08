@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 6847c37
+// whats-new-covered-up-to: 44ff859
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -32,9 +32,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Payroll → Run downloads: Allowance and Deduction reports (Excel). One row per employee, one column per item, with totals. Deductions exclude EPF, SOCSO, EIS, PCB and other statutory payments; benefits in kind and from-gross items (unpaid leave, advances, salary adjustments) are listed but kept out of the cash total. Also included in the download-all zip.",
     ],
     improved: [
+      "Payroll → Annual forms: new setting \"Payroll at this company started in <month>\" for a company that began mid-year. Annual forms (EA, CP8D, Form E) then wait only from that month through December; by default they still wait for January–December. If you paid staff earlier in the year in another system, import those months (YTD import) instead of setting this.",
+      "Claims → Settings: now shows for each route what happens to own-money and company-money claims.",
       "Payslips: opens on the latest year, with a tab for each earlier year you were paid in (newest first), instead of one long list of every payslip. The year tabs appear when you have payslips in more than one year.",
     ],
     fixed: [
+      "Company-money claims no longer get stuck on the \"Add to payroll\" route; they now go to Xero as Spend Money from the paying bank, or nowhere if Xero isn't connected.",
       "Xero: reloading the connection page after a successful connect no longer shows 'Xero didn't finish connecting'. A failed reconnection attempt while still connected shows a calm 'nothing changed — still connected' note instead of an error.",
       "Attendance (Today, Employees tab) and Leave balances/bulk export now list staff only — the Owner and admins no longer appear.",
       "Payroll → Bank files: the Public Bank payroll file no longer refuses to download when a run includes employees paid by Other bank / e-wallet (e.g. Merchantrade), cash or cheque. They're left out of the file and paid from the Manual payments sheet. This applies to any month's run with such employees; bank-transfer amounts are unchanged.",
