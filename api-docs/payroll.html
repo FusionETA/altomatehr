@@ -1180,7 +1180,7 @@
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems.</td></tr>
-              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, months that will be skipped or replaced.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, plus months that will be skipped (already have payroll in this system) or replaced (previously imported). The skipped/replaced warnings list only months that appear in the uploaded file; other months of the year are never touched by the import and are not mentioned.</td></tr>
               <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person.</td></tr>
               <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
             </tbody>

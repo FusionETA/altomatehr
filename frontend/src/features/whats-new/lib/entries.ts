@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 44ff859
+// whats-new-covered-up-to: c296539
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -41,6 +41,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Xero: reloading the connection page after a successful connect no longer shows 'Xero didn't finish connecting'. A failed reconnection attempt while still connected shows a calm 'nothing changed — still connected' note instead of an error.",
       "Attendance (Today, Employees tab) and Leave balances/bulk export now list staff only — the Owner and admins no longer appear.",
       "Payroll → Bank files: the Public Bank payroll file no longer refuses to download when a run includes employees paid by Other bank / e-wallet (e.g. Merchantrade), cash or cheque. They're left out of the file and paid from the Manual payments sheet. This applies to any month's run with such employees; bank-transfer amounts are unchanged.",
+      "Payroll → Import year-to-date: preview warnings now show only the months in the uploaded file, not months the import won't touch.",
     ],
   },
   {
