@@ -45,6 +45,12 @@ public interface IStatutoryFileService
     Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
+    // The run in Ayu Borneo's monthly timesheet layout — the sheet the ABPay
+    // companion app imports — plus a second sheet of statutory figures.
+    // Approved runs only. (Default keeps hand-written test doubles compiling.)
+    Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // The LHDN MTD §E worksheet — one page per employee showing the whole PCB
     // calculation, so an employee or an officer can re-derive the deduction by
     // hand. Reads the payslip's stored breakdown; never recomputes it.

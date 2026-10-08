@@ -69,6 +69,24 @@ public class PayrollSettingsServiceTests : IDisposable
         Assert.Empty(await _db.PayrollSettings.ToListAsync());
     }
 
+    // ABPay trims and upper-cases the timesheet's Company column before
+    // matching, so the code is stored that way; blank means "not set".
+    [Theory]
+    [InlineData("  abm ", "ABM")]
+    [InlineData("ABM", "ABM")]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public async Task AbPayCompanyCode_IsStoredTrimmedAndUpperCased(string? typed, string? stored)
+    {
+        var dto = Save();
+        dto.AbPayCompanyCode = typed;
+
+        var saved = await _service.SaveAsync(dto);
+
+        Assert.Equal(stored, saved.AbPayCompanyCode);
+        Assert.Equal(stored, (await _service.GetAsync()).AbPayCompanyCode);
+    }
+
     [Fact]
     public async Task GetEffective_FallsBackToATransientDefault()
     {

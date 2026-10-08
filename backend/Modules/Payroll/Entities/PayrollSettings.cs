@@ -61,6 +61,14 @@ public class PayrollSettings : ITenantScoped
     [MaxLength(20)] public string? EcpPayorAccountNo { get; set; }
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
 
+    // ---- ABPay ----
+
+    // The short code this company goes by in the ABPay companion app (e.g.
+    // "ABM"), stored trimmed and upper-cased as ABPay matches it. Only the AB
+    // Pay timesheet export reads it, for its Company column; null falls back
+    // to the organisation's name.
+    [MaxLength(20)] public string? AbPayCompanyCode { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -533,6 +533,29 @@ export function PayrollSettingsForm() {
             </div>
           </section>
 
+          {/* ── AB Pay export ──────────────────────────────────────── */}
+          <section className={CARD}>
+            <header className="mb-5">
+              <h3 className="text-[15px] font-semibold text-foreground">AB Pay</h3>
+              <p className={HINT}>
+                For companies whose timesheets go through the ABPay app. Leave blank otherwise.
+              </p>
+            </header>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field
+                id="abPayCompanyCode"
+                label="AB Pay company code"
+                value={settings.abPayCompanyCode}
+                onChange={(abPayCompanyCode) =>
+                  patchSettings({ abPayCompanyCode: abPayCompanyCode?.toUpperCase() ?? null })
+                }
+                placeholder="e.g. ABM"
+                hint="The short code this company uses in ABPay (e.g. ABM). Used in the Company column of the AB Pay timesheet export; without it, the company name is used."
+              />
+            </div>
+          </section>
+
           {/* ── Xero sync on submit ────────────────────────────────── */}
           {xeroConnected ? (
             <section className={CARD}>
