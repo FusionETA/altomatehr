@@ -109,8 +109,13 @@ public class DocumentsController : ControllerBase
 
     [RequireScope("documents:read")]
     [HttpGet("generated")]
-    public async Task<IActionResult> GetGenerated([FromQuery] string? employeeUserId) =>
-        Ok(await _letters.ListAsync(employeeUserId));
+    public async Task<IActionResult> GetGenerated([FromQuery] string? employeeUserId)
+    {
+        // Letters on file print the employee's record: the service also
+        // requires Employees at View (employees:read) for list, file and delete.
+        var result = await _letters.ListAsync(employeeUserId);
+        return result.Forbidden ? AccessGate.Forbidden(result.Error!) : Ok(result.Letters);
+    }
 
     [RequireScope("documents:read")]
     [HttpGet("generated/{id}/file")]
@@ -119,8 +124,12 @@ public class DocumentsController : ControllerBase
 
     [RequireScope("documents:write")]
     [HttpDelete("generated/{id}")]
-    public async Task<IActionResult> DeleteGenerated(string id) =>
-        await _letters.DeleteAsync(id) ? NoContent() : NotFound();
+    public async Task<IActionResult> DeleteGenerated(string id)
+    {
+        var result = await _letters.DeleteAsync(id);
+        if (result.Forbidden) return AccessGate.Forbidden(result.Error!);
+        return result.Ok ? NoContent() : NotFound();
+    }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
 

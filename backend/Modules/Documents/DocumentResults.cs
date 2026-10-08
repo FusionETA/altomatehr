@@ -25,6 +25,23 @@ public sealed record ResolveResult(bool Ok, ResolvedLetterDto? Letter, string? E
     public static ResolveResult Denied(string error) => new(false, null, error, Forbidden: true);
 }
 
+// Letters on file. Ok=false is only ever Forbidden (403).
+public sealed record LetterListResult(bool Ok, List<GeneratedDocumentDto>? Letters, string? Error, bool Forbidden = false)
+{
+    public static LetterListResult Of(List<GeneratedDocumentDto> letters) => new(true, letters, null);
+
+    public static LetterListResult Denied(string error) => new(false, null, error, Forbidden: true);
+}
+
+// Deleting a letter on file: Ok, not found (Error null), or Forbidden.
+public sealed record LetterDeleteResult(bool Ok, string? Error, bool Forbidden = false)
+{
+    public static readonly LetterDeleteResult Deleted = new(true, null);
+    public static readonly LetterDeleteResult NotFound = new(false, null);
+
+    public static LetterDeleteResult Denied(string error) => new(false, error, Forbidden: true);
+}
+
 // A file for the controller to return with File(...), as StatutoryFileResult.
 public sealed record LetterFileResult(
     bool Ok,

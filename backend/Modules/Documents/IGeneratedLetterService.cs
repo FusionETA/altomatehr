@@ -24,10 +24,13 @@ public interface IGeneratedLetterService
     Task<LetterFileResult> GenerateAsync(string templateId, GenerateLetterDto dto);
 
     // Letters on file, newest first. Null employee = the whole company.
-    Task<List<GeneratedDocumentDto>> ListAsync(string? employeeUserId);
+    // A kept letter prints the employee's record (IC, address, salary), so
+    // listing, downloading and deleting them all need Employees at View
+    // (employees:read for an API key) on top of the Documents gate —
+    // Forbidden otherwise.
+    Task<LetterListResult> ListAsync(string? employeeUserId);
 
     Task<LetterFileResult> DownloadAsync(string id);
 
-    // False → not found.
-    Task<bool> DeleteAsync(string id);
+    Task<LetterDeleteResult> DeleteAsync(string id);
 }

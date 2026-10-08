@@ -383,19 +383,26 @@ public class GeneratedLetterService : IGeneratedLetterService
 
     // ─── Letters on file ─────────────────────────────────────────────────
 
-    public async Task<List<GeneratedDocumentDto>> ListAsync(string? employeeUserId)
+    // A kept letter is the employee's record in print, so the same Employees
+    // View requirement as Resolve applies to every letter on file.
+    private async Task<string?> SavedLettersDeniedAsync() =>
+        EmployeeRecordDenied(await _access.GetCallerLevelAsync(OrgModules.Employees), write: false);
+
+    public async Task<LetterListResult> ListAsync(string? employeeUserId)
     {
+        if (await SavedLettersDeniedAsync() is { } denied) return LetterListResult.Denied(denied);
+
         // A limited admin asking for someone outside their scope sees nothing,
         // as if the person had no letters. (The query filter enforces this
         // anyway; this just skips the query.)
-        if (!string.IsNullOrEmpty(employeeUserId) && !_scope.Contains(employeeUserId)) return [];
+        if (!string.IsNullOrEmpty(employeeUserId) && !_scope.Contains(employeeUserId)) return LetterListResult.Of([]);
 
         var rows = await _generated.ListAsync(employeeUserId, MaxListed);
         var names = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var id in rows.Select(r => r.EmployeeUserId).Distinct())
             names[id] = (await _users.GetByIdAsync(id))?.Name;
 
-        return rows.Select(r => new GeneratedDocumentDto
+        return LetterListResult.Of(rows.Select(r => new GeneratedDocumentDto
         {
             Id = r.Id,
             TemplateId = r.TemplateId,
@@ -407,11 +414,13 @@ public class GeneratedLetterService : IGeneratedLetterService
             FileName = r.FileName,
             SizeBytes = r.SizeBytes,
             CreatedAt = r.CreatedAt,
-        }).ToList();
+        }).ToList());
     }
 
     public async Task<LetterFileResult> DownloadAsync(string id)
     {
+        if (await SavedLettersDeniedAsync() is { } denied) return LetterFileResult.Denied(denied);
+
         var doc = await _generated.GetByIdAsync(id);
         if (doc is null) return LetterFileResult.NotFound();
 
@@ -421,10 +430,12 @@ public class GeneratedLetterService : IGeneratedLetterService
             : LetterFileResult.File(doc.FileName, content);
     }
 
-    public async Task<bool> DeleteAsync(string id)
+    public async Task<LetterDeleteResult> DeleteAsync(string id)
     {
+        if (await SavedLettersDeniedAsync() is { } denied) return LetterDeleteResult.Denied(denied);
+
         var doc = await _generated.GetByIdAsync(id);
-        if (doc is null) return false;
+        if (doc is null) return LetterDeleteResult.NotFound;
 
         await _generated.DeleteAsync(doc);
         _storage.Delete(doc.OrganizationId, doc.EmployeeUserId, doc.StoredFileName);
@@ -435,7 +446,7 @@ public class GeneratedLetterService : IGeneratedLetterService
             TargetType: "GeneratedDocument",
             TargetId: doc.Id,
             Metadata: new { doc.EmployeeUserId, doc.TemplateName, doc.FileName }));
-        return true;
+        return LetterDeleteResult.Deleted;
     }
 
     // ─── Records → values ────────────────────────────────────────────────
