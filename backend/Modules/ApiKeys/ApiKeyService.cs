@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using AltomateHR.Api.Modules.ApiKeys.Dtos;
 using AltomateHR.Api.Modules.ApiKeys.Entities;
 
@@ -63,6 +64,20 @@ public class ApiKeyService : IApiKeyService
         }
         return true;
     }
+
+    public async Task<bool> HasAbPayIntegrationAsync()
+    {
+        var names = await _repo.GetActiveNamesForCurrentOrgAsync();
+        return names.Any(IsAbPayKeyName);
+    }
+
+    // "ABPay importer", "abpay", "AB Pay sync", "AB-Pay" → true. A space,
+    // "-" or "_" between AB and Pay is tolerated; nothing else is.
+    public static bool IsAbPayKeyName(string? name) =>
+        !string.IsNullOrEmpty(name) && AbPayName.IsMatch(name);
+
+    private static readonly Regex AbPayName =
+        new(@"ab[\s_-]?pay", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static ApiKeyDto ToDto(ApiKey k) => new()
     {

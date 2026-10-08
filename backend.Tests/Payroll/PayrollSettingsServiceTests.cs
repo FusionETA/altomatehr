@@ -1,4 +1,6 @@
 using AltomateHR.Api.Data;
+using AltomateHR.Api.Modules.ApiKeys;
+using AltomateHR.Api.Modules.ApiKeys.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Dtos;
 using AltomateHR.Api.Modules.Payroll.Entities;
@@ -69,23 +71,35 @@ public class PayrollSettingsServiceTests : IDisposable
         Assert.Empty(await _db.PayrollSettings.ToListAsync());
     }
 
-    // ABPay trims and upper-cases the timesheet's Company column before
-    // matching, so the code is stored that way; blank means "not set".
-    [Theory]
-    [InlineData("  abm ", "ABM")]
-    [InlineData("ABM", "ABM")]
-    [InlineData("   ", null)]
-    [InlineData(null, null)]
-    public async Task AbPayCompanyCode_IsStoredTrimmedAndUpperCased(string? typed, string? stored)
+    // AbPayEnabled is read-only: it follows the org's API keys (an active key
+    // named "ABPay…"), never anything saved on the settings row.
+    [Fact]
+    public async Task AbPayEnabled_IsFalse_WithoutAnAbPayKey()
     {
-        var dto = Save();
-        dto.AbPayCompanyCode = typed;
+        var service = WithApiKeys();
+        _db.ApiKeys.Add(new ApiKey { Name = "Xero sync", TokenHash = "h-1", TokenPrefix = "wp_live_x" });
+        _db.ApiKeys.Add(new ApiKey { Name = "ABPay importer", TokenHash = "h-2", TokenPrefix = "wp_live_y", Active = false });
+        await _db.SaveChangesAsync();
 
-        var saved = await _service.SaveAsync(dto);
-
-        Assert.Equal(stored, saved.AbPayCompanyCode);
-        Assert.Equal(stored, (await _service.GetAsync()).AbPayCompanyCode);
+        Assert.False((await service.GetAsync()).AbPayEnabled);
+        Assert.False((await service.SaveAsync(Save())).AbPayEnabled);
+        Assert.False((await service.GetAsync()).AbPayEnabled);
     }
+
+    [Fact]
+    public async Task AbPayEnabled_IsTrue_WithAnActiveAbPayKey()
+    {
+        var service = WithApiKeys();
+        _db.ApiKeys.Add(new ApiKey { Name = "ABPay importer", TokenHash = "h-1", TokenPrefix = "wp_live_x" });
+        await _db.SaveChangesAsync();
+
+        Assert.True((await service.GetAsync()).AbPayEnabled);      // before any save (defaults)
+        Assert.True((await service.SaveAsync(Save())).AbPayEnabled);
+        Assert.True((await service.GetAsync()).AbPayEnabled);
+    }
+
+    private PayrollSettingsService WithApiKeys() =>
+        new(new PayrollSettingsRepository(_db), _audit, apiKeys: new ApiKeyService(new ApiKeyRepository(_db)));
 
     [Fact]
     public async Task GetEffective_FallsBackToATransientDefault()

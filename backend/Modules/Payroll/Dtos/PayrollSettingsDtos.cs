@@ -25,7 +25,10 @@ public class PayrollSettingsDto
     public string? EcpPayorAccountNo { get; set; }
     public string? EcpPayorBic { get; set; }
 
-    public string? AbPayCompanyCode { get; set; }
+    // Read-only: the company is connected to ABPay (an active API key named
+    // "ABPay…"), so the AB Pay timesheet export is offered. Not saved — it
+    // follows the API keys.
+    public bool AbPayEnabled { get; set; }
 
     // False until the admin saves for the first time — the GET returns the
     // statutory defaults rather than 404, and the UI uses this to show whether
@@ -64,11 +67,4 @@ public class SavePayrollSettingsDto
     [MaxLength(60)] public string? PayorOrganisationCode { get; set; }
     [MaxLength(20)] public string? EcpPayorAccountNo { get; set; }
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
-
-    // ABPay's company code. Letters, digits, "-" and "_" — it is matched
-    // against the timesheet's Company column. Trimmed and upper-cased on save.
-    [MaxLength(20)]
-    [RegularExpression(@"^\s*[A-Za-z0-9_\-]*\s*$",
-        ErrorMessage = "The AB Pay company code can only contain letters, digits, \"-\" and \"_\".")]
-    public string? AbPayCompanyCode { get; set; }
 }

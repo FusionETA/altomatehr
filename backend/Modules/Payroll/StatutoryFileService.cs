@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Payroll.Pdf;
@@ -20,6 +21,11 @@ public class StatutoryFileService : IStatutoryFileService
     // not on Company Info.
     private readonly IPayrollSettingsService _settings;
 
+    // Only for the AB Pay timesheet: offered to ABPay-connected companies
+    // alone. Optional so hand-built instances in tests need not supply it;
+    // with none, that export is refused (the app always supplies it).
+    private readonly IApiKeyService? _apiKeys;
+
     public StatutoryFileService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
@@ -27,8 +33,10 @@ public class StatutoryFileService : IStatutoryFileService
         IDirectoryService directory,
         IOrganizationService organizations,
         Common.ICurrentUser currentUser,
-        IPayrollSettingsService settings)
+        IPayrollSettingsService settings,
+        IApiKeyService? apiKeys = null)
     {
+        _apiKeys = apiKeys;
         _runs = runs;
         _payslips = payslips;
         _companyInfo = companyInfo;
@@ -316,12 +324,19 @@ public class StatutoryFileService : IStatutoryFileService
     // The run in Ayu Borneo's monthly timesheet layout, for the ABPay companion
     // app (Sheet1), plus each employee's statutory figures (Statutory).
     //
-    // Company is the AB Pay company code from Payroll Settings (e.g. "ABM"),
-    // the value ABPay matches the column against. Unset, it falls back to the
-    // organisation's name — readable, but a re-import then needs that column
-    // changed to the code first.
+    // Ayu Borneo companies only: refused unless the company is connected to
+    // ABPay (an active API key named "ABPay…"). Company is the organisation's
+    // full name — ABPay matches its own short code, so a re-import needs a
+    // find-and-replace on that column first (the Notes say so).
     public async Task<StatutoryFileResult> RenderAbPayTimesheetXlsxAsync(string runId)
     {
+        if (_apiKeys is null || !await _apiKeys.HasAbPayIntegrationAsync())
+        {
+            return StatutoryFileResult.Refused(
+                "AB Pay export is only available for companies connected to ABPay "
+                + "(an active API key named \"ABPay…\").");
+        }
+
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
@@ -340,11 +355,8 @@ public class StatutoryFileService : IStatutoryFileService
 
         var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? string.Empty);
         var orgName = FirstNonBlank(org?.Name, model.OrganizationName) ?? string.Empty;
-        var code = (await _settings.GetAsync()).AbPayCompanyCode;
-        var company = AbPayTimesheetXlsx.CompanyColumn(code, orgName);
 
-        var content = AbPayTimesheetXlsx.Render(model with { LineItems = lineItems }, company);
-        // Named after the company, not the code — the file is for people first.
+        var content = AbPayTimesheetXlsx.Render(model with { LineItems = lineItems }, orgName);
         return new StatutoryFileResult(
             true, AbPayFileName(orgName, model.Run), content, AbPayTimesheetXlsx.ContentType, null);
     }

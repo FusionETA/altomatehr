@@ -203,6 +203,7 @@ export function PayrollSettingsForm() {
       const {
         isConfigured: _configured,
         updatedAt: _updated,
+        abPayEnabled: _abPayEnabled,
         ...settingsBody
       } = settings;
       const {
@@ -529,29 +530,6 @@ export function PayrollSettingsForm() {
                 onChange={(payorOrganisationCode) => patchSettings({ payorOrganisationCode })}
                 placeholder="Issued by your bank"
                 hint="Required by Maybank (Corporate ID) and CIMB (Autopay Organisation Code). Public Bank and Hong Leong do not use it."
-              />
-            </div>
-          </section>
-
-          {/* ── AB Pay export ──────────────────────────────────────── */}
-          <section className={CARD}>
-            <header className="mb-5">
-              <h3 className="text-[15px] font-semibold text-foreground">AB Pay</h3>
-              <p className={HINT}>
-                For companies whose timesheets go through the ABPay app. Leave blank otherwise.
-              </p>
-            </header>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field
-                id="abPayCompanyCode"
-                label="AB Pay company code"
-                value={settings.abPayCompanyCode}
-                onChange={(abPayCompanyCode) =>
-                  patchSettings({ abPayCompanyCode: abPayCompanyCode?.toUpperCase() ?? null })
-                }
-                placeholder="e.g. ABM"
-                hint="The short code this company uses in ABPay (e.g. ABM). Used in the Company column of the AB Pay timesheet export; without it, the company name is used."
               />
             </div>
           </section>

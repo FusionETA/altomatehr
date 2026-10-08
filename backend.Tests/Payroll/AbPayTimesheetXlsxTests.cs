@@ -130,8 +130,7 @@ public class AbPayTimesheetXlsxTests
     {
         var (row, lines) = Employee(extraAllowance: 120m);
 
-        var bytes = AbPayTimesheetXlsx.Render(
-            Model(row, lines), AbPayTimesheetXlsx.CompanyColumn(null, "Ayu Borneo (Management)"));
+        var bytes = AbPayTimesheetXlsx.Render(Model(row, lines), "Ayu Borneo (Management)");
 
         using var workbook = new XLWorkbook(new MemoryStream(bytes));
         var sheet = workbook.Worksheet(1);
@@ -169,35 +168,20 @@ public class AbPayTimesheetXlsxTests
         Assert.Equal(120m, stat.Cell(2, headers.IndexOf("Not in AB Pay columns") + 1).GetValue<decimal>());
     }
 
-    // The code from Payroll Settings wins, normalised the way ABPay matches
-    // it; without one the column falls back to the organisation's name.
-    [Theory]
-    [InlineData(" abm ", "ABM", true)]
-    [InlineData(null, "Ayu Borneo (Management)", false)]
-    [InlineData("  ", "Ayu Borneo (Management)", false)]
-    public void Company_UsesTheAbPayCode_ElseTheOrganisationName(string? code, string expected, bool isCode)
-    {
-        var company = AbPayTimesheetXlsx.CompanyColumn(code, "Ayu Borneo (Management)");
-
-        Assert.Equal(expected, company.Value);
-        Assert.Equal(isCode, company.IsCode);
-    }
-
-    [Theory]
-    [InlineData("ABM")]
-    [InlineData(null)]
-    public void StatutorySheet_EndsInANotesBlock_UnderTheTotals(string? code)
+    // Company is always the organisation's full name (trimmed); there is no
+    // AB Pay code setting. The Notes say how to swap in the code for a re-import.
+    [Fact]
+    public void StatutorySheet_EndsInANotesBlock_UnderTheTotals()
     {
         var (row, lines) = Employee(extraAllowance: 120m);
-        var company = AbPayTimesheetXlsx.CompanyColumn(code, "Ayu Borneo (Management)");
 
         using var workbook = new XLWorkbook(new MemoryStream(
-            AbPayTimesheetXlsx.Render(Model(row, lines), company)));
+            AbPayTimesheetXlsx.Render(Model(row, lines), "  Ayu Borneo (Management) ")));
         var sheet = workbook.Worksheet(1);
         var stat = workbook.Worksheet("Statutory");
 
-        // Sheet1's Company column is the chosen value.
-        Assert.Equal(company.Value, sheet.Cell(2, 2).GetString());
+        // Sheet1's Company column is the company name.
+        Assert.Equal("Ayu Borneo (Management)", sheet.Cell(2, 2).GetString());
 
         // One employee: header, row 2, totals on row 3, a blank row, then Notes.
         Assert.StartsWith("Total (1)", stat.Cell(3, 1).GetString());
@@ -208,9 +192,9 @@ public class AbPayTimesheetXlsxTests
         Assert.Contains(notes, n => n.Contains("Total Gross (Sheet1) = Basic + U/L"));
         Assert.Contains(notes, n => n.Contains("Not in AB Pay columns"));
         Assert.Contains(notes, n => n.Contains("Other deductions"));
-        Assert.Contains(notes, n => code is null
-            ? n.Contains("no AB Pay company code is set")
-            : n.Contains("AB Pay company code set in Payroll Settings: ABM"));
+        Assert.Contains(notes, n => n.Contains("Company (Sheet1) is the company name")
+                                    && n.Contains("find and replace"));
+        Assert.DoesNotContain(notes, n => n.Contains("Payroll Settings"));
     }
 
     // ─── Self-paid (TP1) PCB offsets on the Statutory sheet ─────────────
@@ -293,7 +277,7 @@ public class AbPayTimesheetXlsxTests
         StatutoryEmployeeRow row, List<PayslipLineItem> lines)
     {
         using var workbook = new XLWorkbook(new MemoryStream(AbPayTimesheetXlsx.Render(
-            Model(row, lines), AbPayTimesheetXlsx.CompanyColumn("ABM", "Ayu Borneo (Management)"))));
+            Model(row, lines), "Ayu Borneo (Management)")));
         var stat = workbook.Worksheet("Statutory");
 
         var cells = new Dictionary<string, decimal>();
