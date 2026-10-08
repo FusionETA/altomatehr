@@ -16,6 +16,9 @@ public sealed record TemplateSaveResult(
     public static TemplateSaveResult NotFound() => new(false, null, null);
 }
 
+// Ok=false with Error → 400 (wrong type, too large, unreadable file).
+public sealed record TemplateImportResult(bool Ok, TemplateImportDto? Import, string? Error);
+
 public sealed record ResolveResult(bool Ok, ResolvedLetterDto? Letter, string? Error)
 {
     public static ResolveResult NotFound() => new(false, null, null);

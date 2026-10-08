@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Eye, FileDown, LoaderCircle, PencilLine, Plus } from "lucide-react";
+import { ArrowLeft, Check, Copy, Eye, FileDown, FileUp, LoaderCircle, PencilLine, Plus } from "lucide-react";
 import { ApiError, saveFile } from "@/shared/lib/api-client";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
@@ -17,9 +19,10 @@ import {
   type DocumentTemplate,
   type MergeField,
   type MergeFieldSource,
+  type TemplateImport,
 } from "../api";
 import { DOCUMENT_CATEGORIES } from "../lib/categories";
-import { fieldsIn, isValidInputField } from "../lib/markup";
+import { fieldsIn, inputKeyFor, isValidInputField, placeholdersIn, replacePlaceholder } from "../lib/markup";
 import { LetterPreview } from "./LetterPreview";
 
 const CARD =
@@ -40,22 +43,28 @@ const GROUPS: { source: MergeFieldSource; title: string }[] = [
 //
 // Deliberately a textarea, not a rich-text editor: the body is a tiny markdown
 // subset (see lib/markup.ts) that the PDF renderer understands exactly.
+//
+// `imported` opens a new, unsaved template pre-filled from an uploaded Word /
+// text file, with what didn't convert and a picker for its placeholders.
 export function TemplateEditor({
   template,
+  imported,
   mergeFields,
   readOnly,
   onClose,
   onSaved,
 }: {
   template: DocumentTemplate | null;
+  imported?: (TemplateImport & { fileName: string }) | null;
   mergeFields: MergeField[];
   readOnly: boolean;
   onClose: () => void;
   onSaved: (template: DocumentTemplate) => void;
 }) {
-  const [name, setName] = useState(template?.name ?? "");
+  const [name, setName] = useState(template?.name ?? imported?.suggestedName ?? "");
   const [category, setCategory] = useState<DocumentCategory>(template?.category ?? "OTHER");
-  const [body, setBody] = useState(template?.body ?? "");
+  const [body, setBody] = useState(template?.body ?? imported?.body ?? "");
+  const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [inputName, setInputName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -67,8 +76,29 @@ export function TemplateEditor({
 
   const known = useMemo(() => new Set(mergeFields.map((f) => f.key)), [mergeFields]);
   const used = useMemo(() => fieldsIn(body), [body]);
-  const unknown = used.filter((k) => !known.has(k) && !isValidInputField(k));
+  // Any {{…}} the PDF can't fill — including ones the strict pattern skips,
+  // like {{Employee Name}} from a Word file.
+  const unknown = useMemo(
+    () => placeholdersIn(body).filter((k) => !known.has(k) && !isValidInputField(k)),
+    [body, known],
+  );
   const inputs = used.filter((k) => isValidInputField(k));
+
+  function replaceField(from: string, to: string) {
+    setBody((b) => replacePlaceholder(b, from, to));
+    setServerUnknown((list) => list.filter((k) => k !== from));
+  }
+
+  async function copyFieldList() {
+    const text = mergeFields.map((f) => `{{${f.key}}}  ${f.label}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Couldn't copy to the clipboard. Pick the fields from the list instead.");
+    }
+  }
   const dirty =
     name !== (template?.name ?? "") ||
     category !== (template?.category ?? "OTHER") ||
@@ -93,12 +123,8 @@ export function TemplateEditor({
 
   function insertInput() {
     // "Last working day" → lastWorkingDay
-    const words = inputName.trim().split(/[^A-Za-z0-9]+/).filter(Boolean);
-    if (words.length === 0) return;
-    const camel = words
-      .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1)))
-      .join("");
-    const key = `input.${/^[A-Za-z]/.test(camel) ? camel : `field${camel}`}`;
+    const key = inputKeyFor(inputName);
+    if (!key) return;
     insert(`{{${key}}}`);
     setInputName("");
   }
@@ -166,7 +192,7 @@ export function TemplateEditor({
             </button>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {template ? "Edit template" : "New template"}
+                {template ? "Edit template" : imported ? "New template · from upload" : "New template"}
               </p>
               <h2 className="truncate text-lg font-black text-foreground">{name.trim() || "Untitled letter"}</h2>
             </div>
@@ -231,6 +257,34 @@ export function TemplateEditor({
         </div>
       </div>
 
+      {imported ? (
+        <div className={`${CARD} space-y-3`}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+              <FileUp className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-black text-foreground">Imported from {imported.fileName}</h3>
+              <p className="text-xs text-muted-foreground">
+                Check the text below, then save. Nothing is kept until you press Save template. The PDF
+                adds the letterhead, date and signature block — delete them here if they came across
+                from the file.
+              </p>
+            </div>
+          </div>
+          {imported.warnings.length > 0 ? (
+            <ul className="list-disc space-y-1 rounded-2xl border border-warning-foreground/20 bg-warning/20 py-3 pl-8 pr-4 text-xs text-warning-foreground">
+              {imported.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
+          {unknown.length > 0 && !readOnly ? (
+            <PlaceholderPicker unknown={unknown} mergeFields={mergeFields} onReplace={replaceField} />
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className={`${CARD} space-y-3`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -284,6 +338,11 @@ export function TemplateEditor({
                 Pick a field from the list, or use <code>{"{{input.yourName}}"}</code> for a detail typed
                 in for each letter.
               </p>
+              {!imported && !readOnly ? (
+                <div className="mt-3">
+                  <PlaceholderPicker unknown={flagged} mergeFields={mergeFields} onReplace={replaceField} />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -295,6 +354,22 @@ export function TemplateEditor({
               Click to insert at the cursor. Filled from the employee's and company's records when a
               letter is generated.
             </p>
+            <div className="mt-2 rounded-2xl border border-border/60 bg-surface-low/50 px-3 py-2 text-[11px] text-muted-foreground">
+              <p>
+                Tip: in Word, type placeholders like{" "}
+                <code className="rounded bg-muted px-1 text-foreground">{"{{employee.name}}"}</code> where
+                details should go, then use Upload Word file.
+              </p>
+              <button
+                type="button"
+                onClick={() => void copyFieldList()}
+                disabled={mergeFields.length === 0}
+                className="mt-1.5 inline-flex items-center gap-1 font-semibold text-primary hover:underline disabled:opacity-50"
+              >
+                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copied ? "Copied" : "Copy the list of merge fields"}
+              </button>
+            </div>
           </div>
 
           {GROUPS.map((group) => {
@@ -378,6 +453,64 @@ export function TemplateEditor({
         </aside>
       </div>
       {confirmDialog}
+    </div>
+  );
+}
+
+// "Replace with…" for each placeholder that isn't a merge field — typically
+// {{Employee Name}} / {{IC}} from a Word file. Rewrites every occurrence in the
+// body to a registry field, or to an {{input.xxx}} typed for each letter.
+function PlaceholderPicker({
+  unknown,
+  mergeFields,
+  onReplace,
+}: {
+  unknown: string[];
+  mergeFields: MergeField[];
+  onReplace: (from: string, to: string) => void;
+}) {
+  if (unknown.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-foreground">Map these placeholders to merge fields:</p>
+      {unknown.map((key) => {
+        const asInput = inputKeyFor(key);
+        return (
+          <div key={key} className="flex flex-wrap items-center gap-2">
+            <code className="min-w-0 max-w-full truncate rounded-lg bg-muted px-2 py-1 font-mono text-xs text-foreground">
+              {`{{${key}}}`}
+            </code>
+            <span className="text-xs text-muted-foreground">→</span>
+            <Select value="" onValueChange={(to) => onReplace(key, to)}>
+              <SelectTrigger className="h-9 w-64 max-w-full bg-card text-xs">
+                <SelectValue placeholder="Replace with…" />
+              </SelectTrigger>
+              <SelectContent>
+                {asInput ? (
+                  <SelectGroup>
+                    <SelectLabel>Typed for each letter</SelectLabel>
+                    <SelectItem value={asInput}>{`{{${asInput}}}`}</SelectItem>
+                  </SelectGroup>
+                ) : null}
+                {GROUPS.map((group) => {
+                  const items = mergeFields.filter((f) => f.source === group.source);
+                  if (items.length === 0) return null;
+                  return (
+                    <SelectGroup key={group.source}>
+                      <SelectLabel>{group.title}</SelectLabel>
+                      {items.map((f) => (
+                        <SelectItem key={f.key} value={f.key}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
     </div>
   );
 }

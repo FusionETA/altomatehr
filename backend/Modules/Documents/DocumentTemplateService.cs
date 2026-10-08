@@ -90,6 +90,20 @@ public class DocumentTemplateService : IDocumentTemplateService
         };
     }
 
+    public TemplateImportResult Import(string? fileName, byte[] content)
+    {
+        var outcome = DocxTemplateImport.Convert(fileName, content);
+        if (!outcome.Ok) return new TemplateImportResult(false, null, outcome.Error);
+
+        return new TemplateImportResult(true, new TemplateImportDto
+        {
+            SuggestedName = outcome.SuggestedName,
+            Body = outcome.Body,
+            UnknownFields = DocxTemplateImport.UnknownPlaceholders(outcome.Body).ToList(),
+            Warnings = outcome.Warnings.ToList(),
+        }, null);
+    }
+
     public IReadOnlyList<MergeFieldDto> GetMergeFields() =>
         MergeFields.All.Select(f => new MergeFieldDto
         {

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { FilePlus2, FileText, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { FilePlus2, FileText, FileUp, LoaderCircle, Plus, Sparkles } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -17,9 +17,13 @@ import {
   deleteTemplate,
   getMergeFields,
   getTemplates,
+  importTemplateFile,
   MERGE_FIELDS_PATH,
+  TEMPLATE_IMPORT_ACCEPT,
+  TEMPLATE_IMPORT_MAX_BYTES,
   TEMPLATES_PATH,
   type DocumentTemplate,
+  type TemplateImport,
 } from "../api";
 import { categoryLabel, formatDate } from "../lib/categories";
 import { GenerateLetterDialog } from "./GenerateLetterDialog";
@@ -43,8 +47,12 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
   const templates = templatesQuery.data ?? [];
 
   const [editing, setEditing] = useState<DocumentTemplate | "new" | null>(null);
+  // An uploaded file, converted — opens the editor unsaved, like "new".
+  const [imported, setImported] = useState<(TemplateImport & { fileName: string }) | null>(null);
   const [generating, setGenerating] = useState<DocumentTemplate | null>(null);
   const [addingSamples, setAddingSamples] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +79,42 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
     }
   }
 
+  // Word / text file → markup, then the editor opens on it for review. Nothing
+  // is saved until the admin presses Save template.
+  async function upload(file: File) {
+    setError(null);
+    setNotice(null);
+    if (file.size > TEMPLATE_IMPORT_MAX_BYTES) {
+      setError("The file is larger than 5 MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await importTemplateFile(file);
+      setImported({ ...result, fileName: file.name });
+      setEditing("new");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read that file.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const uploadButton = (primary: boolean) => (
+    <button
+      type="button"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={uploading}
+      title="A Word (.docx), .txt or .md file — converted into the editor for you to review"
+      className={`inline-flex items-center gap-2 rounded-2xl border border-border bg-card ${
+        primary ? "px-5" : "px-4"
+      } py-2.5 text-sm font-semibold text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50`}
+    >
+      {uploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+      Upload Word file
+    </button>
+  );
+
   async function remove(template: DocumentTemplate) {
     const ok = await confirm({
       title: `Delete "${template.name}"?`,
@@ -95,11 +139,16 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
     return (
       <TemplateEditor
         template={editing === "new" ? null : editing}
+        imported={editing === "new" ? imported : null}
         mergeFields={fieldsQuery.data ?? []}
         readOnly={!canManage}
-        onClose={() => setEditing(null)}
+        onClose={() => {
+          setEditing(null);
+          setImported(null);
+        }}
         onSaved={() => {
           setEditing(null);
+          setImported(null);
           void templatesQuery.refresh();
         }}
       />
@@ -129,6 +178,7 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
               {addingSamples ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Add sample templates
             </button>
+            {uploadButton(false)}
             <button
               type="button"
               onClick={() => setEditing("new")}
@@ -177,6 +227,7 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
                 <Plus className="h-4 w-4" />
                 Start from blank
               </button>
+              {uploadButton(true)}
             </div>
           ) : (
             <p className="mt-4 text-xs text-muted-foreground">Your access to Documents is view only.</p>
@@ -231,6 +282,18 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
           ))}
         </ul>
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={TEMPLATE_IMPORT_ACCEPT}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = ""; // the same file can be picked again
+          if (file) void upload(file);
+        }}
+      />
 
       {generating ? (
         <GenerateLetterDialog
