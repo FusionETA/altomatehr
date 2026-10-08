@@ -494,7 +494,7 @@
               <tr><td><code>available</code></td><td>boolean</td><td>True once every required month of the year is approved.</td></tr>
               <tr><td><code>approvedMonths</code></td><td>int</td><td>How many of the required months are approved so far.</td></tr>
               <tr><td><code>requiredMonths</code></td><td>int</td><td>How many months the form waits for: 12 for a company that ran all year, fewer when payroll started later in the year.</td></tr>
-              <tr><td><code>notReadyReason</code></td><td>string?</td><td>Why it isn't ready, in words (e.g. <code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>). <code>null</code> when <code>available</code>.</td></tr>
+              <tr><td><code>notReadyReason</code></td><td>string?</td><td>Why it isn't ready, in words (e.g. <code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>, or, when <code>requiredMonths</code> is 0, <code>"This company ran no payroll here in 2024, so there are no 2024 year-end forms."</code>). <code>null</code> when <code>available</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -533,6 +533,7 @@
             <tbody>
               <tr><td><code>404</code></td><td>The caller was not paid in that year, or has no employee profile</td><td>empty</td></tr>
               <tr><td><code>409</code></td><td>The company's year is not approved through December yet</td><td><code>{ "error": "The 2026 EA form will be ready once this company's 2026 payroll is approved through December." }</code></td></tr>
+              <tr><td><code>409</code></td><td>The company ran no payroll here in that year (<code>requiredMonths</code> is 0)</td><td><code>{ "error": "This company ran no payroll here in 2024, so there are no 2024 year-end forms." }</code></td></tr>
             </tbody>
           </table>
         </div>
@@ -815,7 +816,7 @@
       <h2>Settings &amp; company info</h2>
       <p>
         Org-level payroll configuration. Both GETs return defaults rather than <code>404</code>
-        for an org that hasn't configured payroll yet (<code>isConfigured: false</code>).
+        for an org that hasn't configured payroll yet (<code>isConfigured: false</code>). Saving the year-end start month with <a href="#set-payroll-start">PUT /payroll/annual/start</a> does not count as configuring payroll.
       </p>
       <div class="callout warn">
         <strong>Both PUTs replace the whole row</strong> — every field in the body is written,
@@ -869,8 +870,8 @@
               <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td></td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file.</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
-              <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>false</code> = these are statutory defaults, never saved.</td></tr>
-              <tr><td><code>updatedAt</code></td><td>string?</td><td></td></tr>
+              <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>true</code> once the settings were saved (<code>PUT /payroll/settings</code>, i.e. Payroll &rarr; Settings &rarr; General) or set during onboarding. <code>false</code> = nobody has reviewed these yet, so they are the statutory defaults, even if a settings row already exists (for instance one created by <code>PUT /payroll/annual/start</code>).</td></tr>
+              <tr><td><code>updatedAt</code></td><td>string?</td><td>ISO 8601. Last save of the settings; <code>null</code> while <code>isConfigured</code> is <code>false</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1045,6 +1046,7 @@
           <li><strong>Only for a company that really began paying later.</strong> If staff were paid January&ndash;June in another system and moved here in July, import those months (YTD import) instead. Setting a July start would make the forms under-declare what the company paid.</li>
           <li><strong>It replaces the saved start.</strong> The start applies to its own year; later years go back to January, and earlier years require nothing beyond runs that exist.</li>
           <li><strong>A run for an earlier month pulls the start back</strong>, whatever you set, and a draft month in the range holds the year back.</li>
+          <li><strong>It does not mark payroll settings as configured.</strong> If no settings row exists, this call creates one, but <code>GET /payroll/settings</code> still returns <code>isConfigured: false</code> until the settings are saved in General (or set in onboarding).</li>
           <li>The change is written to the audit log.</li>
         </ul>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/annual/start \
@@ -1064,7 +1066,7 @@
         <h3>Errors</h3>
         <p>
           <code>409</code> <code>{ "error": "x/y monthly runs approved for 2026. The annual forms cover every month this company ran payroll through December, so approve those first (missing: …)." }</code>
-          for a full-year report with gaps (<code>y</code> is <code>requiredMonths</code>); <code>409</code> naming a missing Company Info field for the forms that need one.
+          for a full-year report with gaps (<code>y</code> is <code>requiredMonths</code>); <code>409</code> <code>{ "error": "This company ran no payroll here in 2024, so there are no 2024 year-end forms." }</code> instead when the company ran no payroll that year (<code>requiredMonths</code> is 0, e.g. a year before payroll started here), for the full-year reports (CP8D, Form E, bulk EA); <code>409</code> naming a missing Company Info field for the forms that need one.
         </p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/annual/2026/reports/FORM_EA_BULK_PDF \
   -H "Authorization: Bearer wp_live_xxx" -o form-ea-2026.pdf</code></pre>

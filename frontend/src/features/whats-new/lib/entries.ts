@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: c296539
+// whats-new-covered-up-to: 50c99b1
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -37,6 +37,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Payslips: opens on the latest year, with a tab for each earlier year you were paid in (newest first), instead of one long list of every payslip. The year tabs appear when you have payslips in more than one year.",
     ],
     fixed: [
+      "Payroll → Settings → General: choosing when payroll started here (on Annual forms) no longer marks payroll as set up — General keeps its \"not set up\" note until you save your settings there.",
+      "Payroll → Annual forms: for a year before this company's payroll started here, shows \"No payroll ran here in {year}\" instead of \"0/0 monthly runs approved\"; the employee's EA card no longer says \"(0 of 0 months so far)\".",
       "Company-money claims no longer get stuck on the \"Add to payroll\" route; they now go to Xero as Spend Money from the paying bank, or nowhere if Xero isn't connected.",
       "Xero: reloading the connection page after a successful connect no longer shows 'Xero didn't finish connecting'. A failed reconnection attempt while still connected shows a calm 'nothing changed — still connected' note instead of an error.",
       "Attendance (Today, Employees tab) and Leave balances/bulk export now list staff only — the Owner and admins no longer appear.",
