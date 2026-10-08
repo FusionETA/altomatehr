@@ -67,7 +67,25 @@ public class XeroService : IXeroService
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var storedState = await _repo.GetStateAsync(state);
-        if (storedState is null || storedState.UsedAt is not null || storedState.ExpiresAt < DateTime.UtcNow)
+
+        // The same return URL loaded a second time — a refresh, the back
+        // button, a doubled redirect. If the first load CONNECTED, say so
+        // again: answering "failed" here showed "Xero didn't finish
+        // connecting" above a connection made seconds earlier. "Connected" =
+        // this sign-in recorded the tenant it connected, and that tenant is
+        // still the org's live connection. A refused sign-in recorded none.
+        if (storedState?.UsedAt is not null)
+        {
+            var current = await _repo.GetConnectionAsync(storedState.OrganizationId);
+            var thisSignInConnected = storedState.ConnectedTenantId is { } tenantId
+                                      && current is { IsConnected: true }
+                                      && current.TenantId == tenantId;
+            return thisSignInConnected
+                ? WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "connected")
+                : WithOutcome(_options.FailureRedirectUrl, "failed");
+        }
+
+        if (storedState is null || storedState.ExpiresAt < DateTime.UtcNow)
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
         var token = await _client.ExchangeCodeAsync(code);
@@ -127,6 +145,7 @@ public class XeroService : IXeroService
             await _repo.ArchiveManualProjectsAsync(storedState.OrganizationId);
 
         storedState.UsedAt = now;
+        storedState.ConnectedTenantId = tenant.TenantId;
         await _repo.UpdateStateAsync(storedState);
 
         // The OAuth callback runs BEFORE the app has a session for this request,

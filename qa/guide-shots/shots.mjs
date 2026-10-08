@@ -290,6 +290,19 @@ const admin = {
     await scrollTo(page, "What the employer keeps", 160);
     await shoot(page, "admin", "annual-forms");
   },
+  "attendance-today": async (page) => {
+    await go(page, "attendance");
+    await page.getByText(/No clock-in/).first().waitFor({ timeout: 15000 });
+    await settle(page, 1500);
+    await shoot(page, "admin", "attendance-today");
+  },
+  "leave-balances": async (page) => {
+    await go(page, "leave");
+    await clickText(page, "Balances");
+    await page.getByText(/Showing \d+ of \d+/).first().waitFor({ timeout: 15000 });
+    await settle(page, 1500);
+    await shoot(page, "admin", "leave-balances");
+  },
   "leave-cancel": async (page) => {
     await go(page, "leave");
     await clickText(page, "History");
