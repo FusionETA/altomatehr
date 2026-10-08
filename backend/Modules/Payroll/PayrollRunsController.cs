@@ -273,8 +273,16 @@ public class PayrollRunsController : ControllerBase
     [RequireScope("payroll:read")]
     [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/summary")]
-    public Task<IActionResult> Summary(string id) =>
-        File(_statutory.RenderSummaryPdfAsync(id));
+    public async Task<IActionResult> Summary(string id, [FromQuery] string? format)
+    {
+        // ?format=pdf (the default) | xlsx — the same figures either way.
+        return format?.ToLowerInvariant() switch
+        {
+            null or "" or "pdf" => await File(_statutory.RenderSummaryPdfAsync(id)),
+            "xlsx" => await File(_statutory.RenderSummaryXlsxAsync(id)),
+            _ => BadRequest(new { error = "format must be pdf or xlsx." }),
+        };
+    }
 
     [RequireScope("payroll:read")]
     [RequireFullEmployeeScope(IncludeReads = true)]

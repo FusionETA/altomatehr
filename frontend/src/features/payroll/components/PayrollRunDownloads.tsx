@@ -8,6 +8,7 @@ import {
   downloadManualPayments,
   downloadPaymentSchedule,
   downloadPayrollSummary,
+  downloadPayrollSummaryXlsx,
   downloadPcbDetails,
   downloadPcbTxt,
   downloadTp1Claims,
@@ -63,6 +64,9 @@ type Item = {
   // title so an admin can find the right file for the portal they have open.
   portal: string | null;
   download: (runId: string, ctx: DownloadContext) => Promise<{ blob: Blob; fileName: string }>;
+  // The same document as an Excel workbook, when it comes in both. The row
+  // then offers "PDF" and "Excel" buttons, and ticking it downloads both.
+  downloadXlsx?: (runId: string) => Promise<{ blob: Blob; fileName: string }>;
 };
 
 // Always offered, whatever the company's payroll bank: the people the bank file
@@ -91,9 +95,10 @@ const ITEMS: Item[] = [
     group: "REPORTS",
     title: "Payroll Summary",
     description:
-      "Internal one-pager of run totals — gross, net, EPF, SOCSO, EIS, PCB, HRDF, headcount.",
+      "Internal one-pager of run totals — gross, net, EPF, SOCSO, EIS, PCB, HRDF, headcount. As a PDF, or as Excel with one row per employee to sort and filter.",
     portal: null,
     download: (runId) => downloadPayrollSummary(runId),
+    downloadXlsx: (runId) => downloadPayrollSummaryXlsx(runId),
   },
   {
     key: "schedule",
@@ -403,15 +408,19 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     });
   }
 
-  async function get(item: Item) {
-    setBusy(item.key);
+  async function get(item: Item, format: "default" | "xlsx" = "default") {
+    setBusy(format === "xlsx" ? `${item.key}:xlsx` : item.key);
     setErrors((current) => {
       const { [item.key]: _gone, ...rest } = current;
       return rest;
     });
 
     try {
-      saveFile(await item.download(run.id, context));
+      saveFile(
+        format === "xlsx" && item.downloadXlsx
+          ? await item.downloadXlsx(run.id)
+          : await item.download(run.id, context),
+      );
     } catch (err) {
       setErrors((current) => ({
         ...current,
@@ -432,6 +441,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     for (const item of items.filter((entry) => picked.has(entry.key))) {
       try {
         saveFile(await item.download(run.id, context));
+        if (item.downloadXlsx) saveFile(await item.downloadXlsx(run.id));
       } catch (err) {
         setErrors((current) => ({
           ...current,
@@ -606,19 +616,52 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`${BUTTON_GHOST_SM} shrink-0`}
-                      disabled={busy !== null}
-                      onClick={() => void get(item)}
-                    >
-                      {busy === item.key ? (
-                        <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                      ) : (
-                        <Download className="size-3.5" aria-hidden />
-                      )}
-                      Download
-                    </button>
+                    {item.downloadXlsx ? (
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          type="button"
+                          className={BUTTON_GHOST_SM}
+                          disabled={busy !== null}
+                          aria-label={`Download ${item.title} as PDF`}
+                          onClick={() => void get(item)}
+                        >
+                          {busy === item.key ? (
+                            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Download className="size-3.5" aria-hidden />
+                          )}
+                          PDF
+                        </button>
+                        <button
+                          type="button"
+                          className={BUTTON_GHOST_SM}
+                          disabled={busy !== null}
+                          aria-label={`Download ${item.title} as Excel`}
+                          onClick={() => void get(item, "xlsx")}
+                        >
+                          {busy === `${item.key}:xlsx` ? (
+                            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Download className="size-3.5" aria-hidden />
+                          )}
+                          Excel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${BUTTON_GHOST_SM} shrink-0`}
+                        disabled={busy !== null}
+                        onClick={() => void get(item)}
+                      >
+                        {busy === item.key ? (
+                          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <Download className="size-3.5" aria-hidden />
+                        )}
+                        Download
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
