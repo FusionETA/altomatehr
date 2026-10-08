@@ -695,7 +695,7 @@
               <tr><td><code>description</code></td><td>string</td><td></td></tr>
               <tr><td><code>needsYearPicker</code></td><td>boolean</td><td><code>true</code> for <code>PCB2II</code> and <code>EA</code> (the year-scoped forms; send <code>year</code> when you download).</td></tr>
               <tr><td><code>enabled</code></td><td>boolean</td><td>Whether the form can be generated for this person right now.</td></tr>
-              <tr><td><code>disabledReason</code></td><td>string | null</td><td>Set when <code>enabled</code> is <code>false</code>: <code>"Available once a leave date is set"</code> (CP22A/CP21/TP3) or <code>"Available only for active employees"</code> (CP22). For <code>EA</code>: <code>"The 2026 EA form will be ready once all 12 months of 2026 payroll are approved."</code>, or <code>"No approved payroll for this employee in 2026."</code> when they weren't paid that year.</td></tr>
+              <tr><td><code>disabledReason</code></td><td>string | null</td><td>Set when <code>enabled</code> is <code>false</code>: <code>"Available once a leave date is set"</code> (CP22A/CP21/TP3) or <code>"Available only for active employees"</code> (CP22). For <code>EA</code>: <code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>, <code>"This company ran no payroll here in 2026, so there are no 2026 year-end forms."</code> when the company ran no payroll that year, or <code>"No approved payroll for this employee in 2026."</code> when they weren't paid that year.</td></tr>
               <tr><td><code>badge</code></td><td>string | null</td><td>CP22/CP22A/CP21 only, e.g. <code>"Due in 12 days"</code> or <code>"Overdue by 3 days"</code>.</td></tr>
               <tr><td><code>badgeVariant</code></td><td>string | null</td><td>One of <code>success</code>, <code>pending</code>, <code>rejected</code>, <code>outline</code>.</td></tr>
             </tbody>
@@ -745,7 +745,7 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
-              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set). For <code>EA</code>: the company's <code>year</code> payroll isn't approved through December (<code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>), or they weren't paid that year (<code>"No approved payroll for this employee in 2026."</code>)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Unknown <code>kind</code>, or the form isn't available yet for this person (e.g. no leave date set). For <code>EA</code>: the company's <code>year</code> payroll isn't approved through December (<code>"The 2026 EA form will be ready once this company's 2026 payroll is approved through December."</code>), the company ran no payroll that year (<code>"This company ran no payroll here in 2026, so there are no 2026 year-end forms."</code>), or they weren't paid that year (<code>"No approved payroll for this employee in 2026."</code>)</td><td><code>{ "error": "…" }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>

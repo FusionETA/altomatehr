@@ -112,6 +112,37 @@ public class PayrollSettingsServiceTests : IDisposable
 
     // ─── Saving ─────────────────────────────────────────────────────────
 
+    // Setting the year-end start month creates the row on an org that never
+    // saved its settings — but nobody has reviewed the EPF / working-days /
+    // HRDF defaults, so General must still say "not set up".
+    [Fact]
+    public async Task SettingTheStartMonth_DoesNotMarkTheSettingsConfigured()
+    {
+        await _service.SetPayrollStartAsync(2026, 7);
+
+        var before = await _service.GetAsync();
+        Assert.False(before.IsConfigured);
+        Assert.Null(before.UpdatedAt);
+
+        var saved = await _service.SaveAsync(Save(WorkingDaysRule.CALENDAR));
+        Assert.True(saved.IsConfigured);
+        Assert.True((await _service.GetAsync()).IsConfigured);
+
+        // A General save keeps the start month it did not show.
+        var row = Assert.Single(await _db.PayrollSettings.ToListAsync());
+        Assert.Equal(2026, row.PayrollStartYear);
+        Assert.Equal(7, row.PayrollStartMonth);
+    }
+
+    [Fact]
+    public async Task SettingTheStartMonth_LeavesConfiguredSettingsConfigured()
+    {
+        await _service.SaveAsync(Save(WorkingDaysRule.CALENDAR));
+        await _service.SetPayrollStartAsync(2026, 7);
+
+        Assert.True((await _service.GetAsync()).IsConfigured);
+    }
+
     [Fact]
     public async Task TheFirstSave_CreatesExactlyOneRow()
     {

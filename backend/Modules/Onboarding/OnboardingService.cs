@@ -172,6 +172,8 @@ public class OnboardingService : IOnboardingService
             if (hrdf.Rate is { } rate) settings.HrdfRate = rate;
         }
 
+        // Choosing these in onboarding is configuring payroll.
+        settings.ConfiguredAt ??= DateTime.UtcNow;
         await _payrollSettings.UpdateAsync(settings);
     }
 

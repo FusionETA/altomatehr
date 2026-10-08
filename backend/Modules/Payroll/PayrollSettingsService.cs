@@ -35,7 +35,7 @@ public class PayrollSettingsService : IPayrollSettingsService
     {
         var settings = await _repo.GetAsync();
 
-        var dto = settings is null ? Defaults() : ToDto(settings);
+        var dto = settings is null ? Defaults() : ToDto(settings, settings.ConfiguredAt is not null);
         dto.AbPayEnabled = await AbPayEnabledAsync();
         return dto;
     }
@@ -60,6 +60,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         settings ??= new PayrollSettings { CreatedAt = now };
 
         Apply(settings, dto);
+        settings.ConfiguredAt ??= now;
         settings.UpdatedAt = now;
 
         if (isFirstSave)
@@ -90,7 +91,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         // computes.
         if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
 
-        var saved = ToDto(settings);
+        var saved = ToDto(settings, isConfigured: true);
         saved.AbPayEnabled = await AbPayEnabledAsync();
         return saved;
     }
@@ -103,6 +104,8 @@ public class PayrollSettingsService : IPayrollSettingsService
         var settings = await _repo.GetAsync();
         var isFirstSave = settings is null;
         var now = DateTime.UtcNow;
+        // Creating the row here leaves ConfiguredAt null: setting the start
+        // month is not a review of the payroll defaults.
         settings ??= new PayrollSettings { CreatedAt = now };
 
         // January is the default, so "started in January" is the same as unset.
@@ -152,7 +155,7 @@ public class PayrollSettingsService : IPayrollSettingsService
     // what "unconfigured" means, so the defaults DTO is built from a fresh one.
     private static PayrollSettingsDto Defaults() => ToDto(new PayrollSettings(), isConfigured: false);
 
-    private static PayrollSettingsDto ToDto(PayrollSettings s, bool isConfigured = true) => new()
+    private static PayrollSettingsDto ToDto(PayrollSettings s, bool isConfigured) => new()
     {
         WorkingDaysRule = s.WorkingDaysRule,
         DefaultEpfEmployeeRate = s.DefaultEpfEmployeeRate,

@@ -51,6 +51,9 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         var meta = PayrollAnnualReports.All.GetValueOrDefault(kind);
         if (meta is null) return StatutoryFileResult.Refused("Unknown annual report.");
 
+        if (meta.RequiresFullYear && !payload.CanGenerate && payload.RequiredMonths == 0)
+            return StatutoryFileResult.Refused(EaYear.NoPayrollReason(year));
+
         if (meta.RequiresFullYear && !payload.CanGenerate)
         {
             var missing = string.Join(", ", payload.MissingMonths.Select(m =>
@@ -125,7 +128,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                     Available = ea.Ready,
                     ApprovedMonths = ea.ApprovedMonths,
                     RequiredMonths = ea.RequiredMonths,
-                    NotReadyReason = ea.Ready ? null : EaYear.NotReadyReason(year),
+                    NotReadyReason = ea.Ready ? null : EaYear.ReasonFor(year, ea.RequiredMonths),
                 };
             })];
     }
@@ -141,7 +144,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         // Held here, not only on the lists, so a direct URL cannot fetch a
         // part-year form that under-declares.
         if (!payload.CanGenerate)
-            return StatutoryFileResult.Refused(EaYear.NotReadyReason(year));
+            return StatutoryFileResult.Refused(EaYear.ReasonFor(year, payload.RequiredMonths));
 
         // Only this employee's page: the bulk form is every employee's pay.
         var bytes = FormEaPdf.Render(payload with { Employees = [row] });

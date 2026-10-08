@@ -125,7 +125,18 @@ export function PayrollAnnualTab() {
       {/* The forms declare what this company paid in the year, so downloads
           stay off until every month from January (or from when payroll
           started here) through December is approved. */}
-      {payload && !payload.canGenerate ? (
+      {/* A year before payroll started here, with no run in it: nothing is
+          missing, there is simply nothing to file ("0/0 approved" read as a fault). */}
+      {payload && !payload.canGenerate && payload.requiredMonths === 0 ? (
+        <div className={WARN_PANEL}>
+          <p className="font-semibold">No payroll ran here in {year}</p>
+          <p className="mt-1">
+            There are no {year} year-end forms for this company. Pick a later year.
+          </p>
+        </div>
+      ) : null}
+
+      {payload && !payload.canGenerate && payload.requiredMonths > 0 ? (
         <div className={WARN_PANEL}>
           <p className="font-semibold">
             {payload.requiredMonths - payload.missingMonths.length}/{payload.requiredMonths} monthly
