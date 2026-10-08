@@ -291,4 +291,20 @@ public class ClaimsAutoSettleTests
 
         Assert.Equal("MYR", claim.Currency);
     }
+
+    // The Payroll route reimburses people, which only own-money claims need.
+    // Company money still goes to Xero (as Spend Money) under it; "Don't send
+    // anywhere" holds for both kinds.
+    [Theory]
+    [InlineData(PaymentType.PERSONAL, ClaimSettlement.XERO_BILL, ClaimSettlement.XERO_BILL)]
+    [InlineData(PaymentType.PERSONAL, ClaimSettlement.PAYROLL, ClaimSettlement.PAYROLL)]
+    [InlineData(PaymentType.PERSONAL, ClaimSettlement.NONE, ClaimSettlement.NONE)]
+    [InlineData(PaymentType.COMPANY, ClaimSettlement.XERO_BILL, ClaimSettlement.XERO_BILL)]
+    [InlineData(PaymentType.COMPANY, ClaimSettlement.PAYROLL, ClaimSettlement.XERO_BILL)]
+    [InlineData(PaymentType.COMPANY, ClaimSettlement.NONE, ClaimSettlement.NONE)]
+    public void Company_money_skips_the_payroll_route_but_not_dont_send_anywhere(
+        PaymentType payment, ClaimSettlement orgRoute, ClaimSettlement expected)
+    {
+        Assert.Equal(expected, AltomateHR.Api.Modules.Claims.ClaimsService.SettlementFor(payment, orgRoute));
+    }
 }

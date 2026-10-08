@@ -146,8 +146,15 @@ export function ClaimSettings() {
                     >
                       {claimSettlementLabels[option]}
                     </span>
-                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                      {claimSettlementHints[option]}
+                    <span className="mt-1 block space-y-0.5 text-xs leading-snug text-muted-foreground">
+                      <span className="block">
+                        <span className="font-semibold text-foreground">Own money:</span>{" "}
+                        {claimSettlementHints[option].own}
+                      </span>
+                      <span className="block">
+                        <span className="font-semibold text-foreground">Company money:</span>{" "}
+                        {claimSettlementHints[option].company}
+                      </span>
                     </span>
                   </span>
                 </label>
@@ -302,9 +309,10 @@ export function ClaimSettings() {
           <p className="text-sm font-semibold text-primary">
             {route === "NONE"
               ? "Saved — approved claims aren't sent anywhere"
-              : `Saved — approved claims go to ${claimSettlementLabels[route].toLowerCase()}`}
-            {route === "XERO_BILL" ? ` as ${xeroBillStageLabels[stage].toLowerCase()}` : ""}, and the
-            run closes on day {cutoffDay} of each month.
+              : route === "PAYROLL"
+                ? "Saved — own-money claims go to payroll and company-money claims to Xero"
+                : `Saved — approved claims go to Xero, bills as ${xeroBillStageLabels[stage].toLowerCase()}`}
+            , and the run closes on day {cutoffDay} of each month.
           </p>
         ) : null}
       </div>

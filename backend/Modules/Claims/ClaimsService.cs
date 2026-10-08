@@ -195,7 +195,7 @@ public class ClaimsService : IClaimsService
         // Stamped from the org policy at creation, not read live at payout: an
         // admin switching the policy later must not re-route a claim that has
         // already gone to Xero, which would pay the same receipt twice.
-        claim.Settlement = (await GetSettingsAsync()).SettlementRoute;
+        claim.Settlement = SettlementFor(claim.PaymentType, (await GetSettingsAsync()).SettlementRoute);
 
         // Nobody above them to ask → submitting is the decision. A PENDING claim
         // with no approver is invisible in every queue and undecidable by every
@@ -1182,6 +1182,8 @@ public class ClaimsService : IClaimsService
         var claim = await _repo.GetByIdAsync(claimId);
         if (claim is null || !string.IsNullOrWhiteSpace(claim.XeroBillId)) return;
         if (claim.Settlement == ClaimSettlement.PAYROLL) return;
+        // Company money was never out of anyone's pocket — nothing to reimburse.
+        if (claim.PaymentType == PaymentType.COMPANY) return;
 
         claim.Settlement = ClaimSettlement.PAYROLL;
 
@@ -1199,7 +1201,7 @@ public class ClaimsService : IClaimsService
         var claim = await _repo.GetByIdAsync(claimId);
         if (claim is null || !string.IsNullOrWhiteSpace(claim.XeroBillId)) return;
 
-        var route = (await GetSettingsAsync()).SettlementRoute;
+        var route = SettlementFor(claim.PaymentType, (await GetSettingsAsync()).SettlementRoute);
         if (claim.Settlement == route) return;
 
         // Not billed automatically: SettleAsync only runs on approval. The claim
@@ -1209,6 +1211,16 @@ public class ClaimsService : IClaimsService
         claim.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(claim);
     }
+
+    // The route a claim takes under the org's setting. The Payroll route is
+    // about REIMBURSING someone, which only an own-money claim needs: company
+    // money already left a company account, so under Payroll it still goes to
+    // Xero as Spend Money (XERO_BILL, which SyncToXeroAsync turns into a spend
+    // for a COMPANY claim). "Don't send anywhere" applies to both kinds.
+    public static ClaimSettlement SettlementFor(PaymentType payment, ClaimSettlement orgRoute) =>
+        payment == PaymentType.COMPANY && orgRoute == ClaimSettlement.PAYROLL
+            ? ClaimSettlement.XERO_BILL
+            : orgRoute;
 
     public async Task<TabularExportResult> ExportPayrollReimbursementsAsync(
         TabularFormat format, string? month)

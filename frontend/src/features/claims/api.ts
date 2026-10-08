@@ -134,18 +134,27 @@ export const bulkSyncClaimsToXero = (ids: string[], status?: XeroBillStage) =>
 export type ClaimSettlement = "XERO_BILL" | "PAYROLL" | "NONE";
 
 export const claimSettlementLabels: Record<ClaimSettlement, string> = {
-  XERO_BILL: "Sync to Xero as a bill",
+  XERO_BILL: "Sync to Xero",
   PAYROLL: "Add to payroll",
   NONE: "Don't send anywhere",
 };
 
-export const claimSettlementHints: Record<ClaimSettlement, string> = {
-  XERO_BILL:
-    "Approved claims are pushed to Xero — a bill for out-of-pocket claims, a spend-money transaction for company-paid ones.",
-  PAYROLL:
-    "Approved out-of-pocket claims are reimbursed through the employee's pay and collected in the payroll export instead of going to Xero.",
-  NONE:
-    "Approved claims stay approved here and go nowhere — reimburse them your own way. You can still add one to a payroll run by hand.",
+// What each route does, for each kind of claim. The Payroll route is about
+// reimbursing someone, which only own-money claims need — company money
+// still goes to Xero as Spend Money there (ClaimsService.SettlementFor).
+export const claimSettlementHints: Record<ClaimSettlement, { own: string; company: string }> = {
+  XERO_BILL: {
+    own: "A bill in Xero, to pay the employee back.",
+    company: "Spend Money in Xero, from the company bank account that paid.",
+  },
+  PAYROLL: {
+    own: "Reimbursed through the employee's pay, and listed in the payroll export.",
+    company: "Spend Money in Xero, from the company bank account that paid — there's nobody to reimburse.",
+  },
+  NONE: {
+    own: "Stays approved here — reimburse it your own way, or add it to a payroll run by hand.",
+    company: "Stays approved here — record it in your books your own way.",
+  },
 };
 
 export const rejectClaim = (id: string, reviewNotes: string) =>
