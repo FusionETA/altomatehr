@@ -90,32 +90,13 @@ public static class PayrollBankFileXlsx
                 + $"(it currently has {payor.Length}). Correct it under Payroll Settings → Bank.");
         }
 
-        // Only rows that represent an actual bank payment.
-        var candidates = model.Rows
-            .Where(r => r.Payslip.NetPay > 0m
-                     && !string.IsNullOrWhiteSpace(r.BankAccountNumber))
-            .ToList();
-
-        // Refuse rather than ship a file that silently omits someone.
-        var unmatched = candidates
-            .Where(r => MalaysianBanks.Find(r.BankName) is null)
-            .Select(r => $"{r.EmployeeName} (\"{r.BankName}\")")
-            .ToList();
-
-        if (unmatched.Count > 0)
-        {
-            return StatutoryFileResult.Refused(
-                "These employees' banks could not be matched to a recognised Malaysian bank: "
-                + string.Join("; ", unmatched)
-                + ". Correct the bank name on each affected employee's profile.");
-        }
-
-        if (candidates.Count == 0)
-        {
-            return StatutoryFileResult.Refused(
-                "Nothing to disburse — every employee on this run has zero net pay or no bank "
-                + "account on file.");
-        }
+        // Bank-transfer employees only, the same rule as every other bank
+        // format (PayrollBankRows): Other bank / e-wallet, Cash and Cheque are
+        // paid by hand from the Manual payments sheet, so Merchantrade or an
+        // overseas bank must not block this file.
+        var (selected, refusal) = PayrollBankRows.Select(model);
+        if (refusal is not null) return refusal;
+        var candidates = selected.Select(r => r.Source).ToList();
 
         // Capped at 20 characters by PB. The 3-letter month keeps even
         // September inside the budget: "SALARY SEP 2026" is 15.
