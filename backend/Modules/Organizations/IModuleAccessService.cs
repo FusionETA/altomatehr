@@ -22,4 +22,15 @@ public interface IModuleAccessService
         (await GetEnabledModulesAsync()).Contains(module, StringComparer.OrdinalIgnoreCase)
             ? ModuleLevel.Manage
             : ModuleLevel.None;
+
+    // A module's level for the caller counting BOTH gates, for a service that
+    // reads or changes ANOTHER module's data and so can't lean on that
+    // module's attributes — e.g. Documents printing an employee's IC or
+    // writing back to their record. The admin grant (GetModuleLevelAsync,
+    // the [RequireModule] check) capped, for a scoped machine caller, by its
+    // "<module>:read" / "<module>:write" scopes (the [RequireScope] check):
+    // no :read → None; :read alone → View; :read and :write → Manage.
+    // Owners, unrestricted admins and people in general are never capped by
+    // scopes. (Default keeps hand-written test doubles compiling: the grant.)
+    Task<ModuleLevel> GetCallerLevelAsync(string module) => GetModuleLevelAsync(module);
 }

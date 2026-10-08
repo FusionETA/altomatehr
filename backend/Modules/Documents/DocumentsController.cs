@@ -82,12 +82,18 @@ public class DocumentsController : ControllerBase
 
     // What the template needs for this employee, filled from the records,
     // with every gap flagged — what the generate dialog shows.
+    //
+    // Resolve, an employee preview and Generate print the employee's record
+    // (IC, address, salary), so the service also requires Employees at View
+    // (employees:read for a key) — and Manage (employees:write) to save gaps
+    // back to the record. [RequireModule] above only covers Documents.
     [RequireScope("documents:read")]
     [ReadOnlyAction]
     [HttpPost("templates/{id}/resolve")]
     public async Task<IActionResult> Resolve(string id, ResolveLetterDto dto)
     {
         var result = await _letters.ResolveAsync(id, dto.EmployeeUserId);
+        if (result.Forbidden) return AccessGate.Forbidden(result.Error!);
         if (!result.Ok) return result.Error is null ? NotFound() : BadRequest(new { message = result.Error });
         return Ok(result.Letter);
     }
@@ -128,6 +134,7 @@ public class DocumentsController : ControllerBase
 
     private IActionResult FileOrError(LetterFileResult result)
     {
+        if (result.Forbidden) return AccessGate.Forbidden(result.Error!);
         if (!result.Ok)
             return result.Error is null
                 ? NotFound()

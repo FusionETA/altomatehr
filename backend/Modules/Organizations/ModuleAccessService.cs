@@ -43,6 +43,17 @@ public class ModuleAccessService : IModuleAccessService
         return (await GetAccessAsync()).LevelFor(module);
     }
 
+    public async Task<ModuleLevel> GetCallerLevelAsync(string module)
+    {
+        var level = await GetModuleLevelAsync(module);
+        if (level == ModuleLevel.None || !_currentUser.IsScopedMachine) return level;
+
+        var scopes = !_currentUser.HasScope($"{module}:read") ? ModuleLevel.None
+            : _currentUser.HasScope($"{module}:write") ? ModuleLevel.Manage
+            : ModuleLevel.View;
+        return scopes < level ? scopes : level;
+    }
+
     // Admin limits apply only to a real member whose role IS Admin. A wp_live
     // key's synthetic userId ("apikey:...") has no membership → full access
     // (keys are scope-gated separately). An Owner has full access. And limits

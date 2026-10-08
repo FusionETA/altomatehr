@@ -34,4 +34,15 @@ public interface ICurrentUser
     // there after leaving or a transfer. View-only — see
     // FormerEmployeeReadOnlyMiddleware.
     bool IsFormer => false;
+
+    // A machine caller narrowed by scopes: a wp_live_ key or a partner app.
+    // People (JWT) are never scoped.
+    bool IsScopedMachine => false;
+
+    // May the caller use this API scope (ApiScopes, e.g. "employees:read")?
+    // Always true for a person — scopes only narrow machine access — and for a
+    // scoped machine, only when its key holds it. The service-side twin of
+    // [RequireScope], for a service that reads or writes another module's data
+    // and must ask about that module's scope too.
+    bool HasScope(string scope) => true;
 }

@@ -45,19 +45,29 @@ const blankState = (): FieldState => ({ override: false, value: "", leaveBlank: 
 // with nothing on file is flagged and has to be filled in — or explicitly
 // left blank — before Generate unlocks. Typed values are for this letter only,
 // unless "Also save to employee record" is ticked on a gap the record can hold.
+// The server only marks a gap writable for someone with Employees: Manage, so
+// the option isn't offered to anyone it would refuse.
 export function GenerateLetterDialog({
   template: presetTemplate,
   employeeUserId: presetEmployee,
   onClose,
   onGenerated,
   onOpenPayroll,
+  saveToEmployeeBlocked,
 }: {
   template?: DocumentTemplate | null;
   employeeUserId?: string | null;
   onClose: () => void;
-  onGenerated?: () => void;
+  /** After a letter is generated, with the fields it saved to the employee record. */
+  onGenerated?: (result: { savedToEmployee: string[] }) => void;
   /** Opens Payroll, where company details and the signatory are set. */
   onOpenPayroll?: () => void;
+  /**
+   * Why "Also save to employee record" can't be used right now (shown in its
+   * place), e.g. the employee form behind the dialog has unsaved edits that
+   * would overwrite what the letter saves. Null/undefined = available.
+   */
+  saveToEmployeeBlocked?: string | null;
 }) {
   useBodyScrollLock();
 
@@ -155,7 +165,7 @@ export function GenerateLetterDialog({
         if (f.missing) {
           if (typed) {
             values[f.key] = typed;
-            if (f.writableToEmployee && s.saveToRecord) saveToEmployee.push(f.key);
+            if (f.writableToEmployee && s.saveToRecord && !saveToEmployeeBlocked) saveToEmployee.push(f.key);
           } else if (s.leaveBlank) {
             leaveBlank.push(f.key);
           }
@@ -177,7 +187,7 @@ export function GenerateLetterDialog({
           ? `Downloaded, and kept on ${resolved.employeeName}'s file (admins only).`
           : "Downloaded. Not kept on file.",
       );
-      onGenerated?.();
+      onGenerated?.({ savedToEmployee: saveToEmployee });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not generate the letter.");
       if (e instanceof ApiError && e.body && typeof e.body === "object" && "missingFields" in e.body) {
@@ -285,6 +295,7 @@ export function GenerateLetterDialog({
                       flagged={serverMissing.includes(f.key)}
                       onChange={(next) => patch(f.key, next)}
                       onOpenPayroll={onOpenPayroll}
+                      saveBlocked={saveToEmployeeBlocked}
                     />
                   ))}
                 </FieldGroup>
@@ -463,12 +474,14 @@ function GapField({
   flagged,
   onChange,
   onOpenPayroll,
+  saveBlocked,
 }: {
   field: ResolvedField;
   state: FieldState;
   flagged: boolean;
   onChange: (next: Partial<FieldState>) => void;
   onOpenPayroll?: () => void;
+  saveBlocked?: string | null;
 }) {
   const typed = state.value.trim() !== "";
   const settled = typed || state.leaveBlank;
@@ -508,15 +521,21 @@ function GapField({
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
         {field.writableToEmployee ? (
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground">
+          <label
+            className={`flex items-center gap-1.5 text-xs ${
+              saveBlocked ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer text-foreground"
+            }`}
+            title={saveBlocked ?? undefined}
+          >
             <input
               type="checkbox"
-              checked={state.saveToRecord}
-              disabled={!typed}
+              checked={state.saveToRecord && !saveBlocked}
+              disabled={!typed || !!saveBlocked}
               onChange={(e) => onChange({ saveToRecord: e.target.checked })}
               className="h-3.5 w-3.5 rounded border-border accent-primary"
             />
             Also save to employee record
+            {saveBlocked ? <span>— {saveBlocked}</span> : null}
           </label>
         ) : null}
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">

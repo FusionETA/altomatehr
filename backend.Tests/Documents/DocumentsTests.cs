@@ -236,6 +236,202 @@ public class DocumentsTests
         Assert.Null(generate.Error);   // reads as not found
     }
 
+    // ─── Employees grant / scopes ────────────────────────────────────────
+    //
+    // A letter prints the employee's record, which is the Employees module's,
+    // not Documents'. Documents access alone must not open it.
+
+    [Fact]
+    public async Task Without_employees_access_resolve_preview_and_generate_are_forbidden()
+    {
+        using var db = Db();
+        var template = Seed(db, idNumber: "900101-14-5678");
+        var (service, storage, _) = Letters(db, employees: ModuleLevel.None);
+
+        var resolve = await service.ResolveAsync(template.Id, "usr-emp");
+        var preview = await service.PreviewAsync(template.Id, new PreviewLetterDto { EmployeeUserId = "usr-emp" });
+        var generate = await service.GenerateAsync(template.Id, new GenerateLetterDto
+        {
+            EmployeeUserId = "usr-emp",
+            Values = new() { ["input.lastDay"] = "2026-11-30" },
+            LeaveBlank = ["company.registrationNo"],
+        });
+
+        Assert.True(resolve.Forbidden);
+        Assert.Null(resolve.Letter);
+        Assert.Contains("Employees", resolve.Error);
+        Assert.True(preview.Forbidden);
+        Assert.Null(preview.Content);
+        Assert.True(generate.Forbidden);
+        Assert.Null(generate.Content);
+        Assert.Empty(db.GeneratedDocuments);
+        Assert.Empty(storage.Files);
+
+        // A preview with no employee reads only company details: still allowed.
+        var draft = await service.PreviewAsync(template.Id, new PreviewLetterDto());
+        Assert.True(draft.Ok);
+    }
+
+    [Fact]
+    public async Task View_only_employees_access_reads_but_cannot_save_to_the_record()
+    {
+        using var db = Db();
+        var template = Seed(db, idNumber: null);
+        var (service, storage, _) = Letters(db, employees: ModuleLevel.View);
+
+        var resolve = await service.ResolveAsync(template.Id, "usr-emp");
+        Assert.True(resolve.Ok);
+        var idField = resolve.Letter!.Fields.Single(f => f.Key == "employee.idNumber");
+        Assert.True(idField.Missing);
+        Assert.False(idField.WritableToEmployee);   // not offered without Manage
+
+        var request = new GenerateLetterDto
+        {
+            EmployeeUserId = "usr-emp",
+            Values = new() { ["employee.idNumber"] = "900101-14-5678", ["input.lastDay"] = "2026-11-30" },
+            LeaveBlank = ["company.registrationNo"],
+            SaveToEmployee = ["employee.idNumber"],
+            Save = true,
+        };
+
+        // Refused, not silently skipped — and nothing is kept or written.
+        var refused = await service.GenerateAsync(template.Id, request);
+        Assert.True(refused.Forbidden);
+        Assert.Contains("manage access to Employees", refused.Error);
+        Assert.Null(db.EmployeeProfiles.Single(p => p.UserId == "usr-emp").IdNumber);
+        Assert.Empty(db.GeneratedDocuments);
+        Assert.Empty(storage.Files);
+
+        request.SaveToEmployee = null;
+        var letter = await service.GenerateAsync(template.Id, request);
+        Assert.True(letter.Ok);
+        Assert.Null(db.EmployeeProfiles.Single(p => p.UserId == "usr-emp").IdNumber);
+    }
+
+    [Theory]
+    [InlineData(ModuleLevel.None, "employees:read")]
+    [InlineData(ModuleLevel.View, "employees:write")]
+    public async Task An_api_key_is_told_which_employees_scope_it_lacks(ModuleLevel level, string scope)
+    {
+        using var db = Db();
+        var template = Seed(db, idNumber: null);
+        var (service, _, _) = Letters(db, employees: level, user: new StubUser { ScopedMachine = true });
+
+        var result = await service.GenerateAsync(template.Id, new GenerateLetterDto
+        {
+            EmployeeUserId = "usr-emp",
+            Values = new() { ["employee.idNumber"] = "1", ["input.lastDay"] = "2026-11-30" },
+            LeaveBlank = ["company.registrationNo"],
+            SaveToEmployee = ["employee.idNumber"],
+        });
+
+        Assert.True(result.Forbidden);
+        Assert.Equal($"Caller is missing required scope: {scope}.", result.Error);
+    }
+
+    // ─── Write-back fits the columns ─────────────────────────────────────
+
+    [Fact]
+    public async Task A_long_typed_address_is_fitted_to_the_column_after_its_lines_are_joined()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var template = new DocumentTemplate
+        {
+            OrganizationId = "org-1", Name = "Address", Body = "{{employee.address}} {{employee.jobTitle}}",
+        };
+        db.DocumentTemplates.Add(template);
+        db.OrganizationMemberships.Single(m => m.UserId == "usr-emp").JobTitle = null;
+        db.SaveChanges();
+        var (service, _, _) = Letters(db);
+
+        // 158 characters on four lines: under 160 as typed, 164 once each
+        // line break becomes ", " — which used to overflow varchar(160).
+        var address = string.Join("\n",
+            new string('A', 40), new string('B', 40), new string('C', 40), new string('D', 38));
+        var result = await service.GenerateAsync(template.Id, new GenerateLetterDto
+        {
+            EmployeeUserId = "usr-emp",
+            Values = new() { ["employee.address"] = address, ["employee.jobTitle"] = new string('J', 300) },
+            LeaveBlank = ["company.registrationNo"],
+            SaveToEmployee = ["employee.address", "employee.jobTitle"],
+        });
+
+        Assert.True(result.Ok);
+        var saved = db.EmployeeProfiles.Single(p => p.UserId == "usr-emp").AddressLine1!;
+        Assert.Equal(160, saved.Length);
+        Assert.StartsWith(new string('A', 40) + ", " + new string('B', 40) + ", ", saved);
+        Assert.Equal(120, db.OrganizationMemberships.Single(m => m.UserId == "usr-emp").JobTitle!.Length);
+    }
+
+    // ─── Leave date after a rehire ───────────────────────────────────────
+
+    [Fact]
+    public async Task A_rehired_employee_has_no_leave_date_from_their_previous_stint()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var template = LeaveDateTemplate(db, joinDate: new DateTime(2024, 3, 1));
+        db.EmploymentPeriods.AddRange(
+            new EmploymentPeriod
+            {
+                OrganizationId = "org-1", UserId = "usr-emp",
+                JoinDate = new DateTime(2020, 1, 1), LeaveDate = new DateTime(2022, 6, 30), EndReason = "Resigned",
+            },
+            new EmploymentPeriod
+            {
+                OrganizationId = "org-1", UserId = "usr-emp",
+                JoinDate = new DateTime(2024, 3, 1), StartReason = "Restored",
+            });
+        db.SaveChanges();
+        var (service, _, _) = Letters(db);
+
+        var resolve = await service.ResolveAsync(template.Id, "usr-emp");
+        var leave = resolve.Letter!.Fields.Single(f => f.Key == "employee.leaveDate");
+        Assert.True(leave.Missing);
+        Assert.Null(leave.Value);
+
+        // …so Generate asks for it rather than printing 30 June 2022.
+        var generate = await service.GenerateAsync(template.Id, new GenerateLetterDto
+        {
+            EmployeeUserId = "usr-emp", LeaveBlank = ["company.registrationNo"],
+        });
+        Assert.Equal(["employee.leaveDate"], generate.MissingFields);
+    }
+
+    [Fact]
+    public async Task Someone_no_longer_employed_keeps_their_last_leave_date_from_the_history()
+    {
+        using var db = Db();
+        Seed(db, idNumber: "1");
+        var template = LeaveDateTemplate(db, joinDate: new DateTime(2020, 1, 1));
+        db.EmploymentPeriods.Add(new EmploymentPeriod
+        {
+            OrganizationId = "org-1", UserId = "usr-emp",
+            JoinDate = new DateTime(2020, 1, 1), LeaveDate = new DateTime(2022, 6, 30), EndReason = "Transferred to X",
+        });
+        db.SaveChanges();
+        var (service, _, _) = Letters(db);
+
+        var resolve = await service.ResolveAsync(template.Id, "usr-emp");
+        var leave = resolve.Letter!.Fields.Single(f => f.Key == "employee.leaveDate");
+        Assert.False(leave.Missing);
+        Assert.Equal("30 June 2022", leave.Value);
+    }
+
+    private static DocumentTemplate LeaveDateTemplate(AppDbContext db, DateTime joinDate)
+    {
+        db.EmployeeProfiles.Single(p => p.UserId == "usr-emp").JoinDate = joinDate;
+        var template = new DocumentTemplate
+        {
+            OrganizationId = "org-1", Name = "Resignation",
+            Body = "Joined {{employee.joinDate}}, last day {{employee.leaveDate}}.",
+        };
+        db.DocumentTemplates.Add(template);
+        db.SaveChanges();
+        return template;
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────
 
     private static DocumentTemplate Seed(AppDbContext db, string? idNumber)
@@ -259,7 +455,8 @@ public class DocumentsTests
     }
 
     private static (GeneratedLetterService, MemoryStorage, FakeAuditService) Letters(
-        AppDbContext db, IEmployeeScope? scope = null)
+        AppDbContext db, IEmployeeScope? scope = null,
+        ModuleLevel employees = ModuleLevel.Manage, ICurrentUser? user = null)
     {
         var storage = new MemoryStorage();
         var audit = new FakeAuditService();
@@ -278,7 +475,8 @@ public class DocumentsTests
             new OrganizationRepository(db),
             profileService,
             scope ?? new EmployeeScope(),
-            new StubUser(),
+            new EmployeesAt(employees),
+            user ?? new StubUser(),
             audit);
         return (service, storage, audit);
     }
@@ -299,6 +497,20 @@ public class DocumentsTests
         public string? IpAddress { get; set; } = "127.0.0.1";
         public bool IsAdmin => true;
         public bool IsAuthenticated => true;
+        public bool ScopedMachine { get; init; }
+        public bool IsScopedMachine => ScopedMachine;
+    }
+
+    // The caller's Employees level as GetCallerLevelAsync reports it (grant
+    // capped by key scopes — that combination is tested in AdminAccessTests).
+    private sealed class EmployeesAt(ModuleLevel employees) : IModuleAccessService
+    {
+        public Task<IReadOnlyCollection<string>> GetEnabledModulesAsync() =>
+            Task.FromResult<IReadOnlyCollection<string>>(OrgModules.AllModules.ToList());
+        public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => GetEnabledModulesAsync();
+        public Task<ModuleLevel> GetModuleLevelAsync(string module) =>
+            Task.FromResult(module == OrgModules.Employees ? employees : ModuleLevel.Manage);
+        public Task<ModuleLevel> GetCallerLevelAsync(string module) => GetModuleLevelAsync(module);
     }
 
     private sealed class MemoryStorage : IGeneratedDocumentStorage
