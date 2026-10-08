@@ -33,6 +33,10 @@ public static class DocxTemplateImport
     // part may be once read.
     private const long MaxUncompressedBytes = 64L * 1024 * 1024;
     private const int MaxEntries = 2000;
+    // The OpenXml SDK loads elements recursively, so absurd nesting (200k
+    // <w:sdt> levels fit in ~58 KB zipped) overflows the stack and kills the
+    // process — uncatchable. Real documents stay far below this.
+    private const int MaxXmlDepth = 256;
     private const long MaxCharactersInPart = 20_000_000;
 
     public const string UnreadableWord = "This Word file couldn't be read. Open it in Word, save it as .docx, and try again.";
@@ -138,7 +142,9 @@ public static class DocxTemplateImport
         }
         catch (Exception e) when (e is OpenXmlPackageException or InvalidDataException or FileFormatException
                                       or InvalidOperationException or System.Xml.XmlException
-                                      or IOException or ArgumentException or NotSupportedException)
+                                      or IOException or ArgumentException or NotSupportedException
+                                      // Thrown lazily by .Val.Value on an invalid attribute (w:val="abc").
+                                      or FormatException or OverflowException)
         {
             return Outcome.Refused(UnreadableWord);
         }
@@ -163,13 +169,39 @@ public static class DocxTemplateImport
                     return false;
                 }
             }
+            foreach (var entry in zip.Entries)
+            {
+                var name = entry.FullName;
+                if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                    && !name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TooDeep(entry)) return false;
+            }
             return zip.GetEntry("word/document.xml") is not null
                    || zip.Entries.Any(e => e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
         }
-        catch (Exception e) when (e is InvalidDataException or IOException or ArgumentException)
+        catch (Exception e) when (e is InvalidDataException or IOException or ArgumentException
+                                      or System.Xml.XmlException)
         {
             return false;
         }
+    }
+
+    // Streams one XML part (no DTDs, nothing kept in memory) and reports
+    // whether it nests deeper than MaxXmlDepth, before the SDK's recursive
+    // loader ever sees it.
+    private static bool TooDeep(ZipArchiveEntry entry)
+    {
+        using var stream = entry.Open();
+        using var reader = System.Xml.XmlReader.Create(stream, new System.Xml.XmlReaderSettings
+        {
+            DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+            XmlResolver = null,
+            IgnoreWhitespace = true,
+            IgnoreComments = true,
+        });
+        while (reader.Read())
+            if (reader.Depth > MaxXmlDepth) return true;
+        return false;
     }
 
     // One pass over the document body. Holds the counters for the warnings.

@@ -71,13 +71,14 @@ public class ApiKeyService : IApiKeyService
         return names.Any(IsAbPayKeyName);
     }
 
-    // "ABPay importer", "abpay", "AB Pay sync", "AB-Pay" → true. A space,
-    // "-" or "_" between AB and Pay is tolerated; nothing else is.
+    // "ABPay importer", "abpay", "AB Pay sync", "AB-Pay", "ABPayRun" → true. A space,
+    // "-" or "_" between AB and Pay is tolerated; nothing else is. "AB" must start a
+    // word, so "GrabPay payouts" or "Fab Payments" don't count.
     public static bool IsAbPayKeyName(string? name) =>
         !string.IsNullOrEmpty(name) && AbPayName.IsMatch(name);
 
     private static readonly Regex AbPayName =
-        new(@"ab[\s_-]?pay", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        new(@"(?<![\p{L}\p{N}])ab[\s_-]?pay", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static ApiKeyDto ToDto(ApiKey k) => new()
     {

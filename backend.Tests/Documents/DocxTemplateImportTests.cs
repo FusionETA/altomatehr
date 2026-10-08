@@ -167,6 +167,53 @@ public class DocxTemplateImportTests
     }
 
     [Fact]
+    public void Absurdly_nested_xml_is_refused_before_the_sdk_loads_it()
+    {
+        // 200k nested <w:sdt> zips to ~58 KB but overflows the SDK's recursive
+        // loader and kills the process — the depth guard must refuse it first.
+        const int levels = 200_000;
+        var xml = new StringBuilder("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>");
+        for (var i = 0; i < levels; i++) xml.Append("<w:sdt><w:sdtContent>");
+        xml.Append("<w:p><w:r><w:t>Hi</w:t></w:r></w:p>");
+        for (var i = 0; i < levels; i++) xml.Append("</w:sdtContent></w:sdt>");
+        xml.Append("</w:body></w:document>");
+
+        var result = DocxTemplateImport.Convert("deep.docx", WithDocumentXml(xml.ToString()));
+
+        Assert.False(result.Ok);
+        Assert.Equal(DocxTemplateImport.UnreadableWord, result.Error);
+    }
+
+    [Theory]
+    [InlineData("<w:pPr><w:outlineLvl w:val=\"abc\"/></w:pPr>", "")]
+    [InlineData("", "<w:rPr><w:b w:val=\"maybe\"/></w:rPr>")]
+    public void An_invalid_attribute_value_is_refused_not_a_500(string pPr, string rPr)
+    {
+        var xml = "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>"
+                  + $"<w:p>{pPr}<w:r>{rPr}<w:t>Hello</w:t></w:r></w:p></w:body></w:document>";
+
+        var result = DocxTemplateImport.Convert("odd.docx", WithDocumentXml(xml));
+
+        Assert.False(result.Ok);
+        Assert.Equal(DocxTemplateImport.UnreadableWord, result.Error);
+    }
+
+    // A real package whose word/document.xml is replaced with raw XML.
+    private static byte[] WithDocumentXml(string documentXml)
+    {
+        var docx = Docx(body => body.Append(P(R("placeholder"))));
+        using var ms = new MemoryStream();
+        ms.Write(docx);
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Update, leaveOpen: true))
+        {
+            zip.GetEntry("word/document.xml")!.Delete();
+            using var w = new StreamWriter(zip.CreateEntry("word/document.xml").Open(), new UTF8Encoding(false));
+            w.Write(documentXml);
+        }
+        return ms.ToArray();
+    }
+
+    [Fact]
     public void Other_types_and_large_files_are_refused()
     {
         Assert.False(DocxTemplateImport.Convert("letter.pdf", [1, 2, 3]).Ok);
