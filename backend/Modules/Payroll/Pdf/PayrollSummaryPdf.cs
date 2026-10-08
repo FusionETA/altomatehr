@@ -28,8 +28,9 @@ namespace AltomateHR.Api.Modules.Payroll.Pdf;
 // deduction line is itemised, in red, in the employee's own breakdown.
 //
 // The totals are summed from the ROWS shown rather than read off the run's
-// cached figures. If those ever disagreed, printing the cached one would hide
-// it — the payslips are the source of truth.
+// cached figures (PayrollSummaryTotals, shared with the Excel copy). If those
+// ever disagreed, printing the cached one would hide it — the payslips are
+// the source of truth.
 public static class PayrollSummaryPdf
 {
     public const string ContentType = "application/pdf";
@@ -138,7 +139,7 @@ public static class PayrollSummaryPdf
     private static void Body(IContainer container, PayrollDocumentModel model)
     {
         var payslips = model.Rows.Select(r => r.Payslip).ToList();
-        var totals = Totals.Of(payslips);
+        var totals = PayrollSummaryTotals.Of(payslips);
 
         container.Column(col =>
         {
@@ -189,29 +190,17 @@ public static class PayrollSummaryPdf
                 });
             });
 
-            col.Item().PaddingTop(14).ShowEntire().Element(c => SummaryBlock(c, payslips.Count, totals));
+            col.Item().PaddingTop(14).ShowEntire().Element(c => SummaryBlock(c, totals));
         });
     }
 
-    private static void SummaryBlock(IContainer container, int employees, Totals t)
+    private static void SummaryBlock(IContainer container, PayrollSummaryTotals t)
     {
-        var rows = new List<(string Label, string Value)>
-        {
-            ("Number of employees", employees.ToString(CultureInfo.InvariantCulture)),
-            ("Total employee net pay", Fmt(t.Net)),
-            ("Total PCB payment", Fmt(t.Pcb)),
-            ("Employees subject to HRDF", t.HrdfCount.ToString(CultureInfo.InvariantCulture)),
-            ("Total wages subject to HRDF", Fmt(t.HrdfWage)),
-            ("Total EPF payment", Fmt(t.EpfEmp + t.EpfEr)),
-            ("Total SOCSO payment", Fmt(t.SocsoEmp + t.SocsoEr)),
-            ("Total EIS payment", Fmt(t.EisEmp + t.EisEr)),
-        };
-
-        // SKBBK started Jun 2026; earlier months should not show a zero line.
-        if (t.SkbbkEmp > 0m) rows.Add(("Total SKBBK payment", Fmt(t.SkbbkEmp)));
-        rows.Add(("Total HRDF payment", Fmt(t.Hrdf)));
-        rows.Add(("Total Zakat payment", Fmt(t.Zakat)));
-        if (t.Bik > 0m) rows.Add(("Total Benefits in Kind (non-cash, for tax)", Fmt(t.Bik)));
+        var rows = t.SummaryLines()
+            .Select(l => (l.Label, Value: l.IsCount
+                ? ((int)l.Value).ToString(CultureInfo.InvariantCulture)
+                : Fmt(l.Value)))
+            .ToList();
 
         container.Table(table =>
         {
@@ -343,36 +332,4 @@ public static class PayrollSummaryPdf
     private static string Generated(DateTime value) =>
         value.ToString("dd/MM/yyyy h:mm ", CultureInfo.InvariantCulture)
         + value.ToString("tt", CultureInfo.InvariantCulture).ToLowerInvariant();
-
-    private sealed class Totals
-    {
-        public decimal Gross, Bik, Pcb, EpfEmp, SocsoEmp, EisEmp, SkbbkEmp, Net;
-        public decimal EpfEr, SocsoEr, EisEr, Hrdf, Cost, Zakat, HrdfWage;
-        public int HrdfCount;
-
-        public static Totals Of(IEnumerable<Payslip> payslips)
-        {
-            var t = new Totals();
-            foreach (var p in payslips)
-            {
-                t.Gross += p.GrossPay;
-                t.Bik += p.TotalBenefitsInKind;
-                t.Pcb += p.Pcb;
-                t.EpfEmp += p.EpfEmployee;
-                t.SocsoEmp += p.SocsoEmployee;
-                t.EisEmp += p.EisEmployee;
-                t.SkbbkEmp += p.SkbbkEmployee;
-                t.Net += p.NetPay;
-                t.EpfEr += p.EpfEmployer;
-                t.SocsoEr += p.SocsoEmployer;
-                t.EisEr += p.EisEmployer;
-                t.Hrdf += p.Hrdf;
-                t.Cost += p.TotalCostToEmployer;
-                t.Zakat += p.Zakat;
-                t.HrdfWage += p.HrdfWage;
-                if (p.Hrdf > 0m) t.HrdfCount++;
-            }
-            return t;
-        }
-    }
 }

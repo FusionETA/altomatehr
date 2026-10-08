@@ -570,6 +570,11 @@ export const downloadAllPayslips = (runId: string) =>
 export const downloadPayrollSummary = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/summary`, "payroll-summary.pdf");
 
+// The same summary as an Excel workbook — same figures, one row per employee,
+// plus the totals block and each employee's itemised pay on their own sheets.
+export const downloadPayrollSummaryXlsx = (runId: string) =>
+  download(`/payroll/runs/${runId}/documents/summary?format=xlsx`, "payroll-summary.xlsx");
+
 // Everyone the bank file doesn't pay — other banks / e-wallets, cash, cheque,
 // and anyone missing bank details — to pay by hand.
 export const downloadManualPayments = (runId: string) =>

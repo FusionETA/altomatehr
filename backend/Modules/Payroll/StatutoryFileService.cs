@@ -186,7 +186,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "manual-payments", "summary", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+        ["bank-file", "manual-payments", "summary", "summary-xlsx", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -244,6 +244,7 @@ public class StatutoryFileService : IStatutoryFileService
             "bank-file" => RenderBankFileAsync(runId, paymentDate),
             "manual-payments" => RenderManualPaymentsXlsxAsync(runId),
             "summary" => RenderSummaryPdfAsync(runId),
+            "summary-xlsx" => RenderSummaryXlsxAsync(runId),
             "payslips" => RenderAllPayslipsZipAsync(runId),
             "epf" => RenderEpfCsvAsync(runId),
             "socso-eis" => RenderPerkesoTxtAsync(runId),
@@ -254,15 +255,40 @@ public class StatutoryFileService : IStatutoryFileService
 
     public async Task<StatutoryFileResult> RenderSummaryPdfAsync(string runId)
     {
+        var (summary, refused) = await LoadSummaryAsync(runId);
+        if (summary is null) return refused!;
+
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.pdf";
+        return new StatutoryFileResult(
+            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
+    }
+
+    // The same summary as a workbook. Loaded and gated exactly as the PDF is,
+    // so the two always carry the same figures.
+    public async Task<StatutoryFileResult> RenderSummaryXlsxAsync(string runId)
+    {
+        var (summary, refused) = await LoadSummaryAsync(runId);
+        if (summary is null) return refused!;
+
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.xlsx";
+        return new StatutoryFileResult(
+            true, fileName, PayrollSummaryXlsx.Render(summary), PayrollSummaryXlsx.ContentType, null);
+    }
+
+    // The summary's model (with every payslip's line items and the generated
+    // stamp), or the refusal to return instead.
+    private async Task<(PayrollDocumentModel? Summary, StatutoryFileResult? Refused)> LoadSummaryAsync(
+        string runId)
+    {
         var model = await LoadDocumentAsync(runId);
-        if (model is null) return NotFound();
-        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
-        if (RefuseIfImported(model.Run) is { } imported) return imported;
+        if (model is null) return (null, NotFound());
+        if (RefuseUnlessApproved(model.Run) is { } refusal) return (null, refusal);
+        if (RefuseIfImported(model.Run) is { } imported) return (null, imported);
 
         if (model.Rows.Count == 0)
         {
-            return StatutoryFileResult.Refused(
-                "Run payroll before downloading the summary — there are no payslips on this run.");
+            return (null, StatutoryFileResult.Refused(
+                "Run payroll before downloading the summary — there are no payslips on this run."));
         }
 
         // The summary itemises every payslip's lines under the employee's name.
@@ -271,16 +297,12 @@ public class StatutoryFileService : IStatutoryFileService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
                 StringComparer.Ordinal);
 
-        var summary = model with
+        return (model with
         {
             LineItems = lineItems,
             GeneratedAt = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(
                 DateTime.UtcNow, Attendance.AttendanceTime.DefaultTimeZone),
-        };
-
-        var fileName = $"Payroll_Summary_{MonthYear(model.Run)}.pdf";
-        return new StatutoryFileResult(
-            true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
+        }, null);
     }
 
     public async Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId)
