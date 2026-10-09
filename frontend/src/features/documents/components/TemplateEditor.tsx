@@ -325,6 +325,7 @@ export function TemplateEditor({
             <div className="min-h-[460px] rounded-2xl border border-border/60 bg-background p-6">
               <p className="mb-4 text-xs text-muted-foreground">
                 The PDF adds the letterhead, the date and the signature block. Fields show by name.
+                Add your logo in Settings → Organization.
               </p>
               <LetterPreview body={body} fields={mergeFields} />
             </div>
