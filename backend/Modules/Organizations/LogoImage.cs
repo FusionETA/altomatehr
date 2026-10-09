@@ -23,11 +23,20 @@ public static class LogoImage
         return null;
     }
 
-    // Whether the whole file decodes — the header can be fine on a truncated
-    // or damaged file. Uses the same decoder that prints the letter (QuestPDF),
-    // so a logo that passes here is one a letter can draw.
+    // Whether the whole file is there and intact — the header can be fine on a
+    // truncated or damaged file. QuestPDF alone can't tell: FromBinaryData only
+    // reads the header, and Skia draws a cut-off image as a half-drawn logo
+    // without complaint. So first check the file's own structure (every PNG
+    // chunk present with a matching CRC up to IEND; a JPEG that reaches its EOI
+    // marker after the scan data; a WebP whose RIFF and chunk sizes fit the
+    // file), then let QuestPDF confirm it can open it.
     public static bool CanDecode(byte[] data)
     {
+        var complete = IsPng(data) ? PngIsComplete(data)
+            : IsJpeg(data) ? JpegIsComplete(data)
+            : IsWebP(data) && WebPIsComplete(data);
+        if (!complete) return false;
+
         try
         {
             var image = QuestPDF.Infrastructure.Image.FromBinaryData(data);
@@ -131,6 +140,92 @@ public static class LogoImage
         }
 
         return null;
+    }
+
+    // ─── Completeness ────────────────────────────────────────────────────
+
+    // Every chunk (length, type, data, CRC) fits in the file and its CRC
+    // matches, through to IEND. Anything after IEND is ignored.
+    private static bool PngIsComplete(ReadOnlySpan<byte> d)
+    {
+        var i = 8;
+        while (i + 12 <= d.Length)
+        {
+            var length = BinaryPrimitives.ReadUInt32BigEndian(d.Slice(i, 4));
+            if (length > (uint)(d.Length - i - 12)) return false;
+            var typeAndData = d.Slice(i + 4, 4 + (int)length);
+            var crc = BinaryPrimitives.ReadUInt32BigEndian(d.Slice(i + 8 + (int)length, 4));
+            if (Crc32(typeAndData) != crc) return false;
+            if (typeAndData[..4].SequenceEqual("IEND"u8)) return true;
+            i += 12 + (int)length;
+        }
+        return false;
+    }
+
+    // The marker segments reach a start of scan, and an EOI (FF D9) follows
+    // it. Inside scan data FF is always stuffed (FF 00) or a restart/marker,
+    // so FF D9 after SOS only appears as the real end; a thumbnail's own EOI
+    // sits in APP1, before the scan, and doesn't count.
+    private static bool JpegIsComplete(ReadOnlySpan<byte> d)
+    {
+        var i = 2;
+        while (i < d.Length)
+        {
+            if (d[i] != 0xFF) return false;
+            while (i < d.Length && d[i] == 0xFF) i++;
+            if (i >= d.Length) return false;
+            var marker = d[i++];
+            if (marker is 0x01 or (>= 0xD0 and <= 0xD7)) continue;
+            if (marker == 0xD9) return false;   // ended before any scan
+            if (i + 2 > d.Length) return false;
+            int length = BinaryPrimitives.ReadUInt16BigEndian(d.Slice(i, 2));
+            if (length < 2 || i + length > d.Length) return false;
+            if (marker == 0xDA) return d[(i + length)..].IndexOf([(byte)0xFF, (byte)0xD9]) >= 0;
+            i += length;
+        }
+        return false;
+    }
+
+    // The RIFF size covers the whole file's payload, and the chunks inside it
+    // (each padded to an even length) fit exactly.
+    private static bool WebPIsComplete(ReadOnlySpan<byte> d)
+    {
+        var riffSize = BinaryPrimitives.ReadUInt32LittleEndian(d.Slice(4, 4));
+        if (riffSize < 4 || riffSize > (uint)(d.Length - 8)) return false;
+        var end = 8 + (int)riffSize;
+        var i = 12;
+        var sawImage = false;
+        while (i + 8 <= end)
+        {
+            var size = BinaryPrimitives.ReadUInt32LittleEndian(d.Slice(i + 4, 4));
+            var padded = (long)size + (size & 1);
+            if (padded > end - i - 8) return false;
+            var type = d.Slice(i, 4);
+            if (type.SequenceEqual("VP8 "u8) || type.SequenceEqual("VP8L"u8)) sawImage = true;
+            i += 8 + (int)padded;
+        }
+        return sawImage && i == end;
+    }
+
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var table = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[n] = c;
+        }
+        return table;
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> bytes)
+    {
+        var c = 0xFFFFFFFFu;
+        foreach (var b in bytes) c = CrcTable[(c ^ b) & 0xFF] ^ (c >> 8);
+        return c ^ 0xFFFFFFFFu;
     }
 
     private static Info? Make(string contentType, string extension, uint width, uint height) =>

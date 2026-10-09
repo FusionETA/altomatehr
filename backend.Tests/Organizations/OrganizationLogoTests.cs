@@ -58,6 +58,33 @@ public class OrganizationLogoTests : IDisposable
         Assert.True(LogoImage.CanDecode(bytes));
     }
 
+    // Cut inside the image DATA, not the header: the header still reads fine
+    // (and QuestPDF would still open it), but the file is half a logo.
+    [Theory]
+    [InlineData("png", 0.9)]
+    [InlineData("png", 0.6)]
+    [InlineData("jpeg", 0.9)]
+    [InlineData("jpeg", 0.6)]
+    [InlineData("webp", 0.9)]
+    [InlineData("webp", 0.6)]
+    public void A_file_cut_off_mid_data_is_not_decodable(string format, double keep)
+    {
+        var bytes = Picture(format, width: 800, height: 300);
+        var cut = bytes[..(int)(bytes.Length * keep)];
+
+        Assert.NotNull(LogoImage.Read(cut));
+        Assert.False(LogoImage.CanDecode(cut));
+    }
+
+    [Fact]
+    public void A_png_with_a_corrupted_byte_is_not_decodable()
+    {
+        var bytes = Picture("png", width: 800, height: 300);
+        bytes[bytes.Length / 2] ^= 0xFF;
+
+        Assert.False(LogoImage.CanDecode(bytes));
+    }
+
     [Fact]
     public void Each_webp_header_kind_gives_its_size()
     {
