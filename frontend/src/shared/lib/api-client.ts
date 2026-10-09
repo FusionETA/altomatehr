@@ -350,6 +350,11 @@ export const apiPostForm = <T>(path: string, body: FormData) =>
     cache.invalidateFor(path);
     return r;
   });
+export const apiPutForm = <T>(path: string, body: FormData) =>
+  requestForm<T>("PUT", path, body).then((r) => {
+    cache.invalidateFor(path);
+    return r;
+  });
 export const apiGetBlob = (path: string) => requestBlob(path);
 export const apiPostFile = (path: string, fallbackName: string, body: unknown) =>
   requestFile(path, fallbackName, body);
