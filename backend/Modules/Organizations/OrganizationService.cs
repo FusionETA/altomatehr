@@ -371,7 +371,8 @@ public class OrganizationService : IOrganizationService
         return ToDto(org);
     }
 
-    private static OrganizationDto ToDto(Organization o) => new()
+    // Internal so the logo service returns the same shape after an upload.
+    internal static OrganizationDto ToDto(Organization o) => new()
     {
         Id = o.Id,
         Name = o.Name,
@@ -393,5 +394,11 @@ public class OrganizationService : IOrganizationService
         EnabledModules = OrgModules
             .DeriveOrgEnabledModules(o.Plan, o.Tier, OrgModules.Split(o.Addons))
             .ToList(),
+        HasLogo = !string.IsNullOrEmpty(o.LogoFileName),
+        // MySQL hands DateTime back unspecified; it was written as UTC, so say
+        // so and it serialises with a trailing Z.
+        LogoUpdatedAt = string.IsNullOrEmpty(o.LogoFileName) || o.LogoUpdatedAt is not { } at
+            ? null
+            : DateTime.SpecifyKind(at, DateTimeKind.Utc),
     };
 }

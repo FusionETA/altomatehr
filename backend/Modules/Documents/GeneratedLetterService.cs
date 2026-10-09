@@ -62,6 +62,8 @@ public class GeneratedLetterService : IGeneratedLetterService
     private readonly IModuleAccessService _access;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
+    private readonly IOrganizationLogoService? _logos;
+    private readonly ILogger<GeneratedLetterService>? _logger;
 
     public GeneratedLetterService(
         IDocumentTemplateRepository templates,
@@ -77,8 +79,14 @@ public class GeneratedLetterService : IGeneratedLetterService
         IEmployeeScope scope,
         IModuleAccessService access,
         ICurrentUser currentUser,
-        IAuditService audit)
+        IAuditService audit,
+        // The company logo for the letterhead. Optional so a letter still
+        // renders (without one) where no logo service is wired, e.g. tests.
+        IOrganizationLogoService? logos = null,
+        ILogger<GeneratedLetterService>? logger = null)
     {
+        _logos = logos;
+        _logger = logger;
         _templates = templates;
         _generated = generated;
         _storage = storage;
@@ -454,7 +462,7 @@ public class GeneratedLetterService : IGeneratedLetterService
     private sealed record EmployeeContext(
         User User, OrganizationMembership Membership, EmployeeProfile? Profile, DateTime? LastLeaveDate);
 
-    private sealed record CompanyContext(string Name, PayrollCompanyInfo? Info);
+    private sealed record CompanyContext(string Name, PayrollCompanyInfo? Info, byte[]? Logo = null);
 
     // Null when the person isn't a member of this company — or is outside a
     // policy-limited admin's scope, which reads exactly the same.
@@ -498,7 +506,24 @@ public class GeneratedLetterService : IGeneratedLetterService
             ? await _organizations.GetByIdAsync(orgId)
             : null;
         var name = !string.IsNullOrWhiteSpace(info?.EmployerName) ? info!.EmployerName! : organization?.Name ?? "";
-        return new CompanyContext(name, info);
+        return new CompanyContext(name, info, await LoadLogoAsync());
+    }
+
+    // The current company's logo for the letterhead. Anything wrong with it -
+    // no logo, a file gone from disk, storage throwing - means a letter
+    // without a logo, never a letter that fails.
+    private async Task<byte[]?> LoadLogoAsync()
+    {
+        if (_logos is null || _currentUser.OrganizationId is not { } orgId) return null;
+        try
+        {
+            return (await _logos.GetAsync(orgId))?.Content;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Couldn't load the company logo for organisation {OrganizationId}; printing the letter without it.", orgId);
+            return null;
+        }
     }
 
     // Every registry field this employee and company can answer: the text it
@@ -585,7 +610,7 @@ public class GeneratedLetterService : IGeneratedLetterService
 
     // ─── Rendering ───────────────────────────────────────────────────────
 
-    private static byte[] Render(
+    private byte[] Render(
         string title, string body, IReadOnlyDictionary<string, string> values, CompanyContext company, string? watermark)
     {
         string Value(string key) => values.TryGetValue(key, out var s) ? s : "";
@@ -593,7 +618,7 @@ public class GeneratedLetterService : IGeneratedLetterService
         var blocks = LetterMarkup.Parse(body, Value);
         var info = company.Info;
 
-        return LetterPdf.Render(new LetterPdfModel(
+        var model = new LetterPdfModel(
             Title: title,
             CompanyName: values.TryGetValue("company.name", out var cn) && cn.Length > 0 ? cn : company.Name,
             RegistrationNo: info?.RegistrationNo,
@@ -604,7 +629,21 @@ public class GeneratedLetterService : IGeneratedLetterService
             Blocks: blocks,
             SignatoryName: Value("signatory.name"),
             SignatoryPosition: Value("signatory.position"),
-            Watermark: watermark));
+            Watermark: watermark,
+            Logo: company.Logo);
+
+        if (model.Logo is null) return LetterPdf.Render(model);
+        try
+        {
+            return LetterPdf.Render(model);
+        }
+        catch (Exception ex)
+        {
+            // LetterPdf already skips a logo it can't read; this is the last
+            // line - a logo the decoder accepts but the page can't draw.
+            _logger?.LogWarning(ex, "Rendering the letter with the company logo failed; printing it without the logo.");
+            return LetterPdf.Render(model with { Logo = null });
+        }
     }
 
     private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
