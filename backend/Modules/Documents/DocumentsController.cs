@@ -184,10 +184,11 @@ public class DocumentsController : ControllerBase
     // drafts to choose from, or (with currentBody) one revision of the draft
     // they're editing. Stores nothing: the draft opens in the editor and is
     // saved through POST /documents/templates, which still refuses unknown
-    // fields. People only — each call is a paid AI request.
+    // fields. People only — each call is a paid AI request — and not a
+    // [ReadOnlyAction]: a View-only admin can't save a template, so has no
+    // reason to spend AI credit drafting one.
     [RequireScope("documents:write")]
     [HumanOnly]
-    [ReadOnlyAction]
     [EnableRateLimiting("ai-documents")]
     [HttpPost("templates/ai")]
     public async Task<IActionResult> DraftWithAi(TemplateAiRequestDto dto, CancellationToken cancellationToken)

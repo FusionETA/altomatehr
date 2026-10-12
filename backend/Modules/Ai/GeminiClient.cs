@@ -108,7 +108,20 @@ public class GeminiClient : IGeminiClient
         var url = $"{BaseUrl}/models/{Uri.EscapeDataString(model)}:generateContent" +
                   $"?key={Uri.EscapeDataString(_options.ApiKey)}";
 
-        using var response = await _http.PostAsJsonAsync(url, request, JsonOptions, cancellationToken);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync(url, request, JsonOptions, cancellationToken);
+        }
+        // Gemini unreachable, or the HttpClient timeout (not the caller giving
+        // up) — a provider failure the caller can retry, not a 500.
+        catch (Exception ex) when (ex is HttpRequestException
+                                   || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw new AiProviderException("Couldn't reach Gemini.", ex);
+        }
+
+        using var _ = response;
         await EnsureSuccessAsync(response, cancellationToken);
 
         var payload = await response.Content.ReadFromJsonAsync<GeminiResponse>(JsonOptions, cancellationToken);

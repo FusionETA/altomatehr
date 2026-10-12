@@ -168,6 +168,11 @@ export const importTemplateFile = (file: File) => {
   return apiPostForm<TemplateImport>(`${TEMPLATES_PATH}/import`, form);
 };
 
+// The server takes at most 20 turns. A long session sends its most recent
+// ones, starting on one of the admin's — the current draft travels separately,
+// so older turns add little.
+const MAX_AI_TURNS = 19;
+
 /**
  * "Write with AI". Without `currentBody`: two drafts of a new template. With it
  * (the editor's Ask AI panel): one revision of that draft. Saves nothing.
@@ -177,7 +182,11 @@ export const draftTemplateWithAi = (body: {
   currentBody?: string;
   currentName?: string;
   currentCategory?: DocumentCategory;
-}) => apiPost<TemplateAiResult>(`${TEMPLATES_PATH}/ai`, body);
+}) => {
+  let messages = body.messages.slice(-MAX_AI_TURNS);
+  while (messages.length > 1 && messages[0].role !== "user") messages = messages.slice(1);
+  return apiPost<TemplateAiResult>(`${TEMPLATES_PATH}/ai`, { ...body, messages });
+};
 
 /** A PDF preview. With an id, `body` previews unsaved edits of that template. */
 export const previewTemplate = (

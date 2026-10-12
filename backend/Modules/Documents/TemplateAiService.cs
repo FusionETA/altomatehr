@@ -16,6 +16,7 @@ public class TemplateAiService : ITemplateAiService
     // Well under the 20,000-character template limit; a letter is a page or two.
     private const int MaxBodyChars = 20000;
     private const int MaxNameChars = 160;
+    private const int MaxReplyChars = 1000;
 
     private readonly IGeminiClient _gemini;
 
@@ -146,7 +147,9 @@ public class TemplateAiService : ITemplateAiService
             throw new AiProviderException($"The AI's answer wasn't readable: {ex.Message}");
         }
 
-        var result = new TemplateAiResultDto { Reply = Str(root, "reply").Trim() };
+        // The reply goes back to us as an assistant turn on the next request,
+        // where TemplateAiMessageDto caps a turn at 4000 — keep it well inside.
+        var result = new TemplateAiResultDto { Reply = Clip(Str(root, "reply").Trim(), MaxReplyChars) };
         if (root.TryGetProperty("drafts", out var drafts) && drafts.ValueKind == JsonValueKind.Array)
         {
             foreach (var d in drafts.EnumerateArray())

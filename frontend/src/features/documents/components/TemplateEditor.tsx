@@ -73,6 +73,10 @@ export function TemplateEditor({
     template?.category ?? aiDraft?.draft.category ?? "OTHER",
   );
   const [body, setBody] = useState(template?.body ?? imported?.body ?? aiDraft?.draft.body ?? "");
+  // While Ask AI is rewriting, the text it was given is frozen — anything typed
+  // meanwhile would be overwritten by the revision.
+  const [aiBusy, setAiBusy] = useState(false);
+  const locked = readOnly || aiBusy;
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [inputName, setInputName] = useState("");
@@ -94,6 +98,7 @@ export function TemplateEditor({
   const inputs = used.filter((k) => isValidInputField(k));
 
   function replaceField(from: string, to: string) {
+    if (aiBusy) return;
     setBody((b) => replacePlaceholder(b, from, to));
     setServerUnknown((list) => list.filter((k) => k !== from));
   }
@@ -114,6 +119,7 @@ export function TemplateEditor({
     body !== (template?.body ?? "");
 
   function insert(text: string) {
+    if (aiBusy) return;
     const el = textareaRef.current;
     if (!el || mode !== "edit") {
       setBody((b) => b + text);
@@ -184,7 +190,7 @@ export function TemplateEditor({
   }
 
   const flagged = [...new Set([...unknown, ...serverUnknown])];
-  const canSave = !readOnly && name.trim() !== "" && body.trim() !== "" && unknown.length === 0 && !saving;
+  const canSave = !locked && name.trim() !== "" && body.trim() !== "" && unknown.length === 0 && !saving;
 
   return (
     <div className="space-y-4">
@@ -245,7 +251,7 @@ export function TemplateEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={160}
-              disabled={readOnly}
+              disabled={locked}
               placeholder="e.g. Offer Letter — Executive"
               className={`${INPUT} mt-1.5`}
             />
@@ -255,7 +261,7 @@ export function TemplateEditor({
             <Select
               value={category}
               onValueChange={(v) => setCategory(v as DocumentCategory)}
-              disabled={readOnly}
+              disabled={locked}
             >
               <SelectTrigger className="mt-1.5 h-11 bg-card">
                 <SelectValue />
@@ -294,7 +300,7 @@ export function TemplateEditor({
               ))}
             </ul>
           ) : null}
-          {unknown.length > 0 && !readOnly ? (
+          {unknown.length > 0 && !locked ? (
             <PlaceholderPicker unknown={unknown} mergeFields={mergeFields} onReplace={replaceField} />
           ) : null}
         </div>
@@ -355,7 +361,7 @@ export function TemplateEditor({
               ref={textareaRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              readOnly={readOnly}
+              readOnly={locked}
               maxLength={20000}
               spellCheck
               placeholder={"Dear {{employee.name}},\n\n# Letter title\n\nWrite the letter here…"}
@@ -378,7 +384,7 @@ export function TemplateEditor({
                 Pick a field from the list, or use <code>{"{{input.yourName}}"}</code> for a detail typed
                 in for each letter.
               </p>
-              {!imported && !readOnly ? (
+              {!imported && !locked ? (
                 <div className="mt-3">
                   <PlaceholderPicker unknown={flagged} mergeFields={mergeFields} onReplace={replaceField} />
                 </div>
@@ -394,6 +400,7 @@ export function TemplateEditor({
               body={body}
               name={name}
               category={category}
+              onBusyChange={setAiBusy}
               onRevised={(draft) => {
                 setBody(draft.body);
                 if (!name.trim()) setName(draft.name);
@@ -437,7 +444,7 @@ export function TemplateEditor({
                     <button
                       key={f.key}
                       type="button"
-                      disabled={readOnly}
+                      disabled={locked}
                       onClick={() => insert(`{{${f.key}}}`)}
                       title={`${f.description}\n{{${f.key}}}`}
                       className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition disabled:pointer-events-none disabled:opacity-60 ${
@@ -466,7 +473,7 @@ export function TemplateEditor({
                   <button
                     key={k}
                     type="button"
-                    disabled={readOnly}
+                    disabled={locked}
                     onClick={() => insert(`{{${k}}}`)}
                     className="rounded-full border border-dashed border-warning-foreground/40 bg-warning/20 px-2.5 py-1 text-xs font-semibold text-warning-foreground transition hover:bg-warning/40 disabled:pointer-events-none"
                   >
@@ -577,6 +584,7 @@ function AskAiPanel({
   body,
   name,
   category,
+  onBusyChange,
   onRevised,
   onUndo,
 }: {
@@ -584,6 +592,7 @@ function AskAiPanel({
   body: string;
   name: string;
   category: DocumentCategory;
+  onBusyChange: (busy: boolean) => void;
   onRevised: (draft: TemplateAiDraft) => void;
   onUndo: (previousBody: string) => void;
 }) {
@@ -591,25 +600,31 @@ function AskAiPanel({
   const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previousBody, setPreviousBody] = useState<string | null>(null);
+  // Undo is offered only while the text is still exactly what the AI wrote —
+  // once the admin edits it by hand, "undo" would throw their edits away.
+  const [lastRevision, setLastRevision] = useState<{ before: string; after: string } | null>(null);
+  const canUndo = lastRevision !== null && body === lastRevision.after;
+  // The panel revises a draft; on an empty editor there's nothing to revise
+  // ("Write with AI" on the templates page starts one).
+  const empty = body.trim() === "";
 
   async function ask() {
     const text = request.trim();
-    if (!text || busy) return;
+    if (!text || busy || empty) return;
     const messages: TemplateAiMessage[] = [...conversation, { role: "user", text }];
     setBusy(true);
+    onBusyChange(true);
     setError(null);
     try {
       const result = await draftTemplateWithAi({
         messages,
-        // A blank editor gets a fresh draft; otherwise this text is revised.
-        currentBody: body.trim() ? body : undefined,
+        currentBody: body,
         currentName: name.trim() || undefined,
         currentCategory: category,
       });
       const draft = result.drafts[0];
       if (!draft) throw new Error("The AI didn't return a draft.");
-      setPreviousBody(body);
+      setLastRevision({ before: body, after: draft.body });
       onRevised(draft);
       setConversation([...messages, { role: "assistant", text: result.reply || "Done." }]);
       setRequest("");
@@ -617,6 +632,7 @@ function AskAiPanel({
       setError(e instanceof Error ? e.message : "The AI couldn't change the template just now.");
     } finally {
       setBusy(false);
+      onBusyChange(false);
     }
   }
 
@@ -656,18 +672,22 @@ function AskAiPanel({
         }}
         rows={3}
         maxLength={4000}
-        disabled={busy}
-        placeholder="e.g. Add a paragraph about the 3-month notice period."
+        disabled={busy || empty}
+        placeholder={
+          empty
+            ? "Write the letter first, or start one with Write with AI on the templates page."
+            : "e.g. Add a paragraph about the 3-month notice period."
+        }
         className="w-full resize-y rounded-xl border border-border bg-card p-2.5 text-xs text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
       />
       {error ? <p className="text-[11px] font-medium text-destructive">{error}</p> : null}
       <div className="flex items-center justify-between gap-2">
-        {previousBody !== null ? (
+        {canUndo ? (
           <button
             type="button"
             onClick={() => {
-              onUndo(previousBody);
-              setPreviousBody(null);
+              onUndo(lastRevision.before);
+              setLastRevision(null);
             }}
             disabled={busy}
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
@@ -681,7 +701,7 @@ function AskAiPanel({
         <button
           type="button"
           onClick={() => void ask()}
-          disabled={busy || request.trim() === ""}
+          disabled={busy || empty || request.trim() === ""}
           className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
         >
           {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}

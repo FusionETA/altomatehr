@@ -96,6 +96,17 @@ public class TemplateAiServiceTests
         Assert.Equal("Hello {{employee.name}}", draft.Body);
     }
 
+    [Fact]
+    public async Task ALongReply_IsCut_SoItStillFitsWhenSentBackNextTurn()
+    {
+        var reply = new string('x', 5000);
+        var gemini = new FakeGemini($$"""{"reply":"{{reply}}","drafts":[{"name":"Memo","category":"OTHER","body":"Hi"}]}""");
+        var result = await new TemplateAiService(gemini).DraftAsync(Ask("A memo"));
+
+        // TemplateAiMessageDto caps an assistant turn at 4000.
+        Assert.True(result.Reply.Length <= 1000);
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("{\"reply\":\"sorry\",\"drafts\":[]}")]
