@@ -1,8 +1,10 @@
+using AltomateHR.Api.Modules.Ai;
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Documents.Dtos;
 using AltomateHR.Api.Modules.Organizations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AltomateHR.Api.Modules.Documents;
 
@@ -20,11 +22,13 @@ public class DocumentsController : ControllerBase
 {
     private readonly IDocumentTemplateService _templates;
     private readonly IGeneratedLetterService _letters;
+    private readonly ITemplateAiService _ai;
 
-    public DocumentsController(IDocumentTemplateService templates, IGeneratedLetterService letters)
+    public DocumentsController(IDocumentTemplateService templates, IGeneratedLetterService letters, ITemplateAiService ai)
     {
         _templates = templates;
         _letters = letters;
+        _ai = ai;
     }
 
     // ─── Merge fields ────────────────────────────────────────────────────
@@ -172,5 +176,40 @@ public class DocumentsController : ControllerBase
         await file.CopyToAsync(buffer);
         var result = _templates.Import(file.FileName, buffer.ToArray());
         return result.Ok ? Ok(result.Import) : BadRequest(new { message = result.Error });
+    }
+
+    // ─── Write with AI ───────────────────────────────────────────────────
+
+    // POST /documents/templates/ai — the admin describes a letter and gets two
+    // drafts to choose from, or (with currentBody) one revision of the draft
+    // they're editing. Stores nothing: the draft opens in the editor and is
+    // saved through POST /documents/templates, which still refuses unknown
+    // fields. People only — each call is a paid AI request — and not a
+    // [ReadOnlyAction]: a View-only admin can't save a template, so has no
+    // reason to spend AI credit drafting one.
+    [RequireScope("documents:write")]
+    [HumanOnly]
+    [EnableRateLimiting("ai-documents")]
+    [HttpPost("templates/ai")]
+    public async Task<IActionResult> DraftWithAi(TemplateAiRequestDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _ai.DraftAsync(dto, cancellationToken));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (AiConfigurationException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "Writing with AI isn't set up on this server yet." });
+        }
+        catch (AiProviderException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "The AI couldn't write the template just now. Please try again." });
+        }
     }
 }

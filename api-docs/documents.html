@@ -616,6 +616,17 @@
       </section>
     </section>
 
+    <section class="section" id="not-available">
+      <h2>Not available to API keys</h2>
+      <p>
+        <code>POST /documents/templates/ai</code> (&ldquo;Write with AI&rdquo; in the template editor) is
+        marked <code>[HumanOnly]</code> and answers <code>403</code> to any key, even one with
+        <code>documents:write</code>. Each call is a paid AI request, so it is for signed-in people only.
+        To create a template from code, send the text yourself to
+        <a href="#create-template">create</a>.
+      </p>
+    </section>
+
     <footer>
       Generated from the AltomateHR source. If something here disagrees with what the API
       returns, the API is right. Tell us and we'll fix the page.

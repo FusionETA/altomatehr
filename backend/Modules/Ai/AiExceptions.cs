@@ -10,4 +10,5 @@ public class AiConfigurationException : InvalidOperationException
 public class AiProviderException : InvalidOperationException
 {
     public AiProviderException(string message) : base(message) { }
+    public AiProviderException(string message, Exception inner) : base(message, inner) { }
 }
