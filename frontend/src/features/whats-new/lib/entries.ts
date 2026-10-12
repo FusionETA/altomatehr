@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 50c99b1
+// whats-new-covered-up-to: 144eb80
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,13 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-12",
+    new: [
+      "Admins: Documents → Templates → Write with AI (needs Manage access to Documents): describe the letter you need, in English or Bahasa Melayu, and get two drafts that use your merge fields. Pick one to open it in the editor unsaved; nothing is kept until you press Save template. Any field the draft invents that AltomateHR doesn't know is flagged to fix, as with uploads. The AI sees only your description and the field list, never employee details. The PDF's sign-off line is still printed in English.",
+      "Admins: Documents → Templates → editor → Ask AI: say what to change (\"make it more formal\", \"add a clause on annual leave\", \"translate to Bahasa Melayu\") and the text on the left is revised in place, with Undo for the last change.",
+    ],
+  },
   {
     date: "2026-10-08",
     new: [

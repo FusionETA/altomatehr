@@ -99,6 +99,71 @@ async function scrollTo(page, text, offset = 140, exact = false) {
   await settle(page, 400);
 }
 
+// Stub for POST /documents/templates/ai — made-up demo letters using real merge
+// field keys. A request with a current draft (the editor's Ask AI) gets a revision.
+async function stubTemplateAi(page) {
+  const offer = (extra) => [
+    "# Offer of Employment", "",
+    "Dear {{employee.name}},", "",
+    "We are pleased to offer you the position of **{{employee.jobTitle}}** at {{company.name}}, starting on {{input.startDate}}.", "",
+    "- Monthly salary: {{employee.monthlySalary}}",
+    "- Probation period: {{employee.probationMonths}} months",
+    "- Reporting to: {{input.reportingManager}}", "",
+    ...extra,
+    "Please sign and return a copy of this letter by {{input.replyByDate}} to confirm your acceptance.",
+  ].join("\n");
+  await page.route("**/documents/templates/ai", async (route) => {
+    const req = route.request().postDataJSON();
+    if (req.currentBody) {
+      const body = req.currentBody.replace(
+        "Please sign and return",
+        "You are entitled to annual leave as set out in your contract of employment.\n\nPlease sign and return");
+      return route.fulfill({ json: {
+        reply: "I added a short paragraph on annual leave before the closing line.",
+        drafts: [{ name: "Offer Letter - Site Engineer", category: "OFFER", body, unknownFields: [], warnings: [] }],
+      } });
+    }
+    return route.fulfill({ json: {
+      reply: "Here are two drafts of an offer letter for a site engineer. Draft 1 is short; draft 2 adds the terms in more detail.",
+      drafts: [
+        { name: "Offer Letter - Site Engineer", category: "OFFER", warnings: [], unknownFields: [],
+          body: offer([]) },
+        { name: "Offer Letter - Site Engineer (detailed)", category: "OFFER", warnings: [], unknownFields: [],
+          body: offer(["This offer is subject to a satisfactory medical check-up and to the terms of your employment contract.", ""]) },
+      ],
+    } });
+  });
+}
+
+async function aiEditorShot(page, name, scrolled) {
+  await stubTemplateAi(page);
+  await go(page, "documents/documents-templates");
+  await page.getByRole("button", { name: "Write with AI" }).first().click();
+  await page.getByRole("heading", { name: "Write with AI" }).waitFor();
+  await page.getByPlaceholder(/An offer letter for a site engineer/).fill(
+    "An offer letter for a site engineer: 3-month probation, salary, start date and who they report to.");
+  await page.getByRole("button", { name: "Write two drafts" }).click();
+  await page.getByText("Draft 2").first().waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: "Use this draft" }).first().click();
+  await page.getByText("Written with AI", { exact: true }).waitFor({ timeout: 15000 });
+  await page.getByPlaceholder(/Add a paragraph about the 3-month notice period/).fill(
+    "Add a line about the annual leave entitlement.");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.getByRole("button", { name: "Undo last change" }).waitFor({ timeout: 15000 });
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll("*")) {
+      if (el.scrollHeight > el.clientHeight + 10 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) {
+        el.scrollTop = el.tagName === "OL" ? el.scrollHeight : 0;
+      }
+    }
+    window.scrollTo(0, 0);
+  });
+  if (scrolled) await scrollTo(page, "Say what to change", 120);
+  await page.mouse.move(5, 5);
+  await settle(page, 800);
+  await shoot(page, "admin", name);
+}
+
 // ─── Admin (desktop) ────────────────────────────────────────────────────
 const admin = {
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
@@ -119,6 +184,38 @@ const admin = {
     await page.mouse.move(5, 5); // no hover ring on a field
     await shoot(page, "admin", "employee-work-permit");
   },
+  // Documents → Templates with the sample letters added, so "Write with AI" shows
+  // in the toolbar. Adds the four sample templates if the demo company has none.
+  "documents-templates": async (page) => {
+    await go(page, "documents/documents-templates");
+    await page.getByRole("button", { name: "Write with AI" }).first().waitFor({ timeout: 15000 });
+    if ((await page.getByRole("button", { name: "Add sample templates" }).count()) > 0) {
+      await page.getByRole("button", { name: "Add sample templates" }).click();
+      await page.getByText("Offer Letter").first().waitFor({ timeout: 15000 });
+      await settle(page);
+    }
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "documents-templates");
+  },
+  // "Write with AI": the dialog with two drafts. The AI is stubbed with made-up
+  // demo text (the demo backend has no Gemini key, and we never call the real one).
+  "documents-ai-dialog": async (page) => {
+    await stubTemplateAi(page);
+    await go(page, "documents/documents-templates");
+    await page.getByRole("button", { name: "Write with AI" }).first().click();
+    await page.getByRole("heading", { name: "Write with AI" }).waitFor();
+    await page.getByPlaceholder(/An offer letter for a site engineer/).fill(
+      "An offer letter for a site engineer: 3-month probation, salary, start date and who they report to.");
+    await page.getByRole("button", { name: "Write two drafts" }).click();
+    await page.getByText("Draft 2").first().waitFor({ timeout: 15000 });
+    await settle(page, 1200);
+    await shoot(page, "admin", "documents-ai-dialog");
+  },
+  // The editor after "Use this draft": the Written with AI banner and the Ask AI
+  // panel above the merge fields, after one (stubbed) change so Undo shows.
+  "documents-ai-editor": (page) => aiEditorShot(page, "documents-ai-editor", false),
+  // Same editor scrolled down: Ask AI with Undo last change, above the merge fields.
+  "documents-ai-ask": (page) => aiEditorShot(page, "documents-ai-ask", true),
   // System Settings → Admins: each admin row with Manage access and Remove.
   "admins-list": async (page) => {
     await go(page, "settings/settings-admins");
