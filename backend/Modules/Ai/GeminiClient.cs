@@ -34,12 +34,6 @@ public class GeminiClient : IGeminiClient
     {
         EnsureConfigured();
 
-        var model = string.IsNullOrWhiteSpace(_options.Model) ? "gemini-2.5-flash" : _options.Model.Trim();
-
-        // The key goes in the query string — this endpoint does not take a bearer header.
-        var url = $"{BaseUrl}/models/{Uri.EscapeDataString(model)}:generateContent" +
-                  $"?key={Uri.EscapeDataString(_options.ApiKey)}";
-
         var request = new GeminiRequest
         {
             Contents =
@@ -73,6 +67,46 @@ public class GeminiClient : IGeminiClient
                 ThinkingConfig = new GeminiThinkingConfig { ThinkingBudget = 0 },
             },
         };
+
+        return await SendAsync(request, cancellationToken);
+    }
+
+    public async Task<string> GenerateTextAsync(
+        string systemInstruction,
+        IReadOnlyList<GeminiTurn> turns,
+        GeminiTextOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureConfigured();
+
+        var request = new GeminiRequest
+        {
+            SystemInstruction = new GeminiContent { Parts = [new GeminiPart { Text = systemInstruction }] },
+            Contents = [.. turns.Select(t => new GeminiContent
+            {
+                Role = t.Role,
+                Parts = [new GeminiPart { Text = t.Text }],
+            })],
+            GenerationConfig = new GeminiGenerationConfig
+            {
+                Temperature = options.Temperature,
+                MaxOutputTokens = options.MaxOutputTokens,
+                ResponseMimeType = options.Json ? "application/json" : "text/plain",
+                // As above: thinking would eat the output budget.
+                ThinkingConfig = new GeminiThinkingConfig { ThinkingBudget = 0 },
+            },
+        };
+
+        return await SendAsync(request, cancellationToken);
+    }
+
+    private async Task<string> SendAsync(GeminiRequest request, CancellationToken cancellationToken)
+    {
+        var model = string.IsNullOrWhiteSpace(_options.Model) ? "gemini-2.5-flash" : _options.Model.Trim();
+
+        // The key goes in the query string — this endpoint does not take a bearer header.
+        var url = $"{BaseUrl}/models/{Uri.EscapeDataString(model)}:generateContent" +
+                  $"?key={Uri.EscapeDataString(_options.ApiKey)}";
 
         using var response = await _http.PostAsJsonAsync(url, request, JsonOptions, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
@@ -108,6 +142,10 @@ public class GeminiClient : IGeminiClient
 
     private sealed class GeminiRequest
     {
+        [JsonPropertyName("systemInstruction")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GeminiContent? SystemInstruction { get; set; }
+
         [JsonPropertyName("contents")]
         public List<GeminiContent> Contents { get; set; } = [];
 
@@ -117,6 +155,10 @@ public class GeminiClient : IGeminiClient
 
     private sealed class GeminiContent
     {
+        [JsonPropertyName("role")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Role { get; set; }
+
         [JsonPropertyName("parts")]
         public List<GeminiPart> Parts { get; set; } = [];
     }

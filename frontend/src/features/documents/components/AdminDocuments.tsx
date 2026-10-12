@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { FilePlus2, FileText, FileUp, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { FilePlus2, FileText, FileUp, LoaderCircle, Plus, Sparkles, WandSparkles } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -23,9 +23,12 @@ import {
   TEMPLATE_IMPORT_MAX_BYTES,
   TEMPLATES_PATH,
   type DocumentTemplate,
+  type TemplateAiDraft,
+  type TemplateAiMessage,
   type TemplateImport,
 } from "../api";
 import { categoryLabel, formatDate } from "../lib/categories";
+import { AiTemplateDialog } from "./AiTemplateDialog";
 import { GenerateLetterDialog } from "./GenerateLetterDialog";
 import { GeneratedLettersList } from "./GeneratedLettersList";
 import { TemplateEditor } from "./TemplateEditor";
@@ -49,6 +52,9 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
   const [editing, setEditing] = useState<DocumentTemplate | "new" | null>(null);
   // An uploaded file, converted — opens the editor unsaved, like "new".
   const [imported, setImported] = useState<(TemplateImport & { fileName: string }) | null>(null);
+  // "Write with AI": the dialog, then the chosen draft — also opens unsaved.
+  const [writingWithAi, setWritingWithAi] = useState(false);
+  const [aiDraft, setAiDraft] = useState<{ draft: TemplateAiDraft; conversation: TemplateAiMessage[] } | null>(null);
   const [generating, setGenerating] = useState<DocumentTemplate | null>(null);
   const [addingSamples, setAddingSamples] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -115,6 +121,33 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
     </button>
   );
 
+  const aiButton = (primary: boolean) => (
+    <button
+      type="button"
+      onClick={() => setWritingWithAi(true)}
+      title="Describe the letter and get two drafts to choose from, using your merge fields"
+      className={`inline-flex items-center gap-2 rounded-2xl border border-primary/40 bg-primary/5 ${
+        primary ? "px-5" : "px-4"
+      } py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/10`}
+    >
+      <WandSparkles className="h-4 w-4" />
+      Write with AI
+    </button>
+  );
+
+  const aiDialog = writingWithAi ? (
+    <AiTemplateDialog
+      mergeFields={fieldsQuery.data ?? []}
+      onClose={() => setWritingWithAi(false)}
+      onChoose={(draft, conversation) => {
+        setWritingWithAi(false);
+        setImported(null);
+        setAiDraft({ draft, conversation });
+        setEditing("new");
+      }}
+    />
+  ) : null;
+
   async function remove(template: DocumentTemplate) {
     const ok = await confirm({
       title: `Delete "${template.name}"?`,
@@ -140,15 +173,18 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
       <TemplateEditor
         template={editing === "new" ? null : editing}
         imported={editing === "new" ? imported : null}
+        aiDraft={editing === "new" ? aiDraft : null}
         mergeFields={fieldsQuery.data ?? []}
         readOnly={!canManage}
         onClose={() => {
           setEditing(null);
           setImported(null);
+          setAiDraft(null);
         }}
         onSaved={() => {
           setEditing(null);
           setImported(null);
+          setAiDraft(null);
           void templatesQuery.refresh();
         }}
       />
@@ -179,6 +215,7 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
               Add sample templates
             </button>
             {uploadButton(false)}
+            {aiButton(false)}
             <button
               type="button"
               onClick={() => setEditing("new")}
@@ -228,6 +265,7 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
                 Start from blank
               </button>
               {uploadButton(true)}
+              {aiButton(true)}
             </div>
           ) : (
             <p className="mt-4 text-xs text-muted-foreground">Your access to Documents is view only.</p>
@@ -302,6 +340,7 @@ export function DocumentTemplatesView({ onOpen }: { onOpen?: OnOpen }) {
           onOpenPayroll={openPayroll}
         />
       ) : null}
+      {aiDialog}
       {confirmDialog}
     </div>
   );

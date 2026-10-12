@@ -120,6 +120,26 @@ export type TemplateImport = {
   warnings: string[];
 };
 
+/** One turn of a "Write with AI" conversation. */
+export type TemplateAiMessage = { role: "user" | "assistant"; text: string };
+
+/** A draft the AI wrote — opened in the editor unsaved, like an import. */
+export type TemplateAiDraft = {
+  name: string;
+  category: DocumentCategory;
+  body: string;
+  /** {{…}} it made up that aren't merge fields — for the "Replace with…" picker. */
+  unknownFields: string[];
+  warnings: string[];
+};
+
+export type TemplateAiResult = {
+  /** What the AI says back, in the admin's language. */
+  reply: string;
+  /** Two to choose from for a new template; one when revising a draft. */
+  drafts: TemplateAiDraft[];
+};
+
 /** Upload limit, as the server enforces it. */
 export const TEMPLATE_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 export const TEMPLATE_IMPORT_ACCEPT = ".docx,.txt,.md";
@@ -147,6 +167,17 @@ export const importTemplateFile = (file: File) => {
   form.append("file", file);
   return apiPostForm<TemplateImport>(`${TEMPLATES_PATH}/import`, form);
 };
+
+/**
+ * "Write with AI". Without `currentBody`: two drafts of a new template. With it
+ * (the editor's Ask AI panel): one revision of that draft. Saves nothing.
+ */
+export const draftTemplateWithAi = (body: {
+  messages: TemplateAiMessage[];
+  currentBody?: string;
+  currentName?: string;
+  currentCategory?: DocumentCategory;
+}) => apiPost<TemplateAiResult>(`${TEMPLATES_PATH}/ai`, body);
 
 /** A PDF preview. With an id, `body` previews unsaved edits of that template. */
 export const previewTemplate = (

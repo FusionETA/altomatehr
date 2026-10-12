@@ -166,3 +166,57 @@ public class GeneratedDocumentDto
     public long SizeBytes { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+// ─── Write with AI ───────────────────────────────────────────────────────
+
+public class TemplateAiMessageDto
+{
+    // "user" (the admin) or "assistant" (an earlier reply from the AI).
+    [Required]
+    [RegularExpression("^(user|assistant)$")]
+    public string Role { get; set; } = "user";
+
+    [Required]
+    [MaxLength(4000)]
+    public string Text { get; set; } = string.Empty;
+}
+
+public class TemplateAiRequestDto
+{
+    // The conversation so far, oldest first; the last one is the admin's request.
+    [Required]
+    [MinLength(1)]
+    [MaxLength(20)]
+    public List<TemplateAiMessageDto> Messages { get; set; } = [];
+
+    // Set from the editor's "Ask AI" panel: the draft to revise. Null starts a
+    // new template, which comes back as two drafts to choose from.
+    [MaxLength(20000)]
+    public string? CurrentBody { get; set; }
+
+    [MaxLength(160)]
+    public string? CurrentName { get; set; }
+
+    public DocumentCategory? CurrentCategory { get; set; }
+}
+
+public class TemplateAiDraftDto
+{
+    public string Name { get; set; } = string.Empty;
+    public DocumentCategory Category { get; set; } = DocumentCategory.OTHER;
+    public string Body { get; set; } = string.Empty;
+
+    // {{…}} the AI wrote that aren't merge fields — for the editor's
+    // "Replace with…" picker. Saving refuses while any remain.
+    public List<string> UnknownFields { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+}
+
+public class TemplateAiResultDto
+{
+    // What the AI says back to the admin, in their language.
+    public string Reply { get; set; } = string.Empty;
+
+    // Two to choose from for a new template; one when revising.
+    public List<TemplateAiDraftDto> Drafts { get; set; } = [];
+}

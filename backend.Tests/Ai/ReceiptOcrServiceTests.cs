@@ -180,6 +180,11 @@ public class ReceiptOcrServiceTests
         public int Calls { get; private set; }
         public string LastPrompt { get; private set; } = "";
 
+        public Task<string> GenerateTextAsync(
+            string systemInstruction, IReadOnlyList<GeminiTurn> turns, GeminiTextOptions options,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Receipt OCR only sends images.");
+
         public Task<string> GenerateFromImageAsync(
             string prompt, byte[] fileBytes, string mimeType, CancellationToken cancellationToken = default)
         {
