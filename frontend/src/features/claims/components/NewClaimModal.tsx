@@ -19,6 +19,7 @@ import {
   updateClaim,
   analyzeClaimReceipt,
   loadClaimReceiptObjectUrl,
+  openClaimReceipt,
   uploadClaimReceipt,
   type AnalyzeReceiptResponse,
   type Claim,
@@ -154,6 +155,11 @@ export function NewClaimModal({
               claimType={claimType}
               paymentType={paymentType}
               receiptFile={receiptFile}
+              setReceiptFile={(file) => {
+                setReceiptFile(file);
+                // A new file invalidates the previous read, and its stored copy.
+                setScan(null);
+              }}
               scan={scan}
               supportingFiles={supportingFiles}
               setSupportingFiles={setSupportingFiles}
@@ -414,6 +420,7 @@ function ClaimDetailsForm({
   claimType,
   paymentType,
   receiptFile,
+  setReceiptFile,
   scan,
   supportingFiles,
   setSupportingFiles,
@@ -426,6 +433,7 @@ function ClaimDetailsForm({
   claimType: ClaimType;
   paymentType: PaymentType;
   receiptFile: File | null;
+  setReceiptFile: (file: File) => void;
   scan: AnalyzeReceiptResponse | null;
   supportingFiles: File[];
   setSupportingFiles: (files: File[]) => void;
@@ -855,9 +863,12 @@ function ClaimDetailsForm({
         </InfoBox>
       ) : null}
 
-      <MainReceiptPreview
+      <MainReceiptField
         file={receiptFile}
         storedUrl={scan?.receiptUrl ?? editingClaim?.receiptUrl ?? null}
+        onPick={setReceiptFile}
+        // Mileage has no receipt to add; one already on it can still be replaced.
+        canAdd={claimType === "EXPENSE"}
       />
 
       {!isEditing ? (
@@ -872,15 +883,16 @@ function ClaimDetailsForm({
 
       {isEditing ? (
         <SupportingDocumentsField
-          label="Add more supporting documents"
+          label="Supporting documents"
           hint={
             editingClaim?.supportingDocumentUrls?.length
-              ? "Existing supporting documents will be kept."
-              : "No supporting documents attached yet."
+              ? "Already attached ones are kept. Tap one to open it, or add more."
+              : "Optional: invoices, approvals, secondary receipts, or other supporting files."
           }
           files={additionalSupportingFiles}
           onChange={setAdditionalSupportingFiles}
           attached={editingClaim?.supportingDocumentUrls?.length ?? 0}
+          existing={(editingClaim?.supportingDocumentUrls ?? []).filter(Boolean)}
         />
       ) : null}
 
@@ -921,6 +933,21 @@ function ClaimDetailsForm({
   );
 }
 
+// A readable name for a stored document: the file name when it's kept here,
+// a numbered label when it lives in Xero Files (its url carries only an id).
+function storedDocumentName(url: string, index: number) {
+  if (url.includes("/xero/")) return `Supporting document ${index + 1}`;
+  return url.split("/").pop() || `Supporting document ${index + 1}`;
+}
+
+// Opens a file the employee picked but hasn't sent yet, in a new tab — PDFs
+// and images show in the browser's own viewer.
+function openLocalFile(file: File) {
+  const url = URL.createObjectURL(file);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // The server keeps at most this many per claim (ClaimsService), counting the
 // ones already on a claim being edited.
 const MAX_SUPPORTING_DOCUMENTS = 10;
@@ -933,6 +960,7 @@ function SupportingDocumentsField({
   files,
   onChange,
   attached,
+  existing = [],
 }: {
   label: string;
   hint: string;
@@ -940,6 +968,8 @@ function SupportingDocumentsField({
   onChange: (files: File[]) => void;
   /** Already on the claim being edited — they count towards the limit. */
   attached: number;
+  /** Their stored urls, listed so they can be opened (kept as they are). */
+  existing?: string[];
 }) {
   const max = Math.max(0, MAX_SUPPORTING_DOCUMENTS - attached);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -978,12 +1008,30 @@ function SupportingDocumentsField({
         <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {full
             ? `${MAX_SUPPORTING_DOCUMENTS} of ${MAX_SUPPORTING_DOCUMENTS} attached — the most a claim can have`
-            : files.length > 0
+            : files.length + existing.length > 0
               ? "Tap to add more"
               : "Tap to add supporting documents"}
         </span>
       </button>
       {notice ? <p className="text-xs font-medium text-warning-foreground">{notice}</p> : null}
+      {existing.length > 0 ? (
+        <ul className="space-y-1.5">
+          {existing.map((url, i) => (
+            <li key={url}>
+              <button
+                type="button"
+                onClick={() => void openClaimReceipt(url)}
+                title="Open this document"
+                className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-surface-low/50 px-4 py-2.5 text-left text-sm font-semibold text-foreground transition hover:border-primary/50 hover:text-primary"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate">{storedDocumentName(url, i)}</span>
+                <span className="shrink-0 text-xs font-medium text-muted-foreground">Attached</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {files.length > 0 ? (
         <ul className="space-y-1.5">
           {files.map((file, i) => (
@@ -991,8 +1039,15 @@ function SupportingDocumentsField({
               key={`${file.name}|${file.size}|${file.lastModified}`}
               className="flex items-center gap-3 rounded-2xl border border-border/70 bg-surface-low/50 px-4 py-2.5"
             >
-              <FileText className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => openLocalFile(file)}
+                title={`Open ${file.name}`}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left text-sm font-semibold text-foreground hover:text-primary"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate">{file.name}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1105,6 +1160,74 @@ function ChoiceCard({
 //
 // Read-only on purpose: the file is chosen on the previous step, and a second
 // picker here would be a second way to disagree about which receipt this is.
+function MainReceiptField({
+  file,
+  storedUrl,
+  onPick,
+  canAdd,
+}: {
+  file: File | null;
+  storedUrl: string | null;
+  onPick: (file: File) => void;
+  canAdd: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const has = Boolean(file || storedUrl);
+
+  // Picking here is the same as on the receipt step, minus the AI read — so
+  // someone who skipped can still attach it, and a wrong file can be swapped
+  // without going back a step.
+  const picker = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+      tabIndex={-1}
+      className="hidden"
+      onChange={(event) => {
+        const picked = event.target.files?.[0];
+        if (picked) onPick(picked);
+        event.currentTarget.value = "";
+      }}
+    />
+  );
+
+  if (!has) {
+    if (!canAdd) return null;
+    return (
+      <div className="space-y-2">
+        <span className={LABEL}>Main receipt</span>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex h-12 w-full items-center gap-3 rounded-2xl border border-dashed border-border/80 bg-white/80 px-4 text-left text-sm text-muted-foreground shadow-sm transition hover:border-primary/50 hover:bg-card"
+        >
+          <Upload className="h-4 w-4 shrink-0 text-primary" />
+          Tap to add the main receipt (optional)
+        </button>
+        {picker}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className={LABEL}>Main receipt</span>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="rounded-full px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
+        >
+          Replace
+        </button>
+      </div>
+      <MainReceiptPreview file={file} storedUrl={storedUrl} />
+      {picker}
+    </div>
+  );
+}
+
 function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl: string | null }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [broken, setBroken] = useState(false);
@@ -1159,11 +1282,20 @@ function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl:
 
   const name = file?.name ?? "Attached receipt";
 
+  function open() {
+    if (file) openLocalFile(file);
+    else if (storedUrl) void openClaimReceipt(storedUrl);
+  }
+
   return (
-    <div className="space-y-3">
-      <span className={LABEL}>Main receipt</span>
+    <div>
       {previewUrl && !broken ? (
-        <div className="rounded-[28px] border border-border/70 bg-surface-low/50 p-4 text-center">
+        <button
+          type="button"
+          onClick={open}
+          title="Open the receipt"
+          className="block w-full rounded-[28px] border border-border/70 bg-surface-low/50 p-4 text-center transition hover:border-primary/50"
+        >
           <img
             src={previewUrl}
             alt={`Main receipt: ${name}`}
@@ -1173,19 +1305,25 @@ function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl:
             className="mx-auto max-h-64 w-auto max-w-full rounded-2xl border border-border/60 bg-background object-contain shadow-sm"
           />
           <p className="mt-3 max-w-full truncate text-xs font-medium text-muted-foreground">{name}</p>
-        </div>
+          <p className="mt-1 text-xs font-semibold text-primary">Tap to open</p>
+        </button>
       ) : (
-        <div className="flex items-center gap-3 rounded-[28px] border border-border/70 bg-surface-low/50 px-4 py-3">
+        <button
+          type="button"
+          onClick={open}
+          title="Open the receipt"
+          className="flex w-full items-center gap-3 rounded-[28px] border border-border/70 bg-surface-low/50 px-4 py-3 text-left transition hover:border-primary/50"
+        >
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
             <FileText className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{name}</p>
             <p className="text-xs text-muted-foreground">
-              {broken ? "Attached — preview unavailable." : "Attached. PDFs can't be previewed here."}
+              {broken ? "Attached — no preview. Tap to open it." : "Attached. Tap to open it."}
             </p>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );
