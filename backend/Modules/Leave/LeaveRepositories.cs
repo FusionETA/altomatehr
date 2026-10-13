@@ -67,6 +67,62 @@ public class LeaveApplicationRepository : ILeaveApplicationRepository
         _db.LeaveApplications.Update(application);
         await _db.SaveChangesAsync();
     }
+
+    // On MySQL this is ONE guarded UPDATE … WHERE Id AND Status = 'PENDING'
+    // AND CurrentStep = 0 (ExecuteUpdateAsync), atomic under InnoDB's row
+    // locks, setting only the edited columns. The EF in-memory provider can't
+    // run ExecuteUpdate, so there the same guard is checked against the stored
+    // row first — the same result, minus the cross-request atomicity an
+    // in-memory test can't exercise anyway. Same approach as
+    // OrganizationSignatureRepository.
+    public async Task<bool> SaveEditIfUntouchedAsync(LeaveApplication edited)
+    {
+        var entry = _db.Entry(edited);
+        var untouched = _db.LeaveApplications.Where(a =>
+            a.Id == edited.Id && a.Status == LeaveStatus.PENDING && a.CurrentStep == 0);
+
+        if (_db.Database.IsRelational())
+        {
+            var affected = await untouched.ExecuteUpdateAsync(set => set
+                .SetProperty(a => a.LeaveTypeId, edited.LeaveTypeId)
+                .SetProperty(a => a.StartDate, edited.StartDate)
+                .SetProperty(a => a.EndDate, edited.EndDate)
+                .SetProperty(a => a.Duration, edited.Duration)
+                .SetProperty(a => a.TotalDays, edited.TotalDays)
+                .SetProperty(a => a.Reason, edited.Reason)
+                .SetProperty(a => a.XeroFileId, edited.XeroFileId)
+                .SetProperty(a => a.AttachmentUrl, edited.AttachmentUrl)
+                .SetProperty(a => a.AttachmentName, edited.AttachmentName)
+                .SetProperty(a => a.UpdatedAt, edited.UpdatedAt));
+
+            // The statement already wrote the row (or refused to). Either way
+            // the tracked copy must never be flushed by a later SaveChanges in
+            // this request — that would be the unconditional write again — so
+            // it is let go; the caller keeps the object for its response.
+            entry.State = EntityState.Detached;
+            return affected > 0;
+        }
+
+        if (!await untouched.AsNoTracking().AnyAsync())
+        {
+            entry.State = EntityState.Detached;
+            return false;
+        }
+
+        if (entry.State == EntityState.Detached) _db.LeaveApplications.Attach(edited);
+        foreach (var name in EditedColumns) entry.Property(name).IsModified = true;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    private static readonly string[] EditedColumns =
+    [
+        nameof(LeaveApplication.LeaveTypeId), nameof(LeaveApplication.StartDate),
+        nameof(LeaveApplication.EndDate), nameof(LeaveApplication.Duration),
+        nameof(LeaveApplication.TotalDays), nameof(LeaveApplication.Reason),
+        nameof(LeaveApplication.XeroFileId), nameof(LeaveApplication.AttachmentUrl),
+        nameof(LeaveApplication.AttachmentName), nameof(LeaveApplication.UpdatedAt),
+    ];
 }
 
 public class LeaveEntitlementRepository : ILeaveEntitlementRepository
