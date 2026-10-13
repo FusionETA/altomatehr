@@ -22,9 +22,16 @@ export type WhatsNewEntry = {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
-    date: "2026-10-09",
+    date: "2026-10-13",
     new: [
       "Admins: Settings → Organization → Company logo: upload a PNG, JPG or WebP image up to 2 MB, then replace or remove it (needs the Change settings permission). It prints at the top left of letters generated from Documents from now on; letters already saved keep their old look.",
+    ],
+  },
+  {
+    date: "2026-10-12",
+    new: [
+      "Admins: Documents → Templates → Write with AI (needs Manage access to Documents): describe the letter you need, in English or Bahasa Melayu, and get two drafts that use your merge fields. Pick one to open it in the editor unsaved; nothing is kept until you press Save template. Any field the draft invents that AltomateHR doesn't know is flagged to fix, as with uploads. The AI sees only your description and the field list, never employee details. The PDF's sign-off line is still printed in English.",
+      "Admins: Documents → Templates → editor → Ask AI: say what to change (\"make it more formal\", \"add a clause on annual leave\", \"translate to Bahasa Melayu\") and the text on the left is revised in place, with Undo for the last change.",
     ],
   },
   {

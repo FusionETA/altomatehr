@@ -227,7 +227,7 @@ public class DocxTemplateImportTests
     [Fact]
     public async Task The_endpoint_answers_400_for_an_unreadable_file()
     {
-        var controller = new DocumentsController(new DocumentTemplateService(null!, null!), null!);
+        var controller = new DocumentsController(new DocumentTemplateService(null!, null!), null!, null!);
 
         var result = await controller.ImportTemplate(FormFile("broken.docx", Encoding.UTF8.GetBytes("garbage")));
 
@@ -238,7 +238,7 @@ public class DocxTemplateImportTests
     [Fact]
     public async Task The_endpoint_returns_the_converted_body_and_unknown_fields()
     {
-        var controller = new DocumentsController(new DocumentTemplateService(null!, null!), null!);
+        var controller = new DocumentsController(new DocumentTemplateService(null!, null!), null!, null!);
         var docx = Docx(body => body.Append(P(R("Dear {{Employee Name}}, from {{company.name}}"))));
 
         var result = await controller.ImportTemplate(FormFile("Offer.docx", docx));

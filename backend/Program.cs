@@ -222,6 +222,19 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // "Write with AI" for document templates — also paid per request, and a
+    // drafting session is a handful of turns, not dozens.
+    options.AddPolicy("ai-documents", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "ai-documents"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     options.AddPolicy("auth-refresh", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: GetClientPartitionKey(httpContext, "auth-refresh"),
@@ -398,6 +411,7 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedDocumentRe
 builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedDocumentStorage, AltomateHR.Api.Modules.Documents.GeneratedDocumentStorage>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IDocumentTemplateService, AltomateHR.Api.Modules.Documents.DocumentTemplateService>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.IGeneratedLetterService, AltomateHR.Api.Modules.Documents.GeneratedLetterService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Documents.ITemplateAiService, AltomateHR.Api.Modules.Documents.TemplateAiService>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.LhdnForms.ILhdnFormsService, AltomateHR.Api.Modules.LhdnForms.LhdnFormsService>();
 builder.Services.AddScoped<ISupervisionService, SupervisionService>();
 builder.Services.AddScoped<IEmployeeRowResolver, EmployeeRowResolver>();

@@ -1432,7 +1432,17 @@
       <li><span class="btn-name">New template</span> (or <span class="btn-name">Start from blank</span> when you have none
         yet) — write one from scratch.</li>
       <li><span class="btn-name">Upload Word file</span> — start from a letter you already have. See below.</li>
+      <li><span class="btn-name">Write with AI</span> — describe the letter and let AI draft it for you. See below.
+        With no templates yet it sits beside <span class="btn-name">Start from blank</span>.</li>
     </ul>
+    <figure class="shot" data-place="Documents → Templates">
+      <div class="shot-grid" data-orient="screen" data-count="1">
+        <div class="shot-item">
+          <img src="shots/admin/documents-templates.png" alt="Documents → Templates with the sample letters listed and Add sample templates, Upload Word file, Write with AI and New template above them" loading="lazy">
+          <p class="shot-cap">Templates</p>
+        </div>
+      </div>
+    </figure>
 
     <h3>Writing a template</h3>
     <ol class="steps">
@@ -1486,6 +1496,71 @@
       <li>Check the name and category, then press <span class="btn-name">Save template</span>. Delete the date,
         letterhead or signature lines if they came across from your file, because the PDF adds its own.</li>
     </ul>
+
+    <h3>Writing a template with AI</h3>
+    <p>Press <span class="btn-name">Write with AI</span> on <strong>Documents → Templates</strong> to have AI draft a
+      template for you. You can describe the letter in English or Bahasa Melayu, and the AI answers in the same language.
+      Nothing is saved until you press <span class="btn-name">Save template</span>.</p>
+    <ol class="steps">
+      <li><h4>Describe the letter</h4>
+        <p>Say who it's for and what it should cover — for example <em>An offer letter for a site engineer: 3-month
+          probation, salary, start date and who they report to.</em> Press one of the example lines under the box to
+          start from it. Then press <span class="btn-name">Write two drafts</span>.</p></li>
+      <li><h4>Read the two drafts</h4>
+        <p>Two drafts appear side by side, each with its name, category and a preview. Employee and company details
+          are already merge fields, and anything that isn't on a record (a start date, a reporting manager) is a
+          <em>Typed for each letter</em> detail. To change them, type what you want under <strong>Ask for changes</strong>
+          — for example <em>Make draft 2 shorter</em> — and press <span class="btn-name">Write two new drafts</span>.</p></li>
+      <li><h4>Open one in the editor</h4>
+        <p>Press <span class="btn-name">Use this draft</span> on the one you like. It opens in the editor as
+          <strong>New template · written with AI</strong>, unsaved, with a <strong>Written with AI</strong> note above it.
+          Read it through and adjust the wording to your company's policies — it isn't legal advice — then press
+          <span class="btn-name">Save template</span>.</p></li>
+    </ol>
+    <figure class="shot" data-place="Write with AI">
+      <div class="shot-grid" data-orient="screen" data-count="1">
+        <div class="shot-item">
+          <img src="shots/admin/documents-ai-dialog.png" alt="The Write with AI dialog: the request, the AI's reply, and two offer letter drafts with previews, each with Use this draft" loading="lazy">
+          <p class="shot-cap">Two drafts to choose from (made-up demo letter)</p>
+        </div>
+      </div>
+    </figure>
+    <ul>
+      <li>A yellow note under a draft lists anything to fix in the editor — for example a <code>{{…}}</code> that isn't a
+        merge field. Once it's open there, the same red <em>These merge fields don't exist</em> box appears and
+        <span class="btn-name">Replace with…</span> lets you pick the right one.</li>
+      <li>The PDF always adds its own letterhead, date and sign-off ("Yours sincerely, for and on behalf of …"), so the
+        draft stops at the last paragraph. The sign-off stays in English even when the letter is in Bahasa Melayu.</li>
+      <li>The AI only sees what you type and the list of merge field names, never an employee's details.</li>
+    </ul>
+
+    <h3>Changing a template with Ask AI</h3>
+    <p>In the editor, the <strong>Ask AI</strong> panel sits at the top of the right-hand column, above
+      <strong>Merge fields</strong>. Type what to change — <em>make it more formal</em>, <em>add a clause on annual
+      leave</em>, <em>translate to Bahasa Melayu</em> — and press <span class="btn-name">Ask</span>. The AI rewrites the
+      text in the <strong>Write</strong> box. While it's working, the text, name and merge field buttons are locked, so
+      wait for it to finish.</p>
+    <ul>
+      <li><span class="btn-name">Undo last change</span> brings back the text from before the AI's last rewrite. It shows
+        only while the text is still exactly what the AI wrote — once you type in the box yourself it goes away, so an
+        undo can never throw your own edits away.</li>
+      <li>Ask AI works on a letter that's already written. On an empty editor it's switched off — start one with
+        <span class="btn-name">Write with AI</span>, or write the first lines yourself.</li>
+      <li>It's there on any template you open, not only ones written with AI. With view-only access to Documents it
+        doesn't show.</li>
+    </ul>
+    <figure class="shot" data-place="Ask AI">
+      <div class="shot-grid" data-orient="screen" data-count="2">
+        <div class="shot-item">
+          <img src="shots/admin/documents-ai-editor.png" alt="The template editor opened from an AI draft, with the Written with AI note and the Ask AI panel" loading="lazy">
+          <p class="shot-cap">Opened from a draft</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/documents-ai-ask.png" alt="The Ask AI panel above Merge fields after a change, with Undo last change and Ask" loading="lazy">
+          <p class="shot-cap">After asking for a change</p>
+        </div>
+      </div>
+    </figure>
 
     <h3>Making a letter for an employee</h3>
     <p>Press <span class="btn-name">Generate</span> next to a template, <span class="btn-name">Generate letter</span> on

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Copy, Eye, FileDown, FileUp, LoaderCircle, PencilLine, Plus } from "lucide-react";
+import { ArrowLeft, Check, Copy, Eye, FileDown, FileUp, LoaderCircle, PencilLine, Plus, Undo2, WandSparkles } from "lucide-react";
 import { ApiError, saveFile } from "@/shared/lib/api-client";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import {
@@ -13,12 +13,15 @@ import {
 } from "@/shared/components/ui/select";
 import {
   createTemplate,
+  draftTemplateWithAi,
   previewTemplate,
   updateTemplate,
   type DocumentCategory,
   type DocumentTemplate,
   type MergeField,
   type MergeFieldSource,
+  type TemplateAiDraft,
+  type TemplateAiMessage,
   type TemplateImport,
 } from "../api";
 import { DOCUMENT_CATEGORIES } from "../lib/categories";
@@ -46,9 +49,12 @@ const GROUPS: { source: MergeFieldSource; title: string }[] = [
 //
 // `imported` opens a new, unsaved template pre-filled from an uploaded Word /
 // text file, with what didn't convert and a picker for its placeholders.
+// `aiDraft` does the same for a draft chosen in "Write with AI", and carries the
+// conversation on into the Ask AI panel.
 export function TemplateEditor({
   template,
   imported,
+  aiDraft,
   mergeFields,
   readOnly,
   onClose,
@@ -56,14 +62,21 @@ export function TemplateEditor({
 }: {
   template: DocumentTemplate | null;
   imported?: (TemplateImport & { fileName: string }) | null;
+  aiDraft?: { draft: TemplateAiDraft; conversation: TemplateAiMessage[] } | null;
   mergeFields: MergeField[];
   readOnly: boolean;
   onClose: () => void;
   onSaved: (template: DocumentTemplate) => void;
 }) {
-  const [name, setName] = useState(template?.name ?? imported?.suggestedName ?? "");
-  const [category, setCategory] = useState<DocumentCategory>(template?.category ?? "OTHER");
-  const [body, setBody] = useState(template?.body ?? imported?.body ?? "");
+  const [name, setName] = useState(template?.name ?? imported?.suggestedName ?? aiDraft?.draft.name ?? "");
+  const [category, setCategory] = useState<DocumentCategory>(
+    template?.category ?? aiDraft?.draft.category ?? "OTHER",
+  );
+  const [body, setBody] = useState(template?.body ?? imported?.body ?? aiDraft?.draft.body ?? "");
+  // While Ask AI is rewriting, the text it was given is frozen — anything typed
+  // meanwhile would be overwritten by the revision.
+  const [aiBusy, setAiBusy] = useState(false);
+  const locked = readOnly || aiBusy;
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [inputName, setInputName] = useState("");
@@ -85,6 +98,7 @@ export function TemplateEditor({
   const inputs = used.filter((k) => isValidInputField(k));
 
   function replaceField(from: string, to: string) {
+    if (aiBusy) return;
     setBody((b) => replacePlaceholder(b, from, to));
     setServerUnknown((list) => list.filter((k) => k !== from));
   }
@@ -105,6 +119,7 @@ export function TemplateEditor({
     body !== (template?.body ?? "");
 
   function insert(text: string) {
+    if (aiBusy) return;
     const el = textareaRef.current;
     if (!el || mode !== "edit") {
       setBody((b) => b + text);
@@ -175,7 +190,7 @@ export function TemplateEditor({
   }
 
   const flagged = [...new Set([...unknown, ...serverUnknown])];
-  const canSave = !readOnly && name.trim() !== "" && body.trim() !== "" && unknown.length === 0 && !saving;
+  const canSave = !locked && name.trim() !== "" && body.trim() !== "" && unknown.length === 0 && !saving;
 
   return (
     <div className="space-y-4">
@@ -192,7 +207,13 @@ export function TemplateEditor({
             </button>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {template ? "Edit template" : imported ? "New template · from upload" : "New template"}
+                {template
+                  ? "Edit template"
+                  : imported
+                    ? "New template · from upload"
+                    : aiDraft
+                      ? "New template · written with AI"
+                      : "New template"}
               </p>
               <h2 className="truncate text-lg font-black text-foreground">{name.trim() || "Untitled letter"}</h2>
             </div>
@@ -230,7 +251,7 @@ export function TemplateEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={160}
-              disabled={readOnly}
+              disabled={locked}
               placeholder="e.g. Offer Letter — Executive"
               className={`${INPUT} mt-1.5`}
             />
@@ -240,7 +261,7 @@ export function TemplateEditor({
             <Select
               value={category}
               onValueChange={(v) => setCategory(v as DocumentCategory)}
-              disabled={readOnly}
+              disabled={locked}
             >
               <SelectTrigger className="mt-1.5 h-11 bg-card">
                 <SelectValue />
@@ -279,8 +300,33 @@ export function TemplateEditor({
               ))}
             </ul>
           ) : null}
-          {unknown.length > 0 && !readOnly ? (
+          {unknown.length > 0 && !locked ? (
             <PlaceholderPicker unknown={unknown} mergeFields={mergeFields} onReplace={replaceField} />
+          ) : null}
+        </div>
+      ) : null}
+
+      {aiDraft ? (
+        <div className={`${CARD} space-y-3`}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+              <WandSparkles className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-black text-foreground">Written with AI</h3>
+              <p className="text-xs text-muted-foreground">
+                Read it through and adjust the wording to your company's policies before saving — it
+                isn't legal advice. Nothing is kept until you press Save template. Ask AI on the right
+                can keep changing it.
+              </p>
+            </div>
+          </div>
+          {aiDraft.draft.warnings.length > 0 ? (
+            <ul className="list-disc space-y-1 rounded-2xl border border-warning-foreground/20 bg-warning/20 py-3 pl-8 pr-4 text-xs text-warning-foreground">
+              {aiDraft.draft.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
           ) : null}
         </div>
       ) : null}
@@ -315,7 +361,7 @@ export function TemplateEditor({
               ref={textareaRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              readOnly={readOnly}
+              readOnly={locked}
               maxLength={20000}
               spellCheck
               placeholder={"Dear {{employee.name}},\n\n# Letter title\n\nWrite the letter here…"}
@@ -339,7 +385,7 @@ export function TemplateEditor({
                 Pick a field from the list, or use <code>{"{{input.yourName}}"}</code> for a detail typed
                 in for each letter.
               </p>
-              {!imported && !readOnly ? (
+              {!imported && !locked ? (
                 <div className="mt-3">
                   <PlaceholderPicker unknown={flagged} mergeFields={mergeFields} onReplace={replaceField} />
                 </div>
@@ -349,6 +395,21 @@ export function TemplateEditor({
         </div>
 
         <aside className={`${CARD} space-y-4 self-start lg:sticky lg:top-4`}>
+          {readOnly ? null : (
+            <AskAiPanel
+              initialConversation={aiDraft?.conversation ?? []}
+              body={body}
+              name={name}
+              category={category}
+              onBusyChange={setAiBusy}
+              onRevised={(draft) => {
+                setBody(draft.body);
+                if (!name.trim()) setName(draft.name);
+              }}
+              onUndo={setBody}
+            />
+          )}
+
           <div>
             <h3 className="text-sm font-black text-foreground">Merge fields</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -384,7 +445,7 @@ export function TemplateEditor({
                     <button
                       key={f.key}
                       type="button"
-                      disabled={readOnly}
+                      disabled={locked}
                       onClick={() => insert(`{{${f.key}}}`)}
                       title={`${f.description}\n{{${f.key}}}`}
                       className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition disabled:pointer-events-none disabled:opacity-60 ${
@@ -413,7 +474,7 @@ export function TemplateEditor({
                   <button
                     key={k}
                     type="button"
-                    disabled={readOnly}
+                    disabled={locked}
                     onClick={() => insert(`{{${k}}}`)}
                     className="rounded-full border border-dashed border-warning-foreground/40 bg-warning/20 px-2.5 py-1 text-xs font-semibold text-warning-foreground transition hover:bg-warning/40 disabled:pointer-events-none"
                   >
@@ -512,6 +573,142 @@ function PlaceholderPicker({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// "Ask AI" beside the editor: say what to change and the AI revises the draft
+// on screen (one version, not two — the admin is already working on this one).
+// Undo puts back the text from before the last revision.
+function AskAiPanel({
+  initialConversation,
+  body,
+  name,
+  category,
+  onBusyChange,
+  onRevised,
+  onUndo,
+}: {
+  initialConversation: TemplateAiMessage[];
+  body: string;
+  name: string;
+  category: DocumentCategory;
+  onBusyChange: (busy: boolean) => void;
+  onRevised: (draft: TemplateAiDraft) => void;
+  onUndo: (previousBody: string) => void;
+}) {
+  const [conversation, setConversation] = useState<TemplateAiMessage[]>(initialConversation);
+  const [request, setRequest] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Undo is offered only while the text is still exactly what the AI wrote —
+  // once the admin edits it by hand, "undo" would throw their edits away.
+  const [lastRevision, setLastRevision] = useState<{ before: string; after: string } | null>(null);
+  const canUndo = lastRevision !== null && body === lastRevision.after;
+  // The panel revises a draft; on an empty editor there's nothing to revise
+  // ("Write with AI" on the templates page starts one).
+  const empty = body.trim() === "";
+
+  async function ask() {
+    const text = request.trim();
+    if (!text || busy || empty) return;
+    const messages: TemplateAiMessage[] = [...conversation, { role: "user", text }];
+    setBusy(true);
+    onBusyChange(true);
+    setError(null);
+    try {
+      const result = await draftTemplateWithAi({
+        messages,
+        currentBody: body,
+        currentName: name.trim() || undefined,
+        currentCategory: category,
+      });
+      const draft = result.drafts[0];
+      if (!draft) throw new Error("The AI didn't return a draft.");
+      setLastRevision({ before: body, after: draft.body });
+      onRevised(draft);
+      setConversation([...messages, { role: "assistant", text: result.reply || "Done." }]);
+      setRequest("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The AI couldn't change the template just now.");
+    } finally {
+      setBusy(false);
+      onBusyChange(false);
+    }
+  }
+
+  // Only the AI's own replies and the admin's requests — the drafts themselves
+  // are in the editor.
+  const recent = conversation.slice(-4);
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-primary/30 bg-primary/5 p-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-black text-foreground">
+        <WandSparkles className="h-4 w-4 text-primary" />
+        Ask AI
+      </h3>
+      <p className="text-[11px] text-muted-foreground">
+        Say what to change — "make it more formal", "add a clause on annual leave", "translate to
+        Bahasa Melayu". It rewrites the text on the left.
+      </p>
+      {recent.length > 0 ? (
+        <ol className="nice-scrollbar max-h-40 space-y-1.5 overflow-y-auto">
+          {recent.map((m, i) => (
+            <li
+              key={i}
+              className={`rounded-xl px-2.5 py-1.5 text-[11px] ${
+                m.role === "user" ? "bg-card text-foreground" : "bg-primary/10 text-foreground"
+              }`}
+            >
+              {m.text}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <textarea
+        value={request}
+        onChange={(e) => setRequest(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void ask();
+        }}
+        rows={3}
+        maxLength={4000}
+        disabled={busy || empty}
+        placeholder={
+          empty
+            ? "Write the letter first, or start one with Write with AI on the templates page."
+            : "e.g. Add a paragraph about the 3-month notice period."
+        }
+        className="w-full resize-y rounded-xl border border-border bg-card p-2.5 text-xs text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+      />
+      {error ? <p className="text-[11px] font-medium text-destructive">{error}</p> : null}
+      <div className="flex items-center justify-between gap-2">
+        {canUndo ? (
+          <button
+            type="button"
+            onClick={() => {
+              onUndo(lastRevision.before);
+              setLastRevision(null);
+            }}
+            disabled={busy}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <Undo2 className="h-3 w-3" />
+            Undo last change
+          </button>
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          onClick={() => void ask()}
+          disabled={busy || empty || request.trim() === ""}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+          {busy ? "Writing…" : "Ask"}
+        </button>
+      </div>
     </div>
   );
 }
