@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 635ef8b
+// whats-new-covered-up-to: 4c5a77f
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -28,14 +28,17 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: save signatures for your letters in Settings → Organization → Signatures. Draw one on screen or upload a picture, and choose one as the company default.",
       "Admins: letters can now be signed. When you create a letter, pick which signature to print, or none if you'd rather sign by hand. A template can also have its own default signature.",
       "Admins: you can now search a payroll run's payslips by name, staff ID or job title.",
+      "Employees: in My leave, tap Edit on a request no approver has acted on yet to change its type, dates, reason or attachment. It stays pending; leave HR filed or imported can't be edited.",
     ],
     improved: [
-      "Claims: tap an attached receipt or document to open it. You can also add or replace the main receipt on the claim form, without going back a step.",
-      "Claims: \"Skip and fill manually\" is now called \"Skip AI and fill manually\". If you attached a receipt, it stays with your claim.",
+      "Claims: tap an attached receipt or document to open it, and add or replace the main receipt on the claim form. \"Skip and fill manually\" is now called \"Skip AI and fill manually\"; an attached receipt stays with your claim.",
       "Admins: when you sync a claim to Xero, its receipt and supporting documents are now attached to the bill or spend money, so they show in Xero.",
+      "Leave: when you apply or edit, the form now shows the working days you'll use (weekends and public holidays skipped), not calendar days. The balance warning is based on that count only.",
     ],
     fixed: [
       "Claims: adding more supporting documents no longer removes the ones you already added. You can attach up to 10, and remove any with the ✕.",
+      "Leave: a half day on a weekend or public holiday no longer counts, so it's refused when you apply or edit. A request spanning New Year no longer skips the next year's public holidays.",
+      "Payroll: an approved unpaid half day on a weekend or public holiday is no longer deducted from pay, in any month whose run is still a draft or gets regenerated. Approved runs don't change.",
     ],
   },
   {

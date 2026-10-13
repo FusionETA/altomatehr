@@ -466,6 +466,7 @@ public class EmployeeServiceTests
         public Task<LeaveExportResult> ExportSummaryPdfAsync(string e, int y) => throw new NotImplementedException();
         public Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto d, string e) => throw new NotImplementedException();
         public Task<LeaveApplyResult> EditAsync(string i, CreateLeaveApplicationDto d, string a) => throw new NotImplementedException();
+        public Task<double> PreviewDaysAsync(DateTime s, DateTime e, AltomateHR.Api.Modules.Leave.Entities.LeaveDuration d) => throw new NotImplementedException();
         public Task<LeaveApplyResult> ApplyOnBehalfAsync(string e, CreateLeaveApplicationDto d, string a) => throw new NotImplementedException();
         public Task<LeaveAuditResult> GetAuditTrailAsync(string i) => throw new NotImplementedException();
         public Task<LeaveAttachmentResult> GetAttachmentAsync(string f) => throw new NotImplementedException();

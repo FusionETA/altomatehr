@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 946c442
+  user-guide-covered-up-to: b78773a
 -->
 <html lang="en">
 <head>
@@ -656,17 +656,34 @@
       the live figure — and <em>History</em> lists every request.</p>
     <ol class="steps">
       <li><h4>Tap + (Apply for leave)</h4><p>Or <span class="btn-name">Request leave</span> on the Dashboard.</p></li>
-      <li><h4>Pick the type and dates</h4><p>Your balance for that type shows as you choose. Unpaid leave has no balance.</p></li>
+      <li><h4>Pick the type and dates</h4><p>Your balance for that type shows as you choose. Unpaid leave has no balance.
+        Under the dates, the form shows <em>Duration</em> in working days — the number that will come off your balance.</p></li>
       <li><h4>Add a reason and attachment</h4><p>Both optional — attach your MC here (a photo or PDF, up to 8 MB).</p></li>
       <li><h4>Submit</h4><p>It goes to your supervisor. You'll get a notification when it's decided.</p></li>
     </ol>
     <div class="note"><span class="nt">How days are counted</span>
       <p>Only your <strong>working days</strong> count — weekends and public holidays in the range are left out. If you
-        ask for more than your balance, it's refused.</p>
+        ask for more than your balance, it's refused. If every date you pick is a weekend or public holiday, the form tells
+        you there are no working days to take off and you can't submit. A half day has to start and end on the same
+        date, and it can't be a weekend or public holiday.</p>
     </div>
     <h3>Changing your mind</h3>
-    <p>While it's still pending, open it and tap <span class="btn-name">Cancel</span> — then apply again with the right
-      dates.</p>
+    <p>While it's still pending, you can fix it or take it back.</p>
+    <ul>
+      <li><strong>Fix it:</strong> in <em>History</em>, tap <span class="btn-name">Edit</span> beside
+        <span class="btn-name">Cancel</span> — or open the request and tap <span class="btn-name">Edit</span> there. The
+        <strong>Edit leave</strong> form opens with your request filled in. Change the type, dates or reason, or tap
+        the attachment to replace it (it's kept if you don't), then tap
+        <span class="btn-name">Save changes</span>. It stays pending and keeps its place with your approver, and the
+        working days are counted again for the new dates.</li>
+      <li><strong>Take it back:</strong> tap <span class="btn-name">Cancel</span>, then apply again if you still need the
+        time off.</li>
+    </ul>
+    <div class="note warn"><span class="nt">When Edit isn't there</span>
+      <p>The <span class="btn-name">Edit</span> button goes away as soon as an approver has acted on the request —
+        approved, rejected, or even partly approved. Leave your company imported or HR filed for you can't be edited
+        either; ask HR to change it.</p>
+    </div>
     <p>Once it's approved, and hasn't started yet, tap <span class="btn-name">Request cancellation</span>. Add a reason if
       you like and tap <span class="btn-name">Send request</span> (or <span class="btn-name">Keep my leave</span> to back
       out). Your approver reviews it like the original request. Your leave stays booked, and its days stay taken, until

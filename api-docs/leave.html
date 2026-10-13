@@ -133,7 +133,7 @@
             <tr><td><code>employeeName</code></td><td>string | null</td><td>Same as <code>employeeEmail</code>; also <code>null</code> when the person has no name set.</td></tr>
             <tr><td><code>leaveTypeId</code></td><td>string</td><td>From <code>GET /leave-types</code>.</td></tr>
             <tr><td><code>startDate</code>, <code>endDate</code></td><td>string (date)</td><td>Inclusive.</td></tr>
-            <tr><td><code>totalDays</code></td><td>number</td><td>Working days in the range under the company's working-week and holiday calendar. A half day is <code>0.5</code>.</td></tr>
+            <tr><td><code>totalDays</code></td><td>number</td><td>Working days in the range under the company's working-week and public-holiday calendar (holidays from every year the range spans). A half day is <code>0.5</code> only when its date is a working day; on a weekend outside the company's working week or on a public holiday it counts <code>0</code>, and filing it is refused as "no working days".</td></tr>
             <tr><td><code>duration</code></td><td>string</td><td><code>FULL_DAY</code>, <code>MORNING</code> or <code>AFTERNOON</code>.</td></tr>
             <tr><td><code>reason</code></td><td>string | null</td><td>The applicant's reason.</td></tr>
             <tr><td><code>status</code></td><td>string</td><td><code>PENDING</code>, <code>APPROVED</code>, <code>REJECTED</code> or <code>CANCELLED</code>.</td></tr>
@@ -145,6 +145,7 @@
             <tr><td><code>createdAt</code></td><td>string (timestamp)</td><td></td></tr>
             <tr><td><code>attachmentName</code></td><td>string | null</td><td>Supporting document's display name.</td></tr>
             <tr><td><code>attachmentUrl</code></td><td>string | null</td><td>A path on this API, e.g. <code>/leave/files/{xeroFileId}/content</code> or <code>/leave/attachments/{fileName}</code>. Fetch it with the same key — see <a href="#attachments">Attachments</a>.</td></tr>
+            <tr><td><code>canEdit</code></td><td>boolean</td><td><code>true</code> while the request is <code>PENDING</code>, no approver has acted yet, and the employee filed it themselves (not imported, not filed by an admin). It only describes the request's state: the edit itself (<code>PUT /leave/{id}</code>, <a href="#people-only">people-only</a>) also requires the caller to be the applicant, so it is no use to a key. Always present.</td></tr>
           </tbody>
         </table>
       </div>
@@ -167,7 +168,8 @@
   "cancellationRequestedAt": null,
   "createdAt": "2026-02-20T03:15:00.0000000Z",
   "attachmentName": null,
-  "attachmentUrl": null
+  "attachmentUrl": null,
+  "canEdit": false
 }</code></pre>
 
       <h3>Leave balance <span class="tag">shape</span></h3>
@@ -837,7 +839,7 @@
               <tr><td><code>endDate</code></td><td>string (date)</td><td>Yes</td><td>Not before <code>startDate</code>.</td></tr>
               <tr><td><code>duration</code></td><td>string</td><td>No</td><td><code>FULL_DAY</code> (default), <code>MORNING</code> or <code>AFTERNOON</code>. A half day must start and end on the same date and counts as 0.5.</td></tr>
               <tr><td><code>reason</code></td><td>string</td><td>No</td><td>Max 1000 chars. Also stored on the trail.</td></tr>
-              <tr><td><code>xeroFileId</code></td><td>string</td><td>No</td><td>Max 80 chars. Id of a supporting document already in Xero Files.</td></tr>
+              <tr><td><code>xeroFileId</code></td><td>string</td><td>No</td><td>Max 80 chars. Id of a supporting document already in Xero Files. Sent without <code>attachmentUrl</code>, the stored <code>attachmentUrl</code> becomes <code>/leave/files/{xeroFileId}/content</code>.</td></tr>
               <tr><td><code>attachmentName</code></td><td>string</td><td>No</td><td>Max 260 chars. Display name for the document.</td></tr>
               <tr><td><code>attachmentUrl</code></td><td>string</td><td>No</td><td>Max 400 chars. A key can't upload attachments, so there is rarely a value to send.</td></tr>
             </tbody>
@@ -849,8 +851,9 @@
           <strong>The balance rules still apply.</strong> For a paid type the days requested must
           fit in what the person has available <em>after</em> their pending requests are
           counted, or the call is refused. <strong>Unpaid</strong> types skip the check and may go
-          negative. If the leave dates fall on no working day (weekends and holidays are
-          skipped) it is refused too. The year checked is the year of <code>startDate</code>.
+          negative. If the leave dates fall on no working day (weekends and public holidays are
+          skipped) it is refused too — this includes a half day on a non-working day or a
+          holiday, which counts 0. The year checked is the year of <code>startDate</code>.
         </div>
         <p>
           Side effects: the person's entitlement row for that year is created if missing; the
@@ -1449,12 +1452,36 @@
     <section class="section" id="people-only">
       <h2>Not available to API keys</h2>
       <p>
-        <code>POST /leave</code> (apply), <code>PUT /leave/{id}</code> (edit your own request),
+        <code>POST /leave</code> (apply), <code>GET /leave/preview-days</code>,
+        <code>PUT /leave/{id}</code> (edit your own request),
         <code>POST /leave/{id}/cancel</code>, <code>POST /leave/{id}/cancellation</code>,
         <code>POST /leave/{id}/cancellation/withdraw</code> and
         <code>POST /leave/attachments</code> (upload) are for signed-in people only and answer
-        <code>403</code> to any key.
+        <code>403</code> to any key (the <code>{ "error": … }</code> shape on the
+        <a href="index.html#errors">overview</a>, message "This endpoint is not available to API keys."). Apply, preview, edit and upload also need the company's leave policy to be
+        switched on for the person.
       </p>
+      <p>
+        They are listed so you know how the data you read was produced. To file leave from an
+        integration use <a href="#on-behalf">file on behalf</a>.
+      </p>
+      <ul>
+        <li><strong><code>GET /leave/preview-days?start=&amp;end=&amp;duration=</code></strong>
+          answers <code>{ "totalDays": 2 }</code>: what those dates would cost under the company's
+          working week and public holidays. <code>duration</code> defaults to
+          <code>FULL_DAY</code>. It is <code>0</code> for an end before the start, a half day
+          across several dates, or dates with no working day.</li>
+        <li><strong><code>PUT /leave/{id}</code></strong> takes the same body as
+          <a href="#on-behalf">file on behalf</a> and replaces the request's type, dates,
+          duration and reason. It is refused (<code>400</code>, <code>{ "message": "…" }</code>)
+          once an approver has acted, when the request is not <code>PENDING</code>, when it was
+          imported or filed by an admin, or when it switches to an archived leave type. Keeping
+          the request's own type is allowed even if that type has since been archived. If type,
+          dates and duration are unchanged, <code>totalDays</code> is kept and the balance is not
+          re-checked; otherwise the days are recounted and, for a paid type, checked against the
+          balance. The attachment is replaced only when the body carries a new one (an
+          <code>attachmentUrl</code> or a <code>xeroFileId</code>); otherwise the existing one stays.</li>
+      </ul>
     </section>
 
     <footer>

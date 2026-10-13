@@ -286,6 +286,7 @@ public class LeaveCronServiceTests
             Task.FromResult(apps.Where(a => a.EmployeeId == e).ToList());
         public Task<LeaveApplication> AddAsync(LeaveApplication a) => throw new NotImplementedException();
         public Task UpdateAsync(LeaveApplication a) => throw new NotImplementedException();
+        public Task<bool> SaveEditIfUntouchedAsync(LeaveApplication a) => throw new NotImplementedException();
     }
 
     private static LeaveType Type(string id, LeaveAccrualMethod method) => new()

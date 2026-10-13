@@ -47,6 +47,8 @@ export function LeaveView() {
   const [tab, setTab] = useState<MyLeaveTab>("balances");
   const [error, setError] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
+  // The pending request being edited — same form as applying, saved with PUT.
+  const [editing, setEditing] = useState<LeaveApplication | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [status, setStatus] = useState<LeaveStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -92,6 +94,14 @@ export function LeaveView() {
   }, [typesQuery.error, balancesQuery.error, mineQuery.error]);
 
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
+  // The edit form offers the active types plus the request's own type when HR
+  // has since archived it: the request may keep it (the server refuses only a
+  // switch TO an archived type), and without it the select would show blank.
+  const editTypes = useMemo(() => {
+    if (!editing) return activeTypes;
+    const own = types.find((t) => t.id === editing.leaveTypeId);
+    return own && own.isArchived ? [...activeTypes, own] : activeTypes;
+  }, [activeTypes, editing, types]);
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
   const quotaBalances = balances.filter((b) => b.entitlementDays > 0);
   const lastRequest = mine[0];
@@ -196,6 +206,41 @@ export function LeaveView() {
       >
         {busyId === application.id && !isDetail ? "…" : label}
       </button>
+    );
+  }
+
+  // Pending and untouched by any approver — the same rule the server applies.
+  function editButton(application: LeaveApplication, variant: "compact" | "detail" = "compact") {
+    if (application.status !== "PENDING" || !application.canEdit) return null;
+    const className =
+      variant === "detail"
+        ? "inline-flex h-12 items-center justify-center rounded-[18px] border border-border/70 bg-card px-6 text-sm font-bold text-foreground transition hover:border-primary/50 disabled:opacity-50"
+        : "rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition hover:border-primary/50 disabled:opacity-50";
+    return (
+      <button
+        type="button"
+        disabled={busyId === application.id}
+        onClick={(event) => {
+          event.stopPropagation();
+          setEditing(application);
+        }}
+        className={className}
+      >
+        Edit
+      </button>
+    );
+  }
+
+  // A row's actions: Edit (when allowed) beside the cancel action.
+  function rowActions(application: LeaveApplication, variant: "compact" | "detail" = "compact") {
+    const edit = editButton(application, variant);
+    const cancel = cancelButton(application, variant);
+    if (!edit && !cancel) return null;
+    return (
+      <div className={variant === "detail" ? "flex flex-wrap justify-end gap-3" : "flex items-center gap-2"}>
+        {edit}
+        {cancel}
+      </div>
     );
   }
 
@@ -365,7 +410,7 @@ export function LeaveView() {
                   <p className="text-xs text-muted-foreground">
                     {a.totalDays} day{a.totalDays === 1 ? "" : "s"} · {relativeDaysAgo(a.createdAt)}
                   </p>
-                  {cancelButton(a)}
+                  {rowActions(a)}
                 </div>
               </article>
             ))}
@@ -408,7 +453,7 @@ export function LeaveView() {
                         </div>
                       </td>
                       <td className="p-4 pr-6 align-middle">
-                        {cancelButton(a) ?? <span className="text-xs text-muted-foreground">—</span>}
+                        {rowActions(a) ?? <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                     </tr>
                   ))}
@@ -454,12 +499,25 @@ export function LeaveView() {
         />
       ) : null}
 
+      {editing ? (
+        <ApplyLeaveModal
+          types={editTypes}
+          balances={balances}
+          editing={editing}
+          onClose={() => setEditing(null)}
+          onCreated={async (app) => {
+            replace(app);
+            setBalances(await getLeaveBalances());
+          }}
+        />
+      ) : null}
+
       {selected ? (
         <LeaveDetailsModal
           application={selected}
           typeName={typeName(selected.leaveTypeId)}
           onClose={() => setSelected(null)}
-          footer={cancelButton(selected, "detail")}
+          footer={rowActions(selected, "detail")}
         />
       ) : null}
 

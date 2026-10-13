@@ -1,5 +1,12 @@
 import type { BulkResult } from "@/shared/lib/use-bulk-selection";
-import { apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
+import {
+  apiGet,
+  apiGetBlob,
+  apiGetFresh,
+  apiPost,
+  apiPostForm,
+  apiPut,
+} from "@/shared/lib/api-client";
 
 export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
@@ -54,15 +61,25 @@ export type LeaveApplication = {
   /** Supporting document (MC, hospital slip) when one was attached. */
   attachmentName: string | null;
   attachmentUrl: string | null;
+  /** FULL_DAY, or a half day (same start and end date, counts as 0.5). */
+  duration?: LeaveDuration;
+  /** Still pending with no approver action yet — the server would take an edit. */
+  canEdit?: boolean;
 };
+export type LeaveDuration = "FULL_DAY" | "MORNING" | "AFTERNOON";
 export type CreateLeaveApplication = {
   leaveTypeId: string;
   startDate: string;
   endDate: string;
+  /** Omitted = FULL_DAY. An edit sends the request's own, so a half day stays one. */
+  duration?: LeaveDuration;
   reason?: string;
   /** From uploadLeaveAttachment. Optional — most leave has no document. */
   attachmentUrl?: string;
   attachmentName?: string;
+  /** From uploadLeaveAttachment when the file went to Xero Files. Sent with
+   *  the url: the attachment proxy finds the file by this id. */
+  xeroFileId?: string;
 };
 
 export type LeaveBalance = {
@@ -183,10 +200,27 @@ export const getTeamLeave = () => apiGet<LeaveApplication[]>("/leave/team");
 export const getLeaveBalances = () => apiGet<LeaveBalance[]>("/leave/balances");
 export const applyLeave = (body: CreateLeaveApplication) =>
   apiPost<LeaveApplication>("/leave", body);
+// Your own request, while it's pending and no approver has acted. An omitted
+// attachment keeps the one already on it.
+export const editLeave = (id: string, body: CreateLeaveApplication) =>
+  apiPut<LeaveApplication>(`/leave/${id}`, body);
+
+// What these dates would cost — the server's own count (working days only,
+// public holidays skipped), the same one apply and edit charge. Fresh rather
+// than cached: holidays and the working week can change under it.
+export const previewLeaveDays = (start: string, end: string, duration: LeaveDuration = "FULL_DAY") =>
+  apiGetFresh<{ totalDays: number }>(
+    `/leave/preview-days?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&duration=${duration}`,
+  );
 
 // Uploaded before the application is submitted, so a rejected file (wrong type,
 // too big) costs nothing but a retry and never a half-written application.
-export type LeaveAttachmentUpload = { attachmentUrl: string; attachmentName: string };
+export type LeaveAttachmentUpload = {
+  attachmentUrl: string;
+  attachmentName: string;
+  /** Set when the file was stored in Xero Files; null for a local file. */
+  xeroFileId: string | null;
+};
 
 export function uploadLeaveAttachment(file: File) {
   const formData = new FormData();

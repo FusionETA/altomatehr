@@ -94,6 +94,13 @@ public interface ILeaveService
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
     Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
 
+    // What a request for these dates would cost against the org's working
+    // week and public holidays — the same count apply and edit charge. 0 for
+    // a shape they would refuse (end before start, a half day over several
+    // dates, nothing but weekends/holidays).
+    Task<double> PreviewDaysAsync(
+        DateTime start, DateTime end, Entities.LeaveDuration duration);
+
     // An admin files leave FOR an employee. Lands APPROVED — the admin already
     // has authority to grant — and records who did it.
     Task<LeaveApplyResult> ApplyOnBehalfAsync(
