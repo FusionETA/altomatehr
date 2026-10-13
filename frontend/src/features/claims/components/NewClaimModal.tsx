@@ -867,7 +867,7 @@ function ClaimDetailsForm({
           hint="Optional: invoices, approvals, secondary receipts, or other supporting files."
           files={supportingFiles}
           onChange={setSupportingFiles}
-          max={MAX_SUPPORTING_DOCUMENTS}
+          attached={0}
         />
       ) : null}
 
@@ -881,7 +881,7 @@ function ClaimDetailsForm({
           }
           files={additionalSupportingFiles}
           onChange={setAdditionalSupportingFiles}
-          max={Math.max(0, MAX_SUPPORTING_DOCUMENTS - (editingClaim?.supportingDocumentUrls?.length ?? 0))}
+          attached={editingClaim?.supportingDocumentUrls?.length ?? 0}
         />
       ) : null}
 
@@ -933,14 +933,16 @@ function SupportingDocumentsField({
   hint,
   files,
   onChange,
-  max,
+  attached,
 }: {
   label: string;
   hint: string;
   files: File[];
   onChange: (files: File[]) => void;
-  max: number;
+  /** Already on the claim being edited — they count towards the limit. */
+  attached: number;
 }) {
+  const max = Math.max(0, MAX_SUPPORTING_DOCUMENTS - attached);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const full = files.length >= max;
@@ -954,7 +956,9 @@ function SupportingDocumentsField({
     onChange([...files, ...fresh.slice(0, room)]);
     setNotice(
       fresh.length > room
-        ? `Only ${max} supporting document${max === 1 ? "" : "s"} can be attached to a claim — ${fresh.length - room} not added.`
+        ? `A claim can have ${MAX_SUPPORTING_DOCUMENTS} supporting documents${
+            attached > 0 ? ` (${attached} already attached)` : ""
+          } — ${fresh.length - room} not added.`
         : null,
     );
   }
@@ -998,7 +1002,7 @@ function SupportingDocumentsField({
         <Upload className="h-4 w-4 shrink-0 text-primary" />
         <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {full
-            ? `${max} of ${max} attached`
+            ? `${MAX_SUPPORTING_DOCUMENTS} of ${MAX_SUPPORTING_DOCUMENTS} attached — the most a claim can have`
             : files.length > 0
               ? "Tap to add more"
               : "Tap to add supporting documents"}
