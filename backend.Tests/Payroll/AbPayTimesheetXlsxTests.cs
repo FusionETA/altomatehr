@@ -99,6 +99,22 @@ public class AbPayTimesheetXlsxTests
         Assert.Equal(-800m, r.Deduction);
     }
 
+    // Sheet1's money columns E..N are PayItemColumns — the mapping the
+    // payroll summary's Breakdown sheet shares — value for value.
+    [Fact]
+    public void Sheet1_MoneyColumns_AreThePayItemColumns()
+    {
+        var (row, lines) = Employee(extraAllowance: 120m);
+        var expected = PayItemColumns.Of(row.Payslip, lines).InOrder();
+
+        using var workbook = new XLWorkbook(new MemoryStream(
+            AbPayTimesheetXlsx.Render(Model(row, lines), "Ayu Borneo (Management)")));
+        var sheet = workbook.Worksheet(1);
+
+        Assert.Equal(PayItemColumns.Headers, Enumerable.Range(5, 10).Select(c => sheet.Cell(1, c).GetString()));
+        Assert.Equal(expected, Enumerable.Range(5, 10).Select(c => sheet.Cell(2, c).GetValue<decimal>()));
+    }
+
     // The timesheet's Total Gross is its money columns summed, Deduction
     // included. When every ringgit maps to a column, the export agrees.
     [Fact]
