@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 61cde11
+  user-guide-covered-up-to: 4c5a77f
 -->
 <html lang="en">
 <head>
@@ -656,17 +656,34 @@
       the live figure — and <em>History</em> lists every request.</p>
     <ol class="steps">
       <li><h4>Tap + (Apply for leave)</h4><p>Or <span class="btn-name">Request leave</span> on the Dashboard.</p></li>
-      <li><h4>Pick the type and dates</h4><p>Your balance for that type shows as you choose. Unpaid leave has no balance.</p></li>
+      <li><h4>Pick the type and dates</h4><p>Your balance for that type shows as you choose. Unpaid leave has no balance.
+        Under the dates, the form shows <em>Duration</em> in working days — the number that will come off your balance.</p></li>
       <li><h4>Add a reason and attachment</h4><p>Both optional — attach your MC here (a photo or PDF, up to 8 MB).</p></li>
       <li><h4>Submit</h4><p>It goes to your supervisor. You'll get a notification when it's decided.</p></li>
     </ol>
     <div class="note"><span class="nt">How days are counted</span>
       <p>Only your <strong>working days</strong> count — weekends and public holidays in the range are left out. If you
-        ask for more than your balance, it's refused.</p>
+        ask for more than your balance, it's refused. If every date you pick is a weekend or public holiday, the form tells
+        you there are no working days to take off and you can't submit. A half day has to start and end on the same
+        date, and it can't be a weekend or public holiday.</p>
     </div>
     <h3>Changing your mind</h3>
-    <p>While it's still pending, open it and tap <span class="btn-name">Cancel</span> — then apply again with the right
-      dates.</p>
+    <p>While it's still pending, you can fix it or take it back.</p>
+    <ul>
+      <li><strong>Fix it:</strong> in <em>History</em>, tap <span class="btn-name">Edit</span> beside
+        <span class="btn-name">Cancel</span> — or open the request and tap <span class="btn-name">Edit</span> there. The
+        <strong>Edit leave</strong> form opens with your request filled in. Change the type, dates or reason, or tap
+        the attachment to replace it (it's kept if you don't), then tap
+        <span class="btn-name">Save changes</span>. It stays pending and keeps its place with your approver, and the
+        working days are counted again for the new dates.</li>
+      <li><strong>Take it back:</strong> tap <span class="btn-name">Cancel</span>, then apply again if you still need the
+        time off.</li>
+    </ul>
+    <div class="note warn"><span class="nt">When Edit isn't there</span>
+      <p>The <span class="btn-name">Edit</span> button goes away as soon as an approver has acted on the request —
+        approved, rejected, or even partly approved. Leave your company imported or HR filed for you can't be edited
+        either; ask HR to change it.</p>
+    </div>
     <p>Once it's approved, and hasn't started yet, tap <span class="btn-name">Request cancellation</span>. Add a reason if
       you like and tap <span class="btn-name">Send request</span> (or <span class="btn-name">Keep my leave</span> to back
       out). Your approver reviews it like the original request. Your leave stays booked, and its days stay taken, until
@@ -720,11 +737,16 @@
       <li><strong>Project</strong> — the site or job it belongs to.</li>
       <li><strong>Company bank account</strong> — for company money: which card or account paid.</li>
       <li><strong>Spending at</strong> — the shop or supplier (required for company money).</li>
+      <li><strong>Main receipt</strong> — shown on the form once attached. Tap it to open it full size, or tap
+        <span class="btn-name">Replace</span> to swap in a different file without going back a step. Skipped the receipt
+        step? An expense claim shows <span class="btn-name">Tap to add the main receipt (optional)</span> so you can still
+        attach one.</li>
       <li><strong>Supporting documents</strong> — anything else, like an invoice. Each time you tap
         <span class="btn-name">Tap to add supporting documents</span> and choose files, they're added to the list, so
         you can pick a few now and more later. The button stays above the list and changes to
-        <span class="btn-name">Tap to add more</span> once you have a file; every file below it has a ✕ button to remove it. A claim can have up
-        to 10; once you reach that, the button greys out.</li>
+        <span class="btn-name">Tap to add more</span> once you have a file; every file below it has a ✕ button to remove it, and tapping a file's name opens it. A claim can have up
+        to 10; once you reach that, the button greys out. When you edit a pending claim, the documents already attached
+        are listed too — tap one to open it — and anything you add goes alongside them.</li>
     </ul>
     <h3>Mileage claims</h3>
     <p>Enter the distance, the date, and where you went from and to. The amount is worked out from your company's
@@ -764,7 +786,8 @@
     <div class="topic-body">
     <p class="topic-lede"><strong>Claims → My claims</strong>, filtered by Pending, Approved or Rejected.</p>
     <ul>
-      <li>Open a claim to see its details, the receipt, and the reviewer's note if it was rejected.</li>
+      <li>Open a claim to see its details, the receipt, and the reviewer's note if it was rejected. Tap the receipt or a
+        supporting document to open it.</li>
       <li><strong>Changing it:</strong> while it's pending, open it and tap <span class="btn-name">Edit claim</span>.</li>
       <li>The Dashboard shows what you've been reimbursed this year.</li>
     </ul>
