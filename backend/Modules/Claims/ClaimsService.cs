@@ -15,6 +15,7 @@ using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -44,6 +45,7 @@ public class ClaimsService : IClaimsService
     private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
     private readonly IXeroService _xero;
+    private readonly ILogger<ClaimsService> _logger;
 
     public ClaimsService(
         IClaimsRepository repo,
@@ -58,7 +60,8 @@ public class ClaimsService : IClaimsService
         INotificationService notifications,
         IEmployeeRowResolver employees,
         IProjectService projects,
-        IXeroService xero)
+        IXeroService xero,
+        ILogger<ClaimsService>? logger = null)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
@@ -73,6 +76,7 @@ public class ClaimsService : IClaimsService
         _employees = employees;
         _projects = projects;
         _xero = xero;
+        _logger = logger ?? NullLogger<ClaimsService>.Instance;
     }
 
     // The caller's own claims.
@@ -603,15 +607,27 @@ public class ClaimsService : IClaimsService
 
     private async Task AttachFilesInXeroAsync(Claim claim, string objectId, XeroAttachTarget target)
     {
-        var urls = new List<string>();
-        if (!string.IsNullOrWhiteSpace(claim.ReceiptUrl)) urls.Add(claim.ReceiptUrl);
+        // Blank entries are skipped: claims carried over from the previous
+        // system can hold a null where only Xero had the file.
+        var urls = new List<string?> { claim.ReceiptUrl };
         urls.AddRange(claim.SupportingDocumentUrls ?? []);
 
-        foreach (var url in urls.Distinct(StringComparer.Ordinal))
+        foreach (var url in urls.OfType<string>().Where(u => !string.IsNullOrWhiteSpace(u)).Distinct(StringComparer.Ordinal))
         {
-            var fileId = XeroReceiptId(url) ?? await UploadLocalReceiptToXeroAsync(url);
-            if (fileId is not null)
-                await _xero.TryAttachFileAsync(fileId, objectId, target);
+            // Nothing may escape from here: the claim is already saved as
+            // synced, and an exception would report a 500 for a bill that
+            // exists — or stop a bulk push halfway.
+            try
+            {
+                var fileId = XeroReceiptId(url) ?? await UploadLocalReceiptToXeroAsync(url);
+                if (fileId is not null)
+                    await _xero.TryAttachFileAsync(fileId, objectId, target);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Couldn't attach {Url} to Xero {Target} {ObjectId} for claim {ClaimId}.",
+                    url, target, objectId, claim.Id);
+            }
         }
     }
 
@@ -620,20 +636,12 @@ public class ClaimsService : IClaimsService
         const string prefix = "/claims/receipts/";
         if (!url.StartsWith(prefix, StringComparison.Ordinal)) return null;
 
-        try
-        {
-            var file = await _receiptStorage.ReadAsync(url[prefix.Length..]);
-            if (file is null) return null;
+        var file = await _receiptStorage.ReadAsync(url[prefix.Length..]);
+        if (file is null) return null;
 
-            var uploaded = await _xero.TryUploadFileAsync(
-                XeroClaimsFolder, file.Content, file.FileName, file.ContentType);
-            return uploaded?.FileId;
-        }
-        catch (IOException)
-        {
-            // An unreadable local file is skipped like a missing one.
-            return null;
-        }
+        var uploaded = await _xero.TryUploadFileAsync(
+            XeroClaimsFolder, file.Content, file.FileName, file.ContentType);
+        return uploaded?.FileId;
     }
 
     // Bulk push. Sequenced HERE rather than in the browser: Xero rate-limits per

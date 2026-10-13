@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Xero;
@@ -230,6 +231,34 @@ public class ClaimsXeroSyncTests
         Assert.Equal(XeroSyncStatus.SYNCED, claim.XeroSyncStatus);
         Assert.Empty(xero.Uploads);
         Assert.Single(xero.Attached);
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_SkipsABlankDocument_AndAnUnreadableFile()
+    {
+        // A null where the previous system kept the file only in Xero, and a
+        // local file the server can't read: neither may fail a synced claim.
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED,
+            receiptUrl: "/claims/receipts/locked.pdf");
+        // Set as stored, the way a migrated row reads back — the setter would drop the null.
+        claim.SupportingDocumentUrlsJson = """["/claims/receipts/xero/f1", null]""";
+        Assert.Contains(null, claim.SupportingDocumentUrls);
+        var xero = new FakeXeroBillService { UploadsSucceed = true };
+
+        var service = CreateService([claim], receiptStorage: new ThrowingReceiptStorage(),
+            employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.True(result.Ok);
+        Assert.Equal(XeroSyncStatus.SYNCED, claim.XeroSyncStatus);
+        Assert.Equal(("f1", "xero-bill-1", XeroAttachTarget.Invoice), Assert.Single(xero.Attached));
+    }
+
+    private sealed class ThrowingReceiptStorage : IClaimReceiptStorage
+    {
+        public Task<ClaimReceiptUploadResult> StoreAsync(ClaimReceiptUpload upload) => throw new NotSupportedException();
+        public Task<ClaimReceiptFileResult?> GetAsync(string fileName) => Task.FromResult<ClaimReceiptFileResult?>(null);
+        public Task<ClaimReceiptBytes?> ReadAsync(string fileName) => throw new UnauthorizedAccessException();
     }
 
     [Fact]
