@@ -7,20 +7,22 @@ namespace AltomateHR.Api.Modules.Organizations;
 public class OrganizationLogoStorage : IOrganizationLogoStorage
 {
     private static readonly HashSet<string> Extensions = new(StringComparer.Ordinal) { ".png", ".jpg", ".webp" };
+    private static readonly HashSet<string> Kinds = new(StringComparer.Ordinal) { "logo", "signature" };
 
     private readonly string _root;
 
     public OrganizationLogoStorage(IWebHostEnvironment environment) =>
         _root = Path.Combine(environment.ContentRootPath, "storage", "org-branding");
 
-    public async Task<string> StoreAsync(string organizationId, byte[] content, string extension)
+    public async Task<string> StoreAsync(string organizationId, byte[] content, string extension, string kind = "logo")
     {
-        if (!Extensions.Contains(extension)) throw new ArgumentException("Unsupported logo type.");
+        if (!Extensions.Contains(extension)) throw new ArgumentException("Unsupported image type.");
+        if (!Kinds.Contains(kind)) throw new ArgumentException("Unsupported branding file kind.");
         var directory = DirectoryFor(organizationId)
             ?? throw new ArgumentException("Invalid storage location.");
 
         var storedFileName =
-            $"logo-{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(12).ToLowerInvariant()}{extension}";
+            $"{kind}-{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetHexString(12).ToLowerInvariant()}{extension}";
 
         Directory.CreateDirectory(directory);
         await File.WriteAllBytesAsync(Path.Combine(directory, storedFileName), content);

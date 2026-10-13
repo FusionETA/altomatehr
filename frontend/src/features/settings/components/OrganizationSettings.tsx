@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { XeroConnectionCard } from "./XeroConnectionCard";
 import { CompanyLogoCard } from "./CompanyLogoCard";
+import { SignaturesCard } from "./SignaturesCard";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 
@@ -123,6 +124,7 @@ export function OrganizationSettings() {
       {/* Printed on letters from Documents — part of who the company is, so it
           sits with the name rather than with Documents. */}
       <CompanyLogoCard />
+      <SignaturesCard />
     </fieldset>
   );
 }

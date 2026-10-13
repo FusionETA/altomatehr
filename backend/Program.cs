@@ -265,6 +265,9 @@ builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 // Company logo (printed on Documents letters): disk storage + its service.
 builder.Services.AddScoped<IOrganizationLogoStorage, OrganizationLogoStorage>();
 builder.Services.AddScoped<IOrganizationLogoService, OrganizationLogoService>();
+// Saved signatures for letters: same branding storage, tenant-scoped rows.
+builder.Services.AddScoped<IOrganizationSignatureRepository, OrganizationSignatureRepository>();
+builder.Services.AddScoped<IOrganizationSignatureService, OrganizationSignatureService>();
 builder.Services.AddScoped<IOrganizationDefaultsService, OrganizationDefaultsService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
 // The request's employee scope, read by AppDbContext's filters; filled by EmployeeScopeMiddleware.

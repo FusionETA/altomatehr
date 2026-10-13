@@ -26,7 +26,10 @@ import {
 } from "../api";
 import { DOCUMENT_CATEGORIES } from "../lib/categories";
 import { fieldsIn, inputKeyFor, isValidInputField, placeholdersIn, replacePlaceholder } from "../lib/markup";
+import { COMPANY_DEFAULT_OPTION } from "../lib/letter-signature";
+import { useTemplateSignature } from "../lib/use-template-signature";
 import { LetterPreview } from "./LetterPreview";
+import { SignatureSelect } from "./SignatureSelect";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -86,8 +89,9 @@ export function TemplateEditor({
   const [serverUnknown, setServerUnknown] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [confirm, confirmDialog] = useConfirm();
+  const signature = useTemplateSignature(template);
 
-  const known = useMemo(() => new Set(mergeFields.map((f) => f.key)), [mergeFields]);
+  const known =useMemo(() => new Set(mergeFields.map((f) => f.key)), [mergeFields]);
   const used = useMemo(() => fieldsIn(body), [body]);
   // Any {{…}} the PDF can't fill — including ones the strict pattern skips,
   // like {{Employee Name}} from a Word file.
@@ -116,7 +120,8 @@ export function TemplateEditor({
   const dirty =
     name !== (template?.name ?? "") ||
     category !== (template?.category ?? "OTHER") ||
-    body !== (template?.body ?? "");
+    body !== (template?.body ?? "") ||
+    signature.dirty;
 
   function insert(text: string) {
     if (aiBusy) return;
@@ -162,7 +167,7 @@ export function TemplateEditor({
     setError(null);
     setServerUnknown([]);
     try {
-      const payload = { name: name.trim(), category, body };
+      const payload = { name: name.trim(), category, body, defaultSignatureId: signature.chosenId };
       const saved = template ? await updateTemplate(template.id, payload) : await createTemplate(payload);
       onSaved(saved);
     } catch (e) {
@@ -181,7 +186,13 @@ export function TemplateEditor({
     setError(null);
     try {
       // An existing template previews the edits on screen, saved or not.
-      saveFile(await previewTemplate(template?.id ?? null, { name: name.trim() || undefined, body }));
+      saveFile(
+        await previewTemplate(template?.id ?? null, {
+          name: name.trim() || undefined,
+          body,
+          signatureId: signature.previewId,
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not build the preview.");
     } finally {
@@ -275,6 +286,29 @@ export function TemplateEditor({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="max-w-xl">
+          <span className={LABEL}>Default signature (optional)</span>
+          <SignatureSelect
+            value={signature.selectValue}
+            onChange={signature.onSelect}
+            signatures={signature.signatures}
+            loading={signature.loading}
+            disabled={locked}
+            extra={{
+              value: COMPANY_DEFAULT_OPTION,
+              label: signature.companyDefault
+                ? `Company default (${signature.companyDefault.name})`
+                : "Company default",
+              position: "first",
+            }}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {signature.savedGone
+              ? "The signature this template used was removed, so its letters use the company default."
+              : "Pre-selected when a letter is generated from this template; it can still be changed there. Signatures are managed in Settings → Organization."}
+          </p>
         </div>
       </div>
 
