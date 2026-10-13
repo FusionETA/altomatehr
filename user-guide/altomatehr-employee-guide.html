@@ -731,22 +731,29 @@
       <li><h4>Check the details, then submit</h4><p><strong>Check every field — especially the amount.</strong> Then
         <span class="btn-name">Submit claim</span>.</p></li>
     </ol>
+    <h3>The main receipt on the details form</h3>
+    <ul>
+      <li><strong>Open it:</strong> tap the receipt (it says <span class="btn-name">Tap to open</span>) and it opens in a
+        new tab, so you can check it against the amount. A PDF, which can't be previewed here, shows
+        “Attached. Tap to open it.” — tap that instead.</li>
+      <li><strong>No receipt yet?</strong> If you skipped the receipt step without one — for example with
+        <span class="btn-name">Skip AI and fill manually</span> — an expense claim shows
+        <span class="btn-name">Tap to add the main receipt (optional)</span> under <strong>Main receipt</strong>.
+        Tap it and choose a photo or PDF. There's no need to go back a step. Mileage claims don't have a receipt box.</li>
+      <li><strong>Wrong file?</strong> Tap <span class="btn-name">Replace</span> next to <strong>Main receipt</strong>
+        and choose another. It swaps in at once, and the details you've already typed stay as they are.</li>
+    </ul>
     <h3>The fields worth getting right</h3>
     <ul>
       <li><strong>Chart of account</strong> — what the expense was for. Your company decides which ones you can pick.</li>
       <li><strong>Project</strong> — the site or job it belongs to.</li>
       <li><strong>Company bank account</strong> — for company money: which card or account paid.</li>
       <li><strong>Spending at</strong> — the shop or supplier (required for company money).</li>
-      <li><strong>Main receipt</strong> — shown on the form once attached. Tap it to open it full size, or tap
-        <span class="btn-name">Replace</span> to swap in a different file without going back a step. Skipped the receipt
-        step? An expense claim shows <span class="btn-name">Tap to add the main receipt (optional)</span> so you can still
-        attach one.</li>
       <li><strong>Supporting documents</strong> — anything else, like an invoice. Each time you tap
         <span class="btn-name">Tap to add supporting documents</span> and choose files, they're added to the list, so
         you can pick a few now and more later. The button stays above the list and changes to
-        <span class="btn-name">Tap to add more</span> once you have a file; every file below it has a ✕ button to remove it, and tapping a file's name opens it. A claim can have up
-        to 10; once you reach that, the button greys out. When you edit a pending claim, the documents already attached
-        are listed too — tap one to open it — and anything you add goes alongside them.</li>
+        <span class="btn-name">Tap to add more</span> once you have a file; every file below it has a ✕ button to remove it. A claim can have up
+        to 10; once you reach that, the button greys out. Tap any file in the list to open it in a new tab.</li>
     </ul>
     <h3>Mileage claims</h3>
     <p>Enter the distance, the date, and where you went from and to. The amount is worked out from your company's
@@ -774,6 +781,14 @@
           <img src="shots/employee/claim-supporting.png" alt="The claim details form with Tap to add more above a list of three supporting documents, each with a remove button" loading="lazy">
           <p class="shot-cap">Supporting documents</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/employee/claim-add-receipt.png" alt="The claim details form with no main receipt attached, showing a dashed box that says Tap to add the main receipt (optional)" loading="lazy">
+          <p class="shot-cap">No receipt yet? Add it here</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/claim-main-receipt.png" alt="The claim details form with the Main receipt card showing the attached receipt, a Replace link beside the label and Tap to open under the picture" loading="lazy">
+          <p class="shot-cap">Main receipt, with Replace</p>
+        </div>
       </div>
       <p class="shot-cap shot-cap-main">Submitting a claim</p>
     </figure>
@@ -786,11 +801,23 @@
     <div class="topic-body">
     <p class="topic-lede"><strong>Claims → My claims</strong>, filtered by Pending, Approved or Rejected.</p>
     <ul>
-      <li>Open a claim to see its details, the receipt, and the reviewer's note if it was rejected. Tap the receipt or a
-        supporting document to open it.</li>
-      <li><strong>Changing it:</strong> while it's pending, open it and tap <span class="btn-name">Edit claim</span>.</li>
+      <li>Open a claim to see its details, the receipt, and the reviewer's note if it was rejected.</li>
+      <li><strong>Changing it:</strong> while it's pending, open it and tap <span class="btn-name">Edit claim</span>.
+        The form shows the main receipt (tap it to open it, or <span class="btn-name">Replace</span> it) and lists the
+        supporting documents already on the claim, each marked <strong>Attached</strong> — tap one to open it. Add more
+        with <span class="btn-name">Tap to add more</span>; the limit of 10 counts the ones already attached.</li>
       <li>The Dashboard shows what you've been reimbursed this year.</li>
     </ul>
+
+    <figure class="shot" data-place="Claims → My claims">
+      <div class="shot-grid" data-orient="phone">
+        <div class="shot-item">
+          <img src="shots/employee/claim-edit-attached.png" alt="The Edit claim form showing the attached main receipt, then Tap to add more above two supporting documents each marked Attached" loading="lazy">
+          <p class="shot-cap">Editing a claim</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Changing a pending claim</p>
+    </figure>
     </div>
   </details>
 

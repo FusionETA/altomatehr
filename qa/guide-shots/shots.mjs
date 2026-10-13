@@ -101,7 +101,7 @@ async function scrollTo(page, text, offset = 140, exact = false) {
 
 // A made-up receipt for the claim shots: drawn by the browser from HTML (a test
 // input, not an edited screenshot), so no real receipt is ever used.
-async function attachDemoReceipt(page) {
+async function demoReceiptPng(page) {
   const art = await page.context().newPage();
   await art.setViewportSize({ width: 300, height: 214 });
   await art.setContent(`<meta name="viewport" content="width=300"><body style="margin:0;background:#8a5a44;display:flex;justify-content:center;font-family:monospace">
@@ -114,6 +114,11 @@ async function attachDemoReceipt(page) {
     <div style="display:flex;justify-content:space-between"><b>TOTAL RM</b><b>28.00</b></div><div style="text-align:center;margin-top:8px">THANK YOU</div></div></body>`);
   const buffer = await art.screenshot({ type: "png" });
   await art.close();
+  return buffer;
+}
+
+async function attachDemoReceipt(page) {
+  const buffer = await demoReceiptPng(page);
   await page.locator("#claimReceipt").setInputFiles({ name: "demo-cafe-receipt.png", mimeType: "image/png", buffer });
 }
 
@@ -513,6 +518,58 @@ const evan = {
     }
     await scrollTo(page, "Supporting documents", 120, true);
     await shoot(page, "employee", "claim-supporting");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // The details form after "Skip AI and fill manually" with no receipt: the
+  // optional "Tap to add the main receipt" box.
+  "claim-add-receipt": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    await page.getByRole("button", { name: "Skip AI and fill manually" }).click();
+    await page.getByText("Tap to add the main receipt (optional)").waitFor({ timeout: 15000 });
+    await scrollTo(page, "Main receipt", 200, true);
+    await shoot(page, "employee", "claim-add-receipt");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // Same form once a receipt is attached: the Main receipt card with Replace.
+  "claim-main-receipt": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    await attachDemoReceipt(page);
+    await page.getByRole("button", { name: "Skip AI and fill manually" }).click();
+    await page.getByRole("button", { name: "Replace" }).waitFor({ timeout: 15000 });
+    await scrollTo(page, "Main receipt", 200, true);
+    await shoot(page, "employee", "claim-main-receipt");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // Editing a pending claim. The demo employee has none pending, so GET /claims
+  // and the stored files are stubbed in the browser (nothing is changed on the server).
+  "claim-edit-attached": async (page) => {
+    const receipt = await demoReceiptPng(page);
+    await page.route(/\/claims\/receipts\/demo-/, (route) =>
+      route.fulfill({ status: 200, contentType: "image/png", body: receipt }));
+    await page.route(/\/claims$/, (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          id: "demo-claim-1", claimNumber: "CLM-0412", title: "Client lunch", description: "Lunch with a client",
+          category: "Meals", amount: 28, currency: "MYR", status: "PENDING", xeroSyncStatus: "NOT_SYNCED",
+          settlement: "NONE", currentStep: 0, updatedAt: new Date().toISOString(), claimType: "EXPENSE",
+          paymentType: "OWN_MONEY", employeeId: "demo", spentAt: new Date().toISOString(),
+          submittedAt: new Date().toISOString(), exceedsLimit: false,
+          receiptUrl: "/claims/receipts/demo-receipt.png",
+          supportingDocumentUrls: ["/claims/receipts/demo-invoice-0412.pdf", "/claims/receipts/demo-approval-note.pdf"],
+        }]),
+      });
+    });
+    await go(page, "claims");
+    await page.getByText("Client lunch").filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Edit claim" }).click();
+    await page.getByText("Attached", { exact: true }).first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "Supporting documents", 120, true);
+    await shoot(page, "employee", "claim-edit-attached");
     await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
   "overtime-list": async (page) => {
