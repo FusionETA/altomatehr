@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 1777eef
+// whats-new-covered-up-to: c8cb52b
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -25,6 +25,13 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     date: "2026-10-13",
     new: [
       "Admins: Settings → Organization → Company logo: upload a PNG, JPG or WebP image up to 2 MB, then replace or remove it (needs the Change settings permission). It prints at the top left of letters generated from Documents from now on; letters already saved keep their old look.",
+      "Payroll → a run's Payslips: search by name, employee ID or job title. The totals under the table still add up the whole run.",
+    ],
+    improved: [
+      "Claims → New claim (expense): the main receipt is now required before you continue. \"Skip AI and fill manually\" (was \"Skip and fill manually\") skips only the AI reading, and the receipt is still attached. When editing, a receipt can be replaced but not removed; older claims without one can still be edited.",
+    ],
+    fixed: [
+      "Claims → New claim → Supporting documents: a second pick no longer replaces the first. Files add up (up to 10 per claim, counting any already on a claim you're editing), and each one has a remove button.",
     ],
   },
   {

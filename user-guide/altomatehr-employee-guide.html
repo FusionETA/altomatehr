@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 1777eef
+  user-guide-covered-up-to: c8cb52b
 -->
 <html lang="en">
 <head>
@@ -705,8 +705,11 @@
       <li><h4>Who paid?</h4><p><strong>My own money</strong> (you'll be reimbursed) or <strong>Company money</strong>
         (a company card or account).</p></li>
       <li><h4>What kind?</h4><p><strong>Expense claim</strong> or <strong>Mileage claim</strong>.</p></li>
-      <li><h4>Upload the receipt</h4><p>For an expense, upload the main receipt and tap
-        <span class="btn-name">Read receipt &amp; continue</span>. The app reads it and fills in the details.</p></li>
+      <li><h4>Attach the main receipt</h4><p>For an expense, the main receipt is required. Attach it first — until you do,
+        both buttons stay greyed out. Then tap <span class="btn-name">Read receipt &amp; continue</span> and the app reads
+        it and fills in the details. Prefer to type them yourself? Tap
+        <span class="btn-name">Skip AI and fill manually</span>. That only skips the reading — your receipt is still
+        attached to the claim.</p></li>
       <li><h4>Check the details, then submit</h4><p><strong>Check every field — especially the amount.</strong> Then
         <span class="btn-name">Submit claim</span>.</p></li>
     </ol>
@@ -716,7 +719,10 @@
       <li><strong>Project</strong> — the site or job it belongs to.</li>
       <li><strong>Company bank account</strong> — for company money: which card or account paid.</li>
       <li><strong>Spending at</strong> — the shop or supplier (required for company money).</li>
-      <li><strong>Supporting documents</strong> — anything else, like an invoice.</li>
+      <li><strong>Supporting documents</strong> — anything else, like an invoice. Each time you tap
+        <span class="btn-name">Tap to add supporting documents</span> and choose files, they're added to the list, so
+        you can pick a few now and more later. Every file is listed with a ✕ button to remove it. A claim can have up
+        to 10; once you reach that, the button greys out.</li>
     </ul>
     <h3>Mileage claims</h3>
     <p>Enter the distance, the date, and where you went from and to. The amount is worked out from your company's
@@ -733,12 +739,16 @@
           <p class="shot-cap">Who paid?</p>
         </div>
         <div class="shot-item">
-          <img src="shots/employee/claim-receipt.png" alt="The receipt upload step with Read receipt &amp; continue" loading="lazy">
-          <p class="shot-cap">Reading the receipt</p>
+          <img src="shots/employee/claim-receipt.png" alt="The Attach the main receipt step with a receipt attached, and the Read receipt &amp; continue and Skip AI and fill manually buttons" loading="lazy">
+          <p class="shot-cap">Attach the main receipt</p>
         </div>
         <div class="shot-item">
           <img src="shots/employee/claim-details.png" alt="The final step, filled in from the receipt" loading="lazy">
           <p class="shot-cap">Claim details</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/claim-supporting.png" alt="The claim details form with three supporting documents listed, each with a remove button, and Tap to add more" loading="lazy">
+          <p class="shot-cap">Supporting documents</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Submitting a claim</p>
