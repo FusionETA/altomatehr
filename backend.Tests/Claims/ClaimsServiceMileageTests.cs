@@ -190,6 +190,7 @@ public class ClaimsServiceMileageTests
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,
         ChartOfAccountId = "acct-expense",
+        ReceiptUrl = "/claims/receipts/receipt.jpg",
     };
 
     private static CreateClaimDto MileageDto(string chartOfAccountId = "acct-mileage") => new()

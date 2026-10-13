@@ -118,6 +118,7 @@ public class ClaimsServiceOwnershipTests
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,
         ChartOfAccountId = "acct-expense",
+        ReceiptUrl = "/claims/receipts/receipt.jpg",
     };
     // ---- The team view ----
 

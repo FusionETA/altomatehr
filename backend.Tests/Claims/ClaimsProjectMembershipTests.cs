@@ -82,6 +82,7 @@ public class ClaimsProjectMembershipTests
         ClaimType = ClaimType.EXPENSE,
         PaymentType = PaymentType.PERSONAL,
         ChartOfAccountId = "acct-expense",
+        ReceiptUrl = "/claims/receipts/receipt.jpg",
         ProjectId = projectId,
     };
 }
