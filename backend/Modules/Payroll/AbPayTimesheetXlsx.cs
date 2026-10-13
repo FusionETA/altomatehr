@@ -14,7 +14,9 @@ namespace AltomateHR.Api.Modules.Payroll;
 // the second sheet — the statutory figures per employee — cannot reach it.
 //
 // Columns come from the payslip snapshot and its line items, reversing
-// ABPay's default column → category mapping (ABPay domain/posting.ts):
+// ABPay's default column → category mapping (ABPay domain/posting.ts). The
+// mapping itself lives in PayItemColumns, which the payroll summary's
+// Breakdown sheet shares:
 //
 //   Basic       ProratedPay (ABPay sets the salary and runs with skipProration,
 //               so ProratedPay = Basic for its runs; for any other run it is
@@ -48,11 +50,10 @@ public static class AbPayTimesheetXlsx
 
     // Column O is blank in the real timesheet, header included. Kept, so the
     // file lines up with the ones ABPay is used to.
+    // The money columns E..N are PayItemColumns, shared with the payroll
+    // summary's Breakdown sheet.
     private static readonly string[] Headers =
-    [
-        "Staff", "Company", "Group", "Outlet", "Basic", "U/L", "Travelling", "Meal",
-        "Parking", "Hours", "OT", "Comm", "Bonus", "Deduction", "", "Total Gross",
-    ];
+        ["Staff", "Company", "Group", "Outlet", .. PayItemColumns.Headers, "", "Total Gross"];
 
     // The timesheet's own number format: Excel's built-in "Comma" style, which
     // shows zero as "-".
@@ -98,32 +99,27 @@ public static class AbPayTimesheetXlsx
         StatutoryEmployeeRow row, string company, IReadOnlyList<PayslipLineItem> lineItems)
     {
         var p = row.Payslip;
-
-        decimal Sum(string category) => lineItems
-            .Where(li => string.Equals(li.Category, category, StringComparison.Ordinal))
-            .Sum(li => li.Amount);
-
-        var deduction = -Sum(PayrollAdjustmentCategories.DeductMiscellaneous);
+        var v = PayItemColumns.Of(p, lineItems);
 
         return new Row
         {
             Staff = p.SnapshotName,
             EmployeeNumber = row.EmployeeCode,
             Company = company,
-            Group = row.Department?.Trim() ?? string.Empty,
-            Outlet = row.Location?.Trim() ?? string.Empty,
+            Group = PayItemColumns.GroupOf(row),
+            Outlet = PayItemColumns.OutletOf(row),
 
-            Basic = p.ProratedPay,
-            UnpaidLeave = -Sum(PayrollAdjustmentCategories.DeductUnpaidLeave),
-            Travelling = Sum(PayrollAdjustmentCategories.AllowanceTravelPrivate),
-            Meal = Sum(PayrollAdjustmentCategories.AllowanceMeal),
-            Parking = Sum(PayrollAdjustmentCategories.AllowanceParking),
-            OtHours = p.OtNormalHours + p.OtRestHours + p.OtPublicHours,
-            Ot = p.OtPay + Sum(PayrollAdjustmentCategories.WagesOvertime),
-            Commission = Sum(PayrollAdjustmentCategories.WagesCommission),
-            Bonus = Sum(PayrollAdjustmentCategories.WagesBonusNonAnnual),
-            Deduction = deduction,
-            TotalGross = Money.Round2(p.GrossPay + deduction),
+            Basic = v.Basic,
+            UnpaidLeave = v.UnpaidLeave,
+            Travelling = v.Travelling,
+            Meal = v.Meal,
+            Parking = v.Parking,
+            OtHours = v.OtHours,
+            Ot = v.Ot,
+            Commission = v.Commission,
+            Bonus = v.Bonus,
+            Deduction = v.Deduction,
+            TotalGross = Money.Round2(p.GrossPay + v.Deduction),
         };
     }
 

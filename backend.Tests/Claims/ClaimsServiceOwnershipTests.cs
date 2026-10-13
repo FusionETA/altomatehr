@@ -108,6 +108,22 @@ public class ClaimsServiceOwnershipTests
         Assert.Equal("Payment source cannot be changed after submission.", error.Message);
     }
 
+    // The detail view shows "Employee"; without these it printed the raw id.
+    [Fact]
+    public async Task GetMineAsync_LabelsTheCallersOwnClaimsWithTheirNameAndEmail()
+    {
+        var supervision = new FakeSupervisionService(new() { ["usr-emp"] = "ahmad@x.com" })
+        {
+            Names = new() { ["usr-emp"] = " Ahmad Ali " },
+        };
+        var service = CreateService([NewClaim("claim-1", "usr-emp")], supervision: supervision);
+
+        var claim = Assert.Single(await service.GetMineAsync("usr-emp"));
+
+        Assert.Equal("Ahmad Ali", claim.EmployeeName);
+        Assert.Equal("ahmad@x.com", claim.EmployeeEmail);
+    }
+
     private static CreateClaimDto CreateClaimDto(string title = "Lunch") => new()
     {
         Title = title,

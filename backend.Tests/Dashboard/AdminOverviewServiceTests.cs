@@ -164,7 +164,10 @@ public class AdminOverviewServiceTests
         var overview = await Create([Aged("late", "usr-ahmad", 15, currentStep: 1)]).GetAsync();
 
         var stale = Assert.Single(overview.StalePendingClaims);
-        Assert.Equal(["usr-finance"], stale.CurrentApprovers);
+        // Finance isn't in this directory: labelled, never shown as a raw id.
+        Assert.Equal(["Unknown person"], stale.CurrentApprovers);
+        // The id travels alongside, so two unnamed approvers never merge.
+        Assert.Equal(["usr-finance"], stale.CurrentApproverIds);
         Assert.Equal("Ahmad Ali", stale.EmployeeName);
     }
 

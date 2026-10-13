@@ -233,7 +233,7 @@ function StuckWithCard({
             </p>
             {stuckPage.visible.map((group) => (
               <button
-                key={group.approver}
+                key={group.key}
                 type="button"
                 onClick={() =>
                   onDrill(

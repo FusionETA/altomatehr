@@ -623,6 +623,7 @@ export function AdminClaimsTable({
         <ClaimDetailsModal
           claim={selected}
           accountLabel={accountLabel(selected)}
+          bankLabel={selected.payViaAccountId ? accountLabels.get(selected.payViaAccountId) : undefined}
           projectLabel={projectLabel(selected)}
           employeeLabel={employeeName(selected)}
           onClose={() => setSelected(null)}

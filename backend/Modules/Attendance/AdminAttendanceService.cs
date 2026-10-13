@@ -213,7 +213,8 @@ public class AdminAttendanceService : IAdminAttendanceService
         if (!string.IsNullOrWhiteSpace(name)) return name;
 
         var email = directory.EmailOf(userId);
-        return string.IsNullOrWhiteSpace(email) ? userId : email;
+        // Never the raw id — it means nothing on screen.
+        return string.IsNullOrWhiteSpace(email) ? "Unknown person" : email;
     }
 
     // Photo urls are stored as the path the client fetches; storage addresses

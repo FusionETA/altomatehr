@@ -414,7 +414,8 @@ export function AdminAttendance() {
     (employeeId: string) => {
       const stored = names.get(employeeId);
       if (stored) return stored;
-      return personName(null, emails.get(employeeId), employeeId);
+      // Never the raw id: someone outside this admin's view, or since removed.
+      return personName(null, emails.get(employeeId), "Unknown person");
     },
     [names, emails],
   );
@@ -607,7 +608,7 @@ export function AdminAttendance() {
         const nextLayer = above[0].layer;
         const approvers = above
           .filter((m) => m.layer === nextLayer)
-          .map((m) => names.get(m.employeeId) ?? m.email ?? m.employeeId);
+          .map((m) => names.get(m.employeeId) ?? m.email ?? "Unknown person");
         return approvers.join(", ");
       }
       return null;
@@ -2429,7 +2430,7 @@ function EmployeeDetail({
                           )
                         : spanLabel(record.timeIn, record.timeOut)}
                     </span>
-                    {record.projectId ? ` • ${projectNames.get(record.projectId) ?? record.projectId}` : ""}
+                    {record.projectId && projectNames.get(record.projectId) ? ` • ${projectNames.get(record.projectId)}` : ""}
                     {record.durationMin ? ` • ${formatMinutes(record.durationMin)}` : ""}
                   </p>
 

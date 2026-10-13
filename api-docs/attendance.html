@@ -291,7 +291,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>reviewerId</code>, <code>reviewerName</code></td><td>string</td><td>The decider (name, else email, else id).</td></tr>
+              <tr><td><code>reviewerId</code>, <code>reviewerName</code></td><td>string</td><td>The decider: name, else email, else <code>"Unknown person"</code> when they can't be resolved (never the raw id).</td></tr>
               <tr><td><code>totalDecisions</code>, <code>approvedCount</code>, <code>rejectedCount</code></td><td>integer</td><td>Decided requests only; pending ones are not counted against anyone.</td></tr>
               <tr><td><code>slowDecisionCount</code></td><td>integer</td><td>Decisions slower than the organization's supervisor SLA (60 minutes when none is set).</td></tr>
               <tr><td><code>avgDelayMinutes</code>, <code>maxDelayMinutes</code></td><td>number?</td><td>Submission-to-decision, in minutes.</td></tr>
@@ -317,7 +317,7 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>id</code></td><td>string</td><td>The approval request id.</td></tr>
-              <tr><td><code>employeeId</code>, <code>employeeName</code></td><td>string</td><td>Whose request. <code>employeeName</code> falls back to email, then id.</td></tr>
+              <tr><td><code>employeeId</code>, <code>employeeName</code></td><td>string</td><td>Whose request. <code>employeeName</code> falls back to email, then <code>"Unknown person"</code> (never the raw id); <code>reviewerName</code> likewise.</td></tr>
               <tr><td><code>kind</code></td><td>string</td><td><code>CLOCK_IN</code>, <code>CLOCK_OUT</code>, <code>BREAK_START</code> or <code>BREAK_END</code>.</td></tr>
               <tr><td><code>status</code></td><td>string</td><td><code>PENDING</code>, <code>APPROVED</code> or <code>REJECTED</code>.</td></tr>
               <tr><td><code>eventAt</code>, <code>submittedAt</code>, <code>decidedAt</code></td><td>string</td><td>ISO 8601, UTC. <code>decidedAt</code> null while pending. <code>eventAt</code> is the time being approved (the proposed time, for a correction).</td></tr>

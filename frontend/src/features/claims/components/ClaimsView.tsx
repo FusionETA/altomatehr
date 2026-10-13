@@ -407,6 +407,7 @@ export function ClaimsView() {
         <ClaimDetailsModal
           claim={selectedClaim}
           accountLabel={accountLabel(selectedClaim)}
+          bankLabel={selectedClaim.payViaAccountId ? accountLabels.get(selectedClaim.payViaAccountId) : undefined}
           projectLabel={projectLabel(selectedClaim)}
           onClose={() => setSelectedClaim(null)}
           footer={editFooter(selectedClaim)}
