@@ -1414,6 +1414,9 @@ public class LeaveServiceTests
 
 
     // No connection in these tests, so an attachment would fall back to disk.
+    public Task<bool> TryAttachFileAsync(string fileId, string objectId, XeroAttachTarget target) =>
+        Task.FromResult(false);
+
     public Task<XeroUploadedFile?> TryUploadFileAsync(
         string folderName, byte[] content, string fileName, string contentType) =>
         Task.FromResult<XeroUploadedFile?>(null);

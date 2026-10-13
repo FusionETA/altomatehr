@@ -37,6 +37,11 @@ public interface IXeroClient
         string accessToken, string tenantId, string? folderId,
         byte[] content, string fileName, string contentType);
 
+    // Attach a file already in Xero Files to a bill or a spend money
+    // transaction, so it shows in that record's Files panel.
+    Task AssociateFileAsync(
+        string accessToken, string tenantId, string fileId, string objectId, XeroAttachTarget target);
+
     // Creates an accounts-payable bill (Xero calls it an ACCPAY Invoice).
     // Returns the bill's id and human reference so the caller can link to it.
     Task<XeroBillResponse> CreateBillAsync(string accessToken, string tenantId, XeroBillRequest bill);
@@ -58,6 +63,10 @@ public interface IXeroClient
 }
 
 public sealed record XeroFileContent(byte[] Content, string ContentType, string FileName);
+
+// Xero's "ObjectGroup" for a file association: a bill is an Invoice (ACCPAY),
+// a company-paid spend is a BankTransaction.
+public enum XeroAttachTarget { Invoice, BankTransaction }
 
 public sealed record XeroTokenResponse(
     string AccessToken,

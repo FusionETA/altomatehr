@@ -99,6 +99,34 @@ async function scrollTo(page, text, offset = 140, exact = false) {
   await settle(page, 400);
 }
 
+// A made-up receipt for the claim shots: drawn by the browser from HTML (a test
+// input, not an edited screenshot), so no real receipt is ever used.
+async function attachDemoReceipt(page) {
+  const art = await page.context().newPage();
+  await art.setViewportSize({ width: 300, height: 214 });
+  await art.setContent(`<meta name="viewport" content="width=300"><body style="margin:0;background:#8a5a44;display:flex;justify-content:center;font-family:monospace">
+    <div style="margin-top:8px;width:230px;height:206px;background:#fff;padding:18px;box-sizing:border-box;font-size:12px;color:#222">
+    <h2 style="text-align:center;margin:0 0 4px">DEMO CAFE</h2><div style="text-align:center">12 Jalan Contoh, Demo City</div><hr>
+    <div>Receipt 0412 &nbsp; 07/09/2026</div><hr>
+    <div style="display:flex;justify-content:space-between"><span>1 Flat white</span><span>12.00</span></div>
+    <div style="display:flex;justify-content:space-between"><span>1 Croissant</span><span>8.50</span></div>
+    <div style="display:flex;justify-content:space-between"><span>1 Iced tea</span><span>7.50</span></div><hr>
+    <div style="display:flex;justify-content:space-between"><b>TOTAL RM</b><b>28.00</b></div><div style="text-align:center;margin-top:8px">THANK YOU</div></div></body>`);
+  const buffer = await art.screenshot({ type: "png" });
+  await art.close();
+  await page.locator("#claimReceipt").setInputFiles({ name: "demo-cafe-receipt.png", mimeType: "image/png", buffer });
+}
+
+async function openClaimReceiptStep(page) {
+  await go(page, "dashboard");
+  await page.getByText("Submit new claim").filter({ visible: true }).first().click();
+  await page.getByText("Who paid for this?").waitFor({ timeout: 15000 });
+  await page.getByText("My own money", { exact: true }).click();
+  await page.getByText("Expense claim", { exact: true }).click();
+  await page.getByText("Attach the main receipt").waitFor({ timeout: 15000 });
+  await settle(page);
+}
+
 // Stub for POST /documents/templates/ai — made-up demo letters using real merge
 // field keys. A request with a current draft (the editor's Ask AI) gets a revision.
 async function stubTemplateAi(page) {
@@ -376,6 +404,20 @@ const admin = {
     await shoot(page, "admin", "payroll-downloads");
     await page.keyboard.press("Escape");
   },
+  // A run's Payslips list narrowed by the search box; the Total row stays the whole run's.
+  "payroll-payslips-search": async (page) => {
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    const box = page.getByPlaceholder("Search name, employee ID, or job title").filter({ visible: true }).first();
+    await box.waitFor({ timeout: 20000 });
+    await box.fill("evan");
+    await page.getByText(/shown\. Totals below are still the whole run/).first().waitFor({ timeout: 10000 });
+    await box.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await settle(page, 500);
+    await page.evaluate(() => window.scrollBy(0, -160));
+    await shoot(page, "admin", "payroll-payslips-search");
+  },
   "annual-forms": async (page) => {
     await go(page, "payroll");
     await clickText(page, "Annual forms");
@@ -440,6 +482,38 @@ const evan = {
     await page.getByText(/On site|away/).first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "employee", "clock-in");
+  },
+  // The main receipt is required: both buttons wait for a file. Never calls the
+  // receipt AI (the analyze endpoint is aborted as a safety net).
+  "claim-receipt": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    // The receipt is optional: no file attached, both buttons work.
+    await settle(page, 1000);
+    await scrollTo(page, "Skip AI and fill manually", 520);
+    await shoot(page, "employee", "claim-receipt");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // "Skip AI and fill manually" keeps the receipt; supporting documents add up,
+  // each with its own remove button.
+  "claim-supporting": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    await attachDemoReceipt(page);
+    await page.getByRole("button", { name: "Skip AI and fill manually" }).click();
+    await page.getByText("Supporting documents").first().waitFor({ timeout: 15000 });
+    const pdf = (name) => ({ name, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") });
+    for (const batch of [[pdf("invoice-0412.pdf")], [pdf("approval-note.pdf"), pdf("parking-ticket.pdf")]]) {
+      const [chooser] = await Promise.all([
+        page.waitForEvent("filechooser"),
+        page.getByText(/Tap to add (more|supporting documents)/).click(),
+      ]);
+      await chooser.setFiles(batch);
+      await settle(page, 600);
+    }
+    await scrollTo(page, "Supporting documents", 120, true);
+    await shoot(page, "employee", "claim-supporting");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
   "overtime-list": async (page) => {
     await go(page, "attendance/att-overtime");

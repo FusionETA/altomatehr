@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 6b1620b
+// whats-new-covered-up-to: 61cde11
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -24,18 +24,24 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-13",
     new: [
-      "Admins: Settings → Organization → Company logo: upload a PNG, JPG or WebP image up to 2 MB, then replace or remove it (needs the Change settings permission). It prints at the top left of letters generated from Documents from now on; letters already saved keep their old look.",
-      "Admins: Settings → Organization → Signatures (needs Change settings): keep up to 10 signatures for letters, each with a name and position. Draw one on screen, or upload a PNG, JPG or WebP image up to 1 MB. The first one saved becomes the company default; you can change the default, edit or remove any of them.",
-      "Admins: a saved signature is a picture of a signature printed on the letter, not a certified e-signature. Once a company default is set, new letters print it unless you pick another, or \"No signature (sign by hand)\".",
-      "Admins: Documents → Templates → editor: new Default signature (optional), either a saved signature or the company default. Letters made from the template start with it, and it can still be changed for each letter.",
-      "Admins: Employee profile → Documents → Letters → Generate letter: new Signature picker, starting from the template's default, then the company default. The chosen signature prints above the signatory's name and position, and its name and position fill those fields. Letters already made don't change; the Letters list shows \"Signed: <name>\" for letters printed with a signature.",
+      "Admins: add your company logo in Settings → Organization. It shows at the top of the letters you create.",
+      "Admins: save signatures for your letters in Settings → Organization → Signatures. Draw one on screen or upload a picture, and choose one as the company default.",
+      "Admins: letters can now be signed. When you create a letter, pick which signature to print, or none if you'd rather sign by hand. A template can also have its own default signature.",
+      "Admins: you can now search a payroll run's payslips by name, staff ID or job title.",
+    ],
+    improved: [
+      "Claims: \"Skip and fill manually\" is now called \"Skip AI and fill manually\". If you attached a receipt, it stays with your claim.",
+      "Admins: when you sync a claim to Xero, its receipt and supporting documents are now attached to the bill or spend money, so they show in Xero.",
+    ],
+    fixed: [
+      "Claims: adding more supporting documents no longer removes the ones you already added. You can attach up to 10, and remove any with the ✕.",
     ],
   },
   {
     date: "2026-10-12",
     new: [
-      "Admins: Documents → Templates → Write with AI (needs Manage access to Documents): describe the letter you need, in English or Bahasa Melayu, and get two drafts that use your merge fields. Pick one to open it in the editor unsaved; nothing is kept until you press Save template. Any field the draft invents that AltomateHR doesn't know is flagged to fix, as with uploads. The AI sees only your description and the field list, never employee details. The PDF's sign-off line is still printed in English.",
-      "Admins: Documents → Templates → editor → Ask AI: say what to change (\"make it more formal\", \"add a clause on annual leave\", \"translate to Bahasa Melayu\") and the text on the left is revised in place, with Undo for the last change.",
+      "Admins: let AI write a letter template for you in Documents → Templates → Write with AI. Describe the letter in English or Bahasa Melayu, then pick from two drafts.",
+      "Admins: while editing a template, use Ask AI to change it, for example \"make it more formal\" or \"translate to Bahasa Melayu\". You can undo the last change.",
     ],
   },
   {

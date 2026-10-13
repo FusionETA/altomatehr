@@ -11,6 +11,7 @@ import {
 import { saveFile } from "@/shared/lib/api-client";
 import { usePaged } from "@/shared/lib/use-paged";
 import { TablePager } from "@/shared/components/TablePager";
+import { SearchInput } from "@/shared/components/SearchInput";
 import { rm, warningLabels } from "../lib/payroll-format";
 import { BADGE, CARD, HINT, NOTE_PANEL } from "../lib/ui";
 import { PayslipDrawer } from "./PayslipDrawer";
@@ -78,7 +79,22 @@ export function PayrollPayslipsTable({
   // very long scroll to reach the totals. The footer and the remittance
   // panel below still add up the WHOLE run: that is the figure paid, and a
   // total that changed as you paged would be a different, wrong number.
-  const paged = usePaged(payslips, 10);
+  //
+  // The search narrows the ROWS only; the totals stay the whole run's.
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const shown = useMemo(
+    () =>
+      needle
+        ? payslips.filter((p) =>
+            [p.snapshotName, p.snapshotEmployeeNumber, p.snapshotPosition].some((v) =>
+              v?.toLowerCase().includes(needle),
+            ),
+          )
+        : payslips,
+    [payslips, needle],
+  );
+  const paged = usePaged(shown, 10);
 
   if (payslips.length === 0) {
     return (
@@ -135,6 +151,19 @@ export function PayrollPayslipsTable({
           {payslips.length} employee(s). Select a row for the full breakdown. Scroll
           sideways for the employer's side.
         </p>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search name, employee ID, or job title"
+          className="mt-3 sm:max-w-md"
+        />
+        {needle ? (
+          <p className={`${HINT} mt-2`}>
+            {shown.length === 0
+              ? "No one in this run matches that search."
+              : `${shown.length} of ${payslips.length} shown. Totals below are still the whole run.`}
+          </p>
+        ) : null}
       </header>
 
       <div className="mt-4 overflow-x-auto">
@@ -216,7 +245,7 @@ export function PayrollPayslipsTable({
           <tfoot>
             <tr className="border-t border-border/70 bg-muted/40 font-semibold">
               <td className="sticky left-0 z-20 border-r border-border/60 bg-muted/40 px-3 py-2 text-left">
-                {paged.pageCount > 1 ? `Total · all ${payslips.length}` : "Total"}
+                {paged.pageCount > 1 || needle ? `Total · all ${payslips.length}` : "Total"}
               </td>
               <td colSpan={5} />
               <td className={CELL}>{rm(totals.gross)}</td>

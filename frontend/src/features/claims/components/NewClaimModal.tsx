@@ -293,6 +293,8 @@ function ReceiptStep({
   // A failed read must not block the claim: the endpoint stores the file before
   // it calls the model, so the upload is never wasted, and the form still opens
   // for manual entry. Only the pre-fill is lost.
+  //
+  // The receipt is optional: with no file this just continues to the form.
   async function scanAndContinue() {
     if (!receiptFile) {
       onContinue();
@@ -362,8 +364,8 @@ function ReceiptStep({
               </>
             ) : (
               <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-                JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. We'll read the supplier, amount and
-                date off it so you don't have to type them.
+                Optional. JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. AI can read the supplier,
+                amount and date off it so you don't have to type them.
               </p>
             )}
           </>
@@ -381,6 +383,7 @@ function ReceiptStep({
       ) : null}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        {/* Skips the AI read; an attached file is still uploaded with the claim. */}
         <button
           type="button"
           disabled={reading}
@@ -390,7 +393,7 @@ function ReceiptStep({
           }}
           className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
         >
-          Skip and fill manually
+          Skip AI and fill manually
         </button>
         <button
           type="button"
@@ -863,6 +866,7 @@ function ClaimDetailsForm({
           hint="Optional: invoices, approvals, secondary receipts, or other supporting files."
           files={supportingFiles}
           onChange={setSupportingFiles}
+          attached={0}
         />
       ) : null}
 
@@ -876,6 +880,7 @@ function ClaimDetailsForm({
           }
           files={additionalSupportingFiles}
           onChange={setAdditionalSupportingFiles}
+          attached={editingClaim?.supportingDocumentUrls?.length ?? 0}
         />
       ) : null}
 
@@ -916,18 +921,46 @@ function ClaimDetailsForm({
   );
 }
 
+// The server keeps at most this many per claim (ClaimsService), counting the
+// ones already on a claim being edited.
+const MAX_SUPPORTING_DOCUMENTS = 10;
+
+// Each pick ADDS to the list — choosing files a second time must not drop the
+// first batch. Every file is listed with its own remove button.
 function SupportingDocumentsField({
   label,
   hint,
   files,
   onChange,
+  attached,
 }: {
   label: string;
   hint: string;
   files: File[];
   onChange: (files: File[]) => void;
+  /** Already on the claim being edited — they count towards the limit. */
+  attached: number;
 }) {
+  const max = Math.max(0, MAX_SUPPORTING_DOCUMENTS - attached);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const full = files.length >= max;
+
+  function add(picked: File[]) {
+    // The same file picked twice is attached once.
+    const key = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+    const seen = new Set(files.map(key));
+    const fresh = picked.filter((f) => !seen.has(key(f)) && seen.add(key(f)));
+    const room = Math.max(0, max - files.length);
+    onChange([...files, ...fresh.slice(0, room)]);
+    setNotice(
+      fresh.length > room
+        ? `A claim can have ${MAX_SUPPORTING_DOCUMENTS} supporting documents${
+            attached > 0 ? ` (${attached} already attached)` : ""
+          } — ${fresh.length - room} not added.`
+        : null,
+    );
+  }
 
   return (
     <div className="space-y-2 sm:col-span-2">
@@ -938,13 +971,43 @@ function SupportingDocumentsField({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="flex h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-left text-sm shadow-sm transition hover:border-primary/50 hover:bg-card"
+        disabled={full}
+        className="flex h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-left text-sm shadow-sm transition hover:border-primary/50 hover:bg-card disabled:pointer-events-none disabled:opacity-50"
       >
         <Upload className="h-4 w-4 shrink-0 text-primary" />
-        <span className={`min-w-0 flex-1 truncate ${files.length > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-          {formatSelectedFiles(files)}
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {full
+            ? `${MAX_SUPPORTING_DOCUMENTS} of ${MAX_SUPPORTING_DOCUMENTS} attached — the most a claim can have`
+            : files.length > 0
+              ? "Tap to add more"
+              : "Tap to add supporting documents"}
         </span>
       </button>
+      {notice ? <p className="text-xs font-medium text-warning-foreground">{notice}</p> : null}
+      {files.length > 0 ? (
+        <ul className="space-y-1.5">
+          {files.map((file, i) => (
+            <li
+              key={`${file.name}|${file.size}|${file.lastModified}`}
+              className="flex items-center gap-3 rounded-2xl border border-border/70 bg-surface-low/50 px-4 py-2.5"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(files.filter((_, j) => j !== i));
+                  setNotice(null);
+                }}
+                aria-label={`Remove ${file.name}`}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <input
         ref={inputRef}
         type="file"
@@ -953,19 +1016,13 @@ function SupportingDocumentsField({
         tabIndex={-1}
         className="hidden"
         onChange={(event) => {
-          onChange(Array.from(event.target.files ?? []).slice(0, 10));
+          add(Array.from(event.target.files ?? []));
           event.currentTarget.value = "";
           event.currentTarget.blur();
         }}
       />
     </div>
   );
-}
-
-function formatSelectedFiles(files: File[]) {
-  if (files.length === 0) return "Tap to add supporting documents";
-  if (files.length === 1) return files[0].name;
-  return `${files.length} files selected - ${files.slice(0, 2).map((file) => file.name).join(", ")}`;
 }
 
 function StepIntro({

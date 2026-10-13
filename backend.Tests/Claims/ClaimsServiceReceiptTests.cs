@@ -51,6 +51,19 @@ public class ClaimsServiceReceiptTests
             claim.SupportingDocumentUrls);
     }
 
+    // The main receipt is optional — an expense claim can be filed without one.
+    [Fact]
+    public async Task CreateAsync_AcceptsAnExpenseClaimWithoutAReceipt()
+    {
+        var service = CreateService([]);
+        var dto = ExpenseDto();
+        dto.ReceiptUrl = null;
+
+        var claim = await service.CreateAsync(dto, "usr-emp");
+
+        Assert.Null(claim.ReceiptUrl);
+    }
+
     [Fact]
     public async Task GetReceiptForUserAsync_ReturnsSecondSupportingDocumentForOwner()
     {
