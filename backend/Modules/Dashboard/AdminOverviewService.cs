@@ -210,6 +210,7 @@ public class AdminOverviewService : IAdminOverviewService
                 Amount = claim.Amount,
                 DaysPending = (int)(now - claim.SubmittedAt).TotalDays,
                 CurrentApprovers = approvers.Select(id => Label(directory, id)).ToList(),
+                CurrentApproverIds = approvers.ToList(),
             });
         }
 

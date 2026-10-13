@@ -66,6 +66,11 @@ public class StalePendingClaimDto
     // stuck on. Empty means nobody is assigned to approve it, which is a worse
     // problem than a slow approver and the UI calls it out separately.
     public List<string> CurrentApprovers { get; set; } = new();
+
+    // The same approvers' user ids, in the same order. Grouping goes by these:
+    // two approvers this admin can't name share the label "Unknown person",
+    // and grouping by label would merge them into one.
+    public List<string> CurrentApproverIds { get; set; } = new();
 }
 
 public class UpcomingClaimRunDto
