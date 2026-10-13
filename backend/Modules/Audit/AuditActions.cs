@@ -11,6 +11,8 @@ public static class AuditActions
 {
     // Org configuration
     public const string SettingsOrgUpdate = "settings.org.update";
+    public const string SettingsOrgLogoUpdate = "settings.org.logo.update";
+    public const string SettingsOrgLogoRemove = "settings.org.logo.remove";
     public const string SettingsClaimsUpdate = "settings.claims.update";
 
     // Payroll configuration — what these decide ends up on a statutory filing,
@@ -171,6 +173,8 @@ public static class AuditActions
         [LeaveCancelled] = "Leave cancelled",
         [LeaveAdminCancel] = "Leave cancelled by admin",
         [SettingsOrgUpdate] = "Organisation settings updated",
+        [SettingsOrgLogoUpdate] = "Company logo uploaded",
+        [SettingsOrgLogoRemove] = "Company logo removed",
         [SettingsClaimsUpdate] = "Claim settings updated",
         [AccountCreate] = "Account created",
         [AccountUpdate] = "Account updated",

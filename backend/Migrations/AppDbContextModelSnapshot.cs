@@ -1978,6 +1978,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<int>("GeofenceRadiusMeters")
                         .HasColumnType("int");
 
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("LogoFileName")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime?>("LogoUpdatedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<int>("LunchBreakMinutes")
                         .HasColumnType("int");
 

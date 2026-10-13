@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from "@/shared/lib/api-client";
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiPutForm } from "@/shared/lib/api-client";
 
 export type Organization = {
   id: string;
@@ -17,6 +17,11 @@ export type Organization = {
   tier: string | null;
   addons: string[];
   enabledModules: string[];
+  /** The company logo printed on letters from Documents. The bytes are served
+   *  by GET /organizations/current/logo; logoUpdatedAt changes on every
+   *  upload, so it doubles as the preview's cache-buster. */
+  hasLogo: boolean;
+  logoUpdatedAt: string | null;
 };
 export type UpdateOrganization = {
   name: string;
@@ -136,6 +141,22 @@ export type SaveAccount = {
 export const getOrganization = () => apiGet<Organization>("/organizations/current");
 export const updateOrganization = (body: UpdateOrganization) =>
   apiPut<Organization>("/organizations/current", body);
+
+// --- Company logo ---
+// Served from an authenticated endpoint, so an <img src> can't load it (the
+// browser's own request carries no token). Fetched as a blob instead; the
+// caller turns it into an object URL and owns revoking it. `version` is the
+// org's logoUpdatedAt — a new upload gets a new URL, never a stale image.
+export const getOrganizationLogo = (version: string | null) =>
+  apiGetBlob(
+    `/organizations/current/logo${version ? `?v=${encodeURIComponent(version)}` : ""}`,
+  );
+export function uploadOrganizationLogo(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPutForm<Organization>("/organizations/current/logo", formData);
+}
+export const removeOrganizationLogo = () => apiDelete<void>("/organizations/current/logo");
 
 // The org's fields are edited across several screens (currency on Claims,
 // mileage on Accounts, geofence on Projects, schedule on Work Schedule), but the

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 144eb80
+// whats-new-covered-up-to: 1777eef
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,12 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-13",
+    new: [
+      "Admins: Settings → Organization → Company logo: upload a PNG, JPG or WebP image up to 2 MB, then replace or remove it (needs the Change settings permission). It prints at the top left of letters generated from Documents from now on; letters already saved keep their old look.",
+    ],
+  },
   {
     date: "2026-10-12",
     new: [

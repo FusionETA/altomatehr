@@ -262,6 +262,9 @@ builder.Services.AddScoped<IWebPushService, WebPushService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+// Company logo (printed on Documents letters): disk storage + its service.
+builder.Services.AddScoped<IOrganizationLogoStorage, OrganizationLogoStorage>();
+builder.Services.AddScoped<IOrganizationLogoService, OrganizationLogoService>();
 builder.Services.AddScoped<IOrganizationDefaultsService, OrganizationDefaultsService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
 // The request's employee scope, read by AppDbContext's filters; filled by EmployeeScopeMiddleware.
