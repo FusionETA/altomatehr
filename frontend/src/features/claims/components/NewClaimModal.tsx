@@ -450,6 +450,16 @@ function ClaimDetailsForm({
   // guess and a receipt can still be misread.
   const read = scan?.extraction ?? null;
 
+  // Claims carried over from the previous system can hold blank entries; the
+  // server ignores them, so the list and the limit do too.
+  const existingDocuments = (editingClaim?.supportingDocumentUrls ?? []).filter(
+    (url): url is string => Boolean(url && url.trim()),
+  );
+
+  // Replacing the receipt after an AI read clears that read, but the fields
+  // it filled keep their values — so say where they came from.
+  const [readFromReplaced, setReadFromReplaced] = useState(false);
+
   const [title, setTitle] = useState(editingClaim?.title ?? read?.supplier ?? "");
   const [description, setDescription] = useState(editingClaim?.description ?? read?.description ?? "");
   const [amount, setAmount] = useState(
@@ -576,7 +586,7 @@ function ClaimDetailsForm({
     setError(null);
 
     try {
-      const existingSupportingDocumentUrls = editingClaim?.supportingDocumentUrls ?? [];
+      const existingSupportingDocumentUrls = existingDocuments;
       // Analyze already stored this exact file and gave us its url — uploading
       // again would leave two copies on disk and charge the claim the second.
       const uploadedReceipt = scan
@@ -866,10 +876,22 @@ function ClaimDetailsForm({
       <MainReceiptField
         file={receiptFile}
         storedUrl={scan?.receiptUrl ?? editingClaim?.receiptUrl ?? null}
-        onPick={setReceiptFile}
+        onPick={(file) => {
+          if (read) setReadFromReplaced(true);
+          setReceiptFile(file);
+        }}
         // Mileage has no receipt to add; one already on it can still be replaced.
         canAdd={claimType === "EXPENSE"}
       />
+      {readFromReplaced ? (
+        <p className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            The details above were read from the receipt you replaced. Check them against the new one,
+            especially the amount and date.
+          </span>
+        </p>
+      ) : null}
 
       {!isEditing ? (
         <SupportingDocumentsField
@@ -885,14 +907,14 @@ function ClaimDetailsForm({
         <SupportingDocumentsField
           label="Supporting documents"
           hint={
-            editingClaim?.supportingDocumentUrls?.length
+            existingDocuments.length
               ? "Already attached ones are kept. Tap one to open it, or add more."
               : "Optional: invoices, approvals, secondary receipts, or other supporting files."
           }
           files={additionalSupportingFiles}
           onChange={setAdditionalSupportingFiles}
-          attached={editingClaim?.supportingDocumentUrls?.length ?? 0}
-          existing={(editingClaim?.supportingDocumentUrls ?? []).filter(Boolean)}
+          attached={existingDocuments.length}
+          existing={existingDocuments}
         />
       ) : null}
 
@@ -1020,7 +1042,12 @@ function SupportingDocumentsField({
             <li key={url}>
               <button
                 type="button"
-                onClick={() => void openClaimReceipt(url)}
+                onClick={() => {
+                  setNotice(null);
+                  openClaimReceipt(url).catch(() =>
+                    setNotice("Couldn't open that document just now. Please try again later."),
+                  );
+                }}
                 title="Open this document"
                 className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-surface-low/50 px-4 py-2.5 text-left text-sm font-semibold text-foreground transition hover:border-primary/50 hover:text-primary"
               >
@@ -1231,6 +1258,7 @@ function MainReceiptField({
 function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl: string | null }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [broken, setBroken] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   // A local File needs no round trip; a stored one is behind auth and has to be
   // fetched as a blob. Either way the object URL is ours to revoke.
@@ -1283,8 +1311,12 @@ function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl:
   const name = file?.name ?? "Attached receipt";
 
   function open() {
+    setOpenError(null);
     if (file) openLocalFile(file);
-    else if (storedUrl) void openClaimReceipt(storedUrl);
+    else if (storedUrl)
+      openClaimReceipt(storedUrl).catch(() =>
+        setOpenError("Couldn't open the receipt just now. Please try again later."),
+      );
   }
 
   return (
@@ -1320,11 +1352,12 @@ function MainReceiptPreview({ file, storedUrl }: { file: File | null; storedUrl:
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{name}</p>
             <p className="text-xs text-muted-foreground">
-              {broken ? "Attached — no preview. Tap to open it." : "Attached. Tap to open it."}
+              {broken && !file ? "Attached, but it couldn't be loaded here." : "Attached. Tap to open it."}
             </p>
           </div>
         </button>
       )}
+      {openError ? <p className="mt-2 text-xs font-medium text-destructive">{openError}</p> : null}
     </div>
   );
 }
