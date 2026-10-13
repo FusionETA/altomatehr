@@ -63,7 +63,13 @@ public class GeneratedLetterService : IGeneratedLetterService
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _audit;
     private readonly IOrganizationLogoService? _logos;
+    private readonly IOrganizationSignatureService? _signatures;
     private readonly ILogger<GeneratedLetterService>? _logger;
+
+    // SignatureId's "no signature (sign by hand)".
+    public const string NoSignature = "none";
+    private const string UnknownSignature =
+        "That signature isn't available — it may have been removed. Pick another, or choose \"No signature\".";
 
     public GeneratedLetterService(
         IDocumentTemplateRepository templates,
@@ -83,9 +89,13 @@ public class GeneratedLetterService : IGeneratedLetterService
         // The company logo for the letterhead. Optional so a letter still
         // renders (without one) where no logo service is wired, e.g. tests.
         IOrganizationLogoService? logos = null,
+        // The company's saved signatures. Optional for the same reason: with
+        // none wired, letters print the blank gap and the declarant as before.
+        IOrganizationSignatureService? signatures = null,
         ILogger<GeneratedLetterService>? logger = null)
     {
         _logos = logos;
+        _signatures = signatures;
         _logger = logger;
         _templates = templates;
         _generated = generated;
@@ -118,6 +128,13 @@ public class GeneratedLetterService : IGeneratedLetterService
 
         var record = RecordValues(employee, await LoadCompanyAsync());
 
+        // The default chain's signature, returned on its own for the dialog to
+        // preselect. The signatory.* fields stay Payroll's declarant values
+        // (as before signatures): the dialog swaps the signature's in itself,
+        // and shows these again for "No signature". The swap on the letter
+        // happens at preview / generate, from the chosen signatureId.
+        var (signature, _) = await ChooseSignatureAsync(null, template);
+
         var fields = MergeFields.UsedKeys(template.Body).Select(key =>
         {
             var def = MergeFields.Describe(key);
@@ -145,6 +162,9 @@ public class GeneratedLetterService : IGeneratedLetterService
             EmployeeUserId = employeeUserId,
             EmployeeName = employee.User.Name,
             Fields = fields,
+            Signature = signature is null
+                ? null
+                : new ResolvedSignatureDto { Id = signature.Id, Name = signature.Name, Position = signature.Position },
         }, null);
     }
 
@@ -162,9 +182,10 @@ public class GeneratedLetterService : IGeneratedLetterService
     {
         string name;
         string body;
+        DocumentTemplate? template = null;
         if (templateId is not null)
         {
-            var template = await _templates.GetByIdAsync(templateId);
+            template = await _templates.GetByIdAsync(templateId);
             if (template is null) return LetterFileResult.NotFound();
             name = string.IsNullOrWhiteSpace(dto.Name) ? template.Name : dto.Name.Trim();
             body = dto.Body ?? template.Body;
@@ -192,8 +213,12 @@ public class GeneratedLetterService : IGeneratedLetterService
             if (employee is null) return LetterFileResult.NotFound();
         }
 
+        var (signature, signatureError) = await ChooseSignatureAsync(dto.SignatureId, template);
+        if (signatureError is not null) return LetterFileResult.Refused(signatureError);
+
         var company = await LoadCompanyAsync();
         var record = RecordValues(employee, company);
+        ApplySignature(record, signature);
 
         // Whatever has no value prints as its label in brackets, so the
         // preview shows where each field lands.
@@ -203,7 +228,8 @@ public class GeneratedLetterService : IGeneratedLetterService
             StringComparer.Ordinal);
 
         var pdf = Render(name, body, values, company,
-            watermark: "PREVIEW — fields shown in [brackets] have no value yet.");
+            watermark: "PREVIEW — fields shown in [brackets] have no value yet.",
+            signatureImage: await LoadSignatureImageAsync(signature));
         var fileName = SafeFileName($"{name} - preview.pdf");
         return LetterFileResult.File(fileName, pdf);
     }
@@ -233,8 +259,13 @@ public class GeneratedLetterService : IGeneratedLetterService
                 "This template uses merge fields that don't exist: "
                 + string.Join(", ", unknown.Select(k => "{{" + k + "}}")) + ". Edit the template first.");
 
+        var (signature, signatureError) = await ChooseSignatureAsync(dto.SignatureId, template);
+        if (signatureError is not null) return LetterFileResult.Refused(signatureError);
+
         var company = await LoadCompanyAsync();
         var record = RecordValues(employee, company);
+        // A signature names the signatory; a value typed for this letter still wins.
+        ApplySignature(record, signature);
         var typed = (dto.Values ?? new Dictionary<string, string?>())
             .Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
             .ToDictionary(kv => kv.Key, kv => kv.Value!.Trim(), StringComparer.Ordinal);
@@ -273,7 +304,8 @@ public class GeneratedLetterService : IGeneratedLetterService
         if (writeBack is not null)
             savedToRecord = await _profileService.FillMissingFieldsAsync(employee.User.Id, writeBack) ?? [];
 
-        var pdf = Render(template.Name, template.Body, values, company, watermark: null);
+        var pdf = Render(template.Name, template.Body, values, company, watermark: null,
+            signatureImage: await LoadSignatureImageAsync(signature));
         var today = TodayInMalaysia();
         var fileName = SafeFileName($"{template.Name} - {employee.User.Name} - {today:yyyy-MM-dd}.pdf");
 
@@ -293,6 +325,8 @@ public class GeneratedLetterService : IGeneratedLetterService
                 EmployeeUserId = employee.User.Id,
                 GeneratedByUserId = _currentUser.UserId,
                 GeneratedByName = me?.Name ?? _currentUser.Email,
+                SignatureId = signature?.Id,
+                SignatureName = signature?.Name,
                 FileName = fileName,
                 StoredFileName = stored,
                 SizeBytes = pdf.LongLength,
@@ -305,7 +339,9 @@ public class GeneratedLetterService : IGeneratedLetterService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.DocumentsLetterGenerate,
-            $"Generated \"{template.Name}\" for {employee.User.Name}" + (dto.Save ? "" : " (not kept on file)"),
+            $"Generated \"{template.Name}\" for {employee.User.Name}"
+                + (signature is null ? "" : $" with the signature \"{signature.Name}\"")
+                + (dto.Save ? "" : " (not kept on file)"),
             TargetType: dto.Save ? "GeneratedDocument" : "DocumentTemplate",
             TargetId: savedId ?? template.Id,
             Metadata: new
@@ -315,6 +351,8 @@ public class GeneratedLetterService : IGeneratedLetterService
                 EmployeeUserId = employee.User.Id,
                 Saved = dto.Save,
                 SavedToEmployeeRecord = savedToRecord,
+                SignatureId = signature?.Id,
+                SignatureName = signature?.Name,
             }));
 
         return LetterFileResult.File(fileName, pdf);
@@ -419,6 +457,7 @@ public class GeneratedLetterService : IGeneratedLetterService
             EmployeeUserId = r.EmployeeUserId,
             EmployeeName = names.GetValueOrDefault(r.EmployeeUserId),
             GeneratedByName = r.GeneratedByName,
+            SignatureName = r.SignatureName,
             FileName = r.FileName,
             SizeBytes = r.SizeBytes,
             CreatedAt = r.CreatedAt,
@@ -455,6 +494,61 @@ public class GeneratedLetterService : IGeneratedLetterService
             TargetId: doc.Id,
             Metadata: new { doc.EmployeeUserId, doc.TemplateName, doc.FileName }));
         return LetterDeleteResult.Deleted;
+    }
+
+    // ─── Signature ───────────────────────────────────────────────────────
+
+    // Which saved signature a letter prints. "none" → none (sign by hand); an
+    // id → that active signature of this company, else refused; null → the
+    // template's default if still active, else the company default, else none.
+    // Signatures are tenant-filtered, so another company's id is "unknown".
+    private async Task<(SignatureRef? Signature, string? Error)> ChooseSignatureAsync(
+        string? requested, DocumentTemplate? template)
+    {
+        var id = requested?.Trim();
+        if (string.Equals(id, NoSignature, StringComparison.OrdinalIgnoreCase)) return (null, null);
+
+        if (!string.IsNullOrEmpty(id))
+        {
+            var chosen = _signatures is null ? null : await _signatures.FindActiveAsync(id);
+            return chosen is null ? (null, UnknownSignature) : (chosen, null);
+        }
+
+        if (_signatures is null) return (null, null);
+        if (template?.DefaultSignatureId is { Length: > 0 } templateDefault
+            && await _signatures.FindActiveAsync(templateDefault) is { } fromTemplate)
+            return (fromTemplate, null);
+        return (await _signatures.GetDefaultAsync(), null);
+    }
+
+    // The signature's name and position stand in for the declarant's.
+    private static void ApplySignature(Dictionary<string, (string? Display, string? Edit)> record, SignatureRef? signature)
+    {
+        if (signature is null) return;
+        if (!string.IsNullOrWhiteSpace(signature.Name))
+            record["signatory.name"] = (signature.Name.Trim(), signature.Name.Trim());
+        if (!string.IsNullOrWhiteSpace(signature.Position))
+            record["signatory.position"] = (signature.Position.Trim(), signature.Position.Trim());
+    }
+
+    // The signature image to print. Anything wrong with it - a file gone from
+    // disk, a damaged image, storage throwing - prints the blank gap for a
+    // wet-ink signature instead, never a letter that fails.
+    private async Task<byte[]?> LoadSignatureImageAsync(SignatureRef? signature)
+    {
+        if (signature is null || _signatures is null) return null;
+        try
+        {
+            var image = await _signatures.GetImageAsync(signature.Id);
+            if (image is null)
+                _logger?.LogWarning("The image for signature {SignatureId} couldn't be read; printing the letter without it.", signature.Id);
+            return image?.Content;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Couldn't load signature {SignatureId}; printing the letter without its image.", signature.Id);
+            return null;
+        }
     }
 
     // ─── Records → values ────────────────────────────────────────────────
@@ -611,7 +705,8 @@ public class GeneratedLetterService : IGeneratedLetterService
     // ─── Rendering ───────────────────────────────────────────────────────
 
     private byte[] Render(
-        string title, string body, IReadOnlyDictionary<string, string> values, CompanyContext company, string? watermark)
+        string title, string body, IReadOnlyDictionary<string, string> values, CompanyContext company, string? watermark,
+        byte[]? signatureImage = null)
     {
         string Value(string key) => values.TryGetValue(key, out var s) ? s : "";
 
@@ -630,19 +725,21 @@ public class GeneratedLetterService : IGeneratedLetterService
             SignatoryName: Value("signatory.name"),
             SignatoryPosition: Value("signatory.position"),
             Watermark: watermark,
-            Logo: company.Logo);
+            Logo: company.Logo,
+            Signature: signatureImage);
 
-        if (model.Logo is null) return LetterPdf.Render(model);
+        if (model.Logo is null && model.Signature is null) return LetterPdf.Render(model);
         try
         {
             return LetterPdf.Render(model);
         }
         catch (Exception ex)
         {
-            // LetterPdf already skips a logo it can't read; this is the last
-            // line - a logo the decoder accepts but the page can't draw.
-            _logger?.LogWarning(ex, "Rendering the letter with the company logo failed; printing it without the logo.");
-            return LetterPdf.Render(model with { Logo = null });
+            // LetterPdf already skips an image it can't read; this is the last
+            // line - a logo or signature the decoder accepts but the page
+            // can't draw.
+            _logger?.LogWarning(ex, "Rendering the letter with its logo / signature image failed; printing it without them.");
+            return LetterPdf.Render(model with { Logo = null, Signature = null });
         }
     }
 

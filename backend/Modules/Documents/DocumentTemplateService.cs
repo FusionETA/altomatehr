@@ -1,6 +1,7 @@
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Documents.Dtos;
 using AltomateHR.Api.Modules.Documents.Entities;
+using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Documents;
 
@@ -8,22 +9,42 @@ public class DocumentTemplateService : IDocumentTemplateService
 {
     private readonly IDocumentTemplateRepository _templates;
     private readonly ICurrentUser _currentUser;
+    // The company's saved signatures, for a template's default. Optional so
+    // the library works where none is wired (tests): a default can't be set
+    // then.
+    private readonly IOrganizationSignatureService? _signatures;
 
-    public DocumentTemplateService(IDocumentTemplateRepository templates, ICurrentUser currentUser)
+    private const string UnknownSignature =
+        "That signature isn't available — it may have been removed. Pick another, or leave the default signature empty.";
+
+    public DocumentTemplateService(
+        IDocumentTemplateRepository templates,
+        ICurrentUser currentUser,
+        IOrganizationSignatureService? signatures = null)
     {
         _templates = templates;
         _currentUser = currentUser;
+        _signatures = signatures;
     }
 
-    public async Task<List<DocumentTemplateDto>> GetAllAsync() =>
-        (await _templates.GetAllAsync()).Select(ToDto).ToList();
+    public async Task<List<DocumentTemplateDto>> GetAllAsync()
+    {
+        var templates = await _templates.GetAllAsync();
+        var active = await ActiveSignatureIdsAsync(templates);
+        return templates.Select(t => ToDto(t, active)).ToList();
+    }
 
-    public async Task<DocumentTemplateDto?> GetAsync(string id) =>
-        await _templates.GetByIdAsync(id) is { } t ? ToDto(t) : null;
+    public async Task<DocumentTemplateDto?> GetAsync(string id)
+    {
+        var template = await _templates.GetByIdAsync(id);
+        return template is null ? null : ToDto(template, await ActiveSignatureIdsAsync([template]));
+    }
 
     public async Task<TemplateSaveResult> CreateAsync(SaveDocumentTemplateDto dto)
     {
         if (Validate(dto) is { } refused) return refused;
+        var (signatureId, signatureError) = await CheckSignatureAsync(dto.DefaultSignatureId);
+        if (signatureError is not null) return new TemplateSaveResult(false, null, signatureError);
 
         var now = DateTime.UtcNow;
         var template = new DocumentTemplate
@@ -31,6 +52,7 @@ public class DocumentTemplateService : IDocumentTemplateService
             Name = dto.Name.Trim(),
             Category = dto.Category,
             Body = dto.Body,
+            DefaultSignatureId = signatureId,
             CreatedByUserId = _currentUser.UserId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -44,10 +66,13 @@ public class DocumentTemplateService : IDocumentTemplateService
         var template = await _templates.GetByIdAsync(id);
         if (template is null) return TemplateSaveResult.NotFound();
         if (Validate(dto) is { } refused) return refused;
+        var (signatureId, signatureError) = await CheckSignatureAsync(dto.DefaultSignatureId);
+        if (signatureError is not null) return new TemplateSaveResult(false, null, signatureError);
 
         template.Name = dto.Name.Trim();
         template.Category = dto.Category;
         template.Body = dto.Body;
+        template.DefaultSignatureId = signatureId;
         template.UpdatedAt = DateTime.UtcNow;
         await _templates.UpdateAsync(template);
         return new TemplateSaveResult(true, ToDto(template), null);
@@ -134,7 +159,29 @@ public class DocumentTemplateService : IDocumentTemplateService
         return null;
     }
 
-    internal static DocumentTemplateDto ToDto(DocumentTemplate t) => new()
+    // Blank → no default; otherwise it must be an active signature of this
+    // company (the signature rows are tenant-filtered, so another company's
+    // id isn't found).
+    private async Task<(string? Id, string? Error)> CheckSignatureAsync(string? requested)
+    {
+        if (string.IsNullOrWhiteSpace(requested)) return (null, null);
+        var id = requested.Trim();
+        if (_signatures is null || await _signatures.FindActiveAsync(id) is null) return (null, UnknownSignature);
+        return (id, null);
+    }
+
+    // Only fetched when some template names a default.
+    private async Task<IReadOnlySet<string>?> ActiveSignatureIdsAsync(IReadOnlyCollection<DocumentTemplate> templates)
+    {
+        if (_signatures is null || templates.All(t => t.DefaultSignatureId is null)) return null;
+        return await _signatures.GetActiveIdsAsync();
+    }
+
+    // A default signature since removed reads as none. `activeSignatures`
+    // null = not looked up (just saved, so known to be active).
+    internal static DocumentTemplateDto ToDto(DocumentTemplate t) => ToDto(t, null);
+
+    private static DocumentTemplateDto ToDto(DocumentTemplate t, IReadOnlySet<string>? activeSignatures) => new()
     {
         Id = t.Id,
         Name = t.Name,
@@ -142,6 +189,9 @@ public class DocumentTemplateService : IDocumentTemplateService
         Body = t.Body,
         IsSample = t.SampleKey is not null,
         Fields = MergeFields.KeysIn(t.Body).ToList(),
+        DefaultSignatureId = t.DefaultSignatureId is { } sid && (activeSignatures is null || activeSignatures.Contains(sid))
+            ? sid
+            : null,
         CreatedAt = t.CreatedAt,
         UpdatedAt = t.UpdatedAt,
     };
