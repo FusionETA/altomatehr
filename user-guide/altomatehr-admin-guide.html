@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 1777eef
+  user-guide-covered-up-to: 6b1620b
 -->
 <html lang="en">
 <head>
@@ -458,15 +458,45 @@
     <p class="topic-lede">Done once, and revisited when something changes. Work through the pages in order.</p>
     <ol class="steps">
       <li><h4>Organization</h4>
-        <p>The company name, the <strong>Company logo</strong> card, and the <strong>Xero connection</strong> card —
-          see <a href="#xero">Xero</a>.</p>
+        <p>The company name, the <strong>Company logo</strong> card, the <strong>Signatures</strong> card, and the
+          <strong>Xero connection</strong> card — see <a href="#xero">Xero</a>.</p>
         <p>On the <strong>Company logo</strong> card, press <span class="btn-name">Upload logo</span> and choose a PNG,
           JPG or WebP picture up to 2 MB. The logo appears in the preview box and prints at the top left of your
           <a href="#letters">HR letters</a>. To change it, press <span class="btn-name">Replace</span> and choose another
           picture. <span class="btn-name">Remove</span> asks you to confirm, then new letters print without a logo.
           Letters already made keep the logo they were made with. If the picture is the wrong kind or too big, a red
           message under the card says so and nothing changes. An admin without <em>Can change company settings</em>
-          can see the logo but not change it.</p></li>
+          can see the logo but not change it.</p>
+        <p>On the <strong>Signatures</strong> card, keep the signatures your <a href="#letters">HR letters</a> can print
+          above the signatory's name — up to 10. With none saved it says <em>No signatures yet. Letters leave a space to
+          sign by hand.</em></p>
+        <ul>
+          <li><span class="btn-name">Add signature</span> — choose <strong>Draw</strong> to sign on the screen with your
+            finger, a stylus or the mouse, or <strong>Upload</strong> to choose a PNG, JPG or WebP picture of a signature
+            up to 1 MB (a dark signature on a white or transparent background prints best). Type the signer's
+            <strong>Name</strong> and <strong>Position</strong> — for example <em>Tan Mei Ling</em>, <em>HR Manager</em> —
+            then press <span class="btn-name">Save signature</span>. The first one you add becomes the company default
+            on its own.</li>
+          <li><strong>Company default</strong> — the one tagged <em>Default</em>. Letters use it unless the template or
+            the letter picks another. Press <span class="btn-name">Set as default</span> on a different signature to
+            change it.</li>
+          <li><span class="btn-name">Edit</span> — change the name or position, or make it the default, then
+            <span class="btn-name">Save changes</span>. The picture itself can't be swapped: add a new signature and
+            remove the old one.</li>
+          <li>The bin button asks you to confirm, then <span class="btn-name">Remove signature</span> takes it away. New
+            letters can't use it any more; letters already made keep it. If you remove the default, pick another
+            afterwards.</li>
+          <li>At 10 the card says <em>That's the limit of 10. Remove one to add another.</em> and
+            <span class="btn-name">Add signature</span> is switched off.</li>
+          <li>If the list doesn't load, the card says <em>Couldn't load the signatures</em> with a
+            <span class="btn-name">Try again</span> button. Add is switched off until it loads.</li>
+        </ul>
+        <p>An admin without <em>Can change company settings</em> can see the signatures but not add, edit, make default
+          or remove them.</p>
+        <div class="note"><span class="nt">A picture, not a digital signature</span>
+          <p>A saved signature is an image of a signature printed on the letter, like signing on paper and scanning it.
+            It isn't a certified or legally verified digital signature. Only save a signature for someone who has agreed
+            to it being printed on company letters.</p></div></li>
       <li><h4>Accounts</h4>
         <p>The chart of accounts, in two tabs:</p>
         <ul>
@@ -1419,6 +1449,8 @@
       them in their own app.</p>
     <p>Each letter prints your company logo at the top left. Add it once under
       <strong>System Settings → Organization → Company logo</strong>; until you do, letters print without one.</p>
+    <p>A letter can also print a saved signature above the signatory's name. Add them under
+      <strong>System Settings → Organization → Signatures</strong>; with none, the letter leaves a space to sign by hand.</p>
 
     <h3>Templates</h3>
     <p>Open <strong>Documents → Templates</strong>. Each template shows its category (Offer, Confirmation, Promotion,
@@ -1467,8 +1499,14 @@
           <strong>Typed for each letter</strong> (for example <em>Last working day</em>) and press the
           <span class="btn-name">+</span> button. The dialog will ask for it every time you make the letter. A name
           that ends in "date" or "day" is asked for as a date.</p></li>
+      <li><h4>Pick a default signature (optional)</h4>
+        <p>Under <strong>Default signature (optional)</strong>, choose which saved signature letters from this template
+          start with. <em>Company default</em> (it shows the signer's name) follows whichever signature is the company
+          default. The choice is still changeable when each letter is made. If the signature you chose is later removed,
+          a note says so and the template's letters use the company default.</p></li>
       <li><h4>Preview, then save</h4>
-        <p><span class="btn-name">Preview PDF</span> downloads a sample of the letter as it stands now, saved or not.
+        <p><span class="btn-name">Preview PDF</span> downloads a sample of the letter as it stands now, saved or not,
+          with the signature you've picked printed on it.
           <span class="btn-name">Save template</span> keeps it. If you press the back arrow with unsaved edits you're
           asked <em>Discard changes?</em></p></li>
     </ol>
@@ -1568,6 +1606,12 @@
       <strong>Letters</strong> card of an employee's record. Pick the <strong>Template</strong> and the
       <strong>Employee</strong> if they aren't already chosen, and the dialog reads their records.</p>
     <ul>
+      <li><strong>Signature</strong> — a list of your saved signatures, with a picture of the one chosen. It starts on the
+        template's default signature, or else the company default. Pick another, or
+        <em>No signature (sign by hand)</em> to leave a space to sign by hand. A signature is printed above the
+        signatory's name on the PDF, and its name and position become the letter's signatory, shown under
+        <strong>From the records</strong>. With no saved signatures the dialog says so and points you to
+        <strong>Settings → Organization</strong>.</li>
       <li><strong>Missing details</strong> — anything the letter needs that isn't on file is highlighted with a
         <em>Not on file</em> tag. Fill in each one, or tick <em>Leave blank on this letter</em>. A letter never goes
         out with a gap you haven't seen: <span class="btn-name">Generate PDF</span> stays off, and the bottom of the
@@ -1576,14 +1620,15 @@
         on any record.</li>
       <li><strong>From the records</strong> — what was found, read-only. If one is wrong for this letter, press
         <span class="btn-name">Edit for this letter</span> and type another; <span class="btn-name">Use record</span> puts
-        it back. Nothing on the record changes.</li>
+        it back. Nothing on the record changes. If you change the signature after editing the signatory, your edit is
+        dropped and the new signature's name and position show instead.</li>
       <li><strong>Also save to employee record</strong> — for a missing ID number, address, job title, department,
         work location, probation or confirmation date you can tick this to write what you typed onto the employee's
         record as well, so you only type it once. It only fills an empty field. It needs Manage access on Employees, and
         while you have unsaved edits on that employee's record it says <em>Save or discard your changes first</em>.</li>
       <li><strong>Missing company details</strong> — a missing company detail (such as the address) or signatory has a hint: company
-        details are set in <strong>Payroll → Settings → Form E (LHDN) → Employer details</strong> (the signatory
-        defaults to the declarant there). <span class="btn-name">Open Payroll</span> takes you there, or you can type
+        details are set in <strong>Payroll → Settings → Form E (LHDN) → Employer details</strong> (with no signature chosen, the
+        signatory defaults to the declarant there). <span class="btn-name">Open Payroll</span> takes you there, or you can type
         the detail for this letter.</li>
       <li><strong>Save a copy to the employee's file</strong> is ticked by default. Untick it to download the PDF
         without keeping it.</li>
@@ -1593,7 +1638,8 @@
 
     <h3>Letters on file</h3>
     <p><strong>Documents → Letters</strong> lists every letter kept, newest first, with its category, the employee, the
-      date, who made it and its size. Use the employee list at the top to see one person's. Click a letter, or its
+      date, who made it and its size. A letter made with a saved signature also shows <em>Signed:</em> and the signer's
+      name. Use the employee list at the top to see one person's. Click a letter, or its
       download button, to open the PDF; the bin button deletes it for good after you confirm. The same list for one
       person is on the <strong>Letters</strong> card at the bottom of their <strong>Documents</strong> tab in
       <a href="#employees">Manage Employee</a> — separate from the ID scans and contracts above it, which the employee

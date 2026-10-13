@@ -90,6 +90,10 @@
         <li><strong>Employee ids.</strong> <code>employeeUserId</code> is the <em>user id</em> from
           <code>GET /employees</code> (see <a href="employees.html">Employees</a>), not the payroll
           <code>employeeProfileId</code>.</li>
+        <li><strong>Signatures.</strong> Choosing a signature (<code>signatureId</code>, <code>defaultSignatureId</code>)
+          needs no Organization scope: the Documents scope is enough. The signatures themselves are managed with
+          <a href="organization.html#signatures">/organizations/current/signatures</a>, which needs
+          <code>organizations:read</code> / <code>organizations:write</code>.</li>
       </ul>
       <div class="callout warn">
         <strong>A letter reads the employee's record</strong> (IC, address, salary), so the actions that
@@ -195,6 +199,16 @@
         read, gets the same letterhead as before; a letter never fails because of its logo. A letter kept on file is
         the PDF as it was generated, so it keeps the logo it was made with.
       </p>
+      <p id="signatures">
+        <strong>Signatures.</strong> The company's saved signatures
+        (<a href="organization.html#signatures">Organization &rarr; Letter signatures</a>) print as an image above the
+        signature line, scaled to fit (at most about 180 &times; 48 points) and never stretched, with the signatory's
+        name and position under it. Which one a letter uses is the <em>default chain</em>: the signature named in the
+        request's <code>signatureId</code> if any; otherwise the template's <code>defaultSignatureId</code>; otherwise the
+        company's default signature; otherwise none, which leaves a blank gap for a signature by hand. A template default
+        that has since been removed is skipped. A letter never fails because of a signature image: if the image is missing
+        or unreadable it prints the blank gap instead.
+      </p>
 
       <section class="endpoint" id="template-object">
         <h3>The template object</h3>
@@ -208,6 +222,7 @@
               <tr><td><code>body</code></td><td>string</td><td>The template text.</td></tr>
               <tr><td><code>isSample</code></td><td>boolean</td><td>Created by <a href="#add-samples">Add sample templates</a>; its wording is placeholder text to review before use.</td></tr>
               <tr><td><code>fields</code></td><td>string[]</td><td>The merge keys the body mentions, registry and <code>input.*</code> alike, in first-use order.</td></tr>
+              <tr><td><code>defaultSignatureId</code></td><td>string | null</td><td>The saved signature this template's letters default to. <code>null</code> when none is set, or when the one chosen has since been removed (the company default then applies).</td></tr>
               <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>string (ISO 8601, UTC)</td><td></td></tr>
             </tbody>
           </table>
@@ -255,6 +270,7 @@
               <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Max 160. Trimmed; blank is refused.</td></tr>
               <tr><td><code>category</code></td><td>string</td><td>No (default <code>OTHER</code>)</td><td>One of the values above.</td></tr>
               <tr><td><code>body</code></td><td>string</td><td>Yes</td><td>Max 20,000 characters; blank is refused. Every <code>{{…}}</code> must be a registry key or a valid <code>{{input.name}}</code>.</td></tr>
+              <tr><td><code>defaultSignatureId</code></td><td>string | null</td><td>No (default <code>null</code>)</td><td>Max 40. The id of an active saved signature of this company, or <code>null</code> / blank for none (letters then use the company default). Trimmed.</td></tr>
             </tbody>
           </table>
         </div>
@@ -262,8 +278,9 @@
         <p>The saved <a href="#template-object">template object</a>. Note <code>200</code>, not <code>201</code>.</p>
         <h3>Errors</h3>
         <ul>
-          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; <code>name</code> or <code>body</code> missing or over its limit, or an unknown <code>category</code>.</li>
+          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; <code>name</code> or <code>body</code> missing or over its limit, <code>defaultSignatureId</code> over 40 characters, or an unknown <code>category</code>.</li>
           <li><code>400</code> <code>{ "message": "Give the template a name.", "unknownFields": null }</code> &mdash; also <code>"The template has no text."</code> for a blank body.</li>
+          <li><code>400</code> <code>{ "message": "That signature isn't available — it may have been removed. Pick another, or leave the default signature empty.", "unknownFields": null }</code> &mdash; <code>defaultSignatureId</code> is not an active signature of this company (unknown, removed, or another company's).</li>
           <li><code>400</code> <code>{ "message": "These merge fields don't exist: {{employee.nmae}}. Pick fields from the list, or use {{input.yourName}} for something typed in for each letter.", "unknownFields": ["employee.nmae"] }</code></li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates \
@@ -277,11 +294,14 @@
           <span class="path">/documents/templates/{id}</span>
           <span class="tag scope">documents:write</span>
         </div>
-        <p>Replace a template's name, category and body.</p>
+        <p>Replace a template's name, category, body and default signature.</p>
         <div class="callout warn">
-          <strong>This PUT replaces all three fields.</strong> An omitted <code>category</code> is saved as
-          <code>OTHER</code>, not left as it was &mdash; read the template first and send everything back.
-          Letters already generated from it keep the name and category they were made with.
+          <strong>This PUT replaces all four fields.</strong> An omitted <code>category</code> is saved as
+          <code>OTHER</code>, and <strong>an omitted <code>defaultSignatureId</code> clears the template's default
+          signature</strong> &mdash; it is not left as it was. Neither is an error, so a client that only edits the
+          body silently loses both. Read the template first and send everything back, including the
+          <code>defaultSignatureId</code> you got. Letters already generated from it keep the name and category they
+          were made with.
         </div>
         <h3>Request body</h3>
         <p>Same as <a href="#create-template">create</a>.</p>
@@ -291,7 +311,7 @@
         <p>As <a href="#create-template">create</a>, plus <code>404</code> (empty body) when the template is not in this company.</p>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/documents/templates/tpl_123 \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
-  -d '{"name":"Confirmation of Employment","category":"CONFIRMATION","body":"Dear {{employee.name}},\n\nYour employment is confirmed."}'</code></pre>
+  -d '{"name":"Confirmation of Employment","category":"CONFIRMATION","body":"Dear {{employee.name}},\n\nYour employment is confirmed.","defaultSignatureId":"sig_123"}'</code></pre>
       </section>
 
       <section class="endpoint" id="delete-template">
@@ -384,6 +404,14 @@
         <code>PUT /payroll/company-info</code> on the <a href="payroll.html">Payroll page</a>. The letter date is
         today in Malaysia time.
       </p>
+      <p>
+        <strong>Signatures and <code>signatory.*</code>.</strong> <em>Resolve</em> always reports
+        <code>signatory.name</code> and <code>signatory.position</code> as the Payroll declarant's values (or missing), and
+        returns the signature the default chain picks separately, in <code>signature</code>. When a letter is previewed or
+        generated with a signature, that signature's name and position replace the declarant's in the PDF &mdash; and, on
+        <em>generate</em>, fill those two fields so they are no longer gaps &mdash; except that a value you type in
+        <code>values</code> still wins. With <code>signatureId: "none"</code> the declarant's values are used.
+      </p>
 
       <section class="endpoint" id="preview-draft">
         <div class="endpoint-head">
@@ -400,6 +428,7 @@
               <tr><td><code>body</code></td><td>string</td><td>Yes here</td><td>Max 20,000. Blank is refused.</td></tr>
               <tr><td><code>name</code></td><td>string</td><td>No</td><td>Max 160. Title of the PDF; defaults to <code>"Letter"</code>.</td></tr>
               <tr><td><code>employeeUserId</code></td><td>string</td><td>No</td><td>Max 40. User id. With it the fields are filled from that person's record (needs <code>employees:read</code>); without it every field prints as its label in brackets, e.g. <code>[Employee name]</code>. A field with no value prints in brackets either way.</td></tr>
+              <tr><td><code>signatureId</code></td><td>string | null</td><td>No</td><td>Max 40. The saved signature to print. Omitted or <code>null</code>: the default chain (the template's default, then the company default, then none). <code>"none"</code> (any case): no signature image, so the blank gap for signing by hand. Otherwise the id of an active signature of this company. Trimmed. For this unsaved-template call there is no template default, so the chain is the company default.</td></tr>
             </tbody>
           </table>
         </div>
@@ -408,6 +437,7 @@
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "message": "The template has no text to preview.", "missingFields": null }</code>, or <code>"These merge fields don't exist: …"</code>.</li>
+          <li><code>400</code> <code>{ "message": "That signature isn't available — it may have been removed. Pick another, or choose \"No signature\".", "missingFields": null }</code> &mdash; <code>signatureId</code> is not <code>"none"</code> and not an active signature of this company.</li>
           <li><code>403</code> &mdash; <code>employeeUserId</code> sent without <code>employees:read</code>.</li>
           <li><code>404</code> &mdash; <code>employeeUserId</code> is not a member of this company.</li>
         </ul>
@@ -424,7 +454,7 @@
         </div>
         <p>The same preview for a saved template. Send <code>body</code> (and <code>name</code>) to preview unsaved edits of it; omit them to preview what is saved.</p>
         <h3>Request body and response</h3>
-        <p>As <a href="#preview-draft">above</a>, except <code>body</code> is optional. The body may be empty (<code>{}</code>).</p>
+        <p>As <a href="#preview-draft">above</a>, except <code>body</code> is optional. The body may be empty (<code>{}</code>). With <code>signatureId</code> omitted the template's own <code>defaultSignatureId</code> is tried before the company default.</p>
         <h3>Errors</h3>
         <p>As above, plus <code>404</code> when the template is not in this company.</p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/tpl_123/preview \
@@ -456,6 +486,7 @@
             <tbody>
               <tr><td><code>templateId</code>, <code>templateName</code></td><td>string</td><td></td></tr>
               <tr><td><code>employeeUserId</code>, <code>employeeName</code></td><td>string</td><td></td></tr>
+              <tr><td><code>signature</code></td><td>object | null</td><td>The signature the default chain picks for this template (its <code>defaultSignatureId</code> if still active, else the company default), for you to preselect. <code>null</code> when there is none. Resolve takes no <code>signatureId</code>, so it never reflects a choice you make later. Fields: <code>id</code>, <code>name</code>, <code>position</code> (strings).</td></tr>
               <tr><td><code>fields[]</code></td><td>array</td><td>One entry per field the letter needs (the body's, plus the four always-needed ones). Below.</td></tr>
               <tr><td><code>fields[].key</code>, <code>label</code>, <code>source</code>, <code>kind</code></td><td>string</td><td>As in <a href="#list-merge-fields">merge fields</a>.</td></tr>
               <tr><td><code>fields[].value</code></td><td>string | null</td><td>As it will print (<code>"8 October 2026"</code>, <code>"RM 4,500.00"</code>). <code>null</code> when missing.</td></tr>
@@ -480,6 +511,7 @@
   "templateName": "Confirmation of Employment",
   "employeeUserId": "emp_123",
   "employeeName": "Jane Example",
+  "signature": { "id": "sig_123", "name": "Jane Example", "position": "Managing Director" },
   "fields": [
     { "key": "employee.confirmationDate", "label": "Confirmation date", "source": "Employee", "kind": "Date",
       "value": null, "editValue": null, "missing": true, "writableToEmployee": true, "fixHint": null },
@@ -487,6 +519,11 @@
       "value": "Example Sdn Bhd", "editValue": "Example Sdn Bhd", "missing": false, "writableToEmployee": false, "fixHint": null }
   ]
 }</code></pre>
+        <div class="callout">
+          <code>signatory.name</code> and <code>signatory.position</code> in <code>fields</code> are still the Payroll
+          declarant's values, even when <code>signature</code> is set. Show the signature's own name and position when
+          you offer it, and the declarant's again for &ldquo;no signature&rdquo;.
+        </div>
       </section>
 
       <section class="endpoint" id="generate">
@@ -507,6 +544,7 @@
               <tr><td><code>leaveBlank</code></td><td>string[]</td><td>No</td><td>Keys you deliberately leave empty. Any other field with no value refuses the letter.</td></tr>
               <tr><td><code>saveToEmployee</code></td><td>string[]</td><td>No</td><td>Keys of missing writable employee fields (<code>writableToEmployee</code> in the registry) whose typed value should also be written to the employee's record. Needs <code>employees:write</code>. A key that is not writable, not used by the template, already has a value on the record, or has no typed value, is skipped without error.</td></tr>
               <tr><td><code>save</code></td><td>boolean</td><td>No (default <code>true</code>)</td><td>Keep a copy on the employee's file (see <a href="#list-generated">letters on file</a>). <code>false</code> returns the PDF and stores nothing.</td></tr>
+              <tr><td><code>signatureId</code></td><td>string | null</td><td>No</td><td>Max 40. The saved signature to print. Omitted or <code>null</code>: the default chain (the template's <code>defaultSignatureId</code> if still active, then the company default, then none). <code>"none"</code> (any case): no signature image. Otherwise the id of an active signature of this company. Its name and position replace the declarant's as <code>signatory.name</code> / <code>signatory.position</code> unless you supply those in <code>values</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -522,16 +560,23 @@
           into fields that are <em>empty</em> there &mdash; it never overwrites &mdash; and it does not mark payroll drafts stale
           (none of these fields feed a payroll calculation). Both generating and deleting a letter are written to the audit log.
         </div>
+        <div class="callout">
+          <strong>A signature image that can't be printed doesn't stop the letter.</strong> If the chosen signature's image
+          is missing or unreadable, the PDF is still produced and still uses that signature's name and position, but with the
+          blank gap instead of the image. The kept letter's <code>signatureName</code> is then <code>null</code>: it is set
+          only when the image really printed.
+        </div>
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "message": "Fill in these details, or choose to leave them blank, before generating: Confirmation date, Signatory name.", "missingFields": ["employee.confirmationDate", "signatory.name"] }</code> &mdash; gaps remain. Nothing was saved or written.</li>
+          <li><code>400</code> <code>{ "message": "That signature isn't available — it may have been removed. Pick another, or choose \"No signature\".", "missingFields": null }</code> &mdash; <code>signatureId</code> is not <code>"none"</code> and not an active signature of this company. Nothing was saved or written.</li>
           <li><code>400</code> <code>{ "message": "…", "missingFields": null }</code> &mdash; a typed value is over 2,000 characters; the template uses merge fields that no longer exist (edit it first); or a <code>saveToEmployee</code> value is invalid (<code>employee.probationMonths</code> must be a whole number 0&ndash;120, <code>employee.confirmationDate</code> must be <code>yyyy-MM-dd</code>).</li>
           <li><code>403</code> &mdash; missing <code>employees:read</code>, or <code>saveToEmployee</code> sent without <code>employees:write</code>. The request is refused outright, never partly done.</li>
           <li><code>404</code> &mdash; no such template, or the person is not a member of this company.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/documents/templates/tpl_123/generate \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
-  -d '{"employeeUserId":"emp_123","values":{"employee.confirmationDate":"2026-11-01"},"saveToEmployee":["employee.confirmationDate"],"save":true}' \
+  -d '{"employeeUserId":"emp_123","values":{"employee.confirmationDate":"2026-11-01"},"saveToEmployee":["employee.confirmationDate"],"save":true,"signatureId":"sig_123"}' \
   -o letter.pdf</code></pre>
       </section>
     </section>
@@ -573,6 +618,7 @@
               <tr><td><code>employeeUserId</code></td><td>string</td><td>User id of the addressee.</td></tr>
               <tr><td><code>employeeName</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>generatedByName</code></td><td>string | null</td><td>Who generated it, at the time. For a key, the key has no person name, so this may be empty.</td></tr>
+              <tr><td><code>signatureName</code></td><td>string | null</td><td>The name of the saved signature whose image is printed on the letter, as it was then (a snapshot; later edits or removal don't change it). <code>null</code> when no signature image was printed &mdash; none chosen, or its image couldn't be drawn. Letters made before signatures existed are <code>null</code>.</td></tr>
               <tr><td><code>fileName</code></td><td>string</td><td>The name it downloads as.</td></tr>
               <tr><td><code>sizeBytes</code></td><td>number</td><td></td></tr>
               <tr><td><code>createdAt</code></td><td>string (ISO 8601, UTC)</td><td></td></tr>
