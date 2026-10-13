@@ -23,7 +23,7 @@ import {
   type ResolvedLetter,
 } from "../api";
 import { categoryLabel } from "../lib/categories";
-import { applySignature } from "../lib/letter-signature";
+import { applySignature, SIGNATORY_KEYS } from "../lib/letter-signature";
 import { useLetterSignature } from "../lib/use-letter-signature";
 import { SignatureSelect } from "./SignatureSelect";
 
@@ -150,6 +150,19 @@ export function GenerateLetterDialog({
 
   const patch = (key: string, next: Partial<FieldState>) =>
     setState((s) => ({ ...s, [key]: { ...(s[key] ?? blankState()), ...next } }));
+
+  // A signatory edit belongs to the signature it was made under: switching
+  // signature drops it, so the new one's name / position show (and are only
+  // sent if edited again) instead of the old name printing under a new image.
+  function chooseSignature(value: string) {
+    if (value === signature.selectValue) return;
+    signature.onSelect(value);
+    setState((s) => {
+      const next = { ...s };
+      for (const key of SIGNATORY_KEYS) if (key in next) next[key] = blankState();
+      return next;
+    });
+  }
 
   // A field is settled when it will print something the admin has seen: the
   // record's value, a typed value, or an explicit blank.
@@ -296,7 +309,7 @@ export function GenerateLetterDialog({
                 <span className={LABEL}>Signature</span>
                 <SignatureSelect
                   value={signature.selectValue}
-                  onChange={signature.onSelect}
+                  onChange={chooseSignature}
                   signatures={signature.options}
                   loading={signature.loading}
                   disabled={generating}
