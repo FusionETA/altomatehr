@@ -488,7 +488,7 @@ const evan = {
   "claim-receipt": async (page) => {
     await page.route("**/claims/receipts/analyze", (route) => route.abort());
     await openClaimReceiptStep(page);
-    await attachDemoReceipt(page);
+    // The receipt is optional: no file attached, both buttons work.
     await settle(page, 1000);
     await scrollTo(page, "Skip AI and fill manually", 520);
     await shoot(page, "employee", "claim-receipt");

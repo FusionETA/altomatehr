@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 1fcdabc
+// whats-new-covered-up-to: 61cde11
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -31,6 +31,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     ],
     improved: [
       "Claims: \"Skip and fill manually\" is now called \"Skip AI and fill manually\". If you attached a receipt, it stays with your claim.",
+      "Admins: when you sync a claim to Xero, its receipt and supporting documents are now attached to the bill or spend money, so they show in Xero.",
     ],
     fixed: [
       "Claims: adding more supporting documents no longer removes the ones you already added. You can attach up to 10, and remove any with the ✕.",
