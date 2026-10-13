@@ -31,6 +31,8 @@ export type DocumentTemplate = {
   isSample: boolean;
   /** Merge fields the body uses (registry and input.* alike). */
   fields: string[];
+  /** The saved signature this template's letters use; null = the company default. */
+  defaultSignatureId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -39,7 +41,16 @@ export type SaveDocumentTemplate = {
   name: string;
   category: DocumentCategory;
   body: string;
+  defaultSignatureId: string | null;
 };
+
+/**
+ * Which signature a letter prints. null = the default chain (template default →
+ * company default → none); NO_SIGNATURE = none, signed by hand; else a
+ * signature id.
+ */
+export type LetterSignatureChoice = string | null;
+export const NO_SIGNATURE = "none";
 
 export type MergeFieldSource = "Employee" | "Company" | "Signatory" | "System" | "Input";
 export type MergeFieldKind = "Text" | "Multiline" | "Date" | "Number" | "Money";
@@ -76,6 +87,8 @@ export type ResolvedLetter = {
   employeeUserId: string;
   employeeName: string;
   fields: ResolvedField[];
+  /** The signature the default chain picks for this letter; null = none (sign by hand). */
+  signature: { id: string; name: string; position: string } | null;
 };
 
 export type GenerateLetter = {
@@ -88,6 +101,8 @@ export type GenerateLetter = {
   saveToEmployee: string[];
   /** Keep a copy on the employee's file (admin-only). */
   save: boolean;
+  /** The signature to print. Its name / position fill the signatory unless `values` types them. */
+  signatureId: LetterSignatureChoice;
 };
 
 export type GeneratedDocument = {
@@ -100,6 +115,8 @@ export type GeneratedDocument = {
   generatedByName: string | null;
   fileName: string;
   sizeBytes: number;
+  /** The saved signature printed on it (name as it was then); null = none. */
+  signatureName: string | null;
   createdAt: string;
 };
 
@@ -191,7 +208,12 @@ export const draftTemplateWithAi = (body: {
 /** A PDF preview. With an id, `body` previews unsaved edits of that template. */
 export const previewTemplate = (
   id: string | null,
-  body: { name?: string; body?: string; employeeUserId?: string | null },
+  body: {
+    name?: string;
+    body?: string;
+    employeeUserId?: string | null;
+    signatureId?: LetterSignatureChoice;
+  },
 ): Promise<ApiFile> =>
   apiPostFile(
     id ? `${TEMPLATES_PATH}/${id}/preview` : `${TEMPLATES_PATH}/preview`,
