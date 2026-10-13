@@ -1154,8 +1154,53 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <h3>Response <code>200</code></h3>
         <ul>
           <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</li>
-          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code>, with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <code>Breakdown</code> (each payslip's line items under the employee's name). It is loaded and gated exactly as the PDF is, so the two always carry the same figures.</li>
+          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code>, with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures.</li>
         </ul>
+        <h3 id="doc-summary-breakdown">The <code>Breakdown</code> sheet (xlsx)</h3>
+        <p>
+          The third sheet lays each employee's pay out wide: <strong>one row per employee, one column per pay item</strong>.
+          Rows 1&ndash;2 are a title and a note, the column headings are on <strong>row 4</strong> and employee rows start on row 5,
+          followed by a <strong>totals row</strong> (<code>Total (N employees)</code>) that sums every column. Totals are written as
+          values, not formulas. The headings have an auto-filter over the employee rows only (so sorting never moves the totals),
+          and the header row and the first two columns are frozen.
+        </p>
+        <p>Columns, left to right:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>What it holds</th></tr></thead>
+            <tbody>
+              <tr><td><code>Emp no.</code>, <code>Staff</code></td><td>Employee number and name as printed on the payslip. The number is stored as text, so <code>00027</code> keeps its leading zeros.</td></tr>
+              <tr><td><code>Group</code>, <code>Outlet</code></td><td>The employee's department and work location, trimmed, read from their profile as it is <em>now</em> (not frozen at generation). Empty when not set.</td></tr>
+              <tr><td><code>Basic</code></td><td>The prorated pay actually paid for the period.</td></tr>
+              <tr><td><code>U/L</code></td><td>Unpaid-leave deduction, negative.</td></tr>
+              <tr><td><code>Travelling</code>, <code>Meal</code>, <code>Parking</code></td><td>The travel (private), meal and parking allowance lines.</td></tr>
+              <tr><td><code>Hours</code></td><td>Overtime hours paid (normal + rest day + public holiday). The only column that is not money, and it is not part of Total Gross.</td></tr>
+              <tr><td><code>OT</code></td><td>Calculated overtime pay plus any overtime wage lines.</td></tr>
+              <tr><td><code>Comm</code>, <code>Bonus</code></td><td>Commission lines and non-annual bonus lines.</td></tr>
+              <tr><td><code>Deduction</code></td><td>Miscellaneous deduction lines, negative.</td></tr>
+              <tr><td>Extra earning columns</td><td>One column for each <em>other</em> earning that someone on the run has (e.g. <code>Phone Allowance (Fixed)</code>), headed by the category label, in the order they first appear. All attached claims share a single <code>Claims</code> column.</td></tr>
+              <tr><td>Extra deduction columns</td><td>One column for each other deduction taken from pay that someone has (e.g. <code>Loan Repayment</code>, <code>CP38 Arrears (LHDN Order)</code>), <strong>negative</strong>. A free-text deduction is headed by its own label.</td></tr>
+              <tr><td><code>Total Gross</code></td><td>All the money columns on the row added up, deductions negative, <code>Hours</code> excluded. Bold; the heading carries a cell note explaining this.</td></tr>
+              <tr><td><code>NOT IN TOTAL GROSS</code> band (optional)</td><td>Shown only when someone on the run has such an item, under a merged heading band and a grey fill. These are for information and are <strong>never added into Total Gross</strong>: benefits in kind (headed <code>&hellip; (non-cash)</code>), cash-neutral TP1 items (reliefs, self-paid zakat, departure levy), zakat taken from pay and Additional PCB. Deductions among them are negative.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Extra columns exist only when at least one employee has the item, so the column set differs from run to run: read the
+          header row rather than relying on fixed positions after <code>Deduction</code>. If two extra columns would
+          share a heading, the later one gets a suffix, <code>(2)</code>, <code>(3)</code>&hellip; Negative amounts are shown in red.
+        </p>
+        <div class="callout warn">
+          <strong>Total Gross is not the payroll Gross.</strong> It is the payroll gross less every non-statutory deduction taken from
+          net pay (loans, miscellaneous, CP38, free-text deductions), so it will not match <code>Gross</code> on the
+          <code>Summary</code> sheet for an employee who has any. EPF, SOCSO, EIS and PCB stay on the <code>Summary</code> sheet and are
+          not repeated on <code>Breakdown</code>.
+        </div>
+        <p>
+          Every line the PDF itemises lands in exactly one <code>Breakdown</code> column, so the sheet adds up to the same money as the PDF.
+          This replaces the earlier long-list layout (<code>Emp no.</code> | <code>Employee</code> | <code>Item</code> |
+          <code>Amount (RM)</code>, one row per line item); anything that parsed that shape needs to read the wide layout instead.
+        </p>
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> — any other <code>format</code>.</li>

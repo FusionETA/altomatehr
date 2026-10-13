@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: d7e7e5a
+// whats-new-covered-up-to: a6f14e4
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -34,9 +34,13 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Claims: tap an attached receipt or document to open it, and add or replace the main receipt on the claim form. \"Skip and fill manually\" is now called \"Skip AI and fill manually\"; an attached receipt stays with your claim.",
       "Admins: when you sync a claim to Xero, its receipt and supporting documents are now attached to the bill or spend money, so they show in Xero.",
       "Leave: when you apply or edit, the form now shows the working days you'll use (weekends and public holidays skipped), not calendar days. The balance warning is based on that count only.",
+      "Payroll → Run downloads: the Breakdown sheet in Payroll Summary (Excel) now has one row per employee, a column for each pay item, and a Total Gross after loans and other deductions, with totals at the bottom.",
+      "Benefits in kind, TP1 items, zakat and additional PCB sit apart from Total Gross and aren't added into it.",
+      "Claims: after you replace a receipt that an AI read, the form says the details came from the old one, so you can check them.",
     ],
     fixed: [
       "Claims: adding more supporting documents no longer removes the ones you already added. You can attach up to 10, and remove any with the ✕.",
+      "Claims: older claims with blank document slots now save normally, and a receipt or document that won't open shows a message instead of doing nothing.",
       "Leave: a half day on a weekend or public holiday no longer counts, so it's refused when you apply or edit. A request spanning New Year no longer skips the next year's public holidays.",
       "Payroll: an approved unpaid half day on a weekend or public holiday is no longer deducted from pay, in any month whose run is still a draft or gets regenerated. Approved runs don't change.",
       "Claims: the Employee and Company bank details on a claim now show names, not a code. Employees no longer see a code on their own claims.",
