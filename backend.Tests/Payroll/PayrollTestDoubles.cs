@@ -129,6 +129,9 @@ internal sealed class StubPayrollLeave : ILeaveService
         throw new NotSupportedException();
     public Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId) =>
         throw new NotSupportedException();
+    public Task<double> PreviewDaysAsync(
+        DateTime start, DateTime end, AltomateHR.Api.Modules.Leave.Entities.LeaveDuration duration) =>
+        throw new NotSupportedException();
     public Task<LeaveApplyResult> ApplyOnBehalfAsync(
         string employeeId, CreateLeaveApplicationDto dto, string adminUserId) =>
         throw new NotSupportedException();

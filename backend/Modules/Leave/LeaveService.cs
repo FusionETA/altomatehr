@@ -756,15 +756,10 @@ public class LeaveService : ILeaveService
 
         if (overlapping.Count == 0) return new Dictionary<string, double>(StringComparer.Ordinal);
 
-        // A period can straddle two years (December → January never does here,
-        // but a caller is free to ask), so resolve each year's calendar once.
-        var calendars = new Dictionary<int, (IReadOnlySet<int> WorkingDays, IReadOnlySet<DateTime> Holidays)>();
-        foreach (var year in overlapping.Select(a => a.StartDate.Year)
-                     .Concat(overlapping.Select(a => a.EndDate.Year))
-                     .Distinct())
-        {
-            calendars[year] = await ResolveCalendarAsync(year);
-        }
+        // Every application is clipped to [start, end] below, so the window's
+        // calendar covers all of them — including a window that straddles two
+        // years, whose holidays come from both.
+        var (workingDays, holidays) = await ResolveCalendarAsync(start, end);
 
         var totals = new Dictionary<string, double>(StringComparer.Ordinal);
         foreach (var app in overlapping)
@@ -775,7 +770,6 @@ public class LeaveService : ILeaveService
             var clippedStart = app.StartDate.Date < start ? start : app.StartDate.Date;
             var clippedEnd = app.EndDate.Date > end ? end : app.EndDate.Date;
 
-            var (workingDays, holidays) = calendars[clippedStart.Year];
             var days = LeaveAccrualMath.ComputeTotalDays(
                 clippedStart, clippedEnd, app.Duration, workingDays, holidays);
 
@@ -993,9 +987,7 @@ public class LeaveService : ILeaveService
             return new LeaveApplyResult(false, null,
                 "Half-day leave must start and end on the same day");
 
-        var (workingDays, holidays) = await ResolveCalendarAsync(start.Year);
-        var totalDays = LeaveAccrualMath.ComputeTotalDays(
-            start, end, dto.Duration, workingDays, holidays);
+        var totalDays = await CountDaysAsync(start, end, dto.Duration);
         if (totalDays <= 0)
             return new LeaveApplyResult(false, null, "Selected dates contain no working days");
 
@@ -1024,9 +1016,9 @@ public class LeaveService : ILeaveService
             Duration = dto.Duration,
             TotalDays = totalDays,
             Reason = dto.Reason,
-            XeroFileId = dto.XeroFileId,
+            XeroFileId = AttachmentXeroFileId(dto),
             AttachmentName = dto.AttachmentName,
-            AttachmentUrl = dto.AttachmentUrl,
+            AttachmentUrl = AttachmentUrlOf(dto),
             Status = LeaveStatus.PENDING,
             CurrentStep = 0,
             CreatedAt = now,
@@ -1110,12 +1102,21 @@ public class LeaveService : ILeaveService
         // yet, so CurrentStep > 0 stands in: the chain only advances once an
         // approver has acted. Same intent, coarser evidence.
         if (app.CurrentStep > 0)
-            return new LeaveApplyResult(false, null,
-                "Cannot edit — an approver has already reviewed this leave");
+            return new LeaveApplyResult(false, null, ReviewedRefusal);
+
+        // Imported history and leave an admin filed carry a day count the
+        // employee never chose (an import keeps the source's half days as a
+        // FULL_DAY row with 0.5 days), so recomputing it on edit would silently
+        // change what was recorded. HR changes those, not the employee.
+        if (!FiledByApplicant(app))
+            return new LeaveApplyResult(false, null, NotApplicantsRefusal);
 
         var type = await _types.GetByIdAsync(dto.LeaveTypeId);
         if (type is null) return new LeaveApplyResult(false, null, "Leave type not found");
-        if (type.IsArchived) return new LeaveApplyResult(false, null, "Leave type is archived");
+        // Keeping the type a request already has is fine even after HR archived
+        // it — archiving stops NEW use. Only switching TO an archived type isn't.
+        if (type.IsArchived && type.Id != app.LeaveTypeId)
+            return new LeaveApplyResult(false, null, "Leave type is archived");
 
         var start = dto.StartDate!.Value.Date;
         var end = dto.EndDate!.Value.Date;
@@ -1126,27 +1127,39 @@ public class LeaveService : ILeaveService
             return new LeaveApplyResult(false, null,
                 "Half-day leave must start and end on the same day");
 
-        var (workingDays, holidays) = await ResolveCalendarAsync(start.Year);
-        var totalDays = LeaveAccrualMath.ComputeTotalDays(
-            start, end, dto.Duration, workingDays, holidays);
-        if (totalDays <= 0)
-            return new LeaveApplyResult(false, null, "Selected dates contain no working days");
+        // Same type, dates and duration: what the request costs hasn't changed,
+        // so keep the stored figure. A reason-only edit must never recompute —
+        // the calendar (holidays, working week) may have moved since it was
+        // filed, and re-checking the balance would refuse an edit of days that
+        // were already accepted.
+        var unchanged = type.Id == app.LeaveTypeId
+                        && start == app.StartDate.Date
+                        && end == app.EndDate.Date
+                        && dto.Duration == app.Duration;
 
-        var year = start.Year;
-        var entitlement = await EnsureEntitlementAsync(actorUserId, type, year);
-
-        if (type.Paid)
+        var totalDays = app.TotalDays;
+        if (!unchanged)
         {
-            // Exclude THIS request from the pending total, or an edit would be
-            // checked against a balance its own days are already reserving.
-            var available = await AvailableForApplyAsync(
-                actorUserId, type, entitlement, year,
-                excludeApplicationId: id, startDate: start);
-            if (totalDays > available + Tolerance)
+            totalDays = await CountDaysAsync(start, end, dto.Duration);
+            if (totalDays <= 0)
+                return new LeaveApplyResult(false, null, "Selected dates contain no working days");
+
+            var year = start.Year;
+            var entitlement = await EnsureEntitlementAsync(actorUserId, type, year);
+
+            if (type.Paid)
             {
-                var rounded = Math.Round(available * 100) / 100;
-                return new LeaveApplyResult(false, null,
-                    $"Insufficient balance: requesting {totalDays} but only {rounded} available");
+                // Exclude THIS request from the pending total, or an edit would be
+                // checked against a balance its own days are already reserving.
+                var available = await AvailableForApplyAsync(
+                    actorUserId, type, entitlement, year,
+                    excludeApplicationId: id, startDate: start);
+                if (totalDays > available + Tolerance)
+                {
+                    var rounded = Math.Round(available * 100) / 100;
+                    return new LeaveApplyResult(false, null,
+                        $"Insufficient balance: requesting {totalDays} but only {rounded} available");
+                }
             }
         }
 
@@ -1157,25 +1170,100 @@ public class LeaveService : ILeaveService
         app.TotalDays = totalDays;
         app.Reason = dto.Reason;
         // Only replaced when the edit carries a new one — an edit that just
-        // moves the dates must not drop the MC that was already attached.
-        if (!string.IsNullOrWhiteSpace(dto.AttachmentUrl))
+        // moves the dates must not drop the MC that was already attached. When
+        // it is replaced, the file id goes WITH the url and name: the read side
+        // prefers the Xero id, so a stale id would keep serving the old file
+        // under the new name, and a new local file must clear it.
+        var newUrl = AttachmentUrlOf(dto);
+        if (newUrl is not null)
         {
-            app.AttachmentUrl = dto.AttachmentUrl;
+            app.AttachmentUrl = newUrl;
             app.AttachmentName = dto.AttachmentName;
+            app.XeroFileId = AttachmentXeroFileId(dto);
         }
         app.UpdatedAt = DateTime.UtcNow;
-        await _apps.UpdateAsync(app);
+
+        // Conditional on the row still being PENDING at step 0: an approval
+        // that landed after the read above wins, rather than being overwritten.
+        if (!await _apps.SaveEditIfUntouchedAsync(app))
+            return new LeaveApplyResult(false, null, ReviewedRefusal);
 
         // The dates or type just changed under whoever is about to review it.
         await NotifyAsync(app, RealtimeAction.UPDATED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(app), null);
     }
 
-    // The org's working week and public holidays for `year`. Both are org-wide:
-    // production notes leave doesn't need attendance's project-scoped
-    // resolution. Null WorkingDays means Mon-Fri.
+    private const string ReviewedRefusal =
+        "Cannot edit — an approver has already reviewed this leave";
+
+    private const string NotApplicantsRefusal =
+        "This leave was imported or filed by an admin, so it can't be edited here — ask HR to change it";
+
+    // What a request for these dates would cost, against the org's calendar —
+    // the number the apply form shows before anything is submitted. Invalid
+    // shapes (end before start, a half day across several dates) cost 0; the
+    // apply call is what explains why.
+    public async Task<double> PreviewDaysAsync(DateTime startDate, DateTime endDate, LeaveDuration duration)
+    {
+        var start = startDate.Date;
+        var end = endDate.Date;
+        if (end < start) return 0;
+        if (duration != LeaveDuration.FULL_DAY && start != end) return 0;
+        return await CountDaysAsync(start, end, duration);
+    }
+
+    private async Task<double> CountDaysAsync(DateTime start, DateTime end, LeaveDuration duration)
+    {
+        var (workingDays, holidays) = await ResolveCalendarAsync(start, end);
+        return LeaveAccrualMath.ComputeTotalDays(start, end, duration, workingDays, holidays);
+    }
+
+    // Whether the employee filed this request themselves. Imported history
+    // and on-behalf leave both stamp AppliedByAdminId; the IMPORTED trail
+    // marker is checked too, so a row is recognised even if that column was
+    // never carried over.
+    private static bool FiledByApplicant(LeaveApplication a) =>
+        a.AppliedByAdminId is null
+        && (a.Approvals is null || !a.Approvals.Contains("\"IMPORTED\"", StringComparison.Ordinal));
+
+    // The state rules EditAsync enforces, for the Edit button.
+    private static bool CanApplicantEdit(LeaveApplication a) =>
+        a.Status == LeaveStatus.PENDING && a.CurrentStep == 0 && FiledByApplicant(a);
+
+    // POST /leave/attachments returns the url AND the Xero file id. The id is
+    // what the attachment proxy resolves by, so a Xero-hosted file saved
+    // without it 404s. A client that only echoes the url — older builds of
+    // this one did — is covered by reading the id back out of the proxy url.
+    private static string? AttachmentXeroFileId(CreateLeaveApplicationDto dto)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.XeroFileId)) return dto.XeroFileId.Trim();
+
+        const string prefix = "/leave/files/";
+        const string suffix = "/content";
+        var url = dto.AttachmentUrl?.Trim();
+        if (url is null
+            || !url.StartsWith(prefix, StringComparison.Ordinal)
+            || !url.EndsWith(suffix, StringComparison.Ordinal)
+            || url.Length <= prefix.Length + suffix.Length)
+            return null;
+
+        var id = url[prefix.Length..^suffix.Length];
+        return id.Contains('/') || id.Length > 80 ? null : id;
+    }
+
+    // The url to store: the one sent, or the proxy url when only the Xero id
+    // came. Null = no attachment in this request.
+    private static string? AttachmentUrlOf(CreateLeaveApplicationDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.AttachmentUrl) ? dto.AttachmentUrl
+        : XeroAttachmentUrl(dto.XeroFileId);
+
+    // The org's working week, and its public holidays between `from` and `to`
+    // — every year the range spans, so a 30 Dec - 2 Jan request skips New
+    // Year's Day. Both are org-wide: production notes leave doesn't need
+    // attendance's project-scoped resolution. Null WorkingDays means Mon-Fri;
+    // the working week is one setting, the same in every year.
     private async Task<(HashSet<int> WorkingDays, IReadOnlySet<DateTime> Holidays)>
-        ResolveCalendarAsync(int year)
+        ResolveCalendarAsync(DateTime from, DateTime to)
     {
         var org = _currentUser.OrganizationId is { } orgId
             ? await _organizations.GetByIdAsync(orgId)
@@ -1184,8 +1272,7 @@ public class LeaveService : ILeaveService
         // Main's Holidays module owns the calendar. GetInRangeAsync returns both
         // org-wide rows (ProjectId null) and project-scoped ones; leave is
         // org-wide, so only the former apply.
-        var rows = await _holidays.GetInRangeAsync(
-            new DateTime(year, 1, 1), new DateTime(year, 12, 31));
+        var rows = await _holidays.GetInRangeAsync(from.Date, to.Date);
 
         return (LeaveAccrualMath.ParseWorkingDays(org?.WorkingDays),
                 rows.Where(h => h.ProjectId is null)
@@ -1994,6 +2081,6 @@ public class LeaveService : ILeaveService
         // is a function of it.
         AttachmentUrl = XeroAttachmentUrl(a.XeroFileId) ?? a.AttachmentUrl,
         // Same state rules EditAsync enforces.
-        CanEdit = a.Status == LeaveStatus.PENDING && a.CurrentStep == 0,
+        CanEdit = CanApplicantEdit(a),
     };
 }

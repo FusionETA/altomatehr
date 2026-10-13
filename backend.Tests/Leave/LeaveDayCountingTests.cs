@@ -49,10 +49,33 @@ public class LeaveDayCountingTests
     }
 
     [Fact]
-    public void HalfDayIsAlwaysHalf_RegardlessOfTheRange()
+    public void HalfDayOnAWorkingDay_IsHalf()
     {
         Assert.Equal(0.5, Count("2026-09-02", "2026-09-02", LeaveDuration.MORNING));
         Assert.Equal(0.5, Count("2026-09-02", "2026-09-02", LeaveDuration.AFTERNOON));
+    }
+
+    // Production charged 0.5 for any half day. A Saturday morning in a Mon-Fri
+    // org, or a public holiday, is a day nobody was due in — it costs nothing,
+    // and apply/edit then refuse it as "no working days".
+    [Fact]
+    public void HalfDayOnANonWorkingDayOrHoliday_CostsNothing()
+    {
+        Assert.Equal(0, Count("2026-09-05", "2026-09-05", LeaveDuration.MORNING));     // Saturday
+        Assert.Equal(0, Count("2026-09-06", "2026-09-06", LeaveDuration.AFTERNOON));   // Sunday
+        var holiday = new HashSet<DateTime> { new(2026, 9, 2) };
+        Assert.Equal(0, Count("2026-09-02", "2026-09-02", LeaveDuration.MORNING, holidays: holiday));
+        // ...but a six-day week makes Saturday a working day again.
+        Assert.Equal(0.5, Count("2026-09-05", "2026-09-05", LeaveDuration.MORNING,
+            working: new HashSet<int> { 1, 2, 3, 4, 5, 6 }));
+    }
+
+    [Fact]
+    public void HolidaysInEitherYearOfARangeAreSkipped()
+    {
+        // Thu 31 Dec 2026 - Mon 4 Jan 2027, New Year's Day a holiday.
+        var holidays = new HashSet<DateTime> { new(2027, 1, 1) };
+        Assert.Equal(2, Count("2026-12-31", "2027-01-04", holidays: holidays));
     }
 
     [Fact]

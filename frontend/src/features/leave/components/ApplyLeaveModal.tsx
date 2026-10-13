@@ -1,9 +1,10 @@
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoaderCircle, Paperclip, X } from "lucide-react";
 import {
   applyLeave,
   editLeave,
+  previewLeaveDays,
   uploadLeaveAttachment,
   type LeaveApplication,
   type LeaveBalance,
@@ -20,8 +21,10 @@ import {
 const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-white/80 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
-// Inclusive calendar-day span — mirrors the backend's TotalDays.
-function daysBetween(start: string, end: string): number | null {
+// Inclusive CALENDAR-day span. Only a fallback for when the server's count
+// can't be had — it includes weekends and holidays, so it is shown as "about"
+// and never used to warn against the balance.
+function calendarDaysBetween(start: string, end: string): number | null {
   if (!start || !end) return null;
   const s = new Date(`${start}T00:00:00`);
   const e = new Date(`${end}T00:00:00`);
@@ -32,6 +35,13 @@ function daysBetween(start: string, end: string): number | null {
 // Days read better as "12" than "12.0", but a half day has to survive.
 const formatDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
+// How long the dates must sit still before the server is asked to count them.
+const PREVIEW_DEBOUNCE_MS = 300;
+
+type Preview =
+  | { key: string; state: "ready"; totalDays: number }
+  | { key: string; state: "failed" };
+
 export function ApplyLeaveModal({
   types,
   balances,
@@ -39,6 +49,9 @@ export function ApplyLeaveModal({
   onClose,
   onCreated,
 }: {
+  /** Types to offer. When editing, include the request's own type even if it
+   *  has since been archived — it is labelled so, and the server lets a
+   *  request keep it (only switching TO an archived type is refused). */
   types: LeaveType[];
   /** The caller already holds these; without them this form asks people to
    *  guess how many days they have left. */
@@ -66,10 +79,59 @@ export function ApplyLeaveModal({
   // it stays on one date; the server refuses a half day across several.
   const duration = editing?.duration ?? "FULL_DAY";
   const halfDay = duration !== "FULL_DAY";
-  const days = useMemo(() => {
-    const span = daysBetween(startDate, endDate);
-    return halfDay && span === 1 ? 0.5 : span;
-  }, [startDate, endDate, halfDay]);
+
+  const datesValid = startDate !== "" && endDate !== "" && endDate >= startDate;
+  const halfDayAcrossDates = halfDay && datesValid && startDate !== endDate;
+
+  // An edit that leaves the type and dates alone keeps the request's stored
+  // day count — the server doesn't recompute it — so that figure is the
+  // honest one until they change.
+  const unchangedEdit =
+    editing !== null &&
+    leaveTypeId === editing.leaveTypeId &&
+    startDate === editing.startDate &&
+    endDate === editing.endDate;
+
+  // The server counts the days (working days only, holidays skipped), so the
+  // figure here is the one it will charge rather than a calendar-day guess.
+  const previewKey = datesValid && !halfDayAcrossDates && !unchangedEdit
+    ? `${startDate}|${endDate}|${duration}`
+    : null;
+  const [preview, setPreview] = useState<Preview | null>(null);
+
+  useEffect(() => {
+    if (previewKey === null) return;
+    const [start, end] = previewKey.split("|");
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      previewLeaveDays(start, end, duration)
+        .then((r) => {
+          if (!stale) setPreview({ key: previewKey, state: "ready", totalDays: r.totalDays });
+        })
+        .catch(() => {
+          if (!stale) setPreview({ key: previewKey, state: "failed" });
+        });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [previewKey, duration]);
+
+  // Only a preview for the CURRENT dates counts; an older one is stale.
+  const current = preview !== null && preview.key === previewKey ? preview : null;
+
+  // The server's figure when known: the stored one for an unchanged edit, the
+  // preview otherwise. Null while counting, or when the count failed.
+  const days: number | null = unchangedEdit
+    ? (editing?.totalDays ?? null)
+    : current?.state === "ready"
+      ? current.totalDays
+      : null;
+  const counting = previewKey !== null && current === null;
+  const countFailed = current?.state === "failed";
+  const noWorkingDays = days === 0;
+  const calendarSpan = countFailed ? calendarDaysBetween(startDate, endDate) : null;
 
   const balanceByType = useMemo(
     () => new Map(balances.map((b) => [b.leaveTypeId, b])),
@@ -80,7 +142,8 @@ export function ApplyLeaveModal({
   // The server refuses an application that exceeds the balance. Saying so here
   // means the refusal isn't the first time somebody learns it — but it stays a
   // warning, not a block: the balance shown is today's, and the server decides
-  // against the start date, which can differ on a pro-rated type.
+  // against the start date, which can differ on a pro-rated type. Only warned
+  // on the server's own count, never on a calendar-day guess.
   const overBalance =
     selectedBalance !== null &&
     selectedBalance.paid &&
@@ -104,6 +167,8 @@ export function ApplyLeaveModal({
         reason: reason.trim() || undefined,
         attachmentUrl: uploaded?.attachmentUrl,
         attachmentName: uploaded?.attachmentName,
+        // A Xero-hosted file is served by its id, so it travels with the url.
+        xeroFileId: uploaded?.xeroFileId ?? undefined,
       };
       const app = editing
         ? await editLeave(editing.id, { ...body, duration })
@@ -161,6 +226,7 @@ export function ApplyLeaveModal({
                     return (
                       <SelectItem key={t.id} value={t.id}>
                         {t.name}
+                        {t.isArchived ? " (archived)" : ""}
                         {!t.paid
                           ? " (unpaid)"
                           : b
@@ -220,20 +286,37 @@ export function ApplyLeaveModal({
               </label>
             </div>
 
-            {days != null ? (
+            {halfDayAcrossDates ? (
+              <p className="rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                A half day has to start and end on the same date.
+              </p>
+            ) : noWorkingDays ? (
+              <p className="rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                Those dates are all weekends or public holidays — there are no working days to take off.
+              </p>
+            ) : days !== null ? (
               <p className="text-sm text-muted-foreground">
                 Duration:{" "}
                 <span className="font-semibold text-foreground">
-                  {formatDays(days)} day{days === 1 ? "" : "s"}
+                  {formatDays(days)} working day{days === 1 ? "" : "s"}
                   {halfDay ? (duration === "MORNING" ? " (morning)" : " (afternoon)") : ""}
                 </span>
               </p>
+            ) : counting ? (
+              <p className="text-sm text-muted-foreground">Counting working days…</p>
+            ) : calendarSpan !== null ? (
+              // The count failed: the calendar span is all that's left, so it
+              // is labelled for what it is and no balance warning is drawn from it.
+              <p className="text-sm text-muted-foreground">
+                About {calendarSpan} calendar day{calendarSpan === 1 ? "" : "s"} — days off and public
+                holidays won't be charged.
+              </p>
             ) : null}
 
-            {overBalance && selectedBalance ? (
+            {overBalance && selectedBalance && days !== null ? (
               <p className="rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
-                That's {formatDays(days!)} day{days === 1 ? "" : "s"} against{" "}
-                {formatDays(selectedBalance.remainingDays)} left — the server will refuse this.
+                That's {formatDays(days)} day{days === 1 ? "" : "s"} against{" "}
+                {formatDays(selectedBalance.remainingDays)} left — this will likely be refused.
               </p>
             ) : null}
 
@@ -320,7 +403,7 @@ export function ApplyLeaveModal({
             </button>
             <button
               type="submit"
-              disabled={saving || !leaveTypeId || !startDate || !endDate || days == null}
+              disabled={saving || !leaveTypeId || !datesValid || halfDayAcrossDates || noWorkingDays}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
