@@ -160,6 +160,10 @@ public class ClaimsService : IClaimsService
         var prepared = await PrepareClaimValuesAsync(dto, employeeId);
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
+        // An expense claim needs its main receipt — reading it with AI is
+        // optional, attaching it isn't. Mileage has no receipt to attach.
+        if (dto.ClaimType == ClaimType.EXPENSE && receiptUrl is null)
+            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         var claim = new Claim
         {
@@ -228,6 +232,10 @@ public class ClaimsService : IClaimsService
 
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
+        // An edit may replace the main receipt but not remove it. A claim filed
+        // before receipts were required (or imported) stays editable without one.
+        if (receiptUrl is null && claim.ReceiptUrl is not null)
+            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         claim.Title = dto.Title;
         claim.Description = dto.Description;

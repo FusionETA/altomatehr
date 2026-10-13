@@ -13,7 +13,11 @@ login "$EMP_EMAIL" "$PW"; ok "employee can log in" 200; EMP_TOKEN="$TOKEN"; note
 phase "P13 Claims lifecycle"
 TOKEN="$EMP_TOKEN"
 req GET /claims; ok "employee lists their own claims" 200
-req POST /claims "{\"title\":\"Client lunch\",\"description\":\"Lunch with Acme\",\"category\":\"MEAL\",\"amount\":85.50,\"spentAt\":\"$TODAY\",\"claimType\":\"EXPENSE\",\"paymentType\":\"PERSONAL\",\"chartOfAccountId\":\"$ACC_ID\",\"projectId\":\"$PROJ_ID\",\"spendingAt\":\"Acme Cafe\"}"
+# An expense claim needs its main receipt: upload one first.
+reqfile POST /claims/receipts receiptFile "$SP/pixel.png"; ok "employee uploads the main receipt" 200; RECEIPT_URL=$(jqr '.receiptUrl')
+req POST /claims "{\"title\":\"No receipt\",\"description\":\"x\",\"category\":\"MEAL\",\"amount\":10,\"spentAt\":\"$TODAY\",\"claimType\":\"EXPENSE\",\"paymentType\":\"PERSONAL\",\"chartOfAccountId\":\"$ACC_ID\",\"projectId\":\"$PROJ_ID\"}"
+ok "reject an expense claim with no main receipt" 400
+req POST /claims "{\"title\":\"Client lunch\",\"description\":\"Lunch with Acme\",\"category\":\"MEAL\",\"amount\":85.50,\"spentAt\":\"$TODAY\",\"claimType\":\"EXPENSE\",\"paymentType\":\"PERSONAL\",\"chartOfAccountId\":\"$ACC_ID\",\"projectId\":\"$PROJ_ID\",\"spendingAt\":\"Acme Cafe\",\"receiptUrl\":\"$RECEIPT_URL\"}"
 okin "employee submits an expense claim" "200 201"; CLAIM_ID=$(jqr '.id'); note "claim id" "$CLAIM_ID"
 req POST /claims "{\"title\":\"Site visit\",\"description\":\"Drive to site\",\"category\":\"TRANSPORT\",\"spentAt\":\"$TODAY\",\"claimType\":\"MILEAGE\",\"paymentType\":\"PERSONAL\",\"chartOfAccountId\":\"$ACC_ID\",\"projectId\":\"$PROJ_ID\",\"distance\":42,\"mileageOriginAddress\":\"HQ\",\"mileageDestinationAddress\":\"Site A\"}"
 okin "employee submits a mileage claim" "200 201"; MILE_ID=$(jqr '.id')
