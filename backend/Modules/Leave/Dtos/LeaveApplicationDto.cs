@@ -73,6 +73,12 @@ public class CreateLeaveApplicationDto
     public string? Reason { get; set; }
 }
 
+// GET /leave/preview-days — what the apply form's dates would cost.
+public class LeaveDayPreviewDto
+{
+    public double TotalDays { get; set; }
+}
+
 public class RejectLeaveDto
 {
     [MaxLength(1000)]

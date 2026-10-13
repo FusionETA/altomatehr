@@ -1,5 +1,12 @@
 import type { BulkResult } from "@/shared/lib/use-bulk-selection";
-import { apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "@/shared/lib/api-client";
+import {
+  apiGet,
+  apiGetBlob,
+  apiGetFresh,
+  apiPost,
+  apiPostForm,
+  apiPut,
+} from "@/shared/lib/api-client";
 
 export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
@@ -70,6 +77,9 @@ export type CreateLeaveApplication = {
   /** From uploadLeaveAttachment. Optional — most leave has no document. */
   attachmentUrl?: string;
   attachmentName?: string;
+  /** From uploadLeaveAttachment when the file went to Xero Files. Sent with
+   *  the url: the attachment proxy finds the file by this id. */
+  xeroFileId?: string;
 };
 
 export type LeaveBalance = {
@@ -195,9 +205,22 @@ export const applyLeave = (body: CreateLeaveApplication) =>
 export const editLeave = (id: string, body: CreateLeaveApplication) =>
   apiPut<LeaveApplication>(`/leave/${id}`, body);
 
+// What these dates would cost — the server's own count (working days only,
+// public holidays skipped), the same one apply and edit charge. Fresh rather
+// than cached: holidays and the working week can change under it.
+export const previewLeaveDays = (start: string, end: string, duration: LeaveDuration = "FULL_DAY") =>
+  apiGetFresh<{ totalDays: number }>(
+    `/leave/preview-days?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&duration=${duration}`,
+  );
+
 // Uploaded before the application is submitted, so a rejected file (wrong type,
 // too big) costs nothing but a retry and never a half-written application.
-export type LeaveAttachmentUpload = { attachmentUrl: string; attachmentName: string };
+export type LeaveAttachmentUpload = {
+  attachmentUrl: string;
+  attachmentName: string;
+  /** Set when the file was stored in Xero Files; null for a local file. */
+  xeroFileId: string | null;
+};
 
 export function uploadLeaveAttachment(file: File) {
   const formData = new FormData();

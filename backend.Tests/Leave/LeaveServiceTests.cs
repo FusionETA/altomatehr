@@ -679,6 +679,370 @@ public class LeaveServiceTests
         Assert.Contains("APPROVED", app.Approvals);
     }
 
+    // ---- Editing pending leave: bug-check findings ----
+
+    private static FakeApprovalRouter PendingChain() =>
+        new(new() { ["usr-emp"] = [["usr-super"]] });
+
+    private static CreateLeaveApplicationDto Dto(
+        string typeId, string start, string end,
+        LeaveDuration duration = LeaveDuration.FULL_DAY, string? reason = null) => new()
+    {
+        LeaveTypeId = typeId,
+        StartDate = DateTime.Parse(start),
+        EndDate = DateTime.Parse(end),
+        Duration = duration,
+        Reason = reason,
+    };
+
+    private static LeaveApplication PendingApp(
+        string id, string typeId, string start, string end, double days,
+        LeaveDuration duration = LeaveDuration.FULL_DAY) => new()
+    {
+        Id = id,
+        EmployeeId = "usr-emp",
+        LeaveTypeId = typeId,
+        StartDate = DateTime.Parse(start),
+        EndDate = DateTime.Parse(end),
+        Duration = duration,
+        TotalDays = days,
+        Status = LeaveStatus.PENDING,
+        CurrentStep = 0,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    };
+
+    // Applying stores the Xero file id that POST /leave/attachments returned,
+    // and the proxy then serves it — the id is what it resolves by.
+    [Fact]
+    public async Task Apply_StoresTheXeroFileId_SoTheAttachmentIsServed()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            router: PendingChain(),
+            memberships: new FakeMembershipRepository("usr-emp"),
+            currentUser: new FakeCurrentUser("usr-emp", "Employee"),
+            xero: new FakeXeroService(new XeroFileContent([1], "application/pdf", "mc.pdf")));
+
+        var dto = Dto("t-al", "2026-09-01", "2026-09-01");
+        dto.XeroFileId = "xf-1";
+        dto.AttachmentUrl = "/leave/files/xf-1/content";
+        dto.AttachmentName = "mc.pdf";
+        var applied = await service.ApplyAsync(dto, "usr-emp");
+
+        Assert.True(applied.Ok);
+        Assert.Equal("/leave/files/xf-1/content", applied.Application!.AttachmentUrl);
+        Assert.True((await service.GetAttachmentAsync("xf-1")).Found);
+    }
+
+    // A client that sends only the proxy url (as this one used to) must not
+    // leave a Xero-hosted file unreachable: the id is read back out of it.
+    [Fact]
+    public async Task Apply_WithOnlyTheXeroProxyUrl_StillRecordsTheFileId()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            router: PendingChain(),
+            memberships: new FakeMembershipRepository("usr-emp"),
+            currentUser: new FakeCurrentUser("usr-emp", "Employee"),
+            xero: new FakeXeroService(new XeroFileContent([1], "application/pdf", "mc.pdf")));
+
+        var dto = Dto("t-al", "2026-09-01", "2026-09-01");
+        dto.AttachmentUrl = "/leave/files/xf-9/content";
+        dto.AttachmentName = "mc.pdf";
+        Assert.True((await service.ApplyAsync(dto, "usr-emp")).Ok);
+
+        Assert.True((await service.GetAttachmentAsync("xf-9")).Found);
+    }
+
+    // Replacing a Xero attachment with another Xero file: url, name AND id all
+    // move, so the new file — not the old one — is what's served.
+    [Fact]
+    public async Task Edit_ReplacingAXeroAttachment_MovesTheFileIdWithTheUrl()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        app.XeroFileId = "xf-old";
+        app.AttachmentUrl = "/leave/files/xf-old/content";
+        app.AttachmentName = "old.pdf";
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain(),
+            memberships: new FakeMembershipRepository("usr-emp"),
+            currentUser: new FakeCurrentUser("usr-emp", "Employee"),
+            xero: new FakeXeroService(new XeroFileContent([1], "application/pdf", "new.pdf")));
+
+        var dto = Dto("t-al", "2026-09-01", "2026-09-01");
+        dto.XeroFileId = "xf-new";
+        dto.AttachmentUrl = "/leave/files/xf-new/content";
+        dto.AttachmentName = "new.pdf";
+        var edited = await service.EditAsync("a1", dto, "usr-emp");
+
+        Assert.True(edited.Ok);
+        Assert.Equal("new.pdf", edited.Application!.AttachmentName);
+        Assert.Equal("/leave/files/xf-new/content", edited.Application.AttachmentUrl);
+        Assert.Equal("xf-new", app.XeroFileId);
+        Assert.True((await service.GetAttachmentAsync("xf-new")).Found);
+        Assert.False((await service.GetAttachmentAsync("xf-old")).Found);
+    }
+
+    // Replacing a Xero attachment with a LOCAL file clears the id; otherwise
+    // the read side would keep preferring the old Xero file.
+    [Fact]
+    public async Task Edit_ReplacingAXeroAttachmentWithALocalFile_ClearsTheFileId()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        app.XeroFileId = "xf-old";
+        app.AttachmentUrl = "/leave/files/xf-old/content";
+        app.AttachmentName = "old.pdf";
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain());
+
+        var dto = Dto("t-al", "2026-09-01", "2026-09-01");
+        dto.AttachmentUrl = "/leave/attachments/20260901-abc.pdf";
+        dto.AttachmentName = "new.pdf";
+        var edited = await service.EditAsync("a1", dto, "usr-emp");
+
+        Assert.True(edited.Ok);
+        Assert.Null(app.XeroFileId);
+        Assert.Equal("/leave/attachments/20260901-abc.pdf", edited.Application!.AttachmentUrl);
+        Assert.Equal("new.pdf", edited.Application.AttachmentName);
+    }
+
+    [Fact]
+    public async Task Edit_WithoutANewAttachment_KeepsTheOneAlreadyOnIt()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        app.XeroFileId = "xf-old";
+        app.AttachmentName = "old.pdf";
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain());
+
+        var edited = await service.EditAsync("a1", Dto("t-al", "2026-09-02", "2026-09-02"), "usr-emp");
+
+        Assert.True(edited.Ok);
+        Assert.Equal("xf-old", app.XeroFileId);
+        Assert.Equal("/leave/files/xf-old/content", edited.Application!.AttachmentUrl);
+        Assert.Equal("old.pdf", edited.Application.AttachmentName);
+    }
+
+    // An imported half day is stored FULL_DAY with 0.5 days; an edit would
+    // recompute it to a whole day. Imported rows are therefore HR's to change.
+    [Fact]
+    public async Task ImportedPendingLeave_IsNotEditable()
+    {
+        var service = ImportService();
+        await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader, "ahmad@x.com,AL,2026-03-02,2026-03-02,0.5,PENDING,"),
+            TabularFormat.Csv, "usr-admin");
+        var imported = Assert.Single(await service.GetMineAsync("usr-emp"));
+
+        Assert.Equal(LeaveStatus.PENDING, imported.Status);
+        Assert.False(imported.CanEdit);
+
+        var edit = await service.EditAsync(
+            imported.Id, Dto("lt-al", "2026-03-02", "2026-03-02", reason: "typo"), "usr-emp");
+        Assert.False(edit.Ok);
+        Assert.Contains("imported", edit.Error);
+        Assert.Equal(0.5, Assert.Single(await service.GetMineAsync("usr-emp")).TotalDays);
+    }
+
+    // Same rule keyed on the trail marker alone, for a row whose
+    // AppliedByAdminId was never carried over.
+    [Fact]
+    public async Task ARowWithTheImportedTrailMarker_IsNotEditable()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 0.5);
+        app.Approvals = """[{"step":0,"approverId":"usr-admin","decision":"IMPORTED"}]""";
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain());
+
+        Assert.False(Assert.Single(await service.GetMineAsync("usr-emp")).CanEdit);
+        Assert.False((await service.EditAsync("a1", Dto("t-al", "2026-09-01", "2026-09-01"), "usr-emp")).Ok);
+    }
+
+    // Type, dates and duration unchanged: the stored days stand, even when
+    // today's calendar would count them differently (here a holiday was added
+    // on that date after it was filed).
+    [Fact]
+    public async Task ReasonOnlyEdit_KeepsTheStoredTotalDays()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-02", 2);
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain(),
+            holidays: [new HolidayDto { Id = "h1", Date = "2026-09-02", Name = "New holiday" }]);
+
+        var edited = await service.EditAsync(
+            "a1", Dto("t-al", "2026-09-01", "2026-09-02", reason: "Family trip"), "usr-emp");
+
+        Assert.True(edited.Ok);
+        Assert.Equal(2, edited.Application!.TotalDays);
+        Assert.Equal("Family trip", edited.Application.Reason);
+    }
+
+    // Moving the dates DOES recount.
+    [Fact]
+    public async Task EditThatMovesTheDates_RecountsAgainstTheCalendar()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-02", 2);
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain());
+
+        // Fri 4 Sep to Mon 7 Sep: two working days, not four.
+        var edited = await service.EditAsync("a1", Dto("t-al", "2026-09-04", "2026-09-07"), "usr-emp");
+
+        Assert.True(edited.Ok);
+        Assert.Equal(2, edited.Application!.TotalDays);
+        Assert.Equal("2026-09-04", edited.Application.StartDate);
+    }
+
+    // 2026-09-05 is a Saturday: a half day there is no leave at all.
+    [Fact]
+    public async Task HalfDayOnASaturday_IsRefused_OnApplyAndEdit()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-02", "2026-09-02", 0.5, LeaveDuration.MORNING);
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain());
+
+        var apply = await service.ApplyAsync(
+            Dto("t-al", "2026-09-05", "2026-09-05", LeaveDuration.MORNING), "usr-emp");
+        Assert.False(apply.Ok);
+        Assert.Equal("Selected dates contain no working days", apply.Error);
+
+        var edit = await service.EditAsync(
+            "a1", Dto("t-al", "2026-09-05", "2026-09-05", LeaveDuration.MORNING), "usr-emp");
+        Assert.False(edit.Ok);
+        Assert.Equal("Selected dates contain no working days", edit.Error);
+
+        // A weekday half day still costs half.
+        var ok = await service.ApplyAsync(
+            Dto("t-al", "2026-09-03", "2026-09-03", LeaveDuration.AFTERNOON), "usr-emp");
+        Assert.True(ok.Ok);
+        Assert.Equal(0.5, ok.Application!.TotalDays);
+    }
+
+    [Fact]
+    public async Task HalfDayOnAPublicHoliday_IsRefused()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], router: PendingChain(),
+            holidays: [new HolidayDto { Id = "h1", Date = "2026-09-02", Name = "Holiday" }]);
+
+        var apply = await service.ApplyAsync(
+            Dto("t-al", "2026-09-02", "2026-09-02", LeaveDuration.MORNING), "usr-emp");
+
+        Assert.False(apply.Ok);
+    }
+
+    // Archiving stops NEW use of a type; a request that already has it can
+    // still have its reason or dates changed.
+    [Fact]
+    public async Task Edit_KeepsAnArchivedTypeTheRequestAlreadyHas()
+    {
+        var app = PendingApp("a1", "t-old", "2026-09-01", "2026-09-01", 1);
+        var service = MakeService(
+            types: [MakeType("t-old", "OLD", 14, archived: true), MakeType("t-al", "AL", 14)],
+            apps: [app], router: PendingChain());
+
+        var reasonOnly = await service.EditAsync(
+            "a1", Dto("t-old", "2026-09-01", "2026-09-01", reason: "now with a reason"), "usr-emp");
+        Assert.True(reasonOnly.Ok);
+
+        var moved = await service.EditAsync("a1", Dto("t-old", "2026-09-02", "2026-09-03"), "usr-emp");
+        Assert.True(moved.Ok);
+        Assert.Equal(2, moved.Application!.TotalDays);
+        Assert.Equal("t-old", moved.Application.LeaveTypeId);
+    }
+
+    [Fact]
+    public async Task Edit_RefusesSwitchingToAnArchivedType()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        var service = MakeService(
+            types: [MakeType("t-old", "OLD", 14, archived: true), MakeType("t-al", "AL", 14)],
+            apps: [app], router: PendingChain());
+
+        var edit = await service.EditAsync("a1", Dto("t-old", "2026-09-01", "2026-09-01"), "usr-emp");
+
+        Assert.False(edit.Ok);
+        Assert.Equal("Leave type is archived", edit.Error);
+        Assert.Equal("t-al", app.LeaveTypeId);
+    }
+
+    // Thu 31 Dec 2026 - Mon 4 Jan 2027 with New Year's Day a holiday: Thu and
+    // Mon only. The holiday sits in the END year, which the old start-year
+    // lookup never loaded.
+    [Fact]
+    public async Task AHolidayInTheFollowingYear_IsExcluded_OnApplyAndEdit()
+    {
+        HolidayDto[] newYear = [new() { Id = "h1", Date = "2027-01-01", Name = "New Year" }];
+        var app = PendingApp("a1", "t-al", "2026-12-01", "2026-12-01", 1);
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app], router: PendingChain(), holidays: newYear);
+
+        var applied = await service.ApplyAsync(Dto("t-al", "2026-12-31", "2027-01-04"), "usr-two");
+        Assert.True(applied.Ok);
+        Assert.Equal(2, applied.Application!.TotalDays);
+
+        var edited = await service.EditAsync("a1", Dto("t-al", "2026-12-31", "2027-01-04"), "usr-emp");
+        Assert.True(edited.Ok);
+        Assert.Equal(2, edited.Application!.TotalDays);
+
+        Assert.Equal(2, await service.PreviewDaysAsync(
+            new DateTime(2026, 12, 31), new DateTime(2027, 1, 4), LeaveDuration.FULL_DAY));
+    }
+
+    // The apply form's figure: the server's own count, not calendar days.
+    [Theory]
+    [InlineData("2026-09-04", "2026-09-07", LeaveDuration.FULL_DAY, 2)]    // Fri-Mon
+    [InlineData("2026-09-01", "2026-09-04", LeaveDuration.FULL_DAY, 3)]    // Wed is a holiday
+    [InlineData("2026-09-05", "2026-09-06", LeaveDuration.FULL_DAY, 0)]    // weekend only
+    [InlineData("2026-09-03", "2026-09-03", LeaveDuration.MORNING, 0.5)]
+    [InlineData("2026-09-05", "2026-09-05", LeaveDuration.MORNING, 0)]     // Saturday
+    [InlineData("2026-09-03", "2026-09-04", LeaveDuration.MORNING, 0)]     // half day over two dates
+    [InlineData("2026-09-04", "2026-09-01", LeaveDuration.FULL_DAY, 0)]    // end before start
+    public async Task PreviewDays_CountsWorkingDaysLikeApply(
+        string start, string end, LeaveDuration duration, double expected)
+    {
+        var service = MakeService(
+            holidays: [new HolidayDto { Id = "h1", Date = "2026-09-02", Name = "Holiday" }]);
+
+        Assert.Equal(expected, await service.PreviewDaysAsync(
+            DateTime.Parse(start), DateTime.Parse(end), duration));
+    }
+
+    // An approval that lands between the edit's read and its save wins: the
+    // guarded save refuses, and the request stays approved.
+    [Fact]
+    public async Task Edit_IsRefused_WhenAnApprovalLandsBeforeItSaves()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        var repo = new FakeLeaveApplicationRepository([app])
+        {
+            BeforeEditSave = stored =>
+            {
+                stored.Status = LeaveStatus.APPROVED;
+                stored.CurrentStep = 1;
+            },
+        };
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], router: PendingChain(), appRepo: repo);
+
+        var edit = await service.EditAsync("a1", Dto("t-al", "2026-09-02", "2026-09-03"), "usr-emp");
+
+        Assert.False(edit.Ok);
+        Assert.Equal("Cannot edit — an approver has already reviewed this leave", edit.Error);
+        Assert.Equal(0, repo.EditSaves);
+        Assert.Equal(LeaveStatus.APPROVED, app.Status);
+    }
+
+    [Fact]
+    public async Task Edit_SavesThroughTheGuardedWrite()
+    {
+        var app = PendingApp("a1", "t-al", "2026-09-01", "2026-09-01", 1);
+        var repo = new FakeLeaveApplicationRepository([app]);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], router: PendingChain(), appRepo: repo);
+
+        Assert.True((await service.EditAsync("a1", Dto("t-al", "2026-09-02", "2026-09-03"), "usr-emp")).Ok);
+        Assert.Equal(1, repo.EditSaves);
+    }
+
     // --- helpers ---
 
     private static CreateLeaveApplicationDto NewDto(string typeId) => new()
@@ -1177,9 +1541,11 @@ public class LeaveServiceTests
         IEmployeeRowResolver? employees = null,
         FakeNotificationService? notifications = null,
         AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null,
-        AltomateHR.Api.Modules.Audit.IAuditService? audit = null) =>
+        AltomateHR.Api.Modules.Audit.IAuditService? audit = null,
+        IEnumerable<HolidayDto>? holidays = null,
+        ILeaveApplicationRepository? appRepo = null) =>
         new(
-            new FakeLeaveApplicationRepository(apps ?? []),
+            appRepo ?? new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
             supervision ?? new FakeSupervisionService(),
             policy ?? new FakePolicyService(),
@@ -1189,7 +1555,7 @@ public class LeaveServiceTests
             new FakeEntitlementRepo(entitlementRows ?? []),
             xero ?? new FakeXeroService(),
             new FakeOrganizationService(),
-            new FakeHolidayService(),
+            new FakeHolidayService(holidays),
             new FakeRealtimeService(),
             notifications ?? new FakeNotificationService(),
             employees ?? new FakeEmployeeDirectory(),
@@ -1252,6 +1618,19 @@ public class LeaveServiceTests
             Task.FromResult(_apps.Where(a => a.EmployeeId == employeeId).ToList());
         public Task<LeaveApplication> AddAsync(LeaveApplication app) { _apps.Add(app); return Task.FromResult(app); }
         public Task UpdateAsync(LeaveApplication app) => Task.CompletedTask;
+
+        // Runs between the edit's read and its guarded save — where a
+        // concurrent approval would land.
+        public Action<LeaveApplication>? BeforeEditSave { get; set; }
+        public int EditSaves { get; private set; }
+
+        public Task<bool> SaveEditIfUntouchedAsync(LeaveApplication app)
+        {
+            BeforeEditSave?.Invoke(app);
+            var untouched = app.Status == LeaveStatus.PENDING && app.CurrentStep == 0;
+            if (untouched) EditSaves++;
+            return Task.FromResult(untouched);
+        }
     }
 
     // Only GetForUserInCurrentOrgAsync matters here: the ids passed to the ctor
@@ -1302,11 +1681,16 @@ public class LeaveServiceTests
     // Leave only ever asks Xero for file content; the sync/connect surface is
     // irrelevant here, so it throws if anything else is touched.
     // Only the name is read, and only by the summary report.
-    // No holidays configured — day counting then depends only on working days.
-    private sealed class FakeHolidayService : IHolidayService
+    // No holidays unless a test configures some; GetInRangeAsync honours the
+    // range it is asked for, like the real one.
+    private sealed class FakeHolidayService(IEnumerable<HolidayDto>? holidays = null) : IHolidayService
     {
+        private readonly List<HolidayDto> _holidays = holidays?.ToList() ?? [];
+
         public Task<IEnumerable<HolidayDto>> GetInRangeAsync(DateTime from, DateTime to) =>
-            Task.FromResult<IEnumerable<HolidayDto>>([]);
+            Task.FromResult<IEnumerable<HolidayDto>>(_holidays
+                .Where(h => DateTime.Parse(h.Date) >= from.Date && DateTime.Parse(h.Date) <= to.Date)
+                .ToList());
         public Task<IEnumerable<HolidayDto>> GetAllAsync() => throw new NotImplementedException();
         public Task<HolidaySaveResult> CreateAsync(SaveHolidayDto dto) => throw new NotImplementedException();
         public Task<HolidaySaveResult> UpdateAsync(string id, SaveHolidayDto dto) => throw new NotImplementedException();

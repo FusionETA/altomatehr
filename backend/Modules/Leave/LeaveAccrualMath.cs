@@ -31,9 +31,15 @@ public static class LeaveAccrualMath
         date.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)date.DayOfWeek;
 
     // How many days a request actually costs. Ported from production's
-    // computeTotalDays: half-days are always 0.5, and a full-day range counts
-    // only working weekdays that aren't public holidays. This is why a
-    // Friday-to-Monday request costs 2 days rather than 4.
+    // computeTotalDays: a full-day range counts only working weekdays that
+    // aren't public holidays. This is why a Friday-to-Monday request costs 2
+    // days rather than 4.
+    //
+    // A half day costs 0.5 only when it falls on a day the person would
+    // otherwise work. Production charged 0.5 for any half day, so a Saturday
+    // morning in a Mon-Fri org cost half a day of leave for a day nobody was
+    // due in. It now costs 0, and the caller's "no working days" refusal
+    // applies, exactly as for a full day on a weekend.
     public static double ComputeTotalDays(
         DateTime startDate,
         DateTime endDate,
@@ -41,21 +47,25 @@ public static class LeaveAccrualMath
         IReadOnlySet<int> workingDays,
         IReadOnlySet<DateTime> holidays)
     {
-        if (duration != LeaveDuration.FULL_DAY) return 0.5;
-
         var start = startDate.Date;
         var end = endDate.Date;
         if (end < start) return 0;
 
+        if (duration != LeaveDuration.FULL_DAY)
+            return IsWorkingDay(start, workingDays, holidays) ? 0.5 : 0;
+
         var days = 0;
         for (var cursor = start; cursor <= end; cursor = cursor.AddDays(1))
         {
-            if (!workingDays.Contains(IsoWeekday(cursor))) continue;
-            if (holidays.Contains(cursor)) continue;   // production skips these too
-            days++;
+            if (IsWorkingDay(cursor, workingDays, holidays)) days++;
         }
         return days;
     }
+
+    // A working weekday that isn't a public holiday (production skips those too).
+    private static bool IsWorkingDay(
+        DateTime date, IReadOnlySet<int> workingDays, IReadOnlySet<DateTime> holidays) =>
+        workingDays.Contains(IsoWeekday(date)) && !holidays.Contains(date.Date);
 
     // How much a PRO_RATED entitlement has accrued by `asOf`, given the
     // employee's join date. Ported from production's initialProRatedAccrual.

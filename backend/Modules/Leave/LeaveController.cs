@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Leave.Dtos;
+using AltomateHR.Api.Modules.Leave.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AltomateHR.Api.Modules.ApiKeys;
@@ -407,7 +408,26 @@ public class LeaveController : ControllerBase
         return result.Ok ? Ok(result.Application) : BadRequest(new { message = result.Error });
     }
 
-    // PUT /leave/{id} — edit your own pending request.
+    // GET /leave/preview-days?start=yyyy-MM-dd&end=yyyy-MM-dd&duration=FULL_DAY
+    // How many days those dates would cost — weekends outside the org's
+    // working week and public holidays don't count. The apply form shows it
+    // (and warns against the balance with it) before anything is submitted,
+    // so its figure is the server's, not a calendar-day guess. Same gates as
+    // applying: it is part of the employee's own apply flow.
+    [RequirePolicyModule(PolicyModules.Leave)]
+    [HumanOnly]
+    [HttpGet("preview-days")]
+    public async Task<IActionResult> PreviewDays(
+        [FromQuery, Required] DateTime? start,
+        [FromQuery, Required] DateTime? end,
+        [FromQuery] LeaveDuration duration = LeaveDuration.FULL_DAY) =>
+        Ok(new LeaveDayPreviewDto
+        {
+            TotalDays = await _leave.PreviewDaysAsync(start!.Value, end!.Value, duration),
+        });
+
+    // PUT /leave/{id} — edit your own pending request. Same gates as applying.
+    [RequirePolicyModule(PolicyModules.Leave)]
     [HumanOnly]
     [HttpPut("{id}")]
     public async Task<IActionResult> Edit(string id, CreateLeaveApplicationDto dto)

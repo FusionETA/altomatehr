@@ -94,6 +94,14 @@ export function LeaveView() {
   }, [typesQuery.error, balancesQuery.error, mineQuery.error]);
 
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
+  // The edit form offers the active types plus the request's own type when HR
+  // has since archived it: the request may keep it (the server refuses only a
+  // switch TO an archived type), and without it the select would show blank.
+  const editTypes = useMemo(() => {
+    if (!editing) return activeTypes;
+    const own = types.find((t) => t.id === editing.leaveTypeId);
+    return own && own.isArchived ? [...activeTypes, own] : activeTypes;
+  }, [activeTypes, editing, types]);
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "Leave";
   const quotaBalances = balances.filter((b) => b.entitlementDays > 0);
   const lastRequest = mine[0];
@@ -493,7 +501,7 @@ export function LeaveView() {
 
       {editing ? (
         <ApplyLeaveModal
-          types={activeTypes}
+          types={editTypes}
           balances={balances}
           editing={editing}
           onClose={() => setEditing(null)}

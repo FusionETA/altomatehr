@@ -32,4 +32,12 @@ public interface ILeaveApplicationRepository
     Task<LeaveApplication?> GetByXeroFileIdAsync(string xeroFileId);
     Task<LeaveApplication> AddAsync(LeaveApplication application);
     Task UpdateAsync(LeaveApplication application);
+
+    // Saves an employee's edit of their own request — type, dates, duration,
+    // days, reason and attachment, nothing else — but only while the stored
+    // row is still PENDING at step 0. False when an approver acted between
+    // the edit's read and this save; the stored row is then left untouched.
+    // UpdateAsync writes every column unconditionally, so an approval landing
+    // in that gap would otherwise be overwritten back to PENDING.
+    Task<bool> SaveEditIfUntouchedAsync(LeaveApplication edited);
 }
