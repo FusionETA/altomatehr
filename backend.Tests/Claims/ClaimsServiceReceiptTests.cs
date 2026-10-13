@@ -51,44 +51,17 @@ public class ClaimsServiceReceiptTests
             claim.SupportingDocumentUrls);
     }
 
-    // Reading the receipt with AI is optional; attaching it is not.
+    // The main receipt is optional — an expense claim can be filed without one.
     [Fact]
-    public async Task CreateAsync_RefusesAnExpenseClaimWithoutItsMainReceipt()
+    public async Task CreateAsync_AcceptsAnExpenseClaimWithoutAReceipt()
     {
         var service = CreateService([]);
         var dto = ExpenseDto();
-        dto.ReceiptUrl = "  ";
-
-        var error = await Assert.ThrowsAsync<ClaimValidationException>(() => service.CreateAsync(dto, "usr-emp"));
-
-        Assert.Equal(nameof(CreateClaimDto.ReceiptUrl), error.Field);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_CanReplaceTheMainReceipt_ButNotRemoveIt()
-    {
-        var service = CreateService([NewClaim("claim-1", "usr-emp", receiptUrl: "/claims/receipts/old.pdf")]);
-        var dto = ExpenseDto();
         dto.ReceiptUrl = null;
 
-        await Assert.ThrowsAsync<ClaimValidationException>(() =>
-            service.UpdateAsync("claim-1", dto, "usr-emp", isAdmin: false));
+        var claim = await service.CreateAsync(dto, "usr-emp");
 
-        dto.ReceiptUrl = "/claims/receipts/new.pdf";
-        var updated = await service.UpdateAsync("claim-1", dto, "usr-emp", isAdmin: false);
-        Assert.Equal("/claims/receipts/new.pdf", updated!.ReceiptUrl);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_KeepsAnOlderClaimWithoutAReceiptEditable()
-    {
-        var service = CreateService([NewClaim("claim-1", "usr-emp")]);
-        var dto = ExpenseDto();
-        dto.ReceiptUrl = null;
-
-        var updated = await service.UpdateAsync("claim-1", dto, "usr-emp", isAdmin: false);
-
-        Assert.Null(updated!.ReceiptUrl);
+        Assert.Null(claim.ReceiptUrl);
     }
 
     [Fact]

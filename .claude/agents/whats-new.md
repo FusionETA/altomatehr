@@ -86,9 +86,27 @@ Keep it readable:
 
 ## Writing rules
 
-- Start with where it is, then what you can now do or what now works:
-  "Payroll → PCB calculation details: shows the zakat actually paid and any
-  carried forward." One sentence, two at most.
+**Write like a helpful colleague telling a busy HR person what changed** —
+plain, friendly, short. Most readers skim; if a line needs reading twice,
+rewrite it.
+
+- Say what they can now do (or what now works), then where to find it.
+  Use everyday words: "you can now…", "no longer…", "now shows…".
+- About 25 words a line, two short sentences at most.
+- One location is enough ("in Settings → Organization"). Don't chain four
+  arrows through a screen.
+- Leave out detail the reader doesn't need to act: file types and sizes,
+  permission names, how it works inside, edge cases, what didn't change.
+  The user guide covers the detail.
+- Good: "Admins: you can now search a payroll run's payslips by name, staff
+  ID or job title."
+  Too much: "Payroll → a run's Payslips: search by name, employee ID or job
+  title. The totals under the table still add up the whole run."
+- Good: "Admins: add your company logo in Settings → Organization. It shows
+  at the top of the letters you create."
+  Too much: "Admins: Settings → Organization → Company logo: upload a PNG,
+  JPG or WebP image up to 2 MB, then replace or remove it (needs the Change
+  settings permission)…"
 - Everyone sees every entry. If a change only applies to admins, say so in the
   line ("Admins: …") rather than leaving employees puzzled.
 - Skip changes nobody can see (refactors, tests, tooling, docs, internal

@@ -1,5 +1,6 @@
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 using AltomateHR.Api.Tests.Support;
 using static AltomateHR.Api.Tests.Claims.ClaimsTestFactory;
@@ -167,6 +168,81 @@ public class ClaimsXeroSyncTests
         // A refusal early in the list must not strand the ones behind it.
         Assert.Equal(1, result.Succeeded);
         Assert.Equal(XeroSyncStatus.SYNCED, second.XeroSyncStatus);
+    }
+
+    // ---- Receipts and supporting documents go onto the Xero record ----
+
+    [Fact]
+    public async Task SyncToXeroAsync_AttachesTheReceiptAndEverySupportingDocumentToTheBill()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED,
+            receiptUrl: "/claims/receipts/xero/file-receipt");
+        claim.SupportingDocumentUrls = ["/claims/receipts/xero/file-invoice", "/claims/receipts/local-quote.pdf"];
+        var storage = new FakeClaimReceiptStorage();
+        storage.LocalFiles.Add("local-quote.pdf");
+        var xero = new FakeXeroBillService { UploadsSucceed = true };
+
+        var service = CreateService([claim], receiptStorage: storage,
+            employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.True(result.Ok);
+        // A file kept on this server goes to Xero's Claims folder first.
+        Assert.Equal(("Claims", "local-quote.pdf"), Assert.Single(xero.Uploads));
+        Assert.Equal(
+            [
+                ("file-receipt", "xero-bill-1", XeroAttachTarget.Invoice),
+                ("file-invoice", "xero-bill-1", XeroAttachTarget.Invoice),
+                ("uploaded-local-quote.pdf", "xero-bill-1", XeroAttachTarget.Invoice),
+            ],
+            xero.Attached);
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_AttachesFilesToACompanySpendAsABankTransaction()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED,
+            receiptUrl: "/claims/receipts/xero/file-receipt");
+        claim.PaymentType = PaymentType.COMPANY;
+        claim.PayViaAccountId = "acct-bank";
+        var xero = new FakeXeroBillService();
+
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+        await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.Equal(("file-receipt", "xero-spend-1", XeroAttachTarget.BankTransaction), Assert.Single(xero.Attached));
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_StaysSynced_WhenAFileWontAttach()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED,
+            receiptUrl: "/claims/receipts/xero/file-receipt");
+        // A local file that is gone, and an attach Xero refuses.
+        claim.SupportingDocumentUrls = ["/claims/receipts/missing.pdf"];
+        var xero = new FakeXeroBillService { AttachSucceeds = false, UploadsSucceed = true };
+
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+        var result = await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        // The bill is already in Xero — a missing attachment never fails the sync.
+        Assert.True(result.Ok);
+        Assert.Equal(XeroSyncStatus.SYNCED, claim.XeroSyncStatus);
+        Assert.Empty(xero.Uploads);
+        Assert.Single(xero.Attached);
+    }
+
+    [Fact]
+    public async Task SyncToXeroAsync_AttachesNothing_WhenTheBillFails()
+    {
+        var claim = NewClaim("claim-1", "usr-emp", ClaimStatus.APPROVED,
+            receiptUrl: "/claims/receipts/xero/file-receipt");
+        var xero = new FakeXeroBillService(failWith: "Xero returned 500");
+
+        var service = CreateService([claim], employees: new FakeEmployeeDirectory(Ahmad), xero: xero);
+        await service.SyncToXeroAsync("claim-1", XeroBillStatus.AwaitingPayment);
+
+        Assert.Empty(xero.Attached);
     }
 
     // ---- Company-paid: a spend, not a bill ----

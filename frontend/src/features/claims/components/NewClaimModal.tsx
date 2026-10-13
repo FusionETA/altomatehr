@@ -294,10 +294,12 @@ function ReceiptStep({
   // it calls the model, so the upload is never wasted, and the form still opens
   // for manual entry. Only the pre-fill is lost.
   //
-  // The receipt itself is required for an expense claim — the AI read is the
-  // optional part, so both buttons wait for a file.
+  // The receipt is optional: with no file this just continues to the form.
   async function scanAndContinue() {
-    if (!receiptFile) return;
+    if (!receiptFile) {
+      onContinue();
+      return;
+    }
     setReading(true);
     setReadError(null);
     try {
@@ -362,7 +364,7 @@ function ReceiptStep({
               </>
             ) : (
               <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-                Required. JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. AI can read the supplier,
+                Optional. JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. AI can read the supplier,
                 amount and date off it so you don't have to type them.
               </p>
             )}
@@ -381,11 +383,10 @@ function ReceiptStep({
       ) : null}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        {/* Skips the AI read, not the receipt: the file is still attached and
-            uploaded with the claim. */}
+        {/* Skips the AI read; an attached file is still uploaded with the claim. */}
         <button
           type="button"
-          disabled={reading || !receiptFile}
+          disabled={reading}
           onClick={() => {
             onScanned(null);
             onContinue();
@@ -396,12 +397,12 @@ function ReceiptStep({
         </button>
         <button
           type="button"
-          disabled={reading || !receiptFile}
+          disabled={reading}
           onClick={() => void scanAndContinue()}
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:opacity-60"
         >
           {reading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {reading ? "Reading receipt…" : "Read receipt & continue"}
+          {reading ? "Reading receipt…" : receiptFile ? "Read receipt & continue" : "Continue"}
           {reading ? null : <ArrowRight className="h-4 w-4" />}
         </button>
       </div>
@@ -550,9 +551,7 @@ function ClaimDetailsForm({
         mileageRate > 0 &&
         mileageOriginAddress.trim().length > 0 &&
         mileageDestinationAddress.trim().length > 0) &&
-    (paymentType === "PERSONAL" || (payViaAccountId.length > 0 && spendingAt.trim().length > 0)) &&
-    // A new expense claim needs its main receipt (attached on the step before).
-    (claimType === "MILEAGE" || isEditing || Boolean(receiptFile || scan?.receiptUrl));
+    (paymentType === "PERSONAL" || (payViaAccountId.length > 0 && spendingAt.trim().length > 0));
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -969,6 +968,22 @@ function SupportingDocumentsField({
         <p className={LABEL}>{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       </div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={full}
+        className="flex h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-left text-sm shadow-sm transition hover:border-primary/50 hover:bg-card disabled:pointer-events-none disabled:opacity-50"
+      >
+        <Upload className="h-4 w-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {full
+            ? `${MAX_SUPPORTING_DOCUMENTS} of ${MAX_SUPPORTING_DOCUMENTS} attached — the most a claim can have`
+            : files.length > 0
+              ? "Tap to add more"
+              : "Tap to add supporting documents"}
+        </span>
+      </button>
+      {notice ? <p className="text-xs font-medium text-warning-foreground">{notice}</p> : null}
       {files.length > 0 ? (
         <ul className="space-y-1.5">
           {files.map((file, i) => (
@@ -993,22 +1008,6 @@ function SupportingDocumentsField({
           ))}
         </ul>
       ) : null}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={full}
-        className="flex h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 text-left text-sm shadow-sm transition hover:border-primary/50 hover:bg-card disabled:pointer-events-none disabled:opacity-50"
-      >
-        <Upload className="h-4 w-4 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-          {full
-            ? `${MAX_SUPPORTING_DOCUMENTS} of ${MAX_SUPPORTING_DOCUMENTS} attached — the most a claim can have`
-            : files.length > 0
-              ? "Tap to add more"
-              : "Tap to add supporting documents"}
-        </span>
-      </button>
-      {notice ? <p className="text-xs font-medium text-warning-foreground">{notice}</p> : null}
       <input
         ref={inputRef}
         type="file"

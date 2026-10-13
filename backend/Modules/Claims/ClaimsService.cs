@@ -160,10 +160,6 @@ public class ClaimsService : IClaimsService
         var prepared = await PrepareClaimValuesAsync(dto, employeeId);
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
-        // An expense claim needs its main receipt — reading it with AI is
-        // optional, attaching it isn't. Mileage has no receipt to attach.
-        if (dto.ClaimType == ClaimType.EXPENSE && receiptUrl is null)
-            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         var claim = new Claim
         {
@@ -232,10 +228,6 @@ public class ClaimsService : IClaimsService
 
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
-        // An edit may replace the main receipt but not remove it. A claim filed
-        // before receipts were required (or imported) stays editable without one.
-        if (receiptUrl is null && claim.ReceiptUrl is not null)
-            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         claim.Title = dto.Title;
         claim.Description = dto.Description;
@@ -515,6 +507,7 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
 
+            await AttachFilesInXeroAsync(claim, bill.BillId, XeroAttachTarget.Invoice);
             return new ClaimXeroSyncResult(true, true, claim);
         }
         catch (XeroConnectionException ex)
@@ -582,6 +575,7 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
 
+            await AttachFilesInXeroAsync(claim, result.TransactionId, XeroAttachTarget.BankTransaction);
             return new ClaimXeroSyncResult(true, true, claim);
         }
         catch (XeroConnectionException ex)
@@ -591,6 +585,54 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
             return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
+        }
+    }
+
+    // The main receipt and every supporting document, attached to the bill or
+    // spend just created so they show in its Files panel — what the previous
+    // system did, and what an accountant reconciling in Xero looks for.
+    //
+    // A file already in Xero Files is attached as it is. One kept on this
+    // server (filed before Xero was connected, or while it was down) is
+    // uploaded to the "Claims" folder first.
+    //
+    // Best effort, AFTER the claim is marked synced: the record is already in
+    // Xero, so a file that won't attach is logged and skipped, never a reason
+    // to report the sync as failed.
+    private const string XeroClaimsFolder = "Claims";
+
+    private async Task AttachFilesInXeroAsync(Claim claim, string objectId, XeroAttachTarget target)
+    {
+        var urls = new List<string>();
+        if (!string.IsNullOrWhiteSpace(claim.ReceiptUrl)) urls.Add(claim.ReceiptUrl);
+        urls.AddRange(claim.SupportingDocumentUrls ?? []);
+
+        foreach (var url in urls.Distinct(StringComparer.Ordinal))
+        {
+            var fileId = XeroReceiptId(url) ?? await UploadLocalReceiptToXeroAsync(url);
+            if (fileId is not null)
+                await _xero.TryAttachFileAsync(fileId, objectId, target);
+        }
+    }
+
+    private async Task<string?> UploadLocalReceiptToXeroAsync(string url)
+    {
+        const string prefix = "/claims/receipts/";
+        if (!url.StartsWith(prefix, StringComparison.Ordinal)) return null;
+
+        try
+        {
+            var file = await _receiptStorage.ReadAsync(url[prefix.Length..]);
+            if (file is null) return null;
+
+            var uploaded = await _xero.TryUploadFileAsync(
+                XeroClaimsFolder, file.Content, file.FileName, file.ContentType);
+            return uploaded?.FileId;
+        }
+        catch (IOException)
+        {
+            // An unreadable local file is skipped like a missing one.
+            return null;
         }
     }
 
