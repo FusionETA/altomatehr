@@ -499,7 +499,7 @@ export function EmployeeDetail({
         label: layerLabel(assigningTeam, layer),
         names: assigningTeam.members
           .filter((m) => m.layer === layer && m.employeeId !== employee.id)
-          .map((m) => m.email ?? m.employeeId),
+          .map((m) => m.email ?? "Unknown person"),
       });
     }
     return rows;
@@ -2233,7 +2233,7 @@ export function EmployeeDetail({
                                             }
                                             className="h-4 w-4 rounded border-border accent-primary"
                                           />
-                                          {candidate.email ?? candidate.employeeId}
+                                          {candidate.email ?? "Unknown person"}
                                         </label>
                                       ))}
                                     </div>

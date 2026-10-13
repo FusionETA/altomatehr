@@ -79,9 +79,30 @@ public class ClaimsService : IClaimsService
         _logger = logger ?? NullLogger<ClaimsService>.Instance;
     }
 
-    // The caller's own claims.
-    public async Task<IEnumerable<Claim>> GetMineAsync(string userId) =>
-        await _repo.GetByEmployeeIdAsync(userId);
+    // The caller's own claims, labelled with their own name and email like
+    // every other claim list — the detail view shows "Employee", and without
+    // these it fell back to printing the raw user id.
+    public async Task<IEnumerable<Claim>> GetMineAsync(string userId)
+    {
+        var claims = (await _repo.GetByEmployeeIdAsync(userId)).ToList();
+        await LabelWithEmployeeAsync(claims);
+        return claims;
+    }
+
+    // Fills the claimant's name and email on claims handed back to the screen.
+    private async Task LabelWithEmployeeAsync(IReadOnlyCollection<Claim> claims)
+    {
+        if (claims.Count == 0) return;
+        var people = claims.Select(c => c.EmployeeId).Distinct().ToList();
+        var emails = await _supervision.GetEmailsAsync(people);
+        var names = await _supervision.GetNamesAsync(people);
+        foreach (var claim in claims)
+        {
+            claim.EmployeeEmail = emails.GetValueOrDefault(claim.EmployeeId);
+            var name = names.GetValueOrDefault(claim.EmployeeId);
+            claim.EmployeeName = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        }
+    }
 
     // Claims the caller can act on: an org approver sees the whole org; a
     // supervisor sees only their direct reports. Each row is labelled with the
@@ -215,6 +236,7 @@ public class ClaimsService : IClaimsService
         if (saved.Status == ClaimStatus.APPROVED) saved = await SettleAsync(saved);
 
         await NotifyAsync(saved, RealtimeAction.SUBMITTED, notifyClaimant: false);
+        await LabelWithEmployeeAsync([saved]);
         return saved;
     }
 
@@ -262,6 +284,7 @@ public class ClaimsService : IClaimsService
         // An approver may already be looking at this claim in their queue; an
         // edit changes what they'd be signing off on.
         await NotifyAsync(claim, RealtimeAction.UPDATED, notifyClaimant: claim.EmployeeId != userId);
+        await LabelWithEmployeeAsync([claim]);
         return claim;
     }
 

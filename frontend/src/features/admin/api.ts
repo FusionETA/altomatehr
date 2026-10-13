@@ -28,6 +28,8 @@ export type StalePendingClaim = {
   // Who the claim is waiting on. Empty means no approver is assigned to the
   // step it stalled at — a routing problem, not a slow reviewer.
   currentApprovers: string[];
+  /** Same approvers' ids, same order — what the "Stuck with" card groups by. */
+  currentApproverIds?: string[];
 };
 export type UpcomingClaimRun = {
   cutoffDate: string;

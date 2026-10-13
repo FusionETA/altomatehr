@@ -306,6 +306,8 @@ function trendFor(changePct: number | null): SpendTrend {
 // ─── Stale claims grouped by who is sitting on them ──────────────────────────
 
 export type StuckWithApprover = {
+  /** Stable grouping key: the approver's id when known, else the label. */
+  key: string;
   approver: string;
   claimIds: string[];
   amount: number;
@@ -322,6 +324,7 @@ type StaleClaimLike = {
   amount: number;
   daysPending: number;
   currentApprovers: string[];
+  currentApproverIds?: string[];
 };
 
 // Groups the overview's stale claims by their current approver, worst first.
@@ -331,19 +334,25 @@ export function stuckWithApprovers(claims: StaleClaimLike[]): StuckWithApprover[
   const groups = new Map<string, StuckWithApprover>();
 
   for (const claim of claims) {
-    const approvers = claim.currentApprovers.length > 0 ? claim.currentApprovers : [NO_APPROVER];
+    // Grouped by id where the server sent ids: two approvers can share a
+    // label ("Unknown person"), and must still count separately.
+    const approvers =
+      claim.currentApprovers.length > 0
+        ? claim.currentApprovers.map((label, i) => ({ key: claim.currentApproverIds?.[i] ?? label, label }))
+        : [{ key: NO_APPROVER, label: NO_APPROVER }];
 
-    for (const approver of approvers) {
-      let group = groups.get(approver);
+    for (const { key, label: approver } of approvers) {
+      let group = groups.get(key);
       if (!group) {
         group = {
+          key,
           approver,
           claimIds: [],
           amount: 0,
           oldestDays: 0,
           unassigned: approver === NO_APPROVER,
         };
-        groups.set(approver, group);
+        groups.set(key, group);
       }
 
       group.claimIds.push(claim.id);

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 4c5a77f
+// whats-new-covered-up-to: d7e7e5a
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -39,6 +39,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Claims: adding more supporting documents no longer removes the ones you already added. You can attach up to 10, and remove any with the ✕.",
       "Leave: a half day on a weekend or public holiday no longer counts, so it's refused when you apply or edit. A request spanning New Year no longer skips the next year's public holidays.",
       "Payroll: an approved unpaid half day on a weekend or public holiday is no longer deducted from pay, in any month whose run is still a draft or gets regenerated. Approved runs don't change.",
+      "Claims: the Employee and Company bank details on a claim now show names, not a code. Employees no longer see a code on their own claims.",
+      "Admins: On leave today, Attendance and the dashboard now show names. Anyone you can't see shows as \"Unknown person\", not a code.",
     ],
   },
   {

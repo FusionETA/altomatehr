@@ -528,7 +528,7 @@ function TeamDetail({
                       className="flex flex-wrap items-center justify-between gap-2"
                     >
                       <span className="text-sm font-medium text-foreground">
-                        {m.email ?? m.employeeId}
+                        {m.email ?? "Unknown person"}
                       </span>
                       <div className="flex items-center gap-2">
                         <Select

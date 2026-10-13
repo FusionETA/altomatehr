@@ -781,7 +781,7 @@ function OnLeaveTodayPanel({ entries }: { entries: LeaveOverview["onLeaveToday"]
           entries.map((e) => (
             <div key={`${e.employeeId}-${e.leaveTypeId}`} className={TILE}>
               <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-bold text-foreground">{e.email ?? e.employeeId}</p>
+                <p className="truncate text-sm font-bold text-foreground">{e.name || e.email || "Unknown person"}</p>
                 <p className="text-xs text-muted-foreground">
                   {e.leaveTypeName} · {formatDateRange(e.startDate.slice(0, 10), e.endDate.slice(0, 10))}
                 </p>
