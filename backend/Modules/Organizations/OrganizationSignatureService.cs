@@ -80,25 +80,26 @@ public class OrganizationSignatureService : IOrganizationSignatureService
             Position = position!.Trim(),
             StoredFileName = stored,
             ContentType = info.ContentType,
-            IsDefault = makeDefault,
+            IsDefault = false,   // set below, in one statement with the old default's
             CreatedByUserId = _currentUser.UserId,
             CreatedByName = me?.Name ?? _currentUser.Email,
             CreatedAt = DateTime.UtcNow,
         };
 
-        // A new default takes the flag from the old one, in the same save.
-        var previous = makeDefault ? active.Where(s => s.IsDefault).ToArray() : [];
-        foreach (var s in previous) s.IsDefault = false;
-
         try
         {
-            await _signatures.AddAsync(signature, previous);
+            await _signatures.AddAsync(signature);
         }
         catch
         {
             _storage.Delete(organizationId, stored);   // don't leave an unreferenced file behind
             throw;
         }
+
+        // Moving the flag is one atomic statement, so two uploads at once
+        // (two "first" signatures, or two ticked "default") still end with
+        // exactly one default.
+        if (makeDefault) signature.IsDefault = await _signatures.MakeDefaultAsync(signature.Id);
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.SettingsOrgSignatureAdd,
@@ -121,27 +122,30 @@ public class OrganizationSignatureService : IOrganizationSignatureService
 
     public async Task<SignatureSaveResult> UpdateAsync(string id, UpdateSignatureDto dto)
     {
-        var active = await _signatures.GetActiveAsync();
-        var signature = active.FirstOrDefault(s => s.Id == id);
+        var signature = await _signatures.GetActiveByIdAsync(id);
         if (signature is null) return SignatureSaveResult.NotFound();
         if (ValidateText(dto.Name, dto.Position) is { } textError) return SignatureSaveResult.Refused(textError);
 
         var before = new { signature.Name, signature.Position, signature.IsDefault };
         signature.Name = dto.Name.Trim();
         signature.Position = dto.Position.Trim();
-        signature.IsDefault = dto.IsDefault;
 
-        // Exactly one default at most: making this one the default clears the rest.
-        var changed = new List<OrganizationSignature> { signature };
-        if (dto.IsDefault)
+        // Only the columns this edit changes, and only while still active: a
+        // remove that lands first wins (404) and is never undone by this save.
+        if (!await _signatures.UpdateDetailsAsync(id, signature.Name, signature.Position))
+            return SignatureSaveResult.NotFound();
+
+        // Exactly one default at most: making this one the default clears the
+        // rest in the same statement (also re-asserted when already default,
+        // in case another admin moved it meanwhile).
+        if (dto.IsDefault || before.IsDefault)
         {
-            foreach (var other in active.Where(s => s.Id != id && s.IsDefault))
-            {
-                other.IsDefault = false;
-                changed.Add(other);
-            }
+            var stillActive = dto.IsDefault
+                ? await _signatures.MakeDefaultAsync(id)
+                : await _signatures.ClearDefaultAsync(id);
+            if (!stillActive) return SignatureSaveResult.NotFound();
         }
-        await _signatures.UpdateAsync([.. changed]);
+        signature.IsDefault = dto.IsDefault;
 
         var summary = (before.IsDefault, signature.IsDefault) switch
         {
@@ -169,9 +173,9 @@ public class OrganizationSignatureService : IOrganizationSignatureService
         if (signature is null) return false;
 
         var wasDefault = signature.IsDefault;
-        signature.RemovedAt = DateTime.UtcNow;
-        signature.IsDefault = false;
-        await _signatures.UpdateAsync(signature);
+        // Guarded on still being active: whoever removes it first deletes the
+        // file and writes the log entry; a second remove at once is a 404.
+        if (!await _signatures.SoftRemoveAsync(id, DateTime.UtcNow)) return false;
 
         // A removed signature must never print again, so its image goes too;
         // the row stays for the activity log and the letters that name it.

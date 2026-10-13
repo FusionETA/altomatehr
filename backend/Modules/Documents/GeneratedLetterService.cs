@@ -229,7 +229,7 @@ public class GeneratedLetterService : IGeneratedLetterService
 
         var pdf = Render(name, body, values, company,
             watermark: "PREVIEW — fields shown in [brackets] have no value yet.",
-            signatureImage: await LoadSignatureImageAsync(signature));
+            signatureImage: await LoadSignatureImageAsync(signature)).Pdf;
         var fileName = SafeFileName($"{name} - preview.pdf");
         return LetterFileResult.File(fileName, pdf);
     }
@@ -304,8 +304,14 @@ public class GeneratedLetterService : IGeneratedLetterService
         if (writeBack is not null)
             savedToRecord = await _profileService.FillMissingFieldsAsync(employee.User.Id, writeBack) ?? [];
 
-        var pdf = Render(template.Name, template.Body, values, company, watermark: null,
+        var rendered = Render(template.Name, template.Body, values, company, watermark: null,
             signatureImage: await LoadSignatureImageAsync(signature));
+        var pdf = rendered.Pdf;
+        // Only a signature whose image is really on the letter is recorded as
+        // signed with; one whose image was missing or unreadable printed the
+        // blank gap (sign by hand), and the record says so.
+        var printed = rendered.SignatureDrawn ? signature : null;
+        var signatureImageUnavailable = signature is not null && printed is null;
         var today = TodayInMalaysia();
         var fileName = SafeFileName($"{template.Name} - {employee.User.Name} - {today:yyyy-MM-dd}.pdf");
 
@@ -325,8 +331,8 @@ public class GeneratedLetterService : IGeneratedLetterService
                 EmployeeUserId = employee.User.Id,
                 GeneratedByUserId = _currentUser.UserId,
                 GeneratedByName = me?.Name ?? _currentUser.Email,
-                SignatureId = signature?.Id,
-                SignatureName = signature?.Name,
+                SignatureId = printed?.Id,
+                SignatureName = printed?.Name,
                 FileName = fileName,
                 StoredFileName = stored,
                 SizeBytes = pdf.LongLength,
@@ -340,7 +346,9 @@ public class GeneratedLetterService : IGeneratedLetterService
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.DocumentsLetterGenerate,
             $"Generated \"{template.Name}\" for {employee.User.Name}"
-                + (signature is null ? "" : $" with the signature \"{signature.Name}\"")
+                + (printed is not null ? $" with the signature \"{printed.Name}\""
+                    : signatureImageUnavailable ? $" (the image for signature \"{signature!.Name}\" was unavailable — printed without it)"
+                    : "")
                 + (dto.Save ? "" : " (not kept on file)"),
             TargetType: dto.Save ? "GeneratedDocument" : "DocumentTemplate",
             TargetId: savedId ?? template.Id,
@@ -351,8 +359,10 @@ public class GeneratedLetterService : IGeneratedLetterService
                 EmployeeUserId = employee.User.Id,
                 Saved = dto.Save,
                 SavedToEmployeeRecord = savedToRecord,
-                SignatureId = signature?.Id,
-                SignatureName = signature?.Name,
+                SignatureId = printed?.Id,
+                SignatureName = printed?.Name,
+                // The signature chosen but not printed (its image missing or unreadable).
+                UnavailableSignatureId = signatureImageUnavailable ? signature!.Id : null,
             }));
 
         return LetterFileResult.File(fileName, pdf);
@@ -704,7 +714,11 @@ public class GeneratedLetterService : IGeneratedLetterService
 
     // ─── Rendering ───────────────────────────────────────────────────────
 
-    private byte[] Render(
+    // The PDF, and whether the signature image is really on it — what the
+    // letter on file and the activity log may claim.
+    private sealed record RenderedLetter(byte[] Pdf, bool SignatureDrawn);
+
+    private RenderedLetter Render(
         string title, string body, IReadOnlyDictionary<string, string> values, CompanyContext company, string? watermark,
         byte[]? signatureImage = null)
     {
@@ -728,18 +742,20 @@ public class GeneratedLetterService : IGeneratedLetterService
             Logo: company.Logo,
             Signature: signatureImage);
 
-        if (model.Logo is null && model.Signature is null) return LetterPdf.Render(model);
+        // LetterPdf skips an image it can't read, leaving the blank gap.
+        var signatureDrawn = LetterPdf.CanDrawImage(signatureImage);
+
+        if (model.Logo is null && model.Signature is null) return new RenderedLetter(LetterPdf.Render(model), false);
         try
         {
-            return LetterPdf.Render(model);
+            return new RenderedLetter(LetterPdf.Render(model), signatureDrawn);
         }
         catch (Exception ex)
         {
-            // LetterPdf already skips an image it can't read; this is the last
-            // line - a logo or signature the decoder accepts but the page
-            // can't draw.
+            // The last line - a logo or signature the decoder accepts but the
+            // page can't draw. The letter goes out without either.
             _logger?.LogWarning(ex, "Rendering the letter with its logo / signature image failed; printing it without them.");
-            return LetterPdf.Render(model with { Logo = null, Signature = null });
+            return new RenderedLetter(LetterPdf.Render(model with { Logo = null, Signature = null }), false);
         }
     }
 
