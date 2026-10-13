@@ -125,6 +125,10 @@ public static class LetterPdf
 
     private sealed record ImageFit(Image Image, float Width, float Height);
 
+    // Whether these bytes would be drawn (a logo or signature) rather than
+    // skipped — so a caller can say truthfully what is on the letter.
+    public static bool CanDrawImage(byte[]? bytes) => ImageBox(bytes, 1, 1) is not null;
+
     // An image (the logo, a signature) scaled to fit maxWidth × maxHeight, or
     // null when there is none or it can't be read — a broken image must never
     // stop a letter.

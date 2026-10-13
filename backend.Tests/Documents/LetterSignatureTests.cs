@@ -262,7 +262,7 @@ public class LetterSignatureTests : IDisposable
     // ─── Never fails a letter ────────────────────────────────────────────
 
     [Fact]
-    public async Task A_signature_whose_image_is_gone_still_prints_its_name_over_the_blank_gap()
+    public async Task A_signature_whose_image_is_gone_prints_the_blank_gap_and_is_not_recorded_as_signed()
     {
         var w = World();
         var zara = await w.AddSignature("Zara Ahmad", "Director");
@@ -273,8 +273,47 @@ public class LetterSignatureTests : IDisposable
         Assert.True(result.Ok);
         Assert.False(HasImage(result.Content!));
         var kept = w.Db.GeneratedDocuments.AsNoTracking().Single();
-        Assert.Equal(zara.Id, kept.SignatureId);
+        // No image went out, so the letter isn't on file as signed with it…
+        Assert.Null(kept.SignatureId);
+        Assert.Null(kept.SignatureName);
+        Assert.Null(Assert.Single((await w.Letters.ListAsync(null)).Letters!).SignatureName);
+        // …though its name still printed under the blank gap.
         Assert.Equal("Zara Ahmad", Values(kept)["signatory.name"]);
+
+        // And the activity log doesn't claim it either.
+        var entry = w.LetterAudit.Written.Single(e => e.Action == AuditActions.DocumentsLetterGenerate);
+        Assert.DoesNotContain("with the signature", entry.Summary);
+        Assert.Contains("unavailable", entry.Summary);
+        var metadata = JsonSerializer.SerializeToElement(entry.Metadata);
+        Assert.Equal(JsonValueKind.Null, metadata.GetProperty("SignatureId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, metadata.GetProperty("SignatureName").ValueKind);
+        Assert.Equal(zara.Id, metadata.GetProperty("UnavailableSignatureId").GetString());
+    }
+
+    [Fact]
+    public async Task A_damaged_signature_file_is_not_recorded_as_signed()
+    {
+        var w = World();
+        await w.AddSignature("Zara Ahmad", "Director");
+        var path = Directory.GetFiles(Path.Combine(_root, "storage", "org-branding", "org-1")).Single();
+        File.WriteAllBytes(path, File.ReadAllBytes(path)[..60]);
+
+        var result = await w.Letters.GenerateAsync(w.Template.Id, Settled);
+
+        Assert.True(result.Ok);
+        Assert.False(HasImage(result.Content!));
+        Assert.Null(w.Db.GeneratedDocuments.AsNoTracking().Single().SignatureName);
+        Assert.DoesNotContain("with the signature",
+            w.LetterAudit.Written.Single(e => e.Action == AuditActions.DocumentsLetterGenerate).Summary);
+    }
+
+    [Fact]
+    public void Only_readable_images_count_as_drawable()
+    {
+        Assert.True(LetterPdf.CanDrawImage(OrganizationLogoTests.Picture("png", 300, 100)));
+        Assert.False(LetterPdf.CanDrawImage(null));
+        Assert.False(LetterPdf.CanDrawImage([]));
+        Assert.False(LetterPdf.CanDrawImage(Encoding.UTF8.GetBytes("<svg/>")));
     }
 
     [Fact]

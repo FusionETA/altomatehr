@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AltomateHR.Api.Tests.Organizations;
@@ -211,6 +212,115 @@ public class OrganizationSignatureTests : IDisposable
         Assert.NotNull(blank.Error);
         Assert.False(missing.Ok);
         Assert.Null(missing.Error);
+    }
+
+    [Fact]
+    public async Task However_the_default_moves_two_defaults_never_coexist()
+    {
+        var (service, db, _) = Signatures();
+        var ids = new List<string>();
+        for (var i = 0; i < 4; i++)
+            ids.Add((await service.AddAsync(Picture("png"), $"Signer {i}", "Director", isDefault: true)).Signature!.Id);
+        Assert.Equal(ids[^1], db.OrganizationSignatures.AsNoTracking().Single(s => s.IsDefault).Id);
+
+        // Two admins, each on their own request, setting different defaults.
+        var (adminA, _, _) = Signatures();
+        var (adminB, _, _) = Signatures();
+        await adminA.UpdateAsync(ids[0], new UpdateSignatureDto { Name = "Signer 0", Position = "Director", IsDefault = true });
+        await adminB.UpdateAsync(ids[1], new UpdateSignatureDto { Name = "Signer 1", Position = "Director", IsDefault = true });
+        // A stale "set default" for one that was already default re-asserts it.
+        await adminA.UpdateAsync(ids[0], new UpdateSignatureDto { Name = "Signer 0", Position = "Director", IsDefault = true });
+
+        Assert.Equal(ids[0], db.OrganizationSignatures.AsNoTracking().Single(s => s.IsDefault).Id);
+        Assert.Equal(ids[0], (await adminB.GetDefaultAsync())!.Id);
+    }
+
+    [Fact]
+    public async Task The_repository_moves_the_default_in_one_step_and_only_to_an_active_signature()
+    {
+        var (service, db, _) = Signatures();
+        var a = (await service.AddAsync(Picture("png"), "Zara", "Director", false)).Signature!;
+        var b = (await service.AddAsync(Picture("png"), "Aminah", "HR", false)).Signature!;
+        var repository = new OrganizationSignatureRepository(db);
+
+        Assert.True(await repository.MakeDefaultAsync(b.Id));
+        Assert.Equal(b.Id, db.OrganizationSignatures.AsNoTracking().Single(s => s.IsDefault).Id);
+        Assert.True(await repository.MakeDefaultAsync(a.Id));
+        Assert.Equal(a.Id, db.OrganizationSignatures.AsNoTracking().Single(s => s.IsDefault).Id);
+
+        // Removed meanwhile: never made the default again.
+        await service.RemoveAsync(b.Id);
+        Assert.False(await repository.MakeDefaultAsync(b.Id));
+        Assert.False(await repository.ClearDefaultAsync(b.Id));
+        Assert.False(db.OrganizationSignatures.AsNoTracking().Single(s => s.Id == b.Id).IsDefault);
+    }
+
+    [Fact]
+    public async Task An_edit_that_lands_after_a_remove_is_404_and_the_signature_stays_removed()
+    {
+        var (setup, db, _) = Signatures();
+        var s = (await setup.AddAsync(Picture("png"), "Zara", "Director", false)).Signature!;
+        var (adminA, dbA, _) = Signatures();
+        var (adminB, _, _) = Signatures();
+
+        // Admin A has read the signature (the edit form)…
+        var repositoryA = new OrganizationSignatureRepository(dbA);
+        Assert.NotNull(await repositoryA.GetActiveByIdAsync(s.Id));
+        // …Admin B removes it…
+        Assert.True(await adminB.RemoveAsync(s.Id));
+        // …and A's save arrives: refused, and nothing is brought back.
+        Assert.False(await repositoryA.UpdateDetailsAsync(s.Id, "Zara Ahmad", "Director"));
+        Assert.False(await repositoryA.MakeDefaultAsync(s.Id));
+        var result = await adminA.UpdateAsync(s.Id, new UpdateSignatureDto { Name = "Zara Ahmad", Position = "Director", IsDefault = true });
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);   // → 404
+        var row = db.OrganizationSignatures.AsNoTracking().Single();
+        Assert.NotNull(row.RemovedAt);
+        Assert.False(row.IsDefault);
+        Assert.Equal("Zara", row.Name);
+        Assert.Empty(await adminA.ListAsync());
+        Assert.Null(await adminA.GetImageAsync(s.Id));
+        // A second remove at the same moment is a 404, not a second log entry.
+        Assert.False(await adminA.RemoveAsync(s.Id));
+    }
+
+    // On MySQL each write must be ONE guarded statement. Pomelo translates them
+    // here against no server at all: the connection open is suppressed and
+    // each command captured instead of run.
+    [Fact]
+    public async Task On_mysql_each_write_is_a_single_guarded_update_of_only_its_columns()
+    {
+        var capture = new SqlCapture();
+        var user = new StubUser { OrganizationId = "org-a" };
+        await using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseMySql("Server=127.0.0.1;Port=1;Database=none;User=none;Password=none",
+                    new MySqlServerVersion(new Version(8, 0, 0)))
+                .AddInterceptors(capture)
+                .Options,
+            user);
+        var repository = new OrganizationSignatureRepository(db);
+
+        await repository.MakeDefaultAsync("sig-1");
+        await repository.UpdateDetailsAsync("sig-1", "Zara", "Director");
+        await repository.SoftRemoveAsync("sig-1", DateTime.UtcNow);
+        await repository.ClearDefaultAsync("sig-1");
+
+        var updates = capture.Commands.Where(c => c.TrimStart().StartsWith("UPDATE", StringComparison.Ordinal)).ToList();
+        Assert.Equal(4, updates.Count);
+        foreach (var sql in updates)
+        {
+            Assert.Contains("`RemovedAt` IS NULL", sql);       // only an active signature
+            Assert.Contains("`OrganizationId` = ", sql);       // the tenant filter applies
+        }
+        // The default moves for every affected row in the same statement.
+        Assert.Contains("`IsDefault` = `o`.`Id` = @", updates[0].Replace("(", "").Replace(")", ""));
+        // An edit never writes RemovedAt or IsDefault; a remove never writes Name.
+        Assert.DoesNotContain("`RemovedAt` = @", updates[1]);
+        Assert.DoesNotContain("`IsDefault` =", updates[1].Split("WHERE")[0]);
+        Assert.Contains("`RemovedAt` = @", updates[2].Split("WHERE")[0]);
+        Assert.DoesNotContain("`Name`", updates[2].Split("WHERE")[0]);
     }
 
     // ─── Soft remove ─────────────────────────────────────────────────────
@@ -424,6 +534,41 @@ public class OrganizationSignatureTests : IDisposable
         public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => GetEnabledModulesAsync();
         public Task<AdminAccess> GetAccessAsync() => Task.FromResult(access);
         public Task<ModuleLevel> GetModuleLevelAsync(string module) => Task.FromResult(access.LevelFor(module));
+    }
+
+    // Suppresses opening the connection and captures each command, answering
+    // an UPDATE with "1 row" and a query with a single true.
+    private sealed class SqlCapture : DbConnectionInterceptor, IDbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+
+        public override ValueTask<InterceptionResult> ConnectionOpeningAsync(
+            System.Data.Common.DbConnection connection, ConnectionEventData eventData, InterceptionResult result,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(InterceptionResult.Suppress());
+
+        public override InterceptionResult ConnectionOpening(
+            System.Data.Common.DbConnection connection, ConnectionEventData eventData, InterceptionResult result) =>
+            InterceptionResult.Suppress();
+
+        public ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+            return ValueTask.FromResult(InterceptionResult<int>.SuppressWithResult(1));
+        }
+
+        public ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command, CommandEventData eventData,
+            InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+            var table = new System.Data.DataTable();
+            table.Columns.Add("value", typeof(bool));
+            table.Rows.Add(true);
+            return ValueTask.FromResult(InterceptionResult<System.Data.Common.DbDataReader>.SuppressWithResult(table.CreateDataReader()));
+        }
     }
 
     private sealed class StubUser : ICurrentUser
