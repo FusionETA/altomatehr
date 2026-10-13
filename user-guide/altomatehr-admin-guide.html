@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: d7e7e5a
+  user-guide-covered-up-to: a6f14e4
 -->
 <html lang="en">
 <head>
@@ -433,7 +433,8 @@
       <li><strong>Attendance health</strong> — on-time rate per project over 30 days, with late, missing and
         on-leave counts. <span class="badge optional">Attendance</span></li>
       <li><strong>Slow OT approvers</strong> — who averages more than a day to decide overtime.</li>
-      <li><strong>Stale pending claims</strong> — claims waiting more than 7 days.</li>
+      <li><strong>Stale pending claims</strong> — claims waiting more than 7 days, and who they are stuck with.
+        People appear by name; anyone you don't have access to shows as "Unknown person".</li>
       <li><strong>Upcoming claim run</strong> — days to your claim cutoff, and the value queued.</li>
       <li><strong>Most-overturned approvers</strong> — supervisors whose approvals are later rejected higher up.</li>
     </ul>
@@ -1301,9 +1302,34 @@
       amount and totals, so you can pay them yourself.</p>
     <h3>Payroll Summary: PDF or Excel</h3>
     <p>The Payroll Summary row has two buttons, <span class="btn-name">PDF</span> and <span class="btn-name">Excel</span>.
-      The PDF is the one-page summary of the run's totals. The Excel file has the same figures with one row per
-      employee, so you can sort and filter, plus the totals block and each employee's itemised pay on their own sheets.
+      The PDF is the one-page summary of the run's totals. The Excel file has three sheets, so you can sort and filter.
       If you tick the row and press <span class="btn-name">Download selected</span>, you get both files.</p>
+    <ul>
+      <li><strong>Summary</strong> — one row per employee with the same figures as the PDF, and a totals row.</li>
+      <li><strong>Totals</strong> — the closing block of the PDF: headcount, net pay, PCB, HRDF, EPF, SOCSO, EIS, zakat
+        and benefits in kind.</li>
+      <li><strong>Breakdown</strong> — each employee's pay laid out across the page, described below.</li>
+    </ul>
+    <p>On the <strong>Breakdown</strong> sheet there is one row per employee and one column per pay item.</p>
+    <ul>
+      <li><strong>Fixed columns</strong> — Basic, U/L (unpaid leave), Travelling, Meal, Parking, Hours, OT, Comm
+        (commission), Bonus and Deduction. Hours is the number of overtime hours, not an amount.</li>
+      <li><strong>Other items</strong> — after those, a column for each other allowance, claim or deduction that
+        someone on this run has, such as a phone allowance or a loan repayment. A column only appears if somebody
+        has that item this month.</li>
+      <li><strong>Total Gross</strong> — each person's money columns added up. Deductions show as negative numbers
+        (in red), so they are taken off. Hours is not counted. A note on the Total Gross heading explains this.</li>
+      <li><strong>Totals row</strong> — the last row adds up every column. It is kept below the employees, so sorting
+        or filtering the list never moves it.</li>
+    </ul>
+    <div class="note"><span class="nt">Not in Total Gross</span>
+      <p>Some items are shown for information but are <strong>not</strong> added into Total Gross. They sit to the right
+        of Total Gross, under a heading that says <strong>NOT IN TOTAL GROSS</strong>: benefits in kind (marked
+        "non-cash"), TP1 items such as tax reliefs, zakat, and additional PCB. EPF, SOCSO, EIS and the regular PCB stay on
+        the Summary sheet.</p>
+      <p>Total Gross is not the same figure as Gross on the Summary sheet. The Summary sheet's Gross doesn't subtract
+        deductions taken from net pay, such as loans.</p>
+    </div>
     <h3>Allowance and Deduction reports (Excel)</h3>
     <p>The Reports group also has <strong>Allowance Report (Excel)</strong> and <strong>Deduction Report (Excel)</strong>.
       Each has one row per employee and one column per item, with a totals row at the bottom.</p>
