@@ -3,7 +3,7 @@ import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
 import { ExternalLink, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
-import { launchAppraisify } from "@/features/appraisify/api";
+import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
 import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
@@ -287,7 +287,7 @@ export function AdminShell({
                       type="button"
                       onClick={() => {
                         setAccountMenuOpen(false);
-                        launchAppraisify().catch(() => {
+                        launchAppraisifyInNewTab().catch(() => {
                           window.alert("Couldn't open Appraisify — please try again.");
                         });
                       }}
