@@ -104,6 +104,14 @@ internal sealed class FakeClaimsRepository : IClaimsRepository
 
 internal sealed class FakeClaimReceiptStorage : IClaimReceiptStorage
 {
+    // Locally stored files a test says exist, by file name.
+    public HashSet<string> LocalFiles { get; } = [];
+
+    public Task<ClaimReceiptBytes?> ReadAsync(string fileName) =>
+        Task.FromResult(LocalFiles.Contains(fileName)
+            ? new ClaimReceiptBytes([1, 2, 3], "application/pdf", fileName)
+            : null);
+
     public Task<ClaimReceiptUploadResult> StoreAsync(ClaimReceiptUpload upload) =>
         Task.FromResult(new ClaimReceiptUploadResult("/claims/receipts/receipt.pdf"));
 
@@ -419,8 +427,25 @@ internal sealed class FakeXeroBillService : IXeroService
     public Task<AltomateHR.Api.Modules.Xero.Dtos.XeroSyncProjectsResultDto?> SetProjectTrackingCategoryAsync(string? categoryId) => throw new NotSupportedException();
 
 
-    // No connection in these tests, so an attachment would fall back to disk.
+    // Null by default (no connection, so an attachment falls back to disk).
+    // With `UploadsSucceed`, each upload gets a new Xero file id.
+    public bool UploadsSucceed { get; set; }
+    public List<(string Folder, string FileName)> Uploads { get; } = [];
+
     public Task<XeroUploadedFile?> TryUploadFileAsync(
-        string folderName, byte[] content, string fileName, string contentType) =>
-        Task.FromResult<XeroUploadedFile?>(null);
+        string folderName, byte[] content, string fileName, string contentType)
+    {
+        if (!UploadsSucceed) return Task.FromResult<XeroUploadedFile?>(null);
+        Uploads.Add((folderName, fileName));
+        return Task.FromResult<XeroUploadedFile?>(new XeroUploadedFile($"uploaded-{fileName}", fileName));
+    }
+
+    public bool AttachSucceeds { get; set; } = true;
+    public List<(string FileId, string ObjectId, XeroAttachTarget Target)> Attached { get; } = [];
+
+    public Task<bool> TryAttachFileAsync(string fileId, string objectId, XeroAttachTarget target)
+    {
+        Attached.Add((fileId, objectId, target));
+        return Task.FromResult(AttachSucceeds);
+    }
 }

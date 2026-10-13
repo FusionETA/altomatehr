@@ -206,6 +206,22 @@ public class XeroClient : IXeroClient
         return new XeroUploadedFile(uploaded.Id, uploaded.Name ?? safeName);
     }
 
+    public async Task AssociateFileAsync(
+        string accessToken, string tenantId, string fileId, string objectId, XeroAttachTarget target)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, $"{FilesUrl}/{Uri.EscapeDataString(fileId)}/Associations")
+        {
+            Content = JsonContent.Create(new { ObjectId = objectId, ObjectGroup = target.ToString() }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("xero-tenant-id", tenantId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _http.SendAsync(request);
+        await EnsureSuccessAsync(response, "Xero couldn't attach the file.");
+    }
+
     // Xero rejects a name carrying a path separator, and the name is the one
     // thing an employee controls here.
     private static string SafeFileName(string fileName)

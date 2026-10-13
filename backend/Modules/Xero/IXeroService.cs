@@ -54,6 +54,12 @@ public interface IXeroService : IXeroFileUploader, IXeroFileReader
 
     Task<XeroSpendResponse> CreateSpendAsync(XeroSpendRequest spend);
 
+    // Attach a Xero Files file to a bill or spend money just created, so the
+    // receipt sits in its Files panel. False when it couldn't — NEVER throws:
+    // the record already exists in Xero, and a missing attachment must not
+    // turn a successful sync into a failed one.
+    Task<bool> TryAttachFileAsync(string fileId, string objectId, XeroAttachTarget target);
+
     // Whether the current org could sync at all, so a UI can say "connect Xero"
     // instead of offering a button that can only fail.
     // Post a payroll run's journal. See IXeroClient for the permission Xero

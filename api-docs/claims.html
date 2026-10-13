@@ -602,6 +602,15 @@
         <ul>
           <li>Only <code>APPROVED</code> claims can be pushed.</li>
           <li>A claim with <code>settlement</code> <code>PAYROLL</code> is refused, so it can't be paid twice. It is reimbursed through payroll instead.</li>
+          <li>
+            After the bill (or, for a company-paid claim, the spend-money transaction) is created,
+            the claim's main receipt and every supporting document are attached to it in Xero, so they
+            show in its Files panel. A file already in Xero Files is attached as it is; one kept on
+            AltomateHR is uploaded to a <code>Claims</code> folder first. This is best effort and
+            happens after the claim is marked synced: a file that won't attach is skipped and never
+            turns a successful push into an error, so the response doesn't say which files made it.
+            A claim with no receipt is still pushed.
+          </li>
         </ul>
       </section>
 
@@ -611,7 +620,7 @@
           <span class="path">/claims/bulk/xero-sync</span>
           <span class="tag scope">claims:write</span>
         </div>
-        <p>Push many approved claims to Xero in one call. They are sent one after another, each judged on its own.</p>
+        <p>Push many approved claims to Xero in one call. They are sent one after another, each judged on its own. As for <a href="#xero-sync">a single push</a>, each claim's receipt and supporting documents are attached to its Xero record on a best-effort basis and never make a push fail.</p>
         <h3>Request body</h3>
         <div class="table-wrap">
           <table>

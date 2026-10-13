@@ -190,6 +190,13 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
     public Task<string?> EnsureFolderAsync(string accessToken, string tenantId, string folderName) =>
         Task.FromResult<string?>(null);
 
+    public Task AssociateFileAsync(
+
+        string accessToken, string tenantId, string fileId, string objectId, XeroAttachTarget target) =>
+
+        Task.CompletedTask;
+
+
     public Task<XeroUploadedFile> UploadFileAsync(
         string accessToken, string tenantId, string? folderId,
         byte[] content, string fileName, string contentType) =>

@@ -10,6 +10,8 @@ public sealed record ClaimReceiptUpload(
 // local disk. The caller persists both, so a later read knows which way to go.
 public sealed record ClaimReceiptUploadResult(string ReceiptUrl, string? XeroFileId = null);
 
+public sealed record ClaimReceiptBytes(byte[] Content, string ContentType, string FileName);
+
 public sealed record ClaimReceiptFileResult(
     string Path,
     string ContentType,

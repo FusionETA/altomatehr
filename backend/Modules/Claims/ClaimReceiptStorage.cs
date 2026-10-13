@@ -98,6 +98,13 @@ public class ClaimReceiptStorage : IClaimReceiptStorage
             new ClaimReceiptFileResult(path, contentType, safeFileName));
     }
 
+    public async Task<ClaimReceiptBytes?> ReadAsync(string fileName)
+    {
+        var found = await GetAsync(fileName);
+        if (found is null) return null;
+        return new ClaimReceiptBytes(await File.ReadAllBytesAsync(found.Path), found.ContentType, found.DownloadName);
+    }
+
     private static string GetSafeExtension(string fileName, string fallbackExtension)
     {
         var extension = Path.GetExtension(Path.GetFileName(fileName)).ToLowerInvariant();

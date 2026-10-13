@@ -773,6 +773,26 @@ public class XeroService : IXeroService
         }
     }
 
+    public async Task<bool> TryAttachFileAsync(string fileId, string objectId, XeroAttachTarget target)
+    {
+        try
+        {
+            var connection = await GetCurrentConnectionAsync();
+            if (connection is null || !connection.IsConnected) return false;
+
+            var accessToken = await GetValidAccessTokenAsync(connection);
+            await _client.AssociateFileAsync(accessToken, connection.TenantId, fileId, objectId, target);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Logged, not thrown: the bill or spend is already in Xero.
+            _logger.LogWarning(ex, "Attaching Xero file {FileId} to {Target} {ObjectId} failed.",
+                fileId, target, objectId);
+            return false;
+        }
+    }
+
     public async Task<XeroBillResponse> CreateBillAsync(XeroBillRequest bill)
     {
         var connection = await GetCurrentConnectionAsync();

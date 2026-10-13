@@ -15,6 +15,7 @@ using AltomateHR.Api.Modules.Realtime.Dtos;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AltomateHR.Api.Modules.Claims;
 
@@ -44,6 +45,7 @@ public class ClaimsService : IClaimsService
     private readonly IEmployeeRowResolver _employees;
     private readonly IProjectService _projects;
     private readonly IXeroService _xero;
+    private readonly ILogger<ClaimsService> _logger;
 
     public ClaimsService(
         IClaimsRepository repo,
@@ -58,7 +60,8 @@ public class ClaimsService : IClaimsService
         INotificationService notifications,
         IEmployeeRowResolver employees,
         IProjectService projects,
-        IXeroService xero)
+        IXeroService xero,
+        ILogger<ClaimsService>? logger = null)
     {
         _repo = repo;
         _receiptStorage = receiptStorage;
@@ -73,6 +76,7 @@ public class ClaimsService : IClaimsService
         _employees = employees;
         _projects = projects;
         _xero = xero;
+        _logger = logger ?? NullLogger<ClaimsService>.Instance;
     }
 
     // The caller's own claims.
@@ -160,10 +164,6 @@ public class ClaimsService : IClaimsService
         var prepared = await PrepareClaimValuesAsync(dto, employeeId);
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
-        // An expense claim needs its main receipt — reading it with AI is
-        // optional, attaching it isn't. Mileage has no receipt to attach.
-        if (dto.ClaimType == ClaimType.EXPENSE && receiptUrl is null)
-            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         var claim = new Claim
         {
@@ -232,10 +232,6 @@ public class ClaimsService : IClaimsService
 
         var supportingDocuments = NormalizeSupportingDocuments(dto);
         var receiptUrl = Clean(dto.ReceiptUrl);
-        // An edit may replace the main receipt but not remove it. A claim filed
-        // before receipts were required (or imported) stays editable without one.
-        if (receiptUrl is null && claim.ReceiptUrl is not null)
-            throw new ClaimValidationException("Attach the main receipt.", nameof(dto.ReceiptUrl));
 
         claim.Title = dto.Title;
         claim.Description = dto.Description;
@@ -515,6 +511,7 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
 
+            await AttachFilesInXeroAsync(claim, bill.BillId, XeroAttachTarget.Invoice);
             return new ClaimXeroSyncResult(true, true, claim);
         }
         catch (XeroConnectionException ex)
@@ -582,6 +579,7 @@ public class ClaimsService : IClaimsService
             claim.UpdatedAt = DateTime.UtcNow;
             await _repo.UpdateAsync(claim);
 
+            await AttachFilesInXeroAsync(claim, result.TransactionId, XeroAttachTarget.BankTransaction);
             return new ClaimXeroSyncResult(true, true, claim);
         }
         catch (XeroConnectionException ex)
@@ -592,6 +590,58 @@ public class ClaimsService : IClaimsService
             await _repo.UpdateAsync(claim);
             return new ClaimXeroSyncResult(true, false, claim, Error: ex.Message);
         }
+    }
+
+    // The main receipt and every supporting document, attached to the bill or
+    // spend just created so they show in its Files panel — what the previous
+    // system did, and what an accountant reconciling in Xero looks for.
+    //
+    // A file already in Xero Files is attached as it is. One kept on this
+    // server (filed before Xero was connected, or while it was down) is
+    // uploaded to the "Claims" folder first.
+    //
+    // Best effort, AFTER the claim is marked synced: the record is already in
+    // Xero, so a file that won't attach is logged and skipped, never a reason
+    // to report the sync as failed.
+    private const string XeroClaimsFolder = "Claims";
+
+    private async Task AttachFilesInXeroAsync(Claim claim, string objectId, XeroAttachTarget target)
+    {
+        // Blank entries are skipped: claims carried over from the previous
+        // system can hold a null where only Xero had the file.
+        var urls = new List<string?> { claim.ReceiptUrl };
+        urls.AddRange(claim.SupportingDocumentUrls ?? []);
+
+        foreach (var url in urls.OfType<string>().Where(u => !string.IsNullOrWhiteSpace(u)).Distinct(StringComparer.Ordinal))
+        {
+            // Nothing may escape from here: the claim is already saved as
+            // synced, and an exception would report a 500 for a bill that
+            // exists — or stop a bulk push halfway.
+            try
+            {
+                var fileId = XeroReceiptId(url) ?? await UploadLocalReceiptToXeroAsync(url);
+                if (fileId is not null)
+                    await _xero.TryAttachFileAsync(fileId, objectId, target);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Couldn't attach {Url} to Xero {Target} {ObjectId} for claim {ClaimId}.",
+                    url, target, objectId, claim.Id);
+            }
+        }
+    }
+
+    private async Task<string?> UploadLocalReceiptToXeroAsync(string url)
+    {
+        const string prefix = "/claims/receipts/";
+        if (!url.StartsWith(prefix, StringComparison.Ordinal)) return null;
+
+        var file = await _receiptStorage.ReadAsync(url[prefix.Length..]);
+        if (file is null) return null;
+
+        var uploaded = await _xero.TryUploadFileAsync(
+            XeroClaimsFolder, file.Content, file.FileName, file.ContentType);
+        return uploaded?.FileId;
     }
 
     // Bulk push. Sequenced HERE rather than in the browser: Xero rate-limits per
