@@ -35,6 +35,11 @@ public class LeaveApplicationDto
     // the MC, not just be told a reason.
     public string? AttachmentName { get; set; }
     public string? AttachmentUrl { get; set; }
+
+    // Whether PUT /leave/{id} would accept an edit as far as the request's own
+    // state goes: still pending and no approver has acted yet. Ownership is
+    // checked by the edit itself — only the applicant's own list offers it.
+    public bool CanEdit { get; set; }
 }
 
 public class CreateLeaveApplicationDto

@@ -1993,5 +1993,7 @@ public class LeaveService : ILeaveService
         // even with the file sitting in Xero. The id is the real data; the url
         // is a function of it.
         AttachmentUrl = XeroAttachmentUrl(a.XeroFileId) ?? a.AttachmentUrl,
+        // Same state rules EditAsync enforces.
+        CanEdit = a.Status == LeaveStatus.PENDING && a.CurrentStep == 0,
     };
 }

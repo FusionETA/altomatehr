@@ -54,11 +54,18 @@ export type LeaveApplication = {
   /** Supporting document (MC, hospital slip) when one was attached. */
   attachmentName: string | null;
   attachmentUrl: string | null;
+  /** FULL_DAY, or a half day (same start and end date, counts as 0.5). */
+  duration?: LeaveDuration;
+  /** Still pending with no approver action yet — the server would take an edit. */
+  canEdit?: boolean;
 };
+export type LeaveDuration = "FULL_DAY" | "MORNING" | "AFTERNOON";
 export type CreateLeaveApplication = {
   leaveTypeId: string;
   startDate: string;
   endDate: string;
+  /** Omitted = FULL_DAY. An edit sends the request's own, so a half day stays one. */
+  duration?: LeaveDuration;
   reason?: string;
   /** From uploadLeaveAttachment. Optional — most leave has no document. */
   attachmentUrl?: string;
@@ -183,6 +190,10 @@ export const getTeamLeave = () => apiGet<LeaveApplication[]>("/leave/team");
 export const getLeaveBalances = () => apiGet<LeaveBalance[]>("/leave/balances");
 export const applyLeave = (body: CreateLeaveApplication) =>
   apiPost<LeaveApplication>("/leave", body);
+// Your own request, while it's pending and no approver has acted. An omitted
+// attachment keeps the one already on it.
+export const editLeave = (id: string, body: CreateLeaveApplication) =>
+  apiPut<LeaveApplication>(`/leave/${id}`, body);
 
 // Uploaded before the application is submitted, so a rejected file (wrong type,
 // too big) costs nothing but a retry and never a half-written application.

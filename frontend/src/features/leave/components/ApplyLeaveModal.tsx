@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { LoaderCircle, Paperclip, X } from "lucide-react";
 import {
   applyLeave,
+  editLeave,
   uploadLeaveAttachment,
   type LeaveApplication,
   type LeaveBalance,
@@ -34,6 +35,7 @@ const formatDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1
 export function ApplyLeaveModal({
   types,
   balances,
+  editing = null,
   onClose,
   onCreated,
 }: {
@@ -41,13 +43,17 @@ export function ApplyLeaveModal({
   /** The caller already holds these; without them this form asks people to
    *  guess how many days they have left. */
   balances: LeaveBalance[];
+  /** A pending request to change instead of applying anew. Saved with PUT, so
+   *  it keeps its place in the approver's queue. */
+  editing?: LeaveApplication | null;
   onClose: () => void;
+  /** Called with the new request — or, when editing, the updated one. */
   onCreated: (app: LeaveApplication) => void;
 }) {
-  const [leaveTypeId, setLeaveTypeId] = useState(types[0]?.id ?? "");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [reason, setReason] = useState("");
+  const [leaveTypeId, setLeaveTypeId] = useState(editing?.leaveTypeId ?? types[0]?.id ?? "");
+  const [startDate, setStartDate] = useState(editing?.startDate ?? "");
+  const [endDate, setEndDate] = useState(editing?.endDate ?? "");
+  const [reason, setReason] = useState(editing?.reason ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // An MC or hospital slip. Optional — most leave needs no evidence, and
@@ -55,7 +61,15 @@ export function ApplyLeaveModal({
   const [attachment, setAttachment] = useState<File | null>(null);
   const attachmentInput = useRef<HTMLInputElement | null>(null);
 
-  const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
+  // This form has no half-day control, so an edit carries the request's own
+  // duration through unchanged — a half day stays a half day (0.5) as long as
+  // it stays on one date; the server refuses a half day across several.
+  const duration = editing?.duration ?? "FULL_DAY";
+  const halfDay = duration !== "FULL_DAY";
+  const days = useMemo(() => {
+    const span = daysBetween(startDate, endDate);
+    return halfDay && span === 1 ? 0.5 : span;
+  }, [startDate, endDate, halfDay]);
 
   const balanceByType = useMemo(
     () => new Map(balances.map((b) => [b.leaveTypeId, b])),
@@ -83,18 +97,27 @@ export function ApplyLeaveModal({
       // too big) then costs a retry rather than a half-written application.
       const uploaded = attachment ? await uploadLeaveAttachment(attachment) : null;
 
-      const app = await applyLeave({
+      const body = {
         leaveTypeId,
         startDate,
         endDate,
         reason: reason.trim() || undefined,
         attachmentUrl: uploaded?.attachmentUrl,
         attachmentName: uploaded?.attachmentName,
-      });
+      };
+      const app = editing
+        ? await editLeave(editing.id, { ...body, duration })
+        : await applyLeave(body);
       onCreated(app);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit your leave.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : editing
+            ? "Could not save your changes."
+            : "Could not submit your leave.",
+      );
     } finally {
       setSaving(false);
     }
@@ -106,8 +129,14 @@ export function ApplyLeaveModal({
         <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
             <div>
-              <h2 className="text-2xl font-black text-foreground">Apply for leave</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Pick a type and your dates.</p>
+              <h2 className="text-2xl font-black text-foreground">
+                {editing ? "Edit leave" : "Apply for leave"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {editing
+                  ? "Change the type, dates or reason. It stays pending for your approver."
+                  : "Pick a type and your dates."}
+              </p>
             </div>
             <button
               type="button"
@@ -193,7 +222,11 @@ export function ApplyLeaveModal({
 
             {days != null ? (
               <p className="text-sm text-muted-foreground">
-                Duration: <span className="font-semibold text-foreground">{days} day{days === 1 ? "" : "s"}</span>
+                Duration:{" "}
+                <span className="font-semibold text-foreground">
+                  {formatDays(days)} day{days === 1 ? "" : "s"}
+                  {halfDay ? (duration === "MORNING" ? " (morning)" : " (afternoon)") : ""}
+                </span>
               </p>
             ) : null}
 
@@ -246,6 +279,16 @@ export function ApplyLeaveModal({
                     Remove
                   </button>
                 </div>
+              ) : editing?.attachmentName ? (
+                <label
+                  htmlFor="leaveAttachment"
+                  className="flex cursor-pointer items-center gap-3 rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm shadow-sm transition hover:border-primary/50"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-foreground">{editing.attachmentName}</span>
+                  {/* Kept unless a new file is picked — the edit never drops it. */}
+                  <span className="shrink-0 text-xs font-semibold text-muted-foreground">Replace</span>
+                </label>
               ) : (
                 <label
                   htmlFor="leaveAttachment"
@@ -281,7 +324,7 @@ export function ApplyLeaveModal({
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Submit
+              {editing ? "Save changes" : "Submit"}
             </button>
           </div>
         </form>

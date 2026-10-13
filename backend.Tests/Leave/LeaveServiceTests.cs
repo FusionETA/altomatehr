@@ -55,6 +55,43 @@ public class LeaveServiceTests
         Assert.Equal(LeaveStatus.PENDING, result.Application.Status);
     }
 
+    // CanEdit drives the employee's Edit button: pending with no approver
+    // action yet — the same state EditAsync accepts.
+    [Fact]
+    public async Task CanEdit_IsTrueWhilePending_AndStaysTrueAfterAnEdit_FalseOnceDecided()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }));
+
+        var applied = await service.ApplyAsync(
+            new CreateLeaveApplicationDto
+            {
+                LeaveTypeId = "t-al",
+                StartDate = new DateTime(Year, 9, 1),
+                EndDate = new DateTime(Year, 9, 3),
+            },
+            "usr-emp");
+        Assert.True(applied.Application!.CanEdit);
+
+        var edited = await service.EditAsync(
+            applied.Application.Id,
+            new CreateLeaveApplicationDto
+            {
+                LeaveTypeId = "t-al",
+                StartDate = new DateTime(Year, 9, 2),
+                EndDate = new DateTime(Year, 9, 3),
+            },
+            "usr-emp");
+        Assert.True(edited.Ok);
+        Assert.Equal(2, edited.Application!.TotalDays);
+        Assert.True(edited.Application.CanEdit);
+
+        var approved = await service.ApproveAsync(applied.Application.Id, "usr-super");
+        Assert.True(approved.Transitioned);
+        Assert.False(approved.Application!.CanEdit);
+    }
+
     [Fact]
     public async Task ApplyAsync_DecidesOnSubmission_WhenNobodyIsAboveTheApplicant()
     {
