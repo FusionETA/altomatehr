@@ -15,6 +15,7 @@ import { getEmployees, STAFF_ROLES } from "@/features/employees/api";
 import {
   generateLetter,
   getTemplates,
+  NO_SIGNATURE,
   resolveLetter,
   TEMPLATES_PATH,
   type DocumentTemplate,
@@ -22,6 +23,9 @@ import {
   type ResolvedLetter,
 } from "../api";
 import { categoryLabel } from "../lib/categories";
+import { applySignature, SIGNATORY_KEYS } from "../lib/letter-signature";
+import { useLetterSignature } from "../lib/use-letter-signature";
+import { SignatureSelect } from "./SignatureSelect";
 
 const LABEL = "block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 const INPUT =
@@ -133,13 +137,32 @@ export function GenerateLetterDialog({
     };
   }, [templateId, employeeUserId]);
 
-  const fields = resolved?.fields ?? [];
+  const signature = useLetterSignature(templateId, resolved);
+  // A chosen signature fills the signatory name / position; with none, the
+  // declarant from Payroll stays (and may be a gap to fill, as before).
+  const fields = useMemo(
+    () => applySignature(resolved?.fields ?? [], signature.selected),
+    [resolved?.fields, signature.selected],
+  );
   const onFile = fields.filter((f) => !f.missing);
   const gaps = fields.filter((f) => f.missing && f.source !== "Input");
   const inputs = fields.filter((f) => f.source === "Input");
 
   const patch = (key: string, next: Partial<FieldState>) =>
     setState((s) => ({ ...s, [key]: { ...(s[key] ?? blankState()), ...next } }));
+
+  // A signatory edit belongs to the signature it was made under: switching
+  // signature drops it, so the new one's name / position show (and are only
+  // sent if edited again) instead of the old name printing under a new image.
+  function chooseSignature(value: string) {
+    if (value === signature.selectValue) return;
+    signature.onSelect(value);
+    setState((s) => {
+      const next = { ...s };
+      for (const key of SIGNATORY_KEYS) if (key in next) next[key] = blankState();
+      return next;
+    });
+  }
 
   // A field is settled when it will print something the admin has seen: the
   // record's value, a typed value, or an explicit blank.
@@ -180,6 +203,7 @@ export function GenerateLetterDialog({
         leaveBlank,
         saveToEmployee,
         save: keepOnFile,
+        signatureId: signature.signatureId,
       });
       saveFile(file);
       setDone(
@@ -281,6 +305,25 @@ export function GenerateLetterDialog({
 
           {resolved && !resolving ? (
             <>
+              <div>
+                <span className={LABEL}>Signature</span>
+                <SignatureSelect
+                  value={signature.selectValue}
+                  onChange={chooseSignature}
+                  signatures={signature.options}
+                  loading={signature.loading}
+                  disabled={generating}
+                  extra={{ value: NO_SIGNATURE, label: "No signature (sign by hand)", position: "last" }}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {signature.selected
+                    ? "Printed above the signatory's name; its name and position are the letter's signatory."
+                    : signature.options.length === 0 && !signature.loading
+                      ? "No saved signatures — the letter leaves a space to sign by hand. Add them in Settings → Organization."
+                      : "The letter leaves a space to sign by hand."}
+                </p>
+              </div>
+
               {gaps.length > 0 ? (
                 <FieldGroup
                   title={`Missing details (${gaps.length})`}
@@ -320,7 +363,7 @@ export function GenerateLetterDialog({
 
               <FieldGroup
                 title="From the records"
-                hint="Filled in from the employee's and company's records. Change one for this letter only with Edit."
+                hint="Filled in from the employee's and company's records, and the signatory from the signature chosen above. Change one for this letter only with Edit."
               >
                 {onFile.map((f) => (
                   <OnFileField

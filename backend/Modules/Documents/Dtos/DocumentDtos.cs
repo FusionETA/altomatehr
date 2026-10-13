@@ -18,6 +18,10 @@ public class DocumentTemplateDto
     // The merge fields the body uses, registry and input.* alike.
     public List<string> Fields { get; set; } = [];
 
+    // The saved signature its letters default to. Null when none — or when
+    // the one chosen has since been removed (the company default applies).
+    public string? DefaultSignatureId { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -31,6 +35,11 @@ public class SaveDocumentTemplateDto
 
     [Required, MaxLength(20000)]
     public string Body { get; set; } = string.Empty;
+
+    // An active saved signature of this company, or null for none (letters
+    // then use the company default).
+    [MaxLength(40)]
+    public string? DefaultSignatureId { get; set; }
 }
 
 // What "Add sample templates" did: how many it created, and how many it
@@ -86,6 +95,12 @@ public class PreviewLetterDto
 
     [MaxLength(40)]
     public string? EmployeeUserId { get; set; }
+
+    // The saved signature to print: null = the default chain (the template's
+    // default → the company default → none); "none" = no signature (sign by
+    // hand); otherwise an active signature id of this company.
+    [MaxLength(40)]
+    public string? SignatureId { get; set; }
 }
 
 public class ResolveLetterDto
@@ -127,6 +142,17 @@ public class ResolvedLetterDto
     public string EmployeeUserId { get; set; } = string.Empty;
     public string EmployeeName { get; set; } = string.Empty;
     public List<ResolvedFieldDto> Fields { get; set; } = [];
+
+    // The signature the default chain picks (the template's default → the
+    // company default), for the dialog to preselect. Null = none.
+    public ResolvedSignatureDto? Signature { get; set; }
+}
+
+public class ResolvedSignatureDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Position { get; set; } = string.Empty;
 }
 
 public class GenerateLetterDto
@@ -149,6 +175,12 @@ public class GenerateLetterDto
 
     // Keep a copy on the employee's file (admin-only). Default on.
     public bool Save { get; set; } = true;
+
+    // The saved signature to print: null = the default chain (the template's
+    // default → the company default → none); "none" = no signature (sign by
+    // hand); otherwise an active signature id of this company.
+    [MaxLength(40)]
+    public string? SignatureId { get; set; }
 }
 
 // ─── Generated letters ───────────────────────────────────────────────────
@@ -162,6 +194,9 @@ public class GeneratedDocumentDto
     public string EmployeeUserId { get; set; } = string.Empty;
     public string? EmployeeName { get; set; }
     public string? GeneratedByName { get; set; }
+
+    // The saved signature printed on it (its name then). Null = none.
+    public string? SignatureName { get; set; }
     public string FileName { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AltomateHR API — Organization</title>
-  <meta name="description" content="Read and update a company's settings, manage its logo, see which modules its plan enables, grant admin access, and hand an admin into AltomateHR already signed in." />
+  <meta name="description" content="Read and update a company's settings, manage its logo and saved letter signatures, see which modules its plan enables, grant admin access, and hand an admin into AltomateHR already signed in." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
   <link rel="icon" type="image/png" href="assets/favicon-32.png" />
@@ -25,6 +25,7 @@
   Source: backend/Modules/Organizations/OrganizationsController.cs,
   OrganizationService.cs, ModuleAccessService.cs, OrgModules.cs,
   OrganizationLogoService.cs, LogoImage.cs, AccessGates.cs,
+  OrganizationSignaturesController.cs, OrganizationSignatureService.cs, Dtos/SignatureDtos.cs,
   Dtos/OrganizationDto.cs, Dtos/UpdateOrganizationDto.cs, Dtos/AdminAccessDto.cs;
   backend/Modules/Provisioning/OrgAdminsController.cs, OrgAdminService.cs;
   backend/Modules/Partners/InboundSsoController.cs, InboundSsoService.cs.
@@ -77,7 +78,7 @@
     <div class="hero">
     <h1>Organization</h1>
     <p class="lead">
-      The company the key belongs to: its settings, its logo, the modules its plan enables, who
+      The company the key belongs to: its settings, its logo, the signatures it prints on letters, the modules its plan enables, who
       administers it, and a hand-off that drops one of those administrators into
       AltomateHR already signed in. A key can only ever reach its own company; there is no
       company id to send.
@@ -90,13 +91,13 @@
       <code>404</code> with <code>{ "message": "…" }</code> (a plain <code>message</code>
       string), not <code>error</code>. Field validation (<code>errors</code>) and
       <code>403</code> (<code>error.message</code>) are as on the overview. The logo upload
-      refuses with <code>{ "error": "…" }</code> instead. Each endpoint below says which it returns.
+      and the signature endpoints refuse with <code>{ "error": "…" }</code> instead. Each endpoint below says which it returns.
     </div>
 
     <section class="section" id="settings">
       <h2>Company settings</h2>
       <p>
-        No plan module is needed for these endpoints, or for the logo ones below: every company can read and edit
+        No plan module is needed for these endpoints, or for the logo and signature ones below: every company can read and edit
         its own settings.
       </p>
 
@@ -380,6 +381,214 @@
         <p>Removing a logo is recorded in the company's activity log, and the file is deleted.</p>
 <pre><code>curl -X DELETE https://&lt;api-host&gt;/organizations/current/logo \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="signatures">
+      <h2>Letter signatures</h2>
+      <p>
+        A company can keep up to 10 saved signatures: an image plus the signatory's name and position. A
+        <a href="documents.html">Documents</a> letter prints the one chosen for it above the signature line. These
+        endpoints manage the saved set; choosing one for a letter is done with <code>signatureId</code> on the
+        <a href="documents.html#letters">Documents preview and generate</a> calls. Like the logo, the image is never a
+        public URL: it is served only by <a href="#get-signature-image">GET /organizations/current/signatures/{id}/image</a>
+        and is never cached.
+      </p>
+      <p>
+        Reads need <code>organizations:read</code>; changes need <code>organizations:write</code>. Changes are a
+        settings change like <a href="#update-organization">PUT /organizations/current</a>: for a signed-in admin they need
+        the owner's &ldquo;Change settings&rdquo; access, and an API key always has it, so a key is never refused for that
+        reason. Every add, edit and remove is recorded in the company's activity log. Another company's signature id is
+        simply a <code>404</code>.
+      </p>
+
+      <h3>The signature object</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>Signature id. Use it in the endpoints below and as <code>signatureId</code> / <code>defaultSignatureId</code> on Documents.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>The signatory's name, printed under the image. Max 120 characters.</td></tr>
+            <tr><td><code>position</code></td><td>string</td><td>The signatory's position, printed under the name. Max 120 characters.</td></tr>
+            <tr><td><code>isDefault</code></td><td>boolean</td><td><code>true</code> for the company default. At most one signature has it.</td></tr>
+            <tr><td><code>createdAt</code></td><td>string</td><td>ISO 8601 UTC time it was added.</td></tr>
+            <tr><td><code>createdByName</code></td><td>string | null</td><td>Who added it, as their name read at the time. May be empty when a key added it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="endpoint" id="list-signatures">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/organizations/current/signatures</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>The company's saved signatures.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          An array of <a href="#signatures">signature objects</a>: the default first, then the rest by name. Removed
+          signatures are not listed. An empty array when there are none.
+        </p>
+        <h3>Errors</h3>
+        <ul><li><code>403</code> &mdash; the key lacks <code>organizations:read</code>.</li></ul>
+<pre><code>curl https://&lt;api-host&gt;/organizations/current/signatures \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+<pre><code>[
+  {
+    "id": "sig_123",
+    "name": "Jane Example",
+    "position": "Managing Director",
+    "isDefault": true,
+    "createdAt": "2026-01-15T08:30:00Z",
+    "createdByName": "Jane Example"
+  }
+]</code></pre>
+      </section>
+
+      <section class="endpoint" id="add-signature">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/organizations/current/signatures</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Save a new signature.</p>
+        <h3>Request</h3>
+        <p>
+          <code>multipart/form-data</code> with these parts. The image's type is decided from its bytes, not its name or
+          the <code>Content-Type</code> you send.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>Yes</td><td>The signature image. PNG, JPEG or WebP (SVG and GIF are refused), at most 1 MB (1,048,576 bytes), at most 4000 pixels on each side, and fully readable &mdash; a truncated or damaged file is refused.</td></tr>
+              <tr><td><code>name</code></td><td>text</td><td>Yes</td><td>Max 120 characters after trimming; blank is refused.</td></tr>
+              <tr><td><code>position</code></td><td>text</td><td>Yes</td><td>Max 120 characters after trimming; blank is refused.</td></tr>
+              <tr><td><code>isDefault</code></td><td>text</td><td>No</td><td><code>"true"</code> or <code>"false"</code> (any case). Omitted or blank means <code>false</code>. <code>true</code> makes this the company default and clears the previous one.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>201</code></h3>
+        <p>The new <a href="#signatures">signature object</a>. This one is <code>201</code>, not <code>200</code>. There is no <code>Location</code> header.</p>
+<pre><code>{
+  "id": "sig_123",
+  "name": "Jane Example",
+  "position": "Managing Director",
+  "isDefault": true,
+  "createdAt": "2026-01-15T08:30:00Z",
+  "createdByName": null
+}</code></pre>
+        <h3>Errors</h3>
+        <p>The <code>400</code> bodies here use <code>{ "error": "message" }</code>.</p>
+        <ul>
+          <li><code>400</code> <code>{ "error": "isDefault must be \"true\" or \"false\"." }</code></li>
+          <li><code>400</code> <code>{ "error": "Enter the signatory's name." }</code> &mdash; also <code>"Enter the signatory's position."</code> and <code>"Keep the name to 120 characters or less."</code> (or position).</li>
+          <li><code>400</code> <code>{ "error": "Choose an image file (PNG, JPG or WebP) for the signature." }</code> &mdash; no <code>file</code> part, or it is empty.</li>
+          <li><code>400</code> <code>{ "error": "The signature image is larger than 1 MB. Use a smaller image." }</code></li>
+          <li><code>400</code> <code>{ "error": "The signature must be a PNG, JPG or WebP image." }</code> &mdash; any other format.</li>
+          <li><code>400</code> <code>{ "error": "The signature image is 5000 × 3000 pixels. Keep each side to 4000 pixels or less." }</code> (the message carries the real size).</li>
+          <li><code>400</code> <code>{ "error": "That image can't be read. It may be damaged — try saving it again." }</code></li>
+          <li><code>400</code> <code>{ "error": "A company can keep up to 10 signatures. Remove one first." }</code> &mdash; removed signatures don't count.</li>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:write</code>.</li>
+          <li><code>413</code> &mdash; the whole request body is over 2 MB. This is a hard cap checked before the 1 MB rule, so a file between 1 and 2 MB gets the <code>400</code> message above and a larger one gets <code>413</code> with no JSON body.</li>
+          <li><code>415</code> &mdash; the request isn't <code>multipart/form-data</code>.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>The first signature becomes the default</strong> whatever <code>isDefault</code> says. After that it is only the default when you ask.</li>
+          <li><strong>Check order.</strong> <code>isDefault</code> is checked first, then name and position, then the image, then the limit of 10.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/organizations/current/signatures \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@signature.png" \
+  -F "name=Jane Example" \
+  -F "position=Managing Director" \
+  -F "isDefault=true"</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-signature">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/organizations/current/signatures/{id}</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Edit a signature's name and position, and say whether it is the company default. The image can't be changed: add a new signature and remove the old one.</p>
+        <div class="callout warn">
+          <strong>This PUT replaces all three fields.</strong> An omitted <code>isDefault</code> is read as
+          <code>false</code>, so sending only <code>name</code> and <code>position</code> for the current default
+          <em>unsets</em> it and leaves the company with no default. Read the signature first and send everything back.
+          No other signature is promoted when the default is unset.
+        </div>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Max 120. Trimmed; blank is refused.</td></tr>
+              <tr><td><code>position</code></td><td>string</td><td>Yes</td><td>Max 120. Trimmed; blank is refused.</td></tr>
+              <tr><td><code>isDefault</code></td><td>boolean</td><td>No (default <code>false</code>)</td><td><code>true</code> makes it the company default and clears the previous one.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The saved <a href="#signatures">signature object</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; <code>name</code> or <code>position</code> missing or over 120 characters (as sent).</li>
+          <li><code>400</code> <code>{ "error": "Keep the name to 120 characters or less." }</code> &mdash; also <code>"Enter the signatory's name."</code> / position versions, when the value is blank or too long after trimming.</li>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:write</code>.</li>
+          <li><code>404</code> &mdash; empty body; no such signature in this company, or it has been removed (including a remove that landed just before this call).</li>
+        </ul>
+        <p>Letters already kept on file keep the name they were printed with.</p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/organizations/current/signatures/sig_123 \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"name":"Jane Example","position":"Director","isDefault":true}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete-signature">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/organizations/current/signatures/{id}</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Remove a signature. It stops being listed, served or printed, and its image file is deleted.</p>
+        <h3>Response <code>204</code></h3>
+        <p>Empty body.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:write</code>.</li>
+          <li><code>404</code> &mdash; empty body; no such signature, or it is already removed. Unlike the logo, a repeat is not a <code>204</code>.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>Removing the default leaves no default.</strong> No other signature is promoted. A Documents letter then prints no signature image unless a template default or a <code>signatureId</code> names one.</li>
+          <li><strong>It can't be undone.</strong> The row is kept only for the activity log and for letters on file that name it; the image is gone, so add the signature again to use it.</li>
+          <li><strong>Templates that defaulted to it</strong> read as having no default signature (<code>defaultSignatureId</code> is <code>null</code>), and their letters fall back to the company default. Sending its id as <code>signatureId</code> on Documents is a <code>400</code>.</li>
+        </ul>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/organizations/current/signatures/sig_123 \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="get-signature-image">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/organizations/current/signatures/{id}/image</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>The signature's image bytes.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The raw image with its <code>Content-Type</code> (<code>image/png</code>, <code>image/jpeg</code> or
+          <code>image/webp</code>, read from the file's bytes) and <code>Cache-Control: no-store</code>. Fetch it each time you
+          need it; it is not cacheable.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:read</code>.</li>
+          <li><code>404</code> &mdash; empty body; no such signature in this company, it was removed, or its stored file is missing or unreadable.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/organizations/current/signatures/sig_123/image \
+  -H "Authorization: Bearer wp_live_xxx" -o signature.png</code></pre>
       </section>
     </section>
 

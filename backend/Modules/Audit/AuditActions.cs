@@ -13,6 +13,9 @@ public static class AuditActions
     public const string SettingsOrgUpdate = "settings.org.update";
     public const string SettingsOrgLogoUpdate = "settings.org.logo.update";
     public const string SettingsOrgLogoRemove = "settings.org.logo.remove";
+    public const string SettingsOrgSignatureAdd = "settings.org.signature.add";
+    public const string SettingsOrgSignatureUpdate = "settings.org.signature.update";
+    public const string SettingsOrgSignatureRemove = "settings.org.signature.remove";
     public const string SettingsClaimsUpdate = "settings.claims.update";
 
     // Payroll configuration — what these decide ends up on a statutory filing,
@@ -175,6 +178,9 @@ public static class AuditActions
         [SettingsOrgUpdate] = "Organisation settings updated",
         [SettingsOrgLogoUpdate] = "Company logo uploaded",
         [SettingsOrgLogoRemove] = "Company logo removed",
+        [SettingsOrgSignatureAdd] = "Signature added",
+        [SettingsOrgSignatureUpdate] = "Signature updated",
+        [SettingsOrgSignatureRemove] = "Signature removed",
         [SettingsClaimsUpdate] = "Claim settings updated",
         [AccountCreate] = "Account created",
         [AccountUpdate] = "Account updated",

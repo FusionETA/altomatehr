@@ -24,7 +24,11 @@ public sealed record LetterPdfModel(
     // The company logo (PNG/JPEG/WebP bytes), drawn top-left of the
     // letterhead. Null — or bytes that can't be read — prints the letterhead
     // without it, exactly as before logos existed.
-    byte[]? Logo = null);
+    byte[]? Logo = null,
+    // A saved signature image (PNG/JPEG/WebP bytes), drawn above the
+    // signatory's rule. Null — or bytes that can't be read — leaves the blank
+    // gap for a wet-ink signature, exactly as before signatures existed.
+    byte[]? Signature = null);
 
 // A company letter on A4: letterhead, date, the template body, signature block.
 public static class LetterPdf
@@ -73,9 +77,13 @@ public static class LetterPdf
     private const float LogoMaxHeight = 56;
     private const float LogoMaxWidth = 140;
 
+    // The signature's box above the rule: aspect ratio kept, never larger than this.
+    private const float SignatureMaxHeight = 48;
+    private const float SignatureMaxWidth = 180;
+
     private static void Letterhead(IContainer container, LetterPdfModel m)
     {
-        var logo = LogoBox(m.Logo);
+        var logo = ImageBox(m.Logo, LogoMaxWidth, LogoMaxHeight);
         var framed = container.BorderBottom(1).BorderColor(Rule).PaddingBottom(8);
 
         if (logo is not { } box)
@@ -115,28 +123,33 @@ public static class LetterPdf
                 col.Item().Text(contact).FontSize(8.5f).FontColor(Muted);
         });
 
-    private sealed record LogoFit(Image Image, float Width, float Height);
+    private sealed record ImageFit(Image Image, float Width, float Height);
 
-    // The logo scaled to fit LogoMaxWidth × LogoMaxHeight, or null when there
-    // is none or it can't be read — a broken logo must never stop a letter.
-    private static LogoFit? LogoBox(byte[]? logo)
+    // Whether these bytes would be drawn (a logo or signature) rather than
+    // skipped — so a caller can say truthfully what is on the letter.
+    public static bool CanDrawImage(byte[]? bytes) => ImageBox(bytes, 1, 1) is not null;
+
+    // An image (the logo, a signature) scaled to fit maxWidth × maxHeight, or
+    // null when there is none or it can't be read — a broken image must never
+    // stop a letter.
+    private static ImageFit? ImageBox(byte[]? bytes, float maxWidth, float maxHeight)
     {
-        if (logo is not { Length: > 0 }) return null;
-        var info = LogoImage.Read(logo);
+        if (bytes is not { Length: > 0 }) return null;
+        var info = LogoImage.Read(bytes);
         if (info is null) return null;
 
         Image image;
         try
         {
-            image = Image.FromBinaryData(logo);
+            image = Image.FromBinaryData(bytes);
         }
         catch (Exception)
         {
             return null;
         }
 
-        var scale = Math.Min(LogoMaxWidth / info.Width, LogoMaxHeight / info.Height);
-        return new LogoFit(image, Math.Max(1f, info.Width * scale), Math.Max(1f, info.Height * scale));
+        var scale = Math.Min(maxWidth / info.Width, maxHeight / info.Height);
+        return new ImageFit(image, Math.Max(1f, info.Width * scale), Math.Max(1f, info.Height * scale));
     }
 
     private static void Block(ColumnDescriptor col, LetterMarkup.Block block)
@@ -185,14 +198,33 @@ public static class LetterPdf
         }
     }
 
-    private static void Signature(ColumnDescriptor col, LetterPdfModel m) =>
+    private static void Signature(ColumnDescriptor col, LetterPdfModel m)
+    {
+        var signature = ImageBox(m.Signature, SignatureMaxWidth, SignatureMaxHeight);
+
         col.Item().PaddingTop(16).ShowEntire().Column(sig =>
         {
             sig.Item().Text("Yours sincerely,");
             sig.Item().Text($"for and on behalf of {m.CompanyName}").FontColor(Muted).FontSize(9.5f);
-            sig.Item().PaddingTop(42).Width(190).BorderTop(1).BorderColor(Ink).PaddingTop(4)
+
+            // The signature sits on the rule, in the space the blank gap
+            // leaves for a wet-ink signature when there is none.
+            IContainer rule;
+            if (signature is { } box)
+            {
+                sig.Item().PaddingTop(4).Height(SignatureMaxHeight).AlignBottom().AlignLeft()
+                    .Width(box.Width).Height(box.Height).Image(box.Image).FitArea();
+                rule = sig.Item().PaddingTop(2);
+            }
+            else
+            {
+                rule = sig.Item().PaddingTop(42);
+            }
+
+            rule.Width(190).BorderTop(1).BorderColor(Ink).PaddingTop(4)
                 .Text(string.IsNullOrWhiteSpace(m.SignatoryName) ? " " : m.SignatoryName).Bold();
             if (!string.IsNullOrWhiteSpace(m.SignatoryPosition))
                 sig.Item().Text(m.SignatoryPosition);
         });
+    }
 }

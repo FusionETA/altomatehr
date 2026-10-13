@@ -43,6 +43,12 @@ public class DocumentTemplate : ITenantScoped
     [MaxLength(40)]
     public string? SampleKey { get; set; }
 
+    // The saved signature (OrganizationSignature) this template's letters
+    // default to. Null — or one since removed — falls back to the company
+    // default.
+    [MaxLength(40)]
+    public string? DefaultSignatureId { get; set; }
+
     [MaxLength(40)]
     public string? CreatedByUserId { get; set; }
 

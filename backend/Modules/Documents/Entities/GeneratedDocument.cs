@@ -41,6 +41,15 @@ public class GeneratedDocument : ITenantScoped
     [MaxLength(160)]
     public string? GeneratedByName { get; set; }
 
+    // The saved signature printed on it, and its name at the time (a
+    // SNAPSHOT, like the template name). Null = no signature image (signed by
+    // hand).
+    [MaxLength(40)]
+    public string? SignatureId { get; set; }
+
+    [MaxLength(120)]
+    public string? SignatureName { get; set; }
+
     // The name the file downloads as.
     [MaxLength(240)]
     public string FileName { get; set; } = string.Empty;

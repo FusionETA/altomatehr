@@ -100,6 +100,7 @@ public class AppDbContext : DbContext
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
     public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
     public DbSet<GeneratedDocument> GeneratedDocuments => Set<GeneratedDocument>();
+    public DbSet<OrganizationSignature> OrganizationSignatures => Set<OrganizationSignature>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -379,6 +380,10 @@ public class AppDbContext : DbContext
         // The two reads: one employee's letters, newest first.
         generatedDocument.HasIndex(d => new { d.OrganizationId, d.EmployeeUserId, d.CreatedAt });
 
+        // Saved letter signatures (Settings → Organization). The one read: a
+        // company's active signatures.
+        modelBuilder.Entity<OrganizationSignature>().HasIndex(sg => new { sg.OrganizationId, sg.RemovedAt });
+
         // ---- Multi-tenant global query filters ----
         // Employee-keyed rows also carry the request's EMPLOYEE SCOPE (a
         // policy-limited admin — see IEmployeeScope): a no-op unless limited.
@@ -494,6 +499,8 @@ public class AppDbContext : DbContext
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<DocumentTemplate>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<OrganizationSignature>().HasQueryFilter(
+            sg => _currentUser.OrganizationId == null || sg.OrganizationId == _currentUser.OrganizationId);
         // A letter is employee-keyed: a policy-limited admin sees only letters
         // for people in their scope.
         modelBuilder.Entity<GeneratedDocument>().HasQueryFilter(
