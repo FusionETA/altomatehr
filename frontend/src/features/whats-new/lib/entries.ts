@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 61cde11
+// whats-new-covered-up-to: 635ef8b
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -30,6 +30,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: you can now search a payroll run's payslips by name, staff ID or job title.",
     ],
     improved: [
+      "Claims: tap an attached receipt or document to open it. You can also add or replace the main receipt on the claim form, without going back a step.",
       "Claims: \"Skip and fill manually\" is now called \"Skip AI and fill manually\". If you attached a receipt, it stays with your claim.",
       "Admins: when you sync a claim to Xero, its receipt and supporting documents are now attached to the bill or spend money, so they show in Xero.",
     ],
