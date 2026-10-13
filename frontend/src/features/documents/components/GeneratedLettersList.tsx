@@ -133,6 +133,11 @@ export function GeneratedLettersList({
                   {formatDate(doc.createdAt)}
                   {doc.generatedByName ? ` · by ${doc.generatedByName}` : ""} · {formatFileSize(doc.sizeBytes)}
                 </span>
+                {doc.signatureName ? (
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    Signed: {doc.signatureName}
+                  </span>
+                ) : null}
               </button>
               <div className="flex shrink-0 items-center gap-1.5">
                 <button

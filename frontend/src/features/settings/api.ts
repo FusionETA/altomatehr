@@ -1,4 +1,12 @@
-import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiPutForm } from "@/shared/lib/api-client";
+import {
+  apiDelete,
+  apiGet,
+  apiGetBlob,
+  apiPost,
+  apiPostForm,
+  apiPut,
+  apiPutForm,
+} from "@/shared/lib/api-client";
 
 export type Organization = {
   id: string;
@@ -157,6 +165,41 @@ export function uploadOrganizationLogo(file: File) {
   return apiPutForm<Organization>("/organizations/current/logo", formData);
 }
 export const removeOrganizationLogo = () => apiDelete<void>("/organizations/current/logo");
+
+// --- Signatures ---
+// Signature images printed above the signatory's name on letters. Up to 10 per
+// company, one of them the company default. The list holds active ones only,
+// default first. Read by Settings and by the Documents dialogs.
+export type Signature = {
+  id: string;
+  name: string;
+  position: string;
+  isDefault: boolean;
+  createdAt: string;
+  createdByName: string | null;
+};
+export type SaveSignature = { name: string; position: string; isDefault: boolean };
+
+export const SIGNATURES_PATH = "/organizations/current/signatures";
+export const getSignatures = () => apiGet<Signature[]>(SIGNATURES_PATH);
+/** `file` is the uploaded image or the drawn PNG. The first one becomes default on its own. */
+export function createSignature(file: Blob, fileName: string, body: SaveSignature) {
+  const formData = new FormData();
+  formData.append("file", file, fileName);
+  formData.append("name", body.name);
+  formData.append("position", body.position);
+  if (body.isDefault) formData.append("isDefault", "true");
+  return apiPostForm<Signature>(SIGNATURES_PATH, formData);
+}
+export const updateSignature = (id: string, body: SaveSignature) =>
+  apiPut<Signature>(`${SIGNATURES_PATH}/${encodeURIComponent(id)}`, body);
+export const removeSignature = (id: string) =>
+  apiDelete<void>(`${SIGNATURES_PATH}/${encodeURIComponent(id)}`);
+// Behind the login token like the logo — a blob for an object URL. A
+// signature's image never changes (only its name / position / default do), so
+// the id alone keys it.
+export const getSignatureImage = (id: string) =>
+  apiGetBlob(`${SIGNATURES_PATH}/${encodeURIComponent(id)}/image`);
 
 // The org's fields are edited across several screens (currency on Claims,
 // mileage on Accounts, geofence on Projects, schedule on Work Schedule), but the
