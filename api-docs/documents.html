@@ -189,7 +189,11 @@
         <code>**bold**</code>; and <code>{{merge.fields}}</code>. A single line break inside a paragraph is
         kept (good for address blocks). Merge values are inserted as literal text, so a value containing
         <code>**</code> never becomes formatting. The PDF prints the letter date, the company name and the
-        signature block itself, so don't repeat them.
+        signature block itself, so don't repeat them. If the company has a logo
+        (<a href="organization.html#logo">PUT /organizations/current/logo</a>), previews and generated letters print it
+        top-left on the letterhead, scaled to fit and never stretched. A company without one, or whose logo can't be
+        read, gets the same letterhead as before; a letter never fails because of its logo. A letter kept on file is
+        the PDF as it was generated, so it keeps the logo it was made with.
       </p>
 
       <section class="endpoint" id="template-object">

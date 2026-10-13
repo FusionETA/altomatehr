@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AltomateHR API — Organization</title>
-  <meta name="description" content="Read and update a company's settings, see which modules its plan enables, grant admin access, and hand an admin into AltomateHR already signed in." />
+  <meta name="description" content="Read and update a company's settings, manage its logo, see which modules its plan enables, grant admin access, and hand an admin into AltomateHR already signed in." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" />
   <link rel="icon" type="image/png" href="assets/favicon-32.png" />
@@ -24,6 +24,7 @@
 
   Source: backend/Modules/Organizations/OrganizationsController.cs,
   OrganizationService.cs, ModuleAccessService.cs, OrgModules.cs,
+  OrganizationLogoService.cs, LogoImage.cs, AccessGates.cs,
   Dtos/OrganizationDto.cs, Dtos/UpdateOrganizationDto.cs, Dtos/AdminAccessDto.cs;
   backend/Modules/Provisioning/OrgAdminsController.cs, OrgAdminService.cs;
   backend/Modules/Partners/InboundSsoController.cs, InboundSsoService.cs.
@@ -76,7 +77,7 @@
     <div class="hero">
     <h1>Organization</h1>
     <p class="lead">
-      The company the key belongs to: its settings, the modules its plan enables, who
+      The company the key belongs to: its settings, its logo, the modules its plan enables, who
       administers it, and a hand-off that drops one of those administrators into
       AltomateHR already signed in. A key can only ever reach its own company; there is no
       company id to send.
@@ -88,14 +89,14 @@
       Where an action refuses a request itself, it answers <code>400</code> or
       <code>404</code> with <code>{ "message": "…" }</code> (a plain <code>message</code>
       string), not <code>error</code>. Field validation (<code>errors</code>) and
-      <code>403</code> (<code>error.message</code>) are as on the overview. Each endpoint
-      below says which it returns.
+      <code>403</code> (<code>error.message</code>) are as on the overview. The logo upload
+      refuses with <code>{ "error": "…" }</code> instead. Each endpoint below says which it returns.
     </div>
 
     <section class="section" id="settings">
       <h2>Company settings</h2>
       <p>
-        No plan module is needed for these three endpoints: every company can read and edit
+        No plan module is needed for these endpoints, or for the logo ones below: every company can read and edit
         its own settings.
       </p>
 
@@ -121,6 +122,8 @@
             <tr><td><code>tier</code></td><td>string | null</td><td><code>"FREE"</code> or <code>"PAID"</code>; <code>null</code> when none is set. Read-only.</td></tr>
             <tr><td><code>addons</code></td><td>string[]</td><td>Paid add-ons the company holds (<code>"expense_claim"</code>, <code>"clock"</code>). Read-only.</td></tr>
             <tr><td><code>enabledModules</code></td><td>string[]</td><td>The modules the plan resolves to. See <a href="#get-modules">GET /organizations/modules</a>. Read-only.</td></tr>
+            <tr><td><code>hasLogo</code></td><td>boolean</td><td><code>true</code> when the company has a logo. Read-only; set it with <a href="#set-logo">PUT /organizations/current/logo</a>.</td></tr>
+            <tr><td><code>logoUpdatedAt</code></td><td>string | null</td><td>ISO 8601 UTC time (ends in <code>Z</code>) the logo was last uploaded. <code>null</code> when there is no logo. It changes on every replace, so compare it to know when to fetch the image again. Read-only.</td></tr>
           </tbody>
         </table>
       </div>
@@ -156,7 +159,9 @@
   "plan": "DIY",
   "tier": "PAID",
   "addons": ["expense_claim", "clock"],
-  "enabledModules": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"]
+  "enabledModules": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"],
+  "hasLogo": true,
+  "logoUpdatedAt": "2026-01-15T08:30:00Z"
 }</code></pre>
         <h3>Errors</h3>
         <ul>
@@ -268,6 +273,112 @@
         <h3>Errors</h3>
         <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
 <pre><code>curl https://&lt;api-host&gt;/organizations/modules \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="logo">
+      <h2>Company logo</h2>
+      <p>
+        The company's logo, printed top-left on the letterhead of every PDF letter from the
+        <a href="documents.html">Documents page</a>. A company has at most one. The image is never
+        at a public URL: it is only served by <code>GET /organizations/current/logo</code> with a
+        key, and <code>hasLogo</code> / <code>logoUpdatedAt</code> on the
+        <a href="#settings">organization object</a> say whether there is one. No plan module is
+        needed.
+      </p>
+
+      <section class="endpoint" id="get-logo">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/organizations/current/logo</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>Download the company's logo image.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The image bytes, not JSON. <code>Content-Type</code> is <code>image/png</code>,
+          <code>image/jpeg</code> or <code>image/webp</code>, read from the file's own bytes.
+          <code>Cache-Control: no-store</code>, so don't cache it; use <code>logoUpdatedAt</code>
+          to decide when to fetch again.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — the key lacks <code>organizations:read</code>.</li>
+          <li><code>404</code> — empty body; the company has no logo (or its stored file is missing or unreadable).</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/organizations/current/logo \
+  -H "Authorization: Bearer wp_live_xxx" -o logo.png</code></pre>
+      </section>
+
+      <section class="endpoint" id="set-logo">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/organizations/current/logo</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Upload the company's logo, replacing any previous one.</p>
+        <h3>Request</h3>
+        <p>
+          <code>multipart/form-data</code> with one file field named <code>file</code>. The file's
+          type is decided from its bytes, not its name or the <code>Content-Type</code> you send.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rule</th><th>Limit</th></tr></thead>
+            <tbody>
+              <tr><td>Format</td><td>PNG, JPEG or WebP. SVG and GIF are refused.</td></tr>
+              <tr><td>File size</td><td>At most 2 MB (2,097,152 bytes).</td></tr>
+              <tr><td>Dimensions</td><td>At most 4000 pixels on each side.</td></tr>
+              <tr><td>Integrity</td><td>The whole file must be present and readable. A truncated or damaged image is refused, even if its header looks fine.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The updated <a href="#settings">organization object</a>, with <code>hasLogo: true</code> and a new <code>logoUpdatedAt</code>. It is <code>200</code>, not <code>201</code>, also for the first upload.</p>
+<pre><code>{
+  "id": "org_123",
+  "name": "Example Sdn Bhd",
+  "...": "the other organization fields",
+  "hasLogo": true,
+  "logoUpdatedAt": "2026-01-15T08:30:00Z"
+}</code></pre>
+        <h3>Errors</h3>
+        <p>The <code>400</code> bodies here use <code>{ "error": "message" }</code>, unlike the other Organization actions.</p>
+        <ul>
+          <li><code>400</code> <code>{ "error": "Choose an image file (PNG, JPG or WebP) to upload." }</code> — no <code>file</code> part, or it is empty.</li>
+          <li><code>400</code> <code>{ "error": "The logo is larger than 2 MB. Use a smaller image." }</code></li>
+          <li><code>400</code> <code>{ "error": "The logo must be a PNG, JPG or WebP image." }</code> — any other format.</li>
+          <li><code>400</code> <code>{ "error": "The logo is 5000 × 3000 pixels. Keep each side to 4000 pixels or less." }</code> (the message carries the real size).</li>
+          <li><code>400</code> <code>{ "error": "That image can't be read. It may be damaged — try saving it again." }</code> — truncated or corrupt file.</li>
+          <li><code>403</code> — the key lacks <code>organizations:write</code>.</li>
+          <li><code>404</code> — empty body; the company no longer exists.</li>
+          <li><code>413</code> — the whole request body is over 3 MB. This is a hard cap on the request, checked before the 2 MB rule, so a file between 2 and 3 MB gets the <code>400</code> message above and a larger one gets <code>413</code> with no JSON body.</li>
+          <li><code>415</code> — the request isn't <code>multipart/form-data</code>.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>It replaces, it doesn't add.</strong> The previous logo file is deleted. Letters already generated and kept on file keep the logo they were printed with; only letters made after this call use the new one.</li>
+          <li><strong>It is a settings change.</strong> The same switch as <a href="#update-organization">PUT /organizations/current</a> gates it for a signed-in admin (the owner's &ldquo;Change settings&rdquo; access). An API key always has it, so a key is never refused for that reason. Each upload is recorded in the company's activity log.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/organizations/current/logo \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -F "file=@logo.png"</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete-logo">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">/organizations/current/logo</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Remove the company's logo. Letters generated afterwards print the letterhead without one.</p>
+        <h3>Response <code>204</code></h3>
+        <p>Empty body. Also <code>204</code> when there was no logo, so it is safe to repeat.</p>
+        <h3>Errors</h3>
+        <ul><li><code>403</code> — the key lacks <code>organizations:write</code>.</li></ul>
+        <p>Removing a logo is recorded in the company's activity log, and the file is deleted.</p>
+<pre><code>curl -X DELETE https://&lt;api-host&gt;/organizations/current/logo \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
     </section>

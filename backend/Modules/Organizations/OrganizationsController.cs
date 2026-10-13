@@ -108,6 +108,53 @@ public class OrganizationsController : ControllerBase
         }
     }
 
+    // ─── Company logo (printed on Documents letters) ─────────────────────
+
+    // GET /organizations/current/logo — the image bytes; 404 when there is
+    // none. Never a public URL: served only here, never cached.
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:read")]
+    [HttpGet("current/logo")]
+    public async Task<IActionResult> GetLogo([FromServices] IOrganizationLogoService logos)
+    {
+        var logo = await logos.GetAsync(GetOrgId());
+        if (logo is null) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+        return File(logo.Content, logo.ContentType);
+    }
+
+    // PUT /organizations/current/logo — multipart, field "file": PNG, JPEG or
+    // WebP (checked by its bytes), ≤ 2 MB, each side ≤ 4000 px. Replaces any
+    // previous logo. Gated like PUT /organizations/current.
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
+    [RequireSettings]
+    [HttpPut("current/logo")]
+    [RequestSizeLimit(3 * 1024 * 1024)]   // the 2 MB rule itself is the service's, with a clear 400
+    public async Task<IActionResult> SetLogo(IFormFile? file, [FromServices] IOrganizationLogoService logos)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Choose an image file (PNG, JPG or WebP) to upload." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var result = await logos.SetAsync(GetOrgId(), buffer.ToArray());
+        if (result.Ok) return Ok(result.Organization);
+        return result.Error is null ? NotFound() : BadRequest(new { error = result.Error });
+    }
+
+    // DELETE /organizations/current/logo — 204, also when there is none.
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireScope("organizations:write")]
+    [RequireSettings]
+    [HttpDelete("current/logo")]
+    public async Task<IActionResult> RemoveLogo([FromServices] IOrganizationLogoService logos)
+    {
+        await logos.RemoveAsync(GetOrgId());
+        return NoContent();
+    }
+
     // PUT /organizations/{organizationId}/plan — provision a tenant's package (plan / tier /
     // addons), which drives module access. SUPERADMIN-ONLY: this is a Fusioneta-internal
     // billing action, never something a customer Owner can do to their own org. The target

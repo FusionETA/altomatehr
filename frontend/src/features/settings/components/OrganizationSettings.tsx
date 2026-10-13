@@ -9,6 +9,7 @@ import {
   type Organization,
 } from "../api";
 import { XeroConnectionCard } from "./XeroConnectionCard";
+import { CompanyLogoCard } from "./CompanyLogoCard";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 
@@ -118,6 +119,10 @@ export function OrganizationSettings() {
           Save changes
         </button>
       </form>
+
+      {/* Printed on letters from Documents — part of who the company is, so it
+          sits with the name rather than with Documents. */}
+      <CompanyLogoCard />
     </fieldset>
   );
 }

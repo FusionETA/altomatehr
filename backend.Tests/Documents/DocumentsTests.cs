@@ -13,6 +13,7 @@ using AltomateHR.Api.Modules.Organizations.Entities;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using AltomateHR.Api.Tests.Audit;
+using AltomateHR.Api.Tests.Organizations;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Tests.Documents;
@@ -505,6 +506,83 @@ public class DocumentsTests
         Assert.Equal("30 June 2022", leave.Value);
     }
 
+    // ─── Company logo on the letterhead ──────────────────────────────────
+
+    private static readonly GenerateLetterDto SettledLetter = new()
+    {
+        EmployeeUserId = "usr-emp",
+        Values = new() { ["input.lastDay"] = "2026-11-30" },
+        LeaveBlank = ["company.registrationNo"],
+        Save = false,
+    };
+
+    private static bool HasImage(byte[] pdf) => System.Text.Encoding.Latin1.GetString(pdf).Contains("/Subtype /Image");
+
+    [Fact]
+    public async Task A_generated_letter_and_a_draft_preview_carry_the_company_logo()
+    {
+        using var db = Db();
+        var template = Seed(db, idNumber: "1");
+        var logo = OrganizationLogoTests.Picture("png", 240, 80);
+        var (service, _, _) = Letters(db, logos: new FixedLogo(new OrganizationLogoFile(logo, "image/png")));
+
+        var generated = await service.GenerateAsync(template.Id, SettledLetter);
+        // A draft with no template saved yet — the editor's preview.
+        var draft = await service.PreviewAsync(null, new PreviewLetterDto { Name = "Draft", Body = "Hello {{company.name}}" });
+
+        Assert.True(generated.Ok);
+        Assert.True(HasImage(generated.Content!));
+        Assert.True(draft.Ok);
+        Assert.True(HasImage(draft.Content!));
+    }
+
+    [Fact]
+    public async Task A_letter_still_generates_when_the_logo_file_is_gone_damaged_or_storage_fails()
+    {
+        using var db = Db();
+        var template = Seed(db, idNumber: "1");
+        // A logo recorded on the org whose file was never written.
+        var org = db.Organizations.Single();
+        org.LogoFileName = "logo-missing.png";
+        org.LogoContentType = "image/png";
+        db.SaveChanges();
+        var root = Path.Combine(Path.GetTempPath(), $"logo-letters-{Guid.NewGuid():N}");
+        var realService = new OrganizationLogoService(
+            new OrganizationRepository(db),
+            new OrganizationLogoStorage(new OrganizationLogoTests.TestEnvironment(root)),
+            new FakeAuditService());
+
+        foreach (var logos in new IOrganizationLogoService[]
+                 {
+                     realService,
+                     new FixedLogo(new OrganizationLogoFile([0x89, 0x50, 0x4E, 0x47, 1, 2, 3], "image/png")),
+                     new ThrowingLogo(),
+                 })
+        {
+            var (service, _, _) = Letters(db, logos: logos);
+
+            var result = await service.GenerateAsync(template.Id, SettledLetter);
+
+            Assert.True(result.Ok);
+            Assert.False(HasImage(result.Content!));
+        }
+    }
+
+    private sealed class FixedLogo(OrganizationLogoFile? logo) : IOrganizationLogoService
+    {
+        public Task<OrganizationLogoFile?> GetAsync(string organizationId) =>
+            Task.FromResult(organizationId == "org-1" ? logo : null);
+        public Task<LogoSaveResult> SetAsync(string organizationId, byte[]? content) => throw new NotSupportedException();
+        public Task RemoveAsync(string organizationId) => throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingLogo : IOrganizationLogoService
+    {
+        public Task<OrganizationLogoFile?> GetAsync(string organizationId) => throw new IOException("disk gone");
+        public Task<LogoSaveResult> SetAsync(string organizationId, byte[]? content) => throw new NotSupportedException();
+        public Task RemoveAsync(string organizationId) => throw new NotSupportedException();
+    }
+
     private static DocumentTemplate LeaveDateTemplate(AppDbContext db, DateTime joinDate)
     {
         db.EmployeeProfiles.Single(p => p.UserId == "usr-emp").JoinDate = joinDate;
@@ -542,7 +620,8 @@ public class DocumentsTests
 
     private static (GeneratedLetterService, MemoryStorage, FakeAuditService) Letters(
         AppDbContext db, IEmployeeScope? scope = null,
-        ModuleLevel employees = ModuleLevel.Manage, ICurrentUser? user = null)
+        ModuleLevel employees = ModuleLevel.Manage, ICurrentUser? user = null,
+        IOrganizationLogoService? logos = null)
     {
         var storage = new MemoryStorage();
         var audit = new FakeAuditService();
@@ -563,7 +642,8 @@ public class DocumentsTests
             scope ?? new EmployeeScope(),
             new EmployeesAt(employees),
             user ?? new StubUser(),
-            audit);
+            audit,
+            logos);
         return (service, storage, audit);
     }
 

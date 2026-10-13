@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Payroll.Pdf;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -19,7 +20,11 @@ public sealed record LetterPdfModel(
     string SignatoryPosition,
     // Printed across the top in preview so a sample can't be mistaken for a
     // real letter. Null on a generated letter.
-    string? Watermark = null);
+    string? Watermark = null,
+    // The company logo (PNG/JPEG/WebP bytes), drawn top-left of the
+    // letterhead. Null — or bytes that can't be read — prints the letterhead
+    // without it, exactly as before logos existed.
+    byte[]? Logo = null);
 
 // A company letter on A4: letterhead, date, the template body, signature block.
 public static class LetterPdf
@@ -64,8 +69,32 @@ public static class LetterPdf
         .WithMetadata(new DocumentMetadata { Title = m.Title, Creator = "AltomateHR" })
         .GeneratePdf();
 
-    private static void Letterhead(IContainer container, LetterPdfModel m) =>
-        container.BorderBottom(1).BorderColor(Rule).PaddingBottom(8).Column(col =>
+    // The logo's box on the letterhead: aspect ratio kept, never larger than this.
+    private const float LogoMaxHeight = 56;
+    private const float LogoMaxWidth = 140;
+
+    private static void Letterhead(IContainer container, LetterPdfModel m)
+    {
+        var logo = LogoBox(m.Logo);
+        var framed = container.BorderBottom(1).BorderColor(Rule).PaddingBottom(8);
+
+        if (logo is not { } box)
+        {
+            framed.Element(c => CompanyDetails(c, m));
+            return;
+        }
+
+        framed.Row(row =>
+        {
+            row.ConstantItem(box.Width).AlignMiddle().Width(box.Width).Height(box.Height)
+                .Image(box.Image).FitArea();
+            row.ConstantItem(12);
+            row.RelativeItem().AlignMiddle().Element(c => CompanyDetails(c, m));
+        });
+    }
+
+    private static void CompanyDetails(IContainer container, LetterPdfModel m) =>
+        container.Column(col =>
         {
             col.Item().Text(t =>
             {
@@ -85,6 +114,30 @@ public static class LetterPdf
             if (contact.Length > 0)
                 col.Item().Text(contact).FontSize(8.5f).FontColor(Muted);
         });
+
+    private sealed record LogoFit(Image Image, float Width, float Height);
+
+    // The logo scaled to fit LogoMaxWidth × LogoMaxHeight, or null when there
+    // is none or it can't be read — a broken logo must never stop a letter.
+    private static LogoFit? LogoBox(byte[]? logo)
+    {
+        if (logo is not { Length: > 0 }) return null;
+        var info = LogoImage.Read(logo);
+        if (info is null) return null;
+
+        Image image;
+        try
+        {
+            image = Image.FromBinaryData(logo);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        var scale = Math.Min(LogoMaxWidth / info.Width, LogoMaxHeight / info.Height);
+        return new LogoFit(image, Math.Max(1f, info.Width * scale), Math.Max(1f, info.Height * scale));
+    }
 
     private static void Block(ColumnDescriptor col, LetterMarkup.Block block)
     {

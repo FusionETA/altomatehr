@@ -32,4 +32,10 @@ public class OrganizationDto
     public string? Tier { get; set; }
     public IReadOnlyList<string> Addons { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> EnabledModules { get; set; } = Array.Empty<string>();
+
+    // Company logo. The image itself is only served by the authorised
+    // GET /organizations/current/logo; LogoUpdatedAt (UTC) changes on every
+    // replace, so a client can tell when to fetch it again.
+    public bool HasLogo { get; set; }
+    public DateTime? LogoUpdatedAt { get; set; }
 }

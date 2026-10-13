@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 144eb80
+  user-guide-covered-up-to: 1777eef
 -->
 <html lang="en">
 <head>
@@ -458,7 +458,15 @@
     <p class="topic-lede">Done once, and revisited when something changes. Work through the pages in order.</p>
     <ol class="steps">
       <li><h4>Organization</h4>
-        <p>The company name, and the <strong>Xero connection</strong> card — see <a href="#xero">Xero</a>.</p></li>
+        <p>The company name, the <strong>Company logo</strong> card, and the <strong>Xero connection</strong> card —
+          see <a href="#xero">Xero</a>.</p>
+        <p>On the <strong>Company logo</strong> card, press <span class="btn-name">Upload logo</span> and choose a PNG,
+          JPG or WebP picture up to 2 MB. The logo appears in the preview box and prints at the top left of your
+          <a href="#letters">HR letters</a>. To change it, press <span class="btn-name">Replace</span> and choose another
+          picture. <span class="btn-name">Remove</span> asks you to confirm, then new letters print without a logo.
+          Letters already made keep the logo they were made with. If the picture is the wrong kind or too big, a red
+          message under the card says so and nothing changes. An admin without <em>Can change company settings</em>
+          can see the logo but not change it.</p></li>
       <li><h4>Accounts</h4>
         <p>The chart of accounts, in two tabs:</p>
         <ul>
@@ -1409,6 +1417,8 @@
       confirmation, resignation and warning letters for your company: write each one once as a template, then
       produce a PDF for any employee with their details filled in. Letters are for admins — employees never see
       them in their own app.</p>
+    <p>Each letter prints your company logo at the top left. Add it once under
+      <strong>System Settings → Organization → Company logo</strong>; until you do, letters print without one.</p>
 
     <h3>Templates</h3>
     <p>Open <strong>Documents → Templates</strong>. Each template shows its category (Offer, Confirmation, Promotion,
@@ -1443,7 +1453,9 @@
         <p>Type in the <strong>Write</strong> box. Start a line with <code># </code> for a heading, wrap words in
           <code>**two stars**</code> for bold, start a line with <code>- </code> for a bullet, and leave a blank line
           between paragraphs. Switch to <strong>Preview</strong> to see how it will read. The PDF adds your letterhead,
-          the date and the signature block, so you don't type those.</p></li>
+          the date and the signature block, so you don't type those. Your logo isn't shown in the preview. It's added
+          on the PDF once you've uploaded it in <strong>System Settings → Organization</strong> (the preview has a note
+          saying so).</p></li>
       <li><h4>Add merge fields where the details go</h4>
         <p>On the right, <strong>Merge fields</strong> are grouped as Employee, Company, Signatory and Letter. Click the
           cursor where you want a detail, then click a field — for example <em>Employee name</em>, <em>Job title</em>,

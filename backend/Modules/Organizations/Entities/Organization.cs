@@ -81,5 +81,17 @@ public class Organization
     // this whole block when it sets one.
     public int LunchBreakMinutes { get; set; } = 60;
 
+    // ---- Company logo (printed on Documents letters) ----
+    // The file lives on disk under storage/org-branding/{Id}/ (see
+    // IOrganizationLogoStorage); the row only keeps its generated name, its
+    // checked content type and when it last changed. All three null = no logo.
+    [MaxLength(120)]
+    public string? LogoFileName { get; set; }
+
+    [MaxLength(40)]
+    public string? LogoContentType { get; set; }
+
+    public DateTime? LogoUpdatedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
