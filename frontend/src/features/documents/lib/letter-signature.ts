@@ -10,6 +10,8 @@ import type { ResolvedField } from "../api";
 
 export const SIGNATORY_NAME = "signatory.name";
 export const SIGNATORY_POSITION = "signatory.position";
+/** The fields a chosen signature fills. */
+export const SIGNATORY_KEYS = [SIGNATORY_NAME, SIGNATORY_POSITION] as const;
 
 /** The template editor's "Company default" option — a Select item can't be null. */
 export const COMPANY_DEFAULT_OPTION = "__company-default";

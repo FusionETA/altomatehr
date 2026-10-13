@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LoaderCircle, PencilLine, PenLine, Plus, Star, Trash2 } from "lucide-react";
+import { LoaderCircle, PencilLine, PenLine, Plus, RotateCw, Star, Trash2 } from "lucide-react";
 import {
   getSignatures,
   removeSignature,
@@ -36,6 +36,12 @@ function message(err: unknown, fallback: string) {
 export function SignaturesCard() {
   const query = useCachedQuery(SIGNATURES_PATH, getSignatures);
   const signatures = query.data ?? [];
+  // Only a list that actually loaded says how many there are. After a failed
+  // first load `signatures` is an empty stand-in, and treating it as "none
+  // yet" would let Add post the "first" signature as default — replacing the
+  // real one.
+  const loaded = query.data !== undefined;
+  const loadFailed = !loaded && !query.loading && query.error !== null;
   const atLimit = signatures.length >= MAX_SIGNATURES;
 
   const [adding, setAdding] = useState(false);
@@ -107,7 +113,7 @@ export function SignaturesCard() {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            disabled={atLimit || query.loading}
+            disabled={!loaded || atLimit}
             className={PRIMARY_BUTTON}
           >
             <Plus className="h-4 w-4" />
@@ -127,9 +133,22 @@ export function SignaturesCard() {
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
+        ) : loadFailed ? (
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-5 text-center">
+            <p className="text-sm font-medium text-destructive">
+              Couldn't load the signatures. {query.error}
+            </p>
+            <button
+              type="button"
+              onClick={() => void query.refresh()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:border-primary hover:text-primary"
+            >
+              <RotateCw className="h-3.5 w-3.5" /> Try again
+            </button>
+          </div>
         ) : signatures.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-            {query.error ?? "No signatures yet. Letters leave a space to sign by hand."}
+            No signatures yet. Letters leave a space to sign by hand.
           </p>
         ) : (
           <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
@@ -190,7 +209,7 @@ export function SignaturesCard() {
 
       {adding ? (
         <AddSignatureDialog
-          isFirst={signatures.length === 0}
+          isFirst={query.data?.length === 0}
           onClose={() => setAdding(false)}
           onAdded={() => void afterSave()}
         />

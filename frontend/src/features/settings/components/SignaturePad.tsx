@@ -69,9 +69,15 @@ export function SignaturePad({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes]);
 
+  // Clamped to the pad: pointer capture keeps reporting moves after the
+  // pointer leaves it, and an off-pad point would be invisible here but still
+  // widen the exported image (a stray tail on the letter).
   function pointAt(e: { clientX: number; clientY: number }): Point {
     const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return {
+      x: Math.min(Math.max(e.clientX - rect.left, 0), rect.width),
+      y: Math.min(Math.max(e.clientY - rect.top, 0), rect.height),
+    };
   }
 
   function handleDown(e: React.PointerEvent<HTMLCanvasElement>) {

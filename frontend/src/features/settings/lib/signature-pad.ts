@@ -15,6 +15,8 @@ export const INK_WIDTH = 2.5;
 
 /** Exported at this multiple of the drawn size, so the letter's PDF prints it crisp. */
 const EXPORT_SCALE = 3;
+/** The server refuses images over 4000 px on either side; the export never makes one. */
+const EXPORT_MAX_SIDE = 4000;
 /** Clear space kept around the drawn bounds in the export, in CSS px. */
 const EXPORT_PADDING = 8;
 
@@ -128,13 +130,18 @@ export function strokesToPng(strokes: Stroke[]): Promise<Blob | null> {
   maxX += reach;
   maxY += reach;
 
+  // Scaled down when needed so neither side passes the server's pixel limit.
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const scale = Math.min(EXPORT_SCALE, EXPORT_MAX_SIDE / width, EXPORT_MAX_SIDE / height);
+
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.ceil((maxX - minX) * EXPORT_SCALE));
-  canvas.height = Math.max(1, Math.ceil((maxY - minY) * EXPORT_SCALE));
+  canvas.width = Math.min(EXPORT_MAX_SIDE, Math.max(1, Math.ceil(width * scale)));
+  canvas.height = Math.min(EXPORT_MAX_SIDE, Math.max(1, Math.ceil(height * scale)));
   const ctx = canvas.getContext("2d");
   if (!ctx) return Promise.resolve(null);
 
-  ctx.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, -minX * EXPORT_SCALE, -minY * EXPORT_SCALE);
+  ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
   for (const s of strokes) drawStroke(ctx, s);
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
