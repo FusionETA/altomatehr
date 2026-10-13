@@ -9,6 +9,7 @@ import { ViewReceiptButton } from "./ViewReceiptButton";
 export function ClaimDetailsModal({
   claim,
   accountLabel,
+  bankLabel,
   projectLabel,
   employeeLabel,
   onClose,
@@ -16,6 +17,8 @@ export function ClaimDetailsModal({
 }: {
   claim: Claim;
   accountLabel?: string;
+  /** Name of the company account a company-paid claim came out of. */
+  bankLabel?: string;
   projectLabel?: string;
   employeeLabel?: string;
   onClose: () => void;
@@ -70,7 +73,11 @@ export function ClaimDetailsModal({
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <InfoPanel title="Claim Info" icon={<ReceiptText className="h-4 w-4" />}>
-            <InfoRow label="Employee" value={employeeLabel ?? claim.employeeEmail ?? claim.employeeId} />
+            <InfoRow
+              label="Employee"
+              // Never the raw user id — it means nothing to a person.
+              value={employeeLabel ?? claim.employeeName ?? claim.employeeEmail ?? "Unknown employee"}
+            />
             <InfoRow label="Category" value={claim.category} />
             <InfoRow label="Account" value={accountLabel ?? "Not assigned"} />
             <InfoRow label="Project" value={projectLabel ?? "Not assigned"} />
@@ -78,7 +85,7 @@ export function ClaimDetailsModal({
 
           <InfoPanel title="Payment" icon={<FileText className="h-4 w-4" />}>
             <InfoRow label="Source" value={paidWith} />
-            <InfoRow label="Company bank" value={claim.payViaAccountId ?? "Not required"} />
+            <InfoRow label="Company bank" value={claim.payViaAccountId ? bankLabel ?? "Company account" : "Not required"} />
             <InfoRow label="Spending at" value={claim.spendingAt ?? "Not provided"} />
             <InfoRow label="Spending with" value={claim.spendingWith ?? "Not provided"} />
           </InfoPanel>

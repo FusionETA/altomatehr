@@ -596,6 +596,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
         <ClaimDetailsModal
           claim={selectedClaim}
           accountLabel={accountLabel(selectedClaim)}
+          bankLabel={selectedClaim.payViaAccountId ? accountLabels.get(selectedClaim.payViaAccountId) : undefined}
           employeeLabel={employeeName(selectedClaim)}
           onClose={() => setSelectedClaim(null)}
           footer={actions(selectedClaim, "detail")}

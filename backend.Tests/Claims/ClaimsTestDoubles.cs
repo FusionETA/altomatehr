@@ -250,6 +250,9 @@ internal sealed class FakeSupervisionService : ISupervisionService
 
     public FakeSupervisionService(Dictionary<string, string>? emails = null) => _emails = emails ?? new();
 
+    // Names on file, when a test wants them; none by default.
+    public Dictionary<string, string> Names { get; init; } = new();
+
     public bool IsOrgApprover(string? role) => role is "Admin" or "Owner";
 
     // Tests that need an admin excluded from routing pass them here.
@@ -262,9 +265,10 @@ internal sealed class FakeSupervisionService : ISupervisionService
         Task.FromResult<IReadOnlyDictionary<string, string>>(
             userIds.Distinct().Where(_emails.ContainsKey).ToDictionary(id => id, id => _emails[id]));
 
-    // No names on file in these fakes — every person falls back to their email.
+    // No names on file unless a test sets Names — people then fall back to their email.
     public Task<IReadOnlyDictionary<string, string>> GetNamesAsync(IEnumerable<string> userIds) =>
-        Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+        Task.FromResult<IReadOnlyDictionary<string, string>>(
+            userIds.Distinct().Where(Names.ContainsKey).ToDictionary(id => id, id => Names[id]));
 
     // Only Teams asks this, to police upper-layer placements. Claims tests do
     // no placement, so a permissive answer keeps them on topic.

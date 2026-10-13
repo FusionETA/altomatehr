@@ -279,7 +279,7 @@ public class AdminOverviewService : IAdminOverviewService
     }
 
     // Best available human label: the directory name, else the email (the UI
-    // prettifies those), else the raw id so a row is never blank.
+    // prettifies those), else "Unknown person" so a row is never blank.
     private static string Label(EmployeeRowIndex directory, string? userId)
     {
         if (string.IsNullOrWhiteSpace(userId)) return "Unassigned";
@@ -288,7 +288,8 @@ public class AdminOverviewService : IAdminOverviewService
         if (!string.IsNullOrWhiteSpace(name)) return name;
 
         var email = directory.EmailOf(userId);
-        return string.IsNullOrWhiteSpace(email) ? userId : email;
+        // Never the raw id — it means nothing on screen.
+        return string.IsNullOrWhiteSpace(email) ? "Unknown person" : email;
     }
 
     private sealed class OverturnedTally
