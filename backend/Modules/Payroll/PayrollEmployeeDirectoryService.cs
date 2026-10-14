@@ -99,6 +99,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
             JoinDate = profile.JoinDate,
             LeaveDate = profile.LeaveDate,
             IsArchived = profile.IsArchived,
+            LastPayableDay = PayrollRunService.LastPayableDay(profile),
 
             // The period-dependent reasons (joined after, left before) are
             // deliberately not here — this list belongs to no month. Only the

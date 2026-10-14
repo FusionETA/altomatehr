@@ -311,11 +311,15 @@ export function PayrollRunDownloads({
   // the click.
   const approved = run.status === "SUBMITTED";
 
-  // Hidden outright on a draft rather than shown as a disabled card. The
-  // run's own status and action buttons already say where it is; a panel
-  // explaining why it is empty is noise on the screen an admin spends the
-  // month in. It appears when approval makes the files real.
-  if (!generated || !approved) return null;
+  if (!generated) return null;
+
+  // Before approval only the payroll summary is offered — marked DRAFT / FOR
+  // APPROVAL — so it can go to whoever signs off (the previous system's
+  // "download summary" on a pending run). Everything filed, paid or sent
+  // appears once approval makes the files real.
+  if (!approved) {
+    return run.source === "IMPORTED" ? null : <SummaryForApproval run={run} />;
+  }
 
   return (
     <>
@@ -338,6 +342,47 @@ export function PayrollRunDownloads({
 
       {open ? <DownloadsModal run={run} onClose={() => setOpen(false)} /> : null}
     </>
+  );
+}
+
+function SummaryForApproval({ run }: { run: PayrollRun }) {
+  const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function get(kind: "pdf" | "xlsx") {
+    setBusy(kind);
+    setError(null);
+    try {
+      saveFile(await (kind === "pdf" ? downloadPayrollSummary(run.id) : downloadPayrollSummaryXlsx(run.id)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't download the summary.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className={`${CARD} flex flex-wrap items-center justify-between gap-4`}>
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Payroll summary for approval</h2>
+        <p className={HINT}>
+          Marked {run.status === "PENDING_APPROVAL" ? "FOR APPROVAL" : "DRAFT"} — the figures can still
+          change. Send it to whoever approves the run. Statutory files, the bank file and payslips come
+          after approval.
+        </p>
+        {error ? <p className="mt-1 text-sm font-medium text-destructive">{error}</p> : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={BUTTON_GHOST} disabled={busy !== null} onClick={() => void get("pdf")}>
+          {busy === "pdf" ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <FileText className="size-4" aria-hidden />}
+          Summary PDF
+        </button>
+        <button type="button" className={BUTTON_GHOST} disabled={busy !== null} onClick={() => void get("xlsx")}>
+          {busy === "xlsx" ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+          Excel
+        </button>
+      </div>
+    </section>
   );
 }
 

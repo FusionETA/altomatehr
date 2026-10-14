@@ -142,6 +142,7 @@
               <tr><td><code>nationality</code>, <code>hasPr</code>, <code>isResident</code></td><td></td><td></td></tr>
               <tr><td><code>joinDate</code>, <code>leaveDate</code></td><td>string?</td><td>ISO date.</td></tr>
               <tr><td><code>isArchived</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>lastPayableDay</code></td><td>string?</td><td>ISO date. The last day payroll pays this person: their <code>leaveDate</code>, or &mdash; when archived with no leave date &mdash; the day they were archived. Null while they are still employed. It is the rule run generation uses, so it tells you whether a given month's run will include a leaver.</td></tr>
               <tr><td><code>notPayableReason</code></td><td>string?</td><td><code>"No payroll details yet"</code>, <code>"Archived"</code>, or null when payable.</td></tr>
               <tr><td><code>missing</code></td><td>string[]</td><td>Statutory gaps a run's readiness check would also report (e.g. a missing IC).</td></tr>
               <tr><td><code>profileIncompleteSections</code></td><td>string[]</td><td>Which of <code>Personal</code>, <code>Employment</code>, <code>Statutory</code> is short of what a run needs to include this person at all.</td></tr>
@@ -321,11 +322,18 @@
               <tr><td><code>Email</code></td><td>One of No/Email</td><td></td></tr>
               <tr><td><code>Name</code>, <code>Salary Type</code>, <code>Current Salary</code></td><td>No</td><td>Read-only, for reference — never written back.</td></tr>
               <tr><td><code>New Salary</code></td><td>Yes (to act on the row)</td><td>A monthly salary for MONTHLY staff, an hourly rate for HOURLY staff. Must be &gt; 0.</td></tr>
-              <tr><td><code>Effective Date</code></td><td>No</td><td>Blank = today. <strong>Cannot be in the future</strong> — the new salary applies immediately, since there is one current salary per employee.</td></tr>
+              <tr><td><code>Effective Date</code></td><td>No</td><td>Blank = today. <strong>Cannot be in the future</strong> — the new salary applies immediately, since there is one current salary per employee. For an archived leaver see the note below.</td></tr>
               <tr><td><code>Reason</code></td><td>No</td><td><code>RAISE</code> (default), <code>PROMOTION</code>, <code>DEMOTION</code>, <code>RESTRUCTURE</code>, <code>OTHER</code>.</td></tr>
               <tr><td><code>Notes</code></td><td>No</td><td>Max 500 characters.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="callout">
+          <strong>Archived employees.</strong> A row for an archived employee is refused (<code>"…: archived."</code>)
+          unless they have a leave date and the row's <code>Effective Date</code> is on or before it
+          (<code>"…: archived — their last day was 15 Jan 2026, so a new salary can't start after it."</code>
+          otherwise). So a salary change that sets the pay for a leaver's final days is accepted even after they are archived;
+          an archived employee with no leave date is always refused.
         </div>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
@@ -566,7 +574,8 @@
               <tr><td><code>epfEmployee</code>, <code>epfEmployer</code>, <code>socsoEmployee</code>, <code>socsoEmployer</code>, <code>eisEmployee</code>, <code>eisEmployer</code>, <code>skbbkEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code>, <code>pcbNormal</code>, <code>pcbAdditional</code>, <code>voluntaryPcb</code>, <code>cp38</code>, <code>zakat</code>, <code>hrdf</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcbCalculationJson</code></td><td>string?</td><td>The LHDN formula decomposition, as a JSON string. Null for payslips generated before this feature shipped.</td></tr>
-              <tr><td><code>grossPay</code>, <code>netPay</code>, <code>totalCostToEmployer</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
               <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
               <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each.</td></tr>
             </tbody>
@@ -1181,15 +1190,21 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
-              <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems.</td></tr>
-              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns, plus months that will be skipped (already have payroll in this system) or replaced (previously imported). The skipped/replaced warnings list only months that appear in the uploaded file; other months of the year are never touched by the import and are not mentioned.</td></tr>
-              <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person.</td></tr>
+              <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems, and rows that cannot be matched safely (see <em>Refused rows</em> below).</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns; months that will be skipped (already have payroll in this system) or replaced (previously imported) &mdash; only months that appear in the uploaded file are listed, other months of the year are never touched; rows whose IC is not on file (<code>"Jane Tan: the IC in the sheet (…) isn't on file, so the row was matched by name — check the IC."</code>); and people who would <strong>lose</strong> already-imported months when a month is replaced, per month (<code>"Importing this file removes imported months for: Jane Tan (January 2026) — this file has no row for them in those months…"</code>). Warnings never block the import.</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person. When the sheet spells the name differently from the employee it landed on, <code>employeeName</code> reads <code>"Sheet name → Matched name"</code> (a display string, not a name to match on &mdash; use <code>employeeProfileId</code>).</td></tr>
               <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
             </tbody>
           </table>
         </div>
+        <h3>Refused rows</h3>
+        <p>Rows are matched by IC first, then by name. Two cases are refused outright rather than guessed, each as an entry in <code>errors</code> with <code>ok: false</code> (the body still carries <code>warnings</code>, <code>employees</code> and <code>unmatchedNames</code>):</p>
+        <ul>
+          <li><strong>IC belongs to someone else.</strong> The IC matches one employee and the name exactly matches a different one &mdash; <code>"Jane Tan: the IC 900101-01-1234 belongs to John Lee — fix the IC or the name."</code></li>
+          <li><strong>Two rows for one person.</strong> <code>"Jane Tan and J. Tan all match Jane Tan — each person can appear once. Check their IC and name."</code> (the matching rows are dropped from <code>employees</code>).</li>
+        </ul>
         <h3>Errors</h3>
-        <p><code>400</code> with the same body shape when <code>ok: false</code> (e.g. an unreadable file).</p>
+        <p><code>400</code> with the same body shape when <code>ok: false</code> (e.g. an unreadable file, or a refused row above); <code>400</code> <code>{ "error": "No file was uploaded." }</code> without a file.</p>
       </section>
 
       <section class="endpoint">
@@ -1198,7 +1213,7 @@
           <span class="path">/payroll/ytd-import/{year}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Commits the import. Matches by IC first, then by name (never guessed at if ambiguous).</p>
+        <p>Commits the import. Matches by IC first, then by name (never guessed at if ambiguous). Refuses the same rows as preview (IC belonging to another employee, two rows for one person) &mdash; nothing is written if any such row exists.</p>
         <h3>Request</h3>
         <p>Same as preview.</p>
         <h3>Response <code>200</code></h3>
@@ -1215,7 +1230,7 @@
           </table>
         </div>
         <h3>Errors</h3>
-        <p><code>400</code> <code>{ "ok": false, "errors": ["None of the names in the sheet matched an employee in this organisation."] }</code> or similar.</p>
+        <p><code>400</code> <code>{ "ok": false, "errors": ["None of the names in the sheet matched an employee in this organisation."] }</code> or similar &mdash; including the refused-row messages above.</p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/ytd-import/2026 \
   -H "Authorization: Bearer wp_live_xxx" \
   -F file=@ytd-2026.xlsx</code></pre>

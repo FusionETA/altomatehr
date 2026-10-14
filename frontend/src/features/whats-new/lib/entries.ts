@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 0cb12b8
+// whats-new-covered-up-to: c84df3d
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -23,11 +23,19 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-14",
+    new: [
+      "Admins: a draft or a run awaiting approval now offers the payroll summary as PDF or Excel, marked NOT APPROVED, to send to the approver. Bank and statutory files still wait for approval.",
+    ],
     improved: [
       "Admins: an employee's Previous employment (TP3) now needs a Year once you enter an amount. Without one, payroll ignored those amounts, so the profile won't save.",
+      "Admins: the Salary adjustments import now accepts a change for someone already archived, if it starts on or before their last day. Later dates are still refused.",
+      "Admins: Import earlier payroll now warns when a row's IC isn't on file, names anyone a re-import would remove, and shows who a misspelt name matched.",
     ],
     fixed: [
       "Admins: Re-run payroll on a draft now adds people who transferred in or joined after it was made. Anyone you unticked stays out; drafts made before this update and approved runs don't change.",
+      "Admins: Import earlier payroll no longer gives a year to the wrong person. It refuses a row whose IC belongs to someone else, or two rows for one person, and says who to check.",
+      "Admins: cost to employer no longer counts Loan Repayment or Miscellaneous / Other deductions, which the company keeps. CP38, Additional PCB and zakat still count. Months already run change only when re-run or re-imported.",
+      "Admins: PCB no longer taxes an advance, unpaid leave or salary correction again in later months. Months already run keep their PCB until re-run.",
     ],
   },
   {

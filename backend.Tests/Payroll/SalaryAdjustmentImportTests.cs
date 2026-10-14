@@ -60,7 +60,7 @@ public class SalaryAdjustmentImportTests : IDisposable
     private void Seed()
     {
         void Person(string id, string name, string number, string role, SalaryType type,
-            decimal? monthly = null, decimal? hourly = null, bool archived = false)
+            decimal? monthly = null, decimal? hourly = null, bool archived = false, DateTime? leaveDate = null)
         {
             _db.Users.Add(new User { Id = id, Email = $"{id}@x.com", Name = name });
             _db.OrganizationMemberships.Add(new OrganizationMembership
@@ -70,7 +70,7 @@ public class SalaryAdjustmentImportTests : IDisposable
             _db.EmployeeProfiles.Add(new EmployeeProfile
             {
                 Id = $"emp-{id}", OrganizationId = "org-1", UserId = id, SalaryType = type,
-                MonthlySalary = monthly, HourlyRate = hourly, IsArchived = archived,
+                MonthlySalary = monthly, HourlyRate = hourly, IsArchived = archived, LeaveDate = leaveDate,
             });
         }
 
@@ -78,6 +78,8 @@ public class SalaryAdjustmentImportTests : IDisposable
         Person("usr-2", "Bala", "E-002", "Supervisor", SalaryType.HOURLY, hourly: 20m);
         Person("usr-3", "Chan", "E-003", "Employee", SalaryType.MONTHLY);                  // no salary yet
         Person("usr-4", "Dewi", "E-004", "Employee", SalaryType.MONTHLY, monthly: 4000m, archived: true);
+        Person("usr-5", "Ezra", "E-005", "Employee", SalaryType.MONTHLY, monthly: 4000m, archived: true,
+            leaveDate: new DateTime(2026, 6, 10));   // left this month (e.g. transferred out)
         Person("usr-admin", "The Admin", "A-001", "Admin", SalaryType.MONTHLY, monthly: 9000m);
         _db.SaveChanges();
     }
@@ -174,6 +176,28 @@ public class SalaryAdjustmentImportTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("in the future", Assert.Single(result.Errors).Message);
         Assert.Equal(5000m, Monthly("usr-1"));
+    }
+
+    // A leaver archived this month can still have their final month's pay
+    // set — a change that starts on or before their last day — but nothing
+    // that would start after they left.
+    [Fact]
+    public async Task AnArchivedLeaver_TakesAChangeFromOnOrBeforeTheirLastDay()
+    {
+        var result = await Import("E-005,,1290.32,2026-06-01,OTHER,Part-month basic");
+
+        Assert.True(result.Ok, string.Join(" | ", result.Errors.Select(e => e.Message)));
+        Assert.Equal(1290.32m, Monthly("usr-5"));
+    }
+
+    [Fact]
+    public async Task AnArchivedLeaver_RefusesAChangeAfterTheirLastDay()
+    {
+        var result = await Import("E-005,,4500,2026-06-12,RAISE,");
+
+        Assert.False(result.Ok);
+        Assert.Contains("last day was 10 Jun 2026", Assert.Single(result.Errors).Message);
+        Assert.Equal(4000m, Monthly("usr-5"));
     }
 
     // One bad row saves nothing — including the good rows — and every

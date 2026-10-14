@@ -872,6 +872,42 @@ public class PayslipCalculatorTests
             r.TotalCostToEmployer);
     }
 
+    // A deduction the company keeps (other deduction, loan repayment) never
+    // leaves the company, so it comes off cost as well as net — PayrollPanda's
+    // cost for the same payslip. (Muhammad Afiq: RM 175 other deduction made
+    // cost 11,077.75 instead of 10,902.75.)
+    [Theory]
+    [InlineData(PayrollAdjustmentCategories.DeductMiscellaneous)]
+    [InlineData(PayrollAdjustmentCategories.DeductLoanRepayment)]
+    public void CostToEmployer_LeavesOutADeductionTheCompanyKeeps(string category)
+    {
+        var plain = PayslipCalculator.Calculate(Make(monthlySalary: 5000m));
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 5000m, allowances: [Allowance(category, 175m)]));
+
+        Assert.Equal(plain.GrossPay, r.GrossPay);
+        Assert.Equal(Money.Round2(plain.NetPay - 175m), r.NetPay);
+        Assert.Equal(Money.Round2(plain.TotalCostToEmployer - 175m), r.TotalCostToEmployer);
+        // = everything paid out: net + PCB + employee and employer contributions.
+        Assert.Equal(
+            Money.Round2(r.NetPay + r.Pcb + r.EpfEmployee + r.SocsoEmployee + r.EisEmployee + r.SkbbkEmployee
+                + r.EpfEmployer + r.SocsoEmployer + r.EisEmployer + r.Hrdf),
+            r.TotalCostToEmployer);
+    }
+
+    // Passed on to someone else — CP38 and extra PCB to LHDN, zakat to the
+    // zakat centre — is still money the company pays out: cost is unchanged.
+    [Theory]
+    [InlineData(PayrollAdjustmentCategories.DeductCp38)]
+    [InlineData(PayrollAdjustmentCategories.DeductAdditionalPcb)]
+    [InlineData(PayrollAdjustmentCategories.DeductZakat)]
+    public void CostToEmployer_KeepsADeductionPassedOnToSomeoneElse(string category)
+    {
+        var plain = PayslipCalculator.Calculate(Make(monthlySalary: 9000m));
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 9000m, allowances: [Allowance(category, 100m)]));
+
+        Assert.Equal(plain.TotalCostToEmployer, r.TotalCostToEmployer);
+    }
+
     // ─── Statutory warnings ─────────────────────────────────────────────
 
     // LHDN's MTD spec never gates the calculation on holding a tax number — the

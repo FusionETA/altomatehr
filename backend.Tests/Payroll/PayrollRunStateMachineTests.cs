@@ -213,8 +213,6 @@ public class PayrollRunStateMachineTests : IDisposable
 
         foreach (var result in new[]
         {
-            await _statutory.RenderSummaryPdfAsync(run.Id),
-            await _statutory.RenderSummaryXlsxAsync(run.Id),
             await _statutory.RenderPaymentSchedulePdfAsync(run.Id),
             await _statutory.RenderAllPayslipsZipAsync(run.Id),
             await _statutory.RenderBankFileAsync(run.Id, null),
@@ -223,6 +221,43 @@ public class PayrollRunStateMachineTests : IDisposable
             Assert.False(result.Ok);
             Assert.Contains("approved", result.Error!, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    // The summary is the one run report an unapproved run produces — so it
+    // can go to whoever signs off — marked as such in its name (and on the
+    // page). The bundle, which carries files that are filed or paid, still
+    // waits for approval.
+    [Fact]
+    public async Task Summary_IsProducedBeforeApproval_MarkedAsNotApproved()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await GeneratedRunAsync(2026, 1);
+
+        var draftPdf = await _statutory.RenderSummaryPdfAsync(run.Id);
+        Assert.True(draftPdf.Ok, draftPdf.Error);
+        Assert.Equal("Payroll_Summary_January_2026_DRAFT.pdf", draftPdf.FileName);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(draftPdf.Content!, 0, 4));
+        Assert.Equal("Payroll_Summary_January_2026_DRAFT.xlsx",
+            (await _statutory.RenderSummaryXlsxAsync(run.Id)).FileName);
+
+        Assert.True((await _service.SubmitForApprovalAsync(run.Id)).Ok);
+        var pending = await _statutory.RenderSummaryPdfAsync(run.Id);
+        Assert.True(pending.Ok, pending.Error);
+        Assert.Equal("Payroll_Summary_January_2026_FOR_APPROVAL.pdf", pending.FileName);
+
+        Assert.False((await _statutory.RenderRunBundleAsync(run.Id, null)).Ok);
+    }
+
+    // Nothing to summarise until payroll has run.
+    [Fact]
+    public async Task Summary_NeedsPayrollToHaveRun()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await _service.CreateAsync(new CreatePayrollRunDto { PeriodYear = 2026, PeriodMonth = 1 });
+
+        var result = await _statutory.RenderSummaryPdfAsync(run.Run!.Id);
+        Assert.False(result.Ok);
+        Assert.Contains("Run payroll", result.Error!);
     }
 
     // A run sitting with the approver is still not final.
@@ -285,7 +320,7 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(preview.Content!, 0, 4));
 
         Assert.False((await _statutory.RenderAllPayslipsZipAsync(run.Id)).Ok);
-        Assert.False((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderPaymentSchedulePdfAsync(run.Id)).Ok);
         Assert.False((await _statutory.RenderPcbTxtAsync(run.Id)).Ok);
     }
 
@@ -459,8 +494,10 @@ public class PayrollRunStateMachineTests : IDisposable
         var run = await SubmittedRunAsync();
         Assert.True((await _service.RevertToDraftAsync(run.Id)).Ok);
 
-        Assert.False((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
-        Assert.False((await _statutory.RenderSummaryXlsxAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderPaymentSchedulePdfAsync(run.Id)).Ok);
+        Assert.False((await _statutory.RenderEpfCsvAsync(run.Id)).Ok);
+        // The summary stays available, but as a draft again.
+        Assert.EndsWith("_DRAFT.pdf", (await _statutory.RenderSummaryPdfAsync(run.Id)).FileName);
     }
 
     // ─── Submitting for approval ────────────────────────────────────────

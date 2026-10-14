@@ -507,8 +507,14 @@ public static class PayslipCalculator
             - epf.Employee - socso.Employee - eis.Employee - socso.EmployeeSkbbk
             - totalDeductions - pcb);
 
+        // What the company actually pays out: gross plus its own contributions,
+        // less any deduction it keeps (a loan or other debt recovered from pay,
+        // which never leaves the company). Deductions passed on — CP38 and extra
+        // PCB to LHDN, zakat to the zakat centre — are still paid out, so they
+        // stay in. Matches PayrollPanda's cost for the same payslip.
         var totalCostToEmployer = Money.Round2(
-            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf);
+            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf
+            - buckets.RetainedDeductions);
 
         return new Result
         {
@@ -575,6 +581,8 @@ public static class PayslipCalculator
         public decimal BenefitsInKind;
         public decimal RecurringDeductions;
         public decimal GrossReducingDeductions;
+        // The part of the deductions the company keeps (loan / other recovery).
+        public decimal RetainedDeductions;
         public decimal RecurringReimbursements;
 
         public decimal EpfBase;
@@ -783,6 +791,7 @@ public static class PayslipCalculator
             // Cash-neutral rows lower PCB but take nothing from the payslip —
             // the employee already paid the third party directly.
             b.RecurringDeductions += amount;
+            if (meta.RetainedByEmployer) b.RetainedDeductions += amount;
         }
 
         if (meta.ReducesBase)
