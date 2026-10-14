@@ -737,6 +737,23 @@ public class YtdImportServiceTests : IDisposable
         Assert.Contains("matched an employee", result.Errors[0]);
     }
 
+    // An imported month follows the same cost rule as a computed one: the
+    // Net Salary Deduction column (kept by the company) is not a cost.
+    [Fact]
+    public async Task AnImportedNetSalaryDeduction_ComesOffCostToEmployer()
+    {
+        var header = Header + ",Net Salary Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,175"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+        var payslip = await _db.Payslips.SingleAsync();
+        Assert.Equal(5000m + 650m + 86.65m + 9.90m - 175m, payslip.TotalCostToEmployer);
+    }
+
     // ─── Matching: an IC and a name that disagree ────────────────────────
 
     private void AddBeth()

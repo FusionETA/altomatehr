@@ -619,8 +619,13 @@ public class YtdImportService : IYtdImportService
             Zakat = amounts.Zakat,
             Hrdf = amounts.Hrdf,
 
+            // Same rule as a computed payslip: a deduction the company keeps
+            // (Net Salary Deduction / loan repayment) is not a cost.
             TotalCostToEmployer = amounts.Gross + amounts.EpfEmployer
-                + amounts.SocsoEmployer + amounts.EisEmployer + amounts.Hrdf,
+                + amounts.SocsoEmployer + amounts.EisEmployer + amounts.Hrdf
+                - amounts.CategoryAmounts
+                    .Where(kv => kv.Value > 0m && PayrollAdjustmentCategories.Find(kv.Key) is { RetainedByEmployer: true })
+                    .Sum(kv => kv.Value),
 
             // No breakdown: the PCB was decided by whatever system produced
             // it, and inventing a worksheet would claim a derivation this
