@@ -1,3 +1,10 @@
+          <strong>The chosen roster is remembered.</strong> When the request sends at least one
+          <code>policyIds</code> entry and resolves to at least one employee, the run stores the
+          <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
+          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
+          payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
+          only exclusions), one that resolved to nobody, and one created before this was recorded store
+          nothing: their roster stays exactly as frozen.
 <!doctype html>
 <html lang="en">
 <head>
@@ -230,13 +237,21 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>periodYear</code></td><td>number</td><td>yes</td><td>2000–2100.</td></tr>
               <tr><td><code>periodMonth</code></td><td>number</td><td>yes</td><td>1–12.</td></tr>
               <tr><td><code>policyIds</code></td><td>string[] or null</td><td>no</td><td>Policy ids from the <a href="#picker">picker</a>. Null or omitted means every policy — the whole eligible roster.</td></tr>
-              <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy.</td></tr>
+              <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy. Remembered with <code>policyIds</code> — see the note below.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean</td><td>no</td><td>Default <code>false</code>. <code>true</code> means the pay figures are final (e.g. an import) and joiners and leavers are <strong>not</strong> prorated again. Can be changed later on a draft with <a href="#update">PATCH</a>.</td></tr>
             </tbody>
           </table>
         </div>
         <h3>Response <code>201</code></h3>
         <p>A <a href="#run-object">run object</a>, with <code>Location</code> pointing at <code>GET /payroll/runs/{id}</code>.</p>
+        <div class="callout">
+          <strong>The chosen roster is remembered.</strong> When the request resolves to at least one
+          employee, the run stores the <code>policyIds</code> and <code>excludedEmployeeProfileIds</code>
+          you sent (an omitted list is stored as empty, meaning "every policy" / "nobody excluded"), not just the
+          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
+          payable on those policies later. A run created with no eligible employees stores nothing, and
+          neither does one created before this was recorded: its roster stays exactly as frozen.
+        </div>
         <h3>Errors</h3>
         <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs \
@@ -387,6 +402,18 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           "Run payroll": build every payslip on the run from the employees' current profiles. Safe to call
           repeatedly on a draft — each call <strong>discards</strong> the previous payslips and line items
           and rebuilds from scratch, folding in whatever adjustments and claims are on the run.
+        </p>
+        <p>
+          <strong>The roster can grow on a re-run.</strong> If the draft was created with
+          <code>policyIds</code> (<a href="#create"><code>POST /payroll/runs</code></a> remembered them and
+          <code>excludedEmployeeProfileIds</code>) and has never been approved, generating again
+          adds anyone who has become payable on those policies since the draft was created &mdash; for
+          example an employee transferred into a chosen policy, or a new hire &mdash; and
+          <code>memberEmployeeProfileIds</code> in the response then includes them. This holds whatever
+          <code>skipProration</code> is set to. Employees listed in <code>excludedEmployeeProfileIds</code>
+          are never added, and nobody is ever removed from the roster by this. A run created without
+          <code>policyIds</code> (e.g. from an explicit list, as an import does), a month reverted to draft
+          after approval, and a run created before the roster was remembered keep their roster exactly as it was.
         </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
