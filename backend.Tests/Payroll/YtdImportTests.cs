@@ -792,6 +792,35 @@ public class YtdImportServiceTests : IDisposable
         Assert.Equal(2500m + 10000m - 2500m, ytd.Taxable);
     }
 
+    // A calculated month with a wage-reducing deduction counts what its own
+    // PCB worksheet counted — e.g. a commission marked "treat as recurring"
+    // (taxed in the regular base, invisible on the line item) that the
+    // deduction also offset: 5,000 + 2,000 − 8,000 floors at 0.
+    [Fact]
+    public async Task AMonthWithAWorksheet_CountsWhatItsPcbCounted()
+    {
+        await _service.ImportAsync(2026, Sheet("Aisyah Binti Rahman", null, 1), TabularFormat.Csv);
+        var payslip = await _db.Payslips.SingleAsync();
+        payslip.PcbCalculationJson = "{\"normalTaxable\":0,\"additionalTaxable\":0}";
+        _db.PayslipLineItems.AddRange(
+            new PayslipLineItem
+            {
+                PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+                Kind = PayslipLineKind.ALLOWANCE, Category = PayrollAdjustmentCategories.WagesCommission,
+                Label = "Commission", Amount = 2000m, SubjectToPcb = true,
+            },
+            new PayslipLineItem
+            {
+                PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+                Kind = PayslipLineKind.DEDUCTION, Category = PayrollAdjustmentCategories.DeductAdvance,
+                Label = "Advance", Amount = 8000m, SubjectToPcb = true,
+            });
+        await _db.SaveChangesAsync();
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(0m, ytd.Taxable);
+    }
+
     // Months imported in the previous system and migrated carry unpaid leave
     // as an uncategorised "Unpaid leave" deduction; it still comes off Y.
     [Fact]
