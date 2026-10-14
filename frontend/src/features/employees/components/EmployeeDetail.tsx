@@ -755,8 +755,27 @@ export function EmployeeDetail({
       ? (baseline.hourlyRate ?? 0) > 0
       : (baseline.monthlySalary ?? 0) > 0);
 
+  // TP3 figures only apply in the year they're entered against, so figures
+  // with no year would be silently ignored by payroll. The server refuses
+  // them too; this says so on the field, before a round trip.
+  const tp3Problem = (() => {
+    if (!profile) return null;
+    const hasFigures =
+      [profile.prevRemuneration, profile.prevEpf, profile.prevPcb, profile.prevAllowableDeductions, profile.prevZakat]
+        .some((v) => v != null && v !== 0) ||
+      parsePreviousEmployerItems(profile.prevByCategoryJson).some((i) => (i.amount ?? 0) > 0);
+    const year = profile.prevEmploymentYear;
+    if (year == null || Number.isNaN(year)) {
+      return hasFigures ? "Enter the year these TP3 figures are for — without it they aren't used." : null;
+    }
+    return !Number.isInteger(year) || year < 2000 || year > 2100 ? "Enter a 4-digit year, e.g. 2026." : null;
+  })();
+
   async function handleSave(salary?: SalaryClassification) {
     if (!profile) return;
+    // The field and the save bar already say what's wrong, and both clear
+    // the moment the year is filled in.
+    if (tp3Problem) return;
     // As in the previous system: before a changed salary is saved, ask
     // whether the old figure was a typo or the pay is really changing. Only
     // a real change goes into the salary history, with its effective date.
@@ -1560,11 +1579,12 @@ export function EmployeeDetail({
                   title="Previous employment (TP3)"
                   hint="For a mid-year joiner: what a previous employer already paid and deducted, so PCB isn't calculated as if this is their only income."
                 >
-                  <Field label="Year">
+                  <Field label="Year" error={tp3Problem}>
                     <Text
-                      value={profile.prevEmploymentYear === null ? null : String(profile.prevEmploymentYear)}
+                      value={profile.prevEmploymentYear == null || Number.isNaN(profile.prevEmploymentYear) ? null : String(profile.prevEmploymentYear)}
                       onChange={(v) => set("prevEmploymentYear", v === null ? null : Number(v))}
-                      placeholder={String(new Date().getFullYear())}
+                      // "e.g." so an empty box can't be mistaken for one already filled in.
+                      placeholder={`e.g. ${new Date().getFullYear()}`}
                     />
                   </Field>
                   <Field label="Remuneration">
@@ -2554,6 +2574,7 @@ export function EmployeeDetail({
       {dirty ? (
         <UnsavedChangesBar
           saving={saving}
+          error={tp3Problem ? `Previous employment (TP3): ${tp3Problem}` : null}
           onSave={() => void handleSave()}
           onDiscard={discard}
         />
