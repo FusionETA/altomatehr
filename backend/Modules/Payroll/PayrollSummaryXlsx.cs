@@ -12,12 +12,15 @@ namespace AltomateHR.Api.Modules.Payroll;
 //               employer EPF/SOCSO/EIS/HRDF, COST) and a totals row.
 //   Totals      the PDF's closing summary block (headcount, net, PCB, HRDF,
 //               EPF/SOCSO/EIS/SKBBK, zakat, BIK).
-//   Breakdown   each employee's itemised pay — base salary, overtime, every
-//               line item signed by kind — the lines the PDF prints under
-//               their name.
+//   Breakdown   one row per employee, one column per pay item (Basic, U/L,
+//               Travelling … Deduction, then a column for each other item on
+//               the run, Total Gross, and the items that are not in Total
+//               Gross) — PayrollSummaryBreakdown. The same lines the PDF
+//               prints under each name, laid out wide; it adds up to the
+//               same money.
 //
-// Every figure comes from the payslips via PayrollSummaryTotals and
-// PayrollSummaryPdf.Breakdown, the code the PDF itself uses, so the two cannot
+// Every figure comes from the payslips via PayrollSummaryTotals and the
+// payslip line items, the data the PDF itself prints, so the two cannot
 // disagree. Totals are written as VALUES rather than formulas: they are the
 // PDF's figures, not a recomputation.
 public static class PayrollSummaryXlsx
@@ -33,6 +36,9 @@ public static class PayrollSummaryXlsx
     // employee rows start on the next one.
     public const int HeaderRow = 7;
 
+    // Row of the Breakdown sheet's column headings; employee rows follow.
+    public const int BreakdownHeaderRow = 4;
+
     private const string MoneyFormat = "#,##0.00";
     private const string DateTimeFormat = "dd/mm/yyyy h:mm AM/PM";
     private const string DateFormat = "dd/mm/yyyy";
@@ -43,6 +49,8 @@ public static class PayrollSummaryXlsx
     private static readonly XLColor ErFill = XLColor.FromHtml("#FFF7ED");
     private static readonly XLColor ErInk = XLColor.FromHtml("#C2410C");
     private static readonly XLColor Muted = XLColor.FromHtml("#64748B");
+    private static readonly XLColor Negative = XLColor.FromHtml("#BE123C");
+    private static readonly XLColor NotInTotalFill = XLColor.FromHtml("#F8FAFC");
 
     private enum Band { None, Emp, Er }
 
@@ -74,7 +82,7 @@ public static class PayrollSummaryXlsx
         using var workbook = new XLWorkbook();
         WriteSummary(workbook.AddWorksheet(SummarySheet), model, payslips, totals);
         WriteTotals(workbook.AddWorksheet(TotalsSheet), model, totals);
-        WriteBreakdown(workbook.AddWorksheet(BreakdownSheet), model, payslips);
+        WriteBreakdown(workbook.AddWorksheet(BreakdownSheet), model);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -202,43 +210,120 @@ public static class PayrollSummaryXlsx
         sheet.Column(2).Width = 16;
     }
 
-    private static void WriteBreakdown(IXLWorksheet sheet, PayrollDocumentModel model, List<Payslip> payslips)
+    private static void WriteBreakdown(IXLWorksheet sheet, PayrollDocumentModel model)
     {
-        string[] headers = ["Emp no.", "Employee", "Item", "Amount (RM)"];
+        var table = PayrollSummaryBreakdown.Build(model);
+        string[] identity = ["Emp no.", "Staff", "Group", "Outlet"];
+        var first = identity.Length + 1;                 // first item column
+        var lastCol = identity.Length + table.Columns.Count;
+        var hasNotInTotal = table.Columns.Any(c => c.Kind == PayrollSummaryBreakdown.ColumnKind.NotInTotal);
 
         sheet.Cell(1, 1).Value = $"{model.OrganizationName} — pay breakdown, {model.PeriodLabel}";
         sheet.Cell(1, 1).Style.Font.SetBold().Font.SetFontSize(13);
         sheet.Cell(2, 1).Value =
-            "Base salary, overtime and every line item per employee. Deductions are negative; a benefit in kind is non-cash and not part of gross.";
+            "One row per employee, one column per pay item. Deductions are negative. Total Gross adds up "
+            + "the money columns (not Hours). EPF, SOCSO, EIS and PCB are on the Summary sheet."
+            + (hasNotInTotal
+                ? " Columns after Total Gross are for information and are not part of it."
+                : string.Empty);
         sheet.Cell(2, 1).Style.Font.SetItalic().Font.SetFontColor(Muted);
 
-        const int headerRow = 4;
-        for (var c = 0; c < headers.Length; c++)
-            Heading(sheet.Cell(headerRow, c + 1), headers[c], Band.None);
-        sheet.Cell(headerRow, 4).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+        const int headerRow = BreakdownHeaderRow;
 
-        var r = headerRow + 1;
-        foreach (var p in payslips)
+        // Band over the not-in-total columns, as the Summary sheet bands its
+        // contribution columns.
+        if (hasNotInTotal)
         {
-            var items = model.LineItems.GetValueOrDefault(p.Id) ?? [];
-            foreach (var line in PayrollSummaryPdf.Breakdown(p, items))
-            {
-                sheet.Cell(r, 1).SetValue(p.SnapshotEmployeeNumber ?? string.Empty);
-                sheet.Cell(r, 2).Value = p.SnapshotName;
-                sheet.Cell(r, 3).Value = line.Label;
-                Money(sheet.Cell(r, 4), line.Amount, Band.None);
-                if (line.Signed && line.Amount < 0m)
-                    sheet.Cell(r, 4).Style.Font.SetFontColor(XLColor.FromHtml("#BE123C"));
-                r++;
-            }
+            var cols = Enumerable.Range(0, table.Columns.Count)
+                .Where(i => table.Columns[i].Kind == PayrollSummaryBreakdown.ColumnKind.NotInTotal)
+                .Select(i => first + i)
+                .ToList();
+            var band = sheet.Range(headerRow - 1, cols.Min(), headerRow - 1, cols.Max()).Merge();
+            band.Value = "NOT IN TOTAL GROSS";
+            band.Style.Font.SetBold().Font.SetFontColor(Muted);
+            band.Style.Fill.SetBackgroundColor(NotInTotalFill);
+            band.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
         }
 
-        sheet.Range(headerRow, 1, Math.Max(r - 1, headerRow), headers.Length).SetAutoFilter();
+        // ── Column headings ──
+        for (var c = 0; c < identity.Length; c++)
+            Heading(sheet.Cell(headerRow, c + 1), identity[c], Band.None);
+        for (var c = 0; c < table.Columns.Count; c++)
+        {
+            var column = table.Columns[c];
+            var cell = sheet.Cell(headerRow, first + c);
+            Heading(cell, column.Header, Band.None);
+            cell.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+            if (column.Kind == PayrollSummaryBreakdown.ColumnKind.NotInTotal)
+                cell.Style.Fill.SetBackgroundColor(NotInTotalFill).Font.SetFontColor(Muted);
+        }
+
+        var totalGrossCol = first + table.TotalGrossIndex;
+        var note = sheet.Cell(headerRow, totalGrossCol).CreateComment();
+        note.Author = "AltomateHR";
+        note.AddText(PayrollSummaryBreakdown.TotalGrossNote);
+        note.Style.Size.SetWidth(40).Size.SetHeight(8);
+
+        // ── One row per employee ──
+        var r = headerRow + 1;
+        foreach (var row in table.Rows)
+        {
+            // Text, so "00027" keeps its leading zeros.
+            sheet.Cell(r, 1).SetValue(row.EmployeeNumber);
+            sheet.Cell(r, 2).Value = row.Staff;
+            sheet.Cell(r, 3).Value = row.Group;
+            sheet.Cell(r, 4).Value = row.Outlet;
+            for (var c = 0; c < table.Columns.Count; c++)
+                BreakdownAmount(sheet.Cell(r, first + c), row.Values[c], table.Columns[c].Kind);
+            r++;
+        }
+        var lastEmployeeRow = r - 1;
+
+        // ── Totals row: each column summed, as values ──
+        var totalsRow = r;
+        var count = table.Rows.Count;
+        sheet.Cell(totalsRow, 2).Value = $"Total ({count} employee{(count == 1 ? "" : "s")})";
+        for (var c = 0; c < table.Columns.Count; c++)
+        {
+            var sum = table.Rows.Sum(x => x.Values[c]);
+            BreakdownAmount(sheet.Cell(totalsRow, first + c), sum, table.Columns[c].Kind);
+        }
+        var totalsRange = sheet.Range(totalsRow, 1, totalsRow, lastCol);
+        totalsRange.Style.Font.SetBold();
+        totalsRange.Style.Border.SetTopBorder(XLBorderStyleValues.Thin);
+        totalsRange.Style.Border.SetBottomBorder(XLBorderStyleValues.Double);
+
+        // Filter over the employees only, so sorting never moves the totals.
+        sheet.Range(headerRow, 1, Math.Max(lastEmployeeRow, headerRow), lastCol).SetAutoFilter();
         sheet.SheetView.FreezeRows(headerRow);
+        sheet.SheetView.FreezeColumns(2);
+
         sheet.Column(1).Width = 11;
         sheet.Column(2).Width = 34;
-        sheet.Column(3).Width = 44;
-        sheet.Column(4).Width = 14;
+        sheet.Column(3).Width = 18;
+        sheet.Column(4).Width = 16;
+        var headingLines = 1;
+        for (var c = 0; c < table.Columns.Count; c++)
+        {
+            var header = table.Columns[c].Header;
+            var width = Math.Clamp(header.Length + 3, 12, 24);
+            sheet.Column(first + c).Width = width;
+            headingLines = Math.Max(headingLines, (int)Math.Ceiling((header.Length + 2) / (double)(width - 1)));
+        }
+        sheet.Row(headerRow).Height = 15 * Math.Min(headingLines, 4);
+
+        sheet.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+        sheet.PageSetup.FitToPages(1, 0);
+        sheet.PageSetup.SetRowsToRepeatAtTop(headerRow - 1, headerRow);
+    }
+
+    private static void BreakdownAmount(IXLCell cell, decimal value, PayrollSummaryBreakdown.ColumnKind kind)
+    {
+        Money(cell, value, Band.None);
+        if (value < 0m) cell.Style.Font.SetFontColor(Negative);
+        if (kind == PayrollSummaryBreakdown.ColumnKind.TotalGross) cell.Style.Font.SetBold();
+        if (kind == PayrollSummaryBreakdown.ColumnKind.NotInTotal)
+            cell.Style.Fill.SetBackgroundColor(NotInTotalFill);
     }
 
     // ─── Cells ──────────────────────────────────────────────────────────
