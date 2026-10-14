@@ -179,7 +179,15 @@ public class PayrollRunService : IPayrollRunService
         var members = await ResolveScopeAsync(
             dto.PolicyIds, dto.ExcludedEmployeeProfileIds, dto.PeriodYear, dto.PeriodMonth);
         if (members.Count > 0)
+        {
             await _runMembers.ReplaceForRunAsync(run.Id, members);
+
+            // And remember the choice itself, so a re-run can add people who
+            // become payable on those policies later (see GenerateAsync).
+            run.ScopePolicyIdsJson = JsonSerializer.Serialize(dto.PolicyIds ?? []);
+            run.ScopeExcludedProfileIdsJson = JsonSerializer.Serialize(dto.ExcludedEmployeeProfileIds ?? []);
+            await _runs.UpdateAsync(run);
+        }
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunCreate,
@@ -344,6 +352,27 @@ public class PayrollRunService : IPayrollRunService
         var memberIds = (await _runMembers.GetForRunAsync(run.Id))
             .Select(m => m.EmployeeProfileId)
             .ToHashSet(StringComparer.Ordinal);
+
+        // Someone who became payable on the chosen policies after the draft
+        // was made — transferred in, or newly hired — joins the roster on the
+        // re-run. Without this a transfer marked the draft stale but "Re-run
+        // payroll" still left the newcomer out. Only for drafts that recorded
+        // their choice, never for ABPay's final-figures runs (their roster is
+        // the timesheet), and never anyone the admin unticked.
+        if (memberIds.Count > 0 && !run.SkipProration && run.ScopePolicyIdsJson is not null)
+        {
+            var policyIds = JsonSerializer.Deserialize<List<string>>(run.ScopePolicyIdsJson) ?? [];
+            var excluded = JsonSerializer.Deserialize<List<string>>(run.ScopeExcludedProfileIdsJson ?? "[]") ?? [];
+            var newcomers = (await ResolveScopeAsync(policyIds, excluded, run.PeriodYear, run.PeriodMonth))
+                .Where(id => !memberIds.Contains(id))
+                .ToList();
+            if (newcomers.Count > 0)
+            {
+                memberIds.UnionWith(newcomers);
+                await _runMembers.ReplaceForRunAsync(run.Id, memberIds);
+            }
+        }
+
         if (memberIds.Count > 0)
             profiles = profiles.Where(p => memberIds.Contains(p.Id)).ToList();
 

@@ -420,6 +420,64 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(1m, payslip.ProratedFactor);
     }
 
+    // ─── The draft's roster after it was created ───────────────────────
+
+    // A roster only lists people whose payroll profile is complete.
+    private EmployeeProfile AddReadyEmployee(string userId, string name, string employeeNumber)
+    {
+        var p = AddEmployee(userId, name, employeeNumber: employeeNumber, joinDate: new DateTime(2025, 1, 1));
+        p.Gender = Gender.MALE;
+        p.IdType = IdType.NRIC;
+        p.IdNumber = $"900101-01-{employeeNumber[^3..]}1";
+        p.MaritalStatus = MaritalStatus.SINGLE;
+        _db.SaveChanges();
+        return p;
+    }
+
+    // Someone transferred in (or hired) after the draft was made joins it on
+    // "Re-run payroll"; someone the admin unticked stays out.
+    [Fact]
+    public async Task GenerateAsync_AddsSomeoneWhoBecamePayableAfterTheDraft_ButNotAnUntickedPerson()
+    {
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var created = await _service.CreateAsync(new CreatePayrollRunDto
+        {
+            PeriodYear = 2026,
+            PeriodMonth = 1,
+            ExcludedEmployeeProfileIds = [unticked.Id],
+        });
+        Assert.True(created.Ok);
+
+        AddReadyEmployee("usr-3", "Chong", "E-003");   // arrives after the draft
+
+        var names = (await _service.GenerateAsync(created.Run!.Id)).Result!.Detail.Payslips
+            .Select(p => p.SnapshotName).OrderBy(n => n).ToList();
+
+        Assert.Equal(["Aisyah", "Chong"], names);
+    }
+
+    // ABPay's final-figures runs are the timesheet's roster: a newcomer who
+    // isn't on it must not be paid their profile salary by a re-run.
+    [Fact]
+    public async Task GenerateAsync_LeavesAFinalFiguresRunsRosterAlone()
+    {
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var created = await _service.CreateAsync(new CreatePayrollRunDto
+        {
+            PeriodYear = 2026,
+            PeriodMonth = 1,
+            SkipProration = true,
+            ExcludedEmployeeProfileIds = [unticked.Id],
+        });
+
+        AddReadyEmployee("usr-3", "Chong", "E-003");
+
+        var payslip = Assert.Single((await _service.GenerateAsync(created.Run!.Id)).Result!.Detail.Payslips);
+        Assert.Equal("Aisyah", payslip.SnapshotName);
+    }
+
     [Fact]
     public async Task CreateAsync_ProratesByDefault()
     {
@@ -862,7 +920,7 @@ public class PayrollRunServiceTests : IDisposable
     {
         AddEmployee("usr-1", "Aisyah", employeeNumber: "E-001");
         AddEmployee("usr-2", "Bala", employeeNumber: "E-002");
-        AddEmployee("usr-3", "Chong", employeeNumber: "E-003");
+        AddReadyEmployee("usr-3", "Chong", "E-003");
         AddEmployee("usr-4", "Devi", employeeNumber: "E-004");
         await SetRoleAsync("usr-2", "Supervisor");
         await SetRoleAsync("usr-3", "Admin");
@@ -880,7 +938,7 @@ public class PayrollRunServiceTests : IDisposable
     {
         AddEmployee("usr-1", "Aisyah", employeeNumber: "E-001");
         AddEmployee("usr-2", "Bala", employeeNumber: "E-002");
-        AddEmployee("usr-3", "Chong", employeeNumber: "E-003");
+        AddReadyEmployee("usr-3", "Chong", "E-003");
         await SetRoleAsync("usr-2", "Supervisor");
         await SetRoleAsync("usr-3", "Owner");
 
