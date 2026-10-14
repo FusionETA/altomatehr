@@ -773,6 +773,44 @@ public class YtdImportServiceTests : IDisposable
         Assert.Equal(5000m - 3500m, ytd.Taxable);
     }
 
+    // The deduction comes off only as far as that month's regular PCB base
+    // went: base 2,500 with a 4,000 advance taxed 0 regular pay (the 10,000
+    // bonus is additional remuneration, taxed on its own), so Y gains 10,000
+    // — not 8,500.
+    [Fact]
+    public async Task AWageReducingDeduction_ComesOffOnlyAsFarAsTheMonthsRegularBase()
+    {
+        var header = Header + ",Advance Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,2500,0,0,0,0,0,0,0,0,0,0,10000,0,0,0,4000"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(2500m + 10000m - 2500m, ytd.Taxable);
+    }
+
+    // Months imported in the previous system and migrated carry unpaid leave
+    // as an uncategorised "Unpaid leave" deduction; it still comes off Y.
+    [Fact]
+    public async Task AMigratedUnpaidLeaveLine_ComesOffYearToDateTaxablePay()
+    {
+        await _service.ImportAsync(2026, Sheet("Aisyah Binti Rahman", null, 1), TabularFormat.Csv);
+        var payslip = await _db.Payslips.SingleAsync();
+        _db.PayslipLineItems.Add(new PayslipLineItem
+        {
+            PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+            Kind = PayslipLineKind.DEDUCTION, Category = null, Label = "Unpaid leave",
+            Amount = 500m, SubjectToPcb = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(5000m - 500m, ytd.Taxable);
+    }
+
     // ─── Matching: an IC and a name that disagree ────────────────────────
 
     private void AddBeth()
