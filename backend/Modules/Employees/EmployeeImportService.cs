@@ -322,7 +322,20 @@ public class EmployeeImportService : IEmployeeImportService
                     continue;
                 }
 
-                if (cells.TouchesProfile) await _profiles.SaveAsync(member.Id, profile);
+                if (cells.TouchesProfile)
+                {
+                    // A refusal from the profile rules is this row's problem,
+                    // not the whole import's — report it and carry on.
+                    try
+                    {
+                        await _profiles.SaveAsync(member.Id, profile);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        errors.Add(new TabularImportError(rowNumber, ex.Message));
+                        continue;
+                    }
+                }
                 if (nationalityWarning is not null) warnings.Add(nationalityWarning);
                 updated++;
                 continue;

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: a6f14e4
+// whats-new-covered-up-to: 7ccd4a8
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,12 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-14",
+    improved: [
+      "Admins: an employee's Previous employment (TP3) now needs a Year once you enter an amount. Without one, payroll ignored those amounts, so the profile won't save.",
+    ],
+  },
   {
     date: "2026-10-13",
     new: [

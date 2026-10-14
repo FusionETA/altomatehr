@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: a6f14e4
+  user-guide-covered-up-to: 7ccd4a8
 -->
 <html lang="en">
 <head>
@@ -924,6 +924,13 @@
       <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
         for each tax-exempt allowance or TP1 relief the previous employer already gave this year, with the amount. It
         uses up that item's yearly limit here.</li>
+      <li><strong>Previous employment (TP3) — the Year</strong> — as soon as you fill in any TP3 amount (remuneration,
+        EPF, PCB, deductions, zakat or an item above), the <strong>Year</strong> box must hold the year those figures
+        are for, for example <em>2026</em>. Without it the figures aren't used, so AltomateHR won't let you save: the
+        box turns red and says <em>Enter the year these TP3 figures are for — without it they aren't used.</em>, the
+        same message appears on the bar at the bottom, and <span class="btn-name">Save changes</span> does nothing
+        until you fix it. A year that isn't four digits says <em>Enter a 4-digit year, e.g. 2026.</em> The empty box
+        shows <em>e.g. 2026</em> in grey as an example; it isn't filled in until you type it.</li>
       <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
         or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
         them PCB goes back to the normal resident rates.</li>

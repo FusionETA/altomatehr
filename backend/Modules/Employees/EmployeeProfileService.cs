@@ -59,9 +59,13 @@ public class EmployeeProfileService : IEmployeeProfileService
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null)
             return null;   // not a member of this org → 404
 
-        if (Tp3Problem(dto) is { } tp3) throw new ArgumentException(tp3);
-
         var profile = await _profiles.GetByUserAsync(userId);
+
+        // Checked only when TP3 is being changed: a record saved before this
+        // rule (or carried over from the previous system) may already hold
+        // figures without a year, and an unrelated save — an import updating
+        // a phone number — must not fail on a field it never touched.
+        if (Tp3Changed(profile, dto) && Tp3Problem(dto) is { } tp3) throw new ArgumentException(tp3);
         if (profile is null)
         {
             profile = new EmployeeProfile { UserId = userId };
@@ -143,6 +147,16 @@ public class EmployeeProfileService : IEmployeeProfileService
     // TP3 figures only count for the year they're entered against — payroll
     // compares it with the run's year — so figures with no year are silently
     // ignored. Refuse them rather than let an admin think they were applied.
+    private static bool Tp3Changed(EmployeeProfile? stored, EmployeeProfileDto d) =>
+        stored is null
+        || stored.PrevEmploymentYear != d.PrevEmploymentYear
+        || stored.PrevRemuneration != d.PrevRemuneration
+        || stored.PrevEpf != d.PrevEpf
+        || stored.PrevPcb != d.PrevPcb
+        || stored.PrevAllowableDeductions != d.PrevAllowableDeductions
+        || stored.PrevZakat != d.PrevZakat
+        || (stored.PrevByCategoryJson ?? "") != (d.PrevByCategoryJson ?? "");
+
     public static string? Tp3Problem(EmployeeProfileDto d)
     {
         var hasFigures =
