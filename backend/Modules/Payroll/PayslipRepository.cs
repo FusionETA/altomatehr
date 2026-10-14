@@ -214,6 +214,7 @@ public class PayslipRepository : IPayslipRepository
 
         var totals = new Dictionary<string, PayrollYtdTotals>(StringComparer.Ordinal);
         var taxableAllowances = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var baseReducing = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var byCategory = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
         var tp1 = new Dictionary<string, decimal>(StringComparer.Ordinal);
 
@@ -228,6 +229,18 @@ public class PayslipRepository : IPayslipRepository
             {
                 taxableAllowances[employeeId] =
                     Get(taxableAllowances, employeeId) + (li.PcbTaxableAmount ?? li.Amount);
+            }
+
+            // A deduction that cuts the taxable wage itself — an advance
+            // recovered, unpaid leave, a salary correction — lowered that
+            // month's PCB base, so it has to come off the year-to-date too.
+            // Otherwise every later month taxes it again (an imported RM 3,500
+            // advance left Y RM 3,500 too high for the rest of the year).
+            else if (li.Kind == PayslipLineKind.DEDUCTION && li.SubjectToPcb
+                     && PayrollAdjustmentCategories.Find(li.Category) is { ReducesBase: true })
+            {
+                baseReducing[employeeId] =
+                    Get(baseReducing, employeeId) + (li.PcbTaxableAmount ?? li.Amount);
             }
 
             // Both allowances and TP1 deductions are totalled by category — the
@@ -263,7 +276,8 @@ public class PayslipRepository : IPayslipRepository
             totals[employeeId] = new PayrollYtdTotals
             {
                 Taxable = group.Sum(p => p.ProratedPay + p.OtPay)
-                          + Get(taxableAllowances, employeeId),
+                          + Get(taxableAllowances, employeeId)
+                          - Get(baseReducing, employeeId),
                 Epf = group.Sum(p => p.EpfEmployee),
                 Pcb = group.Sum(p => p.Pcb),
                 Zakat = group.Sum(p => p.Zakat),

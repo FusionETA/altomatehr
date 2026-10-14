@@ -754,6 +754,25 @@ public class YtdImportServiceTests : IDisposable
         Assert.Equal(5000m + 650m + 86.65m + 9.90m - 175m, payslip.TotalCostToEmployer);
     }
 
+    // A deduction that cuts the taxable wage (an advance recovered) lowers the
+    // year-to-date the next month's PCB starts from — otherwise it is taxed
+    // again all year. (Imported from PayrollPanda: Arrears 3,883.87 with a
+    // RM 3,500 Advance Deduction.)
+    [Fact]
+    public async Task AnImportedAdvanceDeduction_ComesOffYearToDateTaxablePay()
+    {
+        var header = Header + ",Advance Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,3500"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(5000m - 3500m, ytd.Taxable);
+    }
+
     // ─── Matching: an IC and a name that disagree ────────────────────────
 
     private void AddBeth()
