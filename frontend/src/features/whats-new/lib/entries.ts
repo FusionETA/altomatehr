@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 7ccd4a8
+// whats-new-covered-up-to: 0cb12b8
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -25,6 +25,9 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     date: "2026-10-14",
     improved: [
       "Admins: an employee's Previous employment (TP3) now needs a Year once you enter an amount. Without one, payroll ignored those amounts, so the profile won't save.",
+    ],
+    fixed: [
+      "Admins: Re-run payroll on a draft now adds people who transferred in or joined after it was made. Anyone you unticked stays out; drafts made before this update and approved runs don't change.",
     ],
   },
   {

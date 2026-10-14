@@ -434,48 +434,93 @@ public class PayrollRunServiceTests : IDisposable
         return p;
     }
 
-    // Someone transferred in (or hired) after the draft was made joins it on
-    // "Re-run payroll"; someone the admin unticked stays out.
-    [Fact]
-    public async Task GenerateAsync_AddsSomeoneWhoBecamePayableAfterTheDraft_ButNotAnUntickedPerson()
+    // The org's one policy, as the picker sends it.
+    private string AddDefaultPolicy()
     {
-        AddReadyEmployee("usr-1", "Aisyah", "E-001");
-        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var policy = new EmployeePolicy { Id = "pol-1", OrganizationId = "org-1", Name = "Monthly Staff", IsDefault = true };
+        _db.EmployeePolicies.Add(policy);
+        _db.SaveChanges();
+        return policy.Id;
+    }
+
+    private async Task<string> PickerDraftAsync(string policyId, string excludedProfileId, bool finalFigures = false)
+    {
         var created = await _service.CreateAsync(new CreatePayrollRunDto
         {
             PeriodYear = 2026,
             PeriodMonth = 1,
-            ExcludedEmployeeProfileIds = [unticked.Id],
+            PolicyIds = [policyId],
+            ExcludedEmployeeProfileIds = [excludedProfileId],
+            SkipProration = finalFigures,
         });
         Assert.True(created.Ok);
+        return created.Run!.Id;
+    }
+
+    private async Task<List<string>> NamesAfterRerunAsync(string runId) =>
+        (await _service.GenerateAsync(runId)).Result!.Detail.Payslips
+            .Select(p => p.SnapshotName).OrderBy(n => n).ToList();
+
+    // Someone transferred in (or hired) after a picker draft was made joins it
+    // on "Re-run payroll"; someone the admin unticked stays out — whether or
+    // not the draft says its pay figures are final.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GenerateAsync_AddsSomeoneWhoBecamePayableAfterAPickerDraft_ButNotAnUntickedPerson(bool finalFigures)
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var runId = await PickerDraftAsync(policy, unticked.Id, finalFigures);
 
         AddReadyEmployee("usr-3", "Chong", "E-003");   // arrives after the draft
 
-        var names = (await _service.GenerateAsync(created.Run!.Id)).Result!.Detail.Payslips
-            .Select(p => p.SnapshotName).OrderBy(n => n).ToList();
-
-        Assert.Equal(["Aisyah", "Chong"], names);
+        Assert.Equal(["Aisyah", "Chong"], await NamesAfterRerunAsync(runId));
     }
 
-    // ABPay's final-figures runs are the timesheet's roster: a newcomer who
-    // isn't on it must not be paid their profile salary by a re-run.
+    // ABPay sends an explicit list (exclusions, no policies): its roster is the
+    // timesheet and never grows — even if "figures are final" is later unticked.
     [Fact]
-    public async Task GenerateAsync_LeavesAFinalFiguresRunsRosterAlone()
+    public async Task GenerateAsync_NeverGrowsARunMadeFromAnExplicitList()
     {
+        AddDefaultPolicy();
         AddReadyEmployee("usr-1", "Aisyah", "E-001");
-        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var notOnSheet = AddReadyEmployee("usr-2", "Ben", "E-002");
         var created = await _service.CreateAsync(new CreatePayrollRunDto
         {
             PeriodYear = 2026,
             PeriodMonth = 1,
             SkipProration = true,
-            ExcludedEmployeeProfileIds = [unticked.Id],
+            ExcludedEmployeeProfileIds = [notOnSheet.Id],
         });
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(created.Run!.Id));
+
+        await _service.UpdateAsync(created.Run.Id, new UpdatePayrollRunDto { SkipProration = false });
+        AddReadyEmployee("usr-3", "Chong", "E-003");
+
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(created.Run.Id));
+    }
+
+    // A month that was approved and is reverted keeps the people it was
+    // approved with — a re-run must not add someone who joined its policy later.
+    [Fact]
+    public async Task GenerateAsync_DoesNotGrowAMonthRevertedAfterApproval()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var unticked = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var runId = await PickerDraftAsync(policy, unticked.Id);
+        await _service.GenerateAsync(runId);
+
+        var run = await _db.PayrollRuns.FirstAsync(r => r.Id == runId);
+        run.Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.RevertToDraftAsync(runId)).Ok);
 
         AddReadyEmployee("usr-3", "Chong", "E-003");
 
-        var payslip = Assert.Single((await _service.GenerateAsync(created.Run!.Id)).Result!.Detail.Payslips);
-        Assert.Equal("Aisyah", payslip.SnapshotName);
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(runId));
     }
 
     [Fact]

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 7ccd4a8
+  user-guide-covered-up-to: 0cb12b8
 -->
 <html lang="en">
 <head>
@@ -892,6 +892,16 @@
       Transfer and Duplicate buttons are hidden. Press <span class="btn-name">Cancel transfer</span> to change the company,
       policy or date, then schedule it again. If a transfer fails, the banner says why; it retries by itself, or you can
       cancel it.</p>
+    <div class="note warn"><span class="nt">Transferring in the middle of a month</span>
+      <p>Both companies pay the person for part of that month, so do the payroll in this order:</p>
+      <ol>
+        <li>At the <strong>old</strong> company, approve and file that month's payroll first.</li>
+        <li>At the <strong>new</strong> company, press <span class="btn-name">Re-run payroll</span> on that month's draft — it
+          adds the person (see <a href="#payroll">Running payroll</a>) and carries over the year-to-date from the old company —
+          then send it for approval and approve it.</li>
+      </ol>
+      <p>Approving the old company first means the new company's tax (PCB) starts from the right year-to-date figures.</p>
+    </div>
     <p>After the move, the person sees the old company as <em>Former · payslips only</em> in their company menu — they
       can still read their payslips there, nothing else (see the <a href="/employee#account">employee guide</a>).</p>
     <h3>Changing a salary</h3>
@@ -1180,7 +1190,8 @@
         <p><span class="btn-name">Create draft</span> — in <strong>Start a payroll run</strong>, pick the month and year,
           and which policies and employees to include. Changing the month reloads the list, because who is payable
           depends on it: someone who left is still listed for their last month. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
-          owners and admins aren't.</p></li>
+          owners and admins aren't. The app remembers the policies you picked and anyone you unticked, so you don't have to
+          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>).</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
@@ -1200,7 +1211,13 @@
           <span class="btn-name">Re-run payroll</span>. Once the run is no longer a draft, a line records that it was used.</p></li>
       <li><h4>Re-run if anything changed</h4>
         <p>After an adjustment, just press <span class="btn-name">Re-run payroll</span>. Adjustments carry over; the
-          payslip lines are rebuilt from them.</p></li>
+          payslip lines are rebuilt from them.</p>
+        <p>The same button picks up newcomers. If someone was hired, or transferred into this company, after you created the
+          draft, <span class="btn-name">Re-run payroll</span> adds them to it — as long as they're on one of the policies
+          you picked when you created the draft and you hadn't unticked them. You don't need to delete the draft and start
+          again. It doesn't apply to a run imported from ABPay, to a draft with no policy choice recorded (including
+          drafts made before this was added), or to a month that was approved and then reverted to draft; those keep
+          the people they started with.</p></li>
       <li><h4>Send for approval</h4>
         <p><span class="btn-name">Send for approval</span>. The approver either presses
           <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p></li>
