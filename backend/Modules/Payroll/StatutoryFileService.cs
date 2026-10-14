@@ -268,7 +268,7 @@ public class StatutoryFileService : IStatutoryFileService
         var (summary, refused) = await LoadSummaryAsync(runId);
         if (summary is null) return refused!;
 
-        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.pdf";
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}{UnapprovedSuffix(summary.Run)}.pdf";
         return new StatutoryFileResult(
             true, fileName, PayrollSummaryPdf.Render(summary), PayrollSummaryPdf.ContentType, null);
     }
@@ -280,19 +280,24 @@ public class StatutoryFileService : IStatutoryFileService
         var (summary, refused) = await LoadSummaryAsync(runId);
         if (summary is null) return refused!;
 
-        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}.xlsx";
+        var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}{UnapprovedSuffix(summary.Run)}.xlsx";
         return new StatutoryFileResult(
             true, fileName, PayrollSummaryXlsx.Render(summary), PayrollSummaryXlsx.ContentType, null);
     }
 
     // The summary's model (with every payslip's line items and the generated
     // stamp), or the refusal to return instead.
+    //
+    // The one run report NOT held back until approval: a draft or a run
+    // awaiting approval can produce it, so the admin can send it to whoever
+    // signs off (the previous system's "download summary" on a pending run).
+    // It is filed nowhere and moves no money; it is marked as not approved on
+    // the page and in its file name, so it can't pass for the final summary.
     private async Task<(PayrollDocumentModel? Summary, StatutoryFileResult? Refused)> LoadSummaryAsync(
         string runId)
     {
         var model = await LoadDocumentAsync(runId);
         if (model is null) return (null, NotFound());
-        if (RefuseUnlessApproved(model.Run) is { } refusal) return (null, refusal);
         if (RefuseIfImported(model.Run) is { } imported) return (null, imported);
 
         if (model.Rows.Count == 0)
@@ -594,6 +599,15 @@ public class StatutoryFileService : IStatutoryFileService
     }
 
     private static bool IsPreview(Entities.PayrollRun run) => run.Status != Entities.PayrollRunStatus.SUBMITTED;
+
+    // "_DRAFT" / "_FOR_APPROVAL" on a file cut before approval, so it can't be
+    // mistaken for the final one in someone's downloads folder or inbox.
+    private static string UnapprovedSuffix(Entities.PayrollRun run) => run.Status switch
+    {
+        Entities.PayrollRunStatus.DRAFT => "_DRAFT",
+        Entities.PayrollRunStatus.PENDING_APPROVAL => "_FOR_APPROVAL",
+        _ => string.Empty,
+    };
 
     // Drop the characters Windows rejects, turn whitespace runs into "_",
     // collapse repeated "_", trim them off the ends, cap at 80 — exactly the
