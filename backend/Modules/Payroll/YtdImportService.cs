@@ -193,8 +193,8 @@ public class YtdImportService : IYtdImportService
             if (lost.Count > 0)
             {
                 warnings.Add(
-                    "Importing this file removes the imported history of: " + string.Join(", ", lost)
-                    + " — they're not matched in this file. Add them (or fix their row) to keep it.");
+                    "Importing this file removes imported months for: " + string.Join("; ", lost)
+                    + " — this file has no row for them in those months. Add them (or fix their row) to keep it.");
             }
         }
 
@@ -460,21 +460,30 @@ public class YtdImportService : IYtdImportService
             .Select(r => r.PeriodMonth)
             .Order()];
 
-    // People with an imported payslip in a month this file replaces, who
-    // aren't matched by any row in it.
+    // Each replaced month is rewritten whole, so per month: anyone with an
+    // imported payslip in it who has no row for THAT month in this file
+    // loses it — "Bala (January 2026)". Matched elsewhere in the file isn't
+    // enough.
     private async Task<List<string>> LosesHistoryAsync(
         int year, IReadOnlyList<int> months, IReadOnlyList<MatchedEmployee> matched)
     {
-        var keep = matched.Select(m => m.Profile.Id).ToHashSet(StringComparer.Ordinal);
-        var lost = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lost = new SortedDictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var month in months)
         {
             var run = await _runs.GetByPeriodAsync(year, month);
             if (run is null) continue;
+            var keep = matched
+                .Where(m => m.Parsed.Months.Any(mo => mo.Month == month))
+                .Select(m => m.Profile.Id)
+                .ToHashSet(StringComparer.Ordinal);
             foreach (var p in await _payslips.GetForRunAsync(run.Id))
-                if (!keep.Contains(p.EmployeeProfileId)) lost.Add(p.SnapshotName);
+            {
+                if (keep.Contains(p.EmployeeProfileId)) continue;
+                if (!lost.TryGetValue(p.SnapshotName, out var list)) lost[p.SnapshotName] = list = [];
+                list.Add(month);
+            }
         }
-        return [.. lost];
+        return [.. lost.Select(kv => $"{kv.Key} ({string.Join(", ", kv.Value.Order().Select(m => PayrollPeriodLabel.For(year, m)))})")];
     }
 
     private async Task<List<int>> ExistingImportableMonthsAsync(int year) =>

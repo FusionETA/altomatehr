@@ -827,7 +827,24 @@ public class YtdImportServiceTests : IDisposable
         var preview = await _service.PreviewAsync(
             2026, Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Bet Lin", null, [1, 2])), TabularFormat.Csv);
 
-        Assert.Contains(preview.Warnings, w => w.Contains("removes the imported history of: Beth Lim"));
+        Assert.Contains(preview.Warnings, w => w.Contains("Beth Lim (January 2026, February 2026)"));
+    }
+
+    // Matched for some months isn't enough: a month the file replaces but
+    // has no row for that person in still loses their payslip.
+    [Fact]
+    public async Task ThePreviewWarnsAboutAMonthLeftOutForSomeoneStillInTheFile()
+    {
+        AddBeth();
+        await _service.ImportAsync(2026,
+            Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [1, 2])), TabularFormat.Csv);
+
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [2])), TabularFormat.Csv);
+
+        var warning = Assert.Single(preview.Warnings, w => w.Contains("removes imported months"));
+        Assert.Contains("Beth Lim (January 2026)", warning);
+        Assert.DoesNotContain("Aisyah", warning);
     }
 
     // ─── Not overwriting real payroll ───────────────────────────────────
