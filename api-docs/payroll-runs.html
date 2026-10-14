@@ -1,10 +1,3 @@
-          <strong>The chosen roster is remembered.</strong> When the request sends at least one
-          <code>policyIds</code> entry and resolves to at least one employee, the run stores the
-          <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
-          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
-          payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
-          only exclusions), one that resolved to nobody, and one created before this was recorded store
-          nothing: their roster stays exactly as frozen.
 <!doctype html>
 <html lang="en">
 <head>
@@ -103,8 +96,9 @@
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
           also reverts every later <em>submitted</em> month in the same year.</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
-          SUBMITTED.</strong> The single payslip PDF is the one exception — it can be downloaded from a
-          draft too, as a watermarked preview.</li>
+          SUBMITTED.</strong> Two exceptions: the single payslip PDF and the
+          <a href="#doc-summary">run summary</a> (PDF or Excel) can be downloaded before approval, as
+          marked previews.</li>
         <li><strong>A run is unique per period.</strong> <code>POST /payroll/runs</code> for a month that
           already has a run answers <code>409</code> — open the existing run instead of retrying.</li>
         <li><strong>Two employee ids.</strong> Every id on this page is an
@@ -245,12 +239,13 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <h3>Response <code>201</code></h3>
         <p>A <a href="#run-object">run object</a>, with <code>Location</code> pointing at <code>GET /payroll/runs/{id}</code>.</p>
         <div class="callout">
-          <strong>The chosen roster is remembered.</strong> When the request resolves to at least one
-          employee, the run stores the <code>policyIds</code> and <code>excludedEmployeeProfileIds</code>
-          you sent (an omitted list is stored as empty, meaning "every policy" / "nobody excluded"), not just the
+          <strong>The chosen roster is remembered.</strong> When the request sends at least one
+          <code>policyIds</code> entry and resolves to at least one employee, the run stores the
+          <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
           resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
-          payable on those policies later. A run created with no eligible employees stores nothing, and
-          neither does one created before this was recorded: its roster stays exactly as frozen.
+          payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
+          only exclusions), one that resolved to nobody, and one created before this was recorded store
+          nothing: their roster stays exactly as frozen.
         </div>
         <h3>Errors</h3>
         <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
@@ -334,7 +329,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>totalHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalWagesSubjectToHrdf</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Sum of the payslips' <code>totalCostToEmployer</code> — see the payslip row below for what that excludes.</td></tr>
             <tr><td><code>generatedAt</code></td><td>string or null</td><td>ISO 8601. Null until <a href="#generate">generate</a> has run.</td></tr>
             <tr><td><code>submittedForApprovalAt</code> / <code>submittedForApprovalById</code></td><td>string or null</td><td>Who proposed the month, and when.</td></tr>
             <tr><td><code>submittedAt</code> / <code>submittedById</code></td><td>string or null</td><td>Who approved it, and when — a different person from the above by design.</td></tr>
@@ -374,7 +369,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
             <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
             <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
-            <tr><td><code>grossPay</code> / <code>netPay</code> / <code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
             <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
@@ -1125,9 +1121,9 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          One employee's payslip PDF. The one document a <strong>draft</strong> may also produce — as a
-          watermarked preview, so figures can be checked before approval. Everything else in this section
-          still waits for <code>SUBMITTED</code>.
+          One employee's payslip PDF. A <strong>draft</strong> may also produce it — as a
+          watermarked preview, so figures can be checked before approval. Apart from this and the
+          <a href="#doc-summary">run summary</a>, everything else in this section still waits for <code>SUBMITTED</code>.
         </p>
         <h3>Response <code>200</code></h3>
         <p>
@@ -1169,6 +1165,15 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. A PDF by default, or an Excel workbook with the same figures.</p>
+        <div class="callout warn">
+          <strong>Available before approval.</strong> This is the one run report that is not held back until
+          <code>SUBMITTED</code>: once payslips have been generated, a <code>DRAFT</code> or
+          <code>PENDING_APPROVAL</code> run can produce it, so it can be sent to whoever signs off. Such a copy is
+          marked as not approved &mdash; the PDF carries a <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark
+          on every page plus a &ldquo;NOT APPROVED&rdquo; banner, and the file name ends in <code>_DRAFT</code> or
+          <code>_FOR_APPROVAL</code> &mdash; because re-running payroll can change every figure. The documents
+          bundle and every other document and file on this page still require approval.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1180,8 +1185,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         </div>
         <h3>Response <code>200</code></h3>
         <ul>
-          <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</li>
-          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code>, with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures.</li>
+          <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>). While the run is not yet approved: <code>Payroll_Summary_{Month}_{Year}_DRAFT.pdf</code> (<code>DRAFT</code>) or <code>Payroll_Summary_{Month}_{Year}_FOR_APPROVAL.pdf</code> (<code>PENDING_APPROVAL</code>).</li>
+          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code> (with the same <code>_DRAFT</code> / <code>_FOR_APPROVAL</code> suffix before an approval), with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures. (The <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner are PDF-only; the Excel copy shows the run's status in its header block and carries the file-name suffix.)</li>
         </ul>
         <h3 id="doc-summary-breakdown">The <code>Breakdown</code> sheet (xlsx)</h3>
         <p>
@@ -1232,7 +1237,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <ul>
           <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> — any other <code>format</code>.</li>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported, or no payslips.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run imported from a previous system, or no payslips yet (<code>"Run payroll before downloading the summary — there are no payslips on this run."</code>). A run that is not approved is <em>not</em> refused.</li>
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary \
   -H "Authorization: Bearer wp_live_xxx" -o summary.pdf

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 0cb12b8
+  user-guide-covered-up-to: 05cab20
 -->
 <html lang="en">
 <head>
@@ -733,7 +733,8 @@
         pay is changing, then upload it. A new salary applies straight away, so the effective date can be today or
         earlier, not later. It's all or nothing: if any row has a problem, nothing is saved and the rows are listed.
         Each change goes into the person's salary history, and draft payroll runs are marked for
-        a re-run.</li>
+        a re-run. Archived people are refused, with one exception: someone who has left but whose final month is still
+        being paid can take a change that starts on or before their last day. A later start is refused.</li>
     </ul>
     
     <figure class="shot" data-place="Employees">
@@ -1220,7 +1221,14 @@
           the people they started with.</p></li>
       <li><h4>Send for approval</h4>
         <p><span class="btn-name">Send for approval</span>. The approver either presses
-          <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p></li>
+          <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p>
+        <p>To show the approver the figures first, use the <strong>Payroll summary for approval</strong> card on the run,
+          above the buttons. It's there while the run is a draft and while it's waiting for approval. Press
+          <span class="btn-name">Summary PDF</span> or <span class="btn-name">Excel</span> and send the file on. The PDF is
+          marked <strong>NOT APPROVED</strong> and carries a <strong>DRAFT</strong> or <strong>FOR APPROVAL</strong>
+          watermark on every page, and the file name ends in <em>_DRAFT</em> or <em>_FOR_APPROVAL</em>, so a copy sitting in
+          someone's inbox can't pass for the final one. The figures can still change if you re-run payroll. The statutory
+          files, bank file and payslips only appear after approval. A month you imported from earlier payroll has no summary to download.</p></li>
     </ol>
     <p><strong>Finding someone in the run.</strong> Above the <strong>Payslips</strong> list is a search box,
       <strong>Search name, employee ID, or job title</strong>. Type part of a name, an employee ID or a job title and the
@@ -1282,6 +1290,23 @@
       <p class="shot-cap shot-cap-main">When a run needs re-running</p>
     </figure>
 
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-summary-approval.png" alt="A draft payroll run with the Payroll summary for approval card, marked DRAFT, with Summary PDF and Excel buttons above Delete draft, Re-run payroll and Send for approval" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Payroll summary for approval, on a draft run</p>
+    </figure>
+
+    <h3>Cost to employer</h3>
+    <p>The <strong>Cost to employer</strong> column on <strong>Payroll runs</strong> (and the <em>Cost</em> figure on the
+      Overview, and on each person's payslip detail) is what the company actually pays out for the month: gross pay plus
+      its own EPF, SOCSO, EIS and HRDF contributions. A deduction the company keeps — <em>Loan Repayment</em> and
+      <em>Miscellaneous / Other Deduction</em> — is taken off that cost as well as off the person's net pay, because the
+      company never pays that money out. Deductions passed on to someone else, such as CP38 and extra PCB to LHDN, or
+      zakat, still count as cost. Months you imported from earlier payroll follow the same rule.</p>
+
     <h3>The Payroll Overview</h3>
     <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
       the latest run's totals, and everything filed so far this year.</p>
@@ -1328,6 +1353,9 @@
     <p>The Payroll Summary row has two buttons, <span class="btn-name">PDF</span> and <span class="btn-name">Excel</span>.
       The PDF is the one-page summary of the run's totals. The Excel file has three sheets, so you can sort and filter.
       If you tick the row and press <span class="btn-name">Download selected</span>, you get both files.</p>
+    <p>You don't have to wait for approval to get this one: while a run is a draft or waiting for approval, the
+      <strong>Payroll summary for approval</strong> card gives the same summary, marked as not approved (see
+      <a href="#payroll">Running payroll</a>). Once the run is approved, the summary here is the final one.</p>
     <ul>
       <li><strong>Summary</strong> — one row per employee with the same figures as the PDF, and a totals row.</li>
       <li><strong>Totals</strong> — the closing block of the PDF: headcount, net pay, PCB, HRDF, EPF, SOCSO, EIS, zakat
@@ -1497,6 +1525,19 @@
       the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
       never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
       by name and check their figures.</p>
+    <p>The preview checks every row against your employee list before anything is imported:</p>
+    <ul>
+      <li>If the IC on a row belongs to a different employee than the name on it, the preview refuses the file and tells
+        you which row — fix the IC or the name. The same goes for two rows that match the same person: each person can
+        appear only once.</li>
+      <li>If a row's IC isn't on file for anyone, but the name matches, the row is matched by name and the preview warns
+        you to check the IC.</li>
+      <li>When the name in your sheet is spelt differently from the employee record, the row is shown as
+        <em>Sheet name → Matched name</em>, so you can see who it really landed on.</li>
+      <li>If importing would replace a month that was imported before, the warning also names anyone who has imported
+        figures in that month but no row for it in your file, and the months they would lose. Each month is replaced whole,
+        so add their rows (or fix a misspelt name) to keep them.</li>
+    </ul>
     <p>The file only has to hold the months you're adding. If January to August are already imported and you now
       import only September, the earlier months stay exactly as they are. The preview's warnings name only the months in
       your file: a month that was imported before <em>will be replaced</em>, and a month that already has payroll in
