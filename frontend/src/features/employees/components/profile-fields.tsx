@@ -80,6 +80,7 @@ export function Field({
   hint,
   span,
   locked,
+  error,
   children,
 }: {
   label: string;
@@ -88,6 +89,8 @@ export function Field({
   span?: boolean;
   /** Shows a "Locked" pill next to the label — for computed, read-only values. */
   locked?: boolean;
+  /** Outlines the control red and says what's wrong (blocks saving upstream). */
+  error?: string | null;
   children: ReactNode;
 }) {
   const marks = useContext(RequiredFieldsContext);
@@ -96,7 +99,7 @@ export function Field({
 
   return (
     <label
-      className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""} ${missing ? MISSING_CONTROL : ""}`}
+      className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""} ${missing || error ? MISSING_CONTROL : ""}`}
     >
       <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
@@ -113,7 +116,11 @@ export function Field({
       </span>
       {children}
       {/* Inside the <label>, so a screen reader announces it with the field. */}
-      {missing ? <span className="text-xs font-medium text-destructive">Required</span> : null}
+      {error ? (
+        <span className="text-xs font-medium text-destructive">{error}</span>
+      ) : missing ? (
+        <span className="text-xs font-medium text-destructive">Required</span>
+      ) : null}
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </label>
   );

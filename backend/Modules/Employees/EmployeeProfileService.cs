@@ -60,6 +60,12 @@ public class EmployeeProfileService : IEmployeeProfileService
             return null;   // not a member of this org → 404
 
         var profile = await _profiles.GetByUserAsync(userId);
+
+        // Checked only when TP3 is being changed: a record saved before this
+        // rule (or carried over from the previous system) may already hold
+        // figures without a year, and an unrelated save — an import updating
+        // a phone number — must not fail on a field it never touched.
+        if (Tp3Changed(profile, dto) && Tp3Problem(dto) is { } tp3) throw new ArgumentException(tp3);
         if (profile is null)
         {
             profile = new EmployeeProfile { UserId = userId };
@@ -136,6 +142,36 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         var user = await _directory.GetUserAsync(userId);
         return ToDto(profile, user);
+    }
+
+    // TP3 figures only count for the year they're entered against — payroll
+    // compares it with the run's year — so figures with no year are silently
+    // ignored. Refuse them rather than let an admin think they were applied.
+    private static bool Tp3Changed(EmployeeProfile? stored, EmployeeProfileDto d) =>
+        stored is null
+        || stored.PrevEmploymentYear != d.PrevEmploymentYear
+        || stored.PrevRemuneration != d.PrevRemuneration
+        || stored.PrevEpf != d.PrevEpf
+        || stored.PrevPcb != d.PrevPcb
+        || stored.PrevAllowableDeductions != d.PrevAllowableDeductions
+        || stored.PrevZakat != d.PrevZakat
+        || (stored.PrevByCategoryJson ?? "") != (d.PrevByCategoryJson ?? "");
+
+    public static string? Tp3Problem(EmployeeProfileDto d)
+    {
+        var hasFigures =
+            new[] { d.PrevRemuneration, d.PrevEpf, d.PrevPcb, d.PrevAllowableDeductions, d.PrevZakat }
+                .Any(v => v is { } x && x != 0m)
+            || Payroll.PreviousEmployerItems.Parse(d.PrevByCategoryJson).Count > 0;
+
+        if (d.PrevEmploymentYear is null)
+            return hasFigures
+                ? "Previous employment (TP3): enter the year these figures are for. Without it they aren't used."
+                : null;
+
+        return d.PrevEmploymentYear is < 2000 or > 2100
+            ? "Previous employment (TP3): the year must be a 4-digit year, e.g. 2026."
+            : null;
     }
 
     public async Task<IReadOnlyList<string>?> FillMissingFieldsAsync(string userId, FillEmployeeFieldsDto fields)

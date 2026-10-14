@@ -421,7 +421,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td><code>prevEmploymentYear</code></td><td>number | null</td><td></td></tr>
+              <tr><td><code>prevEmploymentYear</code></td><td>number | null</td><td>The year the figures below are for (4-digit, 2000&ndash;2100). <strong>Required whenever any of them is set</strong> &mdash; see the note under this table.</td></tr>
               <tr><td><code>prevRemuneration</code></td><td>number | null</td><td>Money.</td></tr>
               <tr><td><code>prevEpf</code></td><td>number | null</td><td>Money.</td></tr>
               <tr><td><code>prevAllowableDeductions</code></td><td>number | null</td><td>Money.</td></tr>
@@ -431,6 +431,15 @@
               <tr><td><code>prevByCategoryJson</code></td><td>string | null</td><td>JSON — the previous employer's figures by payroll adjustment category, for yearly exemption/relief limits. Shape is owned by the payroll module.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="callout warn">
+          <strong>Set the year with the figures.</strong> TP3 figures only count towards a payroll run
+          in the same year, so a save that carries any of them but a <code>null</code>
+          <code>prevEmploymentYear</code> is refused with <code>400</code> rather than stored and
+          silently ignored. A year outside 2000&ndash;2100 is also refused. Zero amounts don't count as figures.
+          The check applies only when a save <em>changes</em> the year or any TP3 figure: re-sending a
+          stored profile unchanged (to update, say, a phone number) is accepted even if it was saved
+          before this rule without a year.
         </div>
         <h4>EPF</h4>
         <div class="table-wrap">
@@ -567,6 +576,8 @@
             <tbody>
               <tr><td><code>400</code></td><td>A field failed validation, e.g. <code>workPermitNumber</code> longer than 40 characters</td><td><code>{ "errors": { "WorkPermitNumber": ["…"] } }</code></td></tr>
               <tr><td><code>400</code></td><td><code>salaryChangeEffectiveDate</code> is in the future (and it's not a correction)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Previous-employment (TP3) figures are set but <code>prevEmploymentYear</code> is <code>null</code>. "Set" means a non-zero <code>prevRemuneration</code>, <code>prevEpf</code>, <code>prevPcb</code>, <code>prevAllowableDeductions</code> or <code>prevZakat</code>, or at least one item in <code>prevByCategoryJson</code></td><td><code>{ "error": "Previous employment (TP3): enter the year these figures are for. Without it they aren't used." }</code></td></tr>
+              <tr><td><code>400</code></td><td><code>prevEmploymentYear</code> is set but outside 2000&ndash;2100 (checked even when no figures are sent, whenever the TP3 fields change)</td><td><code>{ "error": "Previous employment (TP3): the year must be a 4-digit year, e.g. 2026." }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>
