@@ -737,6 +737,99 @@ public class YtdImportServiceTests : IDisposable
         Assert.Contains("matched an employee", result.Errors[0]);
     }
 
+    // ─── Matching: an IC and a name that disagree ────────────────────────
+
+    private void AddBeth()
+    {
+        _db.Users.Add(new User { Id = "usr-2", Email = "beth@x.com", Name = "Beth Lim" });
+        _db.EmployeeProfiles.Add(new EmployeeProfile
+        {
+            Id = "emp-2", OrganizationId = "org-1", UserId = "usr-2", IdNumber = "880202-14-1234",
+        });
+        _db.SaveChanges();
+    }
+
+    private static byte[] Sheets(params (string Name, string? Ic, int[] Months)[] blocks)
+    {
+        var lines = new List<string> { Header };
+        foreach (var (name, ic, months) in blocks)
+        {
+            lines.Add($"{name},{ic},,,,,,,,,,,,,,,");
+            foreach (var m in months) lines.Add($"{m},,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0");
+        }
+        return Encoding.UTF8.GetBytes(string.Join("\n", lines));
+    }
+
+    // Aisyah's row typed with Beth's IC: importing by IC would give Aisyah's
+    // year to Beth. Refused, naming the row and whose IC it is.
+    [Fact]
+    public async Task AnIcThatIsSomeoneElses_IsRefused()
+    {
+        AddBeth();
+        var file = Sheets(("Aisyah Binti Rahman", "880202141234", [1]));
+
+        var preview = await _service.PreviewAsync(2026, file, TabularFormat.Csv);
+        Assert.False(preview.Ok);
+        Assert.Contains("belongs to Beth Lim", Assert.Single(preview.Errors));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.False(result.Ok);
+        Assert.Empty(_db.Payslips);
+    }
+
+    // Two rows landing on one person used to crash the save (two payslips in
+    // one month); now it's a clear error and nothing is written.
+    [Fact]
+    public async Task TwoRowsForOnePerson_AreRefused()
+    {
+        var file = Sheets(("Aisyah Binti Rahman", "900101145567", [1]), ("AISYAH BT RAHMAN", "900101145567", [1]));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+
+        Assert.False(result.Ok);
+        Assert.Contains("each person can appear once", Assert.Single(result.Errors));
+        Assert.Empty(_db.Payslips);
+    }
+
+    // An IC that's on nobody's file, with the right name: imported by name,
+    // but the preview says so.
+    [Fact]
+    public async Task AnIcOnNobodysFile_IsMatchedByName_WithAWarning()
+    {
+        var file = Sheets(("Aisyah Binti Rahman", "111111111111", [1]));
+
+        var preview = await _service.PreviewAsync(2026, file, TabularFormat.Csv);
+
+        Assert.True(preview.Ok);
+        Assert.Contains(preview.Warnings, w => w.Contains("isn't on file") && w.Contains("Aisyah"));
+        Assert.Equal(1, (await _service.ImportAsync(2026, file, TabularFormat.Csv)).PayslipsImported);
+    }
+
+    // Matched by IC under another spelling: the preview shows who it landed on.
+    [Fact]
+    public async Task ThePreviewShowsWhoAMisspeltRowMatched()
+    {
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisya Rahman", "900101145567", [1])), TabularFormat.Csv);
+
+        Assert.Equal("Aisya Rahman → Aisyah Binti Rahman", Assert.Single(preview.Employees).EmployeeName);
+    }
+
+    // Re-importing a month rewrites it whole: someone imported before but not
+    // matched now would lose those months. The preview names them.
+    [Fact]
+    public async Task ThePreviewWarnsWhoseImportedHistoryAReimportRemoves()
+    {
+        AddBeth();
+        await _service.ImportAsync(2026,
+            Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [1, 2])), TabularFormat.Csv);
+
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Bet Lin", null, [1, 2])), TabularFormat.Csv);
+
+        Assert.Contains(preview.Warnings, w => w.Contains("removes the imported history of: Beth Lim"));
+    }
+
     // ─── Not overwriting real payroll ───────────────────────────────────
 
     // Replacing a COMPUTED run with typed figures would destroy the payslips
