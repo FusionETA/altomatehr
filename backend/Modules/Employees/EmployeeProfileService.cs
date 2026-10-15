@@ -66,6 +66,13 @@ public class EmployeeProfileService : IEmployeeProfileService
         // figures without a year, and an unrelated save — an import updating
         // a phone number — must not fail on a field it never touched.
         if (Tp3Changed(profile, dto) && Tp3Problem(dto) is { } tp3) throw new ArgumentException(tp3);
+
+        // Same reasoning: only a CHANGED EPF number is checked, so a record
+        // holding a bad one can still be saved for something else (payroll
+        // submission is where an existing bad number is caught).
+        if ((profile?.EpfNumber ?? "") != (dto.EpfNumber ?? "")
+            && Payroll.EpfNumberRule.Problem(dto.EpfNumber) is { } epf)
+            throw new ArgumentException(epf);
         if (profile is null)
         {
             profile = new EmployeeProfile { UserId = userId };

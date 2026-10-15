@@ -771,11 +771,25 @@ export function EmployeeDetail({
     return !Number.isInteger(year) || year < 2000 || year > 2100 ? "Enter a 4-digit year, e.g. 2026." : null;
   })();
 
+  // KWSP's upload refuses a non-numeric EPF number (a placeholder like
+  // "XXXXXX"), so it can't be saved. Only checked when it's been changed, as
+  // the server does — an older record can still be saved for something else.
+  const epfProblem =
+    profile && (profile.epfNumber ?? "") !== (baseline?.epfNumber ?? "") &&
+    /\D/.test((profile.epfNumber ?? "").trim())
+      ? "Digits only — the member number on their KWSP statement (e.g. 21968561)."
+      : null;
+  const saveProblem = tp3Problem
+    ? `Previous employment (TP3): ${tp3Problem}`
+    : epfProblem
+      ? `EPF number: ${epfProblem}`
+      : null;
+
   async function handleSave(salary?: SalaryClassification) {
     if (!profile) return;
     // The field and the save bar already say what's wrong, and both clear
-    // the moment the year is filled in.
-    if (tp3Problem) return;
+    // the moment it's fixed.
+    if (saveProblem) return;
     // As in the previous system: before a changed salary is saved, ask
     // whether the old figure was a typo or the pay is really changing. Only
     // a real change goes into the salary history, with its effective date.
@@ -1772,7 +1786,7 @@ export function EmployeeDetail({
                   title="EPF"
                   hint="Employees Provident Fund. Statutory rates below come from EPF Act 452 (Third Schedule) — shown locked for reference. Voluntary contributions on top are editable."
                 >
-                  <Field label="EPF number" span>
+                  <Field label="EPF number" span error={epfProblem}>
                     <Text value={profile.epfNumber} onChange={(v) => set("epfNumber", v)} />
                   </Field>
                   <Field label="Employer mandatory rate" locked>
@@ -2574,7 +2588,7 @@ export function EmployeeDetail({
       {dirty ? (
         <UnsavedChangesBar
           saving={saving}
-          error={tp3Problem ? `Previous employment (TP3): ${tp3Problem}` : null}
+          error={saveProblem}
           onSave={() => void handleSave()}
           onDiscard={discard}
         />

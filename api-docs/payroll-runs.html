@@ -1098,7 +1098,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         </div>
         <p>LHDN's CP39 PCB/MTD batch submission TXT, fixed-width.</p>
         <h3>Response <code>200</code></h3>
-        <p><code>Content-Type: text/plain</code>, filename <code>{10-digit employer no}{mm}_{yyyy}.txt</code>.</p>
+        <p><code>Content-Type: text/plain</code>, filename <code>{10-digit employer no}{mm}{yyyy}.txt</code> &mdash; letters and digits only, because the e-PCB upload refuses any other character.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>

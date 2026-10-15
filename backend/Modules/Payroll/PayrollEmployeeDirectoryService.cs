@@ -111,7 +111,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
                     : null,
 
             Missing = PayrollRunReadiness.EmployeeGaps(
-                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr),
+                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr, profile.EpfNumber),
 
             ProfileIncompleteSections = PayrollProfileReadiness.IncompleteSections(profile),
         };
