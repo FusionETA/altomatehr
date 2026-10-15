@@ -1352,6 +1352,9 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info). It lists only employees paid by <code>BANK_TRANSFER</code> with a bank account number and net pay above 0. Employees on <code>OTHER_TRANSFER</code> (other bank / e-wallet), <code>CASH</code> or <code>CHEQUE</code> are left out, so an overseas bank or e-wallet name never blocks the file; they are on <a href="#doc-manual-payments">manual-payments</a>.</p>
+        <div class="callout warn">
+          <strong>CIMB leaves passport holders out.</strong> CIMB's bulk-payroll file identifies each payee by NRIC or business registration number and has no passport option. For a CIMB company, an employee whose ID on file is anything other than an NRIC (a passport, in practice) is <strong>left out of this file</strong> instead of blocking it, and the trailer's record count and total cover only the rows that are in it. They are not on <a href="#doc-manual-payments">manual-payments</a> either: they are on the <a href="#doc-bank-file-passport">passport payees sheet</a>, to pay by hand, and the payment schedule PDF lists them in their own section so its bank-file total matches this file. Other banks are unaffected.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1369,9 +1372,57 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — CIMB only: no Organisation Code set (or longer than 5 digits) under Payroll Settings → Bank; or everyone paid by bank transfer is a passport holder (<code>"Everyone paid by bank transfer on this run is paid by passport, which CIMB's bulk-payroll file can't carry. Pay them from the CIMB passport payees sheet."</code>).</li>
         </ul>
 <pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-bank-file-passport">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/bank-file-passport</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          <strong>CIMB companies only.</strong> An Excel sheet of the passport holders the <a href="#doc-bank-file">CIMB bank file</a>
+          leaves out, with what is needed to pay each one by hand in BizChannel@CIMB. The CIMB file, this sheet and the
+          <a href="#doc-manual-payments">manual-payments</a> sheet together cover every ringgit of net pay.
+        </p>
+        <h3>Query parameters</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the date to pay by, shown in the sheet's note line. Defaults to the last day of the payroll period.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Passport_Payees_{mm}{yyyy}.xlsx</code>
+          (e.g. <code>CIMB_Passport_Payees_012026.xlsx</code>). One sheet, <code>Pay by hand in CIMB</code>: a title and note, then one row per
+          person (sorted by name) with the columns <code>No.</code>, <code>Emp no.</code>, <code>Employee</code>, <code>Passport no.</code>,
+          <code>Nationality</code>, <code>Bank</code>, <code>Account number</code>, <code>Account holder</code>, <code>Net pay (RM)</code>,
+          <code>Reference</code> and an empty <code>Paid on</code> column to fill in, and a total row.
+          Account numbers are printed in full.
+        </p>
+        <p>
+          Who is listed: employees paid by <code>BANK_TRANSFER</code> to a recognised Malaysian bank
+          account with an account number on file, net pay above 0, and an ID on file that is not an NRIC.
+        </p>
+        <div class="callout">
+          When the run has any such people, <a href="#doc-download">the download bundle</a> includes this sheet as <code>bank-file-passport</code>.
+          When it does not apply (another bank, or nobody paid by passport) it is simply left out of the bundle, and is
+          <strong>not</strong> listed in <code>X-Bundle-Skipped</code>.
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — no such run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — the run is not approved yet; the run was imported from a previous payroll system; the company's payroll bank is not CIMB (<code>"This list is for companies that pay through CIMB — only CIMB's file can't carry a passport."</code>); nobody on the run is paid by passport (<code>"Nobody on this run is paid by passport — everyone with a bank account is in the CIMB file."</code>); or the same payee-matching refusals as the bank file (an unrecognised bank name, or nobody paid by bank transfer to a Malaysian account).</li>
+        </ul>
+<pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file-passport?paymentDate=2026-01-31" \
+  -H "Authorization: Bearer wp_live_xxx" -o cimb-passport-payees.xlsx</code></pre>
       </section>
 
       <section class="endpoint" id="doc-manual-payments">
@@ -1452,7 +1503,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), the allowance and deduction reports, all payslips, and the
+          Every document this run produces, zipped: the bank file, the CIMB passport payees sheet (CIMB companies with passport holders only), the manual-payments sheet, the summary (as both PDF and Excel), the allowance and deduction reports, all payslips, and the
           three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
           payroll bank configured) is left out of the zip rather than failing the whole bundle.
         </p>
@@ -1461,7 +1512,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file.</td></tr>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file and the CIMB passport payees sheet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1472,7 +1523,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
             <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>X-Bundle-File-Count</code></td><td>How many documents made it into the zip.</td></tr>
-              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>summary-xlsx</code>, <code>allowances</code>, <code>deductions</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was skipped.</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of documents left out, from: <code>bank-file</code>, <code>manual-payments</code>, <code>summary</code>, <code>summary-xlsx</code>, <code>allowances</code>, <code>deductions</code>, <code>payslips</code>, <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code> (<code>bank-file-passport</code> is also a bundle key, but is never listed here: it only exists for a CIMB company with passport holders). Omitted entirely when nothing was skipped.</td></tr>
             </tbody>
           </table>
         </div>

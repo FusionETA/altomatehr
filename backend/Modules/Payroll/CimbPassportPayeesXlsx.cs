@@ -19,7 +19,7 @@ public static class CimbPassportPayeesXlsx
 
     private static readonly string[] Headers =
     [
-        "No.", "Emp no.", "Employee", "Passport no.", "Nationality", "Bank", "Account number",
+        "No.", "Emp no.", "Employee", "Passport / ID no.", "Nationality", "Bank", "Account number",
         "Account holder", "Net pay (RM)", "Reference", "Paid on",
     ];
 
@@ -67,7 +67,11 @@ public static class CimbPassportPayeesXlsx
             sheet.Cell(r, 1).Value = n;
             sheet.Cell(r, 2).Value = s.EmployeeCode;
             sheet.Cell(r, 3).Value = s.EmployeeName;
-            sheet.Cell(r, 4).Value = s.IdNumber?.Trim() ?? "";
+            // A passport in practice; any other non-NRIC kind (police, army)
+            // is named so it isn't read as a passport.
+            sheet.Cell(r, 4).Value = s.IdType is Employees.Entities.IdType.PASSPORT or null
+                ? s.IdNumber?.Trim() ?? ""
+                : $"{s.IdNumber?.Trim()} ({s.IdType})";
             sheet.Cell(r, 5).Value = s.Nationality ?? "";
             sheet.Cell(r, 6).Value = p.Bank.Name;
             // Text, so a leading zero survives.

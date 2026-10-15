@@ -15,15 +15,20 @@ public static class PaymentSchedulePdf
 {
     public const string ContentType = "application/pdf";
 
-    public static byte[] Render(PayrollDocumentModel model) => Build(model).GeneratePdf();
+    // `cimbPassportSplit`: the company pays through CIMB, whose bulk file
+    // can't carry a passport — so those payees come out of the bank-file list
+    // into their own "pay by hand in CIMB" list, and the bank-file total
+    // matches what the CIMB file actually contains.
+    public static byte[] Render(PayrollDocumentModel model, bool cimbPassportSplit = false) =>
+        Build(model, cimbPassportSplit).GeneratePdf();
 
     // The document itself, for rasterising in a visual check.
-    public static IDocument Build(PayrollDocumentModel model) =>
+    public static IDocument Build(PayrollDocumentModel model, bool cimbPassportSplit = false) =>
         Document.Create(doc => doc.Page(page =>
         {
             PayrollPdfShared.Frame(page);
             page.Header().Element(c => Header(c, model));
-            page.Content().Element(c => Body(c, model));
+            page.Content().Element(c => Body(c, model, cimbPassportSplit));
             page.Footer().Element(c => PayrollPdfShared.Footer(
                 c, $"Payment schedule — {model.PeriodLabel}. Verify against the bank file before release."));
         }));
@@ -46,13 +51,17 @@ public static class PaymentSchedulePdf
                 });
             });
 
-    private static void Body(IContainer container, PayrollDocumentModel model)
+    private static void Body(IContainer container, PayrollDocumentModel model, bool cimbPassportSplit)
     {
         // Two lists, by the same rule the bank file and the Manual payments
         // sheet use (PayrollPayments), so what the approver signs matches what
         // actually moves: the bank file's rows, then everyone paid by hand.
         // Zero-net payslips are not payments and appear in neither.
-        var bankFile = model.Rows.Where(PayrollPayments.InBankFile).ToList();
+        var inBank = model.Rows.Where(PayrollPayments.InBankFile).ToList();
+        var byHandInCimb = cimbPassportSplit
+            ? inBank.Where(PayrollBankFileCimbTxt.IsPassportPayee).ToList()
+            : [];
+        var bankFile = inBank.Except(byHandInCimb).ToList();
         var manual = PayrollPayments.Manual(model);
 
         container.PaddingTop(8).Column(col =>
@@ -95,13 +104,57 @@ public static class PaymentSchedulePdf
                 TotalRow(table, 4, "Bank file total", bankFile.Sum(r => r.Payslip.NetPay));
             });
 
+            if (byHandInCimb.Count > 0)
+            {
+                col.Item().PaddingTop(14)
+                    .Text($"Pay by hand in CIMB — passport holders — {byHandInCimb.Count} payment(s)")
+                    .FontSize(9.5f).Bold();
+                col.Item().Text("Not in the CIMB file, which takes an NRIC only. Pay each in BizChannel@CIMB — "
+                                + "the CIMB passport payees sheet lists them.")
+                    .FontSize(7.5f).FontColor(PayrollPdfShared.Muted);
+                col.Item().PaddingTop(4).Table(table =>
+                {
+                    table.ColumnsDefinition(c =>
+                    {
+                        c.ConstantColumn(50);    // no
+                        c.RelativeColumn(2f);    // name
+                        c.RelativeColumn(1.2f);  // id
+                        c.RelativeColumn(1.4f);  // bank
+                        c.RelativeColumn(1.4f);  // account
+                        c.ConstantColumn(70);    // net
+                    });
+                    table.Header(h =>
+                    {
+                        Th(h, "Emp no.");
+                        Th(h, "Employee");
+                        Th(h, "Passport / ID");
+                        Th(h, "Bank");
+                        Th(h, "Account");
+                        Th(h, "Net pay", right: true);
+                    });
+                    foreach (var row in byHandInCimb)
+                    {
+                        Td(table, row.EmployeeCode);
+                        Td(table, row.EmployeeName);
+                        Td(table, row.IdNumber ?? "—");
+                        Td(table, MalaysianBanks.Find(row.BankName)?.Name ?? row.BankName ?? "—");
+                        Td(table, row.BankAccountNumber ?? "—");
+                        table.Cell().PaddingVertical(2).AlignRight()
+                            .Text(PayrollPdfShared.Rm(row.Payslip.NetPay)).FontSize(8.5f);
+                    }
+                    TotalRow(table, 5, "Pay-by-hand-in-CIMB total", byHandInCimb.Sum(r => r.Payslip.NetPay));
+                });
+            }
+
             col.Item().PaddingTop(14).Text($"Paid manually — {manual.Count} payment(s)").FontSize(9.5f).Bold();
             col.Item().Text("Not in the bank file: other banks and e-wallets, cash, cheque, and anyone missing bank details.")
                 .FontSize(7.5f).FontColor(PayrollPdfShared.Muted);
 
             if (manual.Count == 0)
             {
-                col.Item().PaddingTop(4).Text("None — everyone owed pay is in the bank file.").FontSize(8.5f);
+                col.Item().PaddingTop(4).Text(byHandInCimb.Count > 0
+                    ? "None — everyone else owed pay is in the bank file."
+                    : "None — everyone owed pay is in the bank file.").FontSize(8.5f);
             }
             else
             {
@@ -147,10 +200,13 @@ public static class PaymentSchedulePdf
                 });
             }
 
-            var all = bankFile.Sum(r => r.Payslip.NetPay) + manual.Sum(m => m.Row.Payslip.NetPay);
+            var all = bankFile.Sum(r => r.Payslip.NetPay)
+                      + byHandInCimb.Sum(r => r.Payslip.NetPay)
+                      + manual.Sum(m => m.Row.Payslip.NetPay);
+            var count = bankFile.Count + byHandInCimb.Count + manual.Count;
             col.Item().PaddingTop(12).BorderTop(1.5f).BorderColor(PayrollPdfShared.Ink).PaddingTop(4).Row(row =>
             {
-                row.RelativeItem().Text($"Total net pay — {bankFile.Count + manual.Count} payment(s)").FontSize(9.5f).Bold();
+                row.RelativeItem().Text($"Total net pay — {count} payment(s)").FontSize(9.5f).Bold();
                 row.ConstantItem(90).AlignRight().Text(PayrollPdfShared.Rm(all)).FontSize(9.5f).Bold();
             });
         });

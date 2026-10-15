@@ -331,9 +331,14 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
         if (RefuseIfImported(model.Run) is { } imported) return imported;
 
+        // A CIMB company's passport payees aren't in its bank file, so the
+        // schedule lists them on their own and its bank-file total matches.
+        var cimb = PayrollDisbursement.FormatFor((await _settings.GetAsync()).PayrollBankName)
+                   == PayrollFileFormat.CimbBizChannelTxt;
+
         var fileName = $"Payment_Schedule_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
-            true, fileName, PaymentSchedulePdf.Render(model), PaymentSchedulePdf.ContentType, null);
+            true, fileName, PaymentSchedulePdf.Render(model, cimb), PaymentSchedulePdf.ContentType, null);
     }
 
     // CIMB companies only: the passport holders the CIMB file leaves out,
@@ -365,7 +370,8 @@ public class StatutoryFileService : IStatutoryFileService
         if (PayrollPayments.Manual(model).Count == 0)
         {
             return StatutoryFileResult.Refused(
-                "No manual payments this month — everyone owed pay is in the bank file.");
+                "No manual payments this month — everyone owed pay is in the bank file "
+                + "(or, at a CIMB company, on the CIMB passport payees sheet).");
         }
 
         var fileName = $"Manual_Payments_{MonthYear(model.Run)}.xlsx";

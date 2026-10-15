@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 108fc56
+// whats-new-covered-up-to: 50a4696
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -23,11 +23,15 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-15",
+    new: [
+      "Admins: CIMB companies get a \"CIMB: Pay by Hand — Passport Holders\" download in Payroll → Run downloads. It lists passport holders with bank, account and net pay, for BizChannel.",
+    ],
     improved: [
-      "Admins: an EPF number must be digits only, so a placeholder can't be saved. A draft run with one can't be submitted until it's fixed.",
+      "Admins: an EPF number must be digits only, so a placeholder can't be saved or imported. A draft run can't be submitted while someone who pays EPF has one.",
     ],
     fixed: [
       "Admins: LHDN's e-PCB upload no longer refuses the PCB (CP39) file over its name, in Payroll → Run downloads. The name now has letters and digits only, for every month; amounts don't change.",
+      "Admins: a CIMB run with someone paid by passport no longer refuses the bank file. That person is left out and listed on the Pay by Hand sheet. Other runs don't change.",
     ],
   },
   {
