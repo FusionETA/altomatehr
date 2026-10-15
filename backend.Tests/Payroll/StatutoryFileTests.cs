@@ -376,14 +376,16 @@ public class StatutoryFileTests
 
     // ─── LHDN CP39 PCB TXT ──────────────────────────────────────────────
 
-    // Exhibit 4: "xxxxxxxxxxmm_yyyy.txt" — employer number, month, year.
+    // Exhibit 4's order (employer number, month, year) without its
+    // underscore: the e-PCB upload accepts letters and digits only.
     [Fact]
-    public void PcbTxt_IsNamedAsLhdnsSpecNamesIt()
+    public void PcbTxt_IsNamedEmployerMonthYear_LettersAndDigitsOnly()
     {
         var result = PcbCp39Txt.Render(Payload());
         var employerNo = Lines(result)[0][1..11];   // the header's HQ employer number
 
-        Assert.Equal($"{employerNo}03_2026.txt", result.FileName);
+        Assert.Equal($"{employerNo}032026.txt", result.FileName);
+        Assert.Matches("^[A-Za-z0-9]+\\.txt$", result.FileName);
     }
 
     [Fact]

@@ -90,6 +90,32 @@ public class Tp3YearRuleTests
         Assert.Contains("enter the year", error.Message);
     }
 
+    // EPF number: a changed one must be digits; an old bad one doesn't block
+    // an unrelated save.
+    [Fact]
+    public async Task ChangingTheEpfNumberToAPlaceholder_IsRefused()
+    {
+        var (service, db) = Build(new EmployeeProfile { Id = "emp-1", OrganizationId = "org-1", UserId = "usr-1" });
+        using var _ = db;
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.SaveAsync("usr-1", new EmployeeProfileDto { EpfNumber = "XXXXXX" }));
+        Assert.Contains("digits only", error.Message);
+    }
+
+    [Fact]
+    public async Task AnOlderRecordWithAPlaceholderEpfNumber_CanStillBeSavedForSomethingElse()
+    {
+        var (service, db) = Build(new EmployeeProfile
+        {
+            Id = "emp-1", OrganizationId = "org-1", UserId = "usr-1", EpfNumber = "XXXXXX",
+        });
+        using var _ = db;
+
+        var saved = await service.SaveAsync("usr-1", new EmployeeProfileDto { EpfNumber = "XXXXXX", Phone = "0123" });
+        Assert.Equal("0123", saved!.Phone);
+    }
+
     private static (EmployeeProfileService, AppDbContext) Build(EmployeeProfile stored)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

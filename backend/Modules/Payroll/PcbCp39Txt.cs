@@ -155,11 +155,13 @@ public static class PcbCp39Txt
                    + StatutoryFileFields.LineEnding
                    + details;
 
-        // LHDN MTD Spec 2026, Exhibit 4: "xxxxxxxxxxmm_yyyy.txt" — the 10-digit
-        // employer number, the month, then the year. (v1 used PCB_MMYYYY.txt;
-        // certification is checked against the spec.)
+        // The 10-digit employer number, the month, then the year — the order of
+        // LHDN MTD Spec 2026, Exhibit 4 ("xxxxxxxxxxmm_yyyy.txt") but WITHOUT
+        // its underscore: the e-PCB upload refuses any name that isn't letters
+        // and digits ("Please use only file name with alphanumeric
+        // characters"), so the spec's underscore never got through.
         var fileName =
-            $"{StatutoryFileFields.PadZero(employerNo, 10)}{payload.Run.PeriodMonth:D2}_{payload.Run.PeriodYear:D4}.txt";
+            $"{StatutoryFileFields.PadZero(employerNo, 10)}{payload.Run.PeriodMonth:D2}{payload.Run.PeriodYear:D4}.txt";
         return StatutoryFileResult.Text(fileName, text, ContentType);
     }
 

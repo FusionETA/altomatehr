@@ -111,7 +111,9 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
                     : null,
 
             Missing = PayrollRunReadiness.EmployeeGaps(
-                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr),
+                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr,
+                // Only someone who contributes ends up in KWSP's file.
+                profile.ContributeToEpf ? profile.EpfNumber : null),
 
             ProfileIncompleteSections = PayrollProfileReadiness.IncompleteSections(profile),
         };
