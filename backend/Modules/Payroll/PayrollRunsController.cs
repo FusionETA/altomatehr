@@ -336,6 +336,14 @@ public class PayrollRunsController : ControllerBase
         [FromQuery] HlbChannel? channel) =>
         File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
 
+    // CIMB companies: the passport holders the CIMB bulk-payroll file leaves
+    // out (its ID column takes an NRIC only), as an Excel sheet to pay by hand.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/bank-file-passport")]
+    public Task<IActionResult> CimbPassportPayees(string id, [FromQuery] DateTime? paymentDate) =>
+        File(_statutory.RenderCimbPassportPayeesXlsxAsync(id, paymentDate));
+
     // Everyone the bank file doesn't pay (other banks / e-wallets, cash,
     // cheque, missing accounts), as an Excel sheet to pay from by hand.
     [RequireScope("payroll:read")]
