@@ -580,14 +580,6 @@ export const downloadPayrollSummaryXlsx = (runId: string) =>
 export const downloadManualPayments = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/manual-payments`, "manual-payments.xlsx");
 
-// CIMB companies: the passport holders the CIMB bulk-payroll file leaves out
-// (its ID column takes an NRIC only), to pay by hand in BizChannel.
-export const downloadCimbPassportPayees = (runId: string, paymentDate?: string) =>
-  download(
-    `/payroll/runs/${runId}/documents/bank-file-passport${paymentDate ? `?paymentDate=${encodeURIComponent(paymentDate)}` : ""}`,
-    "CIMB_Passport_Payees.xlsx",
-  );
-
 // The run in AB Pay's timesheet layout (Sheet1, re-importable by the ABPay
 // app) with each employee's statutory figures on a second sheet.
 export const downloadAbPayTimesheet = (runId: string) =>

@@ -529,7 +529,7 @@ export function PayrollSettingsForm() {
                 value={settings.payorOrganisationCode}
                 onChange={(payorOrganisationCode) => patchSettings({ payorOrganisationCode })}
                 placeholder="Issued by your bank"
-                hint="Required by Maybank (Corporate ID) and CIMB (Autopay Organisation Code). Public Bank and Hong Leong do not use it."
+                hint="Required by Maybank (Corporate ID). CIMB, Public Bank and Hong Leong do not use it."
               />
             </div>
           </section>

@@ -772,11 +772,12 @@ export function EmployeeDetail({
   })();
 
   // KWSP's upload refuses a non-numeric EPF number (a placeholder like
-  // "XXXXXX"), so it can't be saved. Only checked when it's been changed, as
-  // the server does — an older record can still be saved for something else.
+  // "XXXXXX"). Shown whenever the box holds one — including a value saved
+  // before this rule — so it's seen and fixed here, and the profile can't be
+  // saved until it is. (The server only refuses a CHANGED one, so imports
+  // and other callers aren't blocked by an old value they never touched.)
   const epfProblem =
-    profile && (profile.epfNumber ?? "") !== (baseline?.epfNumber ?? "") &&
-    /\D/.test((profile.epfNumber ?? "").trim())
+    profile && /\D/.test((profile.epfNumber ?? "").trim())
       ? "Digits only — the member number on their KWSP statement (e.g. 21968561)."
       : null;
   const saveProblem = tp3Problem

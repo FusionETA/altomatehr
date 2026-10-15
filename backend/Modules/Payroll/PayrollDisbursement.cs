@@ -10,7 +10,7 @@ public enum PayrollFileFormat
 {
     PbEcpXlsx,
     MbbM2eTxt,
-    CimbBizChannelTxt,
+    CimbBizChannelXlsx,
     // Hong Leong publishes TWO upload channels taking different files. The
     // admin picks at download time rather than nominating a portal here.
     HlbConnect,
@@ -33,7 +33,7 @@ public static class PayrollDisbursement
     public static readonly IReadOnlyList<(string Value, string Label, PayrollFileFormat? Format)> Options =
     [
         ("Malayan Banking Berhad", "Maybank (incl. Maybank Islamic)", PayrollFileFormat.MbbM2eTxt),
-        ("CIMB Bank Berhad", "CIMB (incl. CIMB Islamic)", PayrollFileFormat.CimbBizChannelTxt),
+        ("CIMB Bank Berhad", "CIMB (incl. CIMB Islamic)", PayrollFileFormat.CimbBizChannelXlsx),
         ("Public Bank Berhad", "Public Bank (incl. Public Islamic)", PayrollFileFormat.PbEcpXlsx),
         ("Hong Leong Bank Berhad", "Hong Leong Bank (incl. Hong Leong Islamic)", PayrollFileFormat.HlbConnect),
         (OtherBank, "Other bank (no upload file)", null),

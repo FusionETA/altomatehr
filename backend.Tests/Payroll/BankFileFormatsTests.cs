@@ -233,176 +233,69 @@ public class BankFileFormatsTests
         Assert.Contains("debiting account", result.Error!);
     }
 
-    // ─── CIMB BizChannel ────────────────────────────────────────────────
+    // ─── CIMB BizChannel (Excel template) ───────────────────────────────
 
-    private static StatutoryFileResult Cimb(
-        PayrollDocumentModel? model = null, string? orgCode = "12345") =>
-        PayrollBankFileCimbTxt.Render(model ?? Model(), ValueDate, orgCode);
-
-    // Fixed-width: every record is exactly its stated length or the columns
-    // after the first short one are read from the wrong offsets.
-    [Fact]
-    public void Cimb_EmitsExactlyTheStatedRecordWidths()
+    private static ClosedXML.Excel.IXLWorksheet CimbSheet(PayrollDocumentModel? model = null)
     {
-        var lines = Lines(Cimb().Content!);
-
-        Assert.Equal(3, lines.Length);
-        Assert.Equal(73, lines[0].Length);
-        Assert.Equal(127, lines[1].Length);
-        Assert.Equal(21, lines[2].Length);
+        var result = PayrollBankFileCimbXlsx.Render(model ?? Model());
+        Assert.True(result.Ok, result.Error);
+        return new ClosedXML.Excel.XLWorkbook(new MemoryStream(result.Content!)).Worksheet(1);
     }
 
+    // The customer's own template: row 1 the field rules, row 2 the headers,
+    // payees from row 3.
     [Fact]
-    public void Cimb_WritesTheHeaderFieldsAtTheirDocumentedOffsets()
+    public void Cimb_KeepsTheTemplatesTwoHeaderRows()
     {
-        var header = Lines(Cimb().Content!)[0];
+        var sheet = CimbSheet();
 
-        Assert.Equal("01", header[..2]);
-        Assert.Equal("12345", header[2..7]);
-        Assert.Equal("Globe Engineering Sdn Bhd", header[7..47].TrimEnd());
-        Assert.Equal("31032026", header[47..55]);
-        Assert.Equal(new string('0', 16), header[55..71]);
+        Assert.Equal("Length : 40 (Char without '-' or '/')", sheet.Cell(1, 1).GetString());
+        Assert.Equal(
+            ["*Beneficiary Name", "Beneficiary ID", "*BNM Code", "*Account Number", "*Payment Amount", "Reference Number"],
+            Enumerable.Range(1, 6).Select(c => sheet.Cell(2, c).GetString()).ToArray());
     }
 
-    // Routed by BNM code, not BIC — a wrong two digits sends the money to a
-    // different institution entirely.
+    // An NRIC holder and a passport holder go in the same way — Beneficiary
+    // ID blank, as in the customer's working file. The .txt couldn't carry a
+    // passport at all.
+    [Fact]
+    public void Cimb_PaysIcAndPassportHoldersAlike()
+    {
+        var sheet = CimbSheet(Model([
+            Row(name: "Aisyah Binti Rahman", net: 1800m),
+            Row(name: "Saw Zin Mu Htoo", idType: IdType.PASSPORT, idNumber: "MH441016", net: 1925.15m,
+                bankName: "CIMB Bank", accountNumber: "7076-926751"),
+        ]));
+
+        Assert.Equal("AISYAH BINTI RAHMAN", sheet.Cell(3, 1).GetString().ToUpperInvariant());
+        Assert.Equal("Saw Zin Mu Htoo", sheet.Cell(4, 1).GetString());
+        Assert.True(sheet.Cell(3, 2).IsEmpty());
+        Assert.True(sheet.Cell(4, 2).IsEmpty());
+        Assert.Equal("35-CIMB Bank Berhad", sheet.Cell(4, 3).GetString());
+        Assert.Equal("7076926751", sheet.Cell(4, 4).GetString());     // text, digits only
+        Assert.Equal(1925.15m, (decimal)sheet.Cell(4, 5).GetDouble());
+        Assert.True(sheet.Cell(5, 1).IsEmpty());
+    }
+
+    // The dropdown labels from CIMB's template where they differ from the
+    // register, the code + register name otherwise.
     [Theory]
-    [InlineData("Maybank", "27")]
-    [InlineData("CIMB", "35")]
-    [InlineData("Public Bank", "33")]
-    [InlineData("Hong Leong", "24")]
-    public void Cimb_RoutesByBnmCode(string bank, string expected)
+    [InlineData("CIMB Bank", "35-CIMB Bank Berhad")]
+    [InlineData("Public Bank", "33-Public Bank Berhad/ Public Finance Berhad")]
+    [InlineData("Maybank", "27-Malayan Banking Berhad")]
+    public void Cimb_WritesTheBnmCodeAsTheTemplatesLabel(string bank, string expected)
     {
-        var detail = Lines(Cimb(Model([Row(bankName: bank)])).Content!)[1];
-
-        Assert.Equal(expected, detail[2..4]);
+        Assert.Equal(expected, CimbSheet(Model([Row(bankName: bank)])).Cell(3, 3).GetString());
     }
 
-    // Sen, zero-padded, no decimal point. 3108.10 must not arrive as 310810
-    // in the wrong width or as 3108.1.
-    [Fact]
-    public void Cimb_WritesAmountsInSenAndTotalsThemInTheTrailer()
-    {
-        var model = Model([Row(net: 3108.10m), Row(name: "Bala", net: 1576.60m)]);
-        var lines = Lines(Cimb(model).Content!);
-
-        Assert.Equal("00000310810", lines[1][65..76]);
-        Assert.Equal("00000157660", lines[2][65..76]);
-
-        Assert.Equal("000002", lines[3][2..8]);
-        Assert.Equal("0000000468470", lines[3][8..21]);
-    }
-
-    // The template types these three columns as "Char without '-' or '/'", so
-    // a hyphenated IC must not pass through as typed.
+    // "Char without '-' or '/'" on the name and reference columns.
     [Fact]
     public void Cimb_DropsTheSeparatorsTheTemplateForbids()
     {
-        var detail = Lines(Cimb(Model([Row(accountHolderName: "AISYAH A/P RAHMAN")])).Content!)[1];
+        var sheet = CimbSheet(Model([Row(accountHolderName: "AISYAH A/P RAHMAN-ALI")]));
 
-        Assert.Equal("AISYAH A P RAHMAN", detail[25..65].TrimEnd());
-        Assert.Equal("900101145567", detail[106..126].TrimEnd());
-    }
-
-    // CIMB's Beneficiary ID column takes an NRIC or a business registration
-    // number — its published guide says so, and the template offers no
-    // passport option. Someone carrying another kind of ID is LEFT OUT of the
-    // file (never sent under an invented code), and the trailer counts only
-    // the people actually in it.
-    [Theory]
-    [InlineData(IdType.PASSPORT)]
-    [InlineData(IdType.POLICE_NO)]
-    [InlineData(IdType.ARMY_NO)]
-    public void Cimb_LeavesOutAnIdTheFormatCannotCarry(IdType idType)
-    {
-        var model = Model([
-            Row(net: 1000m),
-            Row(name: "Bala", idType: idType, idNumber: "A12345678", net: 2000m),
-        ]);
-
-        var result = Cimb(model);
-
-        Assert.True(result.Ok, result.Error);
-        var lines = Lines(result.Content!);
-        Assert.Equal(3, lines.Length);                       // header, one detail, trailer
-        Assert.DoesNotContain("BALA", lines[1].ToUpperInvariant());
-        Assert.Equal("03" + "000001" + "0000000100000", lines[2]);   // 1 row, RM 1,000.00
-    }
-
-    [Fact]
-    public void Cimb_RefusesWhenEveryoneIsPaidByPassport()
-    {
-        var result = Cimb(Model([Row(idType: IdType.PASSPORT, idNumber: "A12345678")]));
-
-        Assert.False(result.Ok);
-        Assert.Contains("passport payees sheet", result.Error!);
-    }
-
-    // The ones left out are listed — with what's needed to pay them by hand —
-    // and only them.
-    [Fact]
-    public void CimbPassportPayees_ListsOnlyThePassportHolders_WithTheirPaymentDetails()
-    {
-        var model = Model([
-            Row(net: 1000m),
-            Row(name: "Bala", idType: IdType.PASSPORT, idNumber: "MH441016", nationality: "Myanmar",
-                bankName: "CIMB Bank", accountNumber: "7012-345678", net: 1850.25m),
-        ]);
-
-        var result = CimbPassportPayeesXlsx.Render(model, ValueDate);
-
-        Assert.True(result.Ok, result.Error);
-        using var book = new ClosedXML.Excel.XLWorkbook(new MemoryStream(result.Content!));
-        var sheet = book.Worksheet(1);
-        Assert.Equal("Bala", sheet.Cell(5, 3).GetString());
-        Assert.Equal("MH441016", sheet.Cell(5, 4).GetString());
-        Assert.Equal("Myanmar", sheet.Cell(5, 5).GetString());
-        Assert.Equal("7012345678", sheet.Cell(5, 7).GetString());
-        Assert.Equal(1850.25m, (decimal)sheet.Cell(5, 9).GetDouble());
-        Assert.True(sheet.Cell(6, 3).IsEmpty());              // Aisyah (NRIC) isn't listed
-        Assert.Equal("Total (1)", sheet.Cell(6, 8).GetString());
-    }
-
-    [Fact]
-    public void CimbPassportPayees_IsRefusedWhenNobodyIsPaidByPassport()
-    {
-        var result = CimbPassportPayeesXlsx.Render(Model(), ValueDate);
-        Assert.False(result.Ok);
-        Assert.Contains("Nobody on this run is paid by passport", result.Error!);
-    }
-
-    // Someone with no id on file is not the same problem: the column simply
-    // goes blank, exactly as the converter's own unfilled cells did.
-    [Fact]
-    public void Cimb_StillPaysAnEmployeeWithNoIdOnFile()
-    {
-        var result = Cimb(Model([Row(idNumber: null, idType: null)]));
-
-        Assert.True(result.Ok, result.Error);
-        var detail = Lines(result.Content!)[1];
-        Assert.Equal(" ", detail[126..127]);
-        Assert.Equal("", detail[106..126].Trim());
-    }
-
-    [Fact]
-    public void Cimb_MarksAnNricWithTheOneCorroboratedCode()
-    {
-        var detail = Lines(Cimb().Content!)[1];
-
-        Assert.Equal("2", detail[126..127]);
-        // "No special character & spacing", per the template's own note.
-        Assert.Equal("900101145567", detail[106..126].Trim());
-    }
-
-    [Theory]
-    [InlineData(null, "Organisation Code")]
-    [InlineData("123456", "at most 5 digits")]
-    public void Cimb_RefusesAnOrganisationCodeItCannotWrite(string? orgCode, string expected)
-    {
-        var result = Cimb(orgCode: orgCode);
-
-        Assert.False(result.Ok);
-        Assert.Contains(expected, result.Error!);
+        Assert.Equal("AISYAH A P RAHMAN ALI", sheet.Cell(3, 1).GetString());
+        Assert.DoesNotContain("-", sheet.Cell(3, 6).GetString());
     }
 
     // ─── Hong Leong ─────────────────────────────────────────────────────
@@ -526,7 +419,7 @@ public class BankFileFormatsTests
         which switch
         {
             "mbb" => PayrollBankFileMbbTxt.Render(model, ValueDate, "514012345678", "MBB0099"),
-            "cimb" => PayrollBankFileCimbTxt.Render(model, ValueDate, "12345"),
+            "cimb" => PayrollBankFileCimbXlsx.Render(model),
             "hlb-txt" => PayrollBankFileHlb.RenderConnectFirstTxt(model, "SALARY"),
             _ => PayrollBankFileHlb.RenderConnectBizXlsx(model, "SALARY"),
         };

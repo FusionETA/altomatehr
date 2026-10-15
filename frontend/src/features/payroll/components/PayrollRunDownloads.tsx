@@ -6,7 +6,6 @@ import {
   downloadAbPayTimesheet,
   downloadAllPayslips,
   downloadBankFile,
-  downloadCimbPassportPayees,
   downloadEpfCsv,
   downloadManualPayments,
   downloadPaymentSchedule,
@@ -248,24 +247,15 @@ function bankItems(bankName: string | null | undefined): Item[] {
         },
       ];
 
-    case "CimbBizChannelTxt":
+    case "CimbBizChannelXlsx":
       return [
         {
           key: "bank",
           group: "BANK",
-          title: "BizChannel@CIMB Bulk Payroll",
-          description: `Fixed-width file matching CIMB's BizConverter output, routed by BNM bank code. Staff paid by passport aren't in it — CIMB's file only takes an NRIC — they're on the next sheet. ${refusedByServer}`,
+          title: "BizChannel@CIMB Bulk Payroll (Excel)",
+          description: `CIMB's own bulk-payroll Excel template — name, BNM code, account and amount for everyone paid by bank transfer, IC and passport holders alike. ${refusedByServer}`,
           portal: "BizChannel@CIMB → Bulk Payments",
           download: (runId, ctx) => downloadBankFile(runId, ctx.paymentDate),
-        },
-        {
-          key: "bank-cimb-passport",
-          group: "BANK",
-          title: "CIMB: Pay by Hand — Passport Holders (Excel)",
-          description:
-            "The staff paid by passport that the CIMB file leaves out, with passport number, bank, account and net pay, to pay one by one in BizChannel. Not needed when nobody on the run is paid by passport.",
-          portal: "BizChannel@CIMB → single payment",
-          download: (runId, ctx) => downloadCimbPassportPayees(runId, ctx.paymentDate),
         },
       ];
 

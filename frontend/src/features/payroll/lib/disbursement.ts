@@ -8,7 +8,7 @@
 export type PayrollFileFormat =
   | "PbEcpXlsx"
   | "MbbM2eTxt"
-  | "CimbBizChannelTxt"
+  | "CimbBizChannelXlsx"
   | "HlbConnect";
 
 // Stored when the company banks somewhere no upload file is generated for.
@@ -32,7 +32,7 @@ export const DISBURSEMENT_BANKS: {
   {
     value: "CIMB Bank Berhad",
     label: "CIMB (incl. CIMB Islamic)",
-    format: "CimbBizChannelTxt",
+    format: "CimbBizChannelXlsx",
   },
   {
     value: "Public Bank Berhad",

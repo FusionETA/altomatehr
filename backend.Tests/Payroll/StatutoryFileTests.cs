@@ -154,6 +154,34 @@ public class StatutoryFileTests
         Assert.Contains("Has EPF", lines[1]);
     }
 
+    // KWSP refuses the whole file over one non-numeric EPF number, so the
+    // download names who, instead of handing over a file that will bounce.
+    [Fact]
+    public void EpfCsv_IsRefusedWhileSomeoneInItHasANonDigitEpfNumber()
+    {
+        var result = EpfContributionCsv.Render(Payload([
+            Row(name: "Has EPF"),
+            Row(name: "Hindun", epfNumber: "XXXXXX"),
+        ]), GeneratedOn);
+
+        Assert.False(result.Ok);
+        Assert.Contains("Hindun (\"XXXXXX\")", result.Error!);
+        Assert.DoesNotContain("Has EPF", result.Error!);
+    }
+
+    // Someone with nothing to remit isn't in the file, so their number can't
+    // make KWSP refuse it.
+    [Fact]
+    public void EpfCsv_IgnoresABadNumberOnSomeoneNotInTheFile()
+    {
+        var result = EpfContributionCsv.Render(Payload([
+            Row(name: "Has EPF"),
+            Row(name: "EIS only", epfNumber: "N/A", payslip: Payslip(epfEmployee: 0m, epfEmployer: 0m)),
+        ]), GeneratedOn);
+
+        Assert.True(result.Ok, result.Error);
+    }
+
     // A foreigner on EIS only, or an archived stub — nothing to remit.
     [Fact]
     public void EpfCsv_OmitsEmployeesWithNothingToContribute()
