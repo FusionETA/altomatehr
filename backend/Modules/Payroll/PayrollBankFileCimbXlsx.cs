@@ -61,6 +61,21 @@ public static class PayrollBankFileCimbXlsx
         var (rows, refusal) = PayrollBankRows.Select(model);
         if (refusal is not null) return refusal;
 
+        // The template's account column takes 16 digits. A longer one is never
+        // cut to fit — that would send the money to a different account than
+        // the one on file (and on the payment schedule). Named instead.
+        var tooLong = rows
+            .Where(r => r.Account.Length > AccountWidth)
+            .Select(r => $"{r.Source.EmployeeName} ({r.Account.Length} digits)")
+            .ToList();
+        if (tooLong.Count > 0)
+        {
+            return StatutoryFileResult.Refused(
+                $"CIMB's file takes an account number of at most {AccountWidth} digits. These are longer: "
+                + string.Join("; ", tooLong)
+                + ". Check each account number on the employee's profile.");
+        }
+
         using var workbook = new XLWorkbook();
         var sheet = workbook.AddWorksheet("EPF");   // the customer's template's sheet name
 
@@ -69,6 +84,8 @@ public static class PayrollBankFileCimbXlsx
             sheet.Cell(1, c + 1).Value = Rules[c];
             sheet.Cell(1, c + 1).Style.Font.SetFontColor(XLColor.Red);
             sheet.Cell(2, c + 1).Value = Headers[c];
+            // Required columns ("*…") in red, as in the template.
+            if (Headers[c].StartsWith('*')) sheet.Cell(2, c + 1).Style.Font.SetFontColor(XLColor.Red);
             sheet.Column(c + 1).Width = Widths[c];
         }
 
@@ -82,7 +99,7 @@ public static class PayrollBankFileCimbXlsx
             // formatted as text, as in the template.
             sheet.Cell(r, 2).Style.NumberFormat.Format = "@";
             sheet.Cell(r, 3).Value = $"{row.Bank.BnmCode}-{CimbLabels.GetValueOrDefault(row.Bank.BnmCode, row.Bank.Name)}";
-            sheet.Cell(r, 4).SetValue(PayrollBankRows.Clamp(row.Account, AccountWidth));
+            sheet.Cell(r, 4).SetValue(row.Account);   // checked ≤ 16 above
             sheet.Cell(r, 4).Style.NumberFormat.Format = "@";
             sheet.Cell(r, 5).Value = row.Amount;
             sheet.Cell(r, 5).Style.NumberFormat.Format = "#,##0.00;[Red]#,##0.00";

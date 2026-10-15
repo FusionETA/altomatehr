@@ -449,6 +449,8 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   const needsReference = formatFor(bankName) === "HlbConnect";
   // Whether this company's payroll bank produces an upload file at all.
   const hasBankFile = bankItems(bankName).length > 0;
+  // CIMB's Excel template has no value date — it's set in BizChannel at upload.
+  const asksPaymentDate = hasBankFile && formatFor(bankName) !== "CimbBizChannelXlsx";
 
   const grouped = useMemo(
     () =>
@@ -593,7 +595,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
               {/* The bank file writes this date into the sheet and into the
                   filename the portal parses, so it is chosen here rather than
                   silently defaulted. */}
-              {group === "BANK" && hasBankFile ? (
+              {group === "BANK" && asksPaymentDate ? (
                 <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
                   <div className="w-44">
                     <label className={`${LABEL} text-xs`} htmlFor="paymentDate">

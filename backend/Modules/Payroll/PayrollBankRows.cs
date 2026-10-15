@@ -57,6 +57,22 @@ internal static class PayrollBankRows
                 + "Malaysian account. Everyone owed pay is on the Manual payments sheet."));
         }
 
+        // An account with no digits at all ("N/A", "-") would go out as a blank
+        // required cell — the bank rejects it, and the person is on neither
+        // the bank file nor the Manual payments sheet. Named instead.
+        var noDigits = candidates
+            .Where(r => StatutoryFileFields.DigitsOnly(r.BankAccountNumber!).Length == 0)
+            .Select(r => $"{r.EmployeeName} (\"{r.BankAccountNumber!.Trim()}\")")
+            .ToList();
+        if (noDigits.Count > 0)
+        {
+            return ([], StatutoryFileResult.Refused(
+                "These employees are paid by bank transfer, but their account number has no digits: "
+                + string.Join("; ", noDigits)
+                + ". Enter the real account number on their profile — or, if they're paid another "
+                + "way, change their payment method so they go on the Manual payments sheet."));
+        }
+
         var rows = candidates
             .Select((r, i) => new BankPayRow(
                 r,

@@ -288,6 +288,17 @@ public class BankFileFormatsTests
         Assert.Equal(expected, CimbSheet(Model([Row(bankName: bank)])).Cell(3, 3).GetString());
     }
 
+    // Never cut an account to fit: a 17-digit number would become a different
+    // account. Refused, naming the person.
+    [Fact]
+    public void Cimb_RefusesAnAccountLongerThanSixteenDigits()
+    {
+        var result = PayrollBankFileCimbXlsx.Render(Model([Row(name: "Bala", accountNumber: "12345678901234567")]));
+
+        Assert.False(result.Ok);
+        Assert.Contains("Bala (17 digits)", result.Error!);
+    }
+
     // "Char without '-' or '/'" on the name and reference columns.
     [Fact]
     public void Cimb_DropsTheSeparatorsTheTemplateForbids()
@@ -423,6 +434,18 @@ public class BankFileFormatsTests
             "hlb-txt" => PayrollBankFileHlb.RenderConnectFirstTxt(model, "SALARY"),
             _ => PayrollBankFileHlb.RenderConnectBizXlsx(model, "SALARY"),
         };
+
+    // "N/A" as an account would go out as a blank required cell, and the
+    // person would be on neither the bank file nor Manual payments.
+    [Theory]
+    [MemberData(nameof(Renderers))]
+    public void EveryFormatRefusesAnAccountWithNoDigits(string which)
+    {
+        var result = RenderBy(which, Model([Row(), Row(name: "Bala", accountNumber: "N/A")]));
+
+        Assert.False(result.Ok);
+        Assert.Contains("Bala (\"N/A\")", result.Error!);
+    }
 
     [Theory]
     [MemberData(nameof(Renderers))]
