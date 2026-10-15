@@ -114,6 +114,22 @@ public class PayrollEmployeeImportTests : IDisposable
     // Never guessed at: kept as typed, and the row still lands, with a note
     // naming it. (This exact text is the previous system's template hint,
     // which that system imported as three people's nationality.)
+    // A placeholder EPF number makes KWSP refuse the whole file: the row is
+    // refused, and nothing on it is applied.
+    [Fact]
+    public async Task APlaceholderEpfNumberRefusesTheRow()
+    {
+        var result = await Import(
+            "Employee Email,Monthly Salary,EPF No",
+            "aisyah@x.com,5500.00,XXXXXX");
+
+        Assert.Equal(0, result.Imported);
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("digits only", error.Message);
+        Assert.Equal(4000m, Profile().MonthlySalary);
+        Assert.Equal("1111111", Profile().EpfNumber);
+    }
+
     [Fact]
     public async Task AnUnrecognisedNationalityIsKeptAndReported()
     {

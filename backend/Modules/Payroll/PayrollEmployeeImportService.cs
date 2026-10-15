@@ -220,6 +220,18 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
     {
         string? Text(string key, int max) => TabularCell.Text(map.Cell(row, key), max);
 
+        // Checked before anything on the row is applied: a placeholder EPF
+        // number ("XXXXXX") makes KWSP refuse the whole month's file, so the
+        // row is refused here, as the profile screen refuses it.
+        // Only a CHANGED number is checked, as on the profile screen.
+        var epfCell = Text("epfNumber", 40);
+        if (epfCell is not null && epfCell.Trim() != (profile.EpfNumber ?? "").Trim()
+            && EpfNumberRule.Problem(epfCell) is not null)
+        {
+            result.Fail(rowNumber, $"EPF number '{epfCell}': {EpfNumberRule.Message}");
+            return false;
+        }
+
         profile.IdNumber = Text("idNumber", 40) ?? profile.IdNumber;
         // Mapped onto the dropdown's spelling ("Malaysia" → "Malaysian"): the
         // CP39 file and the LHDN country code both key on it. Anything not

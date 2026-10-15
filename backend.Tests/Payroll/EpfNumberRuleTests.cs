@@ -31,4 +31,12 @@ public class EpfNumberRuleTests
 
         Assert.Empty(PayrollRunReadiness.EmployeeGaps("00448", "060503120798", isLocalOrPr: true, epfNumber: "24469760"));
     }
+
+    // Someone with no EPF contribution isn't in KWSP's file, so a stray value
+    // in their EPF number box doesn't hold up the month (callers pass null).
+    [Fact]
+    public void ReadinessIgnoresTheEpfNumberWhenItIsntPassed()
+    {
+        Assert.Empty(PayrollRunReadiness.EmployeeGaps("00448", "060503120798", isLocalOrPr: true, epfNumber: null));
+    }
 }

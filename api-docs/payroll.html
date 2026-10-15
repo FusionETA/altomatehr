@@ -144,7 +144,7 @@
               <tr><td><code>isArchived</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>lastPayableDay</code></td><td>string?</td><td>ISO date. The last day payroll pays this person: their <code>leaveDate</code>, or &mdash; when archived with no leave date &mdash; the day they were archived. Null while they are still employed. It is the rule run generation uses, so it tells you whether a given month's run will include a leaver.</td></tr>
               <tr><td><code>notPayableReason</code></td><td>string?</td><td><code>"No payroll details yet"</code>, <code>"Archived"</code>, or null when payable.</td></tr>
-              <tr><td><code>missing</code></td><td>string[]</td><td>Statutory gaps a run's readiness check would also report (e.g. a missing IC).</td></tr>
+              <tr><td><code>missing</code></td><td>string[]</td><td>Statutory gaps a run's readiness check would also report: <code>"Employee number"</code>, <code>"IC number"</code> / <code>"Passport number"</code>, and <code>"EPF number (digits only)"</code> when the employee contributes to EPF and <code>epfNumber</code> is filled in but isn't all digits (a blank one, or one on someone who doesn't contribute, is not listed here).</td></tr>
               <tr><td><code>profileIncompleteSections</code></td><td>string[]</td><td>Which of <code>Personal</code>, <code>Employment</code>, <code>Statutory</code> is short of what a run needs to include this person at all.</td></tr>
               <tr><td><code>hasPayrollProfile</code></td><td>boolean</td><td><code>false</code> = no payroll details saved yet; <code>employeeProfileId</code> is a placeholder.</td></tr>
             </tbody>
@@ -233,7 +233,7 @@
               <tr><td><code>Salary Type</code></td><td>pay type</td><td><code>MONTHLY</code> or <code>HOURLY</code>.</td></tr>
               <tr><td><code>Monthly Salary</code></td><td>basic salary, salary</td><td>Tolerant of "RM 5,000.00"; negative or unparseable fails the row.</td></tr>
               <tr><td><code>Hourly Rate</code></td><td>—</td><td>Same parsing as Monthly Salary.</td></tr>
-              <tr><td><code>EPF No</code></td><td>kwsp, kwsp no, epf</td><td></td></tr>
+              <tr><td><code>EPF No</code></td><td>kwsp, kwsp no, epf</td><td>Digits only when it changes the stored value, as on <code>PUT /employees/{id}/profile</code>: a row changing it to anything else (e.g. <code>XXXXXX</code>) fails with <code>"EPF number '…': EPF number must be digits only — …"</code> and nothing on that row is applied.</td></tr>
               <tr><td><code>EPF Employee Rate %</code></td><td>epf rate</td><td></td></tr>
               <tr><td><code>Contribute to EPF</code></td><td>—</td><td>Yes/No.</td></tr>
               <tr><td><code>SOCSO No</code></td><td>perkeso, socso</td><td>Blank defaults to the IC/passport number, matching the app.</td></tr>

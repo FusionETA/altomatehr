@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 05cab20
+  user-guide-covered-up-to: 108fc56
 -->
 <html lang="en">
 <head>
@@ -930,6 +930,12 @@
     <ul>
       <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
         taxed as a resident.</li>
+      <li><strong>EPF number</strong> — on the Statutory tab, digits only: the member number on the employee's KWSP
+        statement, for example <em>21968561</em>. If you type anything else, such as a placeholder like
+        <em>XXXXXX</em>, the box turns red and says <em>Digits only — the member number on their KWSP statement (e.g.
+        21968561).</em>, the bar at the bottom repeats it, and <span class="btn-name">Save changes</span> does nothing
+        until you fix it. KWSP refuses the whole contribution file over one number that isn't digits, so this is caught
+        here. Leave the box empty for someone who doesn't contribute.</li>
       <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
         the Personal tab, since for most employees it's the same.</li>
       <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
@@ -1253,6 +1259,9 @@
         <li>Someone's net pay would be negative — their deductions are more than their pay. (RM 0.00 is allowed, for
           example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
         <li>A required employer or employee field is missing.</li>
+        <li>Someone in the run has an EPF number that isn't digits only. They're listed as <em>EPF number (digits only)</em>,
+          the same way a missing IC number is. Fix the number on their Statutory tab, then press
+          <span class="btn-name">Re-run payroll</span>.</li>
         <li>The previous month hasn't been filed yet — months are filed in order.</li>
       </ul>
     </div>
@@ -1326,13 +1335,19 @@
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
-        <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB</td></tr>
+        <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB — the file is named with your employer number, the month and the year, for example <em>6051351020072026.txt</em></td></tr>
         <tr><td></td><td>TP1 / TP3 Claims List</td><td>Your records — everyone who claimed reliefs on Borang PCB/TP1 this month, or declared a previous employer on TP3</td></tr>
         <tr><td>Payslips</td><td>Bulk payslips (a ZIP of PDFs), or <span class="btn-name">Email all</span> to each employee</td><td>Employees</td></tr>
         <tr><td>Bank</td><td>The bulk payment file for your payroll bank</td><td>Your bank's portal</td></tr>
         <tr><td></td><td>Manual Payments (Excel)</td><td>Your finance team — pay these by hand</td></tr>
       </tbody>
     </table></div>
+    <div class="note warn"><span class="nt">Upload the PCB file under its own name</span>
+      <p>LHDN's e-PCB upload only accepts file names made of letters and digits. Upload the CP39 file exactly as
+        downloaded. If you download it twice, your browser may save the second copy as something like
+        <em>… (1).txt</em>, and LHDN refuses that name. Rename it (for example to <em>6051351020072026.txt</em>), or
+        use the first copy.</p>
+    </div>
     <h3>The bank file follows your bank</h3>
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
@@ -1844,7 +1859,7 @@
         approve”, add an approver to that person's team.</p></div></details>
     <details class="qa"><summary>Why can't I send the payroll run for approval?</summary>
       <div class="body"><p>The message beside the button says why: the run needs re-running, someone's net pay would be
-        negative, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
+        negative, a required field is missing or an EPF number isn't digits only (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>

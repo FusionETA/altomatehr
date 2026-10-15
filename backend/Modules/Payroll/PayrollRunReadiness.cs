@@ -31,7 +31,11 @@ public static class PayrollRunReadiness
 
         foreach (var row in payload.Rows)
         {
-            var missing = EmployeeGaps(row.EmployeeCode, row.IdNumber, row.IsLocalOrPr, row.EpfNumber);
+            // The EPF number only matters to someone whose row goes in KWSP's
+            // file — the file leaves out anyone with no contribution.
+            var filedForEpf = row.Payslip.EpfEmployee + row.Payslip.EpfEmployer > 0m;
+            var missing = EmployeeGaps(
+                row.EmployeeCode, row.IdNumber, row.IsLocalOrPr, filedForEpf ? row.EpfNumber : null);
 
             if (missing.Count > 0)
             {
