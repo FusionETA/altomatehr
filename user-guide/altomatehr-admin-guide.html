@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 108fc56
+  user-guide-covered-up-to: 50a4696
 -->
 <html lang="en">
 <head>
@@ -1352,7 +1352,7 @@
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
-      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (.txt)</li>
+      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (.txt), plus a sheet for anyone paid by passport (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
     </ul>
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
@@ -1361,6 +1361,23 @@
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
       <strong>Manual Payments</strong>.</p>
+    <h3>CIMB: staff paid by passport</h3>
+    <p>CIMB's bulk payroll file only takes an NRIC, so employees who are paid by passport are left out of the
+      <span class="btn-name">BizChannel@CIMB Bulk Payroll</span> file. The file still downloads as normal, with only the
+      NRIC holders in it. If your payroll bank is CIMB, a second download appears next to it,
+      <span class="btn-name">CIMB: Pay by Hand — Passport Holders (Excel)</span>.</p>
+    <ul>
+      <li>It lists each passport holder with their passport no., nationality, bank, account number, account holder and
+        net pay, and a total at the bottom.</li>
+      <li>The <strong>Payment Schedule</strong> PDF lists them in their own section, “Pay by hand in CIMB — passport
+        holders”, so its bank file total matches the CIMB file.</li>
+      <li>Pay each one in BizChannel@CIMB as a single payment, then fill in the <strong>Paid on</strong> column so you
+        have a record.</li>
+      <li>If nobody on the run is paid by passport, you don't need this sheet and it isn't added to the run's bundle of
+        downloads.</li>
+    </ul>
+    <p>The CIMB file, this sheet and <strong>Manual Payments</strong> together add up to the run's total net pay, so
+      nobody is missed.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>

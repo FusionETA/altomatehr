@@ -306,24 +306,69 @@ public class BankFileFormatsTests
 
     // CIMB's Beneficiary ID column takes an NRIC or a business registration
     // number — its published guide says so, and the template offers no
-    // passport option. The codes for those kinds were invented, so an employee
-    // carrying one is named rather than sent under a value the bank may reject.
+    // passport option. Someone carrying another kind of ID is LEFT OUT of the
+    // file (never sent under an invented code), and the trailer counts only
+    // the people actually in it.
     [Theory]
     [InlineData(IdType.PASSPORT)]
     [InlineData(IdType.POLICE_NO)]
     [InlineData(IdType.ARMY_NO)]
-    public void Cimb_RefusesAnIdTheFormatCannotCarry(IdType idType)
+    public void Cimb_LeavesOutAnIdTheFormatCannotCarry(IdType idType)
     {
         var model = Model([
-            Row(),
-            Row(name: "Bala", idType: idType, idNumber: "A12345678"),
+            Row(net: 1000m),
+            Row(name: "Bala", idType: idType, idNumber: "A12345678", net: 2000m),
         ]);
 
         var result = Cimb(model);
 
+        Assert.True(result.Ok, result.Error);
+        var lines = Lines(result.Content!);
+        Assert.Equal(3, lines.Length);                       // header, one detail, trailer
+        Assert.DoesNotContain("BALA", lines[1].ToUpperInvariant());
+        Assert.Equal("03" + "000001" + "0000000100000", lines[2]);   // 1 row, RM 1,000.00
+    }
+
+    [Fact]
+    public void Cimb_RefusesWhenEveryoneIsPaidByPassport()
+    {
+        var result = Cimb(Model([Row(idType: IdType.PASSPORT, idNumber: "A12345678")]));
+
         Assert.False(result.Ok);
-        Assert.Contains("Bala", result.Error!);
-        Assert.Contains(idType.ToString(), result.Error!);
+        Assert.Contains("passport payees sheet", result.Error!);
+    }
+
+    // The ones left out are listed — with what's needed to pay them by hand —
+    // and only them.
+    [Fact]
+    public void CimbPassportPayees_ListsOnlyThePassportHolders_WithTheirPaymentDetails()
+    {
+        var model = Model([
+            Row(net: 1000m),
+            Row(name: "Bala", idType: IdType.PASSPORT, idNumber: "MH441016", nationality: "Myanmar",
+                bankName: "CIMB Bank", accountNumber: "7012-345678", net: 1850.25m),
+        ]);
+
+        var result = CimbPassportPayeesXlsx.Render(model, ValueDate);
+
+        Assert.True(result.Ok, result.Error);
+        using var book = new ClosedXML.Excel.XLWorkbook(new MemoryStream(result.Content!));
+        var sheet = book.Worksheet(1);
+        Assert.Equal("Bala", sheet.Cell(5, 3).GetString());
+        Assert.Equal("MH441016", sheet.Cell(5, 4).GetString());
+        Assert.Equal("Myanmar", sheet.Cell(5, 5).GetString());
+        Assert.Equal("7012345678", sheet.Cell(5, 7).GetString());
+        Assert.Equal(1850.25m, (decimal)sheet.Cell(5, 9).GetDouble());
+        Assert.True(sheet.Cell(6, 3).IsEmpty());              // Aisyah (NRIC) isn't listed
+        Assert.Equal("Total (1)", sheet.Cell(6, 8).GetString());
+    }
+
+    [Fact]
+    public void CimbPassportPayees_IsRefusedWhenNobodyIsPaidByPassport()
+    {
+        var result = CimbPassportPayeesXlsx.Render(Model(), ValueDate);
+        Assert.False(result.Ok);
+        Assert.Contains("Nobody on this run is paid by passport", result.Error!);
     }
 
     // Someone with no id on file is not the same problem: the column simply

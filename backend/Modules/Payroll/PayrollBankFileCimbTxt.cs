@@ -97,30 +97,22 @@ public static class PayrollBankFileCimbTxt
                 + $"has {orgCode.Length}). Correct it under Payroll Settings → Bank.");
         }
 
-        var (rows, refusal) = PayrollBankRows.Select(model);
+        var (selected, refusal) = PayrollBankRows.Select(model);
         if (refusal is not null) return refusal;
 
         // CIMB's Beneficiary ID column is an NRIC or a business registration
         // number; the format has no passport. Sending one under an invented
         // type code risks the bank failing that row's beneficiary check — and
-        // a row the bank drops is someone who is not paid, which is the exact
-        // failure every other refusal in this module exists to prevent.
-        var unrepresentable = rows
-            .Where(r => r.Source.IdType is not null
-                     && r.Source.IdType != IdType.NRIC
-                     && !string.IsNullOrWhiteSpace(r.Source.IdNumber))
-            .Select(r => $"{r.Source.EmployeeName} ({r.Source.IdType})")
-            .ToList();
-
-        if (unrepresentable.Count > 0)
+        // a row the bank drops is someone who is not paid. So a passport
+        // holder is LEFT OUT of this file and listed on the CIMB passport
+        // payees sheet (CimbPassportPayeesXlsx) to pay by hand — never
+        // dropped without a list saying who.
+        var rows = selected.Where(r => !IsPassportPayee(r.Source)).ToList();
+        if (rows.Count == 0)
         {
             return StatutoryFileResult.Refused(
-                "CIMB's bulk-payroll file identifies each employee by NRIC or business "
-                + "registration number, and has no field for any other kind of ID. These are "
-                + "on this run: " + string.Join("; ", unrepresentable)
-                + ". Pay them through BizChannel separately — the Payment Schedule PDF has "
-                + "their account and amount — or confirm the correct code with CIMB before "
-                + "including them.");
+                "Everyone paid by bank transfer on this run is paid by passport, which CIMB's "
+                + "bulk-payroll file can't carry. Pay them from the CIMB passport payees sheet.");
         }
 
         var reference = PayrollBankRows.Reference(model);
@@ -170,10 +162,18 @@ public static class PayrollBankFileCimbTxt
         return new StatutoryFileResult(true, fileName, content, ContentType, null);
     }
 
+    // Someone the file can't carry: an ID on file that isn't an NRIC (a
+    // passport, in practice). Shared with the passport payees sheet so the two
+    // can never disagree about who is in which.
+    public static bool IsPassportPayee(StatutoryEmployeeRow row) =>
+        row.IdType is not null
+        && row.IdType != IdType.NRIC
+        && !string.IsNullOrWhiteSpace(row.IdNumber);
+
     // Detail position 127. Only "2" is corroborated — by CIMB's own sample
     // output, whose three rows all carried a New NRIC.
     //
-    // Nothing else can arrive here: a non-NRIC id is refused above, because
+    // Nothing else can arrive here: a non-NRIC id is left out above, because
     // the format has no field for one. An employee with NO id on file still
     // reaches this, and leaves the position blank exactly as the sample's
     // unfilled cells did.
