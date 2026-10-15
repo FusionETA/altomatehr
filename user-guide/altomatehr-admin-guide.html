@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 50a4696
+  user-guide-covered-up-to: f76a9c3
 -->
 <html lang="en">
 <head>
@@ -931,11 +931,12 @@
       <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
         taxed as a resident.</li>
       <li><strong>EPF number</strong> — on the Statutory tab, digits only: the member number on the employee's KWSP
-        statement, for example <em>21968561</em>. If you type anything else, such as a placeholder like
-        <em>XXXXXX</em>, the box turns red and says <em>Digits only — the member number on their KWSP statement (e.g.
+        statement, for example <em>21968561</em>. If the box holds anything else, such as a placeholder like
+        <em>XXXXXX</em> — even one saved before — it turns red and says <em>Digits only — the member number on their KWSP statement (e.g.
         21968561).</em>, the bar at the bottom repeats it, and <span class="btn-name">Save changes</span> does nothing
         until you fix it. KWSP refuses the whole contribution file over one number that isn't digits, so this is caught
-        here. Leave the box empty for someone who doesn't contribute.</li>
+        here, and the <span class="btn-name">EPF Contribution CSV</span> download in a run's files is refused too, with a message
+        naming each person to fix. Correct them on their Statutory tab and download again — you don't need to re-run payroll. Leave the box empty for someone who doesn't contribute.</li>
       <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
         the Personal tab, since for most employees it's the same.</li>
       <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
@@ -1352,7 +1353,7 @@
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
-      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (.txt), plus a sheet for anyone paid by passport (see below)</li>
+      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
     </ul>
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
@@ -1361,23 +1362,14 @@
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
       <strong>Manual Payments</strong>.</p>
-    <h3>CIMB: staff paid by passport</h3>
-    <p>CIMB's bulk payroll file only takes an NRIC, so employees who are paid by passport are left out of the
-      <span class="btn-name">BizChannel@CIMB Bulk Payroll</span> file. The file still downloads as normal, with only the
-      NRIC holders in it. If your payroll bank is CIMB, a second download appears next to it,
-      <span class="btn-name">CIMB: Pay by Hand — Passport Holders (Excel)</span>.</p>
-    <ul>
-      <li>It lists each passport holder with their passport no., nationality, bank, account number, account holder and
-        net pay, and a total at the bottom.</li>
-      <li>The <strong>Payment Schedule</strong> PDF lists them in their own section, “Pay by hand in CIMB — passport
-        holders”, so its bank file total matches the CIMB file.</li>
-      <li>Pay each one in BizChannel@CIMB as a single payment, then fill in the <strong>Paid on</strong> column so you
-        have a record.</li>
-      <li>If nobody on the run is paid by passport, you don't need this sheet and it isn't added to the run's bundle of
-        downloads.</li>
-    </ul>
-    <p>The CIMB file, this sheet and <strong>Manual Payments</strong> together add up to the run's total net pay, so
-      nobody is missed.</p>
+    <h3>CIMB: one Excel file for everyone</h3>
+    <p>For CIMB the download is <span class="btn-name">BizChannel@CIMB Bulk Payroll (Excel)</span>: CIMB's own bulk
+      payroll template, filled in with the name, bank, account number and amount of everyone paid by bank transfer.
+      Staff with an IC and staff with a passport go in the same file, so there is no separate sheet for passport
+      holders. Upload it under <strong>Bulk Payments</strong> in BizChannel@CIMB. The organisation code setting
+      isn't used for CIMB — only Maybank needs it.</p>
+    <p>The bank file and <strong>Manual Payments</strong> together add up to the run's total net pay, so nobody is
+      missed.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>
@@ -1880,6 +1872,10 @@
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>
+    <details class="qa"><summary>The EPF file was refused: “KWSP will refuse this file”.</summary>
+      <div class="body"><p>The message names each person whose EPF number isn't digits only. Open their record, fix the
+        EPF number on the Statutory tab (the member number on their KWSP statement) and save, then download the file
+        again. You don't need to re-run payroll.</p></div></details>
     <details class="qa"><summary>I can't press Generate PDF on a letter.</summary>
       <div class="body"><p>The letter still needs details. The line at the bottom of the dialog names each one — fill
         it in, or tick <em>Leave blank on this letter</em>. See <a href="#letters">HR letters</a>.</p></div></details>

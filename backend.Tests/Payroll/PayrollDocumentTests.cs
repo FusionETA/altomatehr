@@ -292,21 +292,6 @@ public class PayrollDocumentTests
         Assert.True(IsPdf(PaymentSchedulePdf.Render(model)));
     }
 
-    // A CIMB company's passport payees come out of the bank-file list into
-    // their own pay-by-hand list, so the bank-file total matches the CIMB file.
-    [Fact]
-    public void PaymentSchedule_ListsCimbPassportPayeesOnTheirOwn()
-    {
-        var model = Model([
-            Row(name: "Aisyah Binti Rahman", employeeCode: "E-001"),
-            Row(name: "Saw Zin Mu Htoo", employeeCode: "E-002", bankName: "CIMB Bank",
-                idNumber: "MH441016", idType: IdType.PASSPORT),
-        ]);
-
-        var pdf = PaymentSchedulePdf.Render(model, cimbPassportSplit: true);
-        Assert.True(IsPdf(pdf));
-    }
-
     // ─── Bank matching ──────────────────────────────────────────────────
 
     // The bank name on a profile is free text. These are the spellings an

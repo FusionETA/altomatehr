@@ -194,7 +194,7 @@ public class StatutoryFileService : IStatutoryFileService
     // the people, then file the returns. The bank file leads because it is the
     // one with a deadline attached.
     private static readonly string[] BundleDocuments =
-        ["bank-file", "bank-file-passport", "manual-payments", "summary", "summary-xlsx", "allowances", "deductions", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+        ["bank-file", "manual-payments", "summary", "summary-xlsx", "allowances", "deductions", "payslips", "epf", "socso-eis", "socso-eis-skbbk", "pcb"];
 
     public async Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate)
     {
@@ -231,10 +231,7 @@ public class StatutoryFileService : IStatutoryFileService
 
                 if (!result.Ok || result.Content is null)
                 {
-                    // Only exists for a CIMB company with passport holders —
-                    // its absence otherwise isn't worth a "skipped" line.
-                    if (document != "bank-file-passport")
-                        skipped[document] = result.Error ?? "Could not be produced for this run.";
+                    skipped[document] = result.Error ?? "Could not be produced for this run.";
                     continue;
                 }
 
@@ -254,7 +251,6 @@ public class StatutoryFileService : IStatutoryFileService
         {
             "bank-file" => RenderBankFileAsync(runId, paymentDate),
             "manual-payments" => RenderManualPaymentsXlsxAsync(runId),
-            "bank-file-passport" => RenderCimbPassportPayeesXlsxAsync(runId, paymentDate),
             "summary" => RenderSummaryPdfAsync(runId),
             "summary-xlsx" => RenderSummaryXlsxAsync(runId),
             "allowances" => RenderAllowanceReportXlsxAsync(runId),
@@ -331,33 +327,9 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
         if (RefuseIfImported(model.Run) is { } imported) return imported;
 
-        // A CIMB company's passport payees aren't in its bank file, so the
-        // schedule lists them on their own and its bank-file total matches.
-        var cimb = PayrollDisbursement.FormatFor((await _settings.GetAsync()).PayrollBankName)
-                   == PayrollFileFormat.CimbBizChannelTxt;
-
         var fileName = $"Payment_Schedule_{MonthYear(model.Run)}.pdf";
         return new StatutoryFileResult(
-            true, fileName, PaymentSchedulePdf.Render(model, cimb), PaymentSchedulePdf.ContentType, null);
-    }
-
-    // CIMB companies only: the passport holders the CIMB file leaves out,
-    // with what's needed to pay each by hand in BizChannel.
-    public async Task<StatutoryFileResult> RenderCimbPassportPayeesXlsxAsync(string runId, DateTime? paymentDate)
-    {
-        var model = await LoadDocumentAsync(runId);
-        if (model is null) return NotFound();
-        if (RefuseUnlessApproved(model.Run) is { } refusal) return refusal;
-        if (RefuseIfImported(model.Run) is { } imported) return imported;
-
-        var settings = await _settings.GetAsync();
-        if (PayrollDisbursement.FormatFor(settings.PayrollBankName) != PayrollFileFormat.CimbBizChannelTxt)
-        {
-            return StatutoryFileResult.Refused(
-                "This list is for companies that pay through CIMB — only CIMB's file can't carry a passport.");
-        }
-
-        return CimbPassportPayeesXlsx.Render(model, paymentDate?.Date ?? LastDayOfPeriod(model.Run));
+            true, fileName, PaymentSchedulePdf.Render(model), PaymentSchedulePdf.ContentType, null);
     }
 
     public async Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId)
@@ -370,8 +342,7 @@ public class StatutoryFileService : IStatutoryFileService
         if (PayrollPayments.Manual(model).Count == 0)
         {
             return StatutoryFileResult.Refused(
-                "No manual payments this month — everyone owed pay is in the bank file "
-                + "(or, at a CIMB company, on the CIMB passport payees sheet).");
+                "No manual payments this month — everyone owed pay is in the bank file.");
         }
 
         var fileName = $"Manual_Payments_{MonthYear(model.Run)}.xlsx";
@@ -578,8 +549,10 @@ public class StatutoryFileService : IStatutoryFileService
                 PayrollBankFileMbbTxt.Render(
                     model, valueDate, settings.EcpPayorAccountNo, settings.PayorOrganisationCode),
 
-            PayrollFileFormat.CimbBizChannelTxt =>
-                PayrollBankFileCimbTxt.Render(model, valueDate, settings.PayorOrganisationCode),
+            // CIMB's own Excel template, which carries NRIC and passport
+            // holders alike (Beneficiary ID left blank). No value date or
+            // organisation code: both are set in BizChannel at upload.
+            PayrollFileFormat.CimbBizChannelXlsx => PayrollBankFileCimbXlsx.Render(model),
 
             // The only bank with two portals. Guessing one would hand over a
             // file the other rejects, so an unspecified channel is refused

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 50a4696
+// whats-new-covered-up-to: f76a9c3
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -23,15 +23,15 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-15",
-    new: [
-      "Admins: CIMB companies get a \"CIMB: Pay by Hand — Passport Holders\" download in Payroll → Run downloads. It lists passport holders with bank, account and net pay, for BizChannel.",
-    ],
     improved: [
-      "Admins: an EPF number must be digits only, so a placeholder can't be saved or imported. A draft run can't be submitted while someone who pays EPF has one.",
+      "Admins: the CIMB bank file in Payroll → Run downloads is now CIMB's own BizChannel Excel template, for IC and passport holders alike. It applies to approved months too.",
+      "Admins: CIMB no longer needs an organisation code in Payroll settings.",
+      "Admins: an EPF number must be digits only. A placeholder like \"XXXXXX\" is refused on import, flagged on the profile even if saved earlier, and blocks a draft run's submission.",
     ],
     fixed: [
       "Admins: LHDN's e-PCB upload no longer refuses the PCB (CP39) file over its name, in Payroll → Run downloads. The name now has letters and digits only, for every month; amounts don't change.",
-      "Admins: a CIMB run with someone paid by passport no longer refuses the bank file. That person is left out and listed on the Pay by Hand sheet. Other runs don't change.",
+      "Admins: a CIMB run with someone paid by passport no longer has its bank file refused. They're included in the file with everyone else.",
+      "Admins: the EPF file won't download while anyone in it has a placeholder EPF number; it names them so you can fix each one. This applies to approved months too.",
     ],
   },
   {

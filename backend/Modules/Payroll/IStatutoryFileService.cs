@@ -50,10 +50,6 @@ public interface IStatutoryFileService
     Task<StatutoryFileResult> RenderManualPaymentsXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
-    // CIMB companies: the passport holders CIMB's bulk file can't carry, as an
-    // Excel sheet to pay by hand. (Default keeps hand-written test doubles compiling.)
-    Task<StatutoryFileResult> RenderCimbPassportPayeesXlsxAsync(string runId, DateTime? paymentDate) =>
-        Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
     // The run in Ayu Borneo's monthly timesheet layout — the sheet the ABPay
     // companion app imports — plus a second sheet of statutory figures.
