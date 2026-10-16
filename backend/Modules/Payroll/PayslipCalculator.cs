@@ -927,12 +927,14 @@ public static class PayslipCalculator
             _ => (0m, 0m),
         };
 
-        // Voluntary is ceiled to the next ringgit on the whole wage, matching
-        // how EpfCalculator applies it; mandatory is then the remainder. The two
-        // halves let the payslip PDF show them as separate lines without redoing
-        // the arithmetic from a single total.
+        // The two halves let the payslip PDF show them as separate lines
+        // without redoing the arithmetic from a single total. Employee voluntary
+        // is ceiled to the next ringgit on the whole wage, matching how
+        // EpfCalculator applies it; mandatory is then the remainder. The
+        // employer's extra comes from EpfCalculator, which ceils the employer's
+        // whole rate once — so the mandatory remainder stays the statutory share.
         var voluntaryAmountEmployee = Money.CeilRinggit(wage, voluntaryEmployee);
-        var voluntaryAmountEmployer = Money.CeilRinggit(wage, voluntaryEmployer);
+        var voluntaryAmountEmployer = epf.EmployerVoluntaryAmount;
 
         return new EpfRatesSnapshot
         {
