@@ -533,8 +533,14 @@ public static class YtdImportParser
             return true;
         }
 
-        return decimal.TryParse(
-            cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
+        // Rounded to the sen here, once: each figure is stored to two
+        // decimals on its own, and cost is derived from them — a raw 589.875
+        // stored as 589.88 beside a cost worked out from 589.875 would leave
+        // the two a sen apart (and the shown gross with it).
+        if (!decimal.TryParse(cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out amount))
+            return false;
+        amount = Money.Round2(amount);
+        return true;
     }
 
     // Any money column on this row carrying something. Used only to tell a

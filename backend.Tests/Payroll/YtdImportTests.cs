@@ -83,6 +83,18 @@ public class YtdImportParserTests
         Assert.Contains("Livng Accommodation", result.UnrecognisedColumns);
     }
 
+    // A formula cell can carry more than two decimals. Each figure is rounded
+    // to the sen once, here — stored separately at two decimals, an unrounded
+    // 589.875 would leave cost a sen away from its parts.
+    [Fact]
+    public void AmountsAreRoundedToTheSen()
+    {
+        var month = Parse(NameRow, Month("January", basic: "4537.505", epf: "589.875")).Employees[0].Months[0];
+
+        Assert.Equal(4537.51m, month.Gross);
+        Assert.Equal(589.88m, month.EpfEmployee);
+    }
+
     // ─── The four buckets ───────────────────────────────────────────────
 
     // A cash allowance is earnings: it makes gross, and net follows.

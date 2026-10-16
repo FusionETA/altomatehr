@@ -66,6 +66,7 @@ public static class PayslipMapper
         HrdfWage = p.HrdfWage,
 
         GrossPay = p.GrossPay,
+        GrossShown = PayrollGrossShown.Of(p),
         NetPay = p.NetPay,
         TotalCostToEmployer = p.TotalCostToEmployer,
 

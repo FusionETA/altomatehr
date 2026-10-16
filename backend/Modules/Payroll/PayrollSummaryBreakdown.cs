@@ -26,7 +26,9 @@ namespace AltomateHR.Api.Modules.Payroll;
 // (Hours left out). For a generated payslip that is
 // GrossPay − AbPayTimesheetXlsx.OtherDeductions: gross less every NON-statutory
 // deduction taken from net pay (loans, miscellaneous, CP38, free-text
-// deductions). It is deliberately not the payroll Gross on the Summary sheet.
+// deductions). It is deliberately not the payroll Gross on the Summary sheet,
+// which takes off only the deductions the company keeps (loans, miscellaneous
+// — PayrollGrossShown), not CP38 or free-text deductions.
 //
 // "Not in Total Gross" columns sit after Total Gross, under their own band, and
 // are never added into it:
@@ -71,8 +73,9 @@ public static class PayrollSummaryBreakdown
 
     public const string TotalGrossNote =
         "Total Gross = all the money columns on this row added up (deductions are shown as negative). "
-        + "It differs from the payroll Gross on the Summary sheet, which doesn't subtract deductions "
-        + "taken from net pay.";
+        + "It can differ from the payroll Gross on the Summary sheet, which takes off only the "
+        + "deductions the company keeps (loans, miscellaneous) — not CP38 or other deductions taken "
+        + "from net pay.";
 
     private enum Group { Earning, Deduction, NotInTotal }
 

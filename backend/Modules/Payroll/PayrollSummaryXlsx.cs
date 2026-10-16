@@ -58,7 +58,7 @@ public static class PayrollSummaryXlsx
     // are separate columns here (one cell in the PDF) so they filter.
     private static readonly (string Header, Band Band, Func<Payslip, decimal> Value, Func<PayrollSummaryTotals, decimal> Total)[] Amounts =
     [
-        ("Gross", Band.None, p => p.GrossPay, t => t.Gross),
+        ("Gross", Band.None, p => PayrollGrossShown.Of(p), t => t.Gross),
         ("PCB", Band.Emp, p => p.Pcb, t => t.Pcb),
         ("EPF (employee)", Band.Emp, p => p.EpfEmployee, t => t.EpfEmp),
         ("SOCSO (employee)", Band.Emp, p => p.SocsoEmployee, t => t.SocsoEmp),

@@ -35,7 +35,7 @@ public sealed class PayrollSummaryTotals
         foreach (var p in payslips)
         {
             t.Employees++;
-            t.Gross += p.GrossPay;
+            t.Gross += PayrollGrossShown.Of(p);   // as shown, like PayrollPanda
             t.Bik += p.TotalBenefitsInKind;
             t.Pcb += p.Pcb;
             t.EpfEmp += p.EpfEmployee;

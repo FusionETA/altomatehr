@@ -894,6 +894,24 @@ public class PayslipCalculatorTests
             r.TotalCostToEmployer);
     }
 
+    // What the run table shows as Gross (PayrollPanda's figure) is gross less
+    // the kept deduction, read back off cost — so the calculator's cost must
+    // keep that identity.
+    [Theory]
+    [InlineData(PayrollAdjustmentCategories.DeductMiscellaneous)]
+    [InlineData(PayrollAdjustmentCategories.DeductLoanRepayment)]
+    public void GrossShown_IsGrossLessTheKeptDeduction(string category)
+    {
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 5000m, allowances: [Allowance(category, 175m)]));
+        var p = new AltomateHR.Api.Modules.Payroll.Entities.Payslip
+        {
+            GrossPay = r.GrossPay, EpfEmployer = r.EpfEmployer, SocsoEmployer = r.SocsoEmployer,
+            EisEmployer = r.EisEmployer, Hrdf = r.Hrdf, TotalCostToEmployer = r.TotalCostToEmployer,
+        };
+
+        Assert.Equal(Money.Round2(r.GrossPay - 175m), PayrollGrossShown.Of(p));
+    }
+
     // Passed on to someone else — CP38 and extra PCB to LHDN, zakat to the
     // zakat centre — is still money the company pays out: cost is unchanged.
     [Theory]

@@ -320,7 +320,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
             <tr><td><code>skipProration</code></td><td>boolean</td><td>True when the pay figures are final and joiners/leavers are not prorated. See <a href="#update">PATCH</a>.</td></tr>
             <tr><td><code>employeeCount</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalGross</code> / <code>totalNet</code></td><td>number</td><td>MYR, run totals.</td></tr>
+            <tr><td><code>totalGross</code> / <code>totalNet</code></td><td>number</td><td>MYR, run totals. <code>totalGross</code> is the statutory figure: everything earned, before any deduction.</td></tr>
+            <tr><td><code>totalGrossShown</code></td><td>number</td><td>MYR. <code>totalGross</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), which is the Gross the payroll screens and the <a href="#doc-summary">run summary</a> show. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF totals, rounded to 2 decimals. It is <strong>display only</strong>: <code>totalGross</code> is what EPF, SOCSO, EIS and PCB are worked on and what the statutory files carry. It equals the sum of the payslips' <code>grossShown</code>, and can be negative when the kept deductions exceed pay. For a limited admin the totals cover only the payslips in their scope. Equal to <code>totalGross</code> on a run stored before kept deductions came off the cost.</td></tr>
             <tr><td><code>totalEmployeeEpf</code> / <code>totalEmployerEpf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeSocso</code> / <code>totalEmployerSocso</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeEis</code> / <code>totalEmployerEis</code></td><td>number</td><td></td></tr>
@@ -369,7 +370,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
             <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
             <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
-            <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td><code>grossPay</code> is the statutory gross (what was earned): EPF, SOCSO, EIS and PCB are worked out on it.</td></tr>
+            <tr><td><code>grossShown</code></td><td>number</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the run table and the <a href="#doc-summary">run summary</a> show it. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF, rounded to 2 decimals, so a YTD-imported payslip with no line items behind it still gets the right figure. Display only &mdash; use <code>grossPay</code> for anything statutory. Not clamped: it is negative when the kept deductions exceed pay. Example: earnings 9,000.00 and a 175.00 miscellaneous deduction gives <code>grossPay</code> 9000.00 and <code>grossShown</code> 8825.00.</td></tr>
             <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
@@ -1170,7 +1172,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}/documents/summary</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. A PDF by default, or an Excel workbook with the same figures.</p>
+        <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. The <code>Gross</code> column (and its total) is the <a href="#run-object">shown gross</a> &mdash; <code>grossShown</code> / <code>totalGrossShown</code>, i.e. pay less the deductions the company keeps &mdash; not <code>grossPay</code>. A PDF by default, or an Excel workbook with the same figures.</p>
         <div class="callout warn">
           <strong>Available before approval.</strong> This is the one run report that is not held back until
           <code>SUBMITTED</code>: once payslips have been generated, a <code>DRAFT</code> or
@@ -1229,9 +1231,10 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           share a heading, the later one gets a suffix, <code>(2)</code>, <code>(3)</code>&hellip; Negative amounts are shown in red.
         </p>
         <div class="callout warn">
-          <strong>Total Gross is not the payroll Gross.</strong> It is the payroll gross less every non-statutory deduction taken from
-          net pay (loans, miscellaneous, CP38, free-text deductions), so it will not match <code>Gross</code> on the
-          <code>Summary</code> sheet for an employee who has any. EPF, SOCSO, EIS and PCB stay on the <code>Summary</code> sheet and are
+          <strong>Total Gross is not the payroll Gross.</strong> It is the statutory gross less every non-statutory deduction taken from
+          net pay (loans, miscellaneous, CP38, free-text deductions). <code>Gross</code> on the <code>Summary</code> sheet is the
+          shown gross (<code>grossShown</code>), which takes off only the deductions the company keeps (loans, miscellaneous) &mdash;
+          not CP38 or free-text deductions &mdash; so the two can differ for an employee who has any of those. EPF, SOCSO, EIS and PCB stay on the <code>Summary</code> sheet and are
           not repeated on <code>Breakdown</code>.
         </div>
         <p>
