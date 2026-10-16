@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: c89867e
+  user-guide-covered-up-to: 89ff90b
 -->
 <html lang="en">
 <head>
@@ -1139,10 +1139,21 @@
       <li><strong>Balances</strong> — every staff member's remaining days per leave type (Employees and Supervisors; the
         Owner and admins aren't listed, and aren't in the export either). Open a person to
         <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
-        entitlement, or export their leave report.</li>
-      <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid), and for Annual Leave:
-        lump sum or pro-rated, and carry-forward with its expiry month and maximum days.</li>
+        entitlement, or export their leave report. A person's list shows only the leave types that are for them (see
+        <em>Types</em>), so maternity doesn't appear for a man.</li>
+      <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid, and who it's <strong>For</strong>),
+        and for Annual Leave: lump sum or pro-rated, and carry-forward with its expiry month and maximum days.</li>
     </ul>
+    <h3>Leave for one gender only</h3>
+    <p>Each leave type has a <strong>For</strong> setting: <em>Everyone</em>, <em>Female only</em> or <em>Male only</em>.
+      Pick it when you add a type with <span class="btn-name">Add leave type</span>, or change it with
+      <span class="btn-name">Edit</span> on the type's row. New companies start with Maternity Leave set to
+      <em>Female only</em> and Paternity Leave to <em>Male only</em>; every other type is for everyone.</p>
+    <p>Employees only see the types that are for them when they apply for leave, and so do you in
+      <span class="btn-name">Apply on behalf</span> and in a person's leave balances. The setting follows the
+      <strong>Gender</strong> on the employee's profile. Someone with no gender on their profile can take either, so fill
+      it in for anyone who might apply for maternity or paternity leave. If a person already has leave of a type that
+      isn't for them, it stays in their history and balances, marked as not eligible, but they can't apply for more of it.</p>
     <h3>Employees changing their own leave</h3>
     <p>An employee can <span class="btn-name">Edit</span> their own pending leave (type, dates, reason, attachment) until
       an approver has acted on it. It stays pending and stays in the approver's queue, with the days counted again for
@@ -1179,7 +1190,7 @@
           <p class="shot-cap">Balances</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/leave-types.png" alt="Leave → Types with the leave types listed" loading="lazy">
+          <img src="shots/admin/leave-types.png" alt="Leave → Types with the For setting on the add form and a For column showing Everyone, Female only or Male only" loading="lazy">
           <p class="shot-cap">Types</p>
         </div>
       </div>

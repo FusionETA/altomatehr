@@ -351,7 +351,7 @@
             <tbody>
               <tr><td><code>phone</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>alternateEmail</code></td><td>string | null</td><td>Not used to sign in.</td></tr>
-              <tr><td><code>gender</code></td><td>string | null</td><td><code>MALE</code> or <code>FEMALE</code>.</td></tr>
+              <tr><td><code>gender</code></td><td>string | null</td><td><code>MALE</code> or <code>FEMALE</code>. Also decides which gender-restricted leave types (<a href="leave.html#balances">maternity, paternity</a>) the person can take; <code>null</code> means unrestricted.</td></tr>
               <tr><td><code>dateOfBirth</code></td><td>string (date) | null</td><td></td></tr>
               <tr><td><code>nationality</code></td><td>string | null</td><td>Normalised against the dropdown's spelling (e.g. "Malaysia" → "Malaysian").</td></tr>
               <tr><td><code>race</code></td><td>string | null</td><td></td></tr>
