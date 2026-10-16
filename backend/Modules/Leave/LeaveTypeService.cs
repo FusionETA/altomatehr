@@ -32,6 +32,7 @@ public class LeaveTypeService : ILeaveTypeService
                 Name = seed.Name,
                 Paid = seed.Paid,
                 DefaultDays = seed.DefaultDays,
+                EligibleGender = seed.EligibleGender,
                 AccrualMethod = LeaveAccrualMethod.LUMP_SUM,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -58,6 +59,7 @@ public class LeaveTypeService : ILeaveTypeService
                 Name = seed.Name,
                 Paid = seed.Paid,
                 DefaultDays = seed.DefaultDays,
+                EligibleGender = seed.EligibleGender,
                 AccrualMethod = LeaveAccrualMethod.LUMP_SUM,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -87,6 +89,7 @@ public class LeaveTypeService : ILeaveTypeService
             CarryExpiryMonth = dto.CarryExpiryMonth,
             MaxCarryForwardDays = dto.MaxCarryForwardDays,
             ProrateFirstYear = dto.ProrateFirstYear,
+            EligibleGender = dto.EligibleGender,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -117,6 +120,7 @@ public class LeaveTypeService : ILeaveTypeService
         type.CarryExpiryMonth = dto.CarryExpiryMonth;
         type.MaxCarryForwardDays = dto.MaxCarryForwardDays;
         type.ProrateFirstYear = dto.ProrateFirstYear;
+        type.EligibleGender = dto.EligibleGender;
         type.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(type);
         return new LeaveTypeSaveResult(true, ToDto(type), null);
@@ -188,5 +192,6 @@ public class LeaveTypeService : ILeaveTypeService
         CarryExpiryMonth = t.CarryExpiryMonth,
         MaxCarryForwardDays = t.MaxCarryForwardDays,
         ProrateFirstYear = t.ProrateFirstYear,
+        EligibleGender = t.EligibleGender,
     };
 }

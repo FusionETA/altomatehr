@@ -7,6 +7,7 @@ import {
   restoreLeaveType,
   updateLeaveType,
   type LeaveAccrualMethod,
+  type LeaveEligibleGender,
   type LeaveType,
 } from "@/features/leave/api";
 import {
@@ -26,6 +27,29 @@ const INPUT =
 const LABEL = "block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 const TH = "h-11 px-3 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground";
 
+// "ALL" stands in for null: the select can't hold an empty value.
+type ForWhom = LeaveEligibleGender | "ALL";
+const FOR_LABEL: Record<ForWhom, string> = { ALL: "Everyone", FEMALE: "Female only", MALE: "Male only" };
+const toForWhom = (g: LeaveEligibleGender | null): ForWhom => g ?? "ALL";
+const fromForWhom = (f: ForWhom): LeaveEligibleGender | null => (f === "ALL" ? null : f);
+
+function ForWhomSelect({ value, onChange }: { value: ForWhom; onChange: (v: ForWhom) => void }) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as ForWhom)}>
+      <SelectTrigger className={INPUT}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(FOR_LABEL) as ForWhom[]).map((k) => (
+          <SelectItem key={k} value={k}>
+            {FOR_LABEL[k]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
@@ -43,6 +67,7 @@ type Draft = {
   carryForward: boolean;
   carryExpiryMonth: number | null;
   maxCarryForwardDays: number | null;
+  forWhom: ForWhom;
 };
 const emptyDraft: Draft = {
   code: "",
@@ -53,6 +78,7 @@ const emptyDraft: Draft = {
   carryForward: false,
   carryExpiryMonth: null,
   maxCarryForwardDays: null,
+  forWhom: "ALL",
 };
 
 export function LeaveTypesSettings() {
@@ -86,6 +112,7 @@ export function LeaveTypesSettings() {
         name: form.name.trim(),
         paid: form.paid,
         defaultDays: form.paid ? Number(form.defaultDays) || 0 : 0,
+        eligibleGender: fromForWhom(form.forWhom),
       });
       setTypes((cur) => [...cur, created]);
       setForm(emptyDraft);
@@ -122,6 +149,7 @@ export function LeaveTypesSettings() {
       carryForward: type.carryForward,
       carryExpiryMonth: type.carryExpiryMonth,
       maxCarryForwardDays: type.maxCarryForwardDays,
+      forWhom: toForWhom(type.eligibleGender),
     });
     setError(null);
   }
@@ -140,6 +168,7 @@ export function LeaveTypesSettings() {
         carryForward: edit.carryForward,
         carryExpiryMonth: edit.carryExpiryMonth,
         maxCarryForwardDays: edit.maxCarryForwardDays,
+        eligibleGender: fromForWhom(edit.forWhom),
       });
       setTypes((cur) => cur.map((t) => (t.id === updated.id ? updated : t)));
       setEditingId(null);
@@ -216,6 +245,14 @@ export function LeaveTypesSettings() {
             />
             Paid leave
           </label>
+          <div className="space-y-1.5">
+            <label className={LABEL}>For</label>
+            <ForWhomSelect value={form.forWhom} onChange={(v) => setForm({ ...form, forWhom: v })} />
+          </div>
+          <p className="self-end pb-3 text-xs text-muted-foreground sm:col-span-2">
+            Only people of this gender can see and apply for it. Anyone with no gender on their
+            profile can still take it.
+          </p>
         </div>
 
         {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
@@ -237,13 +274,14 @@ export function LeaveTypesSettings() {
           <p className="text-sm text-muted-foreground">No leave types yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[680px] text-sm">
               <thead>
                 <tr className="border-b border-border/60">
                   <th className={TH}>Code</th>
                   <th className={TH}>Name</th>
                   <th className={TH}>Paid</th>
                   <th className={TH}>Annual days</th>
+                  <th className={TH}>For</th>
                   <th className="h-11 px-3" />
                 </tr>
               </thead>
@@ -284,6 +322,12 @@ export function LeaveTypesSettings() {
                           onChange={(e) => setEdit({ ...edit, defaultDays: e.target.value })}
                         />
                       </td>
+                      <td className="min-w-[160px] px-3 py-2">
+                        <ForWhomSelect
+                          value={edit.forWhom}
+                          onChange={(v) => setEdit({ ...edit, forWhom: v })}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex justify-end gap-2">
                           <button
@@ -319,6 +363,9 @@ export function LeaveTypesSettings() {
                         {type.paid ? "Paid" : "Unpaid"}
                       </td>
                       <td className="px-3 py-3">{type.paid ? type.defaultDays : "—"}</td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">
+                        {FOR_LABEL[toForWhom(type.eligibleGender)]}
+                      </td>
                       <td className="px-3 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <button
@@ -410,6 +457,7 @@ function AnnualLeaveCard({
         carryForward,
         carryExpiryMonth: carryForward ? Number(carryExpiryMonth) : null,
         maxCarryForwardDays: maxCarryForwardDays.trim() ? Number(maxCarryForwardDays) : null,
+        eligibleGender: type.eligibleGender,
       });
       onSaved(updated);
     } catch (err) {

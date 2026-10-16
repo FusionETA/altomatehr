@@ -55,6 +55,102 @@ public class LeaveServiceTests
         Assert.Equal(LeaveStatus.PENDING, result.Application.Status);
     }
 
+    // ─── Who a leave type is for (maternity / paternity) ────────────────
+
+    private static LeaveType Maternity() => new()
+    {
+        Id = "t-mat", Code = "MATERNITY", Name = "Maternity Leave", Paid = true,
+        DefaultDays = 98, EligibleGender = Gender.FEMALE,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static CreateLeaveApplicationDto Sept1to3(string typeId) => new()
+    {
+        LeaveTypeId = typeId,
+        StartDate = new DateTime(Year, 9, 1),
+        EndDate = new DateTime(Year, 9, 3),
+    };
+
+    [Fact]
+    public async Task ApplyAsync_RefusesALeaveTypeThatIsNotForTheEmployee()
+    {
+        var service = MakeService(
+            types: [Maternity()],
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+
+        var result = await service.ApplyAsync(Sept1to3("t-mat"), "usr-emp");
+
+        Assert.False(result.Ok);
+        Assert.Equal("Maternity Leave is only for female employees.", result.Error);
+    }
+
+    // Allowed for whom it's for — and for anyone with no gender on file, so
+    // missing data never blocks leave someone may be entitled to.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ApplyAsync_AllowsItForThemOrWhenGenderIsUnknown(bool female)
+    {
+        var genders = female ? new Dictionary<string, Gender> { ["usr-emp"] = Gender.FEMALE } : new();
+        var service = MakeService(types: [Maternity()], profiles: new FakeGenders(genders));
+
+        var result = await service.ApplyAsync(Sept1to3("t-mat"), "usr-emp");
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    [Fact]
+    public async Task GetBalancesAsync_LeavesOutATypeThatIsNotForThem()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "ANNUAL", 14), Maternity()],
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+
+        var balances = await service.GetBalancesAsync("usr-emp", Year);
+
+        Assert.Equal(["ANNUAL"], balances.Select(b => b.Code));
+    }
+
+    // Leave already on record this year stays visible even if the type isn't
+    // for them (e.g. their gender was corrected afterwards).
+    [Fact]
+    public async Task GetBalancesAsync_KeepsATypeTheyAlreadyHaveLeaveOfThisYear()
+    {
+        var service = MakeService(
+            types: [Maternity()],
+            apps: [MakeApp("a-1", "usr-emp", "t-mat", 3, LeaveStatus.APPROVED)],
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+
+        var balances = await service.GetBalancesAsync("usr-emp", Year);
+
+        Assert.Equal(["MATERNITY"], balances.Select(b => b.Code));
+    }
+
+    [Fact]
+    public async Task EditAsync_RefusesSwitchingToATypeThatIsNotForThem()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "ANNUAL", 14), Maternity()],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }),
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+        var applied = await service.ApplyAsync(Sept1to3("t-al"), "usr-emp");
+
+        var edited = await service.EditAsync(applied.Application!.Id, Sept1to3("t-mat"), "usr-emp");
+
+        Assert.False(edited.Ok);
+        Assert.Equal("Maternity Leave is only for female employees.", edited.Error);
+    }
+
+    [Fact]
+    public void Defaults_MaternityIsForWomen_PaternityForMen_TheRestForEveryone()
+    {
+        var byCode = LeaveDefaults.All.ToDictionary(d => d.Code, d => d.EligibleGender);
+
+        Assert.Equal(Gender.FEMALE, byCode["MATERNITY"]);
+        Assert.Equal(Gender.MALE, byCode["PATERNITY"]);
+        Assert.All(byCode.Where(kv => kv.Key is not ("MATERNITY" or "PATERNITY")), kv => Assert.Null(kv.Value));
+    }
+
     // CanEdit drives the employee's Edit button: pending with no approver
     // action yet — the same state EditAsync accepts.
     [Fact]
@@ -1543,7 +1639,8 @@ public class LeaveServiceTests
         AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null,
         AltomateHR.Api.Modules.Audit.IAuditService? audit = null,
         IEnumerable<HolidayDto>? holidays = null,
-        ILeaveApplicationRepository? appRepo = null) =>
+        ILeaveApplicationRepository? appRepo = null,
+        AltomateHR.Api.Modules.Employees.IEmployeeProfileService? profiles = null) =>
         new(
             appRepo ?? new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
@@ -1562,7 +1659,8 @@ public class LeaveServiceTests
             new FakeTeamService(),
             new FakeProjectService(),
             drafts,
-            audit);
+            audit,
+            profiles);
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {
@@ -1594,6 +1692,21 @@ public class LeaveServiceTests
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
     };
+
+    // Only the gender lookup is used by LeaveService.
+    private sealed class FakeGenders(Dictionary<string, Gender> genders)
+        : AltomateHR.Api.Modules.Employees.IEmployeeProfileService
+    {
+        public Task<Gender?> GetGenderAsync(string userId) =>
+            Task.FromResult<Gender?>(genders.TryGetValue(userId, out var g) ? g : null);
+        public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> GetAsync(string userId) =>
+            throw new NotSupportedException();
+        public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> SaveAsync(
+            string userId, AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto dto) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<AltomateHR.Api.Modules.Employees.Dtos.WorkPermitDto>> GetWorkPermitsAsync() =>
+            throw new NotSupportedException();
+    }
 
     private sealed class FakeLeaveTypeRepository : ILeaveTypeRepository
     {
