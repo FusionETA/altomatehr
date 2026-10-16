@@ -277,7 +277,7 @@ export function AdminLeave() {
           open={menu === "import"}
           onOpenChange={(next) => setMenu(next ? "import" : null)}
         >
-          <p className={`px-3 pb-1.5 pt-1 ${ACTION_MENU_EYEBROW}`}>Entitlements</p>
+          <p className={`px-3 pb-1.5 pt-1 ${ACTION_MENU_EYEBROW}`}>Leave history</p>
           <button
             type="button"
             onClick={() => {
@@ -421,7 +421,18 @@ export function AdminLeave() {
         />
       ) : null}
 
-      {importOpen ? <ImportLeaveModal onClose={() => setImportOpen(false)} /> : null}
+      {importOpen ? (
+        <ImportLeaveModal
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            // The import's write drops the /leave cache, but mounted queries keep
+            // their rows on screen until asked — and History isn't cached at all.
+            loadHistory();
+            void overviewQuery.refresh();
+            void balancesQuery.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -981,7 +992,7 @@ const EXPORT_LABELS: Record<(typeof EXPORT_KINDS)[number], string> = {
   zip: "PDF ZIP",
 };
 
-function ImportLeaveModal({ onClose }: { onClose: () => void }) {
+function ImportLeaveModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [format, setFormat] = useState<"csv" | "xlsx">("xlsx");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1013,6 +1024,7 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await importLeave(file);
       setResult(res);
+      if (res.imported > 0) onImported();
     } catch (e) {
       setError(message(e, "Could not import this file."));
     } finally {
@@ -1028,7 +1040,7 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Bulk import
             </p>
-            <h3 className="mt-1 text-xl font-black text-foreground">Import leave entitlements</h3>
+            <h3 className="mt-1 text-xl font-black text-foreground">Import leave history</h3>
           </div>
           <button
             type="button"
