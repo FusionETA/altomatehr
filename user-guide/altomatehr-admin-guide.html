@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 42fea8e
+  user-guide-covered-up-to: 819f8d7
 -->
 <html lang="en">
 <head>
@@ -1176,8 +1176,18 @@
       </div>
       <p class="shot-cap shot-cap-main">Cancelling approved leave</p>
     </figure>
-    <p><span class="btn-name">Import</span> brings in entitlements from a spreadsheet. Year rollover and monthly accrual
-      run by themselves; the buttons under <em>Maintenance</em> are there if you need to run them early.</p>
+    <h3>Importing leave history</h3>
+    <p>Moving over from another system? <span class="btn-name">Import</span> brings in leave your staff have already
+      taken, from a spreadsheet. It imports leave taken, not entitlements, so each person's balance works itself out from
+      the days imported. Open <span class="btn-name">Import</span>, under <strong>Leave history</strong> choose
+      <span class="btn-name">Upload a file</span>, and the <strong>Import leave history</strong> window opens. Pick
+      <em>XLSX</em> or <em>CSV</em>, press <span class="btn-name">Download template</span> to get the columns to fill in,
+      choose your file under <strong>File to import</strong>, then press <span class="btn-name">Import</span>. The window
+      then shows how many rows were imported, skipped or failed, with the reason for each row that failed.</p>
+    <p>You don't need to reload the page afterwards: <strong>History</strong>, <strong>Balances</strong> and
+      <strong>Overview</strong> update by themselves once something has been imported.</p>
+    <p>Year rollover and monthly accrual run by themselves; the buttons under <em>Maintenance</em> are there if you need
+      to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
       <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
         payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>.</p>
