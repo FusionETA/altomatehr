@@ -32,13 +32,20 @@ public class PayrollGrossShownTests
         Assert.Equal(4537m, PayrollGrossShown.Of(p));
     }
 
-    // A stored cost higher than the identity allows can only fall back to
-    // GrossPay, never show more than was earned.
+    // Not clamped, so a run's total always equals its rows added up — even
+    // when a row's kept deductions exceed its pay and it shows below zero.
     [Fact]
-    public void OddStoredFigures_FallBackToGrossPay()
+    public void RunTotal_EqualsItsRowsAddedUp_EvenWhenARowGoesBelowZero()
     {
-        var p = new Payslip { GrossPay = 1000m, EpfEmployer = 130m, TotalCostToEmployer = 2000m };
+        var a = new Payslip { GrossPay = 3000m, EpfEmployer = 390m, TotalCostToEmployer = 3000m + 390m - 4000m };
+        var b = new Payslip { GrossPay = 5000m, EpfEmployer = 650m, TotalCostToEmployer = 5650m };
+        var run = new PayrollRun
+        {
+            TotalGross = 8000m, TotalEmployerEpf = 1040m,
+            TotalCostToEmployer = a.TotalCostToEmployer + b.TotalCostToEmployer,
+        };
 
-        Assert.Equal(1000m, PayrollGrossShown.Of(p));
+        Assert.Equal(-1000m, PayrollGrossShown.Of(a));
+        Assert.Equal(PayrollGrossShown.Of(a) + PayrollGrossShown.Of(b), PayrollGrossShown.Of(run));
     }
 }

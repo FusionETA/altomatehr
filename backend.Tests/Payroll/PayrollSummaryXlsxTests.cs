@@ -88,7 +88,7 @@ public class PayrollSummaryXlsxTests
 
     private static readonly (string Header, Func<Payslip, decimal> Value, Func<PayrollSummaryTotals, decimal> Total)[] Columns =
     [
-        ("Gross", p => p.GrossPay, t => t.Gross),
+        ("Gross", p => PayrollGrossShown.Of(p), t => t.Gross),
         ("PCB", p => p.Pcb, t => t.Pcb),
         ("EPF (employee)", p => p.EpfEmployee, t => t.EpfEmp),
         ("SOCSO (employee)", p => p.SocsoEmployee, t => t.SocsoEmp),
@@ -177,6 +177,25 @@ public class PayrollSummaryXlsxTests
             Assert.Equal(sumOfRows, cell.GetValue<decimal>());
             Assert.Equal(total(pdfTotals), cell.GetValue<decimal>());
         }
+    }
+
+    // The Summary sheet's Gross is PayrollPanda's: pay less what the company
+    // keeps (here a RM 175 miscellaneous deduction), totals included.
+    [Fact]
+    public void SummaryGross_TakesOffWhatTheCompanyKeeps()
+    {
+        var kept = Payslip("ps-k", "Afiq", "EMP-005", 9555m, 411.30m, 1056m, 1434m);
+        kept.NetPay -= 175m;
+        kept.TotalCostToEmployer -= 175m;
+        var model = Model(kept, Payslip("ps-n", "Nickee", "EMP-003", 5246m, 138.30m, 583m, 735m));
+        using var wb = Open(model);
+        var sheet = wb.Worksheet(PayrollSummaryXlsx.SummarySheet);
+        var first = PayrollSummaryXlsx.HeaderRow + 1;
+        var gross = Col(sheet, "Gross");
+
+        Assert.Equal(9380m, sheet.Cell(first, gross).GetValue<decimal>());
+        Assert.Equal(5246m, sheet.Cell(first + 1, gross).GetValue<decimal>());
+        Assert.Equal(14626m, sheet.Cell(first + 2, gross).GetValue<decimal>());
     }
 
     [Fact]
@@ -625,8 +644,9 @@ public class PayrollSummaryXlsxTests
         Assert.True(cell.HasComment);
         Assert.Equal(
             "Total Gross = all the money columns on this row added up (deductions are shown as negative). "
-            + "It differs from the payroll Gross on the Summary sheet, which doesn't subtract deductions "
-            + "taken from net pay.",
+            + "It can differ from the payroll Gross on the Summary sheet, which takes off only the "
+            + "deductions the company keeps (loans, miscellaneous) — not CP38 or other deductions taken "
+            + "from net pay.",
             cell.GetComment().Text);
     }
 

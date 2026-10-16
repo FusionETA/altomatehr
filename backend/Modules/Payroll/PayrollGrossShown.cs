@@ -16,20 +16,20 @@ namespace AltomateHR.Api.Modules.Payroll;
 // cost = GrossPay + employer EPF/SOCSO/EIS + HRDF − kept deductions (see
 // PayslipCalculator and YtdImportService), so a YTD-imported month with no
 // line items behind it still comes out right, and a payslip stored before
-// kept deductions came off cost simply shows its GrossPay. Clamped, so odd
-// stored figures can only ever fall back to GrossPay.
+// kept deductions came off cost simply shows its GrossPay. Deliberately not
+// clamped: the formula is linear, so a run's total (from its summed figures)
+// always equals its rows added up — even when kept deductions exceed pay and
+// a row shows below zero.
 public static class PayrollGrossShown
 {
     public static decimal Of(Payslip p) =>
-        Shown(p.GrossPay, p.TotalCostToEmployer, p.EpfEmployer + p.SocsoEmployer + p.EisEmployer + p.Hrdf);
+        Shown(p.TotalCostToEmployer, p.EpfEmployer + p.SocsoEmployer + p.EisEmployer + p.Hrdf);
 
     public static decimal Of(PayrollRun r) =>
-        Shown(r.TotalGross, r.TotalCostToEmployer,
+        Shown(r.TotalCostToEmployer,
             r.TotalEmployerEpf + r.TotalEmployerSocso + r.TotalEmployerEis + r.TotalHrdf);
 
-    private static decimal Shown(decimal gross, decimal cost, decimal employerContributions)
-    {
-        var kept = Math.Clamp(Money.Round2(gross + employerContributions - cost), 0m, Math.Max(0m, gross));
-        return Money.Round2(gross - kept);
-    }
+    // = gross − kept, where kept = gross + employer contributions − cost.
+    private static decimal Shown(decimal cost, decimal employerContributions) =>
+        Money.Round2(cost - employerContributions);
 }
