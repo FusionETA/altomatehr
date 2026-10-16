@@ -145,6 +145,8 @@ export type PayrollRun = {
   skipProration: boolean;
   employeeCount: number;
   totalGross: number;
+  /** Gross less deductions the company keeps — what's shown as Gross (PayrollPanda's figure). */
+  totalGrossShown: number;
   totalNet: number;
   totalEmployeeEpf: number;
   totalEmployerEpf: number;
@@ -255,6 +257,9 @@ export type Payslip = {
   hrdf: number;
   hrdfWage: number;
   grossPay: number;
+  /** Gross less deductions the company keeps — what the run table shows as Gross
+   *  (PayrollPanda's figure). grossPay stays the statutory figure. */
+  grossShown: number;
   netPay: number;
   totalCostToEmployer: number;
   // Missing TIN / EPF / SOCSO numbers, recorded at generation. The

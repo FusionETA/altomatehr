@@ -47,7 +47,7 @@ export function PayrollRunAttention({
                   {payslip.snapshotName}
                 </span>
                 <span className="tabular-nums text-muted-foreground">
-                  gross {rm(payslip.grossPay)} · net {rm(payslip.netPay)}
+                  gross {rm(payslip.grossShown)} · net {rm(payslip.netPay)}
                 </span>
               </li>
             ))}
@@ -72,7 +72,7 @@ export function PayrollRunAttention({
             {zeroNet.map((payslip) => (
               <li key={payslip.id} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-medium text-foreground">{payslip.snapshotName}</span>
-                <span className="tabular-nums text-muted-foreground">gross {rm(payslip.grossPay)}</span>
+                <span className="tabular-nums text-muted-foreground">gross {rm(payslip.grossShown)}</span>
               </li>
             ))}
           </ul>

@@ -121,6 +121,7 @@ public class PayrollRunService : IPayrollRunService
         ApplyTotals(t, visible.ToList());
         dto.EmployeeCount = t.EmployeeCount;
         dto.TotalGross = t.TotalGross;
+        dto.TotalGrossShown = PayrollGrossShown.Of(t);
         dto.TotalNet = t.TotalNet;
         dto.TotalEmployeeEpf = t.TotalEmployeeEpf;
         dto.TotalEmployerEpf = t.TotalEmployerEpf;
@@ -1354,6 +1355,7 @@ public class PayrollRunService : IPayrollRunService
         SkipProration = r.SkipProration,
         EmployeeCount = r.EmployeeCount,
         TotalGross = r.TotalGross,
+        TotalGrossShown = PayrollGrossShown.Of(r),
         TotalNet = r.TotalNet,
         TotalEmployeeEpf = r.TotalEmployeeEpf,
         TotalEmployerEpf = r.TotalEmployerEpf,
