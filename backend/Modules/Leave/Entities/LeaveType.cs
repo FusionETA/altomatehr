@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Common;
+using AltomateHR.Api.Modules.Employees.Entities;
 
 namespace AltomateHR.Api.Modules.Leave.Entities;
 
@@ -42,6 +43,10 @@ public class LeaveType : ITenantScoped
     // When true AND AccrualMethod is LUMP_SUM, a mid-year hire gets a prorated
     // slice of DefaultDays in their hire year only.
     public bool ProrateFirstYear { get; set; }
+
+    // Who may take it: null = everyone; FEMALE for maternity, MALE for
+    // paternity by default. See LeaveEligibility for how it's applied.
+    public Gender? EligibleGender { get; set; }
 
     public bool IsArchived { get; set; }
 

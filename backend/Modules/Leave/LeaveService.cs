@@ -52,6 +52,10 @@ public class LeaveService : ILeaveService
     // Optional for the same reason. Records every step of cancelling leave —
     // see AuditActions.LeaveCancelRequest.
     private readonly Audit.IAuditService? _audit;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. Without it nobody's gender is known, so no leave type is
+    // restricted (LeaveEligibility treats unknown as allowed).
+    private readonly Employees.IEmployeeProfileService? _profiles;
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -71,10 +75,12 @@ public class LeaveService : ILeaveService
         ITeamService teams,
         IProjectService projects,
         Payroll.IPayrollDraftStaleness? drafts = null,
-        Audit.IAuditService? audit = null)
+        Audit.IAuditService? audit = null,
+        Employees.IEmployeeProfileService? profiles = null)
     {
         _drafts = drafts;
         _audit = audit;
+        _profiles = profiles;
         _apps = apps;
         _types = types;
         _supervision = supervision;
@@ -173,6 +179,9 @@ public class LeaveService : ILeaveService
             .GroupBy(a => a.EmployeeId)
             .ToDictionary(g => g.Key, g => g.ToList());
         var entitlements = await _policies.GetLeaveEntitlementsForEmployeesAsync(userIds);
+        var genders = _profiles is null
+            ? new Dictionary<string, Employees.Entities.Gender>()
+            : await _profiles.GetGendersAsync();
         var emails = await _supervision.GetEmailsAsync(userIds);
         var names = await _supervision.GetNamesAsync(userIds);
         var rowsByEmployee = (await _entitlements.GetByYearAsync(year))
@@ -190,7 +199,8 @@ public class LeaveService : ILeaveService
                 appsByEmployee.GetValueOrDefault(m.UserId) ?? new List<LeaveApplication>(),
                 entitlements.GetValueOrDefault(m.UserId) ?? new Dictionary<string, double>(),
                 rowsByEmployee.GetValueOrDefault(m.UserId) ?? new Dictionary<string, LeaveEntitlement>(),
-                year),
+                year,
+                genders.TryGetValue(m.UserId, out var g) ? g : null),
         });
     }
 
@@ -914,7 +924,7 @@ public class LeaveService : ILeaveService
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var rows = (await _entitlements.GetForEmployeeYearAsync(employeeId, year))
             .ToDictionary(e => e.LeaveTypeId);
-        return BuildBalances(types, apps, overrides, rows, year);
+        return BuildBalances(types, apps, overrides, rows, year, await GenderOfAsync(employeeId));
     }
 
     // Pure projection shared by the single-employee and org-wide readers, so the
@@ -929,8 +939,16 @@ public class LeaveService : ILeaveService
         IReadOnlyCollection<LeaveApplication> apps,
         IReadOnlyDictionary<string, double> overrides,
         IReadOnlyDictionary<string, LeaveEntitlement> rows,
-        int year) =>
-        types.Select(t =>
+        int year,
+        Employees.Entities.Gender? gender) =>
+        types
+        // A type that isn't for them (maternity for a man) is left out — unless
+        // they have pending or approved leave of it this year, which must stay
+        // visible (marked not Eligible, so it isn't offered for a new request).
+        .Where(t => LeaveEligibility.Allows(t, gender)
+                    || apps.Any(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year
+                                     && a.Status is LeaveStatus.PENDING or LeaveStatus.APPROVED))
+        .Select(t =>
         {
             var forType = apps.Where(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year).ToList();
             var taken = forType.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
@@ -966,6 +984,7 @@ public class LeaveService : ILeaveService
                 PendingDays = pending,
                 RemainingDays = LeaveAccrualMath.AvailableDays(
                     method, entitled, accrued, carried, carriedExpired, taken),
+                Eligible = LeaveEligibility.Allows(t, gender),
             };
         }).ToList();
 
@@ -977,6 +996,8 @@ public class LeaveService : ILeaveService
         var type = await _types.GetByIdAsync(dto.LeaveTypeId);
         if (type is null) return new LeaveApplyResult(false, null, "Leave type not found");
         if (type.IsArchived) return new LeaveApplyResult(false, null, "Leave type is archived");
+        if (!LeaveEligibility.Allows(type, await GenderOfAsync(employeeId)))
+            return new LeaveApplyResult(false, null, LeaveEligibility.Refusal(type));
 
         var start = dto.StartDate!.Value.Date;
         var end = dto.EndDate!.Value.Date;
@@ -1117,6 +1138,10 @@ public class LeaveService : ILeaveService
         // it — archiving stops NEW use. Only switching TO an archived type isn't.
         if (type.IsArchived && type.Id != app.LeaveTypeId)
             return new LeaveApplyResult(false, null, "Leave type is archived");
+        // Same for who it's for: a request may keep its type, but not switch to
+        // one that isn't for them.
+        if (type.Id != app.LeaveTypeId && !LeaveEligibility.Allows(type, await GenderOfAsync(actorUserId)))
+            return new LeaveApplyResult(false, null, LeaveEligibility.Refusal(type));
 
         var start = dto.StartDate!.Value.Date;
         var end = dto.EndDate!.Value.Date;
@@ -1192,6 +1217,9 @@ public class LeaveService : ILeaveService
         await NotifyAsync(app, RealtimeAction.UPDATED, notifyApplicant: false);
         return new LeaveApplyResult(true, ToDto(app), null);
     }
+
+    private async Task<Employees.Entities.Gender?> GenderOfAsync(string employeeId) =>
+        _profiles is null ? null : await _profiles.GetGenderAsync(employeeId);
 
     private const string ReviewedRefusal =
         "Cannot edit — an approver has already reviewed this leave";

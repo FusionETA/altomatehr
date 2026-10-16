@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 
 namespace AltomateHR.Api.Modules.Leave.Dtos;
@@ -16,6 +17,7 @@ public class LeaveTypeDto
     public int? CarryExpiryMonth { get; set; }
     public double? MaxCarryForwardDays { get; set; }
     public bool ProrateFirstYear { get; set; }
+    public Gender? EligibleGender { get; set; }
 }
 
 // Used for both create and update. (Id / IsArchived / org are server-controlled.)
@@ -45,4 +47,7 @@ public class SaveLeaveTypeDto
     public double? MaxCarryForwardDays { get; set; }
 
     public bool ProrateFirstYear { get; set; }
+
+    // Who may take it: null = everyone, FEMALE or MALE = only them.
+    public Gender? EligibleGender { get; set; }
 }

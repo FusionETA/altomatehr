@@ -181,6 +181,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<LeaveType>().HasIndex(t => new { t.OrganizationId, t.Code }).IsUnique();
         modelBuilder.Entity<LeaveType>()
             .Property(t => t.AccrualMethod).HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<LeaveType>()
+            .Property(t => t.EligibleGender).HasConversion<string>().HasMaxLength(20);
 
 
         modelBuilder.Entity<LeaveApplication>()

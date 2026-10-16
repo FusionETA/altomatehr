@@ -1838,6 +1838,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<double>("DefaultDays")
                         .HasColumnType("double");
 
+                    b.Property<string>("EligibleGender")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<bool>("IsArchived")
                         .HasColumnType("tinyint(1)");
 

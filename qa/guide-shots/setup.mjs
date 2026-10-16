@@ -195,6 +195,25 @@ const steps = {
     console.log("delete draft:", d.status);
   },
 
+  // Maternity (Female only) and Paternity (Male only) in the demo company, next
+  // to the seeded Annual / Medical / Unpaid. Existing codes are skipped, so
+  // rerunnable. (Not /leave-types/defaults: that would also add a second
+  // Medical and Unpaid next to the seed's MC and UL.)
+  "leave-types": async () => {
+    const token = await demoAdmin();
+    const have = new Set(((await call(token, "GET", "/leave-types")).data ?? []).map((t) => t.code));
+    for (const [code, name, days, eligibleGender] of [
+      ["MATERNITY", "Maternity Leave", 98, "FEMALE"],
+      ["PATERNITY", "Paternity Leave", 7, "MALE"],
+    ]) {
+      if (have.has(code)) { console.log(code, "already there"); continue; }
+      const r = await call(token, "POST", "/leave-types", { code, name, paid: true, defaultDays: days, eligibleGender });
+      console.log("leave type", code, r.status, r.data?.message ?? "");
+    }
+    for (const t of (await call(token, "GET", "/leave-types")).data ?? [])
+      console.log(" ", t.code, t.eligibleGender ?? "everyone");
+  },
+
   // A small demo chart of accounts (existing codes are refused, so rerunnable).
   accounts: async () => {
     for (const [code, name] of [

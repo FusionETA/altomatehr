@@ -178,7 +178,7 @@
         <table>
           <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
           <tbody>
-            <tr><td><code>leaveTypeId</code>, <code>code</code>, <code>name</code></td><td>string</td><td>The leave type. Archived types are left out.</td></tr>
+            <tr><td><code>leaveTypeId</code>, <code>code</code>, <code>name</code></td><td>string</td><td>The leave type. Archived types are left out, and so is a type that isn't for this person (see <code>eligible</code>).</td></tr>
             <tr><td><code>paid</code></td><td>boolean</td><td></td></tr>
             <tr><td><code>year</code></td><td>number</td><td></td></tr>
             <tr><td><code>isOpened</code></td><td>boolean</td><td><code>false</code> when no entitlement row exists for that year yet (the year-end rollover hasn't run, and nothing has been filed). The figures are then a projection of what the rollover <em>would</em> create, not stored state.</td></tr>
@@ -191,6 +191,7 @@
             <tr><td><code>takenDays</code></td><td>number</td><td>Sum of <code>APPROVED</code> applications that <em>start</em> in this year.</td></tr>
             <tr><td><code>pendingDays</code></td><td>number</td><td>Sum of <code>PENDING</code> applications that start in this year. Not deducted from <code>remainingDays</code>.</td></tr>
             <tr><td><code>remainingDays</code></td><td>number</td><td>What the person may book now: the available bucket plus unexpired carry-forward, minus <code>takenDays</code>.</td></tr>
+            <tr><td><code>eligible</code></td><td>boolean</td><td>Whether the leave type is open to this person, going by the type's <code>eligibleGender</code> and the gender on their profile. <code>false</code> only on a gender-restricted type they have pending or approved leave of that year (see below); a new request for it is refused.</td></tr>
           </tbody>
         </table>
       </div>
@@ -209,8 +210,22 @@
   "carriedExpired": false,
   "takenDays": 2,
   "pendingDays": 0,
-  "remainingDays": 12
+  "remainingDays": 12,
+  "eligible": true
 }</code></pre>
+      <div class="callout">
+        <strong>A type that isn't for the person is left out.</strong> A leave type with an
+        <code>eligibleGender</code> (by default <code>MATERNITY</code> for <code>FEMALE</code> and
+        <code>PATERNITY</code> for <code>MALE</code>) doesn't appear in the balances of someone of
+        the other gender. The exception is leave they already have: if they have a
+        <code>PENDING</code> or <code>APPROVED</code> application of that type starting in the
+        year asked for, the type stays listed, with <code>eligible: false</code>, so the leave they
+        hold stays visible. Someone with no gender on their profile is treated as eligible for
+        everything, so nothing is hidden. The rule is applied by
+        <code>/leave/balances/all</code>, <code>/leave/balances/{employeeId}</code>,
+        <code>/leave/balances</code>, <code>/leave/team/balances</code> and the balance
+        spreadsheets, so a list can have fewer entries than <code>GET /leave-types</code>.
+      </div>
     </section>
 
     <section class="section" id="leave-types">
@@ -245,6 +260,7 @@
               <tr><td><code>carryExpiryMonth</code></td><td>number | null</td><td>Month (1–12) the carried days lapse.</td></tr>
               <tr><td><code>maxCarryForwardDays</code></td><td>number | null</td><td>Ceiling on carried days; <code>null</code> = uncapped.</td></tr>
               <tr><td><code>prorateFirstYear</code></td><td>boolean</td><td>Stored with the type. Only meaningful with <code>LUMP_SUM</code>.</td></tr>
+              <tr><td><code>eligibleGender</code></td><td>string | null</td><td>Who may take it: <code>FEMALE</code> or <code>MALE</code> for that gender only, <code>null</code> for everyone. Compared with the gender on the employee's profile (<a href="employees.html">employees.html</a>).</td></tr>
             </tbody>
           </table>
         </div>
@@ -285,6 +301,7 @@
               <tr><td><code>carryExpiryMonth</code></td><td>number</td><td>When <code>carryForward</code> is <code>true</code></td><td>1–12.</td></tr>
               <tr><td><code>maxCarryForwardDays</code></td><td>number | null</td><td>No</td><td>0 or more. <code>null</code> = no cap.</td></tr>
               <tr><td><code>prorateFirstYear</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>eligibleGender</code></td><td>string | null</td><td>No</td><td><code>FEMALE</code> or <code>MALE</code> to limit the type to that gender; <code>null</code> or left out = everyone. Any other value is a <code>400</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -323,7 +340,9 @@
           body; one you leave out falls back to its default (<code>paid</code> to <code>true</code>,
           <code>defaultDays</code> to <code>0</code>, <code>accrualMethod</code> to
           <code>LUMP_SUM</code>, <code>carryForward</code> and <code>prorateFirstYear</code> to
-          <code>false</code>, the carry fields to <code>null</code>). Read the type first and send
+          <code>false</code>, the carry fields and <code>eligibleGender</code> to <code>null</code> &mdash; so
+          omitting <code>eligibleGender</code> lifts a gender restriction, e.g. on
+          <code>MATERNITY</code>). Read the type first and send
           it back with your change. <code>isArchived</code> is not touched — use
           <a href="#archive-leave-type">archive/restore</a>.
         </div>
@@ -357,7 +376,8 @@
     "carryForward": true,
     "carryExpiryMonth": 3,
     "maxCarryForwardDays": 5,
-    "prorateFirstYear": false
+    "prorateFirstYear": false,
+    "eligibleGender": null
   }'</code></pre>
       </section>
 
@@ -417,6 +437,8 @@
           <code>ANNUAL</code> (14 days), <code>MEDICAL</code> (14), <code>COMPASSIONATE</code> (3),
           <code>HOSPITALIZATION</code> (60), <code>MARRIAGE</code> (3), <code>MATERNITY</code> (98),
           <code>PATERNITY</code> (7), and <code>UNPAID</code> (0, unpaid).
+          <code>MATERNITY</code> is created with <code>eligibleGender: "FEMALE"</code> and
+          <code>PATERNITY</code> with <code>"MALE"</code>; the others are open to everyone.
         </p>
         <h3>Response <code>200</code></h3>
 <pre><code>{ "added": 2 }</code></pre>
@@ -562,8 +584,9 @@
         </div>
         <h3>Response <code>200</code></h3>
         <p>
-          The person's resulting leave balance for that type. If the leave type is archived,
-          balances don't list it, and the call succeeds with <code>204</code> and no body.
+          The person's resulting leave balance for that type. If balances don't list the type
+          &mdash; it is archived, or it isn't for this person's gender and they have no leave of it
+          that year &mdash; the call still succeeds, with <code>204</code> and no body.
         </p>
         <h3>Errors</h3>
         <div class="table-wrap">
@@ -594,7 +617,7 @@
           accrual-method override. No request body; optional <code>?year=</code>.
         </p>
         <h3>Response <code>200</code></h3>
-        <p>The resulting leave balance (or <code>204</code> for an archived type, as above).</p>
+        <p>The resulting leave balance (or <code>204</code> when balances don't list the type, as above).</p>
         <h3>Errors</h3>
         <p>
           <code>400</code> <code>{ "message": "Leave type not found" }</code>;
@@ -834,7 +857,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td><code>leaveTypeId</code></td><td>string</td><td>Yes</td><td>Max 40 chars. From <code>GET /leave-types</code>; the type must not be archived.</td></tr>
+              <tr><td><code>leaveTypeId</code></td><td>string</td><td>Yes</td><td>Max 40 chars. From <code>GET /leave-types</code>; the type must not be archived and must be open to the employee's gender (see <code>eligibleGender</code>).</td></tr>
               <tr><td><code>startDate</code></td><td>string (date)</td><td>Yes</td><td><code>2026-03-02</code>.</td></tr>
               <tr><td><code>endDate</code></td><td>string (date)</td><td>Yes</td><td>Not before <code>startDate</code>.</td></tr>
               <tr><td><code>duration</code></td><td>string</td><td>No</td><td><code>FULL_DAY</code> (default), <code>MORNING</code> or <code>AFTERNOON</code>. A half day must start and end on the same date and counts as 0.5.</td></tr>
@@ -855,6 +878,13 @@
           skipped) it is refused too — this includes a half day on a non-working day or a
           holiday, which counts 0. The year checked is the year of <code>startDate</code>.
         </div>
+        <div class="callout warn">
+          <strong>Gender-restricted types.</strong> When the type has an <code>eligibleGender</code>
+          that differs from the gender on the employee's profile, the call is refused with
+          <code>400</code> <code>"&lt;Type name&gt; is only for female employees."</code> (or
+          <code>male</code>). An employee with no gender on file is allowed. This is checked before
+          the dates and balance. <a href="#import">Importing history</a> does not apply it.
+        </div>
         <p>
           Side effects: the person's entitlement row for that year is created if missing; the
           employee is notified that it was approved; approved <em>unpaid</em> leave marks any
@@ -867,7 +897,7 @@
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
               <tr><td><code>400</code></td><td>Missing or over-long field</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
-              <tr><td><code>400</code></td><td>A rule refused it</td><td><code>{ "message": "…" }</code> — <code>Leave type not found</code>, <code>Leave type is archived</code>, <code>End date is before start date</code>, <code>Half-day leave must start and end on the same day</code>, <code>Selected dates contain no working days</code>, <code>Insufficient balance: requesting 3 but only 2 available</code></td></tr>
+              <tr><td><code>400</code></td><td>A rule refused it</td><td><code>{ "message": "…" }</code> — <code>Leave type not found</code>, <code>Leave type is archived</code>, <code>Maternity Leave is only for female employees.</code> (the type's own name, and <code>female</code> or <code>male</code> to match its <code>eligibleGender</code>), <code>End date is before start date</code>, <code>Half-day leave must start and end on the same day</code>, <code>Selected dates contain no working days</code>, <code>Insufficient balance: requesting 3 but only 2 available</code></td></tr>
               <tr><td><code>404</code></td><td>The employee isn't a member of this company</td><td><code>{ "message": "Employee not found." }</code></td></tr>
             </tbody>
           </table>
@@ -1475,8 +1505,9 @@
           <a href="#on-behalf">file on behalf</a> and replaces the request's type, dates,
           duration and reason. It is refused (<code>400</code>, <code>{ "message": "…" }</code>)
           once an approver has acted, when the request is not <code>PENDING</code>, when it was
-          imported or filed by an admin, or when it switches to an archived leave type. Keeping
-          the request's own type is allowed even if that type has since been archived. If type,
+          imported or filed by an admin, or when it switches to an archived leave type or to one that isn't for the
+          applicant's gender (<code>"&lt;Type name&gt; is only for female employees."</code>). Keeping
+          the request's own type is allowed even if that type has since been archived or restricted. If type,
           dates and duration are unchanged, <code>totalDays</code> is kept and the balance is not
           re-checked; otherwise the days are recounted and, for a paid type, checked against the
           balance. The attachment is replaced only when the body carries a new one (an
