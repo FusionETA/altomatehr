@@ -42,6 +42,7 @@ export type SaveLeaveType = {
   carryForward?: boolean;
   carryExpiryMonth?: number | null;
   maxCarryForwardDays?: number | null;
+  prorateFirstYear?: boolean;
   // Saving is a full replace: omit this and the type becomes open to everyone.
   eligibleGender?: LeaveEligibleGender | null;
 };
@@ -102,6 +103,9 @@ export type LeaveBalance = {
   takenDays: number;
   pendingDays: number;
   remainingDays: number;
+  /** False for a type that isn't for them (e.g. maternity for a man), listed
+   *  only because they already have leave of it this year. Don't offer it. */
+  eligible: boolean;
 };
 
 export type OnLeaveToday = {

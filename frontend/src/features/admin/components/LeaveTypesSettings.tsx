@@ -168,6 +168,7 @@ export function LeaveTypesSettings() {
         carryForward: edit.carryForward,
         carryExpiryMonth: edit.carryExpiryMonth,
         maxCarryForwardDays: edit.maxCarryForwardDays,
+        prorateFirstYear: types.find((t) => t.id === id)?.prorateFirstYear ?? false,
         eligibleGender: fromForWhom(edit.forWhom),
       });
       setTypes((cur) => cur.map((t) => (t.id === updated.id ? updated : t)));
@@ -457,6 +458,7 @@ function AnnualLeaveCard({
         carryForward,
         carryExpiryMonth: carryForward ? Number(carryExpiryMonth) : null,
         maxCarryForwardDays: maxCarryForwardDays.trim() ? Number(maxCarryForwardDays) : null,
+        prorateFirstYear: type.prorateFirstYear,
         eligibleGender: type.eligibleGender,
       });
       onSaved(updated);

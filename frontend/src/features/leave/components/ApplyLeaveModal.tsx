@@ -64,12 +64,14 @@ export function ApplyLeaveModal({
   onCreated: (app: LeaveApplication) => void;
 }) {
   // The balances come from the server already narrowed to the types this
-  // person may take (maternity for women, paternity for men), so offer only
-  // those — plus the request's own type when editing. If no balances loaded,
-  // offer everything; the server still refuses a type that isn't for them.
+  // person may take (maternity for women, paternity for men) — a type that
+  // isn't for them is only there, marked not eligible, if they already have
+  // leave of it. Offer the eligible ones, plus the request's own type when
+  // editing. If no balances loaded, offer everything; the server still
+  // refuses a type that isn't for them.
   const offered = useMemo(() => {
     if (balances.length === 0) return types;
-    const allowed = new Set(balances.map((b) => b.leaveTypeId));
+    const allowed = new Set(balances.filter((b) => b.eligible !== false).map((b) => b.leaveTypeId));
     return types.filter((t) => allowed.has(t.id) || t.id === editing?.leaveTypeId);
   }, [types, balances, editing?.leaveTypeId]);
 

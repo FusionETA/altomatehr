@@ -131,7 +131,21 @@ export function EmployeeLeaveModal({
   }
 
   const activeTypes = useMemo(() => types.filter((t) => !t.isArchived), [types]);
-  const anyUnopened = balances.some((b) => !b.isOpened) || balances.length < activeTypes.length;
+  // The server lists only the types that are for this employee (maternity for
+  // women, paternity for men) — plus any they already have leave of, marked
+  // not eligible. Follow it, so the admin isn't shown maternity for a man.
+  const shownTypes = useMemo(
+    () =>
+      balances.length === 0
+        ? activeTypes
+        : activeTypes.filter((t) => balances.some((b) => b.leaveTypeId === t.id)),
+    [activeTypes, balances],
+  );
+  const onBehalfTypes = useMemo(
+    () => shownTypes.filter((t) => balances.find((b) => b.leaveTypeId === t.id)?.eligible !== false),
+    [shownTypes, balances],
+  );
+  const anyUnopened = balances.some((b) => !b.isOpened) || balances.length < shownTypes.length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
@@ -217,7 +231,7 @@ export function EmployeeLeaveModal({
           </div>
 
           <div className="mt-3 space-y-3">
-            {activeTypes.map((type) => (
+            {shownTypes.map((type) => (
               <EntitlementRow
                 key={type.id}
                 type={type}
@@ -314,7 +328,7 @@ export function EmployeeLeaveModal({
         <ApplyOnBehalfModal
           employeeId={employee.userId}
           employeeLabel={employeeLabel}
-          types={activeTypes}
+          types={onBehalfTypes}
           onClose={() => setApplyOnBehalfOpen(false)}
           onCreated={(_app: LeaveApplication) => {
             refreshBalances();

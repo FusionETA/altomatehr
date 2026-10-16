@@ -43,6 +43,12 @@ public class EmployeeProfileService : IEmployeeProfileService
     public async Task<Gender?> GetGenderAsync(string userId) =>
         (await _profiles.GetByUserAsync(userId))?.Gender;
 
+    public async Task<IReadOnlyDictionary<string, Gender>> GetGendersAsync() =>
+        (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => p.Gender is not null)
+            .GroupBy(p => p.UserId)
+            .ToDictionary(g => g.Key, g => g.First().Gender!.Value);
+
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
     {
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null)

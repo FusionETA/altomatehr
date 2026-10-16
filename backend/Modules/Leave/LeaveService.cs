@@ -179,6 +179,9 @@ public class LeaveService : ILeaveService
             .GroupBy(a => a.EmployeeId)
             .ToDictionary(g => g.Key, g => g.ToList());
         var entitlements = await _policies.GetLeaveEntitlementsForEmployeesAsync(userIds);
+        var genders = _profiles is null
+            ? new Dictionary<string, Employees.Entities.Gender>()
+            : await _profiles.GetGendersAsync();
         var emails = await _supervision.GetEmailsAsync(userIds);
         var names = await _supervision.GetNamesAsync(userIds);
         var rowsByEmployee = (await _entitlements.GetByYearAsync(year))
@@ -196,7 +199,8 @@ public class LeaveService : ILeaveService
                 appsByEmployee.GetValueOrDefault(m.UserId) ?? new List<LeaveApplication>(),
                 entitlements.GetValueOrDefault(m.UserId) ?? new Dictionary<string, double>(),
                 rowsByEmployee.GetValueOrDefault(m.UserId) ?? new Dictionary<string, LeaveEntitlement>(),
-                year),
+                year,
+                genders.TryGetValue(m.UserId, out var g) ? g : null),
         });
     }
 
@@ -915,19 +919,12 @@ public class LeaveService : ILeaveService
 
     public async Task<IEnumerable<LeaveBalanceDto>> GetBalancesAsync(string employeeId, int year)
     {
+        var types = (await _types.GetAllAsync()).Where(t => !t.IsArchived).ToList();
         var apps = await _apps.GetByEmployeeAsync(employeeId);
-        // A type that isn't for them (maternity for a man) is left out — unless
-        // they already have leave of it this year, which must stay visible.
-        var gender = await GenderOfAsync(employeeId);
-        var types = (await _types.GetAllAsync())
-            .Where(t => !t.IsArchived)
-            .Where(t => LeaveEligibility.Allows(t, gender)
-                        || apps.Any(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year))
-            .ToList();
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var rows = (await _entitlements.GetForEmployeeYearAsync(employeeId, year))
             .ToDictionary(e => e.LeaveTypeId);
-        return BuildBalances(types, apps, overrides, rows, year);
+        return BuildBalances(types, apps, overrides, rows, year, await GenderOfAsync(employeeId));
     }
 
     // Pure projection shared by the single-employee and org-wide readers, so the
@@ -942,8 +939,16 @@ public class LeaveService : ILeaveService
         IReadOnlyCollection<LeaveApplication> apps,
         IReadOnlyDictionary<string, double> overrides,
         IReadOnlyDictionary<string, LeaveEntitlement> rows,
-        int year) =>
-        types.Select(t =>
+        int year,
+        Employees.Entities.Gender? gender) =>
+        types
+        // A type that isn't for them (maternity for a man) is left out — unless
+        // they have pending or approved leave of it this year, which must stay
+        // visible (marked not Eligible, so it isn't offered for a new request).
+        .Where(t => LeaveEligibility.Allows(t, gender)
+                    || apps.Any(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year
+                                     && a.Status is LeaveStatus.PENDING or LeaveStatus.APPROVED))
+        .Select(t =>
         {
             var forType = apps.Where(a => a.LeaveTypeId == t.Id && a.StartDate.Year == year).ToList();
             var taken = forType.Where(a => a.Status == LeaveStatus.APPROVED).Sum(a => a.TotalDays);
@@ -979,6 +984,7 @@ public class LeaveService : ILeaveService
                 PendingDays = pending,
                 RemainingDays = LeaveAccrualMath.AvailableDays(
                     method, entitled, accrued, carried, carriedExpired, taken),
+                Eligible = LeaveEligibility.Allows(t, gender),
             };
         }).ToList();
 

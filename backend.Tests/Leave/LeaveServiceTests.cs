@@ -123,7 +123,38 @@ public class LeaveServiceTests
 
         var balances = await service.GetBalancesAsync("usr-emp", Year);
 
-        Assert.Equal(["MATERNITY"], balances.Select(b => b.Code));
+        var only = Assert.Single(balances);
+        Assert.Equal("MATERNITY", only.Code);
+        Assert.False(only.Eligible);   // listed, but not offered for a new request
+    }
+
+    // A rejected or cancelled request is not leave they have, so it doesn't
+    // bring the type back.
+    [Theory]
+    [InlineData(LeaveStatus.REJECTED)]
+    [InlineData(LeaveStatus.CANCELLED)]
+    public async Task GetBalancesAsync_ARejectedOrCancelledRequestDoesNotKeepIt(LeaveStatus status)
+    {
+        var service = MakeService(
+            types: [Maternity()],
+            apps: [MakeApp("a-1", "usr-emp", "t-mat", 3, status)],
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+
+        Assert.Empty(await service.GetBalancesAsync("usr-emp", Year));
+    }
+
+    // The admin grid and its export follow the same rule as the employee's own
+    // balances, so the two never disagree.
+    [Fact]
+    public async Task GetOrgBalancesAsync_LeavesOutATypeThatIsNotForThem()
+    {
+        var service = MakeService(
+            types: [MakeType("t-al", "ANNUAL", 14), Maternity()],
+            profiles: new FakeGenders(new() { ["usr-emp"] = Gender.MALE }));
+
+        var row = Assert.Single(await service.GetOrgBalancesAsync(Year));
+
+        Assert.Equal(["ANNUAL"], row.Balances.Select(b => b.Code));
     }
 
     [Fact]
@@ -1699,6 +1730,8 @@ public class LeaveServiceTests
     {
         public Task<Gender?> GetGenderAsync(string userId) =>
             Task.FromResult<Gender?>(genders.TryGetValue(userId, out var g) ? g : null);
+        public Task<IReadOnlyDictionary<string, Gender>> GetGendersAsync() =>
+            Task.FromResult<IReadOnlyDictionary<string, Gender>>(genders);
         public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> GetAsync(string userId) =>
             throw new NotSupportedException();
         public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> SaveAsync(
