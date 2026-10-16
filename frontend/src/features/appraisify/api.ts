@@ -1,5 +1,10 @@
 import { apiGet } from "@/shared/lib/api-client";
 
+function runningAsInstalledApp(): boolean {
+  const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return iosStandalone || window.matchMedia?.("(display-mode: standalone)").matches === true;
+}
+
 async function mintLaunchUrl(dest?: string | null): Promise<string> {
   const query = dest ? `?dest=${encodeURIComponent(dest)}` : "";
   const { redirectUrl } = await apiGet<{ redirectUrl: string }>(`/sso/launch/appraisify${query}`);
@@ -25,6 +30,11 @@ export async function launchAppraisify(dest?: string | null): Promise<void> {
 // by popup blockers, Safari especially). Not opened with "noopener" — that
 // makes window.open return null — so the opener link is severed by hand.
 export async function launchAppraisifyInNewTab(): Promise<void> {
+  // Installed to the home screen (iOS especially), window.open hands off to a
+  // separate Safari view that this page may not be able to steer — the user
+  // would be left on a blank sheet. Same-tab there, as before.
+  if (runningAsInstalledApp()) return launchAppraisify();
+
   const tab = window.open("about:blank", "_blank");
   if (!tab) {
     // Popup blocked anyway — fall back to the old same-tab behaviour.
