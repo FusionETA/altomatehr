@@ -29,8 +29,18 @@ export function MissingLeaveTypes({
   existing: LeaveType[];
   onAdded: (type: LeaveType) => void;
 }) {
+  // The import matches a row on a type's name OR its code, so a code must not
+  // spell another type's name or another value in this file — "CL" for
+  // Childcare Leave would swallow the rows that meant a type called "CL".
+  const reserved = (exceptName: string) =>
+    new Set(
+      [...existing.flatMap((t) => [t.code, t.name]), ...missing.map((m) => m.value)]
+        .filter((v) => v.trim().toUpperCase() !== exceptName.trim().toUpperCase())
+        .map((v) => v.trim().toUpperCase()),
+    );
+
   const [rows, setRows] = useState<Row[]>(() => {
-    const taken = existing.map((t) => t.code);
+    const taken = [...existing.flatMap((t) => [t.code, t.name]), ...missing.map((m) => m.value)];
     return missing.map((m) => {
       const code = suggestLeaveTypeCode(m.value, taken);
       taken.push(code);
@@ -52,6 +62,11 @@ export function MissingLeaveTypes({
   async function add(i: number) {
     const row = rows[i];
     if (!row.code.trim()) return;
+    const added = rows.filter((r, j) => j !== i && r.state === "added").map((r) => r.code.trim().toUpperCase());
+    if (reserved(row.name).has(row.code.trim().toUpperCase()) || added.includes(row.code.trim().toUpperCase())) {
+      patch(i, { error: `"${row.code.trim()}" is already a leave type's name or code, or another value in this file. Pick another code.` });
+      return;
+    }
     patch(i, { state: "saving", error: null });
     try {
       const created = await createLeaveType({
