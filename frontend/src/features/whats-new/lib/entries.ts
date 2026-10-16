@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 42fea8e
+// whats-new-covered-up-to: 819f8d7
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -36,6 +36,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: a bank file is refused, naming the person, if an account number is blank, has no digits such as N/A, or for CIMB is too long. CIMB no longer cuts a long number short. Approved months too.",
       "Admins: when a company pays an extra EPF rate on top of the statutory one, employer EPF and cost to employer were RM 1–6 too high. Re-run draft payroll to apply the fix; approved months keep what was filed.",
       "Admins: saving a leave type in Leave → Types no longer turns off \"prorate first year\".",
+      "Admins: after a leave history import, History, Balances and Overview refresh by themselves. The import now says leave history, not entitlements.",
     ],
   },
   {
