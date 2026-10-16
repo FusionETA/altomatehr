@@ -159,7 +159,7 @@ export function PayrollRunsList({
                   </td>
 
                   <td className={TD_NUM}>{run.employeeCount || "—"}</td>
-                  <td className={TD_NUM}>{rm(run.totalGross)}</td>
+                  <td className={TD_NUM}>{rm(run.totalGrossShown)}</td>
                   <td className={`${TD_NUM} font-semibold`}>{rm(run.totalNet)}</td>
                   <td className={TD_NUM}>{rm(run.totalCostToEmployer)}</td>
                   <td className={`${TD} text-muted-foreground`}>

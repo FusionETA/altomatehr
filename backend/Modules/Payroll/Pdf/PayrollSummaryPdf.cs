@@ -311,7 +311,7 @@ public static class PayrollSummaryPdf
                 }
             });
 
-            AmountCell(row.RelativeItem(ColGross), p.GrossPay, Tint.None, bold: true);
+            AmountCell(row.RelativeItem(ColGross), PayrollGrossShown.Of(p), Tint.None, bold: true);
             AmountCell(row.RelativeItem(ColPcb), p.Pcb, Tint.Emp);
             AmountCell(row.RelativeItem(ColEpfEmp), p.EpfEmployee, Tint.Emp);
             AmountCell(row.RelativeItem(ColSocsoEmp), p.SocsoEmployee, Tint.Emp);

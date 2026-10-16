@@ -185,7 +185,7 @@ export function PayrollOverview({
               </div>
 
               <dl className="grid grid-cols-3 gap-3">
-                <Figure label="Gross" value={latest.totalGross} />
+                <Figure label="Gross" value={latest.totalGrossShown} />
                 <Figure label="Net pay" value={latest.totalNet} emphasis />
                 <Figure label="Cost" value={latest.totalCostToEmployer} />
               </dl>

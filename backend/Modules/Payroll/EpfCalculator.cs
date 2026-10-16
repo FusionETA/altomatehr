@@ -72,7 +72,11 @@ public static class EpfCalculator
         public required int AgeAtPeriodEnd { get; init; }
     }
 
-    public readonly record struct Result(decimal Employee, decimal Employer, EpfBranch Branch);
+    // EmployerVoluntaryAmount: the part of Employer above the statutory share —
+    // what the payslip shows as the employer's extra. Worked out here, where the
+    // statutory share is known, so nothing re-derives it from the total.
+    public readonly record struct Result(
+        decimal Employee, decimal Employer, EpfBranch Branch, decimal EmployerVoluntaryAmount = 0m);
 
     // Wage at or below this earns nothing.
     private const decimal DeMinimisWage = 10m;
@@ -166,6 +170,7 @@ public static class EpfCalculator
 
         decimal employee;
         decimal employer;
+        decimal employerVoluntaryAmount;
 
         if (usesBandTable)
         {
@@ -182,18 +187,35 @@ public static class EpfCalculator
             //   AR lift  → single ceil of (mandatory + voluntary) × total, with
             //              the mandatory rate still chosen by the regular wage,
             //              so a bonus can't tip a sub-RM-5,000 employee to 12%.
+            //   employer pays extra (no lift) → the employer's whole rate on
+            //              the actual wage, ceiled once — as PayrollPanda does.
+            //              Band + a separate ceil of the extra over-paid it by
+            //              RM 1–6: 13% + 2% on 4,537 gave 591 + 91 = 682 where
+            //              ceil(15% × 4,537) = 681; on 5,246 (12% + 2%) 636 +
+            //              105 = 741 where ceil(14% × 5,246) = 735. Never below
+            //              the band, so the statutory share is always met.
             var hasArLift = rateWage < totalWage;
 
             employer = hasArLift
                 ? Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate)
-                : band.Employer + Money.CeilRinggit(totalWage, employerVoluntaryRate);
+                : employerVoluntaryRate > 0m
+                    ? Math.Max(band.Employer, Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate))
+                    : band.Employer;
+
+            // Bonus month: the mandatory share is its own ceil, the rest is extra.
+            employerVoluntaryAmount = hasArLift
+                ? employer - Money.CeilRinggit(totalWage, employerMandatoryRate)
+                : employer - band.Employer;
         }
         else
         {
             employee = Money.CeilRinggit(totalWage, employeeRate + employeeVoluntaryRate);
             employer = Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate);
+            employerVoluntaryAmount = employer - Money.CeilRinggit(totalWage, employerMandatoryRate);
         }
 
-        return new Result(Money.Round2(employee), Money.Round2(employer), branch);
+        return new Result(
+            Money.Round2(employee), Money.Round2(employer), branch,
+            Money.Round2(Math.Max(0m, employerVoluntaryAmount)));
     }
 }

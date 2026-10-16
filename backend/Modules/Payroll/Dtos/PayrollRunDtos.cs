@@ -53,6 +53,9 @@ public class PayrollRunDto
     public int EmployeeCount { get; set; }
 
     public decimal TotalGross { get; set; }
+    // TotalGross less deductions the company keeps — what the screens show
+    // as Gross, as PayrollPanda does. See PayrollGrossShown.
+    public decimal TotalGrossShown { get; set; }
     public decimal TotalNet { get; set; }
     public decimal TotalEmployeeEpf { get; set; }
     public decimal TotalEmployerEpf { get; set; }
@@ -170,6 +173,9 @@ public class PayslipDto
     public decimal HrdfWage { get; set; }
 
     public decimal GrossPay { get; set; }
+    // GrossPay less deductions the company keeps — what the run table shows
+    // as Gross, as PayrollPanda does. GrossPay stays the statutory figure.
+    public decimal GrossShown { get; set; }
     public decimal NetPay { get; set; }
     public decimal TotalCostToEmployer { get; set; }
 

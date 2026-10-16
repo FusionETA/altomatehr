@@ -26,7 +26,11 @@ export type LeaveType = {
   carryExpiryMonth: number | null;
   maxCarryForwardDays: number | null;
   prorateFirstYear: boolean;
+  /** Who may take it: null = everyone. Maternity is FEMALE and paternity MALE
+   *  by default. Someone with no gender on their profile can take either. */
+  eligibleGender: LeaveEligibleGender | null;
 };
+export type LeaveEligibleGender = "FEMALE" | "MALE";
 export type SaveLeaveType = {
   code: string;
   name: string;
@@ -38,6 +42,9 @@ export type SaveLeaveType = {
   carryForward?: boolean;
   carryExpiryMonth?: number | null;
   maxCarryForwardDays?: number | null;
+  prorateFirstYear?: boolean;
+  // Saving is a full replace: omit this and the type becomes open to everyone.
+  eligibleGender?: LeaveEligibleGender | null;
 };
 
 export type LeaveApplication = {
@@ -96,6 +103,9 @@ export type LeaveBalance = {
   takenDays: number;
   pendingDays: number;
   remainingDays: number;
+  /** False for a type that isn't for them (e.g. maternity for a man), listed
+   *  only because they already have leave of it this year. Don't offer it. */
+  eligible: boolean;
 };
 
 export type OnLeaveToday = {

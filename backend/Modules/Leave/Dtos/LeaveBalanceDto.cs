@@ -33,4 +33,9 @@ public class LeaveBalanceDto
     public double TakenDays { get; set; }
     public double PendingDays { get; set; }
     public double RemainingDays { get; set; }
+
+    // Whether this type is for them (LeaveType.EligibleGender). A type that
+    // isn't is only listed when they already have leave of it this year, and
+    // then with false here, so the apply forms don't offer it.
+    public bool Eligible { get; set; } = true;
 }

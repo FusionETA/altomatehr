@@ -574,7 +574,8 @@
               <tr><td><code>epfEmployee</code>, <code>epfEmployer</code>, <code>socsoEmployee</code>, <code>socsoEmployer</code>, <code>eisEmployee</code>, <code>eisEmployer</code>, <code>skbbkEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code>, <code>pcbNormal</code>, <code>pcbAdditional</code>, <code>voluntaryPcb</code>, <code>cp38</code>, <code>zakat</code>, <code>hrdf</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcbCalculationJson</code></td><td>string?</td><td>The LHDN formula decomposition, as a JSON string. Null for payslips generated before this feature shipped.</td></tr>
-              <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td><code>grossPay</code> is the statutory gross (what was earned).</td></tr>
+              <tr><td><code>grossShown</code></td><td>decimal</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the payroll screens and run summary show it. Display only; <code>grossPay</code> stays the figure EPF, SOCSO, EIS and PCB are worked on. Can be negative. See <a href="payroll-runs.html#payslip-object">the payslip object</a>. (The list row from <code>GET /payslips</code> does not carry it.)</td></tr>
               <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
               <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
               <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each.</td></tr>
@@ -1213,7 +1214,7 @@
           <span class="path">/payroll/ytd-import/{year}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Commits the import. Matches by IC first, then by name (never guessed at if ambiguous). Refuses the same rows as preview (IC belonging to another employee, two rows for one person) &mdash; nothing is written if any such row exists.</p>
+        <p>Commits the import. Every amount in the file is rounded to 2 decimals (half away from zero) when it is read, so a cell of <code>589.875</code> is stored as <code>589.88</code> and the payslip's cost to employer and <code>grossShown</code> are worked out from the same rounded figures. The preview rounds the same way. Matches by IC first, then by name (never guessed at if ambiguous). Refuses the same rows as preview (IC belonging to another employee, two rows for one person) &mdash; nothing is written if any such row exists.</p>
         <h3>Request</h3>
         <p>Same as preview.</p>
         <h3>Response <code>200</code></h3>

@@ -23,4 +23,14 @@ public interface IEmployeeProfileService
     // this org. (Default keeps hand-written test doubles compiling.)
     Task<IReadOnlyList<string>?> FillMissingFieldsAsync(string userId, FillEmployeeFieldsDto fields) =>
         Task.FromResult<IReadOnlyList<string>?>(null);
+
+    // The gender on a current-org member's profile, or null when none is on
+    // file — what leave eligibility (maternity / paternity) reads. (Default
+    // keeps hand-written test doubles compiling.)
+    Task<Entities.Gender?> GetGenderAsync(string userId) => Task.FromResult<Entities.Gender?>(null);
+
+    // The same for every current-org member at once (userId → gender), for
+    // org-wide grids; anyone without a gender on file is simply absent.
+    Task<IReadOnlyDictionary<string, Entities.Gender>> GetGendersAsync() =>
+        Task.FromResult<IReadOnlyDictionary<string, Entities.Gender>>(new Dictionary<string, Entities.Gender>());
 }

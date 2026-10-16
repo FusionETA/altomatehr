@@ -472,6 +472,23 @@ const admin = {
     await settle(page, 1500);
     await shoot(page, "admin", "leave-balances");
   },
+  "leave-types": async (page) => {
+    // Demo Admin belongs to several companies on this machine; sign-in can
+    // land on any of them, so move to the demo company first.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "leave");
+    await clickText(page, "Types");
+    await page.getByText("Kinds of leave employees can apply for").first().waitFor({ timeout: 15000 });
+    await page.getByRole("columnheader", { name: "For" }).waitFor({ timeout: 15000 });
+    await settle(page, 1000);
+    await scrollTo(page, "Paid leave", 150, true);
+    await shoot(page, "admin", "leave-types");
+  },
   "leave-cancel": async (page) => {
     await go(page, "leave");
     await clickText(page, "History");

@@ -484,7 +484,7 @@ function Row({
       <td className={CELL}>{hourly ? "" : hours(payslip.otRestHours)}</td>
       <td className={CELL}>{hourly ? "" : hours(payslip.otPublicHours)}</td>
 
-      <td className={`${CELL} font-semibold text-foreground`}>{rm(payslip.grossPay)}</td>
+      <td className={`${CELL} font-semibold text-foreground`}>{rm(payslip.grossShown)}</td>
 
       {/* Includes Additional PCB — withheld and filed as PCB. */}
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.pcb + payslip.voluntaryPcb)}</td>
@@ -565,7 +565,7 @@ const hours = (value: number | null): string =>
 function sum(payslips: Payslip[]) {
   return payslips.reduce(
     (acc, p) => ({
-      gross: acc.gross + p.grossPay,
+      gross: acc.gross + p.grossShown,
       net: acc.net + p.netPay,
       cost: acc.cost + p.totalCostToEmployer,
       pcb: acc.pcb + p.pcb + p.voluntaryPcb,

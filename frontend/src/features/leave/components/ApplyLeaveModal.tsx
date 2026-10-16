@@ -63,7 +63,19 @@ export function ApplyLeaveModal({
   /** Called with the new request — or, when editing, the updated one. */
   onCreated: (app: LeaveApplication) => void;
 }) {
-  const [leaveTypeId, setLeaveTypeId] = useState(editing?.leaveTypeId ?? types[0]?.id ?? "");
+  // The balances come from the server already narrowed to the types this
+  // person may take (maternity for women, paternity for men) — a type that
+  // isn't for them is only there, marked not eligible, if they already have
+  // leave of it. Offer the eligible ones, plus the request's own type when
+  // editing. If no balances loaded, offer everything; the server still
+  // refuses a type that isn't for them.
+  const offered = useMemo(() => {
+    if (balances.length === 0) return types;
+    const allowed = new Set(balances.filter((b) => b.eligible !== false).map((b) => b.leaveTypeId));
+    return types.filter((t) => allowed.has(t.id) || t.id === editing?.leaveTypeId);
+  }, [types, balances, editing?.leaveTypeId]);
+
+  const [leaveTypeId, setLeaveTypeId] = useState(editing?.leaveTypeId ?? offered[0]?.id ?? "");
   const [startDate, setStartDate] = useState(editing?.startDate ?? "");
   const [endDate, setEndDate] = useState(editing?.endDate ?? "");
   const [reason, setReason] = useState(editing?.reason ?? "");
@@ -221,7 +233,7 @@ export function ApplyLeaveModal({
                   <SelectValue placeholder="Select a type" />
                 </SelectTrigger>
                 <SelectContent searchPlaceholder="Search types…">
-                  {types.map((t) => {
+                  {offered.map((t) => {
                     const b = balanceByType.get(t.id);
                     return (
                       <SelectItem key={t.id} value={t.id}>

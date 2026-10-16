@@ -1,3 +1,4 @@
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Leave.Entities;
 
 namespace AltomateHR.Api.Modules.Leave;
@@ -13,7 +14,8 @@ public static class LeaveDefaults
     public const string UnpaidCode = "UNPAID";
     public const string AnnualCode = "ANNUAL";
 
-    public sealed record Seed(string Code, string Name, bool Paid, double DefaultDays);
+    public sealed record Seed(
+        string Code, string Name, bool Paid, double DefaultDays, Gender? EligibleGender = null);
 
     public static readonly IReadOnlyList<Seed> All =
     [
@@ -22,8 +24,8 @@ public static class LeaveDefaults
         new("COMPASSIONATE",   "Compassionate Leave",    true,   3),
         new("HOSPITALIZATION", "Hospitalization Leave",  true,  60),
         new("MARRIAGE",        "Marriage Leave",         true,   3),
-        new("MATERNITY",       "Maternity Leave",        true,  98),
-        new("PATERNITY",       "Paternity Leave",        true,   7),
+        new("MATERNITY",       "Maternity Leave",        true,  98, Gender.FEMALE),
+        new("PATERNITY",       "Paternity Leave",        true,   7, Gender.MALE),
         new("UNPAID",          "Unpaid Leave",           false,  0),
     ];
 
