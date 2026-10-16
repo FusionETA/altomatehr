@@ -1329,6 +1329,7 @@
               <tr><td><code>failed</code></td><td>number</td><td>Rows that couldn't be read (see <code>errors</code>).</td></tr>
               <tr><td><code>errors</code></td><td>object[]</td><td><code>{ "row": 3, "message": "…" }</code>. <code>row</code> is the spreadsheet row (header = 1). A file-level problem such as a missing column is reported on row 1 with <code>failed: 0</code>. Capped at 200.</td></tr>
               <tr><td><code>warnings</code></td><td>object[]</td><td>Same shape; for rows that landed but need a look.</td></tr>
+              <tr><td><code>missing</code></td><td>object[]</td><td>One <code>{ "column": "leaveType", "value": "Study Leave", "rows": 4 }</code> per distinct value that matched no leave type, compared case-insensitively. <code>column</code> is always <code>"leaveType"</code> today; <code>value</code> is the trimmed cell as first seen; <code>rows</code> is how many rows asked for it. <strong>Not capped</strong>, unlike <code>errors</code>. Each of those rows is also counted in <code>failed</code> and appears in <code>errors</code> (while <code>errors</code> has room), so <code>missing</code> is the complete list of leave types to create before re-uploading. A blank leave type is an ordinary failed row in <code>errors</code> and does not appear in <code>missing</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1357,13 +1358,17 @@
   -H "Authorization: Bearer wp_live_xxx" \
   -F "file=@leave-history.csv"</code></pre>
 <pre><code>{
-  "imported": 41,
+  "imported": 40,
   "skipped": 2,
-  "failed": 1,
+  "failed": 2,
   "errors": [
-    { "row": 9, "message": "No employee in this organization matches 'jane@example.com'." }
+    { "row": 9, "message": "No employee in this organization matches 'jane@example.com'." },
+    { "row": 12, "message": "No leave type matches 'Study Leave' (try its name or code)." }
   ],
-  "warnings": []
+  "warnings": [],
+  "missing": [
+    { "column": "leaveType", "value": "Study Leave", "rows": 1 }
+  ]
 }</code></pre>
       </section>
     </section>

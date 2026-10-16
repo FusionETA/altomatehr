@@ -261,6 +261,7 @@
               <tr><td><code>imported</code>, <code>skipped</code>, <code>failed</code></td><td>int</td><td>Row counts. <code>skipped</code> counts the example row.</td></tr>
               <tr><td><code>errors</code></td><td>array of <code>{ row, message }</code></td><td>Row is 1-based including the header; capped at 200.</td></tr>
               <tr><td><code>warnings</code></td><td>array of <code>{ row, message }</code></td><td>Row imported, but worth a look (e.g. an unrecognised nationality).</td></tr>
+              <tr><td><code>missing</code></td><td>array of <code>{ column, value, rows }</code></td><td>Lookup values that matched nothing. This import has no lookup column, so it is always <code>[]</code>.</td></tr>
             </tbody>
           </table>
         </div>

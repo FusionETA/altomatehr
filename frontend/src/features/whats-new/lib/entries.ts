@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 819f8d7
+// whats-new-covered-up-to: a2062d9
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -24,11 +24,11 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-16",
     new: [
-      "Admins: in Leave → Types, choose who each leave type is for: Everyone, Female only or Male only. Maternity and Paternity come set to Female only and Male only, for every company.",
+      "Admins: a leave history import now lists leave types you haven't set up, so you can add them and import again. History, Balances and Overview refresh after it.",
     ],
     improved: [
       "Admins: in Payroll, Gross now takes off deductions the company keeps (Miscellaneous, Loan Repayment), as PayrollPanda does, for past months too. Statutory amounts and files don't change.",
-      "Leave: you now only see and apply for types that are for you, and admins' balances follow the same rule. Anyone with no gender on their profile can still take either type.",
+      "Admins: in Leave → Types, set each type to Everyone, Female only or Male only. Staff only see and apply for the types meant for them.",
       "The Launch Appraisify button in your account menu now opens Appraisify in a new tab, so AltomateHR stays open. If your browser blocks the new tab, or you use AltomateHR from your home screen, it opens here as before.",
       "Admins: the CIMB bank file no longer asks for a payment date in Payroll → Run downloads, as BizChannel sets it when you upload.",
     ],
@@ -36,7 +36,6 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: a bank file is refused, naming the person, if an account number is blank, has no digits such as N/A, or for CIMB is too long. CIMB no longer cuts a long number short. Approved months too.",
       "Admins: when a company pays an extra EPF rate on top of the statutory one, employer EPF and cost to employer were RM 1–6 too high. Re-run draft payroll to apply the fix; approved months keep what was filed.",
       "Admins: saving a leave type in Leave → Types no longer turns off \"prorate first year\".",
-      "Admins: after a leave history import, History, Balances and Overview refresh by themselves. The import now says leave history, not entitlements.",
     ],
   },
   {

@@ -194,6 +194,9 @@ export type TabularImportResult = {
   skipped: number;
   failed: number;
   errors: { row: number; message: string }[];
+  // Values in a lookup column that matched nothing — for the leave import, the
+  // leave types the org hasn't set up — once each, with how many rows asked.
+  missing?: { column: string; value: string; rows: number }[];
 };
 
 // --- Leave types (admin-managed) ---
