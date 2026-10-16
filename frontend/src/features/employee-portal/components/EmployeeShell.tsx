@@ -4,7 +4,7 @@ import { ExternalLink, LifeBuoy, KeyRound, LoaderCircle, LogOut, MoreVertical } 
 import { leaveOrg } from "@/features/auth/api";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { AttendanceView } from "@/features/attendance/components/AttendanceView";
-import { launchAppraisify } from "@/features/appraisify/api";
+import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
 import { ClaimsPage } from "@/features/claims/components/ClaimsPage";
 import { LeavePage } from "@/features/leave/components/LeavePage";
 import { getAccounts, getMyProjects, getOrganization } from "@/features/settings/api";
@@ -400,7 +400,7 @@ export function EmployeeShell({
                       type="button"
                       onClick={() => {
                         setAccountMenuOpen(false);
-                        launchAppraisify().catch(() => {
+                        launchAppraisifyInNewTab().catch(() => {
                           window.alert("Couldn't open Appraisify — please try again.");
                         });
                       }}
