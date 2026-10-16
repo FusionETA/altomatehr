@@ -222,6 +222,21 @@ public class EpfCalculatorTests
         Assert.Equal(expected, result.Employer);
     }
 
+    // The employer's extra is what sits above the statutory band, so the
+    // mandatory share a payslip shows is KWSP's table amount — never less.
+    [Theory]
+    [InlineData(4537, 2, 591, 90)]     // 681 = band 591 + 90
+    [InlineData(5246, 2, 636, 99)]     // 735 = band 636 + 99
+    [InlineData(4521, 0.01, 591, 0)]   // the band alone; no extra at all
+    public void EmployerVoluntaryAmount_IsWhatSitsAboveTheBand(
+        int wage, double voluntary, int band, int extra)
+    {
+        var result = EpfCalculator.Calculate(Profile(wage: wage, employerVoluntary: (decimal)voluntary));
+
+        Assert.Equal(extra, result.EmployerVoluntaryAmount);
+        Assert.Equal(band, result.Employer - result.EmployerVoluntaryAmount);
+    }
+
     // A tiny extra rate must never take the employer under its statutory band.
     [Fact]
     public void EmployerVoluntary_NeverPaysLessThanTheBand()

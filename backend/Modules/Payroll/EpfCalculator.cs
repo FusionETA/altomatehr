@@ -72,7 +72,11 @@ public static class EpfCalculator
         public required int AgeAtPeriodEnd { get; init; }
     }
 
-    public readonly record struct Result(decimal Employee, decimal Employer, EpfBranch Branch);
+    // EmployerVoluntaryAmount: the part of Employer above the statutory share —
+    // what the payslip shows as the employer's extra. Worked out here, where the
+    // statutory share is known, so nothing re-derives it from the total.
+    public readonly record struct Result(
+        decimal Employee, decimal Employer, EpfBranch Branch, decimal EmployerVoluntaryAmount = 0m);
 
     // Wage at or below this earns nothing.
     private const decimal DeMinimisWage = 10m;
@@ -166,6 +170,7 @@ public static class EpfCalculator
 
         decimal employee;
         decimal employer;
+        decimal employerVoluntaryAmount;
 
         if (usesBandTable)
         {
@@ -196,13 +201,21 @@ public static class EpfCalculator
                 : employerVoluntaryRate > 0m
                     ? Math.Max(band.Employer, Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate))
                     : band.Employer;
+
+            // Bonus month: the mandatory share is its own ceil, the rest is extra.
+            employerVoluntaryAmount = hasArLift
+                ? employer - Money.CeilRinggit(totalWage, employerMandatoryRate)
+                : employer - band.Employer;
         }
         else
         {
             employee = Money.CeilRinggit(totalWage, employeeRate + employeeVoluntaryRate);
             employer = Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate);
+            employerVoluntaryAmount = employer - Money.CeilRinggit(totalWage, employerMandatoryRate);
         }
 
-        return new Result(Money.Round2(employee), Money.Round2(employer), branch);
+        return new Result(
+            Money.Round2(employee), Money.Round2(employer), branch,
+            Money.Round2(Math.Max(0m, employerVoluntaryAmount)));
     }
 }
