@@ -918,6 +918,7 @@
               <tr><td><code>failed</code></td><td>integer</td><td>Rows rejected.</td></tr>
               <tr><td><code>errors[]</code></td><td>array</td><td><code>row</code> (integer) and <code>message</code>. At most 200 are listed.</td></tr>
               <tr><td><code>warnings[]</code></td><td>array</td><td>Same shape; imported but worth a look.</td></tr>
+              <tr><td><code>missing[]</code></td><td>array</td><td><code>{ column, value, rows }</code> for lookup values that matched nothing. This import has no lookup column, so it is always <code>[]</code>.</td></tr>
             </tbody>
           </table>
         </div>

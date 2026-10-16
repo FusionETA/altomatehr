@@ -827,6 +827,7 @@
               <tr><td><code>failed</code></td><td>integer</td><td>Rows that couldn't be imported.</td></tr>
               <tr><td><code>errors</code></td><td>array</td><td><code>{ row, message }</code> for each failed row, at most 200. <code>row</code> is the spreadsheet row, header = 1, first data row = 2.</td></tr>
               <tr><td><code>warnings</code></td><td>array</td><td>Same shape, for rows that landed but deserve a look.</td></tr>
+              <tr><td><code>missing</code></td><td>array</td><td><code>{ column, value, rows }</code> for lookup values that matched nothing. This import has no lookup column, so it is always <code>[]</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -837,7 +838,8 @@
   "errors": [
     { "row": 14, "message": "No employee in this organization matches 'jane@example.com'." }
   ],
-  "warnings": []
+  "warnings": [],
+  "missing": []
 }</code></pre>
 <pre><code>curl -X POST https://&lt;api-host&gt;/claims/import \
   -H "Authorization: Bearer wp_live_xxx" \
