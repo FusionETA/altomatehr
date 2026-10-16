@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: f76a9c3
+// whats-new-covered-up-to: c89867e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,17 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-16",
+    improved: [
+      "The Launch Appraisify button in your account menu now opens Appraisify in a new tab, so AltomateHR stays open. If your browser blocks the new tab, or you use AltomateHR from your home screen, it opens here as before.",
+      "Admins: the CIMB bank file no longer asks for a payment date in Payroll → Run downloads, as BizChannel sets it when you upload.",
+    ],
+    fixed: [
+      "Admins: a bank file no longer goes out with a blank account number. If someone's account number has no digits, such as N/A, the file is refused and names them. This applies to approved months too.",
+      "Admins: the CIMB bank file no longer cuts a long account number short, which could send pay to the wrong account. It's refused and names the person to check instead.",
+    ],
+  },
   {
     date: "2026-10-15",
     improved: [

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: f76a9c3
+  user-guide-covered-up-to: c89867e
 -->
 <html lang="en">
 <head>
@@ -391,7 +391,8 @@
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
       <li>The ⋮ menu — push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
         the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
-        <span class="btn-name">Launch Appraisify</span>, and <span class="btn-name">Log out</span></li>
+        <span class="btn-name">Launch Appraisify</span> (opens Appraisify in a new tab, so AltomateHR stays open; if your
+        browser blocks the new tab, or AltomateHR is installed as a home-screen app, it opens in the same tab instead), and <span class="btn-name">Log out</span></li>
     </ol>
     
     <figure class="shot" data-place="Layout">
@@ -1356,8 +1357,10 @@
       <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
     </ul>
-    <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
-      bank setting is missing or an employee's bank isn't recognised. If your payroll bank is “Other”, no bank file
+    <p>Set the <strong>payment date</strong> before downloading. (For CIMB the box isn't shown — CIMB's template has no
+      payment date; you choose it in BizChannel when you upload.) The file is refused — with a message saying why — if a
+      bank setting is missing, an employee's bank isn't recognised, or someone paid by bank transfer has an account
+      number with no digits (such as “N/A”) — the message names them. If your payroll bank is “Other”, no bank file
       is produced.</p>
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
@@ -1367,7 +1370,9 @@
       payroll template, filled in with the name, bank, account number and amount of everyone paid by bank transfer.
       Staff with an IC and staff with a passport go in the same file, so there is no separate sheet for passport
       holders. Upload it under <strong>Bulk Payments</strong> in BizChannel@CIMB. The organisation code setting
-      isn't used for CIMB — only Maybank needs it.</p>
+      isn't used for CIMB — only Maybank needs it. CIMB's template takes an account number of at most 16 digits;
+      a longer one is never cut short, the file is refused and names the person so you can check their account
+      number.</p>
     <p>The bank file and <strong>Manual Payments</strong> together add up to the run's total net pay, so nobody is
       missed.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
@@ -1870,7 +1875,7 @@
       <div class="body"><p>The message beside the button says why: the run needs re-running, someone's net pay would be
         negative, a required field is missing or an EPF number isn't digits only (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
     <details class="qa"><summary>The bank file was refused.</summary>
-      <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
+      <div class="body"><p>Either a bank setting is missing in Payroll → Settings, someone's account number has no digits or (for CIMB) is longer than 16 digits, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>
     <details class="qa"><summary>The EPF file was refused: “KWSP will refuse this file”.</summary>
       <div class="body"><p>The message names each person whose EPF number isn't digits only. Open their record, fix the
