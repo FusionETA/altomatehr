@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 89ff90b
+// whats-new-covered-up-to: 42fea8e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -27,13 +27,13 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: in Leave → Types, choose who each leave type is for: Everyone, Female only or Male only. Maternity and Paternity come set to Female only and Male only, for every company.",
     ],
     improved: [
+      "Admins: in Payroll, Gross now takes off deductions the company keeps (Miscellaneous, Loan Repayment), as PayrollPanda does, for past months too. Statutory amounts and files don't change.",
       "Leave: you now only see and apply for types that are for you, and admins' balances follow the same rule. Anyone with no gender on their profile can still take either type.",
       "The Launch Appraisify button in your account menu now opens Appraisify in a new tab, so AltomateHR stays open. If your browser blocks the new tab, or you use AltomateHR from your home screen, it opens here as before.",
       "Admins: the CIMB bank file no longer asks for a payment date in Payroll → Run downloads, as BizChannel sets it when you upload.",
     ],
     fixed: [
-      "Admins: a bank file no longer goes out with a blank account number. If someone's account number has no digits, such as N/A, the file is refused and names them. This applies to approved months too.",
-      "Admins: the CIMB bank file no longer cuts a long account number short, which could send pay to the wrong account. It's refused and names the person to check instead.",
+      "Admins: a bank file is refused, naming the person, if an account number is blank, has no digits such as N/A, or for CIMB is too long. CIMB no longer cuts a long number short. Approved months too.",
       "Admins: when a company pays an extra EPF rate on top of the statutory one, employer EPF and cost to employer were RM 1–6 too high. Re-run draft payroll to apply the fix; approved months keep what was filed.",
       "Admins: saving a leave type in Leave → Types no longer turns off \"prorate first year\".",
     ],

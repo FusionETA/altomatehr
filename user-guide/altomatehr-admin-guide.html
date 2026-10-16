@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 89ff90b
+  user-guide-covered-up-to: 42fea8e
 -->
 <html lang="en">
 <head>
@@ -1329,6 +1329,19 @@
       company never pays that money out. Deductions passed on to someone else, such as CP38 and extra PCB to LHDN, or
       zakat, still count as cost. Months you imported from earlier payroll follow the same rule.</p>
 
+    <h3>Gross on the payroll screens</h3>
+    <p>The <strong>Gross</strong> column on <strong>Payroll runs</strong> (each person's row and the <strong>Total</strong>
+      row), the <strong>Gross</strong> in the runs list, the <em>Gross</em> figure on the Overview, and the Gross in the
+      Payroll Summary PDF and Excel all show pay <em>after</em> the deductions the company keeps — <em>Loan Repayment</em>
+      and <em>Miscellaneous / Other Deduction</em>. This is how PayrollPanda shows it, so the figures line up when you compare the two, and a row
+      adds up to net pay once the other deductions (EPF, SOCSO, EIS, PCB and so on) come off. For example, someone
+      with RM 5,000 of earnings and RM 200 of Miscellaneous / Other Deduction shows a Gross of RM 4,800. With no such
+      deduction, Gross is simply their total pay.</p>
+    <p>Two things stay on full pay. A person's <strong>payslip</strong> — the one they see, and the payslip panel you open
+      from their row — still shows total earnings, with the deduction listed under <strong>Deductions</strong>. And EPF,
+      SOCSO, EIS and PCB are still worked out on the full pay, so the Gross column can be lower than the figure those
+      contributions are based on.</p>
+
     <h3>The Payroll Overview</h3>
     <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
       the latest run's totals, and everything filed so far this year.</p>
@@ -1419,8 +1432,9 @@
         of Total Gross, under a heading that says <strong>NOT IN TOTAL GROSS</strong>: benefits in kind (marked
         "non-cash"), TP1 items such as tax reliefs, zakat, and additional PCB. EPF, SOCSO, EIS and the regular PCB stay on
         the Summary sheet.</p>
-      <p>Total Gross is not the same figure as Gross on the Summary sheet. The Summary sheet's Gross doesn't subtract
-        deductions taken from net pay, such as loans.</p>
+      <p>Total Gross can differ from Gross on the Summary sheet. The Summary sheet's Gross takes off only the
+        deductions the company keeps (loans and Miscellaneous / Other Deduction), not other deductions taken from net
+        pay, such as CP38.</p>
     </div>
     <h3>Allowance and Deduction reports (Excel)</h3>
     <p>The Reports group also has <strong>Allowance Report (Excel)</strong> and <strong>Deduction Report (Excel)</strong>.
