@@ -195,16 +195,41 @@ public class EpfCalculatorTests
 
     // ─── Voluntary contributions ────────────────────────────────────────
 
-    // On the band-table path, voluntary is a separate ceil on top of the gazetted
-    // mandatory amount — the Schedule has no concept of voluntary.
+    // On the band-table path, the employee's voluntary is a separate ceil on top
+    // of the gazetted mandatory amount — the Schedule has no concept of voluntary.
     [Fact]
-    public void BandTablePath_AddsVoluntaryAsASeparateCeiling()
+    public void BandTablePath_AddsEmployeeVoluntaryAsASeparateCeiling()
     {
         var result = EpfCalculator.Calculate(
             Profile(wage: 4100m, employeeVoluntary: 5m, employerVoluntary: 2m));
 
         Assert.Equal(451m + 205m, result.Employee);   // band 451 + ceil(5% × 4,100)
-        Assert.Equal(533m + 82m, result.Employer);    // band 533 + ceil(2% × 4,100)
+        Assert.Equal(615m, result.Employer);          // ceil(15% × 4,100)
+    }
+
+    // An employer paying above the statutory rate pays its whole rate on the
+    // actual wage, ceiled once — PayrollPanda's figures for the same payslips.
+    // Band + a separate ceil of the extra gave 682, 741, 1,529.
+    [Theory]
+    [InlineData(4537, 2, 681)]     // ceil(15% × 4,537) — band 591 + 91 was 682
+    [InlineData(5246, 2, 735)]     // ceil(14% × 5,246) — band 636 + 105 was 741
+    [InlineData(4300, 2, 645)]     // ceil(15% × 4,300) — unchanged
+    [InlineData(10150, 3, 1523)]   // ceil(15% × 10,150) — band 1,224 + 305 was 1,529
+    public void EmployerVoluntary_CeilsTheEmployersWholeRateOnce(int wage, int voluntary, int expected)
+    {
+        var result = EpfCalculator.Calculate(Profile(wage: wage, employerVoluntary: voluntary));
+
+        Assert.Equal(expected, result.Employer);
+    }
+
+    // A tiny extra rate must never take the employer under its statutory band.
+    [Fact]
+    public void EmployerVoluntary_NeverPaysLessThanTheBand()
+    {
+        // band (13% of 4,540) = 591; ceil(13.01% × 4,521) = 589.
+        var result = EpfCalculator.Calculate(Profile(wage: 4521m, employerVoluntary: 0.01m));
+
+        Assert.Equal(591m, result.Employer);
     }
 
     // Off table, KWSP rounds up ONCE PER SIDE. Ceiling mandatory and voluntary

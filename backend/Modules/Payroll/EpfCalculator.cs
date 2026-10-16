@@ -182,11 +182,20 @@ public static class EpfCalculator
             //   AR lift  → single ceil of (mandatory + voluntary) × total, with
             //              the mandatory rate still chosen by the regular wage,
             //              so a bonus can't tip a sub-RM-5,000 employee to 12%.
+            //   employer pays extra (no lift) → the employer's whole rate on
+            //              the actual wage, ceiled once — as PayrollPanda does.
+            //              Band + a separate ceil of the extra over-paid it by
+            //              RM 1–6: 13% + 2% on 4,537 gave 591 + 91 = 682 where
+            //              ceil(15% × 4,537) = 681; on 5,246 (12% + 2%) 636 +
+            //              105 = 741 where ceil(14% × 5,246) = 735. Never below
+            //              the band, so the statutory share is always met.
             var hasArLift = rateWage < totalWage;
 
             employer = hasArLift
                 ? Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate)
-                : band.Employer + Money.CeilRinggit(totalWage, employerVoluntaryRate);
+                : employerVoluntaryRate > 0m
+                    ? Math.Max(band.Employer, Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate))
+                    : band.Employer;
         }
         else
         {
