@@ -1217,6 +1217,30 @@ public class LeaveServiceTests
         Assert.Equal("2026-03-02", app.StartDate);
     }
 
+    // A leave type the org hasn't set up is reported once, with its row count,
+    // so the import screen can offer to add it — and every other row still lands.
+    [Fact]
+    public async Task Import_GroupsUnknownLeaveTypesForTheScreenToOffer()
+    {
+        var service = ImportService();
+
+        var result = await service.ImportHistoryAsync(
+            LeaveCsv(ImportHeader,
+                "ahmad@x.com,Hospitalisation Leave,2026-03-02,2026-03-02,1,APPROVED,",
+                "ahmad@x.com,AL,2026-03-04,2026-03-04,1,APPROVED,",
+                "ahmad@x.com,hospitalisation leave,2026-03-06,2026-03-06,1,APPROVED,",
+                "ahmad@x.com,Replacement Leave,2026-03-09,2026-03-09,1,APPROVED,",
+                "ahmad@x.com,,2026-03-10,2026-03-10,1,APPROVED,"),
+            TabularFormat.Csv,
+            "usr-admin");
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(4, result.Failed);
+        Assert.Collection(result.Missing,
+            m => { Assert.Equal("leaveType", m.Column); Assert.Equal("Hospitalisation Leave", m.Value); Assert.Equal(2, m.Rows); },
+            m => { Assert.Equal("Replacement Leave", m.Value); Assert.Equal(1, m.Rows); });
+    }
+
     // The source Days figure is trusted rather than recomputed: the org's
     // working-week today may not be the one in force back then.
     [Fact]
