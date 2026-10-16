@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: c89867e
+// whats-new-covered-up-to: ab4a73d
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -30,6 +30,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     fixed: [
       "Admins: a bank file no longer goes out with a blank account number. If someone's account number has no digits, such as N/A, the file is refused and names them. This applies to approved months too.",
       "Admins: the CIMB bank file no longer cuts a long account number short, which could send pay to the wrong account. It's refused and names the person to check instead.",
+      "Admins: when a company pays an extra EPF rate on top of the statutory one, employer EPF and cost to employer were RM 1–6 too high. Re-run draft payroll to apply the fix; approved months keep what was filed.",
     ],
   },
   {
