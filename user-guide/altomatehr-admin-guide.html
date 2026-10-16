@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: a6f14e4
+  user-guide-covered-up-to: f76a9c3
 -->
 <html lang="en">
 <head>
@@ -733,7 +733,8 @@
         pay is changing, then upload it. A new salary applies straight away, so the effective date can be today or
         earlier, not later. It's all or nothing: if any row has a problem, nothing is saved and the rows are listed.
         Each change goes into the person's salary history, and draft payroll runs are marked for
-        a re-run.</li>
+        a re-run. Archived people are refused, with one exception: someone who has left but whose final month is still
+        being paid can take a change that starts on or before their last day. A later start is refused.</li>
     </ul>
     
     <figure class="shot" data-place="Employees">
@@ -892,6 +893,16 @@
       Transfer and Duplicate buttons are hidden. Press <span class="btn-name">Cancel transfer</span> to change the company,
       policy or date, then schedule it again. If a transfer fails, the banner says why; it retries by itself, or you can
       cancel it.</p>
+    <div class="note warn"><span class="nt">Transferring in the middle of a month</span>
+      <p>Both companies pay the person for part of that month, so do the payroll in this order:</p>
+      <ol>
+        <li>At the <strong>old</strong> company, approve and file that month's payroll first.</li>
+        <li>At the <strong>new</strong> company, press <span class="btn-name">Re-run payroll</span> on that month's draft — it
+          adds the person (see <a href="#payroll">Running payroll</a>) and carries over the year-to-date from the old company —
+          then send it for approval and approve it.</li>
+      </ol>
+      <p>Approving the old company first means the new company's tax (PCB) starts from the right year-to-date figures.</p>
+    </div>
     <p>After the move, the person sees the old company as <em>Former · payslips only</em> in their company menu — they
       can still read their payslips there, nothing else (see the <a href="/employee#account">employee guide</a>).</p>
     <h3>Changing a salary</h3>
@@ -919,11 +930,25 @@
     <ul>
       <li><strong>Malaysian citizens</strong> — PR is off and tax resident is on, and both are locked: a citizen is always
         taxed as a resident.</li>
+      <li><strong>EPF number</strong> — on the Statutory tab, digits only: the member number on the employee's KWSP
+        statement, for example <em>21968561</em>. If the box holds anything else, such as a placeholder like
+        <em>XXXXXX</em> — even one saved before — it turns red and says <em>Digits only — the member number on their KWSP statement (e.g.
+        21968561).</em>, the bar at the bottom repeats it, and <span class="btn-name">Save changes</span> does nothing
+        until you fix it. KWSP refuses the whole contribution file over one number that isn't digits, so this is caught
+        here, and the <span class="btn-name">EPF Contribution CSV</span> download in a run's files is refused too, with a message
+        naming each person to fix. Correct them on their Statutory tab and download again — you don't need to re-run payroll. Leave the box empty for someone who doesn't contribute.</li>
       <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
         the Personal tab, since for most employees it's the same.</li>
       <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
         for each tax-exempt allowance or TP1 relief the previous employer already gave this year, with the amount. It
         uses up that item's yearly limit here.</li>
+      <li><strong>Previous employment (TP3) — the Year</strong> — as soon as you fill in any TP3 amount (remuneration,
+        EPF, PCB, deductions, zakat or an item above), the <strong>Year</strong> box must hold the year those figures
+        are for, for example <em>2026</em>. Without it the figures aren't used, so AltomateHR won't let you save: the
+        box turns red and says <em>Enter the year these TP3 figures are for — without it they aren't used.</em>, the
+        same message appears on the bar at the bottom, and <span class="btn-name">Save changes</span> does nothing
+        until you fix it. A year that isn't four digits says <em>Enter a 4-digit year, e.g. 2026.</em> The empty box
+        shows <em>e.g. 2026</em> in grey as an example; it isn't filled in until you type it.</li>
       <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
         or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
         them PCB goes back to the normal resident rates.</li>
@@ -1173,7 +1198,8 @@
         <p><span class="btn-name">Create draft</span> — in <strong>Start a payroll run</strong>, pick the month and year,
           and which policies and employees to include. Changing the month reloads the list, because who is payable
           depends on it: someone who left is still listed for their last month. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
-          owners and admins aren't.</p></li>
+          owners and admins aren't. The app remembers the policies you picked and anyone you unticked, so you don't have to
+          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>).</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
@@ -1193,10 +1219,23 @@
           <span class="btn-name">Re-run payroll</span>. Once the run is no longer a draft, a line records that it was used.</p></li>
       <li><h4>Re-run if anything changed</h4>
         <p>After an adjustment, just press <span class="btn-name">Re-run payroll</span>. Adjustments carry over; the
-          payslip lines are rebuilt from them.</p></li>
+          payslip lines are rebuilt from them.</p>
+        <p>The same button picks up newcomers. If someone was hired, or transferred into this company, after you created the
+          draft, <span class="btn-name">Re-run payroll</span> adds them to it — as long as they're on one of the policies
+          you picked when you created the draft and you hadn't unticked them. You don't need to delete the draft and start
+          again. It doesn't apply to a run imported from ABPay, to a draft with no policy choice recorded (including
+          drafts made before this was added), or to a month that was approved and then reverted to draft; those keep
+          the people they started with.</p></li>
       <li><h4>Send for approval</h4>
         <p><span class="btn-name">Send for approval</span>. The approver either presses
-          <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p></li>
+          <span class="btn-name">Approve and file</span>, or <span class="btn-name">Send back to draft</span> with a note.</p>
+        <p>To show the approver the figures first, use the <strong>Payroll summary for approval</strong> card on the run,
+          above the buttons. It's there while the run is a draft and while it's waiting for approval. Press
+          <span class="btn-name">Summary PDF</span> or <span class="btn-name">Excel</span> and send the file on. The PDF is
+          marked <strong>NOT APPROVED</strong> and carries a <strong>DRAFT</strong> or <strong>FOR APPROVAL</strong>
+          watermark on every page, and the file name ends in <em>_DRAFT</em> or <em>_FOR_APPROVAL</em>, so a copy sitting in
+          someone's inbox can't pass for the final one. The figures can still change if you re-run payroll. The statutory
+          files, bank file and payslips only appear after approval. A month you imported from earlier payroll has no summary to download.</p></li>
     </ol>
     <p><strong>Finding someone in the run.</strong> Above the <strong>Payslips</strong> list is a search box,
       <strong>Search name, employee ID, or job title</strong>. Type part of a name, an employee ID or a job title and the
@@ -1221,6 +1260,9 @@
         <li>Someone's net pay would be negative — their deductions are more than their pay. (RM 0.00 is allowed, for
           example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
         <li>A required employer or employee field is missing.</li>
+        <li>Someone in the run has an EPF number that isn't digits only. They're listed as <em>EPF number (digits only)</em>,
+          the same way a missing IC number is. Fix the number on their Statutory tab, then press
+          <span class="btn-name">Re-run payroll</span>.</li>
         <li>The previous month hasn't been filed yet — months are filed in order.</li>
       </ul>
     </div>
@@ -1258,6 +1300,23 @@
       <p class="shot-cap shot-cap-main">When a run needs re-running</p>
     </figure>
 
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-summary-approval.png" alt="A draft payroll run with the Payroll summary for approval card, marked DRAFT, with Summary PDF and Excel buttons above Delete draft, Re-run payroll and Send for approval" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Payroll summary for approval, on a draft run</p>
+    </figure>
+
+    <h3>Cost to employer</h3>
+    <p>The <strong>Cost to employer</strong> column on <strong>Payroll runs</strong> (and the <em>Cost</em> figure on the
+      Overview, and on each person's payslip detail) is what the company actually pays out for the month: gross pay plus
+      its own EPF, SOCSO, EIS and HRDF contributions. A deduction the company keeps — <em>Loan Repayment</em> and
+      <em>Miscellaneous / Other Deduction</em> — is taken off that cost as well as off the person's net pay, because the
+      company never pays that money out. Deductions passed on to someone else, such as CP38 and extra PCB to LHDN, or
+      zakat, still count as cost. Months you imported from earlier payroll follow the same rule.</p>
+
     <h3>The Payroll Overview</h3>
     <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
       the latest run's totals, and everything filed so far this year.</p>
@@ -1277,18 +1336,24 @@
         <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
-        <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB</td></tr>
+        <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB — the file is named with your employer number, the month and the year, for example <em>6051351020072026.txt</em></td></tr>
         <tr><td></td><td>TP1 / TP3 Claims List</td><td>Your records — everyone who claimed reliefs on Borang PCB/TP1 this month, or declared a previous employer on TP3</td></tr>
         <tr><td>Payslips</td><td>Bulk payslips (a ZIP of PDFs), or <span class="btn-name">Email all</span> to each employee</td><td>Employees</td></tr>
         <tr><td>Bank</td><td>The bulk payment file for your payroll bank</td><td>Your bank's portal</td></tr>
         <tr><td></td><td>Manual Payments (Excel)</td><td>Your finance team — pay these by hand</td></tr>
       </tbody>
     </table></div>
+    <div class="note warn"><span class="nt">Upload the PCB file under its own name</span>
+      <p>LHDN's e-PCB upload only accepts file names made of letters and digits. Upload the CP39 file exactly as
+        downloaded. If you download it twice, your browser may save the second copy as something like
+        <em>… (1).txt</em>, and LHDN refuses that name. Rename it (for example to <em>6051351020072026.txt</em>), or
+        use the first copy.</p>
+    </div>
     <h3>The bank file follows your bank</h3>
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
-      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (.txt)</li>
+      <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
     </ul>
     <p>Set the <strong>payment date</strong> before downloading. The file is refused — with a message saying why — if a
@@ -1297,6 +1362,14 @@
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
       <strong>Manual Payments</strong>.</p>
+    <h3>CIMB: one Excel file for everyone</h3>
+    <p>For CIMB the download is <span class="btn-name">BizChannel@CIMB Bulk Payroll (Excel)</span>: CIMB's own bulk
+      payroll template, filled in with the name, bank, account number and amount of everyone paid by bank transfer.
+      Staff with an IC and staff with a passport go in the same file, so there is no separate sheet for passport
+      holders. Upload it under <strong>Bulk Payments</strong> in BizChannel@CIMB. The organisation code setting
+      isn't used for CIMB — only Maybank needs it.</p>
+    <p>The bank file and <strong>Manual Payments</strong> together add up to the run's total net pay, so nobody is
+      missed.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>
@@ -1304,6 +1377,9 @@
     <p>The Payroll Summary row has two buttons, <span class="btn-name">PDF</span> and <span class="btn-name">Excel</span>.
       The PDF is the one-page summary of the run's totals. The Excel file has three sheets, so you can sort and filter.
       If you tick the row and press <span class="btn-name">Download selected</span>, you get both files.</p>
+    <p>You don't have to wait for approval to get this one: while a run is a draft or waiting for approval, the
+      <strong>Payroll summary for approval</strong> card gives the same summary, marked as not approved (see
+      <a href="#payroll">Running payroll</a>). Once the run is approved, the summary here is the final one.</p>
     <ul>
       <li><strong>Summary</strong> — one row per employee with the same figures as the PDF, and a totals row.</li>
       <li><strong>Totals</strong> — the closing block of the PDF: headcount, net pay, PCB, HRDF, EPF, SOCSO, EIS, zakat
@@ -1473,6 +1549,19 @@
       the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
       never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
       by name and check their figures.</p>
+    <p>The preview checks every row against your employee list before anything is imported:</p>
+    <ul>
+      <li>If the IC on a row belongs to a different employee than the name on it, the preview refuses the file and tells
+        you which row — fix the IC or the name. The same goes for two rows that match the same person: each person can
+        appear only once.</li>
+      <li>If a row's IC isn't on file for anyone, but the name matches, the row is matched by name and the preview warns
+        you to check the IC.</li>
+      <li>When the name in your sheet is spelt differently from the employee record, the row is shown as
+        <em>Sheet name → Matched name</em>, so you can see who it really landed on.</li>
+      <li>If importing would replace a month that was imported before, the warning also names anyone who has imported
+        figures in that month but no row for it in your file, and the months they would lose. Each month is replaced whole,
+        so add their rows (or fix a misspelt name) to keep them.</li>
+    </ul>
     <p>The file only has to hold the months you're adding. If January to August are already imported and you now
       import only September, the earlier months stay exactly as they are. The preview's warnings name only the months in
       your file: a month that was imported before <em>will be replaced</em>, and a month that already has payroll in
@@ -1779,10 +1868,14 @@
         approve”, add an approver to that person's team.</p></div></details>
     <details class="qa"><summary>Why can't I send the payroll run for approval?</summary>
       <div class="body"><p>The message beside the button says why: the run needs re-running, someone's net pay would be
-        negative, a required field is missing (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
+        negative, a required field is missing or an EPF number isn't digits only (<em>See what's missing</em>), or last month hasn't been filed.</p></div></details>
     <details class="qa"><summary>The bank file was refused.</summary>
       <div class="body"><p>Either a bank setting is missing in Payroll → Settings, or an employee's bank isn't one the
         app recognises — pick it from the dropdown in their record (or set their Bank / payout method to Other bank / e-wallet, Cash or Cheque to pay them by hand), then download again.</p></div></details>
+    <details class="qa"><summary>The EPF file was refused: “KWSP will refuse this file”.</summary>
+      <div class="body"><p>The message names each person whose EPF number isn't digits only. Open their record, fix the
+        EPF number on the Statutory tab (the member number on their KWSP statement) and save, then download the file
+        again. You don't need to re-run payroll.</p></div></details>
     <details class="qa"><summary>I can't press Generate PDF on a letter.</summary>
       <div class="body"><p>The letter still needs details. The line at the bottom of the dialog names each one — fill
         it in, or tick <em>Leave blank on this letter</em>. See <a href="#letters">HR letters</a>.</p></div></details>

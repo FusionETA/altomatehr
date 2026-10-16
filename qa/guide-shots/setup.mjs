@@ -58,6 +58,14 @@ const admin = tokens["admin@altomate.com"];
 const evan = tokens["employee@altomate.com"];
 const sara = tokens["supervisor@altomate.com"];
 
+// Demo Admin belongs to several companies on this machine and sign-in can land
+// on any of them: switch to the demo company before touching payroll.
+async function demoAdmin() {
+  const r = await call(admin, "POST", "/auth/switch-org/org-altomate");
+  if (r.status !== 200 || !r.data?.token) throw new Error(`switch to AltomateHR Demo Co: ${r.status}`);
+  return r.data.token;
+}
+
 // Malaysia "today" + n days, as yyyy-MM-dd.
 function mytDate(n = 0) {
   const d = new Date(Date.now() + 8 * 3600_000 + n * 86400_000);
@@ -159,6 +167,32 @@ const steps = {
       const paused = await call(admin, "POST", `/payroll/loans/${created.data.id}/pause`, { fromYear: 2026, fromMonth: 11 });
       console.log("pause:", paused.status, paused.data?.status ?? paused.data);
     }
+  },
+
+  // A January 2027 draft, worked out, for the "Payroll summary for approval"
+  // shot (2026 is already filed). Rerunnable: reuses the draft if there is one.
+  "payroll-draft": async () => {
+    const admin = await demoAdmin();
+    const runs = (await call(admin, "GET", "/payroll/runs")).data ?? [];
+    let run = runs.find((r) => r.periodYear === 2027 && r.periodMonth === 1);
+    if (!run) {
+      const c = await call(admin, "POST", "/payroll/runs", { periodYear: 2027, periodMonth: 1 });
+      console.log("create draft:", c.status, c.data?.id ?? JSON.stringify(c.data));
+      run = c.data;
+    }
+    if (!run?.id) process.exit(1);
+    const g = await call(admin, "POST", `/payroll/runs/${run.id}/generate`);
+    console.log("generate:", g.status, g.status === 200 ? "ok" : JSON.stringify(g.data));
+  },
+
+  // Put the demo back as it was: delete the January 2027 draft.
+  "payroll-draft-remove": async () => {
+    const admin = await demoAdmin();
+    const runs = (await call(admin, "GET", "/payroll/runs")).data ?? [];
+    const run = runs.find((r) => r.periodYear === 2027 && r.periodMonth === 1 && r.status === "DRAFT");
+    if (!run) { console.log("no January 2027 draft"); return; }
+    const d = await call(admin, "DELETE", `/payroll/runs/${run.id}`);
+    console.log("delete draft:", d.status);
   },
 
   // A small demo chart of accounts (existing codes are refused, so rerunnable).

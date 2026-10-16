@@ -10,7 +10,7 @@ public class PayrollDisbursementTests
     [Theory]
     [InlineData("Public Bank Berhad", PayrollFileFormat.PbEcpXlsx)]
     [InlineData("Malayan Banking Berhad", PayrollFileFormat.MbbM2eTxt)]
-    [InlineData("CIMB Bank Berhad", PayrollFileFormat.CimbBizChannelTxt)]
+    [InlineData("CIMB Bank Berhad", PayrollFileFormat.CimbBizChannelXlsx)]
     [InlineData("Hong Leong Bank Berhad", PayrollFileFormat.HlbConnect)]
     public void EachSupportedBankResolvesToItsOwnFormat(string bank, PayrollFileFormat expected) =>
         Assert.Equal(expected, PayrollDisbursement.FormatFor(bank));

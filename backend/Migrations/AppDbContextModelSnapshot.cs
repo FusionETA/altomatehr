@@ -2584,6 +2584,12 @@ namespace AltomateHR.Api.Migrations
                     b.Property<int>("PeriodYear")
                         .HasColumnType("int");
 
+                    b.Property<string>("ScopeExcludedProfileIdsJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ScopePolicyIdsJson")
+                        .HasColumnType("longtext");
+
                     b.Property<bool>("SkipProration")
                         .HasColumnType("tinyint(1)");
 

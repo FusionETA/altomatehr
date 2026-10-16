@@ -96,8 +96,9 @@
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
           also reverts every later <em>submitted</em> month in the same year.</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
-          SUBMITTED.</strong> The single payslip PDF is the one exception — it can be downloaded from a
-          draft too, as a watermarked preview.</li>
+          SUBMITTED.</strong> Two exceptions: the single payslip PDF and the
+          <a href="#doc-summary">run summary</a> (PDF or Excel) can be downloaded before approval, as
+          marked previews.</li>
         <li><strong>A run is unique per period.</strong> <code>POST /payroll/runs</code> for a month that
           already has a run answers <code>409</code> — open the existing run instead of retrying.</li>
         <li><strong>Two employee ids.</strong> Every id on this page is an
@@ -230,13 +231,22 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>periodYear</code></td><td>number</td><td>yes</td><td>2000–2100.</td></tr>
               <tr><td><code>periodMonth</code></td><td>number</td><td>yes</td><td>1–12.</td></tr>
               <tr><td><code>policyIds</code></td><td>string[] or null</td><td>no</td><td>Policy ids from the <a href="#picker">picker</a>. Null or omitted means every policy — the whole eligible roster.</td></tr>
-              <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy.</td></tr>
+              <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy. Remembered with <code>policyIds</code> — see the note below.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean</td><td>no</td><td>Default <code>false</code>. <code>true</code> means the pay figures are final (e.g. an import) and joiners and leavers are <strong>not</strong> prorated again. Can be changed later on a draft with <a href="#update">PATCH</a>.</td></tr>
             </tbody>
           </table>
         </div>
         <h3>Response <code>201</code></h3>
         <p>A <a href="#run-object">run object</a>, with <code>Location</code> pointing at <code>GET /payroll/runs/{id}</code>.</p>
+        <div class="callout">
+          <strong>The chosen roster is remembered.</strong> When the request sends at least one
+          <code>policyIds</code> entry and resolves to at least one employee, the run stores the
+          <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
+          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
+          payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
+          only exclusions), one that resolved to nobody, and one created before this was recorded store
+          nothing: their roster stays exactly as frozen.
+        </div>
         <h3>Errors</h3>
         <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs \
@@ -319,7 +329,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>totalHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalWagesSubjectToHrdf</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Sum of the payslips' <code>totalCostToEmployer</code> — see the payslip row below for what that excludes.</td></tr>
             <tr><td><code>generatedAt</code></td><td>string or null</td><td>ISO 8601. Null until <a href="#generate">generate</a> has run.</td></tr>
             <tr><td><code>submittedForApprovalAt</code> / <code>submittedForApprovalById</code></td><td>string or null</td><td>Who proposed the month, and when.</td></tr>
             <tr><td><code>submittedAt</code> / <code>submittedById</code></td><td>string or null</td><td>Who approved it, and when — a different person from the above by design.</td></tr>
@@ -359,7 +369,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
             <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
             <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
-            <tr><td><code>grossPay</code> / <code>netPay</code> / <code>totalCostToEmployer</code></td><td>number</td><td></td></tr>
+            <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
             <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
@@ -387,6 +398,18 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           "Run payroll": build every payslip on the run from the employees' current profiles. Safe to call
           repeatedly on a draft — each call <strong>discards</strong> the previous payslips and line items
           and rebuilds from scratch, folding in whatever adjustments and claims are on the run.
+        </p>
+        <p>
+          <strong>The roster can grow on a re-run.</strong> If the draft was created with
+          <code>policyIds</code> (<a href="#create"><code>POST /payroll/runs</code></a> remembered them and
+          <code>excludedEmployeeProfileIds</code>) and has never been approved, generating again
+          adds anyone who has become payable on those policies since the draft was created &mdash; for
+          example an employee transferred into a chosen policy, or a new hire &mdash; and
+          <code>memberEmployeeProfileIds</code> in the response then includes them. This holds whatever
+          <code>skipProration</code> is set to. Employees listed in <code>excludedEmployeeProfileIds</code>
+          are never added, and nobody is ever removed from the roster by this. A run created without
+          <code>policyIds</code> (e.g. from an explicit list, as an import does), a month reverted to draft
+          after approval, and a run created before the roster was remembered keep their roster exactly as it was.
         </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
@@ -430,11 +453,11 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>orgIssues</code></td><td>string[]</td><td>Missing Company Info fields, e.g. <code>"Employer LHDN E-number"</code>.</td></tr>
               <tr><td><code>employeeIssues[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>employeeIssues[].employeeCode</code></td><td>string</td><td></td></tr>
-              <tr><td><code>employeeIssues[].missing</code></td><td>string[]</td><td><code>"Employee number"</code>, <code>"IC number"</code> or <code>"Passport number"</code>.</td></tr>
+              <tr><td><code>employeeIssues[].missing</code></td><td>string[]</td><td><code>"Employee number"</code>, <code>"IC number"</code>, <code>"Passport number"</code> or <code>"EPF number (digits only)"</code> (the stored EPF number is not all digits, e.g. a placeholder like <code>"XXXXXX"</code>, on someone with an EPF contribution in this run; a blank one is not listed).</td></tr>
             </tbody>
           </table>
         </div>
-        <p>The income tax number is deliberately not checked here — PCB computes without one.</p>
+        <p>The income tax number is deliberately not checked here — PCB computes without one. Neither is a <em>blank</em> EPF number; only a filled-in one that isn't digits is, because KWSP refuses a whole upload over a single non-numeric number. Fix it with <code>PUT /employees/{id}/profile</code>, then <a href="#generate">regenerate</a> the draft.</p>
         <h3>Errors</h3>
         <p><code>404</code> — no such run.</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/readiness \
@@ -1026,10 +1049,16 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>EPF contribution CSV for KWSP i-Akaun Majikan bulk upload. Rows with no EPF number, or nothing to remit, are omitted.</p>
+        <div class="callout warn">
+          <strong>A non-numeric EPF number blocks the file.</strong> KWSP rejects the whole upload over one EPF number that is not digits only (a placeholder such as <code>XXXXXX</code>), so the download refuses instead of producing a file KWSP will bounce. Only people who would be in the file count (an EPF number on file and a non-zero EPF contribution). Correct the number on the employee's record, then download again; no need to re-run payroll.
+        </div>
         <h3>Response <code>200</code></h3>
         <p><code>Content-Type: text/csv</code>, filename <code>{ddMMyyyy}-EPF_iAkaun-{yyyy}_{mm}.csv</code> (date = today, UTC) — e.g. <code>01102026-EPF_iAkaun-2026_01.csv</code>.</p>
         <h3>Errors</h3>
-        <p><code>404</code> — no such run (empty body).</p>
+        <ul>
+          <li><code>404</code> — no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — someone in the file has an EPF number that is not digits only. The message names each employee and the number on file, e.g. <code>"KWSP will refuse this file: these EPF numbers aren't digits only — Jane Tan (\"XXXXXX\"). Correct each on the employee's Statutory tab (the member number on their KWSP statement), then download again. No need to re-run payroll."</code></li>
+        </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/epf \
   -H "Authorization: Bearer wp_live_xxx" -o epf.csv</code></pre>
       </section>
@@ -1075,7 +1104,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         </div>
         <p>LHDN's CP39 PCB/MTD batch submission TXT, fixed-width.</p>
         <h3>Response <code>200</code></h3>
-        <p><code>Content-Type: text/plain</code>, filename <code>{10-digit employer no}{mm}_{yyyy}.txt</code>.</p>
+        <p><code>Content-Type: text/plain</code>, filename <code>{10-digit employer no}{mm}{yyyy}.txt</code> &mdash; letters and digits only, because the e-PCB upload refuses any other character.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
@@ -1098,9 +1127,9 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          One employee's payslip PDF. The one document a <strong>draft</strong> may also produce — as a
-          watermarked preview, so figures can be checked before approval. Everything else in this section
-          still waits for <code>SUBMITTED</code>.
+          One employee's payslip PDF. A <strong>draft</strong> may also produce it — as a
+          watermarked preview, so figures can be checked before approval. Apart from this and the
+          <a href="#doc-summary">run summary</a>, everything else in this section still waits for <code>SUBMITTED</code>.
         </p>
         <h3>Response <code>200</code></h3>
         <p>
@@ -1142,6 +1171,15 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. A PDF by default, or an Excel workbook with the same figures.</p>
+        <div class="callout warn">
+          <strong>Available before approval.</strong> This is the one run report that is not held back until
+          <code>SUBMITTED</code>: once payslips have been generated, a <code>DRAFT</code> or
+          <code>PENDING_APPROVAL</code> run can produce it, so it can be sent to whoever signs off. Such a copy is
+          marked as not approved &mdash; the PDF carries a <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark
+          on every page plus a &ldquo;NOT APPROVED&rdquo; banner, and the file name ends in <code>_DRAFT</code> or
+          <code>_FOR_APPROVAL</code> &mdash; because re-running payroll can change every figure. The documents
+          bundle and every other document and file on this page still require approval.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1153,8 +1191,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         </div>
         <h3>Response <code>200</code></h3>
         <ul>
-          <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>).</li>
-          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code>, with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures.</li>
+          <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>). While the run is not yet approved: <code>Payroll_Summary_{Month}_{Year}_DRAFT.pdf</code> (<code>DRAFT</code>) or <code>Payroll_Summary_{Month}_{Year}_FOR_APPROVAL.pdf</code> (<code>PENDING_APPROVAL</code>).</li>
+          <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code> (with the same <code>_DRAFT</code> / <code>_FOR_APPROVAL</code> suffix before an approval), with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures. (The <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner are PDF-only; the Excel copy shows the run's status in its header block and carries the file-name suffix.)</li>
         </ul>
         <h3 id="doc-summary-breakdown">The <code>Breakdown</code> sheet (xlsx)</h3>
         <p>
@@ -1205,7 +1243,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <ul>
           <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> — any other <code>format</code>.</li>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported, or no payslips.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run imported from a previous system, or no payslips yet (<code>"Run payroll before downloading the summary — there are no payslips on this run."</code>). A run that is not approved is <em>not</em> refused.</li>
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary \
   -H "Authorization: Bearer wp_live_xxx" -o summary.pdf
@@ -1320,23 +1358,27 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The bank disbursement file, in the layout of the company's own payroll bank (set in Payroll Settings → Company Info). It lists only employees paid by <code>BANK_TRANSFER</code> with a bank account number and net pay above 0. Employees on <code>OTHER_TRANSFER</code> (other bank / e-wallet), <code>CASH</code> or <code>CHEQUE</code> are left out, so an overseas bank or e-wallet name never blocks the file; they are on <a href="#doc-manual-payments">manual-payments</a>.</p>
+        <div class="callout">
+          <strong>CIMB is an Excel file.</strong> For a CIMB company this is CIMB's own BizChannel@CIMB bulk-payroll Excel template, and it carries every bank-transfer payee, NRIC and passport holders alike (the <code>Beneficiary ID</code> column is left blank). <code>paymentDate</code> is not used for CIMB: the value date is set in BizChannel when you upload.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the value date. Defaults to the last day of the payroll period.</td></tr>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the value date. Defaults to the last day of the payroll period. Ignored for CIMB.</td></tr>
               <tr><td><code>recipientReference</code></td><td>string, optional</td><td>Hong Leong only; every other bank ignores it.</td></tr>
               <tr><td><code>channel</code></td><td>string, optional</td><td>Hong Leong only: <code>"ConnectFirst"</code> or <code>"ConnectBiz"</code> — the two upload portals take different files, so this is required for an HLB org.</td></tr>
             </tbody>
           </table>
         </div>
         <h3>Response <code>200</code></h3>
-        <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank/CIMB TXT, or Hong Leong's two formats).</p>
+        <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank's TXT, CIMB's Excel template, or Hong Leong's two formats).</p>
+        <p>For CIMB, <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Bulk_Payroll_{MM}{YYYY}.xlsx</code> (e.g. <code>CIMB_Bulk_Payroll_012026.xlsx</code>). One sheet, <code>EPF</code> (CIMB's template name): row 1 is the template's field rules, row 2 the headers (<code>*Beneficiary Name</code>, <code>Beneficiary ID</code>, <code>*BNM Code</code>, <code>*Account Number</code>, <code>*Payment Amount</code>, <code>Reference Number</code>), and one payee per row from row 3. <code>Beneficiary ID</code> is blank; <code>*BNM Code</code> is CIMB's dropdown label (e.g. <code>35-CIMB Bank Berhad</code>); the account number is text; the amount is a number to 2 decimals. Names and reference have <code>-</code> and <code>/</code> replaced by spaces and are cut to CIMB's lengths (40 and 30).</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), one whose <code>bankAccountNumber</code> has no digits at all, e.g. <code>"N/A"</code> (named too), for CIMB an account number longer than 16 digits (named &mdash; never cut to fit), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
         </ul>
 <pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
@@ -1429,7 +1471,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file.</td></tr>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file (CIMB ignores it).</td></tr>
             </tbody>
           </table>
         </div>

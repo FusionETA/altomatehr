@@ -179,7 +179,23 @@ public class PayrollRunService : IPayrollRunService
         var members = await ResolveScopeAsync(
             dto.PolicyIds, dto.ExcludedEmployeeProfileIds, dto.PeriodYear, dto.PeriodMonth);
         if (members.Count > 0)
+        {
             await _runMembers.ReplaceForRunAsync(run.Id, members);
+
+            // Remember the choice itself — but only for a draft made with the
+            // policy picker (which always sends policies), so a re-run can add
+            // people who become payable on those policies later (see
+            // GenerateAsync). A run made from an explicit list — ABPay's,
+            // which sends only exclusions — never grows: its roster is the
+            // timesheet. Decided here, from how the run was made, not from a
+            // setting that can be changed afterwards.
+            if (dto.PolicyIds is { Count: > 0 })
+            {
+                run.ScopePolicyIdsJson = JsonSerializer.Serialize(dto.PolicyIds);
+                run.ScopeExcludedProfileIdsJson = JsonSerializer.Serialize(dto.ExcludedEmployeeProfileIds ?? []);
+                await _runs.UpdateAsync(run);
+            }
+        }
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunCreate,
@@ -344,6 +360,27 @@ public class PayrollRunService : IPayrollRunService
         var memberIds = (await _runMembers.GetForRunAsync(run.Id))
             .Select(m => m.EmployeeProfileId)
             .ToHashSet(StringComparer.Ordinal);
+
+        // Someone who became payable on the chosen policies after the draft
+        // was made — transferred in, or newly hired — joins the roster on the
+        // re-run. Without this a transfer marked the draft stale but "Re-run
+        // payroll" still left the newcomer out. Only for drafts made with the
+        // policy picker that have never been approved (see CreateAsync and
+        // RevertOne), and never anyone the admin unticked.
+        if (memberIds.Count > 0 && run.ScopePolicyIdsJson is not null)
+        {
+            var policyIds = JsonSerializer.Deserialize<List<string>>(run.ScopePolicyIdsJson) ?? [];
+            var excluded = JsonSerializer.Deserialize<List<string>>(run.ScopeExcludedProfileIdsJson ?? "[]") ?? [];
+            var newcomers = (await ResolveScopeAsync(policyIds, excluded, run.PeriodYear, run.PeriodMonth))
+                .Where(id => !memberIds.Contains(id))
+                .ToList();
+            if (newcomers.Count > 0)
+            {
+                memberIds.UnionWith(newcomers);
+                await _runMembers.ReplaceForRunAsync(run.Id, memberIds);
+            }
+        }
+
         if (memberIds.Count > 0)
             profiles = profiles.Where(p => memberIds.Contains(p.Id)).ToList();
 
@@ -768,6 +805,12 @@ public class PayrollRunService : IPayrollRunService
     // change does not make payslips any more or less current than they were.
     private static void RevertOne(PayrollRun run)
     {
+        // A month that was approved keeps the people it was approved with: a
+        // re-run after a revert must not add someone who only moved onto one
+        // of its policies later (the policy lookup is today's, not the
+        // month's). So it stops growing for good.
+        run.ScopePolicyIdsJson = null;
+        run.ScopeExcludedProfileIdsJson = null;
         run.Status = PayrollRunStatus.DRAFT;
         run.SubmittedAt = null;
         run.SubmittedById = null;

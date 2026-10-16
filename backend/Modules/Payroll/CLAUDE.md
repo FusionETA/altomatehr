@@ -178,9 +178,10 @@ does the loading.
   it, so next month's formula must not see it). `PcbCp39Txt` files
   `Pcb + VoluntaryPcb`; CP38 keeps its own column. Run totals and the annual
   EA/CP8D figures use `Pcb` alone, as the previous system did.
-- **The PCB (CP39) file is named as LHDN's spec names it** (Exhibit 4,
-  `{10-digit employer no}{mm}_{yyyy}.txt`), not v1's `PCB_MMYYYY.txt` —
-  certification is checked against the spec. Everything else below holds.
+- **The PCB (CP39) file is named `{10-digit employer no}{mm}{yyyy}.txt`** —
+  Exhibit 4's order, but without its underscore: the e-PCB upload refuses a
+  name that isn't letters and digits. Not v1's `PCB_MMYYYY.txt`. Everything
+  else below holds.
 - **Names and bytes match the previous system.** File names, run-document
   names (`Payroll_Summary_January_2026.pdf`, `Payslips_2026_01_All.zip`,
   `{id}_{name}_{MM-YYYY}.pdf`) and the edge-case field rules (untrimmed EPF

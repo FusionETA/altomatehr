@@ -322,7 +322,20 @@ public class EmployeeImportService : IEmployeeImportService
                     continue;
                 }
 
-                if (cells.TouchesProfile) await _profiles.SaveAsync(member.Id, profile);
+                if (cells.TouchesProfile)
+                {
+                    // A refusal from the profile rules is this row's problem,
+                    // not the whole import's — report it and carry on.
+                    try
+                    {
+                        await _profiles.SaveAsync(member.Id, profile);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        errors.Add(new TabularImportError(rowNumber, ex.Message));
+                        continue;
+                    }
+                }
                 if (nationalityWarning is not null) warnings.Add(nationalityWarning);
                 updated++;
                 continue;
@@ -379,7 +392,19 @@ public class EmployeeImportService : IEmployeeImportService
             if (adding.TouchesProfile && await _profiles.GetAsync(create.Employee.Id) is { } fresh)
             {
                 ApplyProfile(new RowReader(map, row, erase: false), fresh);
-                await _profiles.SaveAsync(create.Employee.Id, fresh);
+                // The row's cells were checked above, so a refusal here is a
+                // rule only the profile service knows. Reported on the row, as
+                // for an existing person — never a crash that loses the
+                // accounts (and first passwords) already made in this file.
+                try
+                {
+                    await _profiles.SaveAsync(create.Employee.Id, fresh);
+                }
+                catch (ArgumentException ex)
+                {
+                    errors.Add(new TabularImportError(rowNumber,
+                        $"The account was created, but its payroll details weren't saved: {ex.Message}"));
+                }
             }
 
             created++;
@@ -486,7 +511,7 @@ public class EmployeeImportService : IEmployeeImportService
         c.Amount("monthlySalary", "Monthly Salary", v => p.MonthlySalary = v);
         c.Amount("hourlyRate", "Hourly Rate", v => p.HourlyRate = v);
 
-        c.Text("epfNumber", 40, v => p.EpfNumber = v);
+        c.EpfNumber(p.EpfNumber, v => p.EpfNumber = v);
         // 0 is how "use the statutory rate" is stored, so erasing means that.
         c.Percent("epfEmployeeRate", "EPF Employee Rate %", v => p.EpfEmployeeRate = v);
         c.Flag("contributeToEpf", "Contribute to EPF", true, v => p.ContributeToEpf = v);
@@ -608,6 +633,23 @@ public class EmployeeImportService : IEmployeeImportService
         }
 
         // ---- The keep/erase-aware setters ----
+
+        // An EPF number that's being CHANGED must be digits (KWSP refuses the
+        // whole month's file over a placeholder like "XXXXXX"). Reported as a
+        // row problem, so the row fails before anything — account, membership
+        // or profile — is written. An unchanged stored value isn't re-checked,
+        // as on the profile screen.
+        public void EpfNumber(string? current, Action<string?> set)
+        {
+            if (!Read("epfNumber", out var raw)) return;
+            if (raw.Length > 0 && raw != (current ?? "").Trim()
+                && Payroll.EpfNumberRule.Problem(raw) is { } problem)
+            {
+                Problem("epfNumber", $"\"{raw}\" in {Label("epfNumber")}: {problem}");
+                return;
+            }
+            Text("epfNumber", 40, set);
+        }
 
         public void Text(string key, int max, Action<string?> set)
         {

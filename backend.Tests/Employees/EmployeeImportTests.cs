@@ -162,6 +162,38 @@ public class EmployeeImportTests
         Assert.Equal("CIMB", saved.Dto.BankName);
     }
 
+    // A placeholder EPF number fails the row BEFORE an account exists — never
+    // a crash that loses the accounts already made in the same file.
+    [Fact]
+    public async Task ANewPersonWithAPlaceholderEpfNumber_IsRefusedBeforeTheAccountIsMade()
+    {
+        var h = Make();
+
+        var result = await h.Service.ImportAsync(
+            Csv(NewRow("chan@example.com", extra: [("epfNumber", "XXXXXX")]),
+                NewRow("lim@example.com", number: "EMP-101")),
+            TabularFormat.Csv);
+
+        Assert.Equal("lim@example.com", Assert.Single(h.Employees.Created).Email);
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("digits only", error.Message);
+    }
+
+    // For someone already here, nothing on the row is written — not even the
+    // membership half.
+    [Fact]
+    public async Task AnExistingPersonsRowWithAPlaceholderEpfNumber_ChangesNothing()
+    {
+        var h = Make(Member("usr-1", "aisyah@example.com"));
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("aisyah@example.com", jobTitle: "Safety Officer", extra: [("epfNumber", "XXXXXX")])),
+            TabularFormat.Csv);
+
+        Assert.Empty(h.Employees.Updated);
+        Assert.Contains("digits only", Assert.Single(result.Errors).Message);
+    }
+
     [Fact]
     public async Task AWorkPermitInTheSheet_IsSavedToTheProfile()
     {

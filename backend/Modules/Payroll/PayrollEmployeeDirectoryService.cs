@@ -99,6 +99,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
             JoinDate = profile.JoinDate,
             LeaveDate = profile.LeaveDate,
             IsArchived = profile.IsArchived,
+            LastPayableDay = PayrollRunService.LastPayableDay(profile),
 
             // The period-dependent reasons (joined after, left before) are
             // deliberately not here — this list belongs to no month. Only the
@@ -110,7 +111,9 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
                     : null,
 
             Missing = PayrollRunReadiness.EmployeeGaps(
-                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr),
+                membership?.EmployeeNumber, profile.IdNumber, isLocalOrPr,
+                // Only someone who contributes ends up in KWSP's file.
+                profile.ContributeToEpf ? profile.EpfNumber : null),
 
             ProfileIncompleteSections = PayrollProfileReadiness.IncompleteSections(profile),
         };

@@ -421,7 +421,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td><code>prevEmploymentYear</code></td><td>number | null</td><td></td></tr>
+              <tr><td><code>prevEmploymentYear</code></td><td>number | null</td><td>The year the figures below are for (4-digit, 2000&ndash;2100). <strong>Required whenever any of them is set</strong> &mdash; see the note under this table.</td></tr>
               <tr><td><code>prevRemuneration</code></td><td>number | null</td><td>Money.</td></tr>
               <tr><td><code>prevEpf</code></td><td>number | null</td><td>Money.</td></tr>
               <tr><td><code>prevAllowableDeductions</code></td><td>number | null</td><td>Money.</td></tr>
@@ -432,19 +432,35 @@
             </tbody>
           </table>
         </div>
+        <div class="callout warn">
+          <strong>Set the year with the figures.</strong> TP3 figures only count towards a payroll run
+          in the same year, so a save that carries any of them but a <code>null</code>
+          <code>prevEmploymentYear</code> is refused with <code>400</code> rather than stored and
+          silently ignored. A year outside 2000&ndash;2100 is also refused. Zero amounts don't count as figures.
+          The check applies only when a save <em>changes</em> the year or any TP3 figure: re-sending a
+          stored profile unchanged (to update, say, a phone number) is accepted even if it was saved
+          before this rule without a year.
+        </div>
         <h4>EPF</h4>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
             <tbody>
               <tr><td><code>contributeToEpf</code></td><td>boolean</td><td>Default <code>true</code>. Can't be blank on import.</td></tr>
-              <tr><td><code>epfNumber</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>epfNumber</code></td><td>string | null</td><td>The KWSP member number, <strong>digits only</strong> (e.g. <code>"21968561"</code>); blank is allowed. A placeholder such as <code>"XXXXXX"</code> is refused with <code>400</code>, because KWSP rejects a whole upload over one non-numeric number. Length is not checked. Only checked when the value <em>changes</em> &mdash; see the callout below.</td></tr>
               <tr><td><code>epfEmployeeRate</code></td><td>number</td><td>A percentage; <code>0</code> = use the statutory rate.</td></tr>
               <tr><td><code>epfEmployeeVoluntary</code></td><td>number</td><td>A percentage, on top of the statutory rate.</td></tr>
               <tr><td><code>epfEmployerVoluntary</code></td><td>number</td><td>A percentage, on top of the statutory rate.</td></tr>
               <tr><td><code>epfMemberBefore1998</code></td><td>boolean</td><td>Default <code>false</code>. Keeps a non-resident, non-PR member on the standard EPF rate instead of Part F.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="callout warn">
+          <strong>Only a changed EPF number is checked.</strong> Re-sending the stored
+          <code>epfNumber</code> unchanged is accepted even if it isn't digits (so you can update, say, a
+          phone number on a record that already holds a bad one). The bad number is instead caught when a
+          payroll run is submitted &mdash; see <code>GET /payroll/runs/{id}/readiness</code>
+          (<code>"EPF number (digits only)"</code>).
         </div>
         <h4>SOCSO / EIS / SKBBK</h4>
         <div class="table-wrap">
@@ -567,6 +583,9 @@
             <tbody>
               <tr><td><code>400</code></td><td>A field failed validation, e.g. <code>workPermitNumber</code> longer than 40 characters</td><td><code>{ "errors": { "WorkPermitNumber": ["…"] } }</code></td></tr>
               <tr><td><code>400</code></td><td><code>salaryChangeEffectiveDate</code> is in the future (and it's not a correction)</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Previous-employment (TP3) figures are set but <code>prevEmploymentYear</code> is <code>null</code>. "Set" means a non-zero <code>prevRemuneration</code>, <code>prevEpf</code>, <code>prevPcb</code>, <code>prevAllowableDeductions</code> or <code>prevZakat</code>, or at least one item in <code>prevByCategoryJson</code></td><td><code>{ "error": "Previous employment (TP3): enter the year these figures are for. Without it they aren't used." }</code></td></tr>
+              <tr><td><code>400</code></td><td><code>prevEmploymentYear</code> is set but outside 2000&ndash;2100 (checked even when no figures are sent, whenever the TP3 fields change)</td><td><code>{ "error": "Previous employment (TP3): the year must be a 4-digit year, e.g. 2026." }</code></td></tr>
+              <tr><td><code>400</code></td><td><code>epfNumber</code> is being changed to something that isn't digits only (blank is fine; an unchanged stored value isn't re-checked)</td><td><code>{ "error": "EPF number must be digits only — the member number on their KWSP statement (e.g. 21968561)." }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>
@@ -910,7 +929,7 @@
               <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code> only when <code>errors</code> is empty.</td></tr>
               <tr><td><code>created</code></td><td>number</td><td>Rows that added a new person.</td></tr>
               <tr><td><code>updated</code></td><td>number</td><td>Rows that updated an existing person.</td></tr>
-              <tr><td><code>errors</code></td><td>array of <code>{ row, message }</code></td><td><code>row</code> is the 1-based row number as seen in the sheet (header is row 1). That row was NOT applied.</td></tr>
+              <tr><td><code>errors</code></td><td>array of <code>{ row, message }</code></td><td><code>row</code> is the 1-based row number as seen in the sheet (header is row 1). That row was NOT applied. Profile rules apply per row, e.g. an <code>EPF No</code> that is being changed to a non-digit value is listed here (for a new person, before the account is created) with <code>"… in EPF No: EPF number must be digits only — …"</code>.</td></tr>
               <tr><td><code>warnings</code></td><td>array of <code>{ row, message }</code></td><td>Applied, but worth a look — e.g. an unrecognised nationality kept as typed, or payroll columns ignored.</td></tr>
               <tr><td><code>createdAccounts</code></td><td>array of <code>{ email, name, password }</code></td><td>The brand-new login accounts this import created, with the password each was given. Returned <strong>once</strong> — store it now, it is not recoverable afterwards. Absent for an existing person and for an email that already had an account in another company.</td></tr>
             </tbody>

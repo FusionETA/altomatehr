@@ -737,6 +737,219 @@ public class YtdImportServiceTests : IDisposable
         Assert.Contains("matched an employee", result.Errors[0]);
     }
 
+    // An imported month follows the same cost rule as a computed one: the
+    // Net Salary Deduction column (kept by the company) is not a cost.
+    [Fact]
+    public async Task AnImportedNetSalaryDeduction_ComesOffCostToEmployer()
+    {
+        var header = Header + ",Net Salary Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,175"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+        var payslip = await _db.Payslips.SingleAsync();
+        Assert.Equal(5000m + 650m + 86.65m + 9.90m - 175m, payslip.TotalCostToEmployer);
+    }
+
+    // A deduction that cuts the taxable wage (an advance recovered) lowers the
+    // year-to-date the next month's PCB starts from — otherwise it is taxed
+    // again all year. (Imported from PayrollPanda: Arrears 3,883.87 with a
+    // RM 3,500 Advance Deduction.)
+    [Fact]
+    public async Task AnImportedAdvanceDeduction_ComesOffYearToDateTaxablePay()
+    {
+        var header = Header + ",Advance Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0,3500"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(5000m - 3500m, ytd.Taxable);
+    }
+
+    // The deduction comes off only as far as that month's regular PCB base
+    // went: base 2,500 with a 4,000 advance taxed 0 regular pay (the 10,000
+    // bonus is additional remuneration, taxed on its own), so Y gains 10,000
+    // — not 8,500.
+    [Fact]
+    public async Task AWageReducingDeduction_ComesOffOnlyAsFarAsTheMonthsRegularBase()
+    {
+        var header = Header + ",Advance Deduction";
+        var file = Encoding.UTF8.GetBytes(string.Join("\n",
+            header, "Aisyah Binti Rahman,,,,,,,,,,,,,,,,,",
+            "1,,2500,0,0,0,0,0,0,0,0,0,0,10000,0,0,0,4000"));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(2500m + 10000m - 2500m, ytd.Taxable);
+    }
+
+    // A calculated month with a wage-reducing deduction counts what its own
+    // PCB worksheet counted — e.g. a commission marked "treat as recurring"
+    // (taxed in the regular base, invisible on the line item) that the
+    // deduction also offset: 5,000 + 2,000 − 8,000 floors at 0.
+    [Fact]
+    public async Task AMonthWithAWorksheet_CountsWhatItsPcbCounted()
+    {
+        await _service.ImportAsync(2026, Sheet("Aisyah Binti Rahman", null, 1), TabularFormat.Csv);
+        var payslip = await _db.Payslips.SingleAsync();
+        payslip.PcbCalculationJson = "{\"normalTaxable\":0,\"additionalTaxable\":0}";
+        _db.PayslipLineItems.AddRange(
+            new PayslipLineItem
+            {
+                PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+                Kind = PayslipLineKind.ALLOWANCE, Category = PayrollAdjustmentCategories.WagesCommission,
+                Label = "Commission", Amount = 2000m, SubjectToPcb = true,
+            },
+            new PayslipLineItem
+            {
+                PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+                Kind = PayslipLineKind.DEDUCTION, Category = PayrollAdjustmentCategories.DeductAdvance,
+                Label = "Advance", Amount = 8000m, SubjectToPcb = true,
+            });
+        await _db.SaveChangesAsync();
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(0m, ytd.Taxable);
+    }
+
+    // Months imported in the previous system and migrated carry unpaid leave
+    // as an uncategorised "Unpaid leave" deduction; it still comes off Y.
+    [Fact]
+    public async Task AMigratedUnpaidLeaveLine_ComesOffYearToDateTaxablePay()
+    {
+        await _service.ImportAsync(2026, Sheet("Aisyah Binti Rahman", null, 1), TabularFormat.Csv);
+        var payslip = await _db.Payslips.SingleAsync();
+        _db.PayslipLineItems.Add(new PayslipLineItem
+        {
+            PayslipId = payslip.Id, OrganizationId = payslip.OrganizationId,
+            Kind = PayslipLineKind.DEDUCTION, Category = null, Label = "Unpaid leave",
+            Amount = 500m, SubjectToPcb = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var ytd = (await new PayslipRepository(_db).GetYtdByEmployeeAsync(2026, null))["emp-1"];
+        Assert.Equal(5000m - 500m, ytd.Taxable);
+    }
+
+    // ─── Matching: an IC and a name that disagree ────────────────────────
+
+    private void AddBeth()
+    {
+        _db.Users.Add(new User { Id = "usr-2", Email = "beth@x.com", Name = "Beth Lim" });
+        _db.EmployeeProfiles.Add(new EmployeeProfile
+        {
+            Id = "emp-2", OrganizationId = "org-1", UserId = "usr-2", IdNumber = "880202-14-1234",
+        });
+        _db.SaveChanges();
+    }
+
+    private static byte[] Sheets(params (string Name, string? Ic, int[] Months)[] blocks)
+    {
+        var lines = new List<string> { Header };
+        foreach (var (name, ic, months) in blocks)
+        {
+            lines.Add($"{name},{ic},,,,,,,,,,,,,,,");
+            foreach (var m in months) lines.Add($"{m},,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,0,0,0,0,0");
+        }
+        return Encoding.UTF8.GetBytes(string.Join("\n", lines));
+    }
+
+    // Aisyah's row typed with Beth's IC: importing by IC would give Aisyah's
+    // year to Beth. Refused, naming the row and whose IC it is.
+    [Fact]
+    public async Task AnIcThatIsSomeoneElses_IsRefused()
+    {
+        AddBeth();
+        var file = Sheets(("Aisyah Binti Rahman", "880202141234", [1]));
+
+        var preview = await _service.PreviewAsync(2026, file, TabularFormat.Csv);
+        Assert.False(preview.Ok);
+        Assert.Contains("belongs to Beth Lim", Assert.Single(preview.Errors));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+        Assert.False(result.Ok);
+        Assert.Empty(_db.Payslips);
+    }
+
+    // Two rows landing on one person used to crash the save (two payslips in
+    // one month); now it's a clear error and nothing is written.
+    [Fact]
+    public async Task TwoRowsForOnePerson_AreRefused()
+    {
+        var file = Sheets(("Aisyah Binti Rahman", "900101145567", [1]), ("AISYAH BT RAHMAN", "900101145567", [1]));
+
+        var result = await _service.ImportAsync(2026, file, TabularFormat.Csv);
+
+        Assert.False(result.Ok);
+        Assert.Contains("each person can appear once", Assert.Single(result.Errors));
+        Assert.Empty(_db.Payslips);
+    }
+
+    // An IC that's on nobody's file, with the right name: imported by name,
+    // but the preview says so.
+    [Fact]
+    public async Task AnIcOnNobodysFile_IsMatchedByName_WithAWarning()
+    {
+        var file = Sheets(("Aisyah Binti Rahman", "111111111111", [1]));
+
+        var preview = await _service.PreviewAsync(2026, file, TabularFormat.Csv);
+
+        Assert.True(preview.Ok);
+        Assert.Contains(preview.Warnings, w => w.Contains("isn't on file") && w.Contains("Aisyah"));
+        Assert.Equal(1, (await _service.ImportAsync(2026, file, TabularFormat.Csv)).PayslipsImported);
+    }
+
+    // Matched by IC under another spelling: the preview shows who it landed on.
+    [Fact]
+    public async Task ThePreviewShowsWhoAMisspeltRowMatched()
+    {
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisya Rahman", "900101145567", [1])), TabularFormat.Csv);
+
+        Assert.Equal("Aisya Rahman → Aisyah Binti Rahman", Assert.Single(preview.Employees).EmployeeName);
+    }
+
+    // Re-importing a month rewrites it whole: someone imported before but not
+    // matched now would lose those months. The preview names them.
+    [Fact]
+    public async Task ThePreviewWarnsWhoseImportedHistoryAReimportRemoves()
+    {
+        AddBeth();
+        await _service.ImportAsync(2026,
+            Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [1, 2])), TabularFormat.Csv);
+
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Bet Lin", null, [1, 2])), TabularFormat.Csv);
+
+        Assert.Contains(preview.Warnings, w => w.Contains("Beth Lim (January 2026, February 2026)"));
+    }
+
+    // Matched for some months isn't enough: a month the file replaces but
+    // has no row for that person in still loses their payslip.
+    [Fact]
+    public async Task ThePreviewWarnsAboutAMonthLeftOutForSomeoneStillInTheFile()
+    {
+        AddBeth();
+        await _service.ImportAsync(2026,
+            Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [1, 2])), TabularFormat.Csv);
+
+        var preview = await _service.PreviewAsync(
+            2026, Sheets(("Aisyah Binti Rahman", null, [1, 2]), ("Beth Lim", null, [2])), TabularFormat.Csv);
+
+        var warning = Assert.Single(preview.Warnings, w => w.Contains("removes imported months"));
+        Assert.Contains("Beth Lim (January 2026)", warning);
+        Assert.DoesNotContain("Aisyah", warning);
+    }
+
     // ─── Not overwriting real payroll ───────────────────────────────────
 
     // Replacing a COMPUTED run with typed figures would destroy the payslips

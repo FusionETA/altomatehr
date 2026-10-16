@@ -45,6 +45,12 @@ public sealed record PayrollAdjustmentCategoryMeta
     // twice for one absence.
     public bool ReducesGross { get; init; }
 
+    // A deduction the company keeps (a loan or debt recovered from pay), so it
+    // comes off cost to employer as well as net pay — the company never paid
+    // that money out. Deductions passed on to someone else (CP38 and extra PCB
+    // to LHDN, zakat to the zakat centre) are still part of the cost.
+    public bool RetainedByEmployer { get; init; }
+
     // A stated ringgit amount, not a monthly entitlement, so the join/leave
     // proration factor must not touch it. A mid-month joiner's RM 1,000 bonus
     // is RM 1,000, not RM 516; their RM 300 TP1 claim is still RM 300; unpaid
@@ -624,6 +630,7 @@ public static class PayrollAdjustmentCategories
                 Code = DeductLoanRepayment,
                 Label = "Loan Repayment",
                 Kind = PayslipLineKind.DEDUCTION,
+                RetainedByEmployer = true,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 SkipProration = true,
@@ -634,6 +641,7 @@ public static class PayrollAdjustmentCategories
                 Code = DeductMiscellaneous,
                 Label = "Miscellaneous / Other Deduction",
                 Kind = PayslipLineKind.DEDUCTION,
+                RetainedByEmployer = true,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
                 SkipProration = true,

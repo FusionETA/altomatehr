@@ -409,6 +409,24 @@ const admin = {
     await shoot(page, "admin", "payroll-downloads");
     await page.keyboard.press("Escape");
   },
+  // A draft run (node setup.mjs payroll-draft): the "Payroll summary for approval" card.
+  "payroll-summary-approval": async (page) => {
+    // Demo Admin belongs to several companies on this machine; sign-in can
+    // land on any of them, so move to the demo company first.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "January 2027");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    await settle(page);
+    await scrollTo(page, "Payroll summary for approval", 120);
+    await shoot(page, "admin", "payroll-summary-approval");
+  },
   // A run's Payslips list narrowed by the search box; the Total row stays the whole run's.
   "payroll-payslips-search": async (page) => {
     await go(page, "payroll");

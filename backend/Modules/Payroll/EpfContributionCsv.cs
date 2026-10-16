@@ -31,6 +31,26 @@ public static class EpfContributionCsv
     // the previous system's pattern); the content never depends on it.
     public static StatutoryFileResult Render(StatutoryRunPayload payload, DateOnly generatedOn)
     {
+        // KWSP's i-Akaun upload refuses the WHOLE file over one non-numeric
+        // EPF number ("EPF number format is invalid") — a placeholder like
+        // "XXXXXX". A month approved before that was checked can still hold
+        // one, so the download names them instead of handing over a file KWSP
+        // will bounce. Only people who'd be IN the file count.
+        var invalid = payload.Rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.EpfNumber)
+                        && (r.Payslip.EpfEmployee != 0m || r.Payslip.EpfEmployer != 0m)
+                        && EpfNumberRule.Problem(r.EpfNumber) is not null)
+            .Select(r => $"{r.EmployeeName} (\"{r.EpfNumber!.Trim()}\")")
+            .ToList();
+        if (invalid.Count > 0)
+        {
+            return StatutoryFileResult.Refused(
+                "KWSP will refuse this file: these EPF numbers aren't digits only — "
+                + string.Join("; ", invalid)
+                + ". Correct each on the employee's Statutory tab (the member number on their KWSP "
+                + "statement), then download again. No need to re-run payroll.");
+        }
+
         var sb = new StringBuilder();
         sb.Append(string.Join(',', Header)).Append(StatutoryFileFields.LineEnding);
 

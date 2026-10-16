@@ -123,6 +123,18 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
                     + "applies straight away, so upload it on or after that date");
             }
 
+            // Archived staff are refused — except a leaver whose final month is
+            // still being paid: a change starting on or before their last day
+            // sets the pay for those last days (ABPay posts a mid-month
+            // transferee's part-month Basic to the old company this way).
+            if (who.Profile.IsArchived)
+            {
+                if (who.Profile.LeaveDate is not { } lastDay)
+                    problems.Add("archived");
+                else if (effective > lastDay.Date)
+                    problems.Add($"archived — their last day was {lastDay:d MMM yyyy}, so a new salary can't start after it");
+            }
+
             var reason = SalaryChangeReason.RAISE;
             var reasonCell = map.Cell(row, SalaryAdjustmentImportSheet.ReasonKey);
             if (!TabularCell.IsBlank(reasonCell))
@@ -267,11 +279,6 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
 
         var who = byNo ?? byMail;
         if (who is null) error = "Give an Employee No or an Email.";
-        else if (who.Profile.IsArchived)
-        {
-            error = $"{who.Name} is archived.";
-            return null;
-        }
         return who;
     }
 

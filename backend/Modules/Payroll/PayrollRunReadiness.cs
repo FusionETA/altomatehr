@@ -31,7 +31,11 @@ public static class PayrollRunReadiness
 
         foreach (var row in payload.Rows)
         {
-            var missing = EmployeeGaps(row.EmployeeCode, row.IdNumber, row.IsLocalOrPr);
+            // The EPF number only matters to someone whose row goes in KWSP's
+            // file — the file leaves out anyone with no contribution.
+            var filedForEpf = row.Payslip.EpfEmployee + row.Payslip.EpfEmployer > 0m;
+            var missing = EmployeeGaps(
+                row.EmployeeCode, row.IdNumber, row.IsLocalOrPr, filedForEpf ? row.EpfNumber : null);
 
             if (missing.Count > 0)
             {
@@ -49,7 +53,7 @@ public static class PayrollRunReadiness
     // able to fix a missing IC in January rather than discover it when
     // March's submission is refused. Two copies of this rule would drift.
     public static IReadOnlyList<string> EmployeeGaps(
-        string? employeeCode, string? idNumber, bool isLocalOrPr)
+        string? employeeCode, string? idNumber, bool isLocalOrPr, string? epfNumber = null)
     {
         var missing = new List<string>();
 
@@ -67,6 +71,12 @@ public static class PayrollRunReadiness
         {
             missing.Add("Passport number");
         }
+
+        // KWSP refuses the whole upload over one non-numeric EPF number
+        // (a placeholder like "XXXXXX"), so it's caught here, while the run
+        // is still a draft. A BLANK one isn't — that's the profile's
+        // readiness (and someone who doesn't contribute has none).
+        if (EpfNumberRule.Problem(epfNumber) is not null) missing.Add("EPF number (digits only)");
 
         // The income tax number is deliberately NOT required here. PCB
         // computes without one, and a new joiner whose TIN has not been

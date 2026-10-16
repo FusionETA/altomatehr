@@ -147,7 +147,7 @@ public class YtdImportService : IYtdImportService
             return new YtdImportPreview(false, parsed.Errors, parsed.UnrecognisedColumns, [], []);
         }
 
-        var (matched, unmatched) = await MatchAsync(parsed.Employees);
+        var (matched, unmatched, matchErrors, matchWarnings) = await MatchAsync(parsed.Employees);
 
         // Only the months this file would write. Import leaves every other
         // month alone, so warning about the whole year told an admin adding
@@ -156,7 +156,10 @@ public class YtdImportService : IYtdImportService
         var existing = (await ExistingImportableMonthsAsync(year)).Where(inFile.Contains).ToList();
 
         var rows = matched.Select(m => new YtdImportPreviewRow(
-            m.Parsed.EmployeeName,
+            // Who the row really landed on, when the sheet spells it differently.
+            Normalise(m.Parsed.EmployeeName) == Normalise(m.ProfileName)
+                ? m.Parsed.EmployeeName
+                : $"{m.Parsed.EmployeeName} → {m.ProfileName}",
             m.Profile.Id,
             [.. m.Parsed.Months.Select(mo => mo.Month).Order()],
             m.Parsed.Months.Sum(mo => mo.Gross),
@@ -164,6 +167,7 @@ public class YtdImportService : IYtdImportService
 
         var warnings = new List<string>(parsed.UnrecognisedColumns.Select(
             c => $"Column '{c}' was not recognised and will be ignored."));
+        warnings.AddRange(matchWarnings);
 
         // Months that already have a COMPUTED run are the dangerous case:
         // importing over one would replace payroll this system produced with
@@ -181,7 +185,21 @@ public class YtdImportService : IYtdImportService
             warnings.Add(
                 "These months were previously imported and will be replaced: "
                 + string.Join(", ", existing.Select(m => PayrollPeriodLabel.For(year, m))) + ".");
+
+            // Replacing a month rewrites it whole, so anyone already imported
+            // there but not matched in this file loses those months — often
+            // just a row that no longer matches (a misspelt name).
+            var lost = await LosesHistoryAsync(year, existing, matched);
+            if (lost.Count > 0)
+            {
+                warnings.Add(
+                    "Importing this file removes imported months for: " + string.Join("; ", lost)
+                    + " — this file has no row for them in those months. Add them (or fix their row) to keep it.");
+            }
         }
+
+        if (matchErrors.Count > 0)
+            return new YtdImportPreview(false, matchErrors, warnings, rows, unmatched);
 
         return new YtdImportPreview(true, [], warnings, rows, unmatched);
     }
@@ -191,7 +209,8 @@ public class YtdImportService : IYtdImportService
         var parsed = YtdImportParser.Parse(content, format);
         if (!parsed.Ok) return YtdImportResult.Failed(parsed.Errors);
 
-        var (matched, unmatched) = await MatchAsync(parsed.Employees);
+        var (matched, unmatched, matchErrors, _) = await MatchAsync(parsed.Employees);
+        if (matchErrors.Count > 0) return YtdImportResult.Failed(matchErrors);
         if (matched.Count == 0)
         {
             return YtdImportResult.Failed([
@@ -333,12 +352,18 @@ public class YtdImportService : IYtdImportService
     // ─── Matching ───────────────────────────────────────────────────────
 
     private sealed record MatchedEmployee(
-        YtdImportParser.YtdEmployeeRows Parsed, EmployeeProfile Profile, string Name, string? EmployeeNumber);
+        YtdImportParser.YtdEmployeeRows Parsed, EmployeeProfile Profile, string Name, string? EmployeeNumber,
+        string ProfileName);
+
+    // Matched rows, the names that matched nobody, problems that stop the
+    // import (each names the row and what to fix), and things worth checking.
+    private sealed record MatchOutcome(
+        List<MatchedEmployee> Matched, List<string> Unmatched, List<string> Errors, List<string> Warnings);
 
     // By IC first, then by name. The IC is the reliable key — two people can
     // share a name, and a spreadsheet from another system will not carry our
     // ids. A name that matches more than one employee is NOT guessed at.
-    private async Task<(List<MatchedEmployee> Matched, List<string> Unmatched)> MatchAsync(
+    private async Task<MatchOutcome> MatchAsync(
         IReadOnlyList<YtdImportParser.YtdEmployeeRows> parsed)
     {
         var (profiles, users) = await RosterAsync();
@@ -366,29 +391,54 @@ public class YtdImportService : IYtdImportService
 
         var matched = new List<MatchedEmployee>();
         var unmatched = new List<string>();
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        string NameOf(EmployeeProfile p) => users.GetValueOrDefault(p.UserId)?.Name ?? "another employee";
 
         foreach (var row in parsed)
         {
-            EmployeeProfile? profile = null;
+            var hasIc = !string.IsNullOrWhiteSpace(row.PersonalId);
+            EmployeeProfile? byIcProfile = null;
+            if (hasIc) byIc.TryGetValue(Digits(row.PersonalId!), out byIcProfile);
+            var byNameProfile = byName.GetValueOrDefault(Normalise(row.EmployeeName));
 
-            if (!string.IsNullOrWhiteSpace(row.PersonalId))
+            // The IC is one person's and the name is exactly someone else's: a
+            // typo in one of them. Neither is guessed — importing by IC would
+            // give this row's year to the wrong person.
+            if (byIcProfile is not null && byNameProfile is not null && byIcProfile.Id != byNameProfile.Id)
             {
-                byIc.TryGetValue(Digits(row.PersonalId), out profile);
+                errors.Add($"{row.EmployeeName}: the IC {row.PersonalId!.Trim()} belongs to "
+                    + $"{NameOf(byIcProfile)} — fix the IC or the name.");
+                continue;
             }
 
-            profile ??= byName.GetValueOrDefault(Normalise(row.EmployeeName));
-
+            var profile = byIcProfile ?? byNameProfile;
             if (profile is null)
             {
                 unmatched.Add(row.EmployeeName);
                 continue;
             }
 
+            // Matched by name although an IC was given: the IC is probably a typo.
+            if (hasIc && byIcProfile is null)
+            {
+                warnings.Add($"{row.EmployeeName}: the IC in the sheet ({row.PersonalId!.Trim()}) isn't "
+                    + "on file, so the row was matched by name — check the IC.");
+            }
+
             matched.Add(new MatchedEmployee(
-                row, profile, row.EmployeeName, numbers.GetValueOrDefault(profile.UserId)));
+                row, profile, row.EmployeeName, numbers.GetValueOrDefault(profile.UserId), NameOf(profile)));
         }
 
-        return (matched, unmatched);
+        // Two rows for one person would write two payslips into one month.
+        foreach (var dup in matched.GroupBy(m => m.Profile.Id).Where(g => g.Count() > 1).ToList())
+        {
+            errors.Add($"{string.Join(" and ", dup.Select(d => d.Name))} all match {dup.First().ProfileName} "
+                + "— each person can appear once. Check their IC and name.");
+            matched.RemoveAll(m => m.Profile.Id == dup.Key);
+        }
+
+        return new MatchOutcome(matched, unmatched, errors, warnings);
     }
 
     private async Task<(List<EmployeeProfile> Profiles, Dictionary<string, Auth.Entities.User> Users)>
@@ -409,6 +459,32 @@ public class YtdImportService : IYtdImportService
             .Where(r => r.PeriodYear == year && r.Source == PayrollRunSource.COMPUTED)
             .Select(r => r.PeriodMonth)
             .Order()];
+
+    // Each replaced month is rewritten whole, so per month: anyone with an
+    // imported payslip in it who has no row for THAT month in this file
+    // loses it — "Bala (January 2026)". Matched elsewhere in the file isn't
+    // enough.
+    private async Task<List<string>> LosesHistoryAsync(
+        int year, IReadOnlyList<int> months, IReadOnlyList<MatchedEmployee> matched)
+    {
+        var lost = new SortedDictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var month in months)
+        {
+            var run = await _runs.GetByPeriodAsync(year, month);
+            if (run is null) continue;
+            var keep = matched
+                .Where(m => m.Parsed.Months.Any(mo => mo.Month == month))
+                .Select(m => m.Profile.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var p in await _payslips.GetForRunAsync(run.Id))
+            {
+                if (keep.Contains(p.EmployeeProfileId)) continue;
+                if (!lost.TryGetValue(p.SnapshotName, out var list)) lost[p.SnapshotName] = list = [];
+                list.Add(month);
+            }
+        }
+        return [.. lost.Select(kv => $"{kv.Key} ({string.Join(", ", kv.Value.Order().Select(m => PayrollPeriodLabel.For(year, m)))})")];
+    }
 
     private async Task<List<int>> ExistingImportableMonthsAsync(int year) =>
         [.. (await _runs.GetAllAsync())
@@ -543,8 +619,13 @@ public class YtdImportService : IYtdImportService
             Zakat = amounts.Zakat,
             Hrdf = amounts.Hrdf,
 
+            // Same rule as a computed payslip: a deduction the company keeps
+            // (Net Salary Deduction / loan repayment) is not a cost.
             TotalCostToEmployer = amounts.Gross + amounts.EpfEmployer
-                + amounts.SocsoEmployer + amounts.EisEmployer + amounts.Hrdf,
+                + amounts.SocsoEmployer + amounts.EisEmployer + amounts.Hrdf
+                - amounts.CategoryAmounts
+                    .Where(kv => kv.Value > 0m && PayrollAdjustmentCategories.Find(kv.Key) is { RetainedByEmployer: true })
+                    .Sum(kv => kv.Value),
 
             // No breakdown: the PCB was decided by whatever system produced
             // it, and inventing a worksheet would claim a derivation this

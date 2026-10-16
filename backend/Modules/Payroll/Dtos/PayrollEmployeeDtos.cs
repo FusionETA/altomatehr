@@ -48,6 +48,12 @@ public class PayrollEmployeeRowDto
     public DateTime? LeaveDate { get; set; }
     public bool IsArchived { get; set; }
 
+    // The last day payroll pays them: their leave date, or — archived with
+    // none — the day they were archived. Null while they're still employed.
+    // The same rule run generation uses (PayrollRunService.LastPayableDay),
+    // so an integration can tell who a month's run will include.
+    public DateTime? LastPayableDay { get; set; }
+
     // Why this person would be left out of a run: no salary on file, or an
     // archive that happened before the period. Null when they are payable.
     public string? NotPayableReason { get; set; }

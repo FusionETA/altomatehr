@@ -86,6 +86,16 @@ public static class PayrollSummaryPdf
 
                 page.Content().Element(c => Body(c, model));
                 page.Footer().Element(c => Footer(c, model));
+
+                // Before approval the figures can still change: marked across
+                // every page, not only in a banner, so a printed or forwarded
+                // copy can't pass for the approved summary. Behind the content,
+                // so it never covers a figure.
+                if (Unapproved(model) is { } mark)
+                {
+                    page.Background().AlignCenter().AlignMiddle().Rotate(-25)
+                        .Text(mark).FontSize(120).Bold().FontColor("#e2e8f0");
+                }
             }))
             .WithMetadata(new DocumentMetadata
             {
@@ -145,6 +155,15 @@ public static class PayrollSummaryPdf
         {
             col.Item().Text(model.OrganizationName).FontSize(13).Bold();
             col.Item().PaddingTop(2).Text($"Payroll {model.PeriodLabel}").FontSize(9.5f).FontColor(Muted);
+
+            if (Unapproved(model) is not null)
+            {
+                col.Item().PaddingTop(6).Background("#fef3c7").Border(1).BorderColor("#f59e0b")
+                    .PaddingHorizontal(8).PaddingVertical(5)
+                    .Text($"NOT APPROVED · {model.StatusLabel}. For review and sign-off only — "
+                        + "re-running payroll can change every figure below.")
+                    .FontSize(9).SemiBold().FontColor("#92400e");
+            }
 
             // Column-group bands over the employee and employer contributions.
             col.Item().PaddingTop(12).Row(row =>
@@ -221,6 +240,14 @@ public static class PayrollSummaryPdf
             }
         });
     }
+
+    // The watermark on a summary cut before approval; null once approved.
+    private static string? Unapproved(PayrollDocumentModel model) => model.Run.Status switch
+    {
+        PayrollRunStatus.DRAFT => "DRAFT",
+        PayrollRunStatus.PENDING_APPROVAL => "FOR APPROVAL",
+        _ => null,
+    };
 
     private static void Footer(IContainer container, PayrollDocumentModel model) =>
         container.PaddingTop(4).Row(row =>

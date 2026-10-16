@@ -191,6 +191,7 @@ public class PayslipRepository : IPayslipRepository
                 p.EisEmployee,
                 p.Pcb,
                 p.Zakat,
+                p.PcbCalculationJson,
             })
             .ToListAsync();
 
@@ -209,11 +210,17 @@ public class PayslipRepository : IPayslipRepository
                 li.Amount,
                 li.PcbTaxableAmount,
                 li.SubjectToPcb,
+                li.Label,
             })
             .ToListAsync();
 
         var totals = new Dictionary<string, PayrollYtdTotals>(StringComparer.Ordinal);
         var taxableAllowances = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        // Per PAYSLIP, so each month's subtraction can be capped at what that
+        // month's own PCB base actually held (see below).
+        var reducingByPayslip = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var taxableAllowancesByPayslip = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var regularAllowancesByPayslip = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var byCategory = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
         var tp1 = new Dictionary<string, decimal>(StringComparer.Ordinal);
 
@@ -228,6 +235,30 @@ public class PayslipRepository : IPayslipRepository
             {
                 taxableAllowances[employeeId] =
                     Get(taxableAllowances, employeeId) + (li.PcbTaxableAmount ?? li.Amount);
+                taxableAllowancesByPayslip[li.PayslipId] =
+                    Get(taxableAllowancesByPayslip, li.PayslipId) + (li.PcbTaxableAmount ?? li.Amount);
+
+                // The regular (not additional-remuneration) part of the month's
+                // PCB base: a bonus or arrears is taxed separately and never
+                // offsets a deduction.
+                if (PayrollAdjustmentCategories.Find(li.Category) is not { IsAdditionalRemuneration: true })
+                {
+                    regularAllowancesByPayslip[li.PayslipId] =
+                        Get(regularAllowancesByPayslip, li.PayslipId) + (li.PcbTaxableAmount ?? li.Amount);
+                }
+            }
+
+            // A deduction that cuts the taxable wage itself — an advance
+            // recovered, unpaid leave, a salary correction — lowered that
+            // month's PCB base, so it has to come off the year-to-date too.
+            // Otherwise every later month taxes it again (an imported RM 3,500
+            // advance left Y RM 3,500 too high for the rest of the year).
+            else if (li.Kind == PayslipLineKind.DEDUCTION
+                     && ((li.SubjectToPcb && PayrollAdjustmentCategories.Find(li.Category) is { ReducesBase: true })
+                         || IsLegacyImportedUnpaidLeave(li.Category, li.Label)))
+            {
+                reducingByPayslip[li.PayslipId] =
+                    Get(reducingByPayslip, li.PayslipId) + (li.PcbTaxableAmount ?? li.Amount);
             }
 
             // Both allowances and TP1 deductions are totalled by category — the
@@ -262,8 +293,26 @@ public class PayslipRepository : IPayslipRepository
 
             totals[employeeId] = new PayrollYtdTotals
             {
-                Taxable = group.Sum(p => p.ProratedPay + p.OtPay)
-                          + Get(taxableAllowances, employeeId),
+                // Never below zero: a month's PCB base never was.
+                Taxable = Math.Max(0m, group.Sum(p =>
+                {
+                    var reducing = Get(reducingByPayslip, p.Id);
+                    var gross = p.ProratedPay + p.OtPay + Get(taxableAllowancesByPayslip, p.Id);
+                    if (reducing <= 0m) return gross;
+
+                    // A month with a wage-reducing deduction: exactly what its
+                    // PCB counted, from its own worksheet, when it has one (a
+                    // calculated month) — that also covers a bonus the admin
+                    // marked "treat as recurring", taxed in the regular base,
+                    // which the line items alone can't tell apart.
+                    if (CountedByPcb(p.PcbCalculationJson) is { } counted) return counted;
+
+                    // Otherwise (an imported month): the deduction comes off only
+                    // as far as the month's regular base held — its PCB wage
+                    // stopped at zero, so a larger deduction never took more.
+                    return gross - Math.Min(reducing,
+                        Math.Max(0m, p.ProratedPay + Get(regularAllowancesByPayslip, p.Id)));
+                })),
                 Epf = group.Sum(p => p.EpfEmployee),
                 Pcb = group.Sum(p => p.Pcb),
                 Zakat = group.Sum(p => p.Zakat),
@@ -277,6 +326,40 @@ public class PayslipRepository : IPayslipRepository
 
         return totals;
     }
+
+    // NormalTaxable + AdditionalTaxable from a payslip's PCB worksheet: the
+    // regular wage and the additional remuneration (with overtime) the month's
+    // PCB was worked out on. Null when there's no worksheet.
+    private static decimal? CountedByPcb(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            decimal? Read(string name)
+            {
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                    if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase)
+                        && prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        return prop.Value.GetDecimal();
+                return null;
+            }
+            return Read("normalTaxable") is { } normal && Read("additionalTaxable") is { } additional
+                ? normal + additional
+                : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    // History imported in the previous system and migrated: its YTD importer
+    // wrote unpaid leave as an uncategorised DEDUCTION labelled "Unpaid leave"
+    // (and flagged not-PCB), though it had come off that month's gross. Read
+    // as the unpaid-leave deduction it is.
+    private static bool IsLegacyImportedUnpaidLeave(string? category, string? label) =>
+        category is null && string.Equals(label?.Trim(), "Unpaid leave", StringComparison.OrdinalIgnoreCase);
 
     private static decimal Get(IDictionary<string, decimal> map, string key) =>
         map.TryGetValue(key, out var value) ? value : 0m;

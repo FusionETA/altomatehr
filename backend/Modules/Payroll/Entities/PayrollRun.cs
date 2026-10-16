@@ -37,6 +37,15 @@ public class PayrollRun : ITenantScoped
     // DRAFT-only to change; it is regenerated with the run.
     public bool SkipProration { get; set; }
 
+    // ---- The roster the admin chose (see PayrollRunMember) ----
+    // The policies picked and the people unticked when the draft was created,
+    // as JSON arrays. Kept so "Re-run payroll" can add someone who became
+    // payable on those policies AFTER the draft was made — a transfer in, a
+    // new joiner — instead of silently leaving them out. Null on runs made
+    // before this was recorded: their roster stays exactly as frozen.
+    public string? ScopePolicyIdsJson { get; set; }
+    public string? ScopeExcludedProfileIdsJson { get; set; }
+
     // ---- Totals across the run's payslips ----
 
     public int EmployeeCount { get; set; }
