@@ -135,6 +135,12 @@ review exactly what moved before accepting it. Only list files changed in that t
 - Frontend: `cd frontend && npm run build`.
 - Run both: `dotnet run --launch-profile http` (:5001) + `npm run dev` (:5173).
 
+## Before pushing
+
+Always run `/pre-push` before `git push` (tests, secret scan, docs, customer knowledge). Pushes are blocked
+until it has passed for the current commit. Commit first, then `/pre-push`, then push in a separate command.
+The checklist and the push guard come from the `fusioneta-dev` plugin (FusionETA/claude-team-kit).
+
 ## Don't
 
 - Don't let a controller call a repository or hold business logic.
