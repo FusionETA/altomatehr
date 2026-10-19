@@ -80,6 +80,7 @@ const DECISION_LABELS: Record<string, string> = {
   WITHDRAWN: "Withdrawn by applicant",
   ADMIN_APPLIED: "Applied by admin",
   ADMIN_CANCELLED: "Cancelled by admin",
+  ADMIN_EDITED: "Changed by admin",
   CANCELLATION_REQUESTED: "Cancellation requested",
   CANCELLATION_APPROVED: "Cancellation approved",
   CANCELLATION_AUTO_APPROVED: "Cancelled (no approver above)",

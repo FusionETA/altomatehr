@@ -180,7 +180,7 @@ export type LeaveSummaryReport = {
 export type LeaveApprovalEntry = {
   step: number;
   approverId: string;
-  // APPROVED | AUTO_APPROVED | REJECTED | WITHDRAWN | ADMIN_APPLIED | ADMIN_CANCELLED | IMPORTED
+  // APPROVED | AUTO_APPROVED | REJECTED | WITHDRAWN | ADMIN_APPLIED | ADMIN_CANCELLED | ADMIN_EDITED | IMPORTED
   // | CANCELLATION_REQUESTED | CANCELLATION_APPROVED | CANCELLATION_AUTO_APPROVED
   // | CANCELLATION_REJECTED | CANCELLATION_WITHDRAWN
   decision: string;
@@ -329,6 +329,10 @@ export const seedLeaveEntitlements = (employeeId: string, year?: number) =>
 // --- Admin: apply on behalf (lands APPROVED immediately, bypasses the chain) ---
 export const applyLeaveOnBehalf = (employeeId: string, body: CreateLeaveApplication) =>
   apiPost<LeaveApplication>(`/leave/on-behalf/${employeeId}`, body);
+// An admin changes someone's pending or approved leave before it starts; the
+// status stays.
+export const adminEditLeave = (id: string, body: CreateLeaveApplication) =>
+  apiPut<LeaveApplication>(`/leave/${id}/admin-edit`, body);
 
 // --- Reports & audit ---
 export const getLeaveSummaryReport = (employeeId: string, year?: number) =>

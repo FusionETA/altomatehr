@@ -506,6 +506,20 @@ public class LeaveController : ControllerBase
     public async Task<IActionResult> AdminCancel(string id, AdminCancelLeaveDto dto) =>
         ToTransitionResponse(await _leave.AdminCancelAsync(id, GetUserId(), dto.Reason));
 
+    // PUT /leave/{id}/admin-edit — an admin/owner changes someone's pending or
+    // approved leave before it starts (type, dates, duration, reason). The
+    // status stays; the same balance and eligibility checks as applying run.
+    [RequireScope("leave:write")]
+    [HttpPut("{id}/admin-edit")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> AdminEdit(string id, CreateLeaveApplicationDto dto)
+    {
+        var result = await _leave.AdminEditAsync(id, dto, GetUserId());
+        if (result.Ok) return Ok(result.Application);
+        if (result.Error is null) return NotFound(new { message = "Leave not found." });
+        return BadRequest(new { message = result.Error });
+    }
+
     // ---- Cancelling APPROVED leave: the employee asks, the chain decides ----
 
     // POST /leave/{id}/cancellation — the applicant asks to cancel their

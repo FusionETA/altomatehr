@@ -1727,6 +1727,122 @@ public class LeaveService : ILeaveService
         return new LeaveTransitionResult(true, true, ToDto(application));
     }
 
+    // ---- An admin changes someone's leave before it starts ----
+    //
+    // Type, dates, duration and reason, on PENDING or APPROVED leave that hasn't
+    // started yet (Malaysia time) and has no cancellation under review. The
+    // status stays: approved leave stays approved — an admin may grant leave
+    // directly, as applying on behalf does — and pending leave stays at its
+    // step, now showing the new dates to whoever reviews it. The same checks
+    // as applying run on the new figures: working days, the balance (without
+    // this request's own days), who the type is for. The new dates can't be in
+    // the past either.
+    public async Task<LeaveApplyResult> AdminEditAsync(
+        string id, CreateLeaveApplicationDto dto, string adminId)
+    {
+        var app = await _apps.GetByIdAsync(id);
+        if (app is null) return new LeaveApplyResult(false, null, null);   // → 404
+
+        if (app.Status is not (LeaveStatus.PENDING or LeaveStatus.APPROVED))
+            return new LeaveApplyResult(false, null, "Only pending or approved leave can be changed.");
+        if (IsCancellationUnderReview(app))
+            return new LeaveApplyResult(false, null,
+                "A cancellation request is under review for this leave. Decide that first.");
+
+        var today = Attendance.AttendanceTime.StartOfLocalDay(DateTime.UtcNow).Date;
+        if (app.StartDate.Date <= today)
+            return new LeaveApplyResult(false, null,
+                "This leave has already started, so it can't be changed. Cancel it instead if it shouldn't stand.");
+
+        var type = await _types.GetByIdAsync(dto.LeaveTypeId);
+        if (type is null) return new LeaveApplyResult(false, null, "Leave type not found");
+        // Keeping the type it already has is fine even if it was archived since;
+        // switching TO an archived one, or to one that isn't for this employee, isn't.
+        if (type.Id != app.LeaveTypeId)
+        {
+            if (type.IsArchived) return new LeaveApplyResult(false, null, "Leave type is archived");
+            if (!LeaveEligibility.Allows(type, await GenderOfAsync(app.EmployeeId)))
+                return new LeaveApplyResult(false, null, LeaveEligibility.Refusal(type));
+        }
+
+        var start = dto.StartDate!.Value.Date;
+        var end = dto.EndDate!.Value.Date;
+        if (end < start)
+            return new LeaveApplyResult(false, null, "End date is before start date");
+        if (start < today)
+            return new LeaveApplyResult(false, null, "The new dates can't be in the past.");
+        if (dto.Duration != LeaveDuration.FULL_DAY && start != end)
+            return new LeaveApplyResult(false, null,
+                "Half-day leave must start and end on the same day");
+
+        var unchanged = type.Id == app.LeaveTypeId
+                        && start == app.StartDate.Date
+                        && end == app.EndDate.Date
+                        && dto.Duration == app.Duration;
+
+        var totalDays = app.TotalDays;
+        if (!unchanged)
+        {
+            totalDays = await CountDaysAsync(start, end, dto.Duration);
+            if (totalDays <= 0)
+                return new LeaveApplyResult(false, null, "Selected dates contain no working days");
+
+            var year = start.Year;
+            var entitlement = await EnsureEntitlementAsync(app.EmployeeId, type, year);
+            if (type.Paid)
+            {
+                var available = await AvailableForApplyAsync(
+                    app.EmployeeId, type, entitlement, year, excludeApplicationId: id, startDate: start);
+                if (totalDays > available + Tolerance)
+                {
+                    var rounded = Math.Round(available * 100) / 100;
+                    return new LeaveApplyResult(false, null,
+                        $"Insufficient balance: requesting {totalDays} but only {rounded} available");
+                }
+            }
+        }
+
+        var oldType = await _types.GetByIdAsync(app.LeaveTypeId);
+        var before = $"{oldType?.Name ?? "Leave"} {app.StartDate:d MMM}–{app.EndDate:d MMM yyyy} ({app.TotalDays:0.#} day(s))";
+        var oldStart = app.StartDate;
+        var oldEnd = app.EndDate;
+
+        app.LeaveTypeId = type.Id;
+        app.StartDate = start;
+        app.EndDate = end;
+        app.Duration = dto.Duration;
+        app.TotalDays = totalDays;
+        if (dto.Reason is not null) app.Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        app.UpdatedAt = DateTime.UtcNow;
+
+        var after = $"{type.Name} {start:d MMM}–{end:d MMM yyyy} ({totalDays:0.#} day(s))";
+        AppendTrail(app, app.CurrentStep, adminId, "ADMIN_EDITED", unchanged ? "Reason changed" : $"{before} → {after}");
+        await _apps.UpdateAsync(app);
+
+        // Approved unpaid leave is docked from pay: a draft covering either the
+        // old dates or the new ones was built from days that have now moved.
+        if (app.Status == LeaveStatus.APPROVED && !unchanged && _drafts is not null)
+        {
+            if (oldType is { Paid: false }) await _drafts.MarkDraftsCoveringAsync(oldStart, oldEnd);
+            if (!type.Paid) await _drafts.MarkDraftsCoveringAsync(start, end);
+        }
+
+        await NotifyAsync(app, RealtimeAction.UPDATED, notifyApplicant: true);
+        if (!unchanged)
+        {
+            await _notifications.NotifyAsync(
+                app.OrganizationId, app.EmployeeId, NotificationType.LEAVE_REVIEWED,
+                "Your leave was changed",
+                $"An admin changed your leave: {before} → {after}.",
+                "/leave");
+        }
+        await AuditAsync(app, AuditActions.LeaveAdminEdit,
+            $"Changed {await PersonAsync(app.EmployeeId)}'s {app.Status.ToString().ToLowerInvariant()} leave: "
+            + (unchanged ? "reason only" : $"{before} → {after}"),
+            new { Before = before, After = after, app.Status });
+        return new LeaveApplyResult(true, ToDto(app), null);
+    }
+
     // ---- The employee asks to cancel APPROVED leave ----
     //
     // Goes up the SAME chain the leave did, layer by layer; the last layer's
