@@ -1,8 +1,9 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import {
   adminEditLeave,
   applyLeaveOnBehalf,
+  previewLeaveDays,
   type LeaveApplication,
   type LeaveDuration,
   type LeaveType,
@@ -64,6 +65,26 @@ export function ApplyOnBehalfModal({
   const singleDay = !!startDate && startDate === endDate;
   const effectiveDuration: LeaveDuration = singleDay ? duration : "FULL_DAY";
 
+  // What the leave will actually cost: the server's count of working days
+  // (weekends and public holidays skipped), the figure the balance uses.
+  const [workingDays, setWorkingDays] = useState<number | null>(null);
+  useEffect(() => {
+    setWorkingDays(null);
+    if (!startDate || !endDate || days == null) return;
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      previewLeaveDays(startDate, endDate, effectiveDuration)
+        .then((r) => {
+          if (!stale) setWorkingDays(r.totalDays);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [startDate, endDate, effectiveDuration, days]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!leaveTypeId || !startDate || !endDate) return;
@@ -75,7 +96,8 @@ export function ApplyOnBehalfModal({
         startDate,
         endDate,
         duration: effectiveDuration,
-        reason: reason.trim() || undefined,
+        // Editing sends it even when empty, so clearing the reason clears it.
+        reason: editing ? reason.trim() : reason.trim() || undefined,
       };
       const app = editing ? await adminEditLeave(editing.id, body) : await applyLeaveOnBehalf(employeeId, body);
       onCreated(app);
@@ -172,9 +194,13 @@ export function ApplyOnBehalfModal({
                   </SelectContent>
                 </Select>
               </div>
-            ) : days != null ? (
+            ) : null}
+            {days != null ? (
               <p className="text-sm text-muted-foreground">
-                Duration: <span className="font-semibold text-foreground">{days} day{days === 1 ? "" : "s"}</span>
+                Working days:{" "}
+                <span className="font-semibold text-foreground">
+                  {workingDays == null ? "…" : `${workingDays} day${workingDays === 1 ? "" : "s"}`}
+                </span>
               </p>
             ) : null}
 

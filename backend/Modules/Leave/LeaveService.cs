@@ -1782,6 +1782,13 @@ public class LeaveService : ILeaveService
                         && start == app.StartDate.Date
                         && end == app.EndDate.Date
                         && dto.Duration == app.Duration;
+        // Null = not sent, keep it; blank = clear it.
+        var newReason = dto.Reason is null ? app.Reason
+            : string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        var reasonChanged = newReason != app.Reason;
+
+        // Saved with nothing different: nothing to record or tell anyone.
+        if (unchanged && !reasonChanged) return new LeaveApplyResult(true, ToDto(app), null);
 
         var totalDays = app.TotalDays;
         if (!unchanged)
@@ -1815,7 +1822,7 @@ public class LeaveService : ILeaveService
         app.EndDate = end;
         app.Duration = dto.Duration;
         app.TotalDays = totalDays;
-        if (dto.Reason is not null) app.Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        app.Reason = newReason;
         app.UpdatedAt = DateTime.UtcNow;
 
         var after = $"{type.Name} {start:d MMM}–{end:d MMM yyyy} ({totalDays:0.#} day(s))";

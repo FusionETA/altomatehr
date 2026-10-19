@@ -375,7 +375,7 @@ export function AdminLeave() {
         <LeaveDetailsModal
           // Re-keyed on status and dates so the approval trail re-reads after a
           // cancel or an edit and shows the admin's entry.
-          key={`${selectedApplication.id}-${selectedApplication.status}-${selectedApplication.startDate}-${selectedApplication.endDate}-${selectedApplication.totalDays}-${selectedApplication.leaveTypeId}`}
+          key={`${selectedApplication.id}-${selectedApplication.status}-${selectedApplication.startDate}-${selectedApplication.endDate}-${selectedApplication.totalDays}-${selectedApplication.leaveTypeId}-${selectedApplication.duration ?? ""}-${selectedApplication.reason ?? ""}`}
           application={selectedApplication}
           typeName={typeName(selectedApplication.leaveTypeId)}
           employeeLabel={

@@ -290,6 +290,43 @@ public class LeaveServiceTests
         Assert.StartsWith("A cancellation request is under review", result.Error);
     }
 
+    // Saving with nothing different records nothing.
+    [Fact]
+    public async Task AdminEdit_NothingChanged_WritesNoTrailEntry()
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        app.Reason = "Family trip";
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+        var same = Move(mon, mon.AddDays(2));
+        same.Reason = "Family trip";
+
+        var result = await service.AdminEditAsync("a-1", same, "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.DoesNotContain("ADMIN_EDITED", app.Approvals ?? "");
+    }
+
+    // An empty reason clears it; a missing one keeps it.
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(null, "Family trip")]
+    [InlineData("  Moved by HR ", "Moved by HR")]
+    public async Task AdminEdit_Reason_ClearKeepOrReplace(string? sent, string? expected)
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        app.Reason = "Family trip";
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+        var dto = Move(mon, mon.AddDays(2));
+        dto.Reason = sent;
+
+        var result = await service.AdminEditAsync("a-1", dto, "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(expected, app.Reason);
+    }
+
     [Fact]
     public async Task AdminEdit_UnknownLeave_IsNotFound()
     {
