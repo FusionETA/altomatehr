@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 42fea8e
+  user-guide-covered-up-to: a2062d9
 -->
 <html lang="en">
 <head>
@@ -1176,8 +1176,31 @@
       </div>
       <p class="shot-cap shot-cap-main">Cancelling approved leave</p>
     </figure>
-    <p><span class="btn-name">Import</span> brings in entitlements from a spreadsheet. Year rollover and monthly accrual
-      run by themselves; the buttons under <em>Maintenance</em> are there if you need to run them early.</p>
+    <h3>Importing leave history</h3>
+    <p>Moving over from another system? <span class="btn-name">Import</span> brings in leave your staff have already
+      taken, from a spreadsheet. It imports leave taken, not entitlements, so each person's balance works itself out from
+      the days imported. Open <span class="btn-name">Import</span>, under <strong>Leave history</strong> choose
+      <span class="btn-name">Upload a file</span>, and the <strong>Import leave history</strong> window opens. Pick
+      <em>XLSX</em> or <em>CSV</em>, press <span class="btn-name">Download template</span> to get the columns to fill in,
+      choose your file under <strong>File to import</strong>, then press <span class="btn-name">Import</span>. The window
+      then shows how many rows were imported, skipped or failed, with the reason for each row that failed.</p>
+    <p>If the file uses leave types your company hasn't set up yet, a <strong>Leave types not set up yet</strong> panel
+      appears in the window. It lists each missing type with the number of rows that use it. For each one:</p>
+    <ol class="steps">
+      <li>Check the <strong>Code</strong>. It's suggested from the initials of the name, and it can't be the same as
+        another leave type's name or code, or another leave type name in your file. Change it if you prefer another.</li>
+      <li>Enter the <strong>Annual days</strong> each person gets. Untick <strong>Paid</strong> for unpaid leave; the days
+        then stay at 0.</li>
+      <li>Press <span class="btn-name">Add</span>. The line changes to <em>Added as</em> and the code.</li>
+    </ol>
+    <p>Once you've added them, the <span class="btn-name">Import</span> button now reads
+      <span class="btn-name">Import again</span>. Press it to run the same file again: rows already imported are skipped,
+      so only the rows that failed come in. Other settings, such as limiting a type to one gender or carrying days
+      forward, can be changed afterwards under <strong>Leave</strong> → <strong>Types</strong>.</p>
+    <p>You don't need to reload the page afterwards: <strong>History</strong>, <strong>Balances</strong> and
+      <strong>Overview</strong> update by themselves once something has been imported.</p>
+    <p>Year rollover and monthly accrual run by themselves; the buttons under <em>Maintenance</em> are there if you need
+      to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
       <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
         payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>.</p>

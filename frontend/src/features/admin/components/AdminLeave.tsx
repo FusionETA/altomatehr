@@ -60,6 +60,7 @@ import { EmployeeLeaveModal } from "./EmployeeLeaveModal";
 import { AdminCancelLeaveDialog } from "./AdminCancelLeaveDialog";
 import { ApplyOnBehalfModal } from "./ApplyOnBehalfModal";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
+import { MissingLeaveTypes } from "./MissingLeaveTypes";
 import { CardHead, EmptyState } from "./DashboardCard";
 import {
   ACTION_MENU_EYEBROW,
@@ -285,7 +286,7 @@ export function AdminLeave() {
           open={menu === "import"}
           onOpenChange={(next) => setMenu(next ? "import" : null)}
         >
-          <p className={`px-3 pb-1.5 pt-1 ${ACTION_MENU_EYEBROW}`}>Entitlements</p>
+          <p className={`px-3 pb-1.5 pt-1 ${ACTION_MENU_EYEBROW}`}>Leave history</p>
           <button
             type="button"
             onClick={() => {
@@ -468,7 +469,20 @@ export function AdminLeave() {
         />
       ) : null}
 
-      {importOpen ? <ImportLeaveModal onClose={() => setImportOpen(false)} /> : null}
+      {importOpen ? (
+        <ImportLeaveModal
+          types={types}
+          onTypesAdded={() => void typesQuery.refresh()}
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            // The import's write drops the /leave cache, but mounted queries keep
+            // their rows on screen until asked — and History isn't cached at all.
+            loadHistory();
+            void overviewQuery.refresh();
+            void balancesQuery.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1028,13 +1042,24 @@ const EXPORT_LABELS: Record<(typeof EXPORT_KINDS)[number], string> = {
   zip: "PDF ZIP",
 };
 
-function ImportLeaveModal({ onClose }: { onClose: () => void }) {
+function ImportLeaveModal({
+  types,
+  onTypesAdded,
+  onClose,
+  onImported,
+}: {
+  types: LeaveType[];
+  onTypesAdded: () => void;
+  onClose: () => void;
+  onImported: () => void;
+}) {
   const [format, setFormat] = useState<"csv" | "xlsx">("xlsx");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TabularImportResult | null>(null);
+  const missingTypes = (result?.missing ?? []).filter((m) => m.column === "leaveType");
 
   async function handleTemplate() {
     setDownloadingTemplate(true);
@@ -1060,6 +1085,7 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await importLeave(file);
       setResult(res);
+      if (res.imported > 0) onImported();
     } catch (e) {
       setError(message(e, "Could not import this file."));
     } finally {
@@ -1069,13 +1095,13 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
-      <section className="w-full max-w-[560px] rounded-[26px] border border-white/40 bg-card p-6 shadow-[0_18px_48px_rgba(76,26,134,0.16)]">
+      <section className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto rounded-[26px] border border-white/40 bg-card p-6 shadow-[0_18px_48px_rgba(76,26,134,0.16)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Bulk import
             </p>
-            <h3 className="mt-1 text-xl font-black text-foreground">Import leave entitlements</h3>
+            <h3 className="mt-1 text-xl font-black text-foreground">Import leave history</h3>
           </div>
           <button
             type="button"
@@ -1142,6 +1168,17 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
           </div>
         ) : null}
 
+        {missingTypes.length > 0 ? (
+          <MissingLeaveTypes
+            // A fresh import result is a fresh list — remount rather than keep
+            // the previous result's half-filled rows.
+            key={missingTypes.map((m) => m.value).join("|")}
+            missing={missingTypes}
+            existing={types}
+            onAdded={onTypesAdded}
+          />
+        ) : null}
+
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -1157,7 +1194,7 @@ function ImportLeaveModal({ onClose }: { onClose: () => void }) {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-primary text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
           >
             {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Import
+            {result ? "Import again" : "Import"}
           </button>
         </div>
       </section>

@@ -20,6 +20,16 @@ public sealed record TabularColumn(
 
 public sealed record TabularImportError(int Row, string Message);
 
+// A value in a lookup column that matched nothing (a leave type the org has
+// never set up, say), with how many rows asked for it. Grouped so a screen can
+// offer to create it once, rather than an admin reading the same error per row.
+public sealed class TabularMissingValue
+{
+    public required string Column { get; init; }
+    public required string Value { get; init; }
+    public int Rows { get; internal set; }
+}
+
 // The outcome of an import, in the three buckets an admin actually cares about:
 // what landed, what was already there, and what needs fixing.
 //
@@ -37,6 +47,10 @@ public sealed class TabularImportResult
     // be matched to a known one. Not counted as failed: the row DID land.
     public List<TabularImportError> Warnings { get; } = [];
 
+    // Every unmatched lookup value, uncapped — unlike Errors, so a type asked
+    // for only on row 5,000 is still offered.
+    public List<TabularMissingValue> Missing { get; } = [];
+
     // Row numbers are 1-based AS THE ADMIN SEES THEM in their spreadsheet
     // (header = row 1, first data row = row 2). Row 1 is also where file-level
     // problems land — a missing column is a header problem.
@@ -51,6 +65,21 @@ public sealed class TabularImportResult
         // Cap the error list: a wholly mismatched file would otherwise return one
         // error per row, and nobody reads 20,000 of them.
         if (Errors.Count < 200) Errors.Add(new TabularImportError(row, message));
+    }
+
+    // A failed row whose cause is a value nothing matched. Counted as failed
+    // like any other, and recorded once per distinct value (case-insensitive).
+    public void FailMissing(int row, string column, string value, string message)
+    {
+        Fail(row, message);
+        var missing = Missing.FirstOrDefault(m =>
+            m.Column == column && string.Equals(m.Value, value, StringComparison.OrdinalIgnoreCase));
+        if (missing is null)
+        {
+            missing = new TabularMissingValue { Column = column, Value = value };
+            Missing.Add(missing);
+        }
+        missing.Rows++;
     }
 
     public void Warn(int row, string message)

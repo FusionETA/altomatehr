@@ -346,7 +346,10 @@ public class LeaveService : ILeaveService
             var typeCell = map.Cell(row, "leaveType").Trim();
             if (!typesByKey.TryGetValue(typeCell, out var leaveType))
             {
-                result.Fail(rowNumber, $"No leave type matches '{typeCell}' (try its name or code).");
+                var why = $"No leave type matches '{typeCell}' (try its name or code).";
+                // A blank cell names nothing to create, so it is an ordinary failure.
+                if (typeCell.Length == 0) result.Fail(rowNumber, why);
+                else result.FailMissing(rowNumber, "leaveType", typeCell, why);
                 continue;
             }
 
