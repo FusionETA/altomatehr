@@ -197,6 +197,49 @@ async function aiEditorShot(page, name, scrolled) {
   await shoot(page, "admin", name);
 }
 
+// Admin → Leave → History, with the leave `node setup.mjs leave-edit` filed for
+// Priya Devi open in its details window (date is in .out/leave-edit.json).
+async function openLeaveEditTarget(page) {
+  const saved = new URL("./.out/leave-edit.json", import.meta.url);
+  if (!existsSync(saved)) throw new Error("run `node setup.mjs leave-edit` first");
+  const start = new Date(JSON.parse(readFileSync(saved, "utf8")).startDate + "T00:00:00");
+  // Demo Admin belongs to several companies on this machine: move to the demo company first.
+  const switcher = page.getByRole("button", { name: "Switch company" });
+  if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+    await switcher.click();
+    await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+    await settle(page, 2500);
+  }
+  await go(page, "leave");
+  await clickText(page, "History");
+  await page.getByText("Priya Devi").filter({ visible: true }).first().waitFor({ timeout: 15000 });
+  const d = start.getDate(), mon = start.toLocaleString("en-GB", { month: "short" });
+  const dd = String(d).padStart(2, "0"), mm = String(start.getMonth() + 1).padStart(2, "0");
+  const when = new RegExp(`(^|\\D)(${dd}|${d}) ${mon}|${start.getFullYear()}-${mm}-${dd}`);
+  const row = page.locator("tr, li, button, [role=row]").filter({ hasText: "Priya Devi" })
+    .filter({ hasText: when }).first();
+  await row.click();
+  await page.getByRole("button", { name: "Edit leave" }).waitFor({ timeout: 10000 });
+  await settle(page);
+}
+
+// Opens Edit leave and makes it a half day on the first date (a single date
+// shows the Duration box). Leaves the dialog open.
+async function fillLeaveEdit(page) {
+  await page.getByRole("button", { name: "Edit leave" }).click();
+  const dialog = page.locator("form").filter({ has: page.getByRole("heading", { name: "Edit leave" }) });
+  await dialog.waitFor();
+  const dates = dialog.locator("input[type=date]");
+  await dates.nth(1).fill(await dates.nth(0).inputValue());
+  await dialog.getByText("Duration", { exact: true }).waitFor();
+  await dialog.getByRole("combobox").nth(1).click();
+  await page.getByRole("option", { name: "Morning (half day)" }).click();
+  await dialog.getByText(/Working days:\s*0\.5 days/).waitFor({ timeout: 10000 });
+  await dialog.locator("textarea").fill("Family trip to Penang - half day only now.");
+  await settle(page, 500);
+  return dialog;
+}
+
 // ─── Admin (desktop) ────────────────────────────────────────────────────
 const admin = {
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
@@ -429,6 +472,13 @@ const admin = {
   },
   // A run's Payslips list narrowed by the search box; the Total row stays the whole run's.
   "payroll-payslips-search": async (page) => {
+    // Sign-in can land on another company on this machine: move to the demo company first.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
     await clickText(page, "September 2026");
@@ -488,6 +538,26 @@ const admin = {
     await settle(page, 1000);
     await scrollTo(page, "Paid leave", 150, true);
     await shoot(page, "admin", "leave-types");
+  },
+  // The Edit leave dialog on an approved, not-yet-started leave, changed to a
+  // morning off. Nothing is saved.
+  "leave-edit": async (page) => {
+    await openLeaveEditTarget(page);
+    await fillLeaveEdit(page);
+    await shoot(page, "admin", "leave-edit");
+    await page.keyboard.press("Escape");
+  },
+  // The same leave's details after saving the change: Edit leave and Cancel this
+  // leave side by side, and "Changed by admin" with before and after in the trail.
+  "leave-edit-trail": async (page) => {
+    await openLeaveEditTarget(page);
+    const dialog = await fillLeaveEdit(page);
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await page.getByText("Changed by admin").first().waitFor({ timeout: 15000 });
+    await settle(page, 1200);
+    await scrollTo(page, "Cancel this leave", 520, true);
+    await shoot(page, "admin", "leave-edit-trail");
+    await page.keyboard.press("Escape");
   },
   "leave-cancel": async (page) => {
     await go(page, "leave");

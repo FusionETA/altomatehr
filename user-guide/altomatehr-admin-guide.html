@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: a2062d9
+  user-guide-covered-up-to: ab3688c
 -->
 <html lang="en">
 <head>
@@ -1135,7 +1135,7 @@
         days used by type.</li>
       <li><strong>History</strong> — every application, filtered by person, type, dates and status. An approved leave
         an employee has asked to cancel shows a <em>Cancellation requested</em> tag (or <em>Cancellation declined</em>
-        if their approver said no).</li>
+        if their approver said no). Open one to change it (<span class="btn-name">Edit leave</span>) or cancel it.</li>
       <li><strong>Balances</strong> — every staff member's remaining days per leave type (Employees and Supervisors; the
         Owner and admins aren't listed, and aren't in the export either). Open a person to
         <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
@@ -1159,6 +1159,44 @@
       an approver has acted on it. It stays pending and stays in the approver's queue, with the days counted again for
       the new dates. Leave you filed for someone with <span class="btn-name">Apply on behalf</span>, or imported, can't be
       edited by the employee — change it for them by cancelling it here and applying again.</p>
+    <h3>Changing someone's leave</h3>
+    <p>Need to correct leave that hasn't started yet? Open the application in <strong>History</strong> and press
+      <span class="btn-name">Edit leave</span>, beside <span class="btn-name">Cancel this leave</span>. It's there for
+      pending and approved leave that starts after today, so you can use it on leave you filed with
+      <span class="btn-name">Apply on behalf</span> or imported too. It isn't there once the leave has started, or while
+      the employee's request to cancel it is still being reviewed — decide that first. A leave that has already started
+      can only be cancelled.</p>
+    <p>The <strong>Edit leave</strong> window is filled in with what's there. Change the <strong>Leave type</strong>, the
+      <strong>Start date</strong> and <strong>End date</strong> (the dates can't be in the past), and the
+      <strong>Reason</strong> (clear it to remove it). When the start and end are the same day, a
+      <strong>Duration</strong> box appears: <em>Full day</em>, <em>Morning (half day)</em> or
+      <em>Afternoon (half day)</em>. <strong>Working days</strong> shows what the leave will take off their balance, with
+      weekends and public holidays left out. Press <span class="btn-name">Save changes</span>.</p>
+    <ul>
+      <li>The leave keeps its status. Approved leave stays approved; pending leave stays pending with whoever is reviewing
+        it.</li>
+      <li>You can't save if the new dates have no working days, or a paid type would take more than the employee has left.
+        The same type rules apply as when applying, such as types that are for one gender only.</li>
+      <li>The employee gets a <em>Your leave was changed</em> notification with the old and new leave. Changing only the
+        reason, or saving with nothing different, doesn't send one.</li>
+      <li>The approval trail shows <em>Changed by admin</em> with the leave before and after, and the change goes in the
+        <a href="#audit">Activity Log</a>.</li>
+      <li>Changing approved <em>unpaid</em> leave marks any open payroll draft for the old and new dates for a re-run; a
+        payroll already submitted isn't changed.</li>
+    </ul>
+    <figure class="shot" data-place="Leave">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/leave-edit.png" alt="The Edit leave window for an approved leave, changed to one morning, with Working days showing 0.5 days and Save changes" loading="lazy">
+          <p class="shot-cap">Edit leave</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/leave-edit-trail.png" alt="An approved leave's details after the change, with Changed by admin in the approval trail showing the leave before and after, and Edit leave beside Cancel this leave" loading="lazy">
+          <p class="shot-cap">The change in the approval trail</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Changing leave before it starts</p>
+    </figure>
     <h3>Cancelling someone's leave</h3>
     <p>Open an application in <strong>History</strong> and press <span class="btn-name">Cancel this leave</span> — it works
       on a pending request or on approved leave. Add a <strong>Reason</strong> if you like (the employee sees it), then
@@ -1277,6 +1315,10 @@
       list narrows to the people who match; clear the box to see everyone again. The search only changes which rows you
       see — the <strong>Total</strong> row and <strong>What gets remitted</strong> still add up the whole run, and a
       line under the box tells you how many are shown.</p>
+    <p><strong>What gets remitted.</strong> Under the payslips, this block gives the totals you pay out of the run:
+      employees paid, net pay, and the PCB, EPF, SOCSO and EIS payments (and SKBBK, if the run has any). Under
+      <strong>Total EPF payment</strong> it also lists <strong>Employee</strong> and <strong>Employer</strong>, so you can
+      check the two halves against the figures in your EPF report or your old payroll system.</p>
     <div class="note warn"><span class="nt">“Run payroll again before submitting”</span>
       <p>If something a draft uses changes after payroll was run, the run is marked <strong>Stale</strong> and can't
         be sent for approval until you press <span class="btn-name">Re-run payroll</span>. That happens when any of
