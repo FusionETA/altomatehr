@@ -289,7 +289,11 @@ export function PayrollPayslipsTable({
           <Summary label="Employees paid" value={String(payslips.length)} />
           <Summary label="Total net pay" value={rm(totals.net)} />
           <Summary label="Total PCB payment" value={rm(totals.pcb + totals.cp38)} />
-          <Summary label="Total EPF payment" value={rm(totals.epfEmp + totals.epfEr)} />
+          <Summary
+            label="Total EPF payment"
+            value={rm(totals.epfEmp + totals.epfEr)}
+            detail={[`Employee ${rm(totals.epfEmp)}`, `Employer ${rm(totals.epfEr)}`]}
+          />
           <Summary label="Total SOCSO payment" value={rm(totals.socsoEmp + totals.socsoEr)} />
           <Summary label="Total EIS payment" value={rm(totals.eisEmp + totals.eisEr)} />
           {totals.skbbk > 0 ? (
@@ -589,11 +593,20 @@ function sum(payslips: Payslip[]) {
   );
 }
 
-function Summary({ label, value }: { label: string; value: string }) {
+// `detail` splits a remitted total into its halves (e.g. EPF employee and
+// employer) under the figure, for checking against the old system's report.
+function Summary({ label, value, detail }: { label: string; value: string; detail?: string[] }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="tabular-nums font-semibold text-foreground">{value}</dd>
+      <dd className="text-right">
+        <span className="tabular-nums font-semibold text-foreground">{value}</span>
+        {detail?.map((line) => (
+          <span key={line} className="block whitespace-nowrap tabular-nums text-[11px] text-muted-foreground">
+            {line}
+          </span>
+        ))}
+      </dd>
     </div>
   );
 }
