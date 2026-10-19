@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: a2062d9
+// whats-new-covered-up-to: ab3688c
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,16 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-19",
+    new: [
+      "Admins: edit leave that hasn't started yet from Leave → History. Change its type, dates, half day or reason, and the employee is told what changed.",
+      "Admins: the leave keeps its approval status. If it's unpaid leave, draft payroll runs for the old and new months are marked to re-run.",
+    ],
+    improved: [
+      "Admins: in a payroll run's \"What gets remitted\", the EPF total now shows the employee and employer amounts underneath. The total itself is unchanged.",
+    ],
+  },
   {
     date: "2026-10-16",
     new: [

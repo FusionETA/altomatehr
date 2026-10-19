@@ -182,6 +182,162 @@ public class LeaveServiceTests
         Assert.All(byCode.Where(kv => kv.Key is not ("MATERNITY" or "PATERNITY")), kv => Assert.Null(kv.Value));
     }
 
+    // ─── An admin changes someone's leave before it starts ──────────────
+
+    // The next Monday at least `weeksAhead` weeks away, so the leave is in the
+    // future and a Mon–Wed span is three working days whatever today is.
+    private static DateTime FutureMonday(int weeksAhead = 2)
+    {
+        var d = DateTime.UtcNow.Date.AddDays(7 * weeksAhead);
+        while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
+        return d;
+    }
+
+    private static LeaveApplication FutureLeave(string id, LeaveStatus status, DateTime start, double days) => new()
+    {
+        Id = id, EmployeeId = "usr-emp", LeaveTypeId = "t-al",
+        StartDate = start, EndDate = start.AddDays(days - 1), TotalDays = days,
+        Status = status, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static CreateLeaveApplicationDto Move(DateTime start, DateTime end, string typeId = "t-al") => new()
+    {
+        LeaveTypeId = typeId, StartDate = start, EndDate = end,
+    };
+
+    [Fact]
+    public async Task AdminEdit_MovesApprovedLeave_AndItStaysApproved()
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+
+        var result = await service.AdminEditAsync("a-1", Move(mon.AddDays(7), mon.AddDays(8)), "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(LeaveStatus.APPROVED, result.Application!.Status);
+        Assert.Equal(mon.AddDays(7), app.StartDate);
+        Assert.Equal(2, app.TotalDays);
+        Assert.Contains("ADMIN_EDITED", app.Approvals);
+    }
+
+    // The request's own days aren't counted against it: 14 entitled, 14 already
+    // on this request, moving it is fine.
+    [Fact]
+    public async Task AdminEdit_DoesNotCountTheRequestsOwnDays()
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        var service = MakeService(types: [MakeType("t-al", "AL", 3)], apps: [app]);
+
+        var result = await service.AdminEditAsync("a-1", Move(mon.AddDays(7), mon.AddDays(9)), "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    [Fact]
+    public async Task AdminEdit_RefusesLeaveThatHasStarted()
+    {
+        var today = DateTime.UtcNow.Date.AddDays(-1);
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, today, 3);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+
+        var result = await service.AdminEditAsync("a-1", Move(FutureMonday(), FutureMonday()), "usr-admin");
+
+        Assert.False(result.Ok);
+        Assert.StartsWith("This leave has already started", result.Error);
+    }
+
+    [Fact]
+    public async Task AdminEdit_RefusesNewDatesInThePast()
+    {
+        var app = FutureLeave("a-1", LeaveStatus.PENDING, FutureMonday(), 1);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+        var past = DateTime.UtcNow.Date.AddDays(-3);
+
+        var result = await service.AdminEditAsync("a-1", Move(past, past), "usr-admin");
+
+        Assert.False(result.Ok);
+        Assert.Equal("The new dates can't be in the past.", result.Error);
+    }
+
+    [Theory]
+    [InlineData(LeaveStatus.REJECTED)]
+    [InlineData(LeaveStatus.CANCELLED)]
+    public async Task AdminEdit_RefusesDecidedAgainstLeave(LeaveStatus status)
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", status, mon, 1);
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+
+        var result = await service.AdminEditAsync("a-1", Move(mon, mon), "usr-admin");
+
+        Assert.False(result.Ok);
+        Assert.Equal("Only pending or approved leave can be changed.", result.Error);
+    }
+
+    [Fact]
+    public async Task AdminEdit_RefusesWhileACancellationIsUnderReview()
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 1);
+        app.CancellationStatus = LeaveCancellationStatus.PENDING;
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+
+        var result = await service.AdminEditAsync("a-1", Move(mon, mon), "usr-admin");
+
+        Assert.False(result.Ok);
+        Assert.StartsWith("A cancellation request is under review", result.Error);
+    }
+
+    // Saving with nothing different records nothing.
+    [Fact]
+    public async Task AdminEdit_NothingChanged_WritesNoTrailEntry()
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        app.Reason = "Family trip";
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+        var same = Move(mon, mon.AddDays(2));
+        same.Reason = "Family trip";
+
+        var result = await service.AdminEditAsync("a-1", same, "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.DoesNotContain("ADMIN_EDITED", app.Approvals ?? "");
+    }
+
+    // An empty reason clears it; a missing one keeps it.
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(null, "Family trip")]
+    [InlineData("  Moved by HR ", "Moved by HR")]
+    public async Task AdminEdit_Reason_ClearKeepOrReplace(string? sent, string? expected)
+    {
+        var mon = FutureMonday();
+        var app = FutureLeave("a-1", LeaveStatus.APPROVED, mon, 3);
+        app.Reason = "Family trip";
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)], apps: [app]);
+        var dto = Move(mon, mon.AddDays(2));
+        dto.Reason = sent;
+
+        var result = await service.AdminEditAsync("a-1", dto, "usr-admin");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(expected, app.Reason);
+    }
+
+    [Fact]
+    public async Task AdminEdit_UnknownLeave_IsNotFound()
+    {
+        var service = MakeService(types: [MakeType("t-al", "AL", 14)]);
+
+        var result = await service.AdminEditAsync("nope", Move(FutureMonday(), FutureMonday()), "usr-admin");
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+    }
+
     // CanEdit drives the employee's Edit button: pending with no approver
     // action yet — the same state EditAsync accepts.
     [Fact]

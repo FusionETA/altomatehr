@@ -94,6 +94,11 @@ public interface ILeaveService
     Task<LeaveApplyResult> ApplyAsync(CreateLeaveApplicationDto dto, string employeeId);
     Task<LeaveApplyResult> EditAsync(string id, CreateLeaveApplicationDto dto, string actorUserId);
 
+    // An admin/owner changes someone's pending or approved leave before it
+    // starts: type, dates, duration, reason. The status stays. Null error with
+    // Ok=false → not found (404).
+    Task<LeaveApplyResult> AdminEditAsync(string id, CreateLeaveApplicationDto dto, string adminId);
+
     // What a request for these dates would cost against the org's working
     // week and public holidays — the same count apply and edit charge. 0 for
     // a shape they would refuse (end before start, a half day over several

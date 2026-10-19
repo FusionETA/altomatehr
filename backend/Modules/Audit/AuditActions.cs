@@ -164,6 +164,7 @@ public static class AuditActions
     // the employee, by the employee withdrawing a pending request, or by an admin.
     public const string LeaveCancelled = "leave.cancelled";
     public const string LeaveAdminCancel = "leave.admin-cancel";
+    public const string LeaveAdminEdit = "leave.admin-edit";
 
     // Short sentences for the UI. The row keeps the code for forensics; this is
     // only what an admin reads.
@@ -175,6 +176,7 @@ public static class AuditActions
         [LeaveCancelWithdraw] = "Leave cancellation request withdrawn",
         [LeaveCancelled] = "Leave cancelled",
         [LeaveAdminCancel] = "Leave cancelled by admin",
+        [LeaveAdminEdit] = "Leave changed by admin",
         [SettingsOrgUpdate] = "Organisation settings updated",
         [SettingsOrgLogoUpdate] = "Company logo uploaded",
         [SettingsOrgLogoRemove] = "Company logo removed",

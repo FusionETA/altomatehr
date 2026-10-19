@@ -110,7 +110,7 @@
         <code>cancellation/approve</code> and <code>cancellation/reject</code> always refuse a key
         (<code>403 You are not authorized to review this step</code>, or a per-id failure in the
         bulk call). To settle leave with a key use <a href="#on-behalf">file on behalf</a> and
-        <a href="#admin-cancel">admin cancel</a>, which don't go through the chain. The approval
+        <a href="#admin-cancel">admin cancel</a> and <a href="#admin-edit">admin edit</a>, which don't go through the chain. The approval
         endpoints are documented because they are reachable, so you know what to expect.
       </div>
       <div class="callout warn">
@@ -781,7 +781,7 @@
             <tbody>
               <tr><td><code>step</code></td><td>number</td><td>The approval-chain step (0-based) the entry was made at.</td></tr>
               <tr><td><code>approverId</code></td><td>string</td><td>Who acted: a user id, or <code>apikey:&lt;key id&gt;</code> when an API key did.</td></tr>
-              <tr><td><code>decision</code></td><td>string</td><td>What happened. Values: <code>APPROVED</code>, <code>REJECTED</code>, <code>AUTO_APPROVED</code> (nobody above the applicant), <code>ADMIN_APPLIED</code>, <code>ADMIN_CANCELLED</code>, <code>WITHDRAWN</code>, <code>IMPORTED</code>, <code>CANCELLATION_REQUESTED</code>, <code>CANCELLATION_APPROVED</code>, <code>CANCELLATION_REJECTED</code>, <code>CANCELLATION_WITHDRAWN</code>, <code>CANCELLATION_AUTO_APPROVED</code>.</td></tr>
+              <tr><td><code>decision</code></td><td>string</td><td>What happened. Values: <code>APPROVED</code>, <code>REJECTED</code>, <code>AUTO_APPROVED</code> (nobody above the applicant), <code>ADMIN_APPLIED</code>, <code>ADMIN_EDITED</code>, <code>ADMIN_CANCELLED</code>, <code>WITHDRAWN</code>, <code>IMPORTED</code>, <code>CANCELLATION_REQUESTED</code>, <code>CANCELLATION_APPROVED</code>, <code>CANCELLATION_REJECTED</code>, <code>CANCELLATION_WITHDRAWN</code>, <code>CANCELLATION_AUTO_APPROVED</code>.</td></tr>
               <tr><td><code>decidedAt</code></td><td>string (timestamp)</td><td></td></tr>
               <tr><td><code>notes</code></td><td>string | null</td><td>The reason or review note given.</td></tr>
             </tbody>
@@ -838,7 +838,7 @@
       <p>
         Employees apply for, edit and withdraw their own leave themselves (those calls are
         <a href="#people-only">people-only</a>). What an integration can do is file leave on
-        someone's behalf and cancel it.
+        someone's behalf, change it before it starts, and cancel it.
       </p>
 
       <section class="endpoint" id="on-behalf">
@@ -964,6 +964,91 @@
   -H "Content-Type: application/json" \
   -d '{ "reason": "Entered by mistake" }'</code></pre>
       </section>
+
+      <section class="endpoint" id="admin-edit">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/leave/{id}/admin-edit</span>
+          <span class="tag scope">leave:write</span>
+        </div>
+        <p>
+          Change someone's <code>PENDING</code> or <code>APPROVED</code> leave before it starts:
+          its type, dates, duration and reason. <code>{id}</code> is the application id. The
+          employee's own edit (<code>PUT /leave/{id}</code>) is <a href="#people-only">people-only</a>
+          and only works on a pending request nobody has acted on; this one is for an admin
+          correcting leave that is already approved.
+        </p>
+        <h3>Request</h3>
+        <p>The body is the same one as <a href="#on-behalf">file on behalf</a>. Send the full set of dates and type every time; it replaces them.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>leaveTypeId</code></td><td>string</td><td>Yes</td><td>Max 40 chars. From <code>GET /leave-types</code>. Keeping the application's current type is always allowed, even if it has since been archived. Switching to another type needs one that isn't archived and is open to the employee's gender.</td></tr>
+              <tr><td><code>startDate</code></td><td>string (date)</td><td>Yes</td><td><code>2026-03-02</code>. Not before today (Malaysia time). Today itself is allowed.</td></tr>
+              <tr><td><code>endDate</code></td><td>string (date)</td><td>Yes</td><td>Not before <code>startDate</code>.</td></tr>
+              <tr><td><code>duration</code></td><td>string</td><td>No</td><td><code>FULL_DAY</code> (the default when left out, so a half-day leave you don't resend as <code>MORNING</code>/<code>AFTERNOON</code> becomes a full day), <code>MORNING</code> or <code>AFTERNOON</code>. A half day must start and end on the same date and counts as 0.5.</td></tr>
+              <tr><td><code>reason</code></td><td>string</td><td>No</td><td>Max 1000 chars. <strong>Left out or <code>null</code>: the current reason is kept. Empty or blank: the reason is cleared.</strong> Otherwise it is trimmed and replaces the old one.</td></tr>
+              <tr><td><code>xeroFileId</code>, <code>attachmentName</code>, <code>attachmentUrl</code></td><td>string</td><td>No</td><td>Accepted (same limits as file on behalf) but <strong>ignored</strong>: the existing attachment is never changed here.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The updated <a href="#basics">leave application</a>. <code>status</code> is whatever it
+          was before: approved stays approved, and pending stays pending at its current step (the
+          reviewer now sees the new dates). <code>totalDays</code> is recounted under the
+          company's working week and public holidays.
+        </p>
+        <div class="callout warn">
+          <strong>Only leave that hasn't started.</strong> The call is refused when the
+          application's current <code>startDate</code> is today or earlier (Malaysia time), when
+          it is not <code>PENDING</code> or <code>APPROVED</code>, or when the employee has a
+          cancellation request under review for it (decide that first). Leave that has begun can
+          only be cancelled, see <a href="#admin-cancel">admin cancel</a>.
+        </div>
+        <div class="callout warn">
+          <strong>Same checks as applying.</strong> The new dates must contain a working day.
+          For a <em>paid</em> type the new days must fit in the employee's available balance for
+          the year of the new <code>startDate</code>, counted without this application's own
+          current days; <strong>unpaid</strong> types skip the balance check. The checks run
+          only when the type, dates or duration actually change.
+        </div>
+        <p>
+          Side effects: nothing is written and nobody is told when the body changes nothing
+          (the application is returned as it is). Otherwise an <code>ADMIN_EDITED</code> entry is
+          added to the <a href="#audit">decision trail</a> (note
+          <code>Reason changed</code> for a reason-only change, else
+          <code>Annual Leave 2 Mar–3 Mar 2026 (2 day(s)) → …</code>); the employee gets a "Your
+          leave was changed" notification when type, dates or duration moved (not for a
+          reason-only change); the change is written to the company's activity log as
+          <code>leave.admin-edit</code> ("Leave changed by admin"); and, for
+          <em>approved unpaid</em> leave whose type, dates or duration changed, generated payroll
+          drafts covering the old or the new dates are marked out of date and must be re-run
+          before they can be submitted.
+        </p>
+        <h3>Errors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+            <tbody>
+              <tr><td><code>400</code></td><td>Missing or over-long field, or no JSON body</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
+              <tr><td><code>400</code></td><td>A rule refused it</td><td><code>{ "message": "…" }</code> — <code>Only pending or approved leave can be changed.</code>, <code>A cancellation request is under review for this leave. Decide that first.</code>, <code>This leave has already started, so it can't be changed. Cancel it instead if it shouldn't stand.</code>, <code>Leave type not found</code>, <code>Leave type is archived</code>, <code>Maternity Leave is only for female employees.</code> (the type's own name, and <code>female</code> or <code>male</code>), <code>End date is before start date</code>, <code>The new dates can't be in the past.</code>, <code>Half-day leave must start and end on the same day</code>, <code>Selected dates contain no working days</code>, <code>Insufficient balance: requesting 3 but only 2 available</code></td></tr>
+              <tr><td><code>404</code></td><td>No such application in this company</td><td><code>{ "message": "Leave not found." }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/leave/lv_123/admin-edit \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "leaveTypeId": "lt_123",
+    "startDate": "2026-03-04",
+    "endDate": "2026-03-05",
+    "duration": "FULL_DAY",
+    "reason": "Moved by request"
+  }'</code></pre>
+      </section>
     </section>
 
     <section class="section" id="approvals">
@@ -981,6 +1066,8 @@
           employee can only ask before the leave starts.</li>
         <li><strong>An admin cancels</strong> directly: <a href="#admin-cancel">admin cancel</a>,
           any time, no chain.</li>
+        <li><strong>An admin changes</strong> pending or approved leave that hasn't started:
+          <a href="#admin-edit">admin edit</a>. The status and the approval step stay as they were.</li>
       </ul>
       <div class="callout warn">
         Every endpoint in this section requires the caller to be an approver at the application's

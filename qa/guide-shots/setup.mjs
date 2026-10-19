@@ -150,6 +150,44 @@ const steps = {
     console.log("leave for the cancellation shots:", app.id, app.startDate.slice(0, 10));
   },
 
+  // An approved, not-yet-started two-day annual leave for Priya Devi in the demo
+  // company (org-altomate), filed by the admin, for the admin "Edit leave" shots.
+  // (Evan's default sign-in can land in another company where he's a former
+  // employee, so the admin files it instead.) Adds a leave each run; writes its
+  // id to .out/leave-edit.json; `leave-edit-remove` cancels it again.
+  "leave-edit": async () => {
+    const adminT = await demoAdmin();
+    const types = (await call(adminT, "GET", "/leave-types")).data ?? [];
+    const annual = types.find((t) => /annual/i.test(t.name) && !t.isArchived);
+    if (!annual) { console.log("no Annual Leave type", types.map((t) => t.name)); process.exit(1); }
+    // Mon-Tue, about four weeks out, so both days are working days.
+    let start;
+    for (let n = 25; n < 60 && !start; n++) {
+      const d = mytDate(n);
+      if (new Date(d + "T00:00:00Z").getUTCDay() === 1) start = d;
+    }
+    const end = new Date(new Date(start + "T00:00:00Z").getTime() + 86400_000).toISOString().slice(0, 10);
+    const r = await call(adminT, "POST", "/leave/on-behalf/usr-demo-priya", {
+      leaveTypeId: annual.id, startDate: `${start}T00:00:00`, endDate: `${end}T00:00:00`,
+      duration: "FULL_DAY", reason: "Family trip to Penang.",
+    });
+    if (r.status !== 200 && r.status !== 201) { console.log("couldn't file leave:", r.status, JSON.stringify(r.data)); process.exit(1); }
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    writeFileSync(new URL("./.out/leave-edit.json", import.meta.url), JSON.stringify({ id: r.data.id, startDate: start, endDate: end }));
+    console.log("leave for the edit shots:", r.data.id, r.data.status, start, end);
+  },
+
+  // Cancels the leave `leave-edit` made, so the demo company is left as it was
+  // (apart from one cancelled entry in Priya's history).
+  "leave-edit-remove": async () => {
+    const file = new URL("./.out/leave-edit.json", import.meta.url);
+    if (!existsSync(file)) { console.log("no leave-edit.json"); return; }
+    const { id } = JSON.parse(readFileSync(file, "utf8"));
+    const r = await call(await demoAdmin(), "POST", `/leave/${id}/admin-cancel`, { reason: "Demo data cleaned up" });
+    console.log("cancel demo leave:", r.status, r.data?.status ?? r.data?.message ?? "");
+    rmSync(file, { force: true });
+  },
+
   // A loan for Evan that started in a filed month (Aug), paused from November.
   // Adds a loan each run.
   loan: async () => {

@@ -147,6 +147,8 @@ internal sealed class StubPayrollLeave : ILeaveService
         throw new NotSupportedException();
     public Task<LeaveTransitionResult> AdminCancelAsync(string i, string a, string? r) =>
         throw new NotSupportedException();
+    public Task<LeaveApplyResult> AdminEditAsync(string i, CreateLeaveApplicationDto d, string a) =>
+        throw new NotSupportedException();
     public Task<LeaveTransitionResult> RequestCancellationAsync(string i, string u, string? r) =>
         throw new NotSupportedException();
     public Task<LeaveTransitionResult> WithdrawCancellationAsync(string i, string u) =>

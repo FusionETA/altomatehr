@@ -58,6 +58,7 @@ import { SearchInput } from "@/shared/components/SearchInput";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { EmployeeLeaveModal } from "./EmployeeLeaveModal";
 import { AdminCancelLeaveDialog } from "./AdminCancelLeaveDialog";
+import { ApplyOnBehalfModal } from "./ApplyOnBehalfModal";
 import { LeaveTypesSettings } from "./LeaveTypesSettings";
 import { MissingLeaveTypes } from "./MissingLeaveTypes";
 import { CardHead, EmptyState } from "./DashboardCard";
@@ -79,6 +80,12 @@ const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 
 type AdminLeaveTab = "overview" | "history" | "balances" | "types";
 
+// Today in the browser's time zone, as yyyy-MM-dd — what leave dates use.
+function localTodayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function message(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
@@ -92,6 +99,7 @@ export function AdminLeave() {
   // Whether the "cancel this approved leave" confirmation is open over the
   // selected application's details.
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [editingLeave, setEditingLeave] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLeaveBalances | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   // Which pill is open, if any — only ever one at a time.
@@ -365,9 +373,9 @@ export function AdminLeave() {
 
       {selectedApplication ? (
         <LeaveDetailsModal
-          // Re-keyed on status so the approval trail re-reads after a cancel
-          // and shows the "Cancelled by admin" entry.
-          key={`${selectedApplication.id}-${selectedApplication.status}`}
+          // Re-keyed on status and dates so the approval trail re-reads after a
+          // cancel or an edit and shows the admin's entry.
+          key={`${selectedApplication.id}-${selectedApplication.status}-${selectedApplication.startDate}-${selectedApplication.endDate}-${selectedApplication.totalDays}-${selectedApplication.leaveTypeId}-${selectedApplication.duration ?? ""}-${selectedApplication.reason ?? ""}`}
           application={selectedApplication}
           typeName={typeName(selectedApplication.leaveTypeId)}
           employeeLabel={
@@ -380,15 +388,54 @@ export function AdminLeave() {
             // leave with a cancellation still going up the chain. Rejected and
             // cancelled leave hold nothing to cancel.
             selectedApplication.status === "PENDING" || selectedApplication.status === "APPROVED" ? (
-              <button
-                type="button"
-                onClick={() => setConfirmingCancel(true)}
-                className="inline-flex h-12 items-center justify-center rounded-[18px] border border-destructive/30 bg-destructive/5 px-6 text-sm font-bold text-destructive transition hover:bg-destructive/10"
-              >
-                Cancel this leave
-              </button>
+              <div className="flex flex-wrap justify-end gap-3">
+                {/* Editable until the leave starts, and not while a
+                    cancellation is going up the chain. */}
+                {selectedApplication.startDate > localTodayIso() &&
+                selectedApplication.cancellationStatus !== "PENDING" ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditingLeave(true)}
+                    className="inline-flex h-12 items-center justify-center rounded-[18px] border border-border bg-card px-6 text-sm font-bold text-foreground transition hover:bg-muted"
+                  >
+                    Edit leave
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setConfirmingCancel(true)}
+                  className="inline-flex h-12 items-center justify-center rounded-[18px] border border-destructive/30 bg-destructive/5 px-6 text-sm font-bold text-destructive transition hover:bg-destructive/10"
+                >
+                  Cancel this leave
+                </button>
+              </div>
             ) : null
           }
+        />
+      ) : null}
+
+      {selectedApplication && editingLeave ? (
+        <ApplyOnBehalfModal
+          employeeId={selectedApplication.employeeId}
+          employeeLabel={
+            selectedApplication.employeeName?.trim() || selectedApplication.employeeEmail || "the employee"
+          }
+          types={types.filter((t) => !t.isArchived || t.id === selectedApplication.leaveTypeId)}
+          editing={selectedApplication}
+          onClose={() => setEditingLeave(false)}
+          onCreated={(updated) => {
+            // The save response doesn't carry the employee's name; keep ours.
+            const merged = {
+              ...selectedApplication,
+              ...updated,
+              employeeName: updated.employeeName ?? selectedApplication.employeeName,
+              employeeEmail: updated.employeeEmail ?? selectedApplication.employeeEmail,
+            };
+            setAllApplications((cur) => cur.map((a) => (a.id === merged.id ? merged : a)));
+            setSelectedApplication(merged);
+            overviewQuery.refresh();
+            balancesQuery.refresh();
+          }}
         />
       ) : null}
 

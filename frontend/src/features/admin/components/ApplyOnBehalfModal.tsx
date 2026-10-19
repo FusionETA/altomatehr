@@ -1,6 +1,13 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
-import { applyLeaveOnBehalf, type LeaveApplication, type LeaveType } from "@/features/leave/api";
+import {
+  adminEditLeave,
+  applyLeaveOnBehalf,
+  previewLeaveDays,
+  type LeaveApplication,
+  type LeaveDuration,
+  type LeaveType,
+} from "@/features/leave/api";
 import {
   Select,
   SelectContent,
@@ -20,29 +27,63 @@ function daysBetween(start: string, end: string): number | null {
   return Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1;
 }
 
+// Today in the browser's time zone, as yyyy-MM-dd (the date inputs' format).
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // Records leave for an employee directly — lands APPROVED, no approval chain.
 // For corrections/backfills, not a substitute for the normal apply flow.
+// With `editing`, it changes that leave instead (before it starts): same
+// fields, and the leave keeps its status.
 export function ApplyOnBehalfModal({
   employeeId,
   employeeLabel,
   types,
+  editing = null,
   onClose,
   onCreated,
 }: {
   employeeId: string;
   employeeLabel: string;
   types: LeaveType[];
+  editing?: LeaveApplication | null;
   onClose: () => void;
   onCreated: (app: LeaveApplication) => void;
 }) {
-  const [leaveTypeId, setLeaveTypeId] = useState(types[0]?.id ?? "");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [reason, setReason] = useState("");
+  const [leaveTypeId, setLeaveTypeId] = useState(editing?.leaveTypeId ?? types[0]?.id ?? "");
+  const [startDate, setStartDate] = useState(editing?.startDate ?? "");
+  const [endDate, setEndDate] = useState(editing?.endDate ?? "");
+  const [duration, setDuration] = useState<LeaveDuration>(editing?.duration ?? "FULL_DAY");
+  const [reason, setReason] = useState(editing?.reason ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
+  // A half day only makes sense on a single date.
+  const singleDay = !!startDate && startDate === endDate;
+  const effectiveDuration: LeaveDuration = singleDay ? duration : "FULL_DAY";
+
+  // What the leave will actually cost: the server's count of working days
+  // (weekends and public holidays skipped), the figure the balance uses.
+  const [workingDays, setWorkingDays] = useState<number | null>(null);
+  useEffect(() => {
+    setWorkingDays(null);
+    if (!startDate || !endDate || days == null) return;
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      previewLeaveDays(startDate, endDate, effectiveDuration)
+        .then((r) => {
+          if (!stale) setWorkingDays(r.totalDays);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [startDate, endDate, effectiveDuration, days]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -50,16 +91,19 @@ export function ApplyOnBehalfModal({
     setSaving(true);
     setError(null);
     try {
-      const app = await applyLeaveOnBehalf(employeeId, {
+      const body = {
         leaveTypeId,
         startDate,
         endDate,
-        reason: reason.trim() || undefined,
-      });
+        duration: effectiveDuration,
+        // Editing sends it even when empty, so clearing the reason clears it.
+        reason: editing ? reason.trim() : reason.trim() || undefined,
+      };
+      const app = editing ? await adminEditLeave(editing.id, body) : await applyLeaveOnBehalf(employeeId, body);
       onCreated(app);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record this leave.");
+      setError(err instanceof Error ? err.message : editing ? "Could not save the changes." : "Could not record this leave.");
     } finally {
       setSaving(false);
     }
@@ -71,10 +115,16 @@ export function ApplyOnBehalfModal({
         <form onSubmit={handleSubmit} className="nice-scrollbar max-h-[90vh] overflow-y-auto p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">
             <div>
-              <h2 className="text-2xl font-black text-foreground">Apply on behalf</h2>
+              <h2 className="text-2xl font-black text-foreground">
+                {editing ? "Edit leave" : "Apply on behalf"}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                For <span className="font-semibold text-foreground">{employeeLabel}</span> — lands
-                approved immediately, no review needed.
+                For <span className="font-semibold text-foreground">{employeeLabel}</span>
+                {editing
+                  ? editing.status === "APPROVED"
+                    ? " — stays approved. The employee is told what changed."
+                    : " — stays pending with whoever is reviewing it. The employee is told what changed."
+                  : " — lands approved immediately, no review needed."}
               </p>
             </div>
             <button
@@ -111,6 +161,7 @@ export function ApplyOnBehalfModal({
                 <input
                   required
                   type="date"
+                  min={editing ? todayIso() : undefined}
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   className={INPUT}
@@ -129,9 +180,27 @@ export function ApplyOnBehalfModal({
               </label>
             </div>
 
+            {singleDay ? (
+              <div className="space-y-2">
+                <span className="text-sm font-semibold text-foreground">Duration</span>
+                <Select value={duration} onValueChange={(v) => setDuration(v as LeaveDuration)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FULL_DAY">Full day</SelectItem>
+                    <SelectItem value="MORNING">Morning (half day)</SelectItem>
+                    <SelectItem value="AFTERNOON">Afternoon (half day)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             {days != null ? (
               <p className="text-sm text-muted-foreground">
-                Duration: <span className="font-semibold text-foreground">{days} day{days === 1 ? "" : "s"}</span>
+                Working days:{" "}
+                <span className="font-semibold text-foreground">
+                  {workingDays == null ? "…" : `${workingDays} day${workingDays === 1 ? "" : "s"}`}
+                </span>
               </p>
             ) : null}
 
@@ -167,7 +236,7 @@ export function ApplyOnBehalfModal({
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Record leave
+              {editing ? "Save changes" : "Record leave"}
             </button>
           </div>
         </form>
