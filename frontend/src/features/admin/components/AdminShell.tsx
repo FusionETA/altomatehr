@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
-import { ExternalLink, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
+import { ExternalLink, KeyRound, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
+import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
@@ -80,6 +81,7 @@ export function AdminShell({
   const activeParent = nav.parent;
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const whatsNew = useWhatsNew(user.email);
 
@@ -249,6 +251,25 @@ export function AdminShell({
                       <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                     </div>
 
+                    {/* No password here for an Altomate (SSO) account — same as
+                        the employee portal's menu. */}
+                    {user.viaSso ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          setChangePasswordOpen(true);
+                        }}
+                        className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                      >
+                        <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          <span className="block font-semibold text-foreground">Change password</span>
+                          <span className="block text-xs">Signs out every device</span>
+                        </span>
+                      </button>
+                    )}
+
                     <PushToggleMenuItem
                       onClose={() => setAccountMenuOpen(false)}
                       className="mt-2 flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition hover:bg-muted"
@@ -318,6 +339,18 @@ export function AdminShell({
             </div>
           </div>
         </header>
+
+        {/* A successful change revokes every session, this one included, so the
+            only coherent next step is the login screen. */}
+        {changePasswordOpen ? (
+          <ChangePasswordModal
+            onClose={() => setChangePasswordOpen(false)}
+            onChanged={() => {
+              setChangePasswordOpen(false);
+              onLogout();
+            }}
+          />
+        ) : null}
 
         {/* Mobile module switcher — the desktop sidebar is hidden below lg. */}
         <HorizontalScrollArea className="px-4 py-3 lg:hidden" contentClassName="gap-2">
