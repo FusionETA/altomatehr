@@ -354,6 +354,10 @@ export function PolicyEditorModal({
               <p className="text-xs text-muted-foreground">
                 Days per year for this policy. Leave blank to inherit the leave type's default.
               </p>
+              <p className="text-xs text-muted-foreground">
+                Staff automatically get at least the Employment Act minimum for their years of service:
+                annual 8 / 12 / 16 and sick 14 / 18 / 22 days (under 2, 2 to 5, and 5+ years).
+              </p>
               <div className="space-y-2">
                 {leaveTypes.map((t) => (
                   <div

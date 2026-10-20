@@ -187,6 +187,13 @@ public class LeaveService : ILeaveService
         var rowsByEmployee = (await _entitlements.GetByYearAsync(year))
             .GroupBy(e => e.EmployeeId)
             .ToDictionary(g => g.Key, g => g.ToDictionary(e => e.LeaveTypeId));
+        // Profile join date first, the membership's as a fallback — the same
+        // precedence JoinDateOfAsync uses for one employee.
+        var profileJoinDates = _profiles is null
+            ? new Dictionary<string, DateTime>()
+            : (await _profiles.GetJoinDatesAsync())
+                .GroupBy(j => j.UserId)
+                .ToDictionary(g => g.Key, g => g.First().JoinDate);
 
         return members.Select(m => new EmployeeLeaveBalancesDto
         {
@@ -200,7 +207,8 @@ public class LeaveService : ILeaveService
                 entitlements.GetValueOrDefault(m.UserId) ?? new Dictionary<string, double>(),
                 rowsByEmployee.GetValueOrDefault(m.UserId) ?? new Dictionary<string, LeaveEntitlement>(),
                 year,
-                genders.TryGetValue(m.UserId, out var g) ? g : null),
+                genders.TryGetValue(m.UserId, out var g) ? g : null,
+                profileJoinDates.TryGetValue(m.UserId, out var jd) ? jd : m.JoinDate),
         });
     }
 
@@ -628,6 +636,9 @@ public class LeaveService : ILeaveService
     // PRO_RATED row's accrued days from the JOIN DATE here; V2 has no join
     // date, so a pro-rated row keeps its accrued progress capped at the new
     // entitlement instead. Documented divergence, not an oversight.
+    //
+    // The Employment Act minimum is a floor even for an admin: a figure above
+    // it is kept as typed, one below it is lifted to it (StatutoryLeaveMinimum).
     public async Task<LeaveEntitlementResult> SetEntitlementAsync(
         string employeeId, string leaveTypeId, int year, SetEntitlementDto dto)
     {
@@ -640,14 +651,17 @@ public class LeaveService : ILeaveService
         var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveEntitlementResult(false, null, null);   // → 404
 
+        var entitled = StatutoryLeaveMinimum.Apply(
+            dto.EntitledDays, type, await JoinDateOfAsync(employeeId), year);
+
         var row = await EnsureEntitlementAsync(employeeId, type, year);
-        row.EntitledDays = dto.EntitledDays;
+        row.EntitledDays = entitled;
         row.AccrualMethod = dto.AccrualMethod;
 
         var effective = dto.AccrualMethod ?? type.AccrualMethod;
         row.AccruedDays = effective == LeaveAccrualMethod.PRO_RATED
-            ? Math.Min(row.AccruedDays, dto.EntitledDays)   // keep progress, capped
-            : dto.EntitledDays;                             // LUMP_SUM: credit in full
+            ? Math.Min(row.AccruedDays, entitled)   // keep progress, capped
+            : entitled;                             // LUMP_SUM: credit in full
         row.UpdatedAt = DateTime.UtcNow;
         await _entitlements.SaveAsync();
 
@@ -656,7 +670,9 @@ public class LeaveService : ILeaveService
         return new LeaveEntitlementResult(true, balance, null);
     }
 
-    // Clears the override: back to the policy value, else the type default.
+    // Clears the override: back to the policy value, else the type default —
+    // either lifted to the Employment Act minimum for their service. This is
+    // also how a row opened before that floor existed picks it up.
     public async Task<LeaveEntitlementResult> ResetEntitlementAsync(
         string employeeId, string leaveTypeId, int year)
     {
@@ -664,7 +680,9 @@ public class LeaveService : ILeaveService
         if (type is null) return new LeaveEntitlementResult(false, null, "Leave type not found");
 
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
-        var days = overrides.GetValueOrDefault(leaveTypeId, type.DefaultDays);
+        var days = StatutoryLeaveMinimum.Apply(
+            overrides.GetValueOrDefault(leaveTypeId, type.DefaultDays),
+            type, await JoinDateOfAsync(employeeId), year);
 
         return await SetEntitlementAsync(employeeId, leaveTypeId, year,
             new SetEntitlementDto { EntitledDays = days, AccrualMethod = null });
@@ -688,6 +706,7 @@ public class LeaveService : ILeaveService
         var typesById = (await _types.GetAllAsync()).ToDictionary(t => t.Id);
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var rows = await _entitlements.GetForEmployeeYearAsync(employeeId, year);
+        var joinDate = await JoinDateOfAsync(employeeId);
 
         var taken = (await _apps.GetByEmployeeAsync(employeeId))
             .Where(a => a.Status == LeaveStatus.APPROVED && a.StartDate.Year == year)
@@ -701,7 +720,10 @@ public class LeaveService : ILeaveService
             if (row.AccrualMethod is not null) continue;                          // 2
             if (!typesById.TryGetValue(row.LeaveTypeId, out var type)) continue;
 
-            var resolvedDays = overrides.GetValueOrDefault(type.Id, type.DefaultDays);
+            // Resolved the way the row would have been opened, statutory floor
+            // included — otherwise every floored row would look hand-edited.
+            var resolvedDays = StatutoryLeaveMinimum.Apply(
+                overrides.GetValueOrDefault(type.Id, type.DefaultDays), type, joinDate, year);
             if (Math.Abs(row.EntitledDays - resolvedDays) > Tolerance) continue;  // 3
             if (type.AccrualMethod != LeaveAccrualMethod.PRO_RATED) continue;     // 4
 
@@ -927,7 +949,9 @@ public class LeaveService : ILeaveService
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var rows = (await _entitlements.GetForEmployeeYearAsync(employeeId, year))
             .ToDictionary(e => e.LeaveTypeId);
-        return BuildBalances(types, apps, overrides, rows, year, await GenderOfAsync(employeeId));
+        return BuildBalances(
+            types, apps, overrides, rows, year,
+            await GenderOfAsync(employeeId), await JoinDateOfAsync(employeeId));
     }
 
     // Pure projection shared by the single-employee and org-wide readers, so the
@@ -943,7 +967,8 @@ public class LeaveService : ILeaveService
         IReadOnlyDictionary<string, double> overrides,
         IReadOnlyDictionary<string, LeaveEntitlement> rows,
         int year,
-        Employees.Entities.Gender? gender) =>
+        Employees.Entities.Gender? gender,
+        DateTime? joinDate) =>
         types
         // A type that isn't for them (maternity for a man) is left out — unless
         // they have pending or approved leave of it this year, which must stay
@@ -960,7 +985,13 @@ public class LeaveService : ILeaveService
             rows.TryGetValue(t.Id, out var row);
             var opened = row is not null;
 
-            var entitled = row?.EntitledDays ?? overrides.GetValueOrDefault(t.Id, t.DefaultDays);
+            // What the policy / type configures, and the Employment Act floor
+            // for their service. An unopened year projects the floored figure,
+            // exactly what the rollover or EnsureEntitlementAsync would store.
+            var configured = overrides.GetValueOrDefault(t.Id, t.DefaultDays);
+            var statutoryMin = StatutoryLeaveMinimum.MinimumFor(t.Code, joinDate, year);
+            var entitled = row?.EntitledDays
+                           ?? StatutoryLeaveMinimum.Apply(configured, t, joinDate, year);
             var method = row?.AccrualMethod ?? t.AccrualMethod;
             // An unopened year projects what the rollover would seed: the whole
             // entitlement for LUMP_SUM, nothing yet for PRO_RATED.
@@ -988,6 +1019,12 @@ public class LeaveService : ILeaveService
                 RemainingDays = LeaveAccrualMath.AvailableDays(
                     method, entitled, accrued, carried, carriedExpired, taken),
                 Eligible = LeaveEligibility.Allows(t, gender),
+                StatutoryMinimumDays = statutoryMin,
+                // Lifted, not customised: the policy figure fell short and the
+                // entitlement sits exactly on the minimum.
+                RaisedToStatutoryMinimum = statutoryMin is { } min
+                                           && configured < min
+                                           && Math.Abs(entitled - min) < Tolerance,
             };
         }).ToList();
 
@@ -1221,6 +1258,17 @@ public class LeaveService : ILeaveService
         return new LeaveApplyResult(true, ToDto(app), null);
     }
 
+    // Join date for years of service: the employee profile's (what HR and
+    // payroll maintain, and what the payroll import writes), else the
+    // membership's (what the add/edit-employee form writes). Null = unknown,
+    // and then no statutory floor applies.
+    private async Task<DateTime?> JoinDateOfAsync(string employeeId)
+    {
+        if (_profiles is not null && await _profiles.GetJoinDateAsync(employeeId) is { } fromProfile)
+            return fromProfile;
+        return (await _directory.GetMembershipForUserAsync(employeeId))?.JoinDate;
+    }
+
     private async Task<Employees.Entities.Gender?> GenderOfAsync(string employeeId) =>
         _profiles is null ? null : await _profiles.GetGenderAsync(employeeId);
 
@@ -1321,8 +1369,12 @@ public class LeaveService : ILeaveService
             .FirstOrDefault(e => e.LeaveTypeId == type.Id);
         if (existing is not null) return existing;
 
+        // Policy override, else the type default — lifted to the Employment Act
+        // minimum for their years of service (annual / sick leave only).
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
-        var entitled = overrides.GetValueOrDefault(type.Id, type.DefaultDays);
+        var entitled = StatutoryLeaveMinimum.Apply(
+            overrides.GetValueOrDefault(type.Id, type.DefaultDays),
+            type, await JoinDateOfAsync(employeeId), year);
         var now = DateTime.UtcNow;
 
         var row = new LeaveEntitlement
