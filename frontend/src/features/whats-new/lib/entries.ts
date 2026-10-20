@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: ab3688c
+// whats-new-covered-up-to: ab8f7bb
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,15 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-20",
+    new: [
+      "Admins: you can now change your own password from the account menu (⋮) in the admin portal. Changing it signs you out on every device. Not shown if you sign in through Altomate.",
+    ],
+    fixed: [
+      "Changing your password or switching company no longer fails with a 401 error after you've been away a while. Your sign-in now renews quietly in the background.",
+    ],
+  },
   {
     date: "2026-10-19",
     new: [

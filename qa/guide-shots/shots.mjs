@@ -334,6 +334,14 @@ const admin = {
   },
   "layout-menu": async (page) => {
     await go(page, "overview");
+    // Demo Admin belongs to several companies on this machine: show the demo company.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+      await go(page, "overview");
+    }
     await page.getByRole("button", { name: "Account menu" }).click();
     await shoot(page, "admin", "layout-menu");
     await page.keyboard.press("Escape");
