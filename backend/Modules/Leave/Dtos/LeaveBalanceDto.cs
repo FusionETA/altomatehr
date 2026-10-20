@@ -38,4 +38,13 @@ public class LeaveBalanceDto
     // isn't is only listed when they already have leave of it this year, and
     // then with false here, so the apply forms don't offer it.
     public bool Eligible { get; set; } = true;
+
+    // The Employment Act 1955 minimum for this type at the employee's years of
+    // service (StatutoryLeaveMinimum) — annual and sick leave only, and only
+    // when a join date is on file; null otherwise.
+    public double? StatutoryMinimumDays { get; set; }
+
+    // True when the policy / type figure was below that minimum and the
+    // entitlement shown was lifted to it.
+    public bool RaisedToStatutoryMinimum { get; set; }
 }

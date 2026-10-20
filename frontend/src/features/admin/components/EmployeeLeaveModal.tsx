@@ -378,6 +378,15 @@ function EntitlementRow({
             "Not opened for this year"
           )}
         </p>
+        {balance?.raisedToStatutoryMinimum ? (
+          <p className="text-xs text-muted-foreground">
+            Raised to the Employment Act minimum of {balance.statutoryMinimumDays} days for their years of service.
+          </p>
+        ) : balance?.statutoryMinimumDays != null && balance.entitlementDays < balance.statutoryMinimumDays ? (
+          <p className="text-xs text-destructive">
+            Below the Employment Act minimum of {balance.statutoryMinimumDays} days. Reset to apply it.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
