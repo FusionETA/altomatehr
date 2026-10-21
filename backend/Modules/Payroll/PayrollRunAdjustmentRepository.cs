@@ -40,6 +40,7 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
         existing.FixedAllowanceOverridesJson = adjustment.FixedAllowanceOverridesJson;
         existing.WorkedHours = adjustment.WorkedHours;
         existing.ExpectedHours = adjustment.ExpectedHours;
+        existing.UnpaidLeaveDays = adjustment.UnpaidLeaveDays;
         existing.Notes = adjustment.Notes;
         existing.UpdatedAt = now;
 

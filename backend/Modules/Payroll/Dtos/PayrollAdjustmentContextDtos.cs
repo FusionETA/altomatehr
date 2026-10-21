@@ -83,6 +83,16 @@ public class PayrollAdjustmentContextDto
     // What attendance derived for the period, so the form can show it as the
     // placeholder an empty override falls back to.
     public decimal? AutoWorkedHours { get; set; }
+
+    // Unpaid leave: what the Leave module has approved for the month (shown
+    // greyed), and what one day is worth — monthly salary ÷ the company's day
+    // basis — so the form can say what typed days will dock. Null rate for
+    // hourly staff, who are paid only for hours worked.
+    public decimal AutoUnpaidLeaveDays { get; set; }
+    public decimal? UnpaidDayRate { get; set; }
+    public decimal? UnpaidMonthlySalary { get; set; }
+    public int UnpaidDayBasis { get; set; }
+    public string UnpaidDayBasisLabel { get; set; } = string.Empty;
     public decimal? AutoExpectedHours { get; set; }
 
     // False when the employee's policy keeps them off attendance. The figures

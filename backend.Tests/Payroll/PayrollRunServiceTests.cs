@@ -1874,6 +1874,65 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(100m, Assert.Single(payslip.LineItems).Amount);   // 3100 / 31
     }
 
+    // ---- Unpaid days typed on the run (staff not on the Leave module yet) ----
+
+    private async Task TypeUnpaidDaysAsync(PayrollRunDto run, EmployeeProfile profile, decimal? days)
+    {
+        _db.PayrollRunAdjustments.Add(new PayrollRunAdjustment
+        {
+            OrganizationId = "org-1", PayrollRunId = run.Id, EmployeeProfileId = profile.Id,
+            UnpaidLeaveDays = days, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    // Priced exactly as approved unpaid leave is: the same line, the same rate.
+    [Fact]
+    public async Task GenerateAsync_DocksUnpaidDaysTypedOnTheRun()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        var run = await CreateRunAsync();
+        await TypeUnpaidDaysAsync(run, profile, 1.5m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+        var line = Assert.Single(payslip.LineItems);
+
+        Assert.Equal("Unpaid Leave", line.Label);
+        Assert.Equal(150m, line.Amount);   // 2600 / 26 × 1.5
+        Assert.Equal(1.5m, payslip.UnpaidLeaveDays);
+    }
+
+    // Typed days REPLACE the Leave module's — never both, or a day applied
+    // for there and typed here would be docked twice. 0 means "none".
+    [Theory]
+    [InlineData(3, 300)]
+    [InlineData(0, 0)]
+    public async Task GenerateAsync_TypedUnpaidDaysReplaceApprovedLeave(int typed, int expectedDock)
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        _leave.SetUnpaidDays("usr-1", 2);
+        var run = await CreateRunAsync();
+        await TypeUnpaidDaysAsync(run, profile, typed);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(expectedDock, payslip.LineItems.Where(l => l.Label == "Unpaid Leave").Sum(l => l.Amount));
+    }
+
+    // Left blank: the Leave module's approved days, as before.
+    [Fact]
+    public async Task GenerateAsync_BlankTypedDaysUseApprovedLeave()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        _leave.SetUnpaidDays("usr-1", 2);
+        var run = await CreateRunAsync();
+        await TypeUnpaidDaysAsync(run, profile, null);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(200m, Assert.Single(payslip.LineItems).Amount);
+    }
+
     [Fact]
     public async Task GenerateAsync_AddsNoUnpaidLeaveLineWhenThereIsNone()
     {
