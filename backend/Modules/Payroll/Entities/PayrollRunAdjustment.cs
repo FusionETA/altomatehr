@@ -52,6 +52,13 @@ public class PayrollRunAdjustment : ITenantScoped
     [Precision(8, 2)] public decimal? WorkedHours { get; set; }
     [Precision(8, 2)] public decimal? ExpectedHours { get; set; }
 
+    // Unpaid days typed for this run, for staff whose unpaid leave isn't in the
+    // Leave module. Null = use the approved unpaid leave from the Leave module;
+    // a number REPLACES it (so days applied for there aren't docked twice).
+    // Priced exactly as approved unpaid leave is: monthly salary ÷ the
+    // company's day basis × days. Monthly-paid staff only.
+    [Precision(6, 2)] public decimal? UnpaidLeaveDays { get; set; }
+
     public string? Notes { get; set; }
 
     public DateTime CreatedAt { get; set; }

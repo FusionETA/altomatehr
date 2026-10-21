@@ -465,7 +465,10 @@ public class PayrollRunService : IPayrollRunService
             policies.TryGetValue(profile.UserId, out var policy);
             var attached = claimsByEmployee.GetValueOrDefault(profile.Id) ?? [];
             var buckets = hoursByUser.GetValueOrDefault(profile.UserId);
-            var unpaidDays = (decimal)unpaidDaysByUser.GetValueOrDefault(profile.UserId);
+            // Typed on the run (staff not on the Leave module yet) replaces what
+            // the Leave module approved, so no day is docked twice.
+            var unpaidDays = adjustment?.UnpaidLeaveDays
+                ?? (decimal)unpaidDaysByUser.GetValueOrDefault(profile.UserId);
 
             var loanRepayment = loanRepayments.GetValueOrDefault(profile.Id);
             var overtime = PayrollOvertimeHours.Resolve(

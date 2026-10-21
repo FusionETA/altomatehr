@@ -74,6 +74,7 @@ export function AdjustmentEditor({
   const otTyped = [otNormal, otRest, otPublic].some((v) => Number(v) > 0);
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
+  const [unpaidDays, setUnpaidDays] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [overrides, setOverrides] = useState<Record<string, FixedAllowanceOverride>>({});
@@ -100,6 +101,7 @@ export function AdjustmentEditor({
 
         setWorkedHours(saved?.workedHours == null ? "" : String(saved.workedHours));
         setExpectedHours(saved?.expectedHours == null ? "" : String(saved.expectedHours));
+        setUnpaidDays(saved?.unpaidLeaveDays == null ? "" : String(saved.unpaidLeaveDays));
 
         setLines(
           (saved?.manualLineItems ?? []).map((item, index) => ({
@@ -188,6 +190,7 @@ export function AdjustmentEditor({
 
     const worked = workedHours.trim() === "" ? null : Number(workedHours);
     const expected = expectedHours.trim() === "" ? null : Number(expectedHours);
+    const unpaid = unpaidDays.trim() === "" ? null : Number(unpaidDays);
 
     const body: SavePayrollRunAdjustment = {
       otNormalHours: Number(otNormal) || 0,
@@ -209,6 +212,9 @@ export function AdjustmentEditor({
       // Hourly staff are paid for what they worked, with nothing to compare
       // it against — the engine ignores an expected figure for them.
       expectedHours: monthly ? expected : null,
+      // Only monthly salaries are docked by the day; hourly staff are paid
+      // for the hours they worked.
+      unpaidLeaveDays: monthly ? unpaid : null,
       notes: notes.trim() || null,
     };
 
@@ -279,7 +285,7 @@ export function AdjustmentEditor({
               title="Working hours"
               hint={
                 monthly
-                  ? "Recorded on the payslip so the hours behind the month are visible. For monthly staff these do NOT change the pay — a monthly salary is day-based, and it is approved unpaid leave that docks it."
+                  ? "Recorded on the payslip so the hours behind the month are visible. For monthly staff these do NOT change the pay — a monthly salary is day-based, and it is unpaid leave (below) that docks it."
                   : "The hours paid this month. For hourly staff this IS the paid quantity, so a wrong figure is a wrong payslip."
               }
             >
@@ -340,6 +346,49 @@ export function AdjustmentEditor({
                 field).
               </p>
             </Block>
+
+            {/* ── Unpaid leave ───────────────────────────────────────── */}
+            {monthly ? (
+              <Block
+                title="Unpaid leave"
+                hint="For staff whose unpaid leave isn't in the Leave module yet. Docked exactly as approved unpaid leave is: its own line on the payslip, off gross and off the EPF, SOCSO, EIS and PCB wage."
+              >
+                <div className="w-44">
+                  <label className={LABEL} htmlFor="adjUnpaid">
+                    Unpaid days
+                  </label>
+                  <input
+                    id="adjUnpaid"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max={context.unpaidDayBasis || undefined}
+                    className={INPUT}
+                    disabled={!editable}
+                    value={unpaidDays}
+                    placeholder={String(context.autoUnpaidLeaveDays)}
+                    onChange={(e) => setUnpaidDays(e.target.value)}
+                  />
+                </div>
+                {(() => {
+                  const days = unpaidDays.trim() === "" ? context.autoUnpaidLeaveDays : Number(unpaidDays) || 0;
+                  return context.unpaidDayRate != null && days > 0 ? (
+                    <p className={`${HINT} mt-2 tabular-nums`}>
+                      RM {rm(context.unpaidDayRate * context.unpaidDayBasis)} ÷ {context.unpaidDayBasis}{" "}
+                      {context.unpaidDayBasisLabel} × {days} day{days === 1 ? "" : "s"} ={" "}
+                      <span className="font-semibold text-foreground">
+                        RM {rm(Math.round(context.unpaidDayRate * days * 100) / 100)}
+                      </span>
+                    </p>
+                  ) : null;
+                })()}
+                <p className={`${HINT} mt-2`}>
+                  Leave blank to use the unpaid leave approved in the Leave module this month
+                  ({context.autoUnpaidLeaveDays} day{context.autoUnpaidLeaveDays === 1 ? "" : "s"}, shown
+                  greyed). A number here replaces it, so a day is never docked twice.
+                </p>
+              </Block>
+            ) : null}
 
             {/* ── Overtime ───────────────────────────────────────────── */}
             <Block

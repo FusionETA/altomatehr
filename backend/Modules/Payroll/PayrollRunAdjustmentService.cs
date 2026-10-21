@@ -20,6 +20,11 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     private readonly IEmployeeLoanService _loans;
     private readonly IAuditService _audit;
     private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
+    // Optional so hand-built instances in tests need not supply them; the app
+    // always does. Without them the unpaid-leave hint shows nothing approved
+    // and no rate — generation still prices typed days correctly.
+    private readonly Leave.ILeaveService? _leave;
+    private readonly IPayrollSettingsService? _settings;
 
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
@@ -29,9 +34,13 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         IHoursSummaryService hours,
         IEmployeeLoanService loans,
         IAuditService audit,
-        Overtime.IApprovedOvertimeService approvedOvertime)
+        Overtime.IApprovedOvertimeService approvedOvertime,
+        Leave.ILeaveService? leave = null,
+        IPayrollSettingsService? settings = null)
     {
         _approvedOvertime = approvedOvertime;
+        _leave = leave;
+        _settings = settings;
         _adjustments = adjustments;
         _runs = runs;
         _directory = directory;
@@ -83,6 +92,15 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
 
         var adjustment = await _adjustments.GetAsync(runId, employeeProfileId);
 
+        // The same two figures generation uses: approved unpaid days from the
+        // Leave module, and the day basis from Payroll Settings.
+        var approvedUnpaid = _leave is null
+            ? 0m
+            : (decimal)(await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd))
+                .GetValueOrDefault(profile.UserId);
+        var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
+        var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+
         return new PayrollAdjustmentContextDto
         {
             EmployeeProfileId = profile.Id,
@@ -97,6 +115,12 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             AutoExpectedHours = attendanceApplies && profile.SalaryType == SalaryType.MONTHLY
                 ? hours!.ExpectedMin / 60m
                 : null,
+            AutoUnpaidLeaveDays = approvedUnpaid,
+            UnpaidDayRate = profile.SalaryType == SalaryType.MONTHLY && profile.MonthlySalary is > 0m && basis > 0
+                ? profile.MonthlySalary.Value / basis
+                : null,
+            UnpaidDayBasis = basis,
+            UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
             AttendanceApplies = attendanceApplies,
 
             CashOvertime = cashOt,
@@ -217,6 +241,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             FixedAllowanceOverridesJson = PayrollRunAdjustments.Serialize(overrides),
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
+            UnpaidLeaveDays = dto.UnpaidLeaveDays,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
         });
 
@@ -302,6 +327,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 StringComparer.Ordinal),
         WorkedHours = a.WorkedHours,
         ExpectedHours = a.ExpectedHours,
+        UnpaidLeaveDays = a.UnpaidLeaveDays,
         Notes = a.Notes,
         CreatedAt = a.CreatedAt,
         UpdatedAt = a.UpdatedAt,
