@@ -276,6 +276,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtNormalHours,
                 saved.OtRestHours,
                 saved.OtPublicHours,
+                saved.UnpaidLeaveDays,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
             }));
