@@ -372,12 +372,13 @@ export function AdjustmentEditor({
                 </div>
                 {(() => {
                   const days = unpaidDays.trim() === "" ? context.autoUnpaidLeaveDays : Number(unpaidDays) || 0;
-                  return context.unpaidDayRate != null && days > 0 ? (
+                  const salary = context.unpaidMonthlySalary;
+                  return salary != null && context.unpaidDayBasis > 0 && days > 0 ? (
                     <p className={`${HINT} mt-2 tabular-nums`}>
-                      RM {rm(context.unpaidDayRate * context.unpaidDayBasis)} ÷ {context.unpaidDayBasis}{" "}
+                      RM {rm(salary)} ÷ {context.unpaidDayBasis}{" "}
                       {context.unpaidDayBasisLabel} × {days} day{days === 1 ? "" : "s"} ={" "}
                       <span className="font-semibold text-foreground">
-                        RM {rm(Math.round(context.unpaidDayRate * days * 100) / 100)}
+                        RM {rm(unpaidDock(salary, context.unpaidDayBasis, days))}
                       </span>
                     </p>
                   ) : null;
@@ -678,6 +679,14 @@ function hoursLabel(hours: number): string {
 
 // What an empty field falls back to, shown as its placeholder so the admin
 // can see the figure they are choosing not to override.
+// The payslip's figure: salary ÷ basis × days, rounded to the sen half away
+// from zero (as the server's Money.Round2). Multiplying before dividing and
+// nudging past float noise keeps 35.715 at 35.72, not 35.71.
+function unpaidDock(salary: number, basis: number, days: number): number {
+  const cents = (salary * days * 100) / basis;
+  return Math.round(cents + 1e-6) / 100;
+}
+
 function placeholderFor(auto: number | null): string {
   if (auto === null) return "—";
 

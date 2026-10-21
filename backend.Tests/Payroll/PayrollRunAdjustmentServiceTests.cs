@@ -169,6 +169,26 @@ public class PayrollRunAdjustmentServiceTests : IDisposable
         Assert.Empty(await _service.GetForRunAsync(run.Id));
     }
 
+    // Unpaid days: 0 up to the month's day basis. Beyond it the dock exceeds
+    // the salary; a negative would silently cancel the Leave module's days.
+    [Theory]
+    [InlineData(-0.5, false)]
+    [InlineData(0, true)]
+    [InlineData(2.5, true)]
+    [InlineData(31, false)]   // more than the 26-day basis these tests use
+    public async Task SaveAsync_KeepsUnpaidDaysWithinTheMonth(double days, bool ok)
+    {
+        var run = await AddRunAsync();
+        var dto = Dto();
+        dto.UnpaidLeaveDays = (decimal)days;
+
+        var result = await _service.SaveAsync(run.Id, "emp-1", dto);
+
+        Assert.Equal(ok, result.Ok);
+        if (ok) Assert.Equal((decimal)days, result.Adjustment!.UnpaidLeaveDays);
+        else Assert.StartsWith("Unpaid days must be between 0 and", result.Error);
+    }
+
     // Kind comes off the catalogue, never off the request, so what is stored
     // cannot contradict what the calculator will actually do with the row.
     [Fact]

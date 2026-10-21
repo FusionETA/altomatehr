@@ -1162,6 +1162,7 @@ export type PayrollAdjustmentContext = {
   // Null rate for hourly staff.
   autoUnpaidLeaveDays: number;
   unpaidDayRate: number | null;
+  unpaidMonthlySalary: number | null;
   unpaidDayBasis: number;
   unpaidDayBasisLabel: string;
   // False when the policy keeps this employee off attendance; the figures

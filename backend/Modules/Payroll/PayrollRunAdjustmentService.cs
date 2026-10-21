@@ -119,6 +119,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             UnpaidDayRate = profile.SalaryType == SalaryType.MONTHLY && profile.MonthlySalary is > 0m && basis > 0
                 ? profile.MonthlySalary.Value / basis
                 : null,
+            UnpaidMonthlySalary = profile.SalaryType == SalaryType.MONTHLY ? profile.MonthlySalary : null,
             UnpaidDayBasis = basis,
             UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
             AttendanceApplies = attendanceApplies,
@@ -198,6 +199,21 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             return new PayrollRunAdjustmentSaveResult(
                 true, false, null,
                 "This run is no longer a draft — revert it before editing adjustments.");
+        }
+
+        // No more unpaid days than the month's day basis — beyond it the dock
+        // exceeds the salary itself. Negative is never meaningful.
+        if (dto.UnpaidLeaveDays is { } typedDays)
+        {
+            var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
+            var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+            if (typedDays < 0m || typedDays > basis)
+            {
+                return new PayrollRunAdjustmentSaveResult(
+                    true, false, null,
+                    $"Unpaid days must be between 0 and {basis} — the month's {basis} "
+                    + $"{(rule == WorkingDaysRule.CALENDAR ? "calendar" : "working")} days.");
+            }
         }
 
         // An unrecognised category is skipped silently by the calculator, so

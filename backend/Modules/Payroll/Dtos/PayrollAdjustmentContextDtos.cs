@@ -90,6 +90,7 @@ public class PayrollAdjustmentContextDto
     // hourly staff, who are paid only for hours worked.
     public decimal AutoUnpaidLeaveDays { get; set; }
     public decimal? UnpaidDayRate { get; set; }
+    public decimal? UnpaidMonthlySalary { get; set; }
     public int UnpaidDayBasis { get; set; }
     public string UnpaidDayBasisLabel { get; set; } = string.Empty;
     public decimal? AutoExpectedHours { get; set; }
