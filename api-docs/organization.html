@@ -242,7 +242,7 @@
           <span class="tag scope">organizations:read</span>
         </div>
         <p>
-          Which modules the company's plan enables, alongside every module key that exists.
+          Which modules the company's plan enables, alongside every module the owner can grant to an admin.
           Check it before calling an endpoint of a gated module, which otherwise answers
           <code>403</code> when the plan lacks it.
         </p>
@@ -251,11 +251,12 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>all</code></td><td>string[]</td><td>Every module key: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>policies</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>claims</code>, <code>attendance</code>.</td></tr>
+              <tr><td><code>all</code></td><td>string[]</td><td>The modules an owner can grant per admin: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>documents</code>, <code>claims</code>, <code>attendance</code>. <code>policies</code> is <strong>not</strong> listed: it isn't granted per admin (see <code>managesAllPolicies</code>), though it still appears in <code>enabled</code> and <code>levels</code> when the plan includes it.</td></tr>
               <tr><td><code>enabled</code></td><td>string[]</td><td>The modules the company's plan includes. For a key this is the plan's full set: a key isn't narrowed by any per-admin grant, only by its <a href="index.html#scopes">scopes</a>. The order isn't guaranteed.</td></tr>
-              <tr><td><code>levels</code></td><td>object</td><td>The caller's access per enabled module: <code>"Manage"</code> or <code>"View"</code>. For a key every enabled module is <code>"Manage"</code>.</td></tr>
+              <tr><td><code>levels</code></td><td>object</td><td>The caller's access per enabled module: <code>"Manage"</code> or <code>"View"</code>. For a key every enabled module is <code>"Manage"</code>. For a signed-in admin <code>policies</code> is always <code>"Manage"</code>, whatever else they were granted; <code>managesAllPolicies</code> says what that covers.</td></tr>
               <tr><td><code>canChangeSettings</code></td><td>boolean</td><td>Always <code>true</code> for a key.</td></tr>
               <tr><td><code>allEmployees</code></td><td>boolean</td><td>Always <code>true</code> for a key: it sees every employee. (A signed-in admin limited to some policies would get <code>false</code>.)</td></tr>
+              <tr><td><code>managesAllPolicies</code></td><td>boolean</td><td>Whether the caller may create, archive or restore policies and choose the default. Always <code>true</code> for a key. <code>false</code> for every signed-in admin: only the owner can.</td></tr>
             </tbody>
           </table>
         </div>
@@ -265,11 +266,12 @@
           on a DIY plan with the FREE tier.
         </div>
 <pre><code>{
-  "all": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"],
+  "all": ["employees", "leave", "projects", "teams", "accounts", "overtime", "payroll", "audit", "documents", "claims", "attendance"],
   "enabled": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit"],
   "levels": { "employees": "Manage", "leave": "Manage", "payroll": "Manage" },
   "canChangeSettings": true,
-  "allEmployees": true
+  "allEmployees": true,
+  "managesAllPolicies": true
 }</code></pre>
         <h3>Errors</h3>
         <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>

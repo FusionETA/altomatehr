@@ -510,6 +510,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
               <tr><td><code>orgIssues</code></td><td>string[]</td><td>Missing Company Info fields, e.g. <code>"Employer LHDN E-number"</code>.</td></tr>
               <tr><td><code>employeeIssues[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>employeeIssues[].employeeCode</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeIssues[].userId</code></td><td>string</td><td>The employee's user id, the <code>{id}</code> the <a href="employees.html">Employees</a> endpoints take. Use it to open that person's record and fix the gap.</td></tr>
               <tr><td><code>employeeIssues[].missing</code></td><td>string[]</td><td><code>"Employee number"</code>, <code>"IC number"</code>, <code>"Passport number"</code> or <code>"EPF number (digits only)"</code> (the stored EPF number is not all digits, e.g. a placeholder like <code>"XXXXXX"</code>, on someone with an EPF contribution in this run; a blank one is not listed).</td></tr>
             </tbody>
           </table>
