@@ -11,6 +11,9 @@ export type Policy = {
   description: string | null;
   isDefault: boolean;
   isArchived: boolean;
+  // May the signed-in admin edit it? False for an admin limited to some
+  // policies when it also covers the company's admins or owner.
+  canEdit?: boolean;
   canAccessAttendance: boolean;
   canAccessClaims: boolean;
   canAccessLeave: boolean;

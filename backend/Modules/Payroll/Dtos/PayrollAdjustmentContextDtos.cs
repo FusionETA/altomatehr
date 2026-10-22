@@ -100,6 +100,11 @@ public class PayrollAdjustmentContextDto
     // zero is a zero payslip.
     public bool AttendanceApplies { get; set; }
 
+    // The employer HRDF levy the formula gives this person, from the run's
+    // last payroll (HRDF wage × levy rate) — shown greyed behind the
+    // "Employer HRDF levy" box. Null until payroll has been run.
+    public decimal? ComputedHrdfLevy { get; set; }
+
     // False when the policy banks overtime as time off or disables it. Typed
     // OT hours are then IGNORED by generation, so the form must say so rather
     // than accept a number that silently does nothing.

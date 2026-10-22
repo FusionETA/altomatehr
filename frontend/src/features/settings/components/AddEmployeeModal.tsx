@@ -59,8 +59,12 @@ export function AddEmployeeModal({
   // The list holds real policies only, the default tagged, and starts on the
   // default — there is no separate "default policy" entry to pick. Until the
   // admin picks one, the org's default is what is shown and what is saved.
+  // An admin limited to some policies may not see the default (the list is
+  // only theirs): then it starts on their first policy, so the new hire lands
+  // where they can still see them.
   const activePolicies = policies.filter((p) => !p.isArchived);
-  const defaultPolicyId = activePolicies.find((p) => p.isDefault)?.id ?? NONE;
+  const defaultPolicyId =
+    activePolicies.find((p) => p.isDefault)?.id ?? activePolicies[0]?.id ?? NONE;
   const chosenPolicyId = policyId === NONE ? defaultPolicyId : policyId;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

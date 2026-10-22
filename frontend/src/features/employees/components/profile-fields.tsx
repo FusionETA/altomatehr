@@ -99,6 +99,9 @@ export function Field({
 
   return (
     <label
+      // Lets a link from elsewhere (a payroll run's missing fields) land on
+      // this field — see features/employees/lib/profile-link.ts.
+      data-field={label}
       className={`grid gap-1.5 ${span ? "sm:col-span-full" : ""} ${missing || error ? MISSING_CONTROL : ""}`}
     >
       <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">

@@ -13,11 +13,17 @@ public class PolicyService : IPolicyService
     private readonly IEmployeePolicyRepository _policies;
     private readonly IPolicyLeaveEntitlementRepository _entitlements;
 
+    // Optional so hand-built instances in tests need not supply it; without
+    // it every caller is treated as unrestricted (as an Owner is).
+    private readonly Organizations.IModuleAccessService? _access;
+
     public PolicyService(
         IEmployeePolicyRepository policies,
         IPolicyLeaveEntitlementRepository entitlements,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        Organizations.IModuleAccessService? access = null)
     {
+        _access = access;
         _policies = policies;
         _entitlements = entitlements;
         _directory = directory;
@@ -32,8 +38,43 @@ public class PolicyService : IPolicyService
         return result;
     }
 
+    public async Task<IEnumerable<PolicyDto>> GetVisibleAsync()
+    {
+        var access = await AccessAsync();
+        var all = await GetAllAsync();
+        if (access?.PolicyScope is null) return all;
+
+        var visible = all.Where(p => access.CanEditPolicy(p.Id)).ToList();
+        foreach (var policy in visible) policy.CanEdit = !await CoversAdministratorsAsync(policy.Id);
+        return visible;
+    }
+
+    // Whether any of the company's admins or its owner resolves to this policy.
+    private async Task<bool> CoversAdministratorsAsync(string policyId)
+    {
+        var administrators = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => !Common.OrgRoles.IsOnPayroll(m.Role))
+            .Select(m => m.UserId);
+        return (await GetEffectivePoliciesForEmployeesAsync(administrators))
+            .Values.Any(p => p.Id == policyId);
+    }
+
+    private async Task<Organizations.AdminAccess?> AccessAsync() =>
+        _access is null ? null : await _access.GetAccessAsync();
+
+    // Creating, archiving and choosing the default reach the whole company —
+    // the Owner's call. Admins edit the policies they're given instead.
+    private async Task<PolicySaveResult?> RefuseUnlessCompanyWideAsync(string what) =>
+        await AccessAsync() is { ManagesAllPolicies: false }
+            ? new PolicySaveResult(false, null,
+                $"Only the organization's owner can {what}. You can edit the policies your admin access covers.",
+                Forbidden: true)
+            : null;
+
     public async Task<PolicySaveResult> CreateAsync(SavePolicyDto dto)
     {
+        if (await RefuseUnlessCompanyWideAsync("create a policy") is { } refused) return refused;
+
         var name = dto.Name.Trim();
         if (await _policies.GetByNameAsync(name) is not null)
             return new PolicySaveResult(false, null, $"A policy named \"{name}\" already exists.");
@@ -53,13 +94,32 @@ public class PolicyService : IPolicyService
     public async Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto)
     {
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null)
+        var access = await AccessAsync();
+        // A policy outside an admin's scope is one they can't see — a 404,
+        // not a 403 that would confirm it exists.
+        if (policy is null || access is not null && !access.CanEditPolicy(id))
             return new PolicySaveResult(false, null, null);   // → 404
+
+        // An admin limited to some policies covers only the STAFF on them.
+        // The company's admins and owner sit on a policy too — explicitly, or
+        // through the default — and a limited admin mustn't change their leave
+        // or clock-in rules, so such a policy stays the Owner's.
+        if (access?.PolicyScope is not null && await CoversAdministratorsAsync(id))
+        {
+            return new PolicySaveResult(false, null,
+                "This policy also applies to the company's admins or owner, so only the owner can change it.",
+                Forbidden: true);
+        }
 
         var name = dto.Name.Trim();
         var clash = await _policies.GetByNameAsync(name);
         if (clash is not null && clash.Id != id)
-            return new PolicySaveResult(false, null, $"A policy named \"{name}\" already exists.");
+        {
+            // Don't name a policy the caller can't see.
+            return new PolicySaveResult(false, null, access is null || access.CanEditPolicy(clash.Id)
+                ? $"A policy named \"{name}\" already exists."
+                : $"The name \"{name}\" isn't available. Choose another.");
+        }
 
         Apply(policy, dto, name);
         policy.UpdatedAt = DateTime.UtcNow;
@@ -69,28 +129,33 @@ public class PolicyService : IPolicyService
         return new PolicySaveResult(true, ToDto(policy, ToEntities(policy.Id, dto.LeaveEntitlements)), null);
     }
 
-    public async Task<PolicyDto?> SetArchivedAsync(string id, bool archived)
+    public async Task<PolicySaveResult> SetArchivedAsync(string id, bool archived)
     {
+        if (await RefuseUnlessCompanyWideAsync(archived ? "archive a policy" : "restore a policy") is { } refused)
+            return refused;
+
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null) return null;
+        if (policy is null) return new PolicySaveResult(false, null, null);
 
         policy.IsArchived = archived;
         if (archived) policy.IsDefault = false;   // an archived policy can't be the default
         policy.UpdatedAt = DateTime.UtcNow;
         await _policies.UpdateAsync(policy);
-        return ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id));
+        return new PolicySaveResult(true, ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id)), null);
     }
 
-    public async Task<PolicyDto?> SetDefaultAsync(string id)
+    public async Task<PolicySaveResult> SetDefaultAsync(string id)
     {
+        if (await RefuseUnlessCompanyWideAsync("choose the default policy") is { } refused) return refused;
+
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null || policy.IsArchived) return null;
+        if (policy is null || policy.IsArchived) return new PolicySaveResult(false, null, null);
 
         policy.IsDefault = true;
         policy.UpdatedAt = DateTime.UtcNow;
         await _policies.UpdateAsync(policy);
         await _policies.ClearDefaultExceptAsync(policy.Id);   // exactly one default
-        return ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id));
+        return new PolicySaveResult(true, ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id)), null);
     }
 
     public async Task<PolicyModuleAccess> GetModuleAccessAsync(string employeeId)

@@ -835,6 +835,28 @@ public class PayslipCalculatorTests
         Assert.Equal(52m, r.Hrdf);
     }
 
+    // An employer HRDF levy entered on the run is the final answer: it
+    // replaces the formula — rate, citizenship and on/off alike — while the
+    // HRDF wage stays the statutory one. Net pay never moves: it's employer cost.
+    [Fact]
+    public void Hrdf_AnEnteredLevyReplacesTheComputedOne()
+    {
+        var computed = PayslipCalculator.Calculate(Make(hrdfEnabled: true, hrdfRate: 1m));
+        var entered = PayslipCalculator.Calculate(Make(hrdfEnabled: true, hrdfRate: 1m) with { HrdfOverride = 80m });
+        var foreigner = PayslipCalculator.Calculate(
+            Make(nationality: "Indonesian", hrdfEnabled: true, hrdfRate: 1m) with { HrdfOverride = 12.345m });
+        var zero = PayslipCalculator.Calculate(Make(hrdfEnabled: true, hrdfRate: 1m) with { HrdfOverride = 0m });
+
+        Assert.Equal(50m, computed.Hrdf);
+        Assert.Equal(80m, entered.Hrdf);
+        Assert.Equal(5000m, entered.HrdfWage);
+        Assert.Equal(computed.NetPay, entered.NetPay);
+        Assert.Equal(computed.TotalCostToEmployer + 30m, entered.TotalCostToEmployer);
+        Assert.Equal(12.35m, foreigner.Hrdf);
+        Assert.Equal(0m, foreigner.HrdfWage);
+        Assert.Equal(0m, zero.Hrdf);
+    }
+
     [Fact]
     public void Hrdf_IsZeroWhenTheLevyIsOff()
     {

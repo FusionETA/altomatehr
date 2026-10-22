@@ -94,6 +94,15 @@
         so omitting it empties the policy's entitlements. Read the policy with
         <code>GET /policies</code>, change what you need, and send the whole thing back.
       </div>
+      <div class="callout">
+        <strong>Keys are not restricted.</strong> A key with <code>policies:write</code> may call
+        every endpoint below. A signed-in person is different: only the organization's
+        <strong>owner</strong> may create, archive or restore a policy or choose the default, and
+        an admin gets <code>403</code> on those. An admin may edit a policy (<code>PUT</code>)
+        only if their employee scope covers it. Those <code>403</code>s and the
+        <code>404</code> on <code>PUT</code> are therefore for people, not keys, and are listed
+        under each endpoint for completeness.
+      </div>
       <p>Policy endpoints:</p>
 
       <section class="endpoint" id="list-policies">
@@ -102,8 +111,8 @@
           <span class="path">/policies</span>
           <span class="tag scope">policies:read</span>
         </div>
-        <p>Every policy in the company, archived ones included, ordered by name.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module, held to the plan only. Unlike the write endpoints, an admin grant that leaves Policies out does not block this read, because other screens use it as a lookup.</p>
+        <p>The policies the caller may see, archived ones included, ordered by name. For an API key that is every policy in the company. (A signed-in admin limited to some policies sees only those; a key is never limited.)</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module, held to the plan only. Other screens use this as a lookup, so no per-admin grant is checked.</p>
         <h3>Response <code>200</code></h3>
         <p>An array of policies:</p>
         <div class="table-wrap">
@@ -115,6 +124,7 @@
             <tr><td><code>description</code></td><td>string | null</td><td></td></tr>
             <tr><td><code>isDefault</code></td><td>boolean</td><td>The policy used for anyone not assigned one. At most one non-archived policy is the default.</td></tr>
             <tr><td><code>isArchived</code></td><td>boolean</td><td>Archived policies are still returned by <code>GET /policies</code>.</td></tr>
+            <tr><td><code>canEdit</code></td><td>boolean</td><td>Whether the caller may edit this policy with <code>PUT /policies/{id}</code>. Always <code>true</code> for a key. It is <code>false</code> only for a signed-in admin limited to some policies, when the policy also applies to the company's admins or owner.</td></tr>
             <tr><td><code>canAccessAttendance</code>, <code>canAccessClaims</code>, <code>canAccessLeave</code></td><td>boolean</td><td>Which self-service areas people on this policy can use.</td></tr>
             <tr><td><code>requireGeofence</code></td><td>boolean</td><td>Clock-in must be inside a geofence.</td></tr>
             <tr><td><code>requireSelfie</code>, <code>requireClockOutSelfie</code></td><td>boolean</td><td>Selfie required at clock-in / clock-out.</td></tr>
@@ -139,7 +149,7 @@
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
         <h3>Errors</h3>
         <ul>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
         </ul>
       </section>
 
@@ -150,7 +160,7 @@
           <span class="tag scope">policies:write</span>
         </div>
         <p>Create a policy.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>. Policies is not a per-admin grant, so for a key only the plan matters.</p>
         <h3>Request</h3>
         <div class="table-wrap">
           <table>
@@ -202,7 +212,8 @@
         <ul>
           <li><code>400</code> a field failed validation (<code>{ "errors": { … } }</code>), e.g. a missing or over-long <code>name</code>, or a value outside its range.</li>
           <li><code>400</code> <code>{ "message": "A policy named \"Office Staff\" already exists." }</code>. Note this shape: <code>message</code>, not <code>error</code>.</li>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can create a policy. …" } }</code> a signed-in admin of any kind called this; only the owner may. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -213,7 +224,7 @@
           <span class="tag scope">policies:write</span>
         </div>
         <p>Replace a policy's settings and leave entitlements.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>. Policies is not a per-admin grant, so for a key only the plan matters.</p>
         <h3>Request</h3>
         <p>
           <code>id</code> in the path is the policy id. The body is the same as
@@ -240,8 +251,10 @@
         <ul>
           <li><code>400</code> a field failed validation (<code>{ "errors": { … } }</code>), e.g. a missing or over-long <code>name</code>, or a value outside its range.</li>
           <li><code>400</code> <code>{ "message": "A policy named \"Office Staff\" already exists." }</code>. Note this shape: <code>message</code>, not <code>error</code>. Another policy already has that name.</li>
-          <li><code>404</code> no policy with that id in this company (empty body).</li>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>400</code> <code>{ "message": "The name \"Office Staff\" isn't available. Choose another." }</code> the name is taken by a policy the caller can't see (only a signed-in admin limited to some policies gets this wording; it never names the hidden policy).</li>
+          <li><code>404</code> no policy with that id in this company (empty body). A signed-in admin limited to some policies also gets this for a policy outside their scope, so it doesn't confirm the policy exists.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "This policy also applies to the company's admins or owner, so only the owner can change it." } }</code> a signed-in admin limited to some policies edited a policy that covers the company's admins or owner. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -252,7 +265,7 @@
           <span class="tag scope">policies:write</span>
         </div>
         <p>Make a policy the company default.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>. Policies is not a per-admin grant, so for a key only the plan matters.</p>
         <div class="callout">The previous default is cleared, so there is exactly one. An archived policy cannot be made the default.</div>
         <h3>Response <code>200</code></h3>
         <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
@@ -261,7 +274,8 @@
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> no such policy in this company, <strong>or the policy is archived</strong> (empty body).</li>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can choose the default policy. …" } }</code> a signed-in admin of any kind called this; only the owner may. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -272,7 +286,7 @@
           <span class="tag scope">policies:write</span>
         </div>
         <p>Archive a policy.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>. Policies is not a per-admin grant, so for a key only the plan matters.</p>
         <div class="callout warn">Archiving the default policy also clears its default flag, and nothing replaces it, so the company is left with no default until you call <code>POST /policies/{id}/default</code> on another. Employees assigned to the policy are not reassigned.</div>
         <h3>Response <code>200</code></h3>
         <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
@@ -281,7 +295,8 @@
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> no such policy in this company (empty body).</li>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can archive a policy. …" } }</code> a signed-in admin of any kind called this; only the owner may. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -292,7 +307,7 @@
           <span class="tag scope">policies:write</span>
         </div>
         <p>Bring an archived policy back.</p>
-        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>; so does a key whose admin access leaves Policies out (<code>Your admin access doesn't include the 'policies' module.</code>).</p>
+        <p><strong>Module gate:</strong> the <code>policies</code> module. A plan without it gets <code>403</code>. Policies is not a per-admin grant, so for a key only the plan matters.</p>
         <div class="callout">A restored policy is not the default again; set that explicitly if you want it.</div>
         <h3>Response <code>200</code></h3>
         <p>The updated policy, as for <code>POST /policies</code>. No request body.</p>
@@ -301,7 +316,8 @@
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> no such policy in this company (empty body).</li>
-          <li><code>403</code> the key lacks the scope, or the plan / admin access lacks the module.</li>
+          <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can restore a policy. …" } }</code> a signed-in admin of any kind called this; only the owner may. Never returned to a key.</li>
         </ul>
       </section>
     </section>

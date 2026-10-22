@@ -119,6 +119,36 @@ const steps = {
     }
   },
 
+  // For the payroll "Needs attention" shot: blank one demo employee's (Aisyah's)
+  // ID number so the January 2027 draft lists "IC number" under "fields the
+  // statutory files need". (The app refuses a placeholder EPF number when
+  // saving, so the ID number is the gap we can make.) The original is kept in
+  // .out/id-gap.json; run `payroll-gap-restore` afterwards.
+  "payroll-gap": async () => {
+    const adminToken = await demoAdmin();
+    const list = (await call(adminToken, "GET", "/employees")).data ?? [];
+    const evanRow = list.find((e) => e.email === "aisyah.rahman@altomate.com");
+    if (!evanRow) throw new Error("no Aisyah in the demo company");
+    const got = await call(adminToken, "GET", `/employees/${evanRow.id}/profile`);
+    if (got.status !== 200) throw new Error(`profile: ${got.status}`);
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    const saved = new URL("./.out/id-gap.json", import.meta.url);
+    if (!existsSync(saved)) writeFileSync(saved, JSON.stringify({ userId: evanRow.id, idNumber: got.data.idNumber ?? null }));
+    const r = await call(adminToken, "PUT", `/employees/${evanRow.id}/profile`, { ...got.data, idNumber: "" });
+    console.log("ID number cleared on Aisyah:", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+  },
+
+  "payroll-gap-restore": async () => {
+    const saved = new URL("./.out/id-gap.json", import.meta.url);
+    if (!existsSync(saved)) { console.log("nothing to restore"); return; }
+    const { userId, idNumber } = JSON.parse(readFileSync(saved, "utf8"));
+    const adminToken = await demoAdmin();
+    const got = await call(adminToken, "GET", `/employees/${userId}/profile`);
+    const r = await call(adminToken, "PUT", `/employees/${userId}/profile`, { ...got.data, idNumber });
+    console.log("ID number restored:", r.status);
+    if (r.status === 200) rmSync(saved);
+  },
+
   // Approve one of Evan's future leaves (approved, not started) — for the
   // admin and employee leave-cancellation shots. Prefers the seeded lv-demo-5
   // (dates are relative to the day the seed ran), else his next pending leave,

@@ -889,8 +889,8 @@ public class EmployeeImportTests
 
         public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotSupportedException();
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotSupportedException();
-        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
-        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotSupportedException();
+        public Task<PolicySaveResult> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
+        public Task<PolicySaveResult> SetDefaultAsync(string id) => throw new NotSupportedException();
         public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) => throw new NotSupportedException();
         public Task<IReadOnlyDictionary<string, EmployeePolicy>> GetEffectivePoliciesForEmployeesAsync(
             IEnumerable<string> employeeIds) => throw new NotSupportedException();

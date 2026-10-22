@@ -189,6 +189,23 @@ public class PayrollRunAdjustmentServiceTests : IDisposable
         else Assert.StartsWith("Unpaid days must be between 0 and", result.Error);
     }
 
+    // An entered employer HRDF levy is kept (to the sen) and cleared by
+    // leaving it blank, which goes back to the computed levy.
+    [Fact]
+    public async Task SaveAsync_KeepsAnEnteredHrdfLevy_AndBlankClearsIt()
+    {
+        var run = await AddRunAsync();
+        var dto = Dto();
+        dto.HrdfLevy = 80.456m;
+
+        var saved = await _service.SaveAsync(run.Id, "emp-1", dto);
+        Assert.True(saved.Ok);
+        Assert.Equal(80.46m, saved.Adjustment!.HrdfLevy);
+
+        var cleared = await _service.SaveAsync(run.Id, "emp-1", Dto());
+        Assert.Null(cleared.Adjustment!.HrdfLevy);
+    }
+
     // Kind comes off the catalogue, never off the request, so what is stored
     // cannot contradict what the calculator will actually do with the row.
     [Fact]

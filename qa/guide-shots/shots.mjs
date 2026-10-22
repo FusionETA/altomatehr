@@ -312,6 +312,13 @@ const admin = {
   },
   // The Manage access dialog on its Modules tab (Off / View / Manage), then Employees.
   "admins-access-modules": async (page) => {
+    // Sign-in can land on another company on this machine: move to the demo company first.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
     await go(page, "settings/settings-admins");
     await page.getByRole("button", { name: "Manage access" }).first().click();
     await page.getByText("Manage access", { exact: true }).last().waitFor();
@@ -489,6 +496,24 @@ const admin = {
     await scrollTo(page, "Payroll summary for approval", 120);
     await shoot(page, "admin", "payroll-summary-approval");
   },
+  // A draft run (node setup.mjs payroll-draft) after `node setup.mjs payroll-gap`:
+  // Needs attention lists the missing field as a link to the person's record.
+  "payroll-needs-attention": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "January 2027");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    await clickText(page, "Needs attention");
+    await page.getByText(/the statutory files need/i).first().waitFor({ timeout: 20000 });
+    await settle(page);
+    await shoot(page, "admin", "payroll-needs-attention");
+  },
   // A run's Payslips list narrowed by the search box; the Total row stays the whole run's.
   "payroll-payslips-search": async (page) => {
     // Sign-in can land on another company on this machine: move to the demo company first.
@@ -510,25 +535,21 @@ const admin = {
     await page.evaluate(() => window.scrollBy(0, -160));
     await shoot(page, "admin", "payroll-payslips-search");
   },
-  // A draft run (node setup.mjs payroll-draft), one monthly employee's adjustments
-  // drawer scrolled to Working hours / Unpaid leave / Overtime. Nothing is saved.
+  // AB Test Co A's November 2026 draft (not stale, so the computed HRDF levy
+  // shows greyed): one monthly employee's adjustments drawer, scrolled to the
+  // Unpaid leave / Employer HRDF levy / Overtime boxes. Nothing is saved.
   "payroll-adjustments": async (page) => {
-    const switcher = page.getByRole("button", { name: "Switch company" });
-    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
-      await switcher.click();
-      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
-      await settle(page, 2500);
-    }
+    await toAbTestCoA(page);
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
-    await clickText(page, "January 2027");
+    await clickText(page, "November 2026");
     await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
-    const adjust = page.getByRole("button", { name: "Adjust Chan Mei Ling" }).first();
+    const adjust = page.getByRole("button", { name: /^(Adjust|Edit) Alya Test/ }).first();
     await adjust.scrollIntoViewIfNeeded();
     await adjust.click();
-    await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
+    await page.getByText("Employer HRDF levy", { exact: true }).first().waitFor({ timeout: 20000 });
     await settle(page, 800);
-    await scrollTo(page, "Working hours", 110, true);
+    await scrollTo(page, "Unpaid leave", 60, true);
     await shoot(page, "admin", "payroll-adjustments");
     await page.getByRole("button", { name: "Cancel" }).click();
   },
@@ -866,6 +887,14 @@ const exec = {
     await page.getByText(/View only/).first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "admin", "limited-settings");
+  },
+  // System Settings → Policies as an admin limited to one policy: only that
+  // policy, no New policy button, and the note about what only the owner can do.
+  "policies-limited": async (page) => {
+    await go(page, "settings/settings-policies");
+    await page.getByText(/Only the owner can create/).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "policies-limited");
   },
   "limited-payroll-runs": async (page) => {
     await go(page, "payroll");

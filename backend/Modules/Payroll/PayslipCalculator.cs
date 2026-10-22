@@ -87,6 +87,9 @@ public static class PayslipCalculator
         public decimal DefaultEpfEmployeeRate { get; init; } = 11m;
         public bool HrdfEnabled { get; init; }
         public decimal? HrdfRate { get; init; }
+        // Entered on the run: replaces the computed levy outright (see
+        // PayrollRunAdjustment.HrdfLevy). Null = compute it.
+        public decimal? HrdfOverride { get; init; }
 
         // Auto-apply the RM 350 PERKESO relief inside PCB. Off means the
         // employee claims it themselves at year end instead.
@@ -486,7 +489,12 @@ public static class PayslipCalculator
         var hrdfWage = hrdfActive
             ? Money.Round2(Math.Max(0m, proratedPay + buckets.HrdfBase))
             : 0m;
-        var hrdf = hrdfActive ? Money.Round2(hrdfWage * hrdfRate / 100m) : 0m;
+        // An amount entered on the run is the final answer — it replaces the
+        // formula whatever the rate or citizenship says. The HRDF wage stays the
+        // statutory one, for the levy return.
+        var hrdf = input.HrdfOverride is { } enteredLevy
+            ? Money.Round2(Math.Max(0m, enteredLevy))
+            : hrdfActive ? Money.Round2(hrdfWage * hrdfRate / 100m) : 0m;
 
         // 9. Gross, net, cost to employer.
         //

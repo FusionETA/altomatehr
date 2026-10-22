@@ -258,6 +258,8 @@ function summarise(adjustment: PayrollRunAdjustment): string[] {
   if (adjustment.unpaidLeaveDays !== null) {
     chips.push(`${adjustment.unpaidLeaveDays} unpaid day${adjustment.unpaidLeaveDays === 1 ? "" : "s"}`);
   }
+  // 0 counts too: an entered levy replaces the computed one outright.
+  if (adjustment.hrdfLevy !== null) chips.push(`HRDF levy RM ${rm(adjustment.hrdfLevy)}`);
   if (adjustment.notes) chips.push("note");
 
   // A saved row with nothing in it is possible — the admin typed something,

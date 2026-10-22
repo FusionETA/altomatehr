@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: d4c5b43
+  user-guide-covered-up-to: b07ef3e
 -->
 <html lang="en">
 <head>
@@ -535,7 +535,13 @@
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
           overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
           <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
-          choose another.</p></li>
+          choose another.</p>
+        <p>Every admin can edit the policies their access covers, so there's nothing to switch on for Policies under
+          <strong>Admins</strong>. An admin limited to some policies sees only those; a policy that also applies to the
+          company's admins or owner shows <em>Owner only</em> where <span class="btn-name">Edit</span> would be. Only the
+          owner sees <span class="btn-name">New policy</span>, <span class="btn-name">Make default</span> and
+          <span class="btn-name">Archive</span> / <span class="btn-name">Restore</span>; an admin sees a short note
+          saying so.</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
           an owner's access can't be restricted. Each admin row shows a one-line summary (for example
@@ -545,7 +551,7 @@
             <span class="btn-name">Save</span>:
             <ul>
               <li><strong>Modules</strong> — tick <em>All modules, full control</em>, or set each module
-                (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Documents,
+                (Employees, Leave, Projects, Teams, Accounts, Overtime, Claims, Attendance, Payroll, Documents,
                 Activity log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
                 <span class="btn-name">Manage</span>. <em>View</em> lets them see the screens and download what's
                 there; <em>Manage</em> also lets them edit, approve and run. A module set to Off disappears from that
@@ -557,7 +563,7 @@
               <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
                 (run payroll, approve, edit employees) without changing how the company is set up. It covers
                 Organization, Work Schedule, Payroll settings, company and statutory details, portal logins and the Xero
-                connection. Accounts, Projects and Policies follow their own module level.</li>
+                connection. Accounts and Projects follow their own module level.</li>
             </ul></li>
           <li><span class="btn-name">Remove</span> — takes the person off as an admin straight away (you confirm
             first). Their login isn't deleted, and you can add them again later.</li>
@@ -609,6 +615,10 @@
         <div class="shot-item">
           <img src="shots/admin/policy-editor.png" alt="System Settings → Policies with the default Full-time policy" loading="lazy">
           <p class="shot-cap">Policies</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: no New policy button, a note that only the owner can create, archive or change the default" loading="lazy">
+          <p class="shot-cap">Policies, as a limited admin</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
@@ -712,7 +722,7 @@
     <h3>Adding people</h3>
     <ul>
       <li><span class="btn-name">Add employee</span> — name, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
-        of birth, role and policy. The policy starts on your default one. Their <strong>starting password</strong> is
+        of birth, role and policy. The policy starts on your default one (or, if you're an admin who can't see the default, on your own first policy). Their <strong>starting password</strong> is
         their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
         Tick <em>Send a welcome email</em> to have it sent to them.</li>
       <li><span class="btn-name">Import</span> — one spreadsheet to add new people <em>or</em> update everyone at once,
@@ -1287,12 +1297,15 @@
           approved overtime, leave and claims.</p></li>
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
-          or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
+          or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. <strong>Reimbursed claims</strong> lists
           approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
           unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
           <em>Unpaid days not in the Leave module</em> below. The <strong>Needs attention</strong> tab lists anyone
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
-          out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
+          out. In the missing-fields list, each person's name and each missing field is a link that opens their record in a
+          new tab, on the right tab and with the box ready to type in. Fill it in, save, then come back to the run — a
+          draft refreshes itself when you return to its tab — and press <span class="btn-name">Re-run payroll</span>.
+          While the run is still a draft, the download button on a person's row gives a preview of their payslip,
           watermarked <strong>DRAFT</strong>.</p></li>
       <li><h4>Unpaid days not in the Leave module</h4>
         <p>For monthly staff whose unpaid leave was never entered in the Leave module, open their
@@ -1313,6 +1326,23 @@
           off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
           shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then
           <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
+      <li><h4>Employer HRDF levy for one person</h4>
+        <p>The HRDF levy is what the company pays HRD Corp for each person, worked out for you as the levy rate in your
+          payroll settings times their HRDF wages, for Malaysian citizens. To set a different figure for one person on this
+          run, open their <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span>).
+          Between <strong>Unpaid leave</strong> and <strong>Overtime</strong> there's an
+          <strong>Employer HRDF levy</strong> box with one field, <strong>Levy (RM)</strong>.</p>
+        <ul>
+          <li>Leave it <strong>blank</strong> to use the computed levy. The figure shows greyed in the field while the run
+            is up to date; if you've just changed something, it appears after you press
+            <span class="btn-name">Re-run payroll</span>.</li>
+          <li>Type an amount to use it instead. It is the <strong>final</strong> figure, not an extra on top, and
+            <strong>0</strong> counts: type 0 to charge no levy for that person.</li>
+          <li>It is an employer cost only. The person's pay, payslip and deductions don't change.</li>
+        </ul>
+        <p>In <strong>One-off adjustments</strong> the person's row then shows a tag such as <em>HRDF levy RM 25.00</em>.
+          Press <span class="btn-name">Save adjustments</span>, then <span class="btn-name">Re-run payroll</span> so the
+          run's HRDF totals use it.</p></li>
       <li><h4>Pay figures are final (ABPay runs only)</h4>
         <p>On a draft you'll see a tick box, <strong>Pay figures are final — don't prorate joiners and leavers</strong>.
           Tick it for a run imported from ABPay, where the timesheet already pays part-month staff for the days they
@@ -1366,7 +1396,7 @@
           example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
         <li>A required employer or employee field is missing.</li>
         <li>Someone in the run has an EPF number that isn't digits only. They're listed as <em>EPF number (digits only)</em>,
-          the same way a missing IC number is. Fix the number on their Statutory tab, then press
+          the same way a missing IC number is. Click the field in <strong>Needs attention</strong> to open it on their Statutory tab, fix the number, then press
           <span class="btn-name">Re-run payroll</span>.</li>
         <li>The previous month hasn't been filed yet — months are filed in order.</li>
       </ul>
@@ -1434,7 +1464,7 @@
           <p class="shot-cap">Payroll runs</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Unpaid leave box, the Employer HRDF levy box with the computed RM 30.90 shown greyed, and the start of Overtime" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
         </div>
         <div class="shot-item">
@@ -1446,6 +1476,15 @@
     </figure>
 
     
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-needs-attention.png" alt="A draft run's Needs attention tab: one field the statutory files need, with the person's missing IC number shown as a link that opens their record in a new tab" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Needs attention: click a missing field to fix it</p>
+    </figure>
+
     <figure class="shot" data-place="Running payroll">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">

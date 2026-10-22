@@ -63,6 +63,10 @@ public class SavePayrollRunAdjustmentDto
     // upper bound (the month's day basis) is checked by the service.
     [Range(typeof(decimal), "0", "31")] public decimal? UnpaidLeaveDays { get; set; }
 
+    // The employer HRDF levy for this person this month. Null = computed; an
+    // amount (0 included) replaces the computed levy.
+    [Range(typeof(decimal), "0", "99999.99")] public decimal? HrdfLevy { get; set; }
+
     [MaxLength(2000)]
     public string? Notes { get; set; }
 }
@@ -83,6 +87,7 @@ public class PayrollRunAdjustmentDto
     public decimal? WorkedHours { get; set; }
     public decimal? ExpectedHours { get; set; }
     public decimal? UnpaidLeaveDays { get; set; }
+    public decimal? HrdfLevy { get; set; }
     public string? Notes { get; set; }
 
     public DateTime CreatedAt { get; set; }

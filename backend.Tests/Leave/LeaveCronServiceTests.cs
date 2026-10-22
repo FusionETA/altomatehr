@@ -346,8 +346,8 @@ public class LeaveCronServiceTests
             Task.FromResult<IEnumerable<PolicyDto>>([]);
         public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotSupportedException();
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotSupportedException();
-        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
-        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotSupportedException();
+        public Task<PolicySaveResult> SetArchivedAsync(string id, bool archived) => throw new NotSupportedException();
+        public Task<PolicySaveResult> SetDefaultAsync(string id) => throw new NotSupportedException();
         public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) =>
             Task.FromResult<EmployeePolicy?>(null);
         public Task<IReadOnlyDictionary<string, EmployeePolicy>>

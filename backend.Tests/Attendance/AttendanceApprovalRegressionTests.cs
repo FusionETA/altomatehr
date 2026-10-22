@@ -1323,8 +1323,8 @@ public class AttendanceApprovalRegressionTests
         public Task<IEnumerable<PolicyDto>> GetAllAsync() => Task.FromResult(Enumerable.Empty<PolicyDto>());
         public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotImplementedException();
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetDefaultAsync(string id) => throw new NotImplementedException();
         public Task<EmployeePolicy?> GetEffectivePolicyAsync(string employeeId) => Task.FromResult<EmployeePolicy?>(null);
         public Task<IReadOnlyDictionary<string, EmployeePolicy>>
             GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds) =>

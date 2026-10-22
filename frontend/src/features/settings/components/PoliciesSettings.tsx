@@ -11,6 +11,7 @@ import { getLeaveTypes } from "@/features/leave/api";
 import { PolicyEditorModal } from "./PolicyEditorModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
+import { useMyAccess } from "../lib/module-access";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -20,6 +21,10 @@ function message(err: unknown, fallback: string) {
 }
 
 export function PoliciesSettings() {
+  // Creating, archiving and the default reach the whole company — the
+  // Owner's. An admin edits the policies their access covers (the server only
+  // lists those to them).
+  const { managesAllPolicies } = useMyAccess();
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Policy | null>(null);
@@ -77,7 +82,15 @@ export function PoliciesSettings() {
             Rule bundles assigned to employees — module access, attendance enforcement, OT, and leave
             entitlements.
           </p>
+          {!managesAllPolicies ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              You can edit the policies your admin access covers. Only the owner can create a
+              policy, archive one, change the default, or edit a policy that also applies to the
+              company&apos;s admins or owner.
+            </p>
+          ) : null}
         </div>
+        {managesAllPolicies ? (
         <button
           type="button"
           onClick={() => setCreating(true)}
@@ -86,6 +99,7 @@ export function PoliciesSettings() {
           <Plus className="h-4 w-4" />
           New policy
         </button>
+        ) : null}
       </div>
 
       {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
@@ -93,7 +107,9 @@ export function PoliciesSettings() {
       {loading ? (
         <SkeletonPanel />
       ) : policies.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No policies yet.</p>
+        <p className="text-sm text-muted-foreground">
+          {managesAllPolicies ? "No policies yet." : "No policies are covered by your admin access."}
+        </p>
       ) : (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
           {policies.map((p) => (
@@ -119,6 +135,14 @@ export function PoliciesSettings() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {p.canEdit === false ? (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title="It also applies to the company's admins or owner"
+                  >
+                    Owner only
+                  </span>
+                ) : (
                 <button
                   type="button"
                   onClick={() => setEditing(p)}
@@ -126,7 +150,8 @@ export function PoliciesSettings() {
                 >
                   Edit
                 </button>
-                {!p.isDefault && !p.isArchived ? (
+                )}
+                {managesAllPolicies && !p.isDefault && !p.isArchived ? (
                   <button
                     type="button"
                     disabled={busyId === p.id}
@@ -136,7 +161,7 @@ export function PoliciesSettings() {
                     Make default
                   </button>
                 ) : null}
-                {!p.isDefault ? (
+                {managesAllPolicies && !p.isDefault ? (
                   <button
                     type="button"
                     disabled={busyId === p.id}

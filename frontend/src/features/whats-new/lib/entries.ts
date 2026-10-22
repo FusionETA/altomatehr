@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: d4c5b43
+// whats-new-covered-up-to: b07ef3e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -22,14 +22,25 @@ export type WhatsNewEntry = {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-10-23",
+    new: [
+      "Admins: each person's adjustments on a payroll run now have an Employer HRDF levy box. Blank keeps the computed levy, shown greyed; any amount, 0 included, replaces it.",
+      "The levy is an employer cost only, so the employee's pay doesn't change. The run's adjustments list shows it as \"HRDF levy RM x\".",
+      "Re-run payroll after changing it. Only the months where you type a levy are affected.",
+    ],
+  },
+  {
     date: "2026-10-22",
     new: [
       "Admins: a month can now be paid in several runs, such as one for office staff and one for workers. Each person can be in only one run a month, and the picker greys out anyone already in another.",
       "Admins: a month with several runs gets an \"all runs\" row showing its combined totals, plus a combined Summary to download as PDF or Excel. It's marked as a draft until every run is approved.",
-      "Admins: rename any run with the pencil next to its title, whatever its status.",
+      "Admins: rename any run with the pencil next to its title, whatever its status. Its payroll files and Xero journal narration carry the new name.",
     ],
     improved: [
-      "Admins: a named run's files carry its name: summary, payslips, EPF, SOCSO, PCB and bank files. Its Xero journal narration includes it too.",
+      "Admins: in a run's Needs attention, each missing number links to that person's record in a new tab, at the right field. Names link there too, and a draft run refreshes when you return.",
+      "Admins: Policies is no longer a per-admin box in Manage access. Every admin can edit the policies they cover, and an admin who sees all employees can edit all of them.",
+      "Admins: an admin limited to some policies sees only those. One that also covers the company's admins or owner, usually the default, shows \"Owner only\" and can't be edited by them.",
+      "Admins: only the owner can create, archive or restore a policy, or change the default. Adding an employee starts on your own policy if you can't see the default one.",
       "Admins: the payroll overview's Latest card adds up all of the latest month's runs. It reads Not all approved until every one is approved.",
       "Admins: reverting a run now only sends back later approved runs that share people with it.",
       "EA forms count a month with several runs only once every run is approved. PCB 2(II) shows each person's own run's LHDN receipt. Single-run months don't change.",

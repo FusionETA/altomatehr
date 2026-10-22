@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRightLeft, Copy, KeyRound } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
 import { TransferDialog } from "./TransferDialog";
@@ -184,11 +184,17 @@ function withRecommendedSocso(p: EmployeeProfile): EmployeeProfile {
 export function EmployeeDetail({
   employee,
   policies,
+  initialSection,
+  focusField,
   onBack,
   onSaved,
 }: {
   employee: Employee;
   policies: Policy[];
+  /** Open on this section — a link to one field (see lib/profile-link.ts). */
+  initialSection?: SectionId;
+  /** Scroll to and focus this field (its Field label) once the profile loads. */
+  focusField?: string;
   onBack: () => void;
   onSaved: (updated: Employee) => void;
 }) {
@@ -212,8 +218,23 @@ export function EmployeeDetail({
   // and after a transfer.
   const [history, setHistory] = useState<EmploymentPeriod[] | null>(null);
   const [historyReload, setHistoryReload] = useState(0);
-  const [section, setSection] = useState<SectionId>("personal");
+  const [section, setSection] = useState<SectionId>(initialSection ?? "personal");
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  // Followed a link to one field: bring it into view and put the cursor in
+  // it, once, after the profile (and so the section) has rendered.
+  const focusedField = useRef(false);
+  useEffect(() => {
+    if (!focusField || !profile || focusedField.current) return;
+    focusedField.current = true;
+    requestAnimationFrame(() => {
+      const field = document.querySelector<HTMLElement>(`[data-field="${CSS.escape(focusField)}"]`);
+      if (!field) return;
+      field.scrollIntoView({ block: "center", behavior: "smooth" });
+      field
+        .querySelector<HTMLElement>("input, textarea, button[role=combobox]")
+        ?.focus({ preventScroll: true });
+    });
+  }, [focusField, profile]);
   // The last-saved state, to tell "changed" from "loaded".
   const [baseline, setBaseline] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);

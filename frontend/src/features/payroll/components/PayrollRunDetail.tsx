@@ -88,6 +88,27 @@ export function PayrollRunDetailView({
     void load();
   }, [load]);
 
+  // Fields are fixed in another tab (the Needs attention links open the
+  // person's record there). Coming back re-reads a DRAFT run quietly, so the
+  // list and the "run payroll again" banner reflect the fix without a reload.
+  // Only a draft: an approved run's LHDN receipt form would be reset by a new
+  // run object. And a failed background read changes nothing on screen.
+  const isDraft = detail?.run.status === "DRAFT";
+  useEffect(() => {
+    if (!isDraft) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      Promise.all([getPayrollRun(runId), getPayrollReadiness(runId).catch(() => null)])
+        .then(([nextDetail, nextReadiness]) => {
+          setDetail(nextDetail);
+          setReadiness(nextReadiness);
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [isDraft, runId]);
+
   // First open of a run only — a re-open keeps the detail we already had.
   if (loading && !detail) {
     return (
