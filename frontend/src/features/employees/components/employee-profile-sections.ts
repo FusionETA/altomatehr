@@ -1,4 +1,5 @@
 import type { EmployeeProfile } from "../api";
+import { isMalaysianNationality, socsoSchemeNeedsManualChoice } from "../lib/statutory";
 
 // What "ready" means for one employee, section by section.
 //
@@ -79,10 +80,24 @@ const RULES: Record<SectionId, Rule[]> = {
   // Only gated when they actually contribute to the scheme.
   statutory: [
     { label: "EPF number", applies: (p) => p.contributeToEpf, filled: (p) => present(p.epfNumber) },
+    // NOT_COVERED is a deliberate "no SOCSO", so there is no number to ask for.
     {
       label: "SOCSO number",
-      applies: (p) => present(p.socsoScheme),
+      applies: (p) => present(p.socsoScheme) && p.socsoScheme !== "NOT_COVERED",
       filled: (p) => present(p.socsoNumber),
+    },
+    // Mirrors the backend's PayrollProfileReadiness: no scheme saved and none
+    // can be suggested from age (a Malaysian aged 55–59; a blank nationality
+    // counts as Malaysian there too), so payroll leaves them out of a run.
+    {
+      label: "SOCSO scheme",
+      applies: (p) =>
+        !present(p.socsoScheme) &&
+        socsoSchemeNeedsManualChoice({
+          dateOfBirth: p.dateOfBirth,
+          isMalaysianCitizen: present(p.nationality) ? isMalaysianNationality(p.nationality) : null,
+        }),
+      filled: (p) => present(p.socsoScheme),
     },
   ],
   // Role and policy always hold a value, so only the employee number is gated

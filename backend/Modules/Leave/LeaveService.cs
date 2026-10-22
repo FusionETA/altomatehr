@@ -651,14 +651,14 @@ public class LeaveService : ILeaveService
         var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveEntitlementResult(false, null, null);   // → 404
 
+        var effective = dto.AccrualMethod ?? type.AccrualMethod;
         var entitled = StatutoryLeaveMinimum.Apply(
-            dto.EntitledDays, type, await JoinDateOfAsync(employeeId), year);
+            dto.EntitledDays, type, await JoinDateOfAsync(employeeId), year, effective);
 
         var row = await EnsureEntitlementAsync(employeeId, type, year);
         row.EntitledDays = entitled;
         row.AccrualMethod = dto.AccrualMethod;
 
-        var effective = dto.AccrualMethod ?? type.AccrualMethod;
         row.AccruedDays = effective == LeaveAccrualMethod.PRO_RATED
             ? Math.Min(row.AccruedDays, entitled)   // keep progress, capped
             : entitled;                             // LUMP_SUM: credit in full
@@ -682,7 +682,7 @@ public class LeaveService : ILeaveService
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var days = StatutoryLeaveMinimum.Apply(
             overrides.GetValueOrDefault(leaveTypeId, type.DefaultDays),
-            type, await JoinDateOfAsync(employeeId), year);
+            type, await JoinDateOfAsync(employeeId), year, type.AccrualMethod);
 
         return await SetEntitlementAsync(employeeId, leaveTypeId, year,
             new SetEntitlementDto { EntitledDays = days, AccrualMethod = null });
@@ -696,9 +696,14 @@ public class LeaveService : ILeaveService
     //                             against; that could push them negative.
     //   2. per-employee method override → skip. An admin set it by hand.
     //   3. entitled days differ from the resolved default → skip. Someone has
-    //      customised this row; re-deriving would silently undo them.
+    //      customised this row; re-deriving would silently undo them. The
+    //      default is checked under the new join date AND the one it replaced:
+    //      the statutory floor depends on service, so a row opened under a
+    //      mistyped date (16 days for "2019") is still the system's figure,
+    //      not a hand edit — it is moved to the new default (8 for "2026").
     //   4. not effectively PRO_RATED → skip. Nothing to pro-rate.
-    public async Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year)
+    public async Task<int> RecomputeProRatedAccrualAsync(
+        string employeeId, int year, DateTime? previousJoinDate)
     {
         var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return 0;
@@ -722,15 +727,20 @@ public class LeaveService : ILeaveService
 
             // Resolved the way the row would have been opened, statutory floor
             // included — otherwise every floored row would look hand-edited.
-            var resolvedDays = StatutoryLeaveMinimum.Apply(
-                overrides.GetValueOrDefault(type.Id, type.DefaultDays), type, joinDate, year);
-            if (Math.Abs(row.EntitledDays - resolvedDays) > Tolerance) continue;  // 3
+            var configured = overrides.GetValueOrDefault(type.Id, type.DefaultDays);
+            var resolvedDays = StatutoryLeaveMinimum.Apply(configured, type, joinDate, year, type.AccrualMethod);
+            var previousDays = StatutoryLeaveMinimum.Apply(configured, type, previousJoinDate, year, type.AccrualMethod);
+            if (Math.Abs(row.EntitledDays - resolvedDays) > Tolerance
+                && Math.Abs(row.EntitledDays - previousDays) > Tolerance) continue;  // 3
             if (type.AccrualMethod != LeaveAccrualMethod.PRO_RATED) continue;     // 4
+
+            var entitledMoved = Math.Abs(row.EntitledDays - resolvedDays) > Tolerance;
+            if (entitledMoved) row.EntitledDays = resolvedDays;
 
             var next = LeaveAccrualMath.ProRatedAccrualOnDate(
                 row.EntitledDays, membership.JoinDate, year, DateTime.UtcNow);
 
-            if (Math.Abs(next - row.AccruedDays) < 0.005) continue;   // nothing moved
+            if (!entitledMoved && Math.Abs(next - row.AccruedDays) < 0.005) continue;   // nothing moved
 
             row.AccruedDays = next;
             row.UpdatedAt = DateTime.UtcNow;
@@ -989,10 +999,10 @@ public class LeaveService : ILeaveService
             // for their service. An unopened year projects the floored figure,
             // exactly what the rollover or EnsureEntitlementAsync would store.
             var configured = overrides.GetValueOrDefault(t.Id, t.DefaultDays);
-            var statutoryMin = StatutoryLeaveMinimum.MinimumFor(t.Code, joinDate, year);
-            var entitled = row?.EntitledDays
-                           ?? StatutoryLeaveMinimum.Apply(configured, t, joinDate, year);
             var method = row?.AccrualMethod ?? t.AccrualMethod;
+            var statutoryMin = StatutoryLeaveMinimum.MinimumFor(t.Code, joinDate, year, method);
+            var entitled = row?.EntitledDays
+                           ?? StatutoryLeaveMinimum.Apply(configured, t, joinDate, year, method);
             // An unopened year projects what the rollover would seed: the whole
             // entitlement for LUMP_SUM, nothing yet for PRO_RATED.
             var accrued = row?.AccruedDays
@@ -1374,7 +1384,7 @@ public class LeaveService : ILeaveService
         var overrides = await _policies.GetLeaveEntitlementsAsync(employeeId);
         var entitled = StatutoryLeaveMinimum.Apply(
             overrides.GetValueOrDefault(type.Id, type.DefaultDays),
-            type, await JoinDateOfAsync(employeeId), year);
+            type, await JoinDateOfAsync(employeeId), year, type.AccrualMethod);
         var now = DateTime.UtcNow;
 
         var row = new LeaveEntitlement

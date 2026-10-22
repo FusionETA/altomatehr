@@ -15,7 +15,14 @@ namespace AltomateHR.Api.Modules.Payroll;
 // pay, not to CALCULATE it, so a missing account never blocks a run.
 public static class PayrollProfileReadiness
 {
-    public static bool IsComplete(EmployeeProfile p) => IncompleteSections(p).Count == 0;
+    public static bool IsComplete(EmployeeProfile p) => IsComplete(p, DateTime.UtcNow.Date);
+
+    // `asOf` is the day the age-based SOCSO scheme is judged on. A run passes
+    // its period end — the date generation prices the payslip at — so someone
+    // who turns 55 inside the month is not called ready by the picker and then
+    // paid with no SOCSO. Only a view that belongs to no month (the profile
+    // badge, the roster) uses today.
+    public static bool IsComplete(EmployeeProfile p, DateTime asOf) => IncompleteSections(p, asOf).Count == 0;
 
     // The same verdict, but saying WHICH of the three sections is short.
     //
@@ -27,14 +34,21 @@ public static class PayrollProfileReadiness
     // Section names, not field names, on purpose: the per-field labels live in
     // the frontend's own section map, and restating them here would be a second
     // list to keep in step.
-    public static IReadOnlyList<string> IncompleteSections(EmployeeProfile p)
+    public static IReadOnlyList<string> IncompleteSections(EmployeeProfile p) =>
+        IncompleteSections(p, DateTime.UtcNow.Date);
+
+    public static IReadOnlyList<string> IncompleteSections(EmployeeProfile p, DateTime asOf)
     {
         var sections = new List<string>(3);
         if (!IsPersonalComplete(p)) sections.Add("Personal");
         if (!IsEmploymentComplete(p)) sections.Add("Employment");
-        if (!IsStatutoryComplete(p)) sections.Add("Statutory");
+        if (!IsStatutoryComplete(p, asOf)) sections.Add("Statutory");
         return sections;
     }
+
+    // The last day of a payroll month — the as-of date generation uses.
+    public static DateTime PeriodEnd(int year, int month) =>
+        new(year, month, DateTime.DaysInMonth(year, month));
 
     // Identity + demographics the PCB branch needs. Spouse-working is required
     // when married because it drives the spouse-relief path (S = RM 4,000 with
@@ -72,7 +86,7 @@ public static class PayrollProfileReadiness
     // is deliberately NOT gated — joiners are onboarded before LHDN issues a
     // TIN, and the CP39/PCB generator surfaces its own error at file-build time
     // when the TIN is actually required.
-    private static bool IsStatutoryComplete(EmployeeProfile p)
+    private static bool IsStatutoryComplete(EmployeeProfile p, DateTime asOf)
     {
         if (p.ContributeToEpf && string.IsNullOrWhiteSpace(p.EpfNumber)) return false;
         if (p.SocsoScheme is not null && p.SocsoScheme != SocsoScheme.NOT_COVERED
@@ -80,7 +94,7 @@ public static class PayrollProfileReadiness
         // No scheme chosen and none can be suggested (a Malaysian aged 55–59
         // must be picked by hand): incomplete, so a run leaves them out rather
         // than paying them with no SOCSO.
-        if (SocsoSchemeAdvisor.Effective(p.SocsoScheme, p.DateOfBirth, p.Nationality, DateTime.UtcNow.Date) is null
+        if (SocsoSchemeAdvisor.Effective(p.SocsoScheme, p.DateOfBirth, p.Nationality, asOf) is null
             && p.DateOfBirth is not null) return false;
         return true;
     }

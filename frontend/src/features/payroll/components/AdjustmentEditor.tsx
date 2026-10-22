@@ -401,6 +401,23 @@ export function AdjustmentEditor({
                   />
                 </div>
                 {(() => {
+                  // Mirrors generation (PayrollRunService.HasOwnUnpaidLeaveLine):
+                  // with a non-zero unpaid-leave line of its own below and no
+                  // days typed here, the Leave module's days are not docked.
+                  // Read from the rows as edited, so it updates as they change.
+                  const ownUnpaidLine = lines.some(
+                    (line) => line.category === "deduct_unpaid_leave" && Number(line.amount) > 0,
+                  );
+                  if (unpaidDays.trim() === "" && ownUnpaidLine) {
+                    return context.autoUnpaidLeaveDays > 0 ? (
+                      <p className={`${HINT} mt-2`}>
+                        The {context.autoUnpaidLeaveDays} day
+                        {context.autoUnpaidLeaveDays === 1 ? "" : "s"} approved in the Leave module
+                        won&apos;t be docked, because this month already has its own unpaid leave
+                        line below.
+                      </p>
+                    ) : null;
+                  }
                   const days = unpaidDays.trim() === "" ? context.autoUnpaidLeaveDays : Number(unpaidDays) || 0;
                   const salary = context.unpaidMonthlySalary;
                   return salary != null && context.unpaidDayBasis > 0 && days > 0 ? (

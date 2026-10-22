@@ -439,7 +439,7 @@ public class EmployeeServiceTests
         public Task<IEnumerable<LeaveApplicationDto>> GetAllForOrgAsync() =>
             Task.FromResult<IEnumerable<LeaveApplicationDto>>([]);
 
-        public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year) => Task.FromResult(0);
+        public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year, DateTime? previousJoinDate) => Task.FromResult(0);
 
         public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string u) => throw new NotImplementedException();
         public Task<IEnumerable<LeaveApplicationDto>> GetTeamAsync(string u) => throw new NotImplementedException();

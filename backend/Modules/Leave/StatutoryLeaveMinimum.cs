@@ -62,13 +62,21 @@ public static class StatutoryLeaveMinimum
     // The Act's minimum for this leave type in this leave year, or null when the
     // floor does not apply — not annual/sick leave, or no join date on file
     // (we can't know their service, so current behaviour is kept).
-    public static double? MinimumFor(string? code, DateTime? joinDate, int leaveYear)
+    //
+    // s.60E(1A): in the year someone joins they have under 12 months' service,
+    // so their annual leave is only in proportion to the months they complete
+    // that year. A PRO_RATED row already accrues from the join date, so the
+    // full-year 8 is the right floor to accrue from; a LUMP_SUM row is granted
+    // as stored, so its floor is cut to the completed months here. Sick leave
+    // (s.60F) has no such rule.
+    public static double? MinimumFor(
+        string? code, DateTime? joinDate, int leaveYear, LeaveAccrualMethod method)
     {
         var kind = KindOf(code);
         if (kind == Kind.None || joinDate is null) return null;
 
         var years = CompletedYears(joinDate.Value, ServiceMeasuredAt(leaveYear));
-        return (kind, years) switch
+        double full = (kind, years) switch
         {
             (Kind.Annual, < 2) => 8,
             (Kind.Annual, < 5) => 12,
@@ -77,15 +85,36 @@ public static class StatutoryLeaveMinimum
             (Kind.Sick, < 5) => 18,
             _ => 22,
         };
+        if (kind == Kind.Annual && method == LeaveAccrualMethod.LUMP_SUM
+            && joinDate.Value.Year >= leaveYear)
+            return JoinYearShare(full, joinDate.Value, leaveYear);
+        return full;
     }
+
+    // Whole months of service completed between joining and 31 December.
+    // Joining on the 1st completes that month; any other day starts counting
+    // from the next month's same day (joined 15 Mar → 9 months by 14 Dec).
+    public static int MonthsCompletedInJoinYear(DateTime joinDate, int leaveYear)
+    {
+        if (joinDate.Year > leaveYear) return 0;
+        if (joinDate.Year < leaveYear) return 12;
+        return 12 - joinDate.Month + (joinDate.Day == 1 ? 1 : 0);
+    }
+
+    // full × months / 12; the Act disregards under half a day and counts half
+    // a day or more as a whole day.
+    private static double JoinYearShare(double full, DateTime joinDate, int leaveYear) =>
+        Math.Floor(full * MonthsCompletedInJoinYear(joinDate, leaveYear) / 12 + 0.5);
 
     // The FULL-YEAR entitlement to use: the configured figure (policy override,
     // else the type default, or an admin's per-employee figure), lifted to the
     // statutory minimum when it falls short. Any first-year proration (PRO_RATED
     // accrual from the join date) works on this full-year figure afterwards.
-    public static double Apply(double configuredDays, string? code, DateTime? joinDate, int leaveYear) =>
-        MinimumFor(code, joinDate, leaveYear) is { } min ? Math.Max(configuredDays, min) : configuredDays;
+    public static double Apply(
+        double configuredDays, string? code, DateTime? joinDate, int leaveYear, LeaveAccrualMethod method) =>
+        MinimumFor(code, joinDate, leaveYear, method) is { } min ? Math.Max(configuredDays, min) : configuredDays;
 
-    public static double Apply(double configuredDays, LeaveType type, DateTime? joinDate, int leaveYear) =>
-        Apply(configuredDays, type.Code, joinDate, leaveYear);
+    public static double Apply(
+        double configuredDays, LeaveType type, DateTime? joinDate, int leaveYear, LeaveAccrualMethod method) =>
+        Apply(configuredDays, type.Code, joinDate, leaveYear, method);
 }

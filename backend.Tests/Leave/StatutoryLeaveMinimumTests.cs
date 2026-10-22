@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Entities;
 
 namespace AltomateHR.Api.Tests.Leave;
 
@@ -11,7 +12,7 @@ public class StatutoryLeaveMinimumTests
 
     private static double? Min(string code, string? joinDate) =>
         StatutoryLeaveMinimum.MinimumFor(
-            code, joinDate is null ? null : DateTime.Parse(joinDate), LeaveYear);
+            code, joinDate is null ? null : DateTime.Parse(joinDate), LeaveYear, LeaveAccrualMethod.LUMP_SUM);
 
     // ── annual leave, s.60E ──────────────────────────────────────────
     [Theory]
@@ -38,32 +39,34 @@ public class StatutoryLeaveMinimumTests
     public void NoJoinDate_NoFloor()
     {
         Assert.Null(Min("ANNUAL", null));
-        Assert.Equal(6, StatutoryLeaveMinimum.Apply(6, "ANNUAL", null, LeaveYear));
+        Assert.Equal(6, StatutoryLeaveMinimum.Apply(6, "ANNUAL", null, LeaveYear, LeaveAccrualMethod.LUMP_SUM));
     }
 
     [Fact]
     public void JoiningLaterInTheLeaveYear_CountsAsUnderTwoYears() =>
-        Assert.Equal(8, Min("ANNUAL", "2026-09-01"));
+        // Full-year figure (PRO_RATED); a lump sum is cut to the months, below.
+        Assert.Equal(8, StatutoryLeaveMinimum.MinimumFor(
+            "ANNUAL", new DateTime(2026, 9, 1), LeaveYear, LeaveAccrualMethod.PRO_RATED));
 
     [Fact]
     public void APolicyAboveTheMinimum_KeepsItsHigherFigure()
     {
         // 5+ years → minimum 16; the policy's 20 stands.
-        Assert.Equal(20, StatutoryLeaveMinimum.Apply(20, "ANNUAL", new DateTime(2012, 3, 1), LeaveYear));
-        Assert.Equal(30, StatutoryLeaveMinimum.Apply(30, "MEDICAL", new DateTime(2012, 3, 1), LeaveYear));
+        Assert.Equal(20, StatutoryLeaveMinimum.Apply(20, "ANNUAL", new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
+        Assert.Equal(30, StatutoryLeaveMinimum.Apply(30, "MEDICAL", new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
     }
 
     [Fact]
     public void APolicyBelowTheMinimum_IsLiftedToIt()
     {
-        Assert.Equal(16, StatutoryLeaveMinimum.Apply(14, "ANNUAL", new DateTime(2012, 3, 1), LeaveYear));
-        Assert.Equal(22, StatutoryLeaveMinimum.Apply(14, "MEDICAL", new DateTime(2012, 3, 1), LeaveYear));
+        Assert.Equal(16, StatutoryLeaveMinimum.Apply(14, "ANNUAL", new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
+        Assert.Equal(22, StatutoryLeaveMinimum.Apply(14, "MEDICAL", new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
     }
 
     [Fact]
     public void ALowerManualOverride_IsLiftedToo() =>
         // An admin typing 5 for a 3-year employee still gets the Act's 12.
-        Assert.Equal(12, StatutoryLeaveMinimum.Apply(5, "ANNUAL", new DateTime(2023, 1, 1), LeaveYear));
+        Assert.Equal(12, StatutoryLeaveMinimum.Apply(5, "ANNUAL", new DateTime(2023, 1, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
 
     [Theory]
     [InlineData("AL")]
@@ -87,11 +90,45 @@ public class StatutoryLeaveMinimumTests
     [InlineData(null)]
     public void OtherTypes_HaveNoFloor(string? code)
     {
-        Assert.Null(StatutoryLeaveMinimum.MinimumFor(code, new DateTime(2012, 3, 1), LeaveYear));
-        Assert.Equal(3, StatutoryLeaveMinimum.Apply(3, code, new DateTime(2012, 3, 1), LeaveYear));
+        Assert.Null(StatutoryLeaveMinimum.MinimumFor(code, new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
+        Assert.Equal(3, StatutoryLeaveMinimum.Apply(3, code, new DateTime(2012, 3, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
     }
 
     [Fact]
     public void LeapDayJoiner_CompletesTheYearOn28February() =>
         Assert.Equal(2, StatutoryLeaveMinimum.CompletedYears(new DateTime(2024, 2, 29), new DateTime(2026, 2, 28)));
+
+    // ── first year, s.60E(1A) ────────────────────────────────────────
+    // Under 12 months' service in the join year: annual leave in proportion
+    // to completed months, half a day or more counting as a day.
+    [Theory]
+    [InlineData("2026-01-01", 8)]    // the whole year
+    [InlineData("2026-03-15", 6)]    // 9 months → 6
+    [InlineData("2026-07-01", 4)]    // 6 months → 4
+    [InlineData("2026-11-01", 1)]    // 2 months → 1.33 → 1
+    [InlineData("2026-11-02", 1)]    // 1 month → 0.67 → 1
+    [InlineData("2026-12-15", 0)]    // no completed month
+    public void Annual_InTheJoinYear_LumpSum_IsProRated(string joinDate, double expected) =>
+        Assert.Equal(expected, Min("ANNUAL", joinDate));
+
+    [Fact]
+    public void Annual_InTheJoinYear_ProRatedAccrual_KeepsTheFullYearFloor() =>
+        // PRO_RATED accrues from the join date itself, so it floors the full year.
+        Assert.Equal(8, StatutoryLeaveMinimum.MinimumFor(
+            "ANNUAL", new DateTime(2026, 11, 1), LeaveYear, LeaveAccrualMethod.PRO_RATED));
+
+    [Fact]
+    public void Annual_InTheJoinYear_AnAdminsLowerFigureStands_WhenItMeetsTheShare()
+    {
+        // The case found in review: a 1 Nov joiner given 2 days lump sum kept 8.
+        Assert.Equal(2, StatutoryLeaveMinimum.Apply(
+            2, "ANNUAL", new DateTime(2026, 11, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
+        Assert.Equal(4, StatutoryLeaveMinimum.Apply(
+            1, "ANNUAL", new DateTime(2026, 7, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
+    }
+
+    [Fact]
+    public void Sick_InTheJoinYear_IsNotProRated() =>
+        Assert.Equal(14, StatutoryLeaveMinimum.MinimumFor(
+            "MEDICAL", new DateTime(2026, 11, 1), LeaveYear, LeaveAccrualMethod.LUMP_SUM));
 }

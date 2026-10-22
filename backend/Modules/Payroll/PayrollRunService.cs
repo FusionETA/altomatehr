@@ -249,8 +249,13 @@ public class PayrollRunService : IPayrollRunService
     // is scoped through a policy, so they cannot be selected.
     public async Task<PayrollRunPickerDto> GetPickerAsync(int? year = null, int? month = null)
     {
+        // Judged at the chosen month's end, as generation prices it; today
+        // only when the picker is asked without a month.
+        var asOf = year is { } y && month is { } m
+            ? PayrollProfileReadiness.PeriodEnd(y, m)
+            : DateTime.UtcNow.Date;
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p, asOf))
             .ToList();
 
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
@@ -304,7 +309,8 @@ public class PayrollRunService : IPayrollRunService
         List<string>? policyIds, List<string>? excludedProfileIds, int year, int month)
     {
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month)
+                        && PayrollProfileReadiness.IsComplete(p, PayrollProfileReadiness.PeriodEnd(year, month)))
             .ToList();
 
         var policyByUser = await _policies.GetEffectivePoliciesForEmployeesAsync(

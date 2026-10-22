@@ -128,12 +128,12 @@ public class LeaveCronService : ILeaveCronService
 
                 // Policy / type figure, lifted to the Employment Act minimum for
                 // their completed years of service on 1 January of the new year.
-                var entitledDays = StatutoryLeaveMinimum.Apply(
-                    ctx.EntitledDaysFor(member.UserId, type), type, joinDate, targetYear);
                 // The employee-layer override rides along to the new row so an
                 // explicit per-person customisation survives the rollover.
                 var employeeMethod = prev?.AccrualMethod;
                 var method = ctx.Resolve(member.UserId, type, employeeMethod);
+                var entitledDays = StatutoryLeaveMinimum.Apply(
+                    ctx.EntitledDaysFor(member.UserId, type), type, joinDate, targetYear, method);
 
                 var (carriedDays, carriedExpiresAt) = CarryForward(type, prev, method, ctx, targetYear);
 

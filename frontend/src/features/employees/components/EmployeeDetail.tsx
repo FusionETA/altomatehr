@@ -1850,7 +1850,7 @@ export function EmployeeDetail({
                       </button>
                     </div>
                   </Field>
-                  <Field label="Scheme">
+                  <Field label="SOCSO scheme">
                     <Picker
                       value={profile.socsoScheme}
                       onChange={(v) => set("socsoScheme", v)}

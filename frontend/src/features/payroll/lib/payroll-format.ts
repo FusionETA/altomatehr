@@ -90,6 +90,7 @@ const WARNING_LABELS: Record<string, string> = {
   MISSING_INCOME_TAX_NUMBER: "No income tax number",
   MISSING_EPF_NUMBER: "No EPF number",
   MISSING_SOCSO_NUMBER: "No SOCSO number",
+  MISSING_SOCSO_SCHEME: "No SOCSO scheme chosen",
   MISSING_ID_NUMBER: "No IC or passport number",
   MISSING_EMPLOYEE_NUMBER: "No employee number",
   MISSING_BANK_ACCOUNT: "No bank account",

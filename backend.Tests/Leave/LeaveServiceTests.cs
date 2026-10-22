@@ -705,10 +705,59 @@ public class LeaveServiceTests
             entitlementRows: [row],
             memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
 
-        var touched = await service.RecomputeProRatedAccrualAsync("usr-emp", Year);
+        var touched = await service.RecomputeProRatedAccrualAsync("usr-emp", Year, new DateTime(Year, 7, 1));
 
         Assert.Equal(1, touched);
         Assert.True(row.AccruedDays < 12);   // re-derived downward, not left stale
+    }
+
+    // Guard 3 vs the service floor. Join date mistyped as 2019 opened the row at
+    // the 5+ years floor (16); corrected to this May, the default is 8. The 16
+    // is the old date's figure, not a hand edit, so it moves to 8 and the
+    // accrual is re-derived from that.
+    [Fact]
+    public async Task Recompute_MovesARowOpenedUnderTheOldJoinDatesFloor()
+    {
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 16, AccruedDays = 12,
+        };
+        var type = ProRatedType("t-al", 8);
+        type.Code = "ANNUAL";
+        var service = MakeService(
+            types: [type],
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 5, 1))));
+
+        var touched = await service.RecomputeProRatedAccrualAsync(
+            "usr-emp", Year, previousJoinDate: new DateTime(Year - 7, 5, 1));
+
+        Assert.Equal(1, touched);
+        Assert.Equal(8, row.EntitledDays);
+        Assert.True(row.AccruedDays <= 8);
+    }
+
+    // A figure that is neither date's default was typed by someone — still left alone.
+    [Fact]
+    public async Task Recompute_StillSkipsAHandEditedRow_WhenTheJoinDateChanges()
+    {
+        var row = new LeaveEntitlement
+        {
+            EmployeeId = "usr-emp", LeaveTypeId = "t-al", Year = Year,
+            EntitledDays = 20, AccruedDays = 12,
+        };
+        var type = ProRatedType("t-al", 8);
+        type.Code = "ANNUAL";
+        var service = MakeService(
+            types: [type],
+            entitlementRows: [row],
+            memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 5, 1))));
+
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync(
+            "usr-emp", Year, previousJoinDate: new DateTime(Year - 7, 5, 1)));
+        Assert.Equal(20, row.EntitledDays);
+        Assert.Equal(12, row.AccruedDays);
     }
 
     [Fact]
@@ -727,7 +776,7 @@ public class LeaveServiceTests
             entitlementRows: [row],
             memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
 
-        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year, new DateTime(Year, 7, 1)));
         Assert.Equal(12, row.AccruedDays);
     }
 
@@ -746,7 +795,7 @@ public class LeaveServiceTests
             entitlementRows: [row],
             memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
 
-        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year, new DateTime(Year, 7, 1)));
     }
 
     [Fact]
@@ -763,7 +812,7 @@ public class LeaveServiceTests
             entitlementRows: [row],
             memberships: new FakeMembershipRepository(("usr-emp", new DateTime(Year, 7, 1))));
 
-        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year));
+        Assert.Equal(0, await service.RecomputeProRatedAccrualAsync("usr-emp", Year, new DateTime(Year, 7, 1)));
         Assert.Equal(14, row.AccruedDays);
     }
 

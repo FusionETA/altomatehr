@@ -147,4 +147,24 @@ public class SocsoSchemeAdvisorTests
         p.SocsoScheme = SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY;
         Assert.Empty(PayrollProfileReadiness.IncompleteSections(p));
     }
+
+    // A run judges readiness at its period end, as generation prices it: born
+    // 28 Oct 1971 is 54 on 22 Oct 2026 but 55 on the 31st, so the October run
+    // must not call them ready and then pay them no SOCSO.
+    [Fact]
+    public void Readiness_ForARun_IsJudgedAtThePeriodEnd()
+    {
+        var p = new EmployeeProfile
+        {
+            Gender = Gender.MALE, DateOfBirth = new DateTime(1971, 10, 28), Nationality = "Malaysian",
+            IdType = IdType.NRIC, IdNumber = "711028-12-5241", MaritalStatus = MaritalStatus.SINGLE,
+            SalaryType = AltomateHR.Api.Modules.Policies.Entities.SalaryType.MONTHLY, MonthlySalary = 3200m,
+            JoinDate = new DateTime(2015, 6, 1), ContributeToEpf = true, EpfNumber = "1", SocsoNumber = "1",
+            SocsoScheme = null,
+        };
+
+        Assert.True(PayrollProfileReadiness.IsComplete(p, new DateTime(2026, 10, 22)));
+        Assert.Equal(new DateTime(2026, 10, 31), PayrollProfileReadiness.PeriodEnd(2026, 10));
+        Assert.False(PayrollProfileReadiness.IsComplete(p, PayrollProfileReadiness.PeriodEnd(2026, 10)));
+    }
 }

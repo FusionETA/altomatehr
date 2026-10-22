@@ -191,6 +191,10 @@ public static class PayslipCalculator
         public const string MissingIncomeTaxNumber = "MISSING_INCOME_TAX_NUMBER";
         public const string MissingEpfNumber = "MISSING_EPF_NUMBER";
         public const string MissingSocsoNumber = "MISSING_SOCSO_NUMBER";
+        // No scheme saved and none can be suggested for this month — a
+        // Malaysian aged 55–59 at period end, who has to be picked by hand.
+        // SOCSO is 0 on this payslip, so it says so rather than staying quiet.
+        public const string MissingSocsoScheme = "MISSING_SOCSO_SCHEME";
     }
 
     public sealed record Result
@@ -971,6 +975,17 @@ public static class PayslipCalculator
 
         if (input.SocsoScheme is not null and not SocsoScheme.NOT_COVERED && string.IsNullOrWhiteSpace(input.SocsoNumber))
             warnings.Add(Warnings.MissingSocsoNumber);
+
+        // The input carries the EFFECTIVE scheme (saved, else age-based), so
+        // null with a known DOB is exactly the 55–59 window SocsoSchemeAdvisor
+        // cannot decide — judged at period end, as the scheme itself was.
+        if (input.SocsoScheme is null
+            && SocsoSchemeAdvisor.NeedsManualChoice(
+                input.DateOfBirth,
+                string.IsNullOrWhiteSpace(input.Nationality) ? null : IsMalaysianNationality(input.Nationality),
+                new DateTime(input.PeriodYear, input.PeriodMonth,
+                    PayPeriod.CalendarDaysInMonth(input.PeriodYear, input.PeriodMonth))))
+            warnings.Add(Warnings.MissingSocsoScheme);
 
         return warnings;
     }

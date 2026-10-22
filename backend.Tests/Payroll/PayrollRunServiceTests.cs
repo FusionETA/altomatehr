@@ -1916,6 +1916,24 @@ public class PayrollRunServiceTests : IDisposable
         Assert.True(payslip.SocsoEmployer > 0m);
     }
 
+    // Born 28 Oct 1971 with no scheme saved: 54 when the run is made on the
+    // 22nd, 55 on the 31st that generation prices at. No scheme can be
+    // suggested, so SOCSO is 0 — and the payslip carries a warning saying so.
+    [Fact]
+    public async Task GenerateAsync_WarnsWhenNoSocsoSchemeCanBeSuggestedAtPeriodEnd()
+    {
+        var profile = AddEmployee("usr-1", "Rahman", monthlySalary: 4800m);
+        profile.SocsoScheme = null;
+        profile.DateOfBirth = new DateTime(1971, 10, 28);
+        await _db.SaveChangesAsync();
+        var run = await CreateRunAsync(2026, 10);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.SocsoEmployee);
+        Assert.Contains(PayslipCalculator.Warnings.MissingSocsoScheme, payslip.StatutoryWarnings);
+    }
+
     [Fact]
     public async Task GenerateAsync_NotCoveredPaysNoSocso()
     {

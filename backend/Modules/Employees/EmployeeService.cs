@@ -327,6 +327,11 @@ public class EmployeeService : IEmployeeService
         // both lost the date AND triggered the accrual recompute below — so
         // changing somebody's role quietly rewrote their leave balance.
         var previousJoinDate = membership.JoinDate;
+        // The date the leave floor was measured from before this edit — the
+        // profile's when it has one, as LeaveService reads it — so the
+        // recompute below can recognise a row opened under the old date.
+        var previousLeaveJoinDate = (await _profiles.GetByUserAsync(membership.UserId))?.JoinDate
+            ?? previousJoinDate;
         if (dto.ClearJoinDate) membership.JoinDate = null;
         else if (dto.JoinDate is not null) membership.JoinDate = dto.JoinDate.Value.Date;
         var joinDateChanged = previousJoinDate != membership.JoinDate;
@@ -358,7 +363,8 @@ public class EmployeeService : IEmployeeService
 
         // Only after the membership is saved — the recompute reads JoinDate back.
         if (joinDateChanged)
-            await _leave.RecomputeProRatedAccrualAsync(membership.UserId, DateTime.UtcNow.Year);
+            await _leave.RecomputeProRatedAccrualAsync(
+                membership.UserId, DateTime.UtcNow.Year, previousLeaveJoinDate);
 
         var usersById = (await _users.GetAllAsync()).ToDictionary(u => u.Id);
         return new EmployeeSaveResult(true, ToDto(membership, usersById), null);

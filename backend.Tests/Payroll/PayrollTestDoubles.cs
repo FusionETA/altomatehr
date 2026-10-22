@@ -112,7 +112,7 @@ internal sealed class StubPayrollLeave : ILeaveService
     public Task<LeaveEntitlementResult> ResetEntitlementAsync(
         string employeeId, string leaveTypeId, int year) => throw new NotSupportedException();
     public Task<int> SeedEntitlementsAsync(string employeeId, int year) => throw new NotSupportedException();
-    public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year) =>
+    public Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year, DateTime? previousJoinDate) =>
         throw new NotSupportedException();
     public Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to) =>
         throw new NotSupportedException();
