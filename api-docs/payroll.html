@@ -488,7 +488,8 @@
           isn't ready, so "not yet" is visible. The form declares the whole January&ndash;December
           year, so it is <code>available</code> only once the company's payroll for that year is approved
           (<code>SUBMITTED</code>) <strong>from its first run of the year through December</strong>
-          &mdash; the company's runs, whoever was on them. That is all 12 months unless an admin set a
+          &mdash; the company's runs, whoever was on them. A month with several runs counts as approved only
+          once <em>every</em> run in it is <code>SUBMITTED</code>. That is all 12 months unless an admin set a
           later payroll start month (see <a href="#set-payroll-start">PUT /payroll/annual/start</a>)
           or a run exists for an earlier month, which pulls the start back.
           That holds for leavers too: someone who leaves can return the same year, so a form issued
@@ -623,8 +624,9 @@
         <strong>Needs a real payroll profile.</strong> Creating a loan against an
         <code>employeeProfileId</code> with <code>hasPayrollProfile: false</code> (a placeholder)
         is refused — fill in that person's payroll details first.
-        <strong>Locked months never change:</strong> once a month is submitted or awaiting
-        approval, its installment is fixed; use Replan to re-spread what's left, not Update.
+        <strong>Locked months never change:</strong> once the borrower's own payslip for a month is in a
+        run that is submitted or awaiting approval, that month's installment is fixed (another
+        staff group's approved run in the same month does not lock it); use Replan to re-spread what's left, not Update.
         A loan that has started repaying cannot be deleted — cancel it instead, so the
         repayments already filed stay explained.
       </div>
@@ -967,7 +969,8 @@
         year: none can be produced until every required month of that year is <code>SUBMITTED</code>,
         through December. The required months start in January, or at the payroll start month an
         admin set, and an earlier run (even a draft) pulls the start back. A draft month anywhere
-        in the range holds the year back.
+        in the range holds the year back, and so does a month in which any one of several runs is
+        still a draft or awaiting approval.
         PCB 2(II) is the one exception — a statement of what has been deducted so far — and is
         available at any point in the year.
       </div>
@@ -1008,14 +1011,14 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>year</code>, <code>organizationName</code>, <code>employerNo</code></td><td></td><td><code>employerNo</code> is the TIN with letters/punctuation stripped.</td></tr>
-              <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved.</td></tr>
+              <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved &mdash; every run in the month is <code>SUBMITTED</code>.</td></tr>
               <tr><td><code>runMonths</code></td><td>int[]</td><td>1–12, months that have a run in any status (drafts included).</td></tr>
               <tr><td><code>startMonth</code></td><td>int</td><td>The first month the forms wait for this year: 1 (January) by default, or the configured start month. <code>13</code> when the configured start year is later than <code>year</code> (nothing is required beyond runs that exist).</td></tr>
               <tr><td><code>payrollStartYear</code>, <code>payrollStartMonth</code></td><td>int | null</td><td>The saved "payroll here started in" setting. <code>null</code> when unset.</td></tr>
               <tr><td><code>requiredMonths</code></td><td>int</td><td>How many months the forms wait for, from the first required month through December.</td></tr>
               <tr><td><code>missingMonths</code></td><td>int[]</td><td>Required months not yet approved, in order. Follows the required range, so it is not always the 1–12 gaps.</td></tr>
               <tr><td><code>canGenerate</code></td><td>boolean</td><td>Every required month is approved (and at least one exists) &mdash; the year-end forms would succeed.</td></tr>
-              <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat }</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat, receipt }</code>, where <code>receipt</code> is <code>{ pcbReceiptNo, pcbReceiptDate, cp38ReceiptNo, cp38ReceiptDate }</code> (each nullable, dates ISO 8601) from the LHDN receipts of the run <em>that person</em> was paid in that month &mdash; a month with several runs can carry a different receipt per run &mdash; or <code>null</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
             </tbody>
           </table>
         </div>

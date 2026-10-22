@@ -8,10 +8,13 @@ using AltomateHR.Api.Modules.Claims.Entities;
 
 namespace AltomateHR.Api.Modules.Payroll.Entities;
 
-// One month of payroll for one organization.
+// One payroll run for one organization and month.
 //
-// At most one run per (org, period) — the unique index in AppDbContext enforces
-// it — so "the January run" is unambiguous for every downstream filing.
+// A month can be split into several runs — one per staff group, each prepared,
+// approved, filed and paid on its own — but a person is in at most one of them
+// (the unique per-person-per-month indexes on Payslip and PayrollRunMember).
+// Every run after the month's first carries a Name, so its files can't be
+// mistaken for another's.
 //
 // The totals are denormalised sums over the run's payslips, recomputed on each
 // generation. They exist so the runs list can render without loading thousands
@@ -26,6 +29,16 @@ public class PayrollRun : ITenantScoped
 
     public int PeriodYear { get; set; }
     public int PeriodMonth { get; set; }                         // 1–12
+
+    // What tells this run apart from the month's others: "Workers",
+    // "Management". Optional while a run is alone in its month.
+    [MaxLength(60)]
+    public string? Name { get; set; }
+
+    // 1 for the month's first run, 2 for the next, … Never reused while a
+    // later run exists. Keeps bank batch IDs unique per run without putting
+    // a free-text name into a fixed-width field.
+    public int RunNumber { get; set; } = 1;
 
     public PayrollRunStatus Status { get; set; } = PayrollRunStatus.DRAFT;
     public PayrollRunSource Source { get; set; } = PayrollRunSource.COMPUTED;

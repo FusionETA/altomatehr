@@ -363,4 +363,18 @@ public class PayslipRepository : IPayslipRepository
 
     private static decimal Get(IDictionary<string, decimal> map, string key) =>
         map.TryGetValue(key, out var value) ? value : 0m;
+
+    public async Task<IReadOnlyList<PayslipFiledPeriod>> GetFiledPeriodsAsync(string? employeeProfileId = null)
+    {
+        // Plain comparisons, not a Contains over statuses: against the
+        // string-converted enum that form doesn't translate reliably.
+        var rows = await (
+            from p in _db.Payslips
+            join r in _db.PayrollRuns on p.PayrollRunId equals r.Id
+            where (r.Status == PayrollRunStatus.SUBMITTED || r.Status == PayrollRunStatus.PENDING_APPROVAL)
+                  && (employeeProfileId == null || p.EmployeeProfileId == employeeProfileId)
+            select new { p.EmployeeProfileId, r.PeriodYear, r.PeriodMonth, r.Status })
+            .ToListAsync();
+        return [.. rows.Select(x => new PayslipFiledPeriod(x.EmployeeProfileId, x.PeriodYear, x.PeriodMonth, x.Status))];
+    }
 }

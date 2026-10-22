@@ -66,6 +66,15 @@ async function demoAdmin() {
   return r.data.token;
 }
 
+// A token for "AB Test Co A", a local company the demo admin also owns.
+async function abToken() {
+  const orgs = (await call(admin, "GET", "/auth/orgs")).data;
+  const org = (Array.isArray(orgs) ? orgs : orgs.organizations).find((o) => o.name === "AB Test Co A");
+  if (!org) throw new Error("no AB Test Co A on this machine");
+  const r = await call(admin, "POST", `/auth/switch-org/${org.organizationId}`);
+  return { t: r.data.token };
+}
+
 // Malaysia "today" + n days, as yyyy-MM-dd.
 function mytDate(n = 0) {
   const d = new Date(Date.now() + 8 * 3600_000 + n * 86400_000);
@@ -231,6 +240,28 @@ const steps = {
     if (!run) { console.log("no January 2027 draft"); return; }
     const d = await call(admin, "DELETE", `/payroll/runs/${run.id}`);
     console.log("delete draft:", d.status);
+  },
+
+  // AB Test Co A (local only): a second, named run for November 2026 beside the
+  // existing draft, holding whoever isn't in it yet, worked out. Not rerunnable
+  // while it exists; undo with `split-run-remove`.
+  "split-run": async () => {
+    const { t } = await abToken();
+    const picker = (await call(t, "GET", "/payroll/runs/picker?year=2026&month=11")).data;
+    const policyIds = picker.policies.filter((p) => p.members.some((m) => !m.takenByRunId)).map((p) => p.id);
+    const c = await call(t, "POST", "/payroll/runs", { periodYear: 2026, periodMonth: 11, name: "Workers", policyIds, excludedEmployeeProfileIds: [] });
+    console.log("create Workers:", c.status, c.data?.id ?? JSON.stringify(c.data));
+    if (c.status >= 300) process.exit(1);
+    const g = await call(t, "POST", `/payroll/runs/${c.data.id}/generate`);
+    console.log("generate:", g.status, g.status === 200 ? "ok" : JSON.stringify(g.data));
+  },
+
+  "split-run-remove": async () => {
+    const { t } = await abToken();
+    const runs = (await call(t, "GET", "/payroll/runs")).data ?? [];
+    const run = runs.find((r) => r.periodYear === 2026 && r.periodMonth === 11 && r.name === "Workers" && r.status === "DRAFT");
+    if (!run) { console.log("no Workers draft"); return; }
+    console.log("delete Workers:", (await call(t, "DELETE", `/payroll/runs/${run.id}`)).status);
   },
 
   // Maternity (Female only) and Paternity (Male only) in the demo company, next

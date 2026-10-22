@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMyAccess } from "@/features/settings/lib/module-access";
 import {
   ChevronDown,
   ChevronRight,
+  Download,
   LoaderCircle,
   Plus,
   Search,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   createPayrollRun,
+  downloadMonthSummary,
   getPayrollRunPicker,
   type PayrollPickerMember,
   type PayrollPickerPolicy,
@@ -48,6 +50,10 @@ import {
 // The table leads with the period and the status because that is what an
 // admin scans for — "is March done?" — and carries the three figures that
 // get reconciled: gross, net, and what the month actually costs the employer.
+//
+// A month split into several runs (one per staff group) gets an "all runs"
+// row above its runs: the month's combined figures and its combined summary,
+// read-only — each run is still approved, filed and paid on its own.
 export function PayrollRunsList({
   runs,
   loading,
@@ -65,6 +71,23 @@ export function PayrollRunsList({
   const access = useMyAccess();
   const canRun = access.allEmployees && access.canManage("payroll");
 
+  // Newest month first; within a month, in the order the runs were started.
+  const months = useMemo(() => {
+    const sorted = [...runs].sort(
+      (a, b) =>
+        b.periodYear * 12 + b.periodMonth - (a.periodYear * 12 + a.periodMonth) ||
+        a.runNumber - b.runNumber,
+    );
+    const groups: PayrollRun[][] = [];
+    for (const run of sorted) {
+      const last = groups[groups.length - 1];
+      if (last && last[0].periodYear === run.periodYear && last[0].periodMonth === run.periodMonth)
+        last.push(run);
+      else groups.push([run]);
+    }
+    return groups;
+  }, [runs]);
+
   return (
     <div className="space-y-6">
       <section className={CARD}>
@@ -72,8 +95,10 @@ export function PayrollRunsList({
           <div>
             <h2 className="text-base font-semibold text-foreground">Start a payroll run</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              One run per month. Pick the period and which policies and employees to include —
-              nothing is calculated until you run payroll.
+              Pick the period and which policies and employees to include — nothing is calculated
+              until you run payroll. To pay a month in separate runs (say, office staff and
+              workers), start another run for it and give it a name; each person can be in only
+              one run a month.
             </p>
           </div>
           {canRun ? (
@@ -125,14 +150,20 @@ export function PayrollRunsList({
                   </td>
                 </tr>
               ) : (
-                runs.map((run) => (
+                months.map((monthRuns) => (
+                <Fragment key={monthRuns[0].id}>
+                {monthRuns.length > 1 ? <MonthRow runs={monthRuns} /> : null}
+                {monthRuns.map((run) => (
                 <tr
                   key={run.id}
                   className="cursor-pointer border-b border-border/40 transition last:border-0 hover:bg-muted/40"
                   onClick={() => onOpen(run.id)}
                 >
-                  <td className={TD}>
-                    <div className="font-medium">{run.periodLabel}</div>
+                  <td className={`${TD} ${monthRuns.length > 1 ? "pl-8" : ""}`}>
+                    <div className="font-medium">{monthRuns.length > 1 ? run.name ?? run.periodLabel : run.label}</div>
+                    {monthRuns.length > 1 && run.name ? (
+                      <div className="text-xs text-muted-foreground">{run.periodLabel}</div>
+                    ) : null}
                     {run.source === "IMPORTED" ? (
                       <div className="text-xs text-muted-foreground">{sourceLabels.IMPORTED}</div>
                     ) : null}
@@ -172,6 +203,8 @@ export function PayrollRunsList({
                     />
                   </td>
                 </tr>
+                ))}
+                </Fragment>
                 ))
               )}
             </tbody>
@@ -187,6 +220,7 @@ export function PayrollRunsList({
 
       {pickerOpen ? (
         <NewRunPicker
+          runs={runs}
           onClose={() => setPickerOpen(false)}
           onCreated={(runId) => {
             setPickerOpen(false);
@@ -207,15 +241,22 @@ export function PayrollRunsList({
 // and auto-expands rows with matches. Only payable (complete-profile) employees
 // are listed — the backend leaves incomplete ones out either way.
 function NewRunPicker({
+  runs,
   onClose,
   onCreated,
 }: {
+  runs: PayrollRun[];
   onClose: () => void;
   onCreated: (runId: string) => void;
 }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [name, setName] = useState("");
+  // A month that already has a run: this one joins it. At most one run a
+  // month goes unnamed, so it needs a name while an unnamed one exists.
+  const monthRuns = runs.filter((r) => r.periodYear === year && r.periodMonth === month);
+  const needsName = monthRuns.some((r) => !r.name);
 
   const [policies, setPolicies] = useState<PayrollPickerPolicy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -273,24 +314,36 @@ function NewRunPicker({
     update(next);
   }
 
-  // "Included" = members of ticked policies who aren't excluded.
-  const { includedCount, totalCount, excludedForSubmit } = useMemo(() => {
+  // "Included" = members of ticked policies who aren't excluded — and aren't
+  // already in another run this month (the server leaves those out anyway).
+  const { includedCount, totalCount, takenCount, excludedForSubmit } = useMemo(() => {
     let included = 0;
     let total = 0;
+    let taken = 0;
     const excludedIds: string[] = [];
     for (const policy of policies ?? []) {
       if (!selected.has(policy.id)) continue;
       for (const m of policy.members) {
+        if (m.takenByRunId) {
+          taken += 1;
+          continue;
+        }
         total += 1;
         if (excluded.has(m.employeeProfileId)) excludedIds.push(m.employeeProfileId);
         else included += 1;
       }
     }
-    return { includedCount: included, totalCount: total, excludedForSubmit: excludedIds };
+    return {
+      includedCount: included,
+      totalCount: total,
+      takenCount: taken,
+      excludedForSubmit: excludedIds,
+    };
   }, [policies, selected, excluded]);
 
   const noneSelected = selected.size === 0;
-  const canSubmit = !creating && !noneSelected && includedCount > 0;
+  const nameMissing = needsName && name.trim() === "";
+  const canSubmit = !creating && !noneSelected && includedCount > 0 && !nameMissing;
 
   async function handleCreate() {
     setCreating(true);
@@ -299,13 +352,14 @@ function NewRunPicker({
       const run = await createPayrollRun({
         periodYear: year,
         periodMonth: month,
+        name: name.trim() || undefined,
         policyIds: [...selected],
         excludedEmployeeProfileIds: excludedForSubmit,
       });
       onCreated(run.id);
     } catch (err) {
-      // One run per period is a backend invariant, so "already exists" lands
-      // here as a plain message rather than a duplicate row.
+      // A missing or repeated name, or nobody left to pay, lands here as the
+      // server's message.
       setCreateError(err instanceof Error ? err.message : "Could not create the run.");
     } finally {
       setCreating(false);
@@ -351,11 +405,34 @@ function NewRunPicker({
           </div>
         </div>
 
+        <div>
+          <label className={LABEL} htmlFor="runName">
+            Run name{" "}
+            {needsName ? null : <span className="font-normal text-muted-foreground">(optional)</span>}
+          </label>
+          <input
+            id="runName"
+            maxLength={60}
+            className={INPUT}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Workers, Management"
+          />
+          <p className={HINT}>
+            {monthRuns.length > 0
+              ? `${MONTHS[month - 1]} ${year} already has ${monthRuns.length === 1 ? "a run" : `${monthRuns.length} runs`} (${monthRuns
+                  .map((r) => r.name ?? "unnamed")
+                  .join(", ")}). Name this one so the runs and their files can be told apart. Anyone already in another run this month is greyed out below.`
+              : "Only needed if you'll pay this month in more than one run — for example one per staff group."}
+          </p>
+        </div>
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className={LABEL}>Policies and employees</span>
             <span className="text-xs text-muted-foreground">
               {includedCount} of {totalCount} included
+              {takenCount > 0 ? ` · ${takenCount} in another run` : ""}
             </span>
           </div>
 
@@ -426,8 +503,8 @@ function NewRunPicker({
                         <MemberRow
                           key={m.employeeProfileId}
                           member={m}
-                          included={isSelected && !excluded.has(m.employeeProfileId)}
-                          disabled={!isSelected}
+                          included={isSelected && !m.takenByRunId && !excluded.has(m.employeeProfileId)}
+                          disabled={!isSelected || !!m.takenByRunId}
                           onToggle={() => toggle(excluded, m.employeeProfileId, setExcluded)}
                         />
                       ))}
@@ -446,7 +523,13 @@ function NewRunPicker({
             noneSelected ? (
               <p className="text-xs text-destructive">Pick at least one policy.</p>
             ) : includedCount === 0 ? (
-              <p className="text-xs text-destructive">At least one employee has to be included.</p>
+              <p className="text-xs text-destructive">
+                {totalCount === 0 && takenCount > 0
+                  ? "Everyone here is already in another run this month."
+                  : "At least one employee has to be included."}
+              </p>
+            ) : nameMissing ? (
+              <p className="text-xs text-destructive">Give this run a name.</p>
             ) : null
           ) : null}
         </div>
@@ -494,7 +577,8 @@ function PolicyRow({
   onToggleExpand: () => void;
   children: React.ReactNode;
 }) {
-  const count = policy.members.length;
+  const taken = policy.members.filter((m) => m.takenByRunId).length;
+  const count = policy.members.length - taken;
   return (
     <div className={isSelected ? undefined : "opacity-60"}>
       <div className="flex items-center gap-3 px-3 py-2.5">
@@ -514,6 +598,7 @@ function PolicyRow({
             {isSelected && excludedInPolicy > 0
               ? `${count - excludedInPolicy} of ${count}`
               : `${count} employee${count === 1 ? "" : "s"}`}
+            {taken > 0 ? ` · ${taken} in another run` : ""}
           </span>
         </div>
         <button
@@ -563,9 +648,71 @@ function MemberRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-foreground">{member.name}</span>
         <span className="truncate text-xs text-muted-foreground">
-          {[member.employeeId, member.jobTitle].filter(Boolean).join(" · ")}
+          {member.takenByRunLabel
+            ? `Already in ${member.takenByRunLabel}`
+            : [member.employeeId, member.jobTitle].filter(Boolean).join(" · ")}
         </span>
       </div>
     </div>
+  );
+}
+
+// A split month as a whole: its runs' combined figures and the combined
+// summary. Read-only — each run below it is opened, approved and filed alone.
+function MonthRow({ runs }: { runs: PayrollRun[] }) {
+  const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const sum = (pick: (run: PayrollRun) => number) => runs.reduce((t, run) => t + pick(run), 0);
+  const { periodYear: year, periodMonth: month, periodLabel } = runs[0];
+
+  async function get(format: "pdf" | "xlsx") {
+    setBusy(format);
+    setError(null);
+    try {
+      await downloadMonthSummary(year, month, format);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not download the summary.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <tr className="border-b border-border/40 bg-muted/30">
+      <td className={TD}>
+        <div className="font-semibold">{periodLabel} — all runs</div>
+        <div className="text-xs text-muted-foreground">
+          {runs.length} runs
+          {runs.some((r) => r.status !== "SUBMITTED") ? " · not all approved yet" : ""}
+        </div>
+        {error ? <div className="mt-1 text-xs text-destructive">{error}</div> : null}
+      </td>
+      <td className={TD} />
+      <td className={TD_NUM}>{sum((r) => r.employeeCount) || "—"}</td>
+      <td className={TD_NUM}>{rm(sum((r) => r.totalGrossShown))}</td>
+      <td className={`${TD_NUM} font-semibold`}>{rm(sum((r) => r.totalNet))}</td>
+      <td className={TD_NUM}>{rm(sum((r) => r.totalCostToEmployer))}</td>
+      <td className={TD} colSpan={2}>
+        <div className="flex items-center gap-1">
+          {(["pdf", "xlsx"] as const).map((format) => (
+            <button
+              key={format}
+              type="button"
+              className={BUTTON_GHOST}
+              disabled={busy !== null}
+              onClick={() => void get(format)}
+              title={`The month's combined summary (${format === "pdf" ? "PDF" : "Excel"})`}
+            >
+              {busy === format ? (
+                <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Download className="size-4" aria-hidden />
+              )}
+              {format === "pdf" ? "Summary" : "Excel"}
+            </button>
+          ))}
+        </div>
+      </td>
+    </tr>
   );
 }

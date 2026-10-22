@@ -74,6 +74,35 @@ public class EmployeeLoanServiceTests : IDisposable
         _db.SaveChanges();
     }
 
+    // An installment is paid by the borrower's OWN payslip in a filed month.
+    // With several runs a month, another group's approved run says nothing
+    // about whether this borrower was paid — or had anything deducted.
+    [Fact]
+    public async Task AnInstallment_IsPaidOnlyByAFiledPayslipOfTheBorrower()
+    {
+        var service = new EmployeeLoanService(
+            new EmployeeLoanRepository(_db),
+            new PayrollRunRepository(_db),
+            TestDirectory.Over(
+                new OrganizationMembershipRepository(_db),
+                new UserRepository(_db),
+                new EmployeeProfileRepository(_db)),
+            _audit,
+            payslips: new PayslipRepository(_db));
+        SeedSubmittedRun(2026, 1);
+        SeedSubmittedRun(2026, 2);
+        _db.Payslips.AddRange(
+            new Payslip { OrganizationId = "org-1", PayrollRunId = "run-2026-1", EmployeeProfileId = "emp-1",
+                          PeriodYear = 2026, PeriodMonth = 1 },
+            new Payslip { OrganizationId = "org-1", PayrollRunId = "run-2026-2", EmployeeProfileId = "emp-other",
+                          PeriodYear = 2026, PeriodMonth = 2 });
+        await _db.SaveChangesAsync();
+
+        var loan = await service.CreateAsync(Save(principal: 1200m, count: 12, startYear: 2026, startMonth: 1));
+
+        Assert.Equal(1, loan.PaidInstallments);
+    }
+
     private static SaveEmployeeLoanDto Save(
         decimal principal = 1200m,
         LoanRepaymentMode mode = LoanRepaymentMode.FIXED,

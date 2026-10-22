@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: be9ce43
+  user-guide-covered-up-to: a720d32
 -->
 <html lang="en">
 <head>
@@ -1269,15 +1269,18 @@
   <details class="topic" id="payroll" open>
     <summary><h2>Running payroll</h2><span class="badge month">Every month</span></summary>
     <div class="topic-body">
-    <p class="topic-lede"><strong>Payroll → Payroll runs.</strong> One run per month: draft it, run payroll, check
-      it, send it for approval, then approve and file.</p>
+    <p class="topic-lede"><strong>Payroll → Payroll runs.</strong> Draft the month, run payroll, check
+      it, send it for approval, then approve and file. Most companies pay a month in one run; you can also
+      <a href="#payroll-split">pay a month in several runs</a>.</p>
     <ol class="steps">
       <li><h4>Create the draft</h4>
         <p><span class="btn-name">Create draft</span> — in <strong>Start a payroll run</strong>, pick the month and year,
           and which policies and employees to include. Changing the month reloads the list, because who is payable
           depends on it: someone who left is still listed for their last month. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
           owners and admins aren't. The app remembers the policies you picked and anyone you unticked, so you don't have to
-          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>).</p></li>
+          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>). The text above the button
+          says the same: pick the period, the policies and the employees, and nothing is worked out until you run payroll.
+          If the month already has a run, see <a href="#payroll-split">Paying a month in several runs</a>.</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
@@ -1372,7 +1375,57 @@
       date LHDN issued when you paid that month's PCB (MTD) — and CP38, if you had any — and press
       <span class="btn-name">Save receipts</span>. They're printed on each employee's PCB 2(II) statement; no figure changes.</p>
     <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
-      months that were worked out from it go back to draft too — the app lists them before you confirm.</p>
+      months that were worked out from it go back to draft too — the app lists them before you confirm. If the company
+      pays a month in several runs, only the later runs that share people with this one are sent back; a run for a
+      different group of people is left alone.</p>
+
+    <h3 id="payroll-split">Paying a month in several runs</h3>
+    <p>Some companies pay one group of staff on a different day from another — say office staff and workers. Start a
+      separate run for each group and every run is approved, filed and paid on its own.</p>
+    <ol class="steps">
+      <li><h4>Start another run for the month</h4>
+        <p>Press <span class="btn-name">Create draft</span> and pick a month that already has a run. A
+          <strong>Run name</strong> field appears (for example <em>Workers</em> or <em>Management</em>). While the month
+          has a run without a name, the new run <strong>must</strong> be named, and the button stays off until you type
+          one. The hint under the field lists the runs the month already has.</p></li>
+      <li><h4>Pick who is in it</h4>
+        <p>Anyone who is already in another run that month is greyed out in the list and marked
+          <strong>Already in</strong> and that run's name, and the count at the top says how many are in another run.
+          They can't be ticked. <strong>Each person is in only one run a month</strong>; if everyone on the policies you
+          picked is already taken, the dialog says so.</p></li>
+      <li><h4>Rename a run any time</h4>
+        <p>On the run's page, press the pencil next to its title, type the name, and press
+          <span class="btn-name">Save</span>. You can do this in any status — draft, waiting for approval or approved —
+          because the name is only a label. It can't be the same as another run's name that month, or so close to it that the
+          two runs' files would end up with the same name.</p></li>
+    </ol>
+    <p><strong>On the runs list.</strong> A month with more than one run gets a
+      <strong>&lt;Month&gt; — all runs</strong> row above its runs, with the runs indented beneath it. It adds up the
+      runs' staff, gross, net pay and cost to employer, and has <span class="btn-name">Summary</span> and
+      <span class="btn-name">Excel</span> buttons for the month's combined payroll summary. That row is for checking
+      only — you can't open, approve or file it. Until every run in the month is approved it says
+      <em>not all approved yet</em>, and the combined summary is marked as a draft, like the
+      <strong>Payroll summary for approval</strong> card. The run's name replaces the month in titles, confirmation
+      questions and the <strong>Download files</strong> window, for example <em>November 2026 – Workers</em>. The
+      <a href="#payroll-overview">Payroll Overview</a> adds the runs up too.</p>
+
+    <figure class="shot" data-place="Paying a month in several runs">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-run-picker.png" alt="Start a payroll run for November 2026, a month that already has a run: the Run name field, and the Outlet Staff people already in that run greyed out as Already in November 2026, with two free people ticked" loading="lazy">
+          <p class="shot-cap">Run name and greyed-out people</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-runs-split.png" alt="Payroll runs with a November 2026 — all runs row showing the combined figures and Summary and Excel buttons, and the month's two runs, November 2026 and Workers, indented beneath it" loading="lazy">
+          <p class="shot-cap">The month's all-runs row</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-run-name.png" alt="A run's page headed November 2026 – Workers, with the pencil to rename it beside the title" loading="lazy">
+          <p class="shot-cap">A named run, with its pencil</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Paying a month in several runs</p>
+    </figure>
     
     <figure class="shot" data-place="Running payroll">
       <div class="shot-grid" data-orient="screen">
@@ -1432,9 +1485,11 @@
       SOCSO, EIS and PCB are still worked out on the full pay, so the Gross column can be lower than the figure those
       contributions are based on.</p>
 
-    <h3>The Payroll Overview</h3>
+    <h3 id="payroll-overview">The Payroll Overview</h3>
     <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
-      the latest run's totals, and everything filed so far this year.</p>
+      the latest run's totals, and everything filed so far this year. When the latest month is paid in several runs,
+      the card is called <strong>Latest month</strong> and adds the runs up — staff, gross, net pay and cost — with
+      <em>Not all approved</em> until every run is approved, and the link becomes <strong>Open the runs</strong>.</p>
     </div>
   </details>
 
@@ -1489,6 +1544,9 @@
       number.</p>
     <p>The bank file and <strong>Manual Payments</strong> together add up to the run's total net pay, so nobody is
       missed.</p>
+    <p>If the month is paid in <a href="#payroll-split">several runs</a>, each run has its own files, and a named run's
+      file names carry its name (letters and digits only), so you can tell the office staff's PCB file from the
+      workers'. The window is headed with the run's name too.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>

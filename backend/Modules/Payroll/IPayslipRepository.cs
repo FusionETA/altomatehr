@@ -87,7 +87,17 @@ public interface IPayslipRepository
     // the run is named rather than added.
     Task<IReadOnlyDictionary<string, PayslipYtdSummary>> GetYtdThroughPeriodAsync(
         int year, int month, string? includeRunId);
+
+    // Each person's months that sit in a SUBMITTED or PENDING_APPROVAL run,
+    // optionally for one person. What a loan's "paid" and "locked" months
+    // are read from: the borrower's own payslip, not just "the month has a
+    // run" — once a month can hold several runs, another group's approved run
+    // says nothing about this borrower. (Default keeps test doubles compiling.)
+    Task<IReadOnlyList<PayslipFiledPeriod>> GetFiledPeriodsAsync(string? employeeProfileId = null) =>
+        Task.FromResult<IReadOnlyList<PayslipFiledPeriod>>([]);
 }
+
+public sealed record PayslipFiledPeriod(string EmployeeProfileId, int Year, int Month, PayrollRunStatus Status);
 
 public sealed record PayslipYtdSummary
 {

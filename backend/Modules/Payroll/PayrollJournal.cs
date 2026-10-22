@@ -94,6 +94,9 @@ public static class PayrollJournal
     {
         public required int PeriodYear { get; init; }
         public required int PeriodMonth { get; init; }
+        // The run's name when the month is split into several runs — each is
+        // posted as its own journal, and the narration says which.
+        public string? RunName { get; init; }
         public required PayrollXeroMapping Mapping { get; init; }
 
         // Account id → the CODE a journal line carries. Journals address
@@ -180,7 +183,8 @@ public static class PayrollJournal
         return new Result(
             true,
             lines,
-            $"{input.PeriodYear} - SALARY FOR {MonthName(input.PeriodMonth)} {input.PeriodYear}",
+            $"{input.PeriodYear} - SALARY FOR {MonthName(input.PeriodMonth)} {input.PeriodYear}"
+            + (string.IsNullOrWhiteSpace(input.RunName) ? "" : $" - {input.RunName.Trim().ToUpperInvariant()}"),
             LastDayOfPeriod(input.PeriodYear, input.PeriodMonth));
     }
 

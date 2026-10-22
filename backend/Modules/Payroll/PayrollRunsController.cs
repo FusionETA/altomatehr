@@ -60,11 +60,14 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> GetAll() => Ok(await _runs.GetAllAsync());
 
     // Policies + their payable employees, for the "Start a payroll run" picker.
-    // Literal segment, so it wins over the {id} route below.
+    // With a period, each employee already in another run that month is marked
+    // with that run (exceptRunId leaves one run out of that). Literal segment,
+    // so it wins over the {id} route below.
     [RequireScope("payroll:read")]
     [HttpGet("picker")]
-    public async Task<IActionResult> GetPicker([FromQuery] int? year, [FromQuery] int? month) =>
-        Ok(await _runs.GetPickerAsync(year, month));
+    public async Task<IActionResult> GetPicker(
+        [FromQuery] int? year, [FromQuery] int? month, [FromQuery] string? exceptRunId) =>
+        Ok(await _runs.GetPickerAsync(year, month, exceptRunId));
 
     [RequireScope("payroll:read")]
     [HttpGet("{id}")]
@@ -80,15 +83,17 @@ public class PayrollRunsController : ControllerBase
     {
         var result = await _runs.CreateAsync(dto);
 
-        // A period that already has a run is a conflict, not a bad request —
-        // the client's fix is to open the existing run, not to resend.
+        // A second run for a month without a name, a name the month already
+        // uses, or only people already in another run that month — conflicts
+        // with what exists, not a bad request.
         return result.Ok
             ? CreatedAtAction(nameof(Get), new { id = result.Run!.Id }, result.Run)
             : Conflict(new { error = result.Error });
     }
 
-    // Change a draft run's settings — today only SkipProration, which an
-    // integration sets on a run that already existed when it imported.
+    // Change a run's settings: its name (any status), or SkipProration (draft
+    // only), which an integration sets on a run that already existed when it
+    // imported.
     [RequireScope("payroll:write")]
     [HttpPatch("{id}")]
     public async Task<IActionResult> Update(string id, UpdatePayrollRunDto dto)
@@ -280,6 +285,23 @@ public class PayrollRunsController : ControllerBase
         {
             null or "" or "pdf" => await File(_statutory.RenderSummaryPdfAsync(id)),
             "xlsx" => await File(_statutory.RenderSummaryXlsxAsync(id)),
+            _ => BadRequest(new { error = "format must be pdf or xlsx." }),
+        };
+    }
+
+    // Every run in a month as one summary — for checking a month split into
+    // several runs as a whole. Read-only; each run still files on its own.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("month/{year:int}/{month:int}/summary")]
+    public async Task<IActionResult> MonthSummary(int year, int month, [FromQuery] string? format)
+    {
+        if (month is < 1 or > 12) return BadRequest(new { error = "month must be 1–12." });
+
+        return format?.ToLowerInvariant() switch
+        {
+            null or "" or "pdf" => await File(_statutory.RenderMonthSummaryAsync(year, month, xlsx: false)),
+            "xlsx" => await File(_statutory.RenderMonthSummaryAsync(year, month, xlsx: true)),
             _ => BadRequest(new { error = "format must be pdf or xlsx." }),
         };
     }

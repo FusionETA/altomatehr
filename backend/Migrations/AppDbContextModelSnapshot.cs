@@ -2570,6 +2570,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime?>("LastMutatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2586,6 +2590,9 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RunNumber")
                         .HasColumnType("int");
 
                     b.Property<string>("ScopeExcludedProfileIdsJson")
@@ -2710,7 +2717,7 @@ namespace AltomateHR.Api.Migrations
 
                     b.HasIndex("OrganizationId", "Status");
 
-                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth")
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "RunNumber")
                         .IsUnique();
 
                     b.ToTable("PayrollRuns");
@@ -2858,9 +2865,18 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PayrollRunId", "EmployeeProfileId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "EmployeeProfileId")
                         .IsUnique();
 
                     b.ToTable("PayrollRunMembers");
@@ -3049,6 +3065,12 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
                     b.Property<int>("ProratedDays")
                         .HasColumnType("int");
 
@@ -3171,6 +3193,9 @@ namespace AltomateHR.Api.Migrations
                     b.HasIndex("OrganizationId", "EmployeeProfileId");
 
                     b.HasIndex("PayrollRunId", "EmployeeProfileId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "EmployeeProfileId")
                         .IsUnique();
 
                     b.ToTable("Payslips");

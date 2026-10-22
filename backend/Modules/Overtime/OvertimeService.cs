@@ -307,7 +307,7 @@ public class OvertimeService : IOvertimeService
     private async Task MarkPayrollIfApprovedAsync(OvertimeRequest request)
     {
         if (_drafts is null || request.Status != OvertimeStatus.APPROVED) return;
-        await _drafts.MarkDraftsCoveringAsync(request.WorkDate, request.WorkDate);
+        await _drafts.MarkDraftsCoveringAsync(request.WorkDate, request.WorkDate, request.EmployeeId);
     }
 
     public async Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId)

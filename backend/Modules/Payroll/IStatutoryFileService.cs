@@ -40,6 +40,11 @@ public interface IStatutoryFileService
     Task<StatutoryFileResult> RenderSummaryXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
+    // The whole month — every run in it — as one summary, for checking a
+    // month split into several runs. Read-only: nothing is filed from it.
+    Task<StatutoryFileResult> RenderMonthSummaryAsync(int year, int month, bool xlsx) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // Who is paid what, into which account — the sheet an approver checks
     // against the bank file before releasing it.
     Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId);

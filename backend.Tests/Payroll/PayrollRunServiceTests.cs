@@ -479,6 +479,205 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(["Aisyah", "Chong"], await NamesAfterRerunAsync(runId));
     }
 
+    // ─── Several runs in a month ────────────────────────────────────────
+    //
+    // A month split by staff group: each run after the first is named, and
+    // a person is in only one of them.
+
+    private Task<PayrollRunSaveResult> RunForAsync(string? name, string? policyId = null, params string[] excluded) =>
+        _service.CreateAsync(new CreatePayrollRunDto
+        {
+            PeriodYear = 2026,
+            PeriodMonth = 1,
+            Name = name,
+            PolicyIds = policyId is null ? null : [policyId],
+            ExcludedEmployeeProfileIds = [.. excluded],
+        });
+
+    private async Task<Dictionary<string, PayrollPickerMemberDto>> PickerAsync(string? exceptRunId = null) =>
+        (await _service.GetPickerAsync(2026, 1, exceptRunId)).Policies
+            .SelectMany(p => p.Members).ToDictionary(m => m.Name);
+
+    [Fact]
+    public async Task AMonthsSecondRun_NeedsAName_AndTakesOnlyPeopleNotInTheFirst()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var first = await PickerDraftAsync(policy, ben.Id);   // Aisyah
+
+        var unnamed = await RunForAsync(null);
+        Assert.False(unnamed.Ok);
+        Assert.Contains("give it a name", unnamed.Error);
+
+        // Everyone is picked; Aisyah is already in the first run.
+        var second = await RunForAsync("Workers", policy);
+        Assert.True(second.Ok, second.Error);
+        Assert.Equal(2, second.Run!.RunNumber);
+        Assert.Equal("January 2026 – Workers", second.Run.Label);
+
+        Assert.Equal(["Ben"], await NamesAfterRerunAsync(second.Run.Id));
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(first));
+    }
+
+    [Fact]
+    public async Task ASecondRun_IsRefused_WhenEveryoneIsTaken_OrTheNameIsUsed()
+    {
+        AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var first = await CreateRunAsync(2026, 1);   // everyone
+        var rosterBefore = _db.PayrollRunMembers.Count();
+
+        var allTaken = await RunForAsync("Workers");
+        Assert.False(allTaken.Ok);
+        Assert.Contains("already in another January 2026 run", allTaken.Error);
+        Assert.Single(_db.PayrollRuns);
+        Assert.Equal(rosterBefore, _db.PayrollRunMembers.Count());
+
+        // Narrow the first run to Aisyah (delete + recreate), then split.
+        Assert.True((await _service.DeleteDraftAsync(first.Id)).Ok);
+        Assert.True((await RunForAsync(null, null, ben.Id)).Ok);
+        Assert.True((await RunForAsync("Workers")).Ok);
+
+        var repeated = await RunForAsync("workers");
+        Assert.False(repeated.Ok);
+        Assert.Contains("already has a run named", repeated.Error);
+    }
+
+    // The month's first run claimed "everyone" while it was alone. Once a
+    // second run joins, it holds just the people it had — a later joiner can
+    // then go to either, but never to both.
+    [Fact]
+    public async Task ANewcomer_IsPaidInOnlyOneOfTheMonthsRuns()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var office = await PickerDraftAsync(policy, ben.Id);                 // Aisyah
+        var workers = (await RunForAsync("Workers", policy)).Run!.Id;        // Ben
+
+        AddReadyEmployee("usr-3", "Chong", "E-003");   // payable on both runs' policy
+
+        var inWorkers = await NamesAfterRerunAsync(workers);
+        var inOffice = await NamesAfterRerunAsync(office);
+
+        Assert.Equal(1, new[] { inWorkers, inOffice }.Count(names => names.Contains("Chong")));
+        Assert.Contains("Ben", inWorkers);
+        Assert.Contains("Aisyah", inOffice);
+    }
+
+    [Fact]
+    public async Task ThePicker_MarksPeopleAlreadyInAnotherRunThatMonth()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var office = await PickerDraftAsync(policy, ben.Id);
+        Assert.True((await _service.UpdateAsync(office, new UpdatePayrollRunDto { Name = "Office" })).Ok);
+
+        var picker = await PickerAsync();
+        Assert.Equal(office, picker["Aisyah"].TakenByRunId);
+        Assert.Equal("January 2026 – Office", picker["Aisyah"].TakenByRunLabel);
+        Assert.Null(picker["Ben"].TakenByRunId);
+
+        // Seen from the run itself, its own people are not "taken".
+        Assert.Null((await PickerAsync(exceptRunId: office))["Aisyah"].TakenByRunId);
+    }
+
+    // Someone on a run's roster who got no payslip (not joined yet) is still
+    // that run's — offering them to another run would put them on two
+    // rosters for the month, which the database refuses.
+    [Fact]
+    public async Task SomeoneOnARosterButNotPaidYet_StaysThatRunsPerson()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var dan = AddReadyEmployee("usr-4", "Dan", "E-004");
+        dan.JoinDate = new DateTime(2026, 2, 1);
+        _db.SaveChanges();
+        var office = await PickerDraftAsync(policy, "nobody");
+
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(office));   // Dan hasn't joined
+        Assert.Equal(office, (await PickerAsync())["Dan"].TakenByRunId);
+        var workers = await RunForAsync("Workers", policy);
+        Assert.False(workers.Ok);
+        Assert.Single(_db.PayrollRuns);
+    }
+
+    // Deleting one run of a split month must not move its people into the
+    // other on that run's next re-run — they were "taken" when it was made.
+    // The deleted run can then be made again, unnamed, beside the named one.
+    [Fact]
+    public async Task DeletingOneRunOfASplitMonth_DoesNotMoveItsPeopleIntoTheOther()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var office = await PickerDraftAsync(policy, ben.Id);
+        var workers = (await RunForAsync("Workers", policy)).Run!.Id;
+
+        Assert.True((await _service.DeleteDraftAsync(office)).Ok);
+
+        Assert.Equal(["Ben"], await NamesAfterRerunAsync(workers));
+        var again = await RunForAsync(null, policy, ben.Id);
+        Assert.True(again.Ok, again.Error);
+        Assert.Equal(["Aisyah"], await NamesAfterRerunAsync(again.Run!.Id));
+    }
+
+    // A request that renames AND changes pricing on a non-draft run is refused
+    // whole — the name isn't saved on its own.
+    [Fact]
+    public async Task RenamePlusPricingOnASubmittedRun_ChangesNothing()
+    {
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var run = await CreateRunAsync(2026, 1);
+        var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id);
+        stored.Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.UpdateAsync(run.Id, new UpdatePayrollRunDto { Name = "Office", SkipProration = true });
+
+        Assert.False(result.Ok);
+        Assert.Null((await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id)).Name);
+        Assert.True((await _service.UpdateAsync(run.Id, new UpdatePayrollRunDto { Name = "Office" })).Ok);
+    }
+
+    // Names that file the same ("Team 1", "Team-1" → Team1) can't share a month.
+    [Fact]
+    public async Task TwoRunsWhoseFilesWouldShareAName_AreRefused()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        Assert.True((await RunForAsync("Team 1", policy, ben.Id)).Ok);
+
+        var clash = await RunForAsync("Team-1", policy);
+        Assert.False(clash.Ok);
+        Assert.Contains("same name", clash.Error);
+        Assert.True((await RunForAsync("Team 2", policy)).Ok);
+    }
+
+    // A rename is a label, so it's allowed on an approved run too — but two
+    // runs in a month can't both go unnamed, or share a name.
+    [Fact]
+    public async Task Rename_KeepsTheMonthsRunsApart()
+    {
+        var policy = AddDefaultPolicy();
+        AddReadyEmployee("usr-1", "Aisyah", "E-001");
+        var ben = AddReadyEmployee("usr-2", "Ben", "E-002");
+        var office = await PickerDraftAsync(policy, ben.Id);
+        var workers = (await RunForAsync("Workers", policy)).Run!.Id;
+
+        Assert.False((await _service.UpdateAsync(workers, new UpdatePayrollRunDto { Name = "" })).Ok);
+        Assert.False((await _service.UpdateAsync(office, new UpdatePayrollRunDto { Name = "WORKERS" })).Ok);
+
+        var renamed = await _service.UpdateAsync(office, new UpdatePayrollRunDto { Name = " Office " });
+        Assert.True(renamed.Ok, renamed.Error);
+        Assert.Equal("Office", renamed.Run!.Name);
+        Assert.True((await _service.UpdateAsync(workers, new UpdatePayrollRunDto { Name = "" })).Ok);
+    }
+
     // ABPay sends an explicit list (exclusions, no policies): its roster is the
     // timesheet and never grows — even if "figures are final" is later unticked.
     [Fact]

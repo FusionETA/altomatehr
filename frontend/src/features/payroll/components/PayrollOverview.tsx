@@ -90,7 +90,20 @@ export function PayrollOverview({
     [runs],
   );
 
-  const latest = byPeriod[0];
+  // The latest MONTH, which can be split into several runs (one per staff
+  // group): its figures added up, its status the least advanced of its runs.
+  const latestRuns = byPeriod.filter(
+    (run) =>
+      run.periodYear === byPeriod[0]?.periodYear && run.periodMonth === byPeriod[0]?.periodMonth,
+  );
+  const latest = latestRuns[0];
+  const latestStatus = latestRuns.some((r) => r.status === "DRAFT")
+    ? "DRAFT"
+    : latestRuns.some((r) => r.status === "PENDING_APPROVAL")
+      ? "PENDING_APPROVAL"
+      : "SUBMITTED";
+  const latestSum = (pick: (run: PayrollRun) => number) =>
+    latestRuns.reduce((total, run) => total + pick(run), 0);
   const year = latest?.periodYear ?? new Date().getFullYear();
 
   // Only APPROVED months are money that actually moved.
@@ -162,17 +175,23 @@ export function PayrollOverview({
         {/* ── The month in front of you ────────────────────────────── */}
         <section className={CARD}>
           <CardHead
-            title="Latest run"
-            meta={latest ? latest.periodLabel : undefined}
+            title={latestRuns.length > 1 ? "Latest month" : "Latest run"}
+            meta={
+              latest
+                ? latestRuns.length > 1
+                  ? `${latest.periodLabel} · ${latestRuns.length} runs`
+                  : latest.label
+                : undefined
+            }
           />
 
           {latest ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`${BADGE} ${statusTone[latest.status]}`}>
-                  {statusLabels[latest.status]}
+                <span className={`${BADGE} ${statusTone[latestStatus]}`}>
+                  {latestRuns.length > 1 && latestStatus !== "SUBMITTED" ? "Not all approved" : statusLabels[latestStatus]}
                 </span>
-                {latest.isStale ? (
+                {latestRuns.some((r) => r.isStale) ? (
                   <span
                     className={`${BADGE} border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400`}
                   >
@@ -180,17 +199,20 @@ export function PayrollOverview({
                   </span>
                 ) : null}
                 <span className="text-xs text-muted-foreground">
-                  {latest.employeeCount} employee(s)
+                  {latestSum((r) => r.employeeCount)} employee(s)
                 </span>
               </div>
 
               <dl className="grid grid-cols-3 gap-3">
-                <Figure label="Gross" value={latest.totalGrossShown} />
-                <Figure label="Net pay" value={latest.totalNet} emphasis />
-                <Figure label="Cost" value={latest.totalCostToEmployer} />
+                <Figure label="Gross" value={latestSum((r) => r.totalGrossShown)} />
+                <Figure label="Net pay" value={latestSum((r) => r.totalNet)} emphasis />
+                <Figure label="Cost" value={latestSum((r) => r.totalCostToEmployer)} />
               </dl>
 
-              <Link label="Open this run" onClick={() => onGo("runs")} />
+              <Link
+                label={latestRuns.length > 1 ? "Open the runs" : "Open this run"}
+                onClick={() => onGo("runs")}
+              />
             </div>
           ) : (
             <div className="space-y-4">

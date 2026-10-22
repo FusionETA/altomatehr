@@ -28,6 +28,7 @@ import { PayrollRunTabs } from "./PayrollRunTabs";
 import { PayrollRunAttention } from "./PayrollRunAttention";
 import { PayrollRunDownloads } from "./PayrollRunDownloads";
 import { PayrollRunLhdnReceipts } from "./PayrollRunLhdnReceipts";
+import { PayrollRunName } from "./PayrollRunName";
 import { PayrollPayslipsTable } from "./PayrollPayslipsTable";
 import { SalaryChangeHints } from "./SalaryChangeHints";
 
@@ -143,7 +144,7 @@ export function PayrollRunDetailView({
             All runs
           </button>
           <div>
-            <h1 className="text-xl font-semibold text-foreground">{run.periodLabel}</h1>
+            <PayrollRunName run={run} onRenamed={() => void load()} />
             <p className={HINT}>
               {run.employeeCount} payroll result{run.employeeCount === 1 ? "" : "s"} on file
               {generated ? ` · generated ${dateTime(run.generatedAt)}` : ""}
@@ -228,7 +229,7 @@ export function PayrollRunDetailView({
         runId={run.id}
         memberIds={detail.memberEmployeeProfileIds ?? []}
         editable={run.status === "DRAFT"}
-        periodLabel={run.periodLabel}
+        periodLabel={run.label}
         categories={categories}
         showRoster={payslips.length === 0}
         openFor={adjusting}

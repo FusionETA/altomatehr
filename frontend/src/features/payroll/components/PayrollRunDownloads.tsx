@@ -523,7 +523,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   async function sendAllPayslips() {
     const ok = await confirm({
-      title: `Email every payslip on ${run.periodLabel}?`,
+      title: `Email every payslip on ${run.label}?`,
       message: "Each employee is sent their own payslip. This can't be recalled once sent.",
       confirmLabel: "Send payslips",
     });
@@ -544,12 +544,12 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   const allPicked = picked.size > 0 && picked.size === items.length;
 
   return (
-    <ModalPortal label={`Download files for ${run.periodLabel}`} onClose={onClose}>
+    <ModalPortal label={`Download files for ${run.label}`} onClose={onClose}>
       {confirmDialog}
       <header className="flex items-start justify-between gap-4 border-b border-border/60 p-6">
         <div>
           <h2 className="text-xl font-semibold text-foreground">
-            Download files — {run.periodLabel}
+            Download files — {run.label}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {imported

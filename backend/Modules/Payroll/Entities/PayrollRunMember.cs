@@ -28,5 +28,10 @@ public class PayrollRunMember : ITenantScoped
     [MaxLength(40)]
     public string EmployeeProfileId { get; set; } = string.Empty;
 
+    // The run's month, copied so the database can refuse the same person on
+    // two runs of one month (unique on org + month + employee).
+    public int PeriodYear { get; set; }
+    public int PeriodMonth { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }

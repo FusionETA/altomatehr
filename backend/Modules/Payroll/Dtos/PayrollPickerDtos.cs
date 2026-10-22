@@ -24,4 +24,10 @@ public class PayrollPickerMemberDto
     public string Name { get; set; } = string.Empty;
     public string EmployeeId { get; set; } = string.Empty;   // the org's employee number
     public string JobTitle { get; set; } = string.Empty;
+
+    // Already in another run for this month — a person is paid in only one.
+    // The picker shows them greyed out with that run's label; the server drops
+    // them from a new run even if they're sent.
+    public string? TakenByRunId { get; set; }
+    public string? TakenByRunLabel { get; set; }
 }

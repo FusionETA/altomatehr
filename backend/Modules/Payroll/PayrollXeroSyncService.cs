@@ -138,7 +138,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
 
             await _audit.WriteAsync(new AuditEvent(
                 AuditActions.PayrollRunXeroSync,
-                $"Posted {PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth)} payroll to Xero",
+                $"Posted {PayrollPeriodLabel.ForRun(run)} payroll to Xero",
                 TargetType: "PayrollRun",
                 TargetId: run.Id,
                 Metadata: new { posted.ManualJournalId, LineCount = journal.Lines.Count }));
@@ -186,7 +186,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunXeroSync,
-            $"Failed to post {PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth)} payroll to Xero",
+            $"Failed to post {PayrollPeriodLabel.ForRun(run)} payroll to Xero",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Status: "FAILURE",
@@ -319,6 +319,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         {
             PeriodYear = run.PeriodYear,
             PeriodMonth = run.PeriodMonth,
+            RunName = run.Name,
             Mapping = mapping,
             AccountCodeById = accountCodeById,
             ArchivedAccounts = archivedAccounts,

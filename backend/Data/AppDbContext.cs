@@ -318,10 +318,12 @@ public class AppDbContext : DbContext
         companyInfo.HasIndex(c => c.OrganizationId).IsUnique();
         companyInfo.Property(c => c.DeclarantIdType).HasConversion<string>().HasMaxLength(20);
 
-        // Payroll runs — one per (org, period), which is what makes "the January
-        // run" unambiguous for every statutory filing downstream.
+        // Payroll runs — a month can hold several (one per staff group), each
+        // with its own number, so two runs started at the same moment can't
+        // both become the month's run 1. What is also unique is a person
+        // within a month: see the Payslip and PayrollRunMember indexes below.
         var payrollRun = modelBuilder.Entity<PayrollRun>();
-        payrollRun.HasIndex(r => new { r.OrganizationId, r.PeriodYear, r.PeriodMonth }).IsUnique();
+        payrollRun.HasIndex(r => new { r.OrganizationId, r.PeriodYear, r.PeriodMonth, r.RunNumber }).IsUnique();
         payrollRun.HasIndex(r => new { r.OrganizationId, r.Status });
         payrollRun.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
         payrollRun.Property(r => r.Source).HasConversion<string>().HasMaxLength(20);
@@ -330,6 +332,9 @@ public class AppDbContext : DbContext
         // half-failed regeneration from leaving two payslips for one person.
         var payslip = modelBuilder.Entity<Payslip>();
         payslip.HasIndex(p => new { p.PayrollRunId, p.EmployeeProfileId }).IsUnique();
+        // One payslip per person per MONTH, across every run of that month —
+        // what lets a month hold several runs without anyone being paid twice.
+        payslip.HasIndex(p => new { p.OrganizationId, p.PeriodYear, p.PeriodMonth, p.EmployeeProfileId }).IsUnique();
         // The YTD read walks the year's payslips per employee, so this is the
         // index it needs; the run's own detail page uses the unique one above.
         payslip.HasIndex(p => new { p.OrganizationId, p.EmployeeProfileId });
@@ -357,6 +362,9 @@ public class AppDbContext : DbContext
         // unique index stops a double-insert leaving someone on the run twice.
         var runMember = modelBuilder.Entity<PayrollRunMember>();
         runMember.HasIndex(m => new { m.PayrollRunId, m.EmployeeProfileId }).IsUnique();
+        // And one run per person per month: two runs of a month can't both
+        // hold the same person, even if two admins pick them at once.
+        runMember.HasIndex(m => new { m.OrganizationId, m.PeriodYear, m.PeriodMonth, m.EmployeeProfileId }).IsUnique();
         lineItem.Property(li => li.Kind).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 

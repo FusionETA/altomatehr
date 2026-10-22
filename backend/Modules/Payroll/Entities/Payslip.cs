@@ -28,6 +28,13 @@ public class Payslip : ITenantScoped
     [MaxLength(40)] public string PayrollRunId { get; set; } = string.Empty;
     [MaxLength(40)] public string EmployeeProfileId { get; set; } = string.Empty;
 
+    // The run's month, copied here so the database can hold the rule a month
+    // with several runs depends on: one payslip per person per month
+    // (unique on org + month + employee). Nobody is paid twice for a month,
+    // whichever run they are on.
+    public int PeriodYear { get; set; }
+    public int PeriodMonth { get; set; }
+
     // The user the profile belonged to. Kept so the employee portal can find its
     // own payslips (phase 8) without walking a profile that may since be gone.
     [MaxLength(40)] public string UserId { get; set; } = string.Empty;

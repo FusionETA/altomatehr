@@ -158,60 +158,163 @@ public class PayrollRunService : IPayrollRunService
 
     public async Task<PayrollRunSaveResult> CreateAsync(CreatePayrollRunDto dto)
     {
-        var existing = await _runs.GetByPeriodAsync(dto.PeriodYear, dto.PeriodMonth);
-        if (existing is not null)
+        var month = PeriodLabel(dto.PeriodYear, dto.PeriodMonth);
+        var name = Blank(dto.Name);
+        var monthRuns = await _runs.GetForPeriodAsync(dto.PeriodYear, dto.PeriodMonth);
+
+        // A month can be split into runs for different staff groups. At most
+        // one of them goes unnamed — the rest need a name, so the runs and
+        // their files can be told apart. A caller that doesn't send one
+        // (ABPay's posting) gets the refusal it always got while the month
+        // has an unnamed run, and can still recreate its own after deleting it.
+        if (name is null && monthRuns.Any(r => Blank(r.Name) is null))
         {
-            return new PayrollRunSaveResult(
-                false, null,
-                $"A payroll run already exists for {PeriodLabel(dto.PeriodYear, dto.PeriodMonth)}.");
+            return Refused(
+                $"A payroll run already exists for {month}. To add another run for the month, "
+                + "give it a name — for example the staff group it pays.");
         }
 
-        var run = await _runs.AddAsync(new PayrollRun
+        var run = new PayrollRun
         {
             PeriodYear = dto.PeriodYear,
             PeriodMonth = dto.PeriodMonth,
+            Name = name,
+            RunNumber = monthRuns.Count == 0 ? 1 : monthRuns.Max(r => r.RunNumber) + 1,
             Status = PayrollRunStatus.DRAFT,
             Source = PayrollRunSource.COMPUTED,
             SkipProration = dto.SkipProration,
-        });
+        };
+        if (NameClash(monthRuns, run) is { } clash) return Refused(clash);
 
-        // Freeze the admin's chosen roster (policies − unticked employees).
-        // Generation reads this back; a run with no rows means "everyone".
+        // The admin's chosen roster (policies − unticked employees), less
+        // anyone already in another run this month — a person is paid in one
+        // run a month. The picker greys them out; this is the guarantee.
         var members = await ResolveScopeAsync(
             dto.PolicyIds, dto.ExcludedEmployeeProfileIds, dto.PeriodYear, dto.PeriodMonth);
-        if (members.Count > 0)
+        var takenAtCreation = new List<string>();
+        if (monthRuns.Count > 0)
         {
-            await _runMembers.ReplaceForRunAsync(run.Id, members);
-
-            // Remember the choice itself — but only for a draft made with the
-            // policy picker (which always sends policies), so a re-run can add
-            // people who become payable on those policies later (see
-            // GenerateAsync). A run made from an explicit list — ABPay's,
-            // which sends only exclusions — never grows: its roster is the
-            // timesheet. Decided here, from how the run was made, not from a
-            // setting that can be changed afterwards.
-            if (dto.PolicyIds is { Count: > 0 })
+            var taken = await TakenInMonthAsync(dto.PeriodYear, dto.PeriodMonth, exceptRunId: null);
+            takenAtCreation = members.Where(taken.ContainsKey).ToList();
+            members = members.Where(id => !taken.ContainsKey(id)).ToList();
+            if (members.Count == 0)
             {
-                run.ScopePolicyIdsJson = JsonSerializer.Serialize(dto.PolicyIds);
-                run.ScopeExcludedProfileIdsJson = JsonSerializer.Serialize(dto.ExcludedEmployeeProfileIds ?? []);
-                await _runs.UpdateAsync(run);
+                return Refused(
+                    $"Everyone you picked is already in another {month} run. A person can be in "
+                    + "only one run a month.");
             }
+
+            // From here on the month has several runs, so "a run with no
+            // roster is everyone" can't hold for the existing ones: write
+            // down who each of them is for.
+            foreach (var other in monthRuns) await PinRosterAsync(other);
+        }
+
+        // Remember the choice itself — but only for a draft made with the
+        // policy picker (which always sends policies), so a re-run can add
+        // people who become payable on those policies later (see
+        // GenerateAsync). A run made from an explicit list — ABPay's, which
+        // sends only exclusions — never grows: its roster is the timesheet.
+        // Decided here, from how the run was made, not from a setting that can
+        // be changed afterwards. Whoever was in another run at creation counts
+        // as unticked: if that run is deleted they don't drift into this one.
+        if (members.Count > 0 && dto.PolicyIds is { Count: > 0 })
+        {
+            run.ScopePolicyIdsJson = JsonSerializer.Serialize(dto.PolicyIds);
+            run.ScopeExcludedProfileIdsJson = JsonSerializer.Serialize(
+                (dto.ExcludedEmployeeProfileIds ?? []).Concat(takenAtCreation).Distinct().ToList());
+        }
+
+        // The run and its roster in one save. Generation reads the roster
+        // back; a run with no rows (only ever the month's sole run) means
+        // "everyone".
+        if (!await _runs.TryAddWithRosterAsync(run, members))
+        {
+            return Refused(
+                $"Another {month} payroll run was started at the same moment. Reload and try again.");
         }
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunCreate,
-            $"Started the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
+            $"Started the {RunLabel(run)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
-            Metadata: new { run.PeriodYear, run.PeriodMonth, MemberCount = members.Count, run.SkipProration }));
+            Metadata: new { run.PeriodYear, run.PeriodMonth, run.Name, MemberCount = members.Count, run.SkipProration }));
 
         return new PayrollRunSaveResult(true, ToDto(run), null);
+    }
+
+    // Why `run` (as named) can't sit beside the month's other runs, or null.
+    // Two runs may not share a name, nor names that make the same file name
+    // ("Team 1" and "Team-1" both file as "Team1").
+    private static string? NameClash(IEnumerable<PayrollRun> monthRuns, PayrollRun run)
+    {
+        var name = Blank(run.Name);
+        if (name is null) return null;
+        var tag = PayrollPeriodLabel.FileTag(run);
+        var month = PeriodLabel(run.PeriodYear, run.PeriodMonth);
+        foreach (var other in monthRuns.Where(r => r.Id != run.Id))
+        {
+            if (string.Equals(Blank(other.Name), name, StringComparison.OrdinalIgnoreCase))
+                return $"{month} already has a run named \"{name}\". Choose another name.";
+            if (tag.Length > 0
+                && string.Equals(PayrollPeriodLabel.FileTag(other), tag, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"\"{name}\" is too close to {RunLabel(other)} — their files would have the "
+                       + "same name. Choose a more different name.";
+            }
+        }
+        return null;
+    }
+
+    // Who each of the month's runs (other than `exceptRunId`) is for, by
+    // employee profile id → that run. A run's people are its payslips once
+    // run, otherwise its roster; a sole run with neither is for everyone
+    // payable that month.
+    private async Task<Dictionary<string, PayrollRun>> TakenInMonthAsync(
+        int year, int month, string? exceptRunId)
+    {
+        var taken = new Dictionary<string, PayrollRun>(StringComparer.Ordinal);
+        foreach (var other in await _runs.GetForPeriodAsync(year, month))
+        {
+            if (other.Id == exceptRunId) continue;
+            var people = await PeopleOfAsync(other)
+                         ?? [.. await ResolveScopeAsync(null, null, year, month)];
+            foreach (var id in people) taken.TryAdd(id, other);
+        }
+        return taken;
+    }
+
+    // Writes down a run's people as its roster when it has none ("everyone").
+    // Done when a second run joins the month, so the first stops claiming
+    // whoever becomes payable later — and so a newcomer can go to either.
+    private async Task PinRosterAsync(PayrollRun run)
+    {
+        if ((await _runMembers.GetForRunAsync(run.Id)).Count > 0) return;
+        var people = await PeopleOfAsync(run)
+                     ?? [.. await ResolveScopeAsync(null, null, run.PeriodYear, run.PeriodMonth)];
+        if (people.Count > 0) await _runMembers.ReplaceForRunAsync(run, people);
     }
 
     public async Task<PayrollRunSaveResult> UpdateAsync(string id, UpdatePayrollRunDto dto)
     {
         var run = await _runs.GetByIdAsync(id);
         if (run is null) return new PayrollRunSaveResult(false, null, null);
+
+        // All or nothing: skipProration on a run that isn't a draft is refused
+        // (as it always was) before anything else in the request is saved.
+        if (dto.SkipProration is not null && run.Status != PayrollRunStatus.DRAFT)
+        {
+            return new PayrollRunSaveResult(
+                false, null, "Only a draft payroll run can be changed.");
+        }
+
+        // A rename is only a label, so it's allowed in any status.
+        if (dto.Name is not null)
+        {
+            var renamed = await RenameAsync(run, Blank(dto.Name));
+            if (!renamed.Ok || dto.SkipProration is null) return renamed;
+        }
 
         // Changing how pay is computed on a filed or pending month would leave
         // its payslips describing a rule the run no longer says it used.
@@ -234,11 +337,41 @@ public class PayrollRunService : IPayrollRunService
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunUpdate,
             skip
-                ? $"Set the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run to use pay figures as final (no proration)"
-                : $"Set the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run to prorate joiners and leavers",
+                ? $"Set the {RunLabel(run)} payroll run to use pay figures as final (no proration)"
+                : $"Set the {RunLabel(run)} payroll run to prorate joiners and leavers",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new { run.PeriodYear, run.PeriodMonth, SkipProration = skip }));
+
+        return new PayrollRunSaveResult(true, ToDto(run), null);
+    }
+
+    private async Task<PayrollRunSaveResult> RenameAsync(PayrollRun run, string? name)
+    {
+        if (string.Equals(Blank(run.Name), name, StringComparison.Ordinal))
+            return new PayrollRunSaveResult(true, ToDto(run), null);
+
+        var monthRuns = await _runs.GetForPeriodAsync(run.PeriodYear, run.PeriodMonth);
+        var month = RunLabel(run);
+        if (name is null && monthRuns.Any(r => r.Id != run.Id && Blank(r.Name) is null))
+            return Refused($"Another {month} run has no name, so this one needs one.");
+        if (NameClash(monthRuns, new PayrollRun
+            {
+                Id = run.Id, PeriodYear = run.PeriodYear, PeriodMonth = run.PeriodMonth,
+                Name = name, RunNumber = run.RunNumber,
+            }) is { } clash)
+            return Refused(clash);
+
+        var before = RunLabel(run);
+        run.Name = name;
+        await _runs.UpdateAsync(run);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.PayrollRunUpdate,
+            $"Renamed the {before} payroll run to {RunLabel(run)}",
+            TargetType: "PayrollRun",
+            TargetId: run.Id,
+            Metadata: new { run.PeriodYear, run.PeriodMonth, run.Name }));
 
         return new PayrollRunSaveResult(true, ToDto(run), null);
     }
@@ -247,8 +380,14 @@ public class PayrollRunService : IPayrollRunService
     // scope a run to, each carrying the payable (complete, non-archived)
     // employees under it. Employees with no effective policy are omitted — a run
     // is scoped through a policy, so they cannot be selected.
-    public async Task<PayrollRunPickerDto> GetPickerAsync(int? year = null, int? month = null)
+    public async Task<PayrollRunPickerDto> GetPickerAsync(
+        int? year = null, int? month = null, string? exceptRunId = null)
     {
+        // Who is already in another run this month: shown, but not pickable.
+        var taken = year is { } y && month is { } m
+            ? await TakenInMonthAsync(y, m, exceptRunId)
+            : new Dictionary<string, PayrollRun>(StringComparer.Ordinal);
+
         var eligible = (await _directory.PayrollProfilesAsync())
             .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
             .ToList();
@@ -276,6 +415,8 @@ public class PayrollRunService : IPayrollRunService
                 Name = users.TryGetValue(profile.UserId, out var user) ? user.Name : string.Empty,
                 EmployeeId = membership?.EmployeeNumber ?? string.Empty,
                 JobTitle = membership?.JobTitle ?? string.Empty,
+                TakenByRunId = taken.GetValueOrDefault(profile.Id)?.Id,
+                TakenByRunLabel = taken.TryGetValue(profile.Id, out var holder) ? RunLabel(holder) : null,
             });
         }
 
@@ -372,18 +513,25 @@ public class PayrollRunService : IPayrollRunService
         {
             var policyIds = JsonSerializer.Deserialize<List<string>>(run.ScopePolicyIdsJson) ?? [];
             var excluded = JsonSerializer.Deserialize<List<string>>(run.ScopeExcludedProfileIdsJson ?? "[]") ?? [];
+            var inOtherRuns = await TakenInMonthAsync(run.PeriodYear, run.PeriodMonth, run.Id);
             var newcomers = (await ResolveScopeAsync(policyIds, excluded, run.PeriodYear, run.PeriodMonth))
-                .Where(id => !memberIds.Contains(id))
+                .Where(id => !memberIds.Contains(id) && !inOtherRuns.ContainsKey(id))
                 .ToList();
             if (newcomers.Count > 0)
             {
                 memberIds.UnionWith(newcomers);
-                await _runMembers.ReplaceForRunAsync(run.Id, memberIds);
+                await _runMembers.ReplaceForRunAsync(run, memberIds);
             }
         }
 
         if (memberIds.Count > 0)
             profiles = profiles.Where(p => memberIds.Contains(p.Id)).ToList();
+
+        // Never pay someone a second time in a month: anyone another of this
+        // month's runs holds is left out here, whatever this run's roster says.
+        var heldElsewhere = await TakenInMonthAsync(run.PeriodYear, run.PeriodMonth, run.Id);
+        if (heldElsewhere.Count > 0)
+            profiles = profiles.Where(p => !heldElsewhere.ContainsKey(p.Id)).ToList();
 
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
             .ToDictionary(m => m.UserId, StringComparer.Ordinal);
@@ -497,7 +645,7 @@ public class PayrollRunService : IPayrollRunService
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunGenerate,
             $"Ran payroll — {payslips.Count} payslip(s) for the "
-            + $"{PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
+            + $"{RunLabel(run)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new
@@ -609,7 +757,7 @@ public class PayrollRunService : IPayrollRunService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunSubmitForApproval,
-            $"Submitted the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run for approval",
+            $"Submitted the {RunLabel(run)} payroll run for approval",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new
@@ -632,14 +780,25 @@ public class PayrollRunService : IPayrollRunService
             ? (run.PeriodYear, run.PeriodMonth - 1)
             : (run.PeriodYear - 1, 12);
 
-        var previous = await _runs.GetByPeriodAsync(prevYear, prevMonth);
+        var previousRuns = await _runs.GetForPeriodAsync(prevYear, prevMonth);
 
-        if (previous is not null)
+        if (previousRuns.Count > 0)
         {
-            return previous.Status == PayrollRunStatus.SUBMITTED
-                ? null
-                : $"Submit {PeriodLabel(prevYear, prevMonth)} first — payroll runs are "
-                  + "submitted in order, and that month's run is still a draft.";
+            // Per person: only a previous-month run that shares someone with
+            // this one has to be submitted first. A month can hold several
+            // runs for different groups, and one group's slow approval must
+            // not hold up another's.
+            var people = await PeopleOfAsync(run);
+            foreach (var previous in previousRuns.Where(r => r.Status != PayrollRunStatus.SUBMITTED))
+            {
+                var theirs = await PeopleOfAsync(previous);
+                if (people is null || theirs is null || people.Overlaps(theirs))
+                {
+                    return $"Submit {PeriodLabel(prevYear, prevMonth)} first — payroll runs are "
+                           + "submitted in order, and that month's run is still a draft.";
+                }
+            }
+            return null;
         }
 
         // No run for the previous month at all. That is fine for an org's very
@@ -652,6 +811,19 @@ public class PayrollRunService : IPayrollRunService
               + "month's PCB, EPF and SOCSO against a zero year-to-date, and a submitted "
               + "payslip cannot be edited afterwards."
             : null;
+    }
+
+    // Who a run is for: its chosen roster AND whoever it has a payslip for
+    // (someone on the roster but skipped — not yet joined, say — is still
+    // its, and an imported or legacy run has payslips but no roster). Null
+    // means everyone: a run with neither, which overlaps any other.
+    private async Task<HashSet<string>?> PeopleOfAsync(PayrollRun run)
+    {
+        var people = (await _payslips.GetForRunAsync(run.Id))
+            .Select(p => p.EmployeeProfileId)
+            .Concat((await _runMembers.GetForRunAsync(run.Id)).Select(m => m.EmployeeProfileId))
+            .ToHashSet(StringComparer.Ordinal);
+        return people.Count > 0 ? people : null;
     }
 
     public async Task<PayrollRunSaveResult> ApproveAsync(string id)
@@ -678,7 +850,7 @@ public class PayrollRunService : IPayrollRunService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunApprove,
-            $"Approved the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
+            $"Approved the {RunLabel(run)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new
@@ -718,7 +890,7 @@ public class PayrollRunService : IPayrollRunService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunRejectApproval,
-            $"Sent the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run back to draft",
+            $"Sent the {RunLabel(run)} payroll run back to draft",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new { run.PeriodYear, run.PeriodMonth, Reason = run.ApprovalRejectionReason }));
@@ -747,7 +919,7 @@ public class PayrollRunService : IPayrollRunService
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunLhdnReceipts,
-            $"Recorded the LHDN receipts for the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run",
+            $"Recorded the LHDN receipts for the {RunLabel(run)} payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new
@@ -777,20 +949,18 @@ public class PayrollRunService : IPayrollRunService
         // YTD-cumulative figures — PCB's annualisation, the SOCSO/EIS relief —
         // computed off this month. Reverting this one alone would leave them
         // filed against a year-to-date that no longer exists.
-        var later = await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth);
+        var later = await LaterRunsSharingPeopleAsync(run);
 
         var reverted = later.Append(run).ToList();
         foreach (var target in reverted) RevertOne(target);
 
         await _runs.UpdateManyAsync(reverted);
 
-        var alsoReverted = later
-            .Select(r => PeriodLabel(r.PeriodYear, r.PeriodMonth))
-            .ToList();
+        var alsoReverted = later.Select(RunLabel).ToList();
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunRevertToDraft,
-            $"Reverted the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} payroll run to draft"
+            $"Reverted the {RunLabel(run)} payroll run to draft"
             + (alsoReverted.Count == 0
                 ? string.Empty
                 : $", and with it {string.Join(", ", alsoReverted)}"),
@@ -828,8 +998,25 @@ public class PayrollRunService : IPayrollRunService
         var run = await _runs.GetByIdAsync(id);
         if (run is null || run.Status != PayrollRunStatus.SUBMITTED) return [];
 
+        return (await LaterRunsSharingPeopleAsync(run)).Select(RunLabel).ToList();
+    }
+
+    // The later submitted runs in the year whose year-to-date this run feeds:
+    // those sharing anyone with it. Year-to-date is per person, so another
+    // group's later month never read this run's figures.
+    private async Task<List<PayrollRun>> LaterRunsSharingPeopleAsync(PayrollRun run)
+    {
         var later = await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth);
-        return later.Select(r => PeriodLabel(r.PeriodYear, r.PeriodMonth)).ToList();
+        var people = await PeopleOfAsync(run);
+        if (people is null) return later;
+
+        var sharing = new List<PayrollRun>();
+        foreach (var other in later)
+        {
+            var theirs = await PeopleOfAsync(other);
+            if (theirs is null || people.Overlaps(theirs)) sharing.Add(other);
+        }
+        return sharing;
     }
 
     public async Task<PayrollRunSaveResult> DeleteDraftAsync(string id)
@@ -849,13 +1036,16 @@ public class PayrollRunService : IPayrollRunService
         // transactional replace generation uses.
         await _payslips.ReplaceForRunAsync(run.Id, [], []);
         await _adjustments.DeleteForRunAsync(run.Id);
+        // Its chosen roster too — left behind, the rows would still count as
+        // "this person is on a run this month" under the one-run-per-person rule.
+        await _runMembers.ReplaceForRunAsync(run, []);
         // Detaching leaves the claims themselves untouched — they simply become
         // free to attach to another run.
         await _runClaims.DeleteForRunAsync(run.Id);
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunDelete,
-            $"Deleted the {PeriodLabel(run.PeriodYear, run.PeriodMonth)} draft payroll run",
+            $"Deleted the {RunLabel(run)} draft payroll run",
             TargetType: "PayrollRun",
             TargetId: run.Id,
             Metadata: new { run.PeriodYear, run.PeriodMonth }));
@@ -1213,6 +1403,8 @@ public class PayrollRunService : IPayrollRunService
         {
             PayrollRunId = run.Id,
             EmployeeProfileId = profile.Id,
+            PeriodYear = run.PeriodYear,
+            PeriodMonth = run.PeriodMonth,
             UserId = profile.UserId,
 
             SnapshotName = name,
@@ -1353,6 +1545,9 @@ public class PayrollRunService : IPayrollRunService
         PeriodYear = r.PeriodYear,
         PeriodMonth = r.PeriodMonth,
         PeriodLabel = PeriodLabel(r.PeriodYear, r.PeriodMonth),
+        Name = r.Name,
+        Label = RunLabel(r),
+        RunNumber = r.RunNumber,
         Status = r.Status,
         Source = r.Source,
         SkipProration = r.SkipProration,
@@ -1398,4 +1593,6 @@ public class PayrollRunService : IPayrollRunService
 
     private static string PeriodLabel(int year, int month) =>
         PayrollPeriodLabel.For(year, month);
+
+    private static string RunLabel(PayrollRun run) => PayrollPeriodLabel.ForRun(run);
 }
