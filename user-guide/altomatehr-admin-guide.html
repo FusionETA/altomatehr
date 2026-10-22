@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: eb1d7bc
+  user-guide-covered-up-to: b07ef3e
 -->
 <html lang="en">
 <head>
@@ -1297,7 +1297,7 @@
           approved overtime, leave and claims.</p></li>
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
-          or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
+          or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. <strong>Reimbursed claims</strong> lists
           approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
           unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
           <em>Unpaid days not in the Leave module</em> below. The <strong>Needs attention</strong> tab lists anyone
@@ -1326,6 +1326,23 @@
           off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
           shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then
           <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
+      <li><h4>Employer HRDF levy for one person</h4>
+        <p>The HRDF levy is what the company pays HRD Corp for each person, worked out for you as the levy rate in your
+          payroll settings times their HRDF wages, for Malaysian citizens. To set a different figure for one person on this
+          run, open their <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span>).
+          Between <strong>Unpaid leave</strong> and <strong>Overtime</strong> there's an
+          <strong>Employer HRDF levy</strong> box with one field, <strong>Levy (RM)</strong>.</p>
+        <ul>
+          <li>Leave it <strong>blank</strong> to use the computed levy. The figure shows greyed in the field while the run
+            is up to date; if you've just changed something, it appears after you press
+            <span class="btn-name">Re-run payroll</span>.</li>
+          <li>Type an amount to use it instead. It is the <strong>final</strong> figure, not an extra on top, and
+            <strong>0</strong> counts: type 0 to charge no levy for that person.</li>
+          <li>It is an employer cost only. The person's pay, payslip and deductions don't change.</li>
+        </ul>
+        <p>In <strong>One-off adjustments</strong> the person's row then shows a tag such as <em>HRDF levy RM 25.00</em>.
+          Press <span class="btn-name">Save adjustments</span>, then <span class="btn-name">Re-run payroll</span> so the
+          run's HRDF totals use it.</p></li>
       <li><h4>Pay figures are final (ABPay runs only)</h4>
         <p>On a draft you'll see a tick box, <strong>Pay figures are final — don't prorate joiners and leavers</strong>.
           Tick it for a run imported from ABPay, where the timesheet already pays part-month staff for the days they
@@ -1447,7 +1464,7 @@
           <p class="shot-cap">Payroll runs</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Unpaid leave box, the Employer HRDF levy box with the computed RM 30.90 shown greyed, and the start of Overtime" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
         </div>
         <div class="shot-item">

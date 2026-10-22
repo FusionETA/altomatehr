@@ -381,8 +381,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>totalEmployeeEis</code> / <code>totalEmployerEis</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeSkbbk</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalPcb</code> / <code>totalCp38</code> / <code>totalZakat</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalHrdf</code></td><td>number</td><td></td></tr>
-            <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalHrdf</code></td><td>number</td><td>Employer HRDF levy for the run. Includes any amount entered as <code>hrdfLevy</code> on an <a href="#save-adjustment">adjustment</a> in place of the computed levy.</td></tr>
+            <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td>Payslips with an HRDF wage above 0. An entered <code>hrdfLevy</code> changes the amount, not this count.</td></tr>
             <tr><td><code>totalWagesSubjectToHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Sum of the payslips' <code>totalCostToEmployer</code> — see the payslip row below for what that excludes.</td></tr>
             <tr><td><code>generatedAt</code></td><td>string or null</td><td>ISO 8601. Null until <a href="#generate">generate</a> has run.</td></tr>
@@ -788,7 +788,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           an employee the file says nothing about has their existing manual lines <em>deleted</em>, which
           is why the template arrives pre-filled. The salary columns are the opposite — blank means
           "leave this salary alone". The import never touches an employee's typed <code>unpaidLeaveDays</code> (or
-          their overtime hours and notes): it carries the saved values through.
+          their <code>hrdfLevy</code>, overtime hours and notes): it carries the saved values through.
         </div>
         <p>
           Rows are matched against the employees who can be on this run, by the same rule as
@@ -875,6 +875,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
               <tr><td><code>unpaidDayBasis</code></td><td>integer</td><td>Days in the month for pricing and the upper bound for <code>unpaidLeaveDays</code>: <code>26</code> when the company's Payroll Settings count 26 working days, otherwise the month's calendar days (28–31).</td></tr>
               <tr><td><code>unpaidDayBasisLabel</code></td><td>string</td><td><code>"working days"</code> or <code>"calendar days"</code> — what <code>unpaidDayBasis</code> counts.</td></tr>
               <tr><td><code>attendanceApplies</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>computedHrdfLevy</code></td><td>number or null</td><td>MYR. The employer HRDF levy the formula gives this person (HRDF wage &times; the company's HRDF rate, rounded to 2 decimals), read from the run's last payroll, without any <code>hrdfLevy</code> typed on the adjustment. <code>0</code> when HRDF is off in Payroll Settings. <strong>Null</strong> until payroll has been run for the run, while the run needs re-running (<code>isStale</code>), or when this employee has no payslip on it. It is a hint for what to type against, not a saved value. A non-citizen's HRDF wage is 0, so their computed levy is 0.</td></tr>
               <tr><td><code>cashOvertime</code></td><td>boolean</td><td>False when the employee's policy banks overtime as time off, or disables it — typed OT hours are then ignored at generation.</td></tr>
               <tr><td><code>overtimeDisabledReason</code></td><td>string or null</td><td>Explains a false <code>cashOvertime</code>.</td></tr>
               <tr><td><code>approvedOtNormalHours</code> / <code>approvedOtRestHours</code> / <code>approvedOtPublicHours</code></td><td>number</td><td>What generation pays by default, before any typed override.</td></tr>
@@ -913,6 +914,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
               <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>no</td><td>Keyed by the profile fixed-allowance's array index as a string, e.g. <code>{ "0": { "amount": 500, "skip": false } }</code>. <code>amount: null</code> keeps the profile's figure; <code>skip: true</code> zeroes that row out for this run only.</td></tr>
               <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>no</td><td>0–9999.99. Overrides what attendance derived.</td></tr>
               <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>no (default null)</td><td>Unpaid days to dock for this run, fractions allowed (e.g. <code>1.5</code>). <code>null</code> = use approved unpaid leave from the Leave module. <strong>A number replaces it</strong> — it is not added to it, so days already applied for in Leave are not docked twice; <code>0</code> means "dock nothing, even if Leave has approved days". Must be between 0 and the month's <code>unpaidDayBasis</code> (see the context endpoint). MONTHLY staff only.</td></tr>
+              <tr><td><code>hrdfLevy</code></td><td>number or null</td><td>no (default null)</td><td>Employer HRDF levy for this person in this run, MYR, 0–99999.99, rounded to 2 decimals. <code>null</code> = computed: the company's HRDF rate &times; the person's HRDF wage, for citizens only. <strong>An amount replaces the computed levy</strong>, and <code>0</code> is an amount (it means "no levy this month"). The replacement is the payslip's <code>hrdf</code>, so it flows into the run's <code>totalHrdf</code> and the cost to employer. It does not depend on the rate or on citizenship. The HRDF wage (<code>hrdfWage</code>) is not changed and stays the statutory figure; net pay is not affected, because the levy is paid by the employer.</td></tr>
               <tr><td><code>notes</code></td><td>string or null</td><td>no</td><td>Max 2000 chars.</td></tr>
             </tbody>
           </table>
@@ -921,6 +923,12 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <strong><code>unpaidLeaveDays</code> follows the full-replace rule too.</strong> A PUT that leaves it
           out saves <code>null</code>, which silently clears days you typed earlier and falls back to the Leave
           module. Read the saved row first and send <code>unpaidLeaveDays</code> back with everything else.
+        </div>
+        <div class="callout warn">
+          <strong><code>hrdfLevy</code> follows the full-replace rule as well.</strong> A PUT that omits it (or
+          sends <code>null</code>) clears an amount saved earlier, and the levy goes back to being computed.
+          Send the saved <code>hrdfLevy</code> back with everything else. A <code>hrdfLevy</code> above 99999.99 or
+          below 0 is a <code>400</code>.
         </div>
         <p>
           When the run is generated, typed days are priced exactly like approved unpaid leave: monthly salary ÷
@@ -934,7 +942,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "error": "Unknown adjustment category 'xyz'." }</code></li>
-          <li><code>400</code> <code>{ "errors": { "UnpaidLeaveDays": ["…"] } }</code> — a field failed validation, e.g. <code>unpaidLeaveDays</code> below 0 or above 31 (or any other range above).</li>
+          <li><code>400</code> <code>{ "errors": { "UnpaidLeaveDays": ["…"] } }</code> — a field failed validation, e.g. <code>unpaidLeaveDays</code> below 0 or above 31, or <code>hrdfLevy</code> above 99999.99 (or any other range above).</li>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before editing adjustments." }</code></li>
           <li><code>409</code> <code>{ "error": "Unpaid days must be between 0 and 26 — the month's 26 working days." }</code> — <code>unpaidLeaveDays</code> is more than the month's <code>unpaidDayBasis</code> (the number and the words <code>calendar</code> / <code>working</code> vary with the company's setting and the month). Note this one is a <strong>409</strong>, not a 400.</li>
@@ -950,7 +958,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
       { "category": "allowance_travel", "label": "February site travel", "amount": 250.00, "treatAsRecurring": false }
     ],
     "fixedAllowanceOverrides": {},
-    "unpaidLeaveDays": 1.5
+    "unpaidLeaveDays": 1.5,
+    "hrdfLevy": 45.00
   }'</code></pre>
       </section>
 
@@ -984,6 +993,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>Same shape as the request.</td></tr>
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Typed unpaid days. Null = the Leave module's approved unpaid leave is used; a number (including <code>0</code>) replaces it.</td></tr>
+            <tr><td><code>hrdfLevy</code></td><td>number or null</td><td>The entered employer HRDF levy. Null = the levy is computed; a number (including <code>0</code>) replaces it.</td></tr>
             <tr><td><code>notes</code></td><td>string or null</td><td></td></tr>
             <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>string</td><td>ISO 8601.</td></tr>
           </tbody>
@@ -1301,6 +1311,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>). While the run is not yet approved: <code>Payroll_Summary_{Month}_{Year}_DRAFT.pdf</code> (<code>DRAFT</code>) or <code>Payroll_Summary_{Month}_{Year}_FOR_APPROVAL.pdf</code> (<code>PENDING_APPROVAL</code>).</li>
           <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code> (with the same <code>_DRAFT</code> / <code>_FOR_APPROVAL</code> suffix before an approval), with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures. (The <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner are PDF-only; the Excel copy shows the run's status in its header block and carries the file-name suffix.)</li>
         </ul>
+        <p>The summary's &ldquo;Employees subject to HRDF&rdquo; total counts payslips with an HRDF wage above 0 (it used to count an HRDF amount above 0). An <code>hrdfLevy</code> entered on an <a href="#save-adjustment">adjustment</a> changes the HRDF amount shown, not who is counted, so an entered <code>0</code> still counts the employee.</p>
         <h3 id="doc-summary-breakdown">The <code>Breakdown</code> sheet (xlsx)</h3>
         <p>
           The third sheet lays each employee's pay out wide: <strong>one row per employee, one column per pay item</strong>.

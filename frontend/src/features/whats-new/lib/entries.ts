@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: eb1d7bc
+// whats-new-covered-up-to: b07ef3e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,14 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-23",
+    new: [
+      "Admins: each person's adjustments on a payroll run now have an Employer HRDF levy box. Blank keeps the computed levy, shown greyed; any amount, 0 included, replaces it.",
+      "The levy is an employer cost only, so the employee's pay doesn't change. The run's adjustments list shows it as \"HRDF levy RM x\".",
+      "Re-run payroll after changing it. Only the months where you type a levy are affected.",
+    ],
+  },
   {
     date: "2026-10-22",
     new: [
