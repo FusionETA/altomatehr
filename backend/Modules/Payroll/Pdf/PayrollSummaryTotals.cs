@@ -50,7 +50,10 @@ public sealed class PayrollSummaryTotals
             t.Cost += p.TotalCostToEmployer;
             t.Zakat += p.Zakat;
             t.HrdfWage += p.HrdfWage;
-            if (p.Hrdf > 0m) t.HrdfCount++;
+            // Counted on the statutory HRDF wage, as the run's own total is —
+            // an entered levy (PayrollRunAdjustment.HrdfLevy) changes the
+            // amount, not who the levy return counts.
+            if (p.HrdfWage > 0m) t.HrdfCount++;
         }
         return t;
     }

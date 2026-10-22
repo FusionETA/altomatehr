@@ -62,6 +62,12 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     private async Task<decimal?> ComputedHrdfLevyAsync(string runId, string employeeProfileId)
     {
         if (_payslips is null || _settings is null) return null;
+        // A run that needs re-running (an input or the HRDF settings changed
+        // since) may have payslips the current formula would no longer give.
+        var run = await _runs.GetByIdAsync(runId);
+        if (run is null || run.GeneratedAt is null
+            || run.LastMutatedAt is { } mutated && mutated > run.GeneratedAt)
+            return null;
         var payslip = (await _payslips.GetForRunAsync(runId))
             .FirstOrDefault(p => p.EmployeeProfileId == employeeProfileId);
         if (payslip is null) return null;

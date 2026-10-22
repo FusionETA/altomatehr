@@ -419,7 +419,7 @@ export function AdjustmentEditor({
               </div>
               <p className={`${HINT} mt-2`}>
                 {context.computedHrdfLevy == null
-                  ? "Leave blank to use the computed levy (shown once payroll has been run)."
+                  ? "Leave blank to use the computed levy (its figure shows here once payroll is up to date)."
                   : `Leave blank to use the computed levy (RM ${rm(context.computedHrdfLevy)}, shown greyed).`}{" "}
                 Re-run payroll after changing it.
               </p>
