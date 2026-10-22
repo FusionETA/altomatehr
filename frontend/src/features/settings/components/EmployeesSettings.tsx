@@ -25,6 +25,7 @@ import { ImportEmployeesDialog } from "./ImportEmployeesDialog";
 import { ExportEmployeesDialog } from "@/features/employees/components/ExportEmployeesDialog";
 import { ImportSalaryAdjustmentsDialog } from "@/features/payroll/components/ImportSalaryAdjustmentsDialog";
 import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
+import { clearEmployeeLink, readEmployeeLink } from "@/features/employees/lib/profile-link";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -82,8 +83,14 @@ export function EmployeesSettings() {
   const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSalaryImport, setShowSalaryImport] = useState(false);
+  // A link from elsewhere (a payroll run's missing field) opens one record at
+  // one field. Read once, then dropped from the URL so Back stays on the list.
+  const [link] = useState(() => readEmployeeLink());
+  useEffect(() => {
+    if (link) clearEmployeeLink();
+  }, [link]);
   // Which employee's full record is open. Null = the list.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(link?.userId ?? null);
 
   // Served from cache on a revisit, so coming back to this screen shows the
   // roster immediately and refreshes it behind the list rather than blanking
@@ -302,6 +309,8 @@ export function EmployeesSettings() {
       <EmployeeDetail
         employee={selected}
         policies={policies}
+        initialSection={link?.userId === selected.id ? (link.section ?? undefined) : undefined}
+        focusField={link?.userId === selected.id ? (link.field ?? undefined) : undefined}
         onBack={() => setSelectedId(null)}
         onSaved={(updated) => {
           setEmployees((cur) => cur.map((e) => (e.id === updated.id ? updated : e)));

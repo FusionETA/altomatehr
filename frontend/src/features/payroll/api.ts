@@ -403,7 +403,8 @@ export type PayrollReadiness = {
   ok: boolean;
   totalMissingCount: number;
   orgIssues: string[];
-  employeeIssues: { name: string; employeeCode: string; missing: string[] }[];
+  // userId: whose record to open to fill the gap (missing from an older API).
+  employeeIssues: { name: string; employeeCode: string; missing: string[]; userId?: string | null }[];
 };
 
 export const getPayrollReadiness = (id: string) =>

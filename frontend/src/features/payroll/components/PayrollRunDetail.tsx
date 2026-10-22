@@ -88,6 +88,17 @@ export function PayrollRunDetailView({
     void load();
   }, [load]);
 
+  // Fields are fixed in another tab (the Needs attention links open the
+  // person's record there). Coming back re-reads the run, so the list and
+  // the "run payroll again" banner reflect the fix without a manual reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+
   // First open of a run only — a re-open keeps the detail we already had.
   if (loading && !detail) {
     return (
