@@ -41,6 +41,7 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
         existing.WorkedHours = adjustment.WorkedHours;
         existing.ExpectedHours = adjustment.ExpectedHours;
         existing.UnpaidLeaveDays = adjustment.UnpaidLeaveDays;
+        existing.HrdfLevy = adjustment.HrdfLevy;
         existing.Notes = adjustment.Notes;
         existing.UpdatedAt = now;
 

@@ -75,6 +75,7 @@ export function AdjustmentEditor({
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
   const [unpaidDays, setUnpaidDays] = useState("");
+  const [hrdfLevy, setHrdfLevy] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [overrides, setOverrides] = useState<Record<string, FixedAllowanceOverride>>({});
@@ -102,6 +103,7 @@ export function AdjustmentEditor({
         setWorkedHours(saved?.workedHours == null ? "" : String(saved.workedHours));
         setExpectedHours(saved?.expectedHours == null ? "" : String(saved.expectedHours));
         setUnpaidDays(saved?.unpaidLeaveDays == null ? "" : String(saved.unpaidLeaveDays));
+        setHrdfLevy(saved?.hrdfLevy == null ? "" : String(saved.hrdfLevy));
 
         setLines(
           (saved?.manualLineItems ?? []).map((item, index) => ({
@@ -191,6 +193,8 @@ export function AdjustmentEditor({
     const worked = workedHours.trim() === "" ? null : Number(workedHours);
     const expected = expectedHours.trim() === "" ? null : Number(expectedHours);
     const unpaid = unpaidDays.trim() === "" ? null : Number(unpaidDays);
+    // Blank = computed; any amount (0 included) is the final levy.
+    const levy = hrdfLevy.trim() === "" ? null : Number(hrdfLevy);
 
     const body: SavePayrollRunAdjustment = {
       otNormalHours: Number(otNormal) || 0,
@@ -215,6 +219,7 @@ export function AdjustmentEditor({
       // Only monthly salaries are docked by the day; hourly staff are paid
       // for the hours they worked.
       unpaidLeaveDays: monthly ? unpaid : null,
+      hrdfLevy: levy,
       notes: notes.trim() || null,
     };
 
@@ -390,6 +395,35 @@ export function AdjustmentEditor({
                 </p>
               </Block>
             ) : null}
+
+            {/* ── Employer HRDF levy ─────────────────────────────────── */}
+            <Block
+              title="Employer HRDF levy"
+              hint="What the company pays HRD Corp for this person this month. Normally computed: the levy rate × their HRDF wages, for Malaysian citizens. Type an amount to use it instead — it is the final figure. Employer cost only; it doesn't change their pay."
+            >
+              <div className="w-44">
+                <label className={LABEL} htmlFor="adjHrdf">
+                  Levy (RM)
+                </label>
+                <input
+                  id="adjHrdf"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={INPUT}
+                  disabled={!editable}
+                  value={hrdfLevy}
+                  placeholder={context.computedHrdfLevy == null ? "Computed" : rm(context.computedHrdfLevy)}
+                  onChange={(e) => setHrdfLevy(e.target.value)}
+                />
+              </div>
+              <p className={`${HINT} mt-2`}>
+                {context.computedHrdfLevy == null
+                  ? "Leave blank to use the computed levy (shown once payroll has been run)."
+                  : `Leave blank to use the computed levy (RM ${rm(context.computedHrdfLevy)}, shown greyed).`}{" "}
+                Re-run payroll after changing it.
+              </p>
+            </Block>
 
             {/* ── Overtime ───────────────────────────────────────────── */}
             <Block

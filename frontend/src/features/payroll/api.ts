@@ -1134,6 +1134,8 @@ export type PayrollRunAdjustment = {
   expectedHours: number | null;
   // Null = use approved unpaid leave from the Leave module; a number replaces it.
   unpaidLeaveDays: number | null;
+  // Employer HRDF levy entered for this person: replaces the computed levy.
+  hrdfLevy: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1155,6 +1157,8 @@ export type SavePayrollRunAdjustment = {
   workedHours: number | null;
   expectedHours: number | null;
   unpaidLeaveDays: number | null;
+  // Null = computed (levy rate × HRDF wages); an amount is the final figure.
+  hrdfLevy: number | null;
   notes: string | null;
 };
 
@@ -1191,6 +1195,9 @@ export type PayrollAdjustmentContext = {
   unpaidMonthlySalary: number | null;
   unpaidDayBasis: number;
   unpaidDayBasisLabel: string;
+  // The employer HRDF levy the formula gives, from the run's last payroll
+  // (null until payroll has been run) — the greyed value behind the box.
+  computedHrdfLevy?: number | null;
   // False when the policy keeps this employee off attendance; the figures
   // above are then absent rather than zero.
   attendanceApplies: boolean;

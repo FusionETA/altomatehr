@@ -1250,6 +1250,7 @@ public class PayrollRunService : IPayrollRunService
             DefaultEpfEmployeeRate = settings.DefaultEpfEmployeeRate,
             HrdfEnabled = settings.HrdfEnabled,
             HrdfRate = settings.HrdfRate,
+            HrdfOverride = adjustment?.HrdfLevy,
             AutoApplySocsoEisRelief = settings.AutoApplySocsoEisRelief,
 
             // ---- Overtime ----

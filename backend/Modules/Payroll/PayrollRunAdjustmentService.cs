@@ -25,6 +25,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     // and no rate — generation still prices typed days correctly.
     private readonly Leave.ILeaveService? _leave;
     private readonly IPayrollSettingsService? _settings;
+    private readonly IPayslipRepository? _payslips;
 
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
@@ -36,8 +37,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         IAuditService audit,
         Overtime.IApprovedOvertimeService approvedOvertime,
         Leave.ILeaveService? leave = null,
-        IPayrollSettingsService? settings = null)
+        IPayrollSettingsService? settings = null,
+        IPayslipRepository? payslips = null)
     {
+        _payslips = payslips;
         _approvedOvertime = approvedOvertime;
         _leave = leave;
         _settings = settings;
@@ -54,6 +57,20 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     // generation time. Anything shown here that generation then decides
     // differently is worse than showing nothing — the admin would type against
     // a preview that does not hold.
+    // What the formula gives, off the last payroll's HRDF wage — the same
+    // arithmetic as PayslipCalculator, without any entered override.
+    private async Task<decimal?> ComputedHrdfLevyAsync(string runId, string employeeProfileId)
+    {
+        if (_payslips is null || _settings is null) return null;
+        var payslip = (await _payslips.GetForRunAsync(runId))
+            .FirstOrDefault(p => p.EmployeeProfileId == employeeProfileId);
+        if (payslip is null) return null;
+        var settings = await _settings.GetEffectiveAsync();
+        return settings.HrdfEnabled && settings.HrdfRate is > 0m and var rate
+            ? Money.Round2(payslip.HrdfWage * rate / 100m)
+            : 0m;
+    }
+
     public async Task<PayrollAdjustmentContextDto?> GetContextAsync(
         string runId, string employeeProfileId)
     {
@@ -123,6 +140,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             UnpaidDayBasis = basis,
             UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
             AttendanceApplies = attendanceApplies,
+            ComputedHrdfLevy = await ComputedHrdfLevyAsync(runId, employeeProfileId),
 
             CashOvertime = cashOt,
             ApprovedOtNormalHours = PayrollOvertimeHours.ToHours(approvedOt?.NormalDayMin ?? 0),
@@ -258,6 +276,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
             UnpaidLeaveDays = dto.UnpaidLeaveDays,
+            HrdfLevy = dto.HrdfLevy is { } levy ? Money.Round2(levy) : null,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
         });
 
@@ -277,6 +296,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtRestHours,
                 saved.OtPublicHours,
                 saved.UnpaidLeaveDays,
+                saved.HrdfLevy,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
             }));
@@ -345,6 +365,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         WorkedHours = a.WorkedHours,
         ExpectedHours = a.ExpectedHours,
         UnpaidLeaveDays = a.UnpaidLeaveDays,
+        HrdfLevy = a.HrdfLevy,
         Notes = a.Notes,
         CreatedAt = a.CreatedAt,
         UpdatedAt = a.UpdatedAt,

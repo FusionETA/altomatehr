@@ -2744,6 +2744,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<decimal?>("HrdfLevy")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<string>("ManualLineItemsJson")
                         .IsRequired()
                         .HasColumnType("longtext");
