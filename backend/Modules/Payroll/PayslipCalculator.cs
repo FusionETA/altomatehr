@@ -40,6 +40,12 @@ public static class PayslipCalculator
         // ---- Salary ----
         public required SalaryType SalaryType { get; init; }
         public decimal? MonthlySalary { get; init; }
+
+        // This run's basic pay in place of MonthlySalary (MONTHLY only) — a
+        // timesheet's part-month Basic for a joiner or leaver. Paid as given,
+        // never prorated; the hourly rate and unpaid-leave rate still come
+        // from MonthlySalary, which is the person's real salary.
+        public decimal? BasicPayOverride { get; init; }
         public decimal? HourlyRate { get; init; }
         public IReadOnlyList<FixedAllowance> FixedAllowances { get; init; } = [];
         public DateTime? JoinDate { get; init; }
@@ -287,14 +293,17 @@ public static class PayslipCalculator
         var prorationRatio = prorationDays > 0 ? (decimal)proratedDays / prorationDays : 0m;
         var proratedFactor = Math.Round(prorationRatio, 6, MidpointRounding.AwayFromZero);
 
+        var basicOverride = input.SalaryType == SalaryType.MONTHLY ? input.BasicPayOverride : null;
+
         var basicPay = input.SalaryType == SalaryType.HOURLY
             ? Money.Round2((input.WorkedHours ?? 0m) * (input.HourlyRate ?? 0m))
-            : input.MonthlySalary ?? 0m;
+            : basicOverride ?? input.MonthlySalary ?? 0m;
 
         // Hourly pay is already the exact quantity worked — prorating it a
-        // second time would dock the same days twice.
-        var proratedPay = input.SalaryType == SalaryType.HOURLY
-            ? basicPay
+        // second time would dock the same days twice. The same holds for a
+        // basic-pay override: it is already this month's figure.
+        var proratedPay = input.SalaryType == SalaryType.HOURLY || basicOverride is not null
+            ? Money.Round2(basicPay)
             : Money.Round2(basicPay * prorationRatio);
 
         // 3. Overtime.
@@ -960,7 +969,7 @@ public static class PayslipCalculator
         if (input.ContributeToEpf && string.IsNullOrWhiteSpace(input.EpfNumber))
             warnings.Add(Warnings.MissingEpfNumber);
 
-        if (input.SocsoScheme is not null && string.IsNullOrWhiteSpace(input.SocsoNumber))
+        if (input.SocsoScheme is not null and not SocsoScheme.NOT_COVERED && string.IsNullOrWhiteSpace(input.SocsoNumber))
             warnings.Add(Warnings.MissingSocsoNumber);
 
         return warnings;

@@ -37,10 +37,14 @@ export function shortDate(value: string | null | undefined): string {
       });
 }
 
+// A moment in time (generated / approved). The API sends these as UTC without a
+// zone, and `new Date` reads a zone-less string as LOCAL time — which showed a
+// run generated at 1:03 pm as "05:03 am". Read it as UTC, as the activity log
+// and notifications already do.
 export function dateTime(value: string | null | undefined): string {
   if (!value) return "—";
 
-  const date = new Date(value);
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`);
   return Number.isNaN(date.getTime())
     ? "—"
     : date.toLocaleString("en-MY", {

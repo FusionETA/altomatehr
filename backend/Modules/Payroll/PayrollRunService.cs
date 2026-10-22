@@ -1009,6 +1009,7 @@ public class PayrollRunService : IPayrollRunService
 
             SalaryType = profile.SalaryType,
             MonthlySalary = profile.MonthlySalary,
+            BasicPayOverride = profile.SalaryType == SalaryType.MONTHLY ? adjustment?.BasicPayOverride : null,
             HourlyRate = profile.HourlyRate,
             // The profile's recurring rows with this run's overrides applied,
             // followed by this run's one-off rows. Merged into ONE list on
@@ -1020,7 +1021,9 @@ public class PayrollRunService : IPayrollRunService
                 WithUnpaidLeave(
                     PayrollRunAdjustments.Merge(
                         ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
-                    profile, unpaidLeaveDays, workingDaysBasis),
+                    profile,
+                    HasOwnUnpaidLeaveLine(adjustment) ? 0m : unpaidLeaveDays,
+                    workingDaysBasis),
                 loanRepayment),
             JoinDate = profile.JoinDate,
             LeaveDate = LastPayableDay(profile),
@@ -1041,7 +1044,12 @@ public class PayrollRunService : IPayrollRunService
             EpfEmployeeVoluntary = profile.EpfEmployeeVoluntary,
             EpfEmployerVoluntary = profile.EpfEmployerVoluntary,
 
-            SocsoScheme = profile.SocsoScheme,
+            // The saved scheme, or the one suggested from age when none was
+            // chosen — never "no SOCSO" just because the field was left blank.
+            SocsoScheme = SocsoSchemeAdvisor.Effective(
+                profile.SocsoScheme, profile.DateOfBirth, profile.Nationality,
+                new DateTime(run.PeriodYear, run.PeriodMonth,
+                    DateTime.DaysInMonth(run.PeriodYear, run.PeriodMonth))),
             ContributeToEis = profile.ContributeToEis,
             ContributeToSkbbk = profile.ContributeToSkbbk,
 
@@ -1136,6 +1144,17 @@ public class PayrollRunService : IPayrollRunService
             Amount = amount,
         }];
     }
+
+    // The run already carries its own unpaid-leave line for this person — the
+    // U/L column of an ABPay timesheet, or one an admin typed. That line IS the
+    // month's unpaid leave, so approved unpaid leave from the Leave module is
+    // not docked on top: the same days recorded in both places came off twice
+    // (go-live test EMP-8). The approved days are still shown on the payslip
+    // (UnpaidLeaveDays), only the money is not taken again.
+    private static bool HasOwnUnpaidLeaveLine(PayrollRunAdjustment? adjustment) =>
+        adjustment is not null
+        && PayrollRunAdjustments.ParseManualLineItems(adjustment.ManualLineItemsJson)
+            .Any(i => i.Category == PayrollAdjustmentCategories.DeductUnpaidLeave && i.Amount != 0m);
 
     // A staff loan's installment for this period, as a deduction row.
     //

@@ -1106,6 +1106,9 @@ export type PayrollRunAdjustment = {
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
   workedHours: number | null;
   expectedHours: number | null;
+  // This month's basic pay in place of the salary (monthly staff only), e.g.
+  // a part-month Basic from an ABPay timesheet. The salary itself is unchanged.
+  basicPayOverride: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1126,6 +1129,7 @@ export type SavePayrollRunAdjustment = {
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
   workedHours: number | null;
   expectedHours: number | null;
+  basicPayOverride: number | null;
   notes: string | null;
 };
 

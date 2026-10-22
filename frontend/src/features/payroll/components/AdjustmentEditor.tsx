@@ -74,6 +74,7 @@ export function AdjustmentEditor({
   const otTyped = [otNormal, otRest, otPublic].some((v) => Number(v) > 0);
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
+  const [basicOverride, setBasicOverride] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [overrides, setOverrides] = useState<Record<string, FixedAllowanceOverride>>({});
@@ -100,6 +101,7 @@ export function AdjustmentEditor({
 
         setWorkedHours(saved?.workedHours == null ? "" : String(saved.workedHours));
         setExpectedHours(saved?.expectedHours == null ? "" : String(saved.expectedHours));
+        setBasicOverride(saved?.basicPayOverride == null ? "" : String(saved.basicPayOverride));
 
         setLines(
           (saved?.manualLineItems ?? []).map((item, index) => ({
@@ -188,6 +190,7 @@ export function AdjustmentEditor({
 
     const worked = workedHours.trim() === "" ? null : Number(workedHours);
     const expected = expectedHours.trim() === "" ? null : Number(expectedHours);
+    const basic = basicOverride.trim() === "" ? null : Number(basicOverride);
 
     const body: SavePayrollRunAdjustment = {
       otNormalHours: Number(otNormal) || 0,
@@ -209,6 +212,8 @@ export function AdjustmentEditor({
       // Hourly staff are paid for what they worked, with nothing to compare
       // it against — the engine ignores an expected figure for them.
       expectedHours: monthly ? expected : null,
+      // A one-month Basic only makes sense against a monthly salary.
+      basicPayOverride: monthly ? basic : null,
       notes: notes.trim() || null,
     };
 
@@ -272,6 +277,31 @@ export function AdjustmentEditor({
                 This run is no longer a draft, so its inputs are fixed. Revert it to
                 make changes.
               </div>
+            ) : null}
+
+            {/* ── Basic this month ───────────────────────────────────── */}
+            {monthly ? (
+              <Block
+                title="Basic this month"
+                hint="Pays this amount as the month's basic instead of the salary, with no proration — for example a joiner's part-month Basic from the timesheet. The salary on the profile and its history don't change. Leave blank to pay the salary as usual."
+              >
+                <div className="w-44">
+                  <label className={LABEL} htmlFor="adjBasic">
+                    Basic (RM)
+                  </label>
+                  <input
+                    id="adjBasic"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={INPUT}
+                    disabled={!editable}
+                    value={basicOverride}
+                    placeholder="Salary"
+                    onChange={(e) => setBasicOverride(e.target.value)}
+                  />
+                </div>
+              </Block>
             ) : null}
 
             {/* ── Working hours ──────────────────────────────────────── */}

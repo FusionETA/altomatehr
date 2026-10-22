@@ -217,6 +217,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             FixedAllowanceOverridesJson = PayrollRunAdjustments.Serialize(overrides),
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
+            BasicPayOverride = dto.BasicPayOverride is { } basic ? Math.Round(basic, 2, MidpointRounding.AwayFromZero) : null,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
         });
 
@@ -237,6 +238,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtPublicHours,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
+                saved.BasicPayOverride,
             }));
 
         return new PayrollRunAdjustmentSaveResult(true, true, ToDto(saved), null);
@@ -302,6 +304,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 StringComparer.Ordinal),
         WorkedHours = a.WorkedHours,
         ExpectedHours = a.ExpectedHours,
+        BasicPayOverride = a.BasicPayOverride,
         Notes = a.Notes,
         CreatedAt = a.CreatedAt,
         UpdatedAt = a.UpdatedAt,

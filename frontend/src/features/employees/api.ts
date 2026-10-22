@@ -237,7 +237,9 @@ export const SPECIAL_TAX_SCHEME_LABELS: Record<SpecialTaxScheme, string> = {
   C_SUITE: "C-suite — resident non-citizen",
 };
 
-export type SocsoScheme = "EMPLOYMENT_INJURY_INVALIDITY" | "EMPLOYMENT_INJURY_ONLY";
+// NOT_COVERED = deliberately outside SOCSO (e.g. a director). Left unset,
+// payroll uses the scheme suggested from age instead of deducting nothing.
+export type SocsoScheme = "EMPLOYMENT_INJURY_INVALIDITY" | "EMPLOYMENT_INJURY_ONLY" | "NOT_COVERED";
 // BANK_TRANSFER = a Malaysian bank, paid through the bank payroll file.
 // OTHER_TRANSFER = a bank or e-wallet the file can't reach (Merchantrade, an
 // overseas bank) — like Cash and Cheque, paid by hand from the run's Manual
@@ -270,6 +272,7 @@ export const EMPLOYMENT_STATUSES: { value: EmploymentStatus; label: string }[] =
 export const SOCSO_SCHEMES: SocsoScheme[] = [
   "EMPLOYMENT_INJURY_INVALIDITY",
   "EMPLOYMENT_INJURY_ONLY",
+  "NOT_COVERED",
 ];
 export const PAYMENT_METHODS: PaymentMethod[] = ["BANK_TRANSFER", "OTHER_TRANSFER", "CASH", "CHEQUE"];
 export const SALARY_TYPES: SalaryType[] = ["MONTHLY", "HOURLY"];
@@ -277,6 +280,7 @@ export const SALARY_TYPES: SalaryType[] = ["MONTHLY", "HOURLY"];
 export const SOCSO_SCHEME_LABELS: Record<SocsoScheme, string> = {
   EMPLOYMENT_INJURY_INVALIDITY: "Injury + invalidity (First Category)",
   EMPLOYMENT_INJURY_ONLY: "Injury only (Second Category)",
+  NOT_COVERED: "Not covered — no SOCSO",
 };
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   BANK_TRANSFER: "Bank transfer (Malaysian bank)",

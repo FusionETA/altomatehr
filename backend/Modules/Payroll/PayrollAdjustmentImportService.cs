@@ -310,6 +310,7 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
                 FixedAllowanceOverrides = existing?.FixedAllowanceOverrides ?? [],
                 WorkedHours = existing?.WorkedHours,
                 ExpectedHours = existing?.ExpectedHours,
+                BasicPayOverride = existing?.BasicPayOverride,
                 Notes = existing?.Notes,
                 ManualLineItems = lines ?? [],
             };
