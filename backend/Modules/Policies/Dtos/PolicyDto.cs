@@ -16,6 +16,10 @@ public class PolicyDto
     public string? Description { get; set; }
     public bool IsDefault { get; set; }
     public bool IsArchived { get; set; }
+    // Whether the CALLER may edit it (GET /policies). False for an admin
+    // limited to some policies when this one also covers the company's
+    // admins or owner — that stays the Owner's.
+    public bool CanEdit { get; set; } = true;
     public bool CanAccessAttendance { get; set; }
     public bool CanAccessClaims { get; set; }
     public bool CanAccessLeave { get; set; }

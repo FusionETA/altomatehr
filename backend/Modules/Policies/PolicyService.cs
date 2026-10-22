@@ -42,7 +42,21 @@ public class PolicyService : IPolicyService
     {
         var access = await AccessAsync();
         var all = await GetAllAsync();
-        return access is null ? all : all.Where(p => access.CanEditPolicy(p.Id));
+        if (access?.PolicyScope is null) return all;
+
+        var visible = all.Where(p => access.CanEditPolicy(p.Id)).ToList();
+        foreach (var policy in visible) policy.CanEdit = !await CoversAdministratorsAsync(policy.Id);
+        return visible;
+    }
+
+    // Whether any of the company's admins or its owner resolves to this policy.
+    private async Task<bool> CoversAdministratorsAsync(string policyId)
+    {
+        var administrators = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => !Common.OrgRoles.IsOnPayroll(m.Role))
+            .Select(m => m.UserId);
+        return (await GetEffectivePoliciesForEmployeesAsync(administrators))
+            .Values.Any(p => p.Id == policyId);
     }
 
     private async Task<Organizations.AdminAccess?> AccessAsync() =>
@@ -80,15 +94,32 @@ public class PolicyService : IPolicyService
     public async Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto)
     {
         var policy = await _policies.GetByIdAsync(id);
+        var access = await AccessAsync();
         // A policy outside an admin's scope is one they can't see — a 404,
         // not a 403 that would confirm it exists.
-        if (policy is null || await AccessAsync() is { } access && !access.CanEditPolicy(id))
+        if (policy is null || access is not null && !access.CanEditPolicy(id))
             return new PolicySaveResult(false, null, null);   // → 404
+
+        // An admin limited to some policies covers only the STAFF on them.
+        // The company's admins and owner sit on a policy too — explicitly, or
+        // through the default — and a limited admin mustn't change their leave
+        // or clock-in rules, so such a policy stays the Owner's.
+        if (access?.PolicyScope is not null && await CoversAdministratorsAsync(id))
+        {
+            return new PolicySaveResult(false, null,
+                "This policy also applies to the company's admins or owner, so only the owner can change it.",
+                Forbidden: true);
+        }
 
         var name = dto.Name.Trim();
         var clash = await _policies.GetByNameAsync(name);
         if (clash is not null && clash.Id != id)
-            return new PolicySaveResult(false, null, $"A policy named \"{name}\" already exists.");
+        {
+            // Don't name a policy the caller can't see.
+            return new PolicySaveResult(false, null, access is null || access.CanEditPolicy(clash.Id)
+                ? $"A policy named \"{name}\" already exists."
+                : $"The name \"{name}\" isn't available. Choose another.");
+        }
 
         Apply(policy, dto, name);
         policy.UpdatedAt = DateTime.UtcNow;

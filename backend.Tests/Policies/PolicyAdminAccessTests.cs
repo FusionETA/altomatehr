@@ -64,6 +64,41 @@ public class PolicyAdminAccessTests : IDisposable
         Assert.Equal("Office", (await _db.EmployeePolicies.FindAsync("pol-office"))!.Name);
     }
 
+    // A limited admin covers the STAFF on their policies. The owner and the
+    // other admins sit on a policy too (the default, unless assigned), and a
+    // limited admin must not change their rules — that policy stays the
+    // Owner's, and the list says so.
+    [Fact]
+    public async Task AnAdminLimitedToThePolicyTheOwnerIsOn_CannotEditIt()
+    {
+        _db.Users.Add(new AltomateHR.Api.Modules.Auth.Entities.User { Id = "usr-owner", Email = "o@x.com", Name = "Owner", PasswordHash = "x" });
+        _db.OrganizationMemberships.Add(new AltomateHR.Api.Modules.Employees.Entities.OrganizationMembership
+        {
+            OrganizationId = "org-1", UserId = "usr-owner", Role = "Owner",   // no policy → the default, Office
+        });
+        await _db.SaveChangesAsync();
+        var officeAdmin = As(new AdminAccess(true, null, true, ["pol-office"]));
+
+        var refused = await officeAdmin.UpdateAsync("pol-office", Named("Office"));
+        Assert.False(refused.Ok);
+        Assert.True(refused.Forbidden);
+        Assert.False(Assert.Single(await officeAdmin.GetVisibleAsync()).CanEdit);
+
+        // The Site admin's policy has no admin or owner on it.
+        Assert.True(Assert.Single(await As(SiteAdmin).GetVisibleAsync()).CanEdit);
+    }
+
+    // A clash with a policy the caller can't see doesn't name it.
+    [Fact]
+    public async Task RenamingOntoAHiddenPolicysName_DoesNotRevealIt()
+    {
+        var result = await As(SiteAdmin).UpdateAsync("pol-site", Named("Office"));
+
+        Assert.False(result.Ok);
+        Assert.DoesNotContain("already exists", result.Error);
+        Assert.Contains("isn't available", result.Error);
+    }
+
     [Fact]
     public async Task AnAdminWhoSeesEveryone_EditsEveryPolicy_ButCannotCreateArchiveOrSetTheDefault()
     {

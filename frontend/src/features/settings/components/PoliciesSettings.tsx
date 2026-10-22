@@ -85,7 +85,8 @@ export function PoliciesSettings() {
           {!managesAllPolicies ? (
             <p className="mt-1 text-xs text-muted-foreground">
               You can edit the policies your admin access covers. Only the owner can create a
-              policy, archive one, or change the default.
+              policy, archive one, change the default, or edit a policy that also applies to the
+              company&apos;s admins or owner.
             </p>
           ) : null}
         </div>
@@ -134,6 +135,14 @@ export function PoliciesSettings() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {p.canEdit === false ? (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title="It also applies to the company's admins or owner"
+                  >
+                    Owner only
+                  </span>
+                ) : (
                 <button
                   type="button"
                   onClick={() => setEditing(p)}
@@ -141,6 +150,7 @@ export function PoliciesSettings() {
                 >
                   Edit
                 </button>
+                )}
                 {managesAllPolicies && !p.isDefault && !p.isArchived ? (
                   <button
                     type="button"
