@@ -268,6 +268,9 @@ export type ModuleAccess = {
   levels: Record<string, ModuleLevel>;
   canChangeSettings: boolean;
   allEmployees: boolean;
+  // May create, archive/restore policies and set the default — Owners.
+  // Admins edit only the policies their employee scope covers.
+  managesAllPolicies?: boolean;
 };
 export const getModuleAccess = () => apiGet<ModuleAccess>("/organizations/modules");
 

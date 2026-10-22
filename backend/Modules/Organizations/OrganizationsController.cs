@@ -45,11 +45,12 @@ public class OrganizationsController : ControllerBase
         var mine = await access.GetAccessAsync();
         return Ok(new ModuleAccessDto
         {
-            All = OrgModules.AllModules,
+            All = OrgModules.GrantableModules,
             Enabled = enabled,
             Levels = enabled.ToDictionary(m => m, mine.LevelFor, StringComparer.OrdinalIgnoreCase),
             CanChangeSettings = mine.CanChangeSettings,
             AllEmployees = mine.HasFullEmployeeScope,
+            ManagesAllPolicies = mine.ManagesAllPolicies,
         });
     }
 

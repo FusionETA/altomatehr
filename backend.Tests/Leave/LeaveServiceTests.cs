@@ -2167,8 +2167,8 @@ public class LeaveServiceTests
         public Task<IEnumerable<PolicyDto>> GetAllAsync() => throw new NotImplementedException();
         public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotImplementedException();
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetDefaultAsync(string id) => throw new NotImplementedException();
 
         public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
             Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);

@@ -54,4 +54,6 @@ public class ModuleAccessDto
     public IReadOnlyDictionary<string, ModuleLevel> Levels { get; set; } = new Dictionary<string, ModuleLevel>();
     public bool CanChangeSettings { get; set; } = true;
     public bool AllEmployees { get; set; } = true;
+    // May create, archive/restore policies and set the default (Owners).
+    public bool ManagesAllPolicies { get; set; } = true;
 }

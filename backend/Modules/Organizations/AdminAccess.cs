@@ -24,4 +24,15 @@ public sealed record AdminAccess(
         Grant is null ? ModuleLevel.Manage : Grant.GetValueOrDefault(module, ModuleLevel.None);
 
     public bool HasFullEmployeeScope => PolicyScope is null;
+
+    // Company-wide policy changes — creating one, archiving or restoring one,
+    // choosing the default — are the Owner's (and an API key's, and Fusioneta
+    // support's). Every Admin, whatever their grant, edits only the policies
+    // their employee scope covers.
+    public bool ManagesAllPolicies => !Restricted;
+
+    // May edit this policy's rules: every policy for an admin who sees every
+    // employee, otherwise only the ones in their scope.
+    public bool CanEditPolicy(string policyId) =>
+        PolicyScope is null || PolicyScope.Contains(policyId, StringComparer.Ordinal);
 }

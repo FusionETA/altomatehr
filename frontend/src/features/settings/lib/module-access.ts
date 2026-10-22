@@ -16,13 +16,16 @@ export function useEnabledModules(): ReadonlySet<string> | null {
 //   · canManage(m)      — module m at Manage, not just View;
 //   · canChangeSettings — the "Change settings" switch;
 //   · allEmployees      — false when limited to some policies, which also
-//                         makes company-wide payroll (runs, filings) view-only.
+//                         makes company-wide payroll (runs, filings) view-only;
+//   · managesAllPolicies — may create / archive policies and set the default
+//                         (Owners); admins only edit the ones they're given.
 // Everything allowed while loading or on a failed read: the backend still
 // refuses, so a missing hint only costs a clear error message.
 export type MyAccess = {
   canManage: (module: string) => boolean;
   canChangeSettings: boolean;
   allEmployees: boolean;
+  managesAllPolicies: boolean;
 };
 
 export function useMyAccess(): MyAccess {
@@ -33,6 +36,7 @@ export function useMyAccess(): MyAccess {
       canManage: (m: string) => !data || data.levels?.[m] !== "View",
       canChangeSettings: data?.canChangeSettings ?? true,
       allEmployees: data?.allEmployees ?? true,
+      managesAllPolicies: data?.managesAllPolicies ?? true,
     };
   }, [query.data]);
 }
