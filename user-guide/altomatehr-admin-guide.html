@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: be9ce43
+  user-guide-covered-up-to: 8ffa8e4
 -->
 <html lang="en">
 <head>
@@ -535,7 +535,10 @@
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
           overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
           <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
-          choose another.</p></li>
+          choose another.</p>
+        <p>Under <strong>Leave entitlements</strong> you set the days per year for each leave type, or leave a box blank to
+          use the leave type's default. A line there reminds you that staff always get at least the Employment Act
+          minimum for their years of service, whatever the policy says (see <a href="#leave">Leave</a>).</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
           an owner's access can't be restricted. Each admin row shows a one-line summary (for example
@@ -609,6 +612,10 @@
         <div class="shot-item">
           <img src="shots/admin/policy-editor.png" alt="System Settings → Policies with the default Full-time policy" loading="lazy">
           <p class="shot-cap">Policies</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policy-editor-leave.png" alt="The Edit policy window at Leave entitlements, with the note about the Employment Act minimum above the Annual, Medical and Unpaid Leave days" loading="lazy">
+          <p class="shot-cap">Leave entitlements in a policy</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
@@ -944,6 +951,15 @@
         naming each person to fix. Correct them on their Statutory tab and download again — you don't need to re-run payroll. Leave the box empty for someone who doesn't contribute.</li>
       <li><strong>SOCSO number</strong> — <span class="btn-name">Use ID number</span> copies the IC / passport number from
         the Personal tab, since for most employees it's the same.</li>
+      <li><strong>SOCSO scheme</strong> — <em>Injury + invalidity (First Category)</em>, <em>Injury only (Second
+        Category)</em> or <em>Not covered — no SOCSO</em>. The box is filled in from the employee's age
+        (<em>Auto-selected from age</em>); change it if you need to. If you leave it empty
+        (<em>Not set — payroll uses the age-based scheme</em>), payroll still uses the age-based scheme, so nobody is paid with no SOCSO by mistake.
+        For a Malaysian aged 55 to 59 the app can't tell which scheme applies, so it asks you to pick one: Scheme 1 if
+        they already have a SOCSO number from a previous job, Scheme 2 if this is their first PERKESO registration.
+        Until you do, they show under <em>need payroll setup</em> and a run leaves them out. Choose
+        <em>Not covered — no SOCSO</em> only for someone PERKESO doesn't cover, such as a director: no SOCSO or SKBBK is
+        deducted or paid for them, and they don't need a SOCSO number.</li>
       <li><strong>Previous employment (TP3) — items with a yearly limit</strong> — press <span class="btn-name">Add item</span>
         for each tax-exempt allowance or TP1 relief the previous employer already gave this year, with the amount. It
         uses up that item's yearly limit here.</li>
@@ -968,6 +984,10 @@
         <div class="shot-item">
           <img src="shots/admin/employee-employment.png" alt="An employee record on the Employment tab, with compensation, Salary history and fixed adjustments" loading="lazy">
           <p class="shot-cap">Employment tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-socso-scheme.png" alt="The SOCSO, EIS and SKBBK section of the Statutory tab with the SOCSO scheme set to Not covered and its warning underneath" loading="lazy">
+          <p class="shot-cap">SOCSO scheme set to Not covered</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">An employee's record</p>
@@ -1144,9 +1164,30 @@
         Owner and admins aren't listed, and aren't in the export either). Open a person to
         <span class="btn-name">Apply on behalf</span> (recorded as approved straight away), change or reset their
         entitlement, or export their leave report. A person's list shows only the leave types that are for them (see
-        <em>Types</em>), so maternity doesn't appear for a man.</li>
+        <em>Types</em>), so maternity doesn't appear for a man. Under an Annual or Sick Leave row you may see
+        <em>Raised to the Employment Act minimum of N days for their years of service</em>, or, in red,
+        <em>Below the Employment Act minimum of N days. Reset to apply it.</em> — press <span class="btn-name">Reset</span>
+        to bring them up to it.</li>
       <li><strong>Types</strong> — your leave types (code, name, annual days, paid or unpaid, and who it's <strong>For</strong>),
         and for Annual Leave: lump sum or pro-rated, and carry-forward with its expiry month and maximum days.</li>
+    </ul>
+    <h3>Employment Act minimum for annual and sick leave</h3>
+    <p>Whatever your policy or leave type says, nobody gets less annual or sick leave than the Employment Act
+      requires for their years of service. The days are counted on 1 January of the leave year, from the join date on the
+      employee's record. A person with no join date on file gets the figure you've set, with no minimum.</p>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Years of service</th><th>Annual leave</th><th>Sick leave</th></tr></thead>
+      <tbody>
+        <tr><td>Under 2 years</td><td>8 days</td><td>14 days</td></tr>
+        <tr><td>2 to under 5 years</td><td>12 days</td><td>18 days</td></tr>
+        <tr><td>5 years or more</td><td>16 days</td><td>22 days</td></tr>
+      </tbody>
+    </table></div>
+    <ul>
+      <li>Your policy can give more. A figure above the minimum is kept; a lower one is lifted to the minimum.</li>
+      <li>Someone who reaches 2 or 5 years part-way through the year moves up the following January.</li>
+      <li>In the year someone joins, annual leave is in proportion to the whole months they complete that year. This
+        shows when Annual Leave is set to <em>Lump sum</em>; with pro-rated leave it already builds up from the join date.</li>
     </ul>
     <h3>Leave for one gender only</h3>
     <p>Each leave type has a <strong>For</strong> setting: <em>Everyone</em>, <em>Female only</em> or <em>Male only</em>.
@@ -1259,6 +1300,10 @@
           <img src="shots/admin/leave-types.png" alt="Leave → Types with the For setting on the add form and a For column showing Everyone, Female only or Male only" loading="lazy">
           <p class="shot-cap">Types</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/admin/leave-statutory-minimum.png" alt="One person's leave window with Annual Leave showing the line Raised to the Employment Act minimum of 8 days for their years of service" loading="lazy">
+          <p class="shot-cap">Entitlement raised to the minimum</p>
+        </div>
       </div>
       <p class="shot-cap shot-cap-main">Leave balances and types</p>
     </figure>
@@ -1281,16 +1326,34 @@
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
-          approved overtime, leave and claims.</p></li>
+          approved overtime, leave and claims. Under the month's name the run shows when it was generated and approved,
+          in your own local time.</p></li>
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
           or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
           approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
           unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
-          <em>Unpaid days not in the Leave module</em> below. The <strong>Needs attention</strong> tab lists anyone
+          <em>Unpaid days not in the Leave module</em> below. For a part-month Basic, see
+          <em>Basic this month</em> below. The <strong>Needs attention</strong> tab lists anyone
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
-          out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
+          out. A payslip that's missing something shows a small <em>missing</em> tag beside the name; open it to see what,
+          such as <em>No SOCSO number</em> or <em>No SOCSO scheme chosen</em> (a Malaysian aged 55 to 59 with no scheme
+          picked — set it on their Statutory tab). While the run is still a draft, the download button on a person's row gives a preview of their payslip,
           watermarked <strong>DRAFT</strong>.</p></li>
+      <li><h4>Basic this month</h4>
+        <p>For a joiner or leaver whose timesheet gives a part-month Basic, open their
+          <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span>). At the top, the
+          <strong>Basic this month</strong> block has one field, <strong>Basic (RM)</strong>, showing
+          <em>Salary</em> in grey.</p>
+        <ul>
+          <li>Type the amount to pay as this month's basic <strong>instead of the salary</strong>. It's paid as typed, with
+            no proration for part months.</li>
+          <li>The salary on their profile and its history don't change, and overtime and unpaid-leave rates still use the real salary.</li>
+          <li>Leave it <strong>blank</strong> to pay the salary as usual. The block is only there for monthly staff.</li>
+          <li>Once it's saved, their row under <strong>One-off adjustments</strong> shows a tag such as
+            <em>basic RM 2,400.00</em>.</li>
+        </ul>
+        <p>Press <span class="btn-name">Save adjustments</span>, then <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
       <li><h4>Unpaid days not in the Leave module</h4>
         <p>For monthly staff whose unpaid leave was never entered in the Leave module, open their
           <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span> if they already have
@@ -1304,6 +1367,10 @@
             number of days shows greyed in the field. A number you type <strong>replaces</strong> it, so a day is never
             docked twice. Type 0 to cancel the Leave module's unpaid days for this month.</li>
           <li>You can type from 0 up to the number of days in that month's basis (26 in the example). Anything more is refused.</li>
+          <li>If the month already has its own <em>unpaid leave</em> line further down the adjustments (for example from an ABPay
+            timesheet) and you've typed nothing in <strong>Unpaid days</strong>, that line is the month's unpaid leave and the Leave module's days
+            aren't docked on top of it. A note in the box says so, for example
+            <em>The 2 days approved in the Leave module won't be docked, because this month already has its own unpaid leave line below.</em></li>
           <li>The box is only there for monthly staff. Hourly staff are paid for the hours they worked.</li>
         </ul>
         <p>The days are docked exactly as approved unpaid leave is — its own line on the payslip, taken off gross pay and
@@ -1381,8 +1448,12 @@
           <p class="shot-cap">Payroll runs</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Basic this month block with its Basic (RM) field, then Working hours and the start of Unpaid leave" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-adjustments-unpaid.png" alt="The adjustments drawer scrolled to Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
+          <p class="shot-cap">Unpaid leave in the drawer</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/payroll-payslips-search.png" alt="A run's Payslips list narrowed by the search box to one person, with the Total row still showing all 9 employees" loading="lazy">

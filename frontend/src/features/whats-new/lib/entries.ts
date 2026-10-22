@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: be9ce43
+// whats-new-covered-up-to: 8ffa8e4
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,23 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-22",
+    new: [
+      "Admins: in a run's adjustments, Basic this month pays a monthly employee a set basic for that month, such as a part-month joiner's basic. Their salary doesn't change.",
+      "Admins: SOCSO scheme now has Not covered, for someone PERKESO doesn't cover, such as a director. No SOCSO or SKBBK is deducted or paid for them.",
+    ],
+    improved: [
+      "Annual and sick leave now meet the Employment Act minimum for years of service: annual 8, 12 or 16 days, sick 14, 18 or 22 days.",
+      "Admins: the minimum uses each profile's join date, and is pro-rated for lump-sum annual leave in the join year. Reset a balance below it to raise it.",
+      "Admins: a Malaysian aged 55–59 with no SOCSO scheme is flagged incomplete on their profile, and left out of runs until one is chosen.",
+    ],
+    fixed: [
+      "Admins: staff with a SOCSO number but no scheme were paid no SOCSO; now the age-based scheme applies. Re-run a draft payroll to apply; approved months keep what was filed.",
+      "A run's own unpaid-leave line no longer stacks with approved Leave days, so those days are docked once, not twice. Re-run a draft payroll to apply; approved months keep what was filed.",
+      "In Payroll, a run's generated and approved times now show the right time, not 8 hours early.",
+    ],
+  },
   {
     date: "2026-10-21",
     new: [

@@ -233,6 +233,37 @@ const steps = {
     console.log("delete draft:", d.status);
   },
 
+  // Full-time policy: Annual Leave set to 6 days (below the Employment Act
+  // minimum) so a person's leave window shows "Raised to the Employment Act
+  // minimum". Remembers the old figure in .out/policy-annual.json;
+  // `leave-minimum-remove` puts it back.
+  "leave-minimum": async () => {
+    const a = await demoAdmin();
+    const policies = (await call(a, "GET", "/policies")).data ?? [];
+    const policy = policies.find((x) => x.isDefault) ?? policies[0];
+    const types = (await call(a, "GET", "/leave-types")).data ?? [];
+    const annual = types.find((t) => ["AL", "ANNUAL"].includes((t.code ?? "").toUpperCase()));
+    if (!policy || !annual) { console.log("no default policy or annual leave type"); process.exit(1); }
+    const ents = policy.leaveEntitlements ?? [];
+    const old = ents.find((e) => e.leaveTypeId === annual.id)?.defaultDays ?? null;
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    writeFileSync(new URL("./.out/policy-annual.json", import.meta.url), JSON.stringify({ policyId: policy.id, leaveTypeId: annual.id, old }));
+    const { id, ...body } = policy;
+    body.leaveEntitlements = [...ents.filter((e) => e.leaveTypeId !== annual.id), { leaveTypeId: annual.id, defaultDays: 6 }];
+    const r = await call(a, "PUT", `/policies/${policy.id}`, body);
+    console.log("policy annual 6 days:", r.status, r.status === 200 ? "ok" : JSON.stringify(r.data));
+  },
+  "leave-minimum-remove": async () => {
+    const a = await demoAdmin();
+    const saved = JSON.parse(readFileSync(new URL("./.out/policy-annual.json", import.meta.url), "utf8"));
+    const policy = ((await call(a, "GET", "/policies")).data ?? []).find((x) => x.id === saved.policyId);
+    const { id, ...body } = policy;
+    body.leaveEntitlements = (policy.leaveEntitlements ?? []).filter((e) => e.leaveTypeId !== saved.leaveTypeId);
+    if (saved.old != null) body.leaveEntitlements.push({ leaveTypeId: saved.leaveTypeId, defaultDays: saved.old });
+    const r = await call(a, "PUT", `/policies/${policy.id}`, body);
+    console.log("policy restored:", r.status);
+  },
+
   // Maternity (Female only) and Paternity (Male only) in the demo company, next
   // to the seeded Annual / Medical / Unpaid. Existing codes are skipped, so
   // rerunnable. (Not /leave-types/defaults: that would also add a second

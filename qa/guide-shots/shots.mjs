@@ -500,7 +500,7 @@ const admin = {
     await shoot(page, "admin", "payroll-payslips-search");
   },
   // A draft run (node setup.mjs payroll-draft), one monthly employee's adjustments
-  // drawer scrolled to Working hours / Unpaid leave / Overtime. Nothing is saved.
+  // drawer scrolled to Basic this month / Working hours / Unpaid leave. Nothing is saved.
   "payroll-adjustments": async (page) => {
     const switcher = page.getByRole("button", { name: "Switch company" });
     if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
@@ -517,9 +517,51 @@ const admin = {
     await adjust.click();
     await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
     await settle(page, 800);
-    await scrollTo(page, "Working hours", 110, true);
+    await scrollTo(page, "Basic this month", 110, true);
     await shoot(page, "admin", "payroll-adjustments");
     await page.getByRole("button", { name: "Cancel" }).click();
+  },
+  // The same drawer scrolled to Working hours / Unpaid leave / Overtime. Nothing is saved.
+  "payroll-adjustments-unpaid": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "January 2027");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    const adjust = page.getByRole("button", { name: "Adjust Chan Mei Ling" }).first();
+    await adjust.scrollIntoViewIfNeeded();
+    await adjust.click();
+    await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await scrollTo(page, "Working hours", 110, true);
+    await shoot(page, "admin", "payroll-adjustments-unpaid");
+    await page.getByRole("button", { name: "Cancel" }).click();
+  },
+  // Evan's Statutory tab at SOCSO, EIS & SKBBK with "Not covered" picked (not saved).
+  "employee-socso-scheme": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "company/manage-employee");
+    await clickText(page, "Evan Employee");
+    await clickText(page, "Statutory");
+    await scrollTo(page, "SOCSO, EIS & SKBBK", 60, true);
+    await settle(page, 500);
+    const trigger = page.getByText("SOCSO scheme", { exact: true }).filter({ visible: true }).first()
+      .locator("xpath=following::button[@role='combobox'][1]");
+    await trigger.click();
+    await page.getByRole("option", { name: /Not covered/ }).click();
+    await settle(page, 800);
+    await scrollTo(page, "SOCSO, EIS & SKBBK", 190, true);
+    await shoot(page, "admin", "employee-socso-scheme");
   },
   "annual-forms": async (page) => {
     await go(page, "payroll");
@@ -551,6 +593,40 @@ const admin = {
     await page.getByText(/Showing \d+ of \d+/).first().waitFor({ timeout: 15000 });
     await settle(page, 1500);
     await shoot(page, "admin", "leave-balances");
+  },
+  // Leave → Balances → one person's leave window, on the Annual / Medical entitlement rows.
+  "leave-statutory-minimum": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "leave");
+    await clickText(page, "Balances");
+    await page.getByText(/Showing \d+ of \d+/).first().waitFor({ timeout: 15000 });
+    await settle(page, 1000);
+    await clickText(page, "Evan Employee");
+    await page.getByText("Raised to the Employment Act minimum").or(page.getByText("Below the Employment Act minimum")).first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await shoot(page, "admin", "leave-statutory-minimum");
+    await page.keyboard.press("Escape");
+  },
+  // System Settings → Policies → Edit on the default policy, scrolled to Leave entitlements.
+  "policy-editor-leave": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "settings/settings-policies");
+    await page.getByRole("button", { name: "Edit" }).filter({ visible: true }).first().click();
+    await page.getByText("Leave entitlements", { exact: true }).first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await scrollTo(page, "Leave entitlements", 60, true);
+    await shoot(page, "admin", "policy-editor-leave");
+    await page.keyboard.press("Escape");
   },
   "leave-types": async (page) => {
     // Demo Admin belongs to several companies on this machine; sign-in can
@@ -818,7 +894,7 @@ const exec = {
   },
 };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const failures = [];
 for (const [group, email, device, extra, steps] of [
   ["admin", "admin@altomate.com", DESKTOP, {}, admin],
