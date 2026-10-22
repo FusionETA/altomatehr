@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: ab3688c
+// whats-new-covered-up-to: be9ce43
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,24 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-21",
+    new: [
+      "Admins: a payroll run's adjustments now have an Unpaid leave box, for monthly staff whose unpaid leave isn't in the Leave module yet.",
+      "Type the unpaid days and they're docked like approved unpaid leave: their own payslip line, and off gross and the EPF, SOCSO, EIS and PCB wage.",
+      "Leave the box blank to use the days approved in the Leave module. A typed number replaces them, so no day is docked twice.",
+      "Re-run a draft payroll to apply. Only draft months change; approved months keep what was filed.",
+    ],
+  },
+  {
+    date: "2026-10-20",
+    new: [
+      "Admins: you can now change your own password from the account menu (⋮) in the admin portal. Changing it signs you out on every device. Not shown if you sign in through Altomate.",
+    ],
+    fixed: [
+      "Changing your password or switching company no longer fails with a 401 error after you've been away a while. Your sign-in now renews quietly in the background.",
+    ],
+  },
   {
     date: "2026-10-19",
     new: [

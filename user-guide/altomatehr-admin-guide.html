@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: ab3688c
+  user-guide-covered-up-to: be9ce43
 -->
 <html lang="en">
 <head>
@@ -364,6 +364,10 @@
     <ul>
       <li><strong>Forgot your password?</strong> — enter your work email, and a <strong>6-digit code</strong> is
         emailed to you. Enter it with a new password (at least 8 characters).</li>
+      <li><strong>Change your own password</strong> — click your name at the top right, then the ⋮ button, and choose
+        <span class="btn-name">Change password</span>. Enter your current password, then a new one (at least 8
+        characters) and confirm it. This signs you out of every device, including this one — sign back in with the
+        new password. If you signed in through Altomate, your password is managed there, so the option isn't shown.</li>
       <li><strong>Coming from Altomate?</strong> — the "open altomate HR" button signs you straight in. If that link
         has expired or was already used, the sign-in page says so; go back and press it again. Because your account
         is managed in Altomate, <span class="btn-name">New company</span> and <span class="btn-name">Log out</span>
@@ -389,7 +393,7 @@
       <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
-      <li>The ⋮ menu — push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
+      <li>The ⋮ menu — <span class="btn-name">Change password</span> (not shown if you signed in through Altomate), push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
         the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
         <span class="btn-name">Launch Appraisify</span> (opens Appraisify in a new tab, so AltomateHR stays open; if your
         browser blocks the new tab, or AltomateHR is installed as a home-screen app, it opens in the same tab instead), and <span class="btn-name">Log out</span></li>
@@ -406,7 +410,7 @@
           <p class="shot-cap">Notifications bell</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
+          <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: Change password, What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
           <p class="shot-cap">⋮ menu</p>
         </div>
       </div>
@@ -1241,7 +1245,8 @@
       to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
       <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
-        payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>.</p>
+        payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>. If a person's
+        unpaid leave isn't in the Leave module, you can type their unpaid days on the payroll draft instead.</p>
     </div>
     
     <figure class="shot" data-place="Leave">
@@ -1280,11 +1285,31 @@
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
           or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
-          approved claims waiting to be paid — add them to this run. Unpaid leave isn't offered as an adjustment — it's
-          deducted automatically from approved unpaid leave. The <strong>Needs attention</strong> tab lists anyone
+          approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
+          unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
+          <em>Unpaid days not in the Leave module</em> below. The <strong>Needs attention</strong> tab lists anyone
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
           out. While the run is still a draft, the download button on a person's row gives a preview of their payslip,
           watermarked <strong>DRAFT</strong>.</p></li>
+      <li><h4>Unpaid days not in the Leave module</h4>
+        <p>For monthly staff whose unpaid leave was never entered in the Leave module, open their
+          <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span> if they already have
+          adjustments). Between <strong>Working hours</strong> and <strong>Overtime</strong> there's an
+          <strong>Unpaid leave</strong> box with one field, <strong>Unpaid days</strong>. Half days are fine (type 0.5).</p>
+        <ul>
+          <li>As you type, the box works out the deduction for you, for example
+            <em>RM 3,000.00 ÷ 26 working days × 2 days = RM 230.77</em>. The days it divides by follow the
+            working-days setting in your payroll settings.</li>
+          <li>Leave it <strong>blank</strong> to use the unpaid leave approved in the Leave module for that month; the
+            number of days shows greyed in the field. A number you type <strong>replaces</strong> it, so a day is never
+            docked twice. Type 0 to cancel the Leave module's unpaid days for this month.</li>
+          <li>You can type from 0 up to the number of days in that month's basis (26 in the example). Anything more is refused.</li>
+          <li>The box is only there for monthly staff. Hourly staff are paid for the hours they worked.</li>
+        </ul>
+        <p>The days are docked exactly as approved unpaid leave is — its own line on the payslip, taken off gross pay and
+          off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
+          shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then
+          <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
       <li><h4>Pay figures are final (ABPay runs only)</h4>
         <p>On a draft you'll see a tick box, <strong>Pay figures are final — don't prorate joiners and leavers</strong>.
           Tick it for a run imported from ABPay, where the timesheet already pays part-month staff for the days they
@@ -1356,7 +1381,7 @@
           <p class="shot-cap">Payroll runs</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one employee: working hours, overtime and one-off line items" loading="lazy">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
         </div>
         <div class="shot-item">

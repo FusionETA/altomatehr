@@ -311,6 +311,7 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
                 WorkedHours = existing?.WorkedHours,
                 ExpectedHours = existing?.ExpectedHours,
                 BasicPayOverride = existing?.BasicPayOverride,
+                UnpaidLeaveDays = existing?.UnpaidLeaveDays,
                 Notes = existing?.Notes,
                 ManualLineItems = lines ?? [],
             };

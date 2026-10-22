@@ -62,6 +62,11 @@ public class SavePayrollRunAdjustmentDto
     // PayrollRunAdjustment.BasicPayOverride). Null = the profile salary.
     [Range(0, 9999999.99)] public decimal? BasicPayOverride { get; set; }
 
+    // Null = use approved unpaid leave from the Leave module; a number replaces it.
+    // Typed as decimal so -0.5 or 31.4 aren't rounded into range; the real
+    // upper bound (the month's day basis) is checked by the service.
+    [Range(typeof(decimal), "0", "31")] public decimal? UnpaidLeaveDays { get; set; }
+
     [MaxLength(2000)]
     public string? Notes { get; set; }
 }
@@ -82,6 +87,7 @@ public class PayrollRunAdjustmentDto
     public decimal? WorkedHours { get; set; }
     public decimal? ExpectedHours { get; set; }
     public decimal? BasicPayOverride { get; set; }
+    public decimal? UnpaidLeaveDays { get; set; }
     public string? Notes { get; set; }
 
     public DateTime CreatedAt { get; set; }

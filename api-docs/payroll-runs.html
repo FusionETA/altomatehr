@@ -356,7 +356,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>snapshotMonthlySalary</code> / <code>snapshotHourlyRate</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>totalWorkingDays</code> / <code>proratedDays</code> / <code>prorationDaysInPeriod</code> / <code>proratedFactor</code></td><td>number</td><td>Three separate day figures on purpose — the ordinary-rate basis and the proration divisor are not the same thing.</td></tr>
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>Display-only for MONTHLY staff; for HOURLY staff <code>workedHours</code> is the paid quantity.</td></tr>
-            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Unpaid days docked on this payslip: the days typed on the run's <a href="#save-adjustment">adjustment</a> if there are any, otherwise approved unpaid leave from the Leave module. Null when none. The money is the <code>Unpaid Leave</code> line.</td></tr>
             <tr><td><code>basicPay</code> / <code>proratedPay</code></td><td>number</td><td></td></tr>
             <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalAllowances</code> / <code>totalReimbursements</code> / <code>totalDeductions</code> / <code>totalBenefitsInKind</code></td><td>number</td><td></td></tr>
@@ -723,7 +723,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           The Adjustments sheet's manual lines use <strong>replace</strong> semantics across the whole run:
           an employee the file says nothing about has their existing manual lines <em>deleted</em>, which
           is why the template arrives pre-filled. The salary columns are the opposite — blank means
-          "leave this salary alone".
+          "leave this salary alone". The import never touches an employee's typed <code>unpaidLeaveDays</code> (or
+          their overtime hours and notes): it carries the saved values through.
         </div>
         <p>
           Rows are matched against the employees who can be on this run, by the same rule as
@@ -804,6 +805,11 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>fixedAllowances[].index</code></td><td>number</td><td>The key <code>fixedAllowanceOverrides</code> uses, as a string.</td></tr>
               <tr><td><code>fixedAllowances[].category</code> / <code>.name</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td>The profile's own recurring row.</td></tr>
               <tr><td><code>autoWorkedHours</code> / <code>autoExpectedHours</code></td><td>number or null</td><td>Derived from attendance for the period; null when attendance does not apply (see <code>attendanceApplies</code>) rather than a confident zero.</td></tr>
+              <tr><td><code>autoUnpaidLeaveDays</code></td><td>number</td><td>Approved unpaid leave the Leave module has for the run's month, in days (<code>0</code> when none). This is what generation docks when <code>adjustment.unpaidLeaveDays</code> is null.</td></tr>
+              <tr><td><code>unpaidDayRate</code></td><td>number or null</td><td>What one unpaid day is worth: <code>unpaidMonthlySalary</code> ÷ <code>unpaidDayBasis</code>. <strong>Not rounded</strong> (generation rounds the final line to 2 decimals, not the rate). Null for HOURLY staff, or when the monthly salary is missing or 0.</td></tr>
+              <tr><td><code>unpaidMonthlySalary</code></td><td>number or null</td><td>The employee's current monthly salary. Null for HOURLY staff.</td></tr>
+              <tr><td><code>unpaidDayBasis</code></td><td>integer</td><td>Days in the month for pricing and the upper bound for <code>unpaidLeaveDays</code>: <code>26</code> when the company's Payroll Settings count 26 working days, otherwise the month's calendar days (28–31).</td></tr>
+              <tr><td><code>unpaidDayBasisLabel</code></td><td>string</td><td><code>"working days"</code> or <code>"calendar days"</code> — what <code>unpaidDayBasis</code> counts.</td></tr>
               <tr><td><code>attendanceApplies</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>cashOvertime</code></td><td>boolean</td><td>False when the employee's policy banks overtime as time off, or disables it — typed OT hours are then ignored at generation.</td></tr>
               <tr><td><code>overtimeDisabledReason</code></td><td>string or null</td><td>Explains a false <code>cashOvertime</code>.</td></tr>
@@ -842,17 +848,32 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>manualLineItems[].treatAsRecurring</code></td><td>boolean</td><td>no</td><td>Only meaningful on an additional-remuneration category.</td></tr>
               <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>no</td><td>Keyed by the profile fixed-allowance's array index as a string, e.g. <code>{ "0": { "amount": 500, "skip": false } }</code>. <code>amount: null</code> keeps the profile's figure; <code>skip: true</code> zeroes that row out for this run only.</td></tr>
               <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>no</td><td>0–9999.99. Overrides what attendance derived.</td></tr>
+              <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>no (default null)</td><td>Unpaid days to dock for this run, fractions allowed (e.g. <code>1.5</code>). <code>null</code> = use approved unpaid leave from the Leave module. <strong>A number replaces it</strong> — it is not added to it, so days already applied for in Leave are not docked twice; <code>0</code> means "dock nothing, even if Leave has approved days". Must be between 0 and the month's <code>unpaidDayBasis</code> (see the context endpoint). MONTHLY staff only.</td></tr>
               <tr><td><code>notes</code></td><td>string or null</td><td>no</td><td>Max 2000 chars.</td></tr>
             </tbody>
           </table>
         </div>
+        <div class="callout warn">
+          <strong><code>unpaidLeaveDays</code> follows the full-replace rule too.</strong> A PUT that leaves it
+          out saves <code>null</code>, which silently clears days you typed earlier and falls back to the Leave
+          module. Read the saved row first and send <code>unpaidLeaveDays</code> back with everything else.
+        </div>
+        <p>
+          When the run is generated, typed days are priced exactly like approved unpaid leave: monthly salary ÷
+          <code>unpaidDayBasis</code> × days, rounded to 2 decimals, and added as an <code>Unpaid Leave</code> deduction
+          line that also reduces the statutory bases. HOURLY staff are paid only for hours worked, so a value saved for
+          them is accepted but has no effect. Saving does not change any payslip until the run is
+          <a href="#generate">generated</a> again.
+        </p>
         <h3>Response <code>200</code></h3>
         <p>The saved <a href="#adjustment-object">adjustment object</a>. Saving marks the run <code>isStale</code>.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "error": "Unknown adjustment category 'xyz'." }</code></li>
+          <li><code>400</code> <code>{ "errors": { "UnpaidLeaveDays": ["…"] } }</code> — a field failed validation, e.g. <code>unpaidLeaveDays</code> below 0 or above 31 (or any other range above).</li>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before editing adjustments." }</code></li>
+          <li><code>409</code> <code>{ "error": "Unpaid days must be between 0 and 26 — the month's 26 working days." }</code> — <code>unpaidLeaveDays</code> is more than the month's <code>unpaidDayBasis</code> (the number and the words <code>calendar</code> / <code>working</code> vary with the company's setting and the month). Note this one is a <strong>409</strong>, not a 400.</li>
         </ul>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
   -H "Authorization: Bearer wp_live_xxx" \
@@ -864,7 +885,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
     "manualLineItems": [
       { "category": "allowance_travel", "label": "February site travel", "amount": 250.00, "treatAsRecurring": false }
     ],
-    "fixedAllowanceOverrides": {}
+    "fixedAllowanceOverrides": {},
+    "unpaidLeaveDays": 1.5
   }'</code></pre>
       </section>
 
@@ -897,6 +919,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>manualLineItems[].category</code> / <code>.label</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td></td></tr>
             <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>Same shape as the request.</td></tr>
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td></td></tr>
+            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Typed unpaid days. Null = the Leave module's approved unpaid leave is used; a number (including <code>0</code>) replaces it.</td></tr>
             <tr><td><code>notes</code></td><td>string or null</td><td></td></tr>
             <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>string</td><td>ISO 8601.</td></tr>
           </tbody>

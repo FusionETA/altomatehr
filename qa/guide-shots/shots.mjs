@@ -334,6 +334,14 @@ const admin = {
   },
   "layout-menu": async (page) => {
     await go(page, "overview");
+    // Demo Admin belongs to several companies on this machine: show the demo company.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+      await go(page, "overview");
+    }
     await page.getByRole("button", { name: "Account menu" }).click();
     await shoot(page, "admin", "layout-menu");
     await page.keyboard.press("Escape");
@@ -490,6 +498,28 @@ const admin = {
     await settle(page, 500);
     await page.evaluate(() => window.scrollBy(0, -160));
     await shoot(page, "admin", "payroll-payslips-search");
+  },
+  // A draft run (node setup.mjs payroll-draft), one monthly employee's adjustments
+  // drawer scrolled to Working hours / Unpaid leave / Overtime. Nothing is saved.
+  "payroll-adjustments": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "January 2027");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    const adjust = page.getByRole("button", { name: "Adjust Chan Mei Ling" }).first();
+    await adjust.scrollIntoViewIfNeeded();
+    await adjust.click();
+    await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await scrollTo(page, "Working hours", 110, true);
+    await shoot(page, "admin", "payroll-adjustments");
+    await page.getByRole("button", { name: "Cancel" }).click();
   },
   "annual-forms": async (page) => {
     await go(page, "payroll");

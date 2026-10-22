@@ -1109,6 +1109,8 @@ export type PayrollRunAdjustment = {
   // This month's basic pay in place of the salary (monthly staff only), e.g.
   // a part-month Basic from an ABPay timesheet. The salary itself is unchanged.
   basicPayOverride: number | null;
+  // Null = use approved unpaid leave from the Leave module; a number replaces it.
+  unpaidLeaveDays: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1130,6 +1132,7 @@ export type SavePayrollRunAdjustment = {
   workedHours: number | null;
   expectedHours: number | null;
   basicPayOverride: number | null;
+  unpaidLeaveDays: number | null;
   notes: string | null;
 };
 
@@ -1158,6 +1161,14 @@ export type PayrollAdjustmentContext = {
   // What attendance derived — the value an empty override falls back to.
   autoWorkedHours: number | null;
   autoExpectedHours: number | null;
+  // Unpaid leave the Leave module approved this month (the blank-box value),
+  // and what one unpaid day docks: monthly salary ÷ the company's day basis.
+  // Null rate for hourly staff.
+  autoUnpaidLeaveDays: number;
+  unpaidDayRate: number | null;
+  unpaidMonthlySalary: number | null;
+  unpaidDayBasis: number;
+  unpaidDayBasisLabel: string;
   // False when the policy keeps this employee off attendance; the figures
   // above are then absent rather than zero.
   attendanceApplies: boolean;

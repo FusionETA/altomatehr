@@ -254,6 +254,10 @@ function summarise(adjustment: PayrollRunAdjustment): string[] {
   if (overrides > 0) chips.push(`${overrides} allowance override(s)`);
 
   if (adjustment.workedHours !== null) chips.push("hours overridden");
+  // 0 counts: it cancels the Leave module's unpaid days for this month.
+  if (adjustment.unpaidLeaveDays !== null) {
+    chips.push(`${adjustment.unpaidLeaveDays} unpaid day${adjustment.unpaidLeaveDays === 1 ? "" : "s"}`);
+  }
   if (adjustment.notes) chips.push("note");
 
   // A saved row with nothing in it is possible — the admin typed something,

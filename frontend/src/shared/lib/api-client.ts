@@ -65,9 +65,20 @@ function refreshAccessToken(): Promise<boolean> {
   return refreshing;
 }
 
-// `/auth/*` is exempt: retrying a failed login or a failed refresh through
-// the refresh path is how you get an infinite loop.
-const isAuthPath = (path: string) => path.startsWith("/auth/");
+// The /auth calls that run WITHOUT a session are exempt: retrying a failed
+// login or a failed refresh through the refresh path is how you get an
+// infinite loop. The signed-in ones (change password, switch company, support
+// mode…) get the same single refresh-and-retry as everything else — an access
+// token that expired a minute ago must not surface as "failed: 401".
+const ANONYMOUS_AUTH_PATHS = [
+  "/auth/login",
+  "/auth/refresh",
+  "/auth/logout",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
+const isAuthPath = (path: string) =>
+  ANONYMOUS_AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}?`));
 
 // Thrown on any non-2xx response. Carries the parsed body so callers can branch
 // on a server `code` (e.g. the off-site attendance case) — not just the message.

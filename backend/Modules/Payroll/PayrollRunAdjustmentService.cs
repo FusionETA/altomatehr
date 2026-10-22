@@ -20,6 +20,11 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     private readonly IEmployeeLoanService _loans;
     private readonly IAuditService _audit;
     private readonly Overtime.IApprovedOvertimeService _approvedOvertime;
+    // Optional so hand-built instances in tests need not supply them; the app
+    // always does. Without them the unpaid-leave hint shows nothing approved
+    // and no rate — generation still prices typed days correctly.
+    private readonly Leave.ILeaveService? _leave;
+    private readonly IPayrollSettingsService? _settings;
 
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
@@ -29,9 +34,13 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         IHoursSummaryService hours,
         IEmployeeLoanService loans,
         IAuditService audit,
-        Overtime.IApprovedOvertimeService approvedOvertime)
+        Overtime.IApprovedOvertimeService approvedOvertime,
+        Leave.ILeaveService? leave = null,
+        IPayrollSettingsService? settings = null)
     {
         _approvedOvertime = approvedOvertime;
+        _leave = leave;
+        _settings = settings;
         _adjustments = adjustments;
         _runs = runs;
         _directory = directory;
@@ -83,6 +92,15 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
 
         var adjustment = await _adjustments.GetAsync(runId, employeeProfileId);
 
+        // The same two figures generation uses: approved unpaid days from the
+        // Leave module, and the day basis from Payroll Settings.
+        var approvedUnpaid = _leave is null
+            ? 0m
+            : (decimal)(await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd))
+                .GetValueOrDefault(profile.UserId);
+        var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
+        var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+
         return new PayrollAdjustmentContextDto
         {
             EmployeeProfileId = profile.Id,
@@ -97,6 +115,13 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             AutoExpectedHours = attendanceApplies && profile.SalaryType == SalaryType.MONTHLY
                 ? hours!.ExpectedMin / 60m
                 : null,
+            AutoUnpaidLeaveDays = approvedUnpaid,
+            UnpaidDayRate = profile.SalaryType == SalaryType.MONTHLY && profile.MonthlySalary is > 0m && basis > 0
+                ? profile.MonthlySalary.Value / basis
+                : null,
+            UnpaidMonthlySalary = profile.SalaryType == SalaryType.MONTHLY ? profile.MonthlySalary : null,
+            UnpaidDayBasis = basis,
+            UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
             AttendanceApplies = attendanceApplies,
 
             CashOvertime = cashOt,
@@ -176,6 +201,21 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 "This run is no longer a draft — revert it before editing adjustments.");
         }
 
+        // No more unpaid days than the month's day basis — beyond it the dock
+        // exceeds the salary itself. Negative is never meaningful.
+        if (dto.UnpaidLeaveDays is { } typedDays)
+        {
+            var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
+            var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+            if (typedDays < 0m || typedDays > basis)
+            {
+                return new PayrollRunAdjustmentSaveResult(
+                    true, false, null,
+                    $"Unpaid days must be between 0 and {basis} — the month's {basis} "
+                    + $"{(rule == WorkingDaysRule.CALENDAR ? "calendar" : "working")} days.");
+            }
+        }
+
         // An unrecognised category is skipped silently by the calculator, so
         // catching it here is the difference between a 400 and an admin's row
         // vanishing without explanation at generation time.
@@ -218,6 +258,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
             BasicPayOverride = dto.BasicPayOverride is { } basic ? Math.Round(basic, 2, MidpointRounding.AwayFromZero) : null,
+            UnpaidLeaveDays = dto.UnpaidLeaveDays,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
         });
 
@@ -236,6 +277,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtNormalHours,
                 saved.OtRestHours,
                 saved.OtPublicHours,
+                saved.UnpaidLeaveDays,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
                 saved.BasicPayOverride,
@@ -305,6 +347,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         WorkedHours = a.WorkedHours,
         ExpectedHours = a.ExpectedHours,
         BasicPayOverride = a.BasicPayOverride,
+        UnpaidLeaveDays = a.UnpaidLeaveDays,
         Notes = a.Notes,
         CreatedAt = a.CreatedAt,
         UpdatedAt = a.UpdatedAt,

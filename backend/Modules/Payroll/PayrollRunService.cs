@@ -465,7 +465,10 @@ public class PayrollRunService : IPayrollRunService
             policies.TryGetValue(profile.UserId, out var policy);
             var attached = claimsByEmployee.GetValueOrDefault(profile.Id) ?? [];
             var buckets = hoursByUser.GetValueOrDefault(profile.UserId);
-            var unpaidDays = (decimal)unpaidDaysByUser.GetValueOrDefault(profile.UserId);
+            // Typed on the run (staff not on the Leave module yet) replaces what
+            // the Leave module approved, so no day is docked twice.
+            var unpaidDays = adjustment?.UnpaidLeaveDays
+                ?? (decimal)unpaidDaysByUser.GetValueOrDefault(profile.UserId);
 
             var loanRepayment = loanRepayments.GetValueOrDefault(profile.Id);
             var overtime = PayrollOvertimeHours.Resolve(
@@ -1022,7 +1025,9 @@ public class PayrollRunService : IPayrollRunService
                     PayrollRunAdjustments.Merge(
                         ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
                     profile,
-                    HasOwnUnpaidLeaveLine(adjustment) ? 0m : unpaidLeaveDays,
+                    // Days typed on the run always count; approved Leave-module
+                    // days don't when the run has its own unpaid-leave line.
+                    adjustment?.UnpaidLeaveDays is null && HasOwnUnpaidLeaveLine(adjustment) ? 0m : unpaidLeaveDays,
                     workingDaysBasis),
                 loanRepayment),
             JoinDate = profile.JoinDate,
@@ -1150,7 +1155,9 @@ public class PayrollRunService : IPayrollRunService
     // month's unpaid leave, so approved unpaid leave from the Leave module is
     // not docked on top: the same days recorded in both places came off twice
     // (go-live test EMP-8). The approved days are still shown on the payslip
-    // (UnpaidLeaveDays), only the money is not taken again.
+    // (UnpaidLeaveDays), only the money is not taken again. Days an admin
+    // TYPED on the run (PayrollRunAdjustment.UnpaidLeaveDays) are a deliberate
+    // instruction and are still docked.
     private static bool HasOwnUnpaidLeaveLine(PayrollRunAdjustment? adjustment) =>
         adjustment is not null
         && PayrollRunAdjustments.ParseManualLineItems(adjustment.ManualLineItemsJson)
