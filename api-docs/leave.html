@@ -192,6 +192,8 @@
             <tr><td><code>pendingDays</code></td><td>number</td><td>Sum of <code>PENDING</code> applications that start in this year. Not deducted from <code>remainingDays</code>.</td></tr>
             <tr><td><code>remainingDays</code></td><td>number</td><td>What the person may book now: the available bucket plus unexpired carry-forward, minus <code>takenDays</code>.</td></tr>
             <tr><td><code>eligible</code></td><td>boolean</td><td>Whether the leave type is open to this person, going by the type's <code>eligibleGender</code> and the gender on their profile. <code>false</code> only on a gender-restricted type they have pending or approved leave of that year (see below); a new request for it is refused.</td></tr>
+            <tr><td><code>statutoryMinimumDays</code></td><td>number | null</td><td>The Employment Act 1955 minimum for this type at the person's years of service, measured on 1 January of <code>year</code>. Only for annual and sick leave (codes <code>ANNUAL</code>/<code>AL</code> and <code>MEDICAL</code>/<code>MC</code>), and only when a join date is on file; otherwise <code>null</code>. See the callout below.</td></tr>
+            <tr><td><code>raisedToStatutoryMinimum</code></td><td>boolean</td><td><code>true</code> when the policy or leave-type figure was below <code>statutoryMinimumDays</code> and <code>entitlementDays</code> was lifted to it. <code>false</code> when the figure was already at or above the minimum, or was set by hand above it.</td></tr>
           </tbody>
         </table>
       </div>
@@ -211,8 +213,27 @@
   "takenDays": 2,
   "pendingDays": 0,
   "remainingDays": 12,
-  "eligible": true
+  "eligible": true,
+  "statutoryMinimumDays": 8,
+  "raisedToStatutoryMinimum": false
 }</code></pre>
+      <div class="callout warn">
+        <strong>Annual and sick leave never go below the Employment Act minimum.</strong> The
+        entitlement is the larger of what the policy or leave type configures and the statutory
+        minimum for the person's completed years of service on 1 January of the leave year:
+        annual leave 8 days (under 2 years), 12 (2 to under 5), 16 (5 or more); paid sick leave
+        14, 18, 22. A policy may give more, never less. Where it applies:
+        the year-end rollover, opening a year on first use or via
+        <a href="#seed-entitlements"><code>seed</code></a>, the balance projection for a year
+        that isn't opened yet, <a href="#reset-entitlement"><code>reset</code></a>, and
+        <a href="#set-entitlement"><code>PUT /leave/entitlements/&hellip;</code></a>, which lifts a
+        figure below the minimum up to it (a higher figure is kept as typed). In the year someone
+        joins, a <code>LUMP_SUM</code> annual floor is cut to the months they complete that year
+        (a <code>PRO_RATED</code> row accrues from the join date instead). The join date is the one
+        on the employee profile, else the one on the membership; with neither, no floor applies
+        and both new fields are empty. Changing a join date re-derives pro-rated rows that still
+        hold the system's own figure, including their entitlement.
+      </div>
       <div class="callout">
         <strong>A type that isn't for the person is left out.</strong> A leave type with an
         <code>eligibleGender</code> (by default <code>MATERNITY</code> for <code>FEMALE</code> and
@@ -563,7 +584,9 @@
         </p>
         <div class="callout warn">
           <strong>The year's row is set from the body, not merged.</strong>
-          <code>entitledDays</code> is the year's new total (not an increment).
+          <code>entitledDays</code> is the year's new total (not an increment), <strong>but never below
+          the <a href="#basics">Employment Act minimum</a></strong> for annual and sick leave: a
+          lower figure is stored as the minimum, so check <code>entitlementDays</code> in the response.
           <code>accrualMethod</code> is overwritten too — <code>null</code>, or leaving it out,
           <em>clears</em> the person's override so they fall back to their policy, then the type.
           For a <code>LUMP_SUM</code> type the accrued days are set to the full new total at once;
@@ -613,8 +636,9 @@
         </div>
         <p>
           Undo an override: put the person's entitlement for that type and year back to what
-          their policy says (else the leave type's <code>defaultDays</code>) and clear their
-          accrual-method override. No request body; optional <code>?year=</code>.
+          their policy says (else the leave type's <code>defaultDays</code>), lifted to the
+          Employment Act minimum for annual and sick leave, and clear their
+          accrual-method override. This is also how a row opened before the minimum existed picks it up. No request body; optional <code>?year=</code>.
         </p>
         <h3>Response <code>200</code></h3>
         <p>The resulting leave balance (or <code>204</code> when balances don't list the type, as above).</p>
@@ -637,7 +661,8 @@
         <p>
           Open a year for one person: create an entitlement row for every active leave type that
           doesn't have one yet. Use it for someone who joined after the year-end rollover ran.
-          Existing rows are left alone. No request body; optional <code>?year=</code>.
+          Existing rows are left alone. Annual and sick leave are opened at no less than the
+          Employment Act minimum. No request body; optional <code>?year=</code>.
         </p>
         <div class="callout">
           Unlike the other entitlement calls this does <strong>not</strong> check that

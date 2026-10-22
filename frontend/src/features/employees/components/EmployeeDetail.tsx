@@ -1850,12 +1850,12 @@ export function EmployeeDetail({
                       </button>
                     </div>
                   </Field>
-                  <Field label="Scheme">
+                  <Field label="SOCSO scheme">
                     <Picker
                       value={profile.socsoScheme}
                       onChange={(v) => set("socsoScheme", v)}
                       allowNone
-                      placeholder="Not set"
+                      placeholder={recommendedScheme ? "Not set — payroll uses the age-based scheme" : "Not set"}
                       options={SOCSO_SCHEMES.map((s) => ({
                         value: s,
                         label: SOCSO_SCHEME_LABELS[s],
@@ -1876,8 +1876,16 @@ export function EmployeeDetail({
                         Scheme 2 if this is their first-time PERKESO registration.
                       </span>
                     ) : null}
+                    {profile.socsoScheme === "NOT_COVERED" ? (
+                      <span className="text-xs font-medium text-warning-foreground">
+                        No SOCSO or SKBBK will be deducted or paid for this
+                        employee. Only use this for someone PERKESO doesn&apos;t
+                        cover, such as a director.
+                      </span>
+                    ) : null}
                     {recommendedScheme &&
                     profile.socsoScheme !== null &&
+                    profile.socsoScheme !== "NOT_COVERED" &&
                     profile.socsoScheme !== recommendedScheme ? (
                       <span className="text-xs font-medium text-warning-foreground">
                         PERKESO would normally recommend{" "}

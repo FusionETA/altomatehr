@@ -52,6 +52,15 @@ public class PayrollRunAdjustment : ITenantScoped
     [Precision(8, 2)] public decimal? WorkedHours { get; set; }
     [Precision(8, 2)] public decimal? ExpectedHours { get; set; }
 
+    // This month's basic pay, in place of the profile salary — for a run whose
+    // pay comes from an outside timesheet (ABPay) that already cut a joiner's
+    // or leaver's Basic to the days they worked. It is a figure for THIS run
+    // only: the salary on the profile, and its history, stay as they are, so
+    // next month, overtime rates and unpaid-leave rates still use the real
+    // monthly salary. Never prorated again. MONTHLY staff only; null = use the
+    // profile salary as usual.
+    [Precision(12, 2)] public decimal? BasicPayOverride { get; set; }
+
     // Unpaid days typed for this run, for staff whose unpaid leave isn't in the
     // Leave module. Null = use the approved unpaid leave from the Leave module;
     // a number REPLACES it (so days applied for there aren't docked twice).

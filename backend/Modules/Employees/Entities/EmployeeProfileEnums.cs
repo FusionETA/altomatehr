@@ -41,6 +41,11 @@ public enum SocsoScheme
 {
     EMPLOYMENT_INJURY_INVALIDITY,
     EMPLOYMENT_INJURY_ONLY,
+    // Deliberately outside SOCSO (e.g. a director the Act doesn't cover). A
+    // profile with NO scheme is different: that is "not chosen yet", and
+    // payroll uses the scheme SocsoSchemeAdvisor suggests from age rather than
+    // silently deducting nothing.
+    NOT_COVERED,
 }
 
 // The three approvals LHDN taxes at a flat 15% instead of the resident bands

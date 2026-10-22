@@ -468,7 +468,7 @@
             <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
             <tbody>
               <tr><td><code>socsoNumber</code></td><td>string | null</td><td></td></tr>
-              <tr><td><code>socsoScheme</code></td><td>string | null</td><td><code>EMPLOYMENT_INJURY_INVALIDITY</code> or <code>EMPLOYMENT_INJURY_ONLY</code>.</td></tr>
+              <tr><td><code>socsoScheme</code></td><td>string | null</td><td><code>EMPLOYMENT_INJURY_INVALIDITY</code>, <code>EMPLOYMENT_INJURY_ONLY</code> or <code>NOT_COVERED</code>. <code>NOT_COVERED</code> deliberately deducts no SOCSO (e.g. a director the Act doesn't cover) and needs no SOCSO number. <strong><code>null</code> is not the same:</strong> it means "not chosen yet", and payroll then uses the scheme suggested from age and nationality instead of deducting nothing; if none can be suggested (a Malaysian aged 55&ndash;59) the profile counts as incomplete under <code>Statutory</code>.</td></tr>
               <tr><td><code>contributeToEis</code></td><td>boolean</td><td>Default <code>true</code>. Can't be blank on import.</td></tr>
               <tr><td><code>contributeToSkbbk</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
             </tbody>

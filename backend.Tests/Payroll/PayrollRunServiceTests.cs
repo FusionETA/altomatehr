@@ -1218,7 +1218,9 @@ public class PayrollRunServiceTests : IDisposable
         decimal otPublic = 0m,
         string? manualJson = null,
         string? overridesJson = null,
-        decimal? workedHours = null)
+        decimal? workedHours = null,
+        decimal? basicPayOverride = null,
+        decimal? unpaidLeaveDays = null)
     {
         _db.PayrollRunAdjustments.Add(new PayrollRunAdjustment
         {
@@ -1231,6 +1233,8 @@ public class PayrollRunServiceTests : IDisposable
             ManualLineItemsJson = manualJson ?? "[]",
             FixedAllowanceOverridesJson = overridesJson ?? "{}",
             WorkedHours = workedHours,
+            BasicPayOverride = basicPayOverride,
+            UnpaidLeaveDays = unpaidLeaveDays,
         });
         await _db.SaveChangesAsync();
     }
@@ -1814,6 +1818,135 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(200m, line.Amount);
         Assert.Equal(2600m, payslip.BasicPay);   // the salary itself is untouched
         Assert.Equal(2m, payslip.UnpaidLeaveDays);
+    }
+
+    // The run already carries the month's unpaid leave as its own line (the U/L
+    // column of an ABPay timesheet). Approved leave from the Leave module for
+    // the same days must not come off again — go-live test EMP-8 docked both.
+    [Fact]
+    public async Task GenerateAsync_DoesNotDockLeaveTwiceWhenTheRunHasItsOwnUnpaidLeaveLine()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        _leave.SetUnpaidDays("usr-1", 2);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, manualJson: PayrollRunAdjustments.Serialize(new List<ManualLineItem>
+        {
+            new() { Kind = PayslipLineKind.DEDUCTION, Category = PayrollAdjustmentCategories.DeductUnpaidLeave, Label = "U/L (KK1 / FD)", Amount = 200m },
+        }));
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        var unpaid = Assert.Single(payslip.LineItems, l => l.Category == PayrollAdjustmentCategories.DeductUnpaidLeave);
+        Assert.Equal("U/L (KK1 / FD)", unpaid.Label);
+        Assert.Equal(2400m, payslip.GrossPay);
+        Assert.Equal(2m, payslip.UnpaidLeaveDays);   // the approved days are still shown
+    }
+
+    // Days an admin TYPED on the run are a deliberate instruction: they are
+    // docked even when the run also has its own unpaid-leave line.
+    [Fact]
+    public async Task GenerateAsync_StillDocksTypedUnpaidDaysAlongsideTheRunsOwnLine()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        _leave.SetUnpaidDays("usr-1", 3);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, unpaidLeaveDays: 1m, manualJson: PayrollRunAdjustments.Serialize(new List<ManualLineItem>
+        {
+            new() { Kind = PayslipLineKind.DEDUCTION, Category = PayrollAdjustmentCategories.DeductUnpaidLeave, Label = "U/L", Amount = 200m },
+        }));
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        // 200 from the run's own line + 1 typed day (2600 / 26); the 3 approved
+        // Leave-module days are replaced by the typed figure, as before.
+        Assert.Equal(2300m, payslip.GrossPay);
+    }
+
+    // ---- Basic pay for this run only ----
+
+    // An ABPay timesheet already cut a joiner's Basic to the days worked. The
+    // run pays that figure as given, while the salary stays the real monthly
+    // rate — before, ABPay rewrote the salary to the part-month amount.
+    [Fact]
+    public async Task GenerateAsync_PaysTheRunsBasicWithoutTouchingTheSalary()
+    {
+        var profile = AddEmployee("usr-1", "Jason", monthlySalary: 1800m, joinDate: new DateTime(2026, 1, 15));
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, basicPayOverride: 987.10m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(987.10m, payslip.BasicPay);
+        Assert.Equal(987.10m, payslip.ProratedPay);   // not cut a second time
+        Assert.Equal(987.10m, payslip.GrossPay);
+        Assert.Equal(1800m, payslip.SnapshotMonthlySalary);
+        Assert.Equal(1800m, (await _db.EmployeeProfiles.FindAsync(profile.Id))!.MonthlySalary);
+    }
+
+    // Unpaid leave is still docked at the REAL daily rate, not the part-month one.
+    [Fact]
+    public async Task GenerateAsync_DocksUnpaidLeaveAtTheSalaryRateEvenWithARunBasic()
+    {
+        var profile = AddEmployee("usr-1", "Jason", monthlySalary: 2600m);
+        _leave.SetUnpaidDays("usr-1", 1);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, basicPayOverride: 1300m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(100m, Assert.Single(payslip.LineItems).Amount);   // 2600 / 26
+        Assert.Equal(1200m, payslip.GrossPay);
+    }
+
+    // ---- SOCSO scheme ----
+
+    // No scheme saved used to mean no SOCSO, silently, while the profile screen
+    // showed a scheme "auto-selected from age". Payroll now uses that scheme.
+    [Fact]
+    public async Task GenerateAsync_UsesTheAgeBasedSocsoSchemeWhenNoneIsSaved()
+    {
+        var profile = AddEmployee("usr-1", "Lim", monthlySalary: 4800m);
+        profile.SocsoScheme = null;
+        await _db.SaveChangesAsync();
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.True(payslip.SocsoEmployee > 0m);
+        Assert.True(payslip.SocsoEmployer > 0m);
+    }
+
+    // Born 28 Oct 1971 with no scheme saved: 54 when the run is made on the
+    // 22nd, 55 on the 31st that generation prices at. No scheme can be
+    // suggested, so SOCSO is 0 — and the payslip carries a warning saying so.
+    [Fact]
+    public async Task GenerateAsync_WarnsWhenNoSocsoSchemeCanBeSuggestedAtPeriodEnd()
+    {
+        var profile = AddEmployee("usr-1", "Rahman", monthlySalary: 4800m);
+        profile.SocsoScheme = null;
+        profile.DateOfBirth = new DateTime(1971, 10, 28);
+        await _db.SaveChangesAsync();
+        var run = await CreateRunAsync(2026, 10);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.SocsoEmployee);
+        Assert.Contains(PayslipCalculator.Warnings.MissingSocsoScheme, payslip.StatutoryWarnings);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_NotCoveredPaysNoSocso()
+    {
+        var profile = AddEmployee("usr-1", "Director", monthlySalary: 4800m);
+        profile.SocsoScheme = SocsoScheme.NOT_COVERED;
+        await _db.SaveChangesAsync();
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.SocsoEmployee);
+        Assert.Equal(0m, payslip.SocsoEmployer);
+        Assert.DoesNotContain(PayslipCalculator.Warnings.MissingSocsoNumber, payslip.StatutoryWarnings);
     }
 
     // The wage was never earned, so it comes off the statutory bases too —

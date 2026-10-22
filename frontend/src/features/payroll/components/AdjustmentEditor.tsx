@@ -74,6 +74,7 @@ export function AdjustmentEditor({
   const otTyped = [otNormal, otRest, otPublic].some((v) => Number(v) > 0);
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
+  const [basicOverride, setBasicOverride] = useState("");
   const [unpaidDays, setUnpaidDays] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -101,6 +102,7 @@ export function AdjustmentEditor({
 
         setWorkedHours(saved?.workedHours == null ? "" : String(saved.workedHours));
         setExpectedHours(saved?.expectedHours == null ? "" : String(saved.expectedHours));
+        setBasicOverride(saved?.basicPayOverride == null ? "" : String(saved.basicPayOverride));
         setUnpaidDays(saved?.unpaidLeaveDays == null ? "" : String(saved.unpaidLeaveDays));
 
         setLines(
@@ -190,6 +192,7 @@ export function AdjustmentEditor({
 
     const worked = workedHours.trim() === "" ? null : Number(workedHours);
     const expected = expectedHours.trim() === "" ? null : Number(expectedHours);
+    const basic = basicOverride.trim() === "" ? null : Number(basicOverride);
     const unpaid = unpaidDays.trim() === "" ? null : Number(unpaidDays);
 
     const body: SavePayrollRunAdjustment = {
@@ -212,6 +215,8 @@ export function AdjustmentEditor({
       // Hourly staff are paid for what they worked, with nothing to compare
       // it against — the engine ignores an expected figure for them.
       expectedHours: monthly ? expected : null,
+      // A one-month Basic only makes sense against a monthly salary.
+      basicPayOverride: monthly ? basic : null,
       // Only monthly salaries are docked by the day; hourly staff are paid
       // for the hours they worked.
       unpaidLeaveDays: monthly ? unpaid : null,
@@ -278,6 +283,31 @@ export function AdjustmentEditor({
                 This run is no longer a draft, so its inputs are fixed. Revert it to
                 make changes.
               </div>
+            ) : null}
+
+            {/* ── Basic this month ───────────────────────────────────── */}
+            {monthly ? (
+              <Block
+                title="Basic this month"
+                hint="Pays this amount as the month's basic instead of the salary, with no proration — for example a joiner's part-month Basic from the timesheet. The salary on the profile and its history don't change. Leave blank to pay the salary as usual."
+              >
+                <div className="w-44">
+                  <label className={LABEL} htmlFor="adjBasic">
+                    Basic (RM)
+                  </label>
+                  <input
+                    id="adjBasic"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={INPUT}
+                    disabled={!editable}
+                    value={basicOverride}
+                    placeholder="Salary"
+                    onChange={(e) => setBasicOverride(e.target.value)}
+                  />
+                </div>
+              </Block>
             ) : null}
 
             {/* ── Working hours ──────────────────────────────────────── */}
@@ -371,6 +401,23 @@ export function AdjustmentEditor({
                   />
                 </div>
                 {(() => {
+                  // Mirrors generation (PayrollRunService.HasOwnUnpaidLeaveLine):
+                  // with a non-zero unpaid-leave line of its own below and no
+                  // days typed here, the Leave module's days are not docked.
+                  // Read from the rows as edited, so it updates as they change.
+                  const ownUnpaidLine = lines.some(
+                    (line) => line.category === "deduct_unpaid_leave" && Number(line.amount) > 0,
+                  );
+                  if (unpaidDays.trim() === "" && ownUnpaidLine) {
+                    return context.autoUnpaidLeaveDays > 0 ? (
+                      <p className={`${HINT} mt-2`}>
+                        The {context.autoUnpaidLeaveDays} day
+                        {context.autoUnpaidLeaveDays === 1 ? "" : "s"} approved in the Leave module
+                        won&apos;t be docked, because this month already has its own unpaid leave
+                        line below.
+                      </p>
+                    ) : null;
+                  }
                   const days = unpaidDays.trim() === "" ? context.autoUnpaidLeaveDays : Number(unpaidDays) || 0;
                   const salary = context.unpaidMonthlySalary;
                   return salary != null && context.unpaidDayBasis > 0 && days > 0 ? (

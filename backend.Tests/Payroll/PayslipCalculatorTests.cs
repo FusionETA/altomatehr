@@ -972,6 +972,33 @@ public class PayslipCalculatorTests
         Assert.DoesNotContain(PayslipCalculator.Warnings.MissingSocsoNumber, r.StatutoryWarnings);
     }
 
+    // No scheme and none can be suggested (a Malaysian aged 55–59 at period
+    // end): SOCSO is 0, and the payslip says why instead of staying quiet.
+    [Fact]
+    public void NoSchemeForAMalaysianAged55To59_IsWarned()
+    {
+        var r = PayslipCalculator.Calculate(Make(year: 2026, month: 10) with
+        {
+            DateOfBirth = new DateTime(1971, 10, 28),   // turns 55 on 28 Oct
+            SocsoScheme = null,
+        });
+
+        Assert.Contains(PayslipCalculator.Warnings.MissingSocsoScheme, r.StatutoryWarnings);
+        Assert.Equal(0m, r.SocsoEmployee);
+    }
+
+    [Fact]
+    public void NoSchemeForAForeignWorkerAged57_IsNotWarned()
+    {
+        var r = PayslipCalculator.Calculate(Make(year: 2026, month: 10, nationality: "Indonesian") with
+        {
+            DateOfBirth = new DateTime(1969, 5, 10),
+            SocsoScheme = null,
+        });
+
+        Assert.DoesNotContain(PayslipCalculator.Warnings.MissingSocsoScheme, r.StatutoryWarnings);
+    }
+
     [Fact]
     public void CompleteProfile_ProducesNoWarnings()
     {

@@ -154,6 +154,57 @@ public class LeaveCronServiceTests
         Assert.All(_repo.Rows, r => Assert.Equal("org-1", r.OrganizationId));  // stamped explicitly
     }
 
+    // ── Employment Act floor at rollover ────────────────────────────
+    [Fact]
+    public async Task Rollover_LiftsAnnualLeaveToTheStatutoryMinimum_ForLongService()
+    {
+        // Joined 2012: 14 completed years on 1 Jan 2027 → s.60E gives 16, the
+        // type only 12. The new row must carry 16.
+        var veteran = Membership("e1", null);
+        veteran.JoinDate = new DateTime(2012, 3, 1);
+        var svc = MakeService(
+            types: [Type("t-al", LeaveAccrualMethod.LUMP_SUM)],
+            rows: [],
+            memberships: [veteran]);
+
+        await svc.RunYearRolloverAsync(2027, Now);
+
+        var row = Assert.Single(_repo.Rows);
+        Assert.Equal(16, row.EntitledDays);
+        Assert.Equal(16, row.AccruedDays);     // LUMP_SUM: credited in full
+    }
+
+    [Fact]
+    public async Task Rollover_NoJoinDate_KeepsThePolicyFigure()
+    {
+        var svc = MakeService(
+            types: [Type("t-al", LeaveAccrualMethod.LUMP_SUM)],
+            rows: [],
+            memberships: [Membership("e1", null)]);
+
+        await svc.RunYearRolloverAsync(2027, Now);
+
+        Assert.Equal(12, Assert.Single(_repo.Rows).EntitledDays);
+    }
+
+    [Fact]
+    public async Task Rollover_PrefersTheProfileJoinDate_OverTheMembership()
+    {
+        // Membership says a 2026 joiner (minimum 8, so 12 stands); the profile
+        // — what HR and the payroll import maintain — says 2020 (6 years → 16).
+        var member = Membership("e1", null);
+        member.JoinDate = new DateTime(2026, 1, 5);
+        var svc = MakeService(
+            types: [Type("t-al", LeaveAccrualMethod.LUMP_SUM)],
+            rows: [],
+            memberships: [member],
+            profiles: new FakeJoinDates([new EmployeeJoinDate("org-1", "e1", new DateTime(2020, 1, 1))]));
+
+        await svc.RunYearRolloverAsync(2027, Now);
+
+        Assert.Equal(16, Assert.Single(_repo.Rows).EntitledDays);
+    }
+
     [Fact]
     public async Task Rollover_IsIdempotent_SkippingRowsThatAlreadyExist()
     {
@@ -258,7 +309,8 @@ public class LeaveCronServiceTests
         IEnumerable<LeaveEntitlement> rows,
         IEnumerable<OrganizationMembership>? memberships = null,
         IEnumerable<PolicyLeaveEntitlement>? policyOverrides = null,
-        IEnumerable<LeaveApplication>? apps = null)
+        IEnumerable<LeaveApplication>? apps = null,
+        IEmployeeProfileService? profiles = null)
     {
         _repo = new FakeEntitlementRepo(rows);
         return new LeaveCronService(
@@ -266,7 +318,21 @@ public class LeaveCronServiceTests
             new FakeTypeRepo(types),
             new FakeAppRepo(apps ?? []),
             new FakePolicyService(policyOverrides ?? []),
-            TestDirectory.Over(new FakeMembershipRepo(memberships ?? [])));
+            TestDirectory.Over(new FakeMembershipRepo(memberships ?? [])),
+            profiles);
+    }
+
+    private sealed class FakeJoinDates(IEnumerable<EmployeeJoinDate> rows) : IEmployeeProfileService
+    {
+        public Task<IReadOnlyList<EmployeeJoinDate>> GetJoinDatesAsync() =>
+            Task.FromResult<IReadOnlyList<EmployeeJoinDate>>(rows.ToList());
+        public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> GetAsync(string userId) =>
+            throw new NotSupportedException();
+        public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> SaveAsync(
+            string userId, AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto dto) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<AltomateHR.Api.Modules.Employees.Dtos.WorkPermitDto>> GetWorkPermitsAsync() =>
+            throw new NotSupportedException();
     }
 
     private static LeaveApplication Approved(string emp, string type, double days, int year) => new()

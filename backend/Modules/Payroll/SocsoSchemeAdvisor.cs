@@ -57,6 +57,19 @@ public static class SocsoSchemeAdvisor
         return SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY;
     }
 
+    // The scheme payroll applies: the one saved on the profile, or — when none
+    // has been chosen — the one the statutory tab shows as "auto-selected from
+    // age". Before this, a blank scheme meant no SOCSO at all while the screen
+    // showed a scheme picked (go-live testing, 20 Oct 2026). Null only when no
+    // scheme can be suggested (no date of birth, or a Malaysian aged 55–59),
+    // which PayrollProfileReadiness treats as an incomplete profile.
+    public static SocsoScheme? Effective(
+        SocsoScheme? saved, DateTime? dateOfBirth, string? nationality, DateTime asOf) =>
+        saved ?? Recommend(
+            dateOfBirth,
+            string.IsNullOrWhiteSpace(nationality) ? null : PayslipCalculator.IsMalaysianNationality(nationality),
+            asOf);
+
     // True exactly when `Recommend` returns null because of the 55–59 window —
     // i.e. there IS a DOB but the first-time-registrant rule makes it ambiguous.
     // The UI renders a "please pick manually" hint off this.

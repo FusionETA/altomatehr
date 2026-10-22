@@ -40,6 +40,12 @@ public static class PayslipCalculator
         // ---- Salary ----
         public required SalaryType SalaryType { get; init; }
         public decimal? MonthlySalary { get; init; }
+
+        // This run's basic pay in place of MonthlySalary (MONTHLY only) — a
+        // timesheet's part-month Basic for a joiner or leaver. Paid as given,
+        // never prorated; the hourly rate and unpaid-leave rate still come
+        // from MonthlySalary, which is the person's real salary.
+        public decimal? BasicPayOverride { get; init; }
         public decimal? HourlyRate { get; init; }
         public IReadOnlyList<FixedAllowance> FixedAllowances { get; init; } = [];
         public DateTime? JoinDate { get; init; }
@@ -185,6 +191,10 @@ public static class PayslipCalculator
         public const string MissingIncomeTaxNumber = "MISSING_INCOME_TAX_NUMBER";
         public const string MissingEpfNumber = "MISSING_EPF_NUMBER";
         public const string MissingSocsoNumber = "MISSING_SOCSO_NUMBER";
+        // No scheme saved and none can be suggested for this month — a
+        // Malaysian aged 55–59 at period end, who has to be picked by hand.
+        // SOCSO is 0 on this payslip, so it says so rather than staying quiet.
+        public const string MissingSocsoScheme = "MISSING_SOCSO_SCHEME";
     }
 
     public sealed record Result
@@ -287,14 +297,17 @@ public static class PayslipCalculator
         var prorationRatio = prorationDays > 0 ? (decimal)proratedDays / prorationDays : 0m;
         var proratedFactor = Math.Round(prorationRatio, 6, MidpointRounding.AwayFromZero);
 
+        var basicOverride = input.SalaryType == SalaryType.MONTHLY ? input.BasicPayOverride : null;
+
         var basicPay = input.SalaryType == SalaryType.HOURLY
             ? Money.Round2((input.WorkedHours ?? 0m) * (input.HourlyRate ?? 0m))
-            : input.MonthlySalary ?? 0m;
+            : basicOverride ?? input.MonthlySalary ?? 0m;
 
         // Hourly pay is already the exact quantity worked — prorating it a
-        // second time would dock the same days twice.
-        var proratedPay = input.SalaryType == SalaryType.HOURLY
-            ? basicPay
+        // second time would dock the same days twice. The same holds for a
+        // basic-pay override: it is already this month's figure.
+        var proratedPay = input.SalaryType == SalaryType.HOURLY || basicOverride is not null
+            ? Money.Round2(basicPay)
             : Money.Round2(basicPay * prorationRatio);
 
         // 3. Overtime.
@@ -960,8 +973,19 @@ public static class PayslipCalculator
         if (input.ContributeToEpf && string.IsNullOrWhiteSpace(input.EpfNumber))
             warnings.Add(Warnings.MissingEpfNumber);
 
-        if (input.SocsoScheme is not null && string.IsNullOrWhiteSpace(input.SocsoNumber))
+        if (input.SocsoScheme is not null and not SocsoScheme.NOT_COVERED && string.IsNullOrWhiteSpace(input.SocsoNumber))
             warnings.Add(Warnings.MissingSocsoNumber);
+
+        // The input carries the EFFECTIVE scheme (saved, else age-based), so
+        // null with a known DOB is exactly the 55–59 window SocsoSchemeAdvisor
+        // cannot decide — judged at period end, as the scheme itself was.
+        if (input.SocsoScheme is null
+            && SocsoSchemeAdvisor.NeedsManualChoice(
+                input.DateOfBirth,
+                string.IsNullOrWhiteSpace(input.Nationality) ? null : IsMalaysianNationality(input.Nationality),
+                new DateTime(input.PeriodYear, input.PeriodMonth,
+                    PayPeriod.CalendarDaysInMonth(input.PeriodYear, input.PeriodMonth))))
+            warnings.Add(Warnings.MissingSocsoScheme);
 
         return warnings;
     }
