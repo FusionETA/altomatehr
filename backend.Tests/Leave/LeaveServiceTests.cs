@@ -1827,10 +1827,12 @@ public class LeaveServiceTests
     private sealed class RecordingDraftStaleness : AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness
     {
         public List<(DateTime From, DateTime To)> Covering { get; } = [];
+        public List<string?> Users { get; } = [];
         public Task MarkAllDraftsAsync() => Task.CompletedTask;
-        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to)
+        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null)
         {
             Covering.Add((from, to));
+            Users.Add(userId);
             return Task.CompletedTask;
         }
     }

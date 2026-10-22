@@ -431,6 +431,214 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.True((await _annual.RenderAsync(PayrollAnnualReportKind.PCB2II_BULK_PDF, 2026)).Ok);
     }
 
+    // ─── Several runs in one month, one per group ───────────────────────
+    //
+    // A month can be paid in more than one run — one per staff group — but a
+    // person is paid in only one of them. Everything that used to ask "is
+    // this month done?" now asks it about the person's own run.
+
+    // A run for just these people, beside whatever else the month holds.
+    // Built directly: opening a second run in a month isn't offered yet.
+    private Task<PayrollRun> GroupRunAsync(int year, int month, params EmployeeProfile[] people) =>
+        NamedRunAsync(year, month, null, people);
+
+    private async Task<PayrollRun> NamedRunAsync(int year, int month, string? name, params EmployeeProfile[] people)
+    {
+        var number = _db.PayrollRuns.Count(r => r.PeriodYear == year && r.PeriodMonth == month) + 1;
+        var run = await _runs.AddAsync(new PayrollRun
+        {
+            PeriodYear = year, PeriodMonth = month, Name = name, RunNumber = number,
+        });
+        await new PayrollRunMemberRepository(_db).ReplaceForRunAsync(run, people.Select(p => p.Id));
+        Assert.True((await _service.GenerateAsync(run.Id)).Ok);
+        return run;
+    }
+
+    private async Task SubmitAsync(string runId)
+    {
+        var sent = await _service.SubmitForApprovalAsync(runId);
+        Assert.True(sent.Ok, sent.Error);
+        Assert.True((await _service.ApproveAsync(runId)).Ok);
+    }
+
+    // Each payslip and roster row carries its month, which is what lets the
+    // database refuse a second one for the same person.
+    [Fact]
+    public async Task PayslipsAndRosters_CarryTheirMonth_AndAreUniquePerPersonPerMonth()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var run = await GroupRunAsync(2026, 3, aisyah);
+
+        var payslip = Assert.Single(await _payslips.GetForRunAsync(run.Id));
+        Assert.Equal((2026, 3), (payslip.PeriodYear, payslip.PeriodMonth));
+        var member = Assert.Single(_db.PayrollRunMembers);
+        Assert.Equal((2026, 3), (member.PeriodYear, member.PeriodMonth));
+
+        string[] key = ["OrganizationId", "PeriodYear", "PeriodMonth", "EmployeeProfileId"];
+        foreach (var type in new[] { typeof(Payslip), typeof(PayrollRunMember) })
+        {
+            Assert.Contains(_db.Model.FindEntityType(type)!.GetIndexes(),
+                i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(key));
+        }
+    }
+
+    // Left behind, a deleted run's roster would still say "this person is
+    // on a run this month".
+    [Fact]
+    public async Task DeletingADraft_ClearsItsRoster()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var run = await GroupRunAsync(2026, 3, aisyah);
+
+        Assert.True((await _service.DeleteDraftAsync(run.Id)).Ok);
+
+        Assert.Empty(_db.PayrollRunMembers);
+        Assert.Empty(_db.Payslips);
+    }
+
+    // Months are still submitted in order — but per person. One group's
+    // January sitting in approval must not hold up another group's February.
+    [Fact]
+    public async Task SubmitForApprovalAsync_OnlyWaitsForTheMonthBeforeOfItsOwnPeople()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var janAisyah = await GroupRunAsync(2026, 1, aisyah);
+        await GroupRunAsync(2026, 1, tan);   // Tan's January stays a draft
+        await SubmitAsync(janAisyah.Id);
+
+        var febAisyah = await GroupRunAsync(2026, 2, aisyah);
+        var febTan = await GroupRunAsync(2026, 2, tan);
+
+        Assert.True((await _service.SubmitForApprovalAsync(febAisyah.Id)).Ok);
+        var refused = await _service.SubmitForApprovalAsync(febTan.Id);
+        Assert.False(refused.Ok);
+        Assert.Contains("January 2026", refused.Error);
+    }
+
+    // The year's forms wait until a month is final for EVERYONE: one group
+    // approved and another still a draft is not a finished month.
+    [Fact]
+    public async Task TheYear_CountsAMonthOnlyOnceEveryRunInItIsApproved()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var forAisyah = await GroupRunAsync(2026, 1, aisyah);
+        var forTan = await GroupRunAsync(2026, 1, tan);
+        await SubmitAsync(forAisyah.Id);
+
+        var partly = await _annual.LoadAsync(2026);
+        Assert.Empty(partly.SubmittedMonths);
+        Assert.Equal([1], partly.RunMonths);
+        Assert.Equal(0, Assert.Single(await _annual.GetEmployeeEaYearsAsync(aisyah.Id)).ApprovedMonths);
+
+        await SubmitAsync(forTan.Id);
+
+        Assert.Equal([1], (await _annual.LoadAsync(2026)).SubmittedMonths);
+        Assert.Equal(1, Assert.Single(await _annual.GetEmployeeEaYearsAsync(aisyah.Id)).ApprovedMonths);
+    }
+
+    // Each run is paid to LHDN on its own, with its own receipt. A person's
+    // PCB 2(II) quotes the receipt of the run they were actually paid in.
+    [Fact]
+    public async Task LhdnReceipts_FollowTheRunEachPersonWasPaidIn()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var forAisyah = await GroupRunAsync(2026, 1, aisyah);
+        var forTan = await GroupRunAsync(2026, 1, tan);
+        await SubmitAsync(forAisyah.Id);
+        await SubmitAsync(forTan.Id);
+        await _service.SetLhdnReceiptsAsync(forAisyah.Id, new SetLhdnReceiptsDto { PcbReceiptNo = "RCPT-A" });
+        await _service.SetLhdnReceiptsAsync(forTan.Id, new SetLhdnReceiptsDto { PcbReceiptNo = "RCPT-T" });
+
+        var rows = (await _annual.LoadAsync(2026)).Employees.ToDictionary(e => e.EmployeeProfileId);
+
+        Assert.Equal("RCPT-A", Assert.Single(rows[aisyah.Id].Months).Receipt!.PcbReceiptNo);
+        Assert.Equal("RCPT-T", Assert.Single(rows[tan.Id].Months).Receipt!.PcbReceiptNo);
+    }
+
+    // Reverting a month takes back the later months that read its
+    // year-to-date — per person, so only the later runs sharing its people.
+    [Fact]
+    public async Task Revert_CascadesOnlyToLaterRunsSharingItsPeople()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var janA = await NamedRunAsync(2026, 1, null, aisyah);
+        var janT = await NamedRunAsync(2026, 1, "Workers", tan);
+        await SubmitAsync(janA.Id);
+        await SubmitAsync(janT.Id);
+        var febA = await NamedRunAsync(2026, 2, null, aisyah);
+        var febT = await NamedRunAsync(2026, 2, "Workers", tan);
+        await SubmitAsync(febA.Id);
+        await SubmitAsync(febT.Id);
+
+        Assert.Equal(["February 2026"], await _service.GetRevertImpactAsync(janA.Id));
+        var result = await _service.RevertToDraftAsync(janA.Id);
+
+        Assert.True(result.Ok);
+        Assert.Equal(PayrollRunStatus.DRAFT, (await _runs.GetByIdAsync(febA.Id))!.Status);
+        Assert.Equal(PayrollRunStatus.SUBMITTED, (await _runs.GetByIdAsync(febT.Id))!.Status);
+        Assert.Equal(PayrollRunStatus.SUBMITTED, (await _runs.GetByIdAsync(janT.Id))!.Status);
+    }
+
+    // Two runs in a month never hand out the same file name. The month's
+    // unnamed first run keeps the names it always had.
+    [Fact]
+    public async Task ANamedRunsFiles_CarryItsName()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var first = await NamedRunAsync(2026, 1, null, aisyah);
+        var workers = await NamedRunAsync(2026, 1, "Site Workers", tan);
+        await SubmitAsync(first.Id);
+        await SubmitAsync(workers.Id);
+        _db.PayrollCompanyInfos.Single().EmployerTin = "E2481379160";   // the CP39 header refuses a placeholder
+        await _db.SaveChangesAsync();
+
+        Assert.Equal("Payroll_Summary_January_2026.pdf", (await _statutory.RenderSummaryPdfAsync(first.Id)).FileName);
+        Assert.Equal("Payroll_Summary_January_2026_SiteWorkers.pdf",
+            (await _statutory.RenderSummaryPdfAsync(workers.Id)).FileName);
+
+        var pcbFirstFile = await _statutory.RenderPcbTxtAsync(first.Id);
+        Assert.True(pcbFirstFile.Ok, pcbFirstFile.Error);
+        var pcbFirst = pcbFirstFile.FileName!;
+        var pcbWorkers = (await _statutory.RenderPcbTxtAsync(workers.Id)).FileName!;
+        Assert.Equal(pcbFirst.Replace(".txt", "SiteWorkers.txt"), pcbWorkers);
+        Assert.Matches("^[A-Za-z0-9]+\\.txt$", pcbWorkers);   // e-PCB takes letters and digits only
+
+        var epf = (await _statutory.RenderEpfCsvAsync(workers.Id)).FileName!;
+        Assert.EndsWith("_SiteWorkers.csv", epf);
+        Assert.NotEqual((await _statutory.RenderEpfCsvAsync(first.Id)).FileName, epf);
+    }
+
+    // The month as a whole, for checking a split month: one summary across
+    // its runs, watermarked while any of them is still a draft.
+    [Fact]
+    public async Task TheMonthSummary_CoversEveryRun_AndWaitsForAllToBeApproved()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        var first = await NamedRunAsync(2026, 1, null, aisyah);
+        var workers = await NamedRunAsync(2026, 1, "Workers", tan);
+        await SubmitAsync(first.Id);
+
+        var partly = await _statutory.RenderMonthSummaryAsync(2026, 1, xlsx: false);
+        Assert.True(partly.Ok, partly.Error);
+        Assert.Equal("Payroll_Summary_January_2026_All_Runs_DRAFT.pdf", partly.FileName);
+
+        await SubmitAsync(workers.Id);
+        var whole = await _statutory.RenderMonthSummaryAsync(2026, 1, xlsx: true);
+        Assert.True(whole.Ok, whole.Error);
+        Assert.Equal("Payroll_Summary_January_2026_All_Runs.xlsx", whole.FileName);
+
+        using var book = new ClosedXML.Excel.XLWorkbook(new MemoryStream(whole.Content!));
+        var text = string.Join("|", book.Worksheets.SelectMany(w => w.CellsUsed()).Select(c => c.GetString()));
+        Assert.Contains("AISYAH", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("TAN", text, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ─── LHDN receipts ──────────────────────────────────────────────────
 
     [Fact]

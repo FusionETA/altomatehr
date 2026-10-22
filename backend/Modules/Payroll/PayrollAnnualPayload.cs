@@ -147,7 +147,10 @@ public sealed record AnnualEmployeeRow
 // One submitted month for one employee. `Pcb` is what went to LHDN in CP39's
 // PCB field — the formula PCB plus any Additional PCB the employee asked for;
 // CP38 arrears are remitted in their own column.
-public sealed record AnnualMonth(int Month, decimal Pcb, decimal Cp38, decimal Zakat);
+// Receipt: the LHDN receipts of the run THIS person was paid in that month —
+// a month can hold several runs, each paid to LHDN with its own receipt.
+public sealed record AnnualMonth(
+    int Month, decimal Pcb, decimal Cp38, decimal Zakat, LhdnMonthReceipts? Receipt = null);
 
 // The receipts LHDN issued for one month's MTD (CP39) and CP38 payments.
 public sealed record LhdnMonthReceipts(

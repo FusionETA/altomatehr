@@ -889,7 +889,8 @@
           Side effects: the person's entitlement row for that year is created if missing; the
           employee is notified that it was approved; approved <em>unpaid</em> leave marks any
           generated payroll draft covering those dates as out of date, so it has to be re-run
-          before it can be submitted.
+          before it can be submitted. Where a month is split into several runs, only the drafts that
+          could hold that employee are marked (a run whose chosen roster leaves them out is not).
         </p>
         <h3>Errors</h3>
         <div class="table-wrap">

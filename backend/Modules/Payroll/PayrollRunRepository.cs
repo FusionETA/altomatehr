@@ -11,19 +11,23 @@ public class PayrollRunRepository : IPayrollRunRepository
     public PayrollRunRepository(AppDbContext db) => _db = db;
 
     // Newest period first — the runs list is read top-down and the current month
-    // is the one an admin wants.
+    // is the one an admin wants. A month's runs in the order they were started,
+    // so a caller reading the list gets the same order every time.
     public Task<List<PayrollRun>> GetAllAsync() =>
         _db.PayrollRuns
             .OrderByDescending(r => r.PeriodYear)
             .ThenByDescending(r => r.PeriodMonth)
+            .ThenBy(r => r.RunNumber)
             .ToListAsync();
 
     public Task<PayrollRun?> GetByIdAsync(string id) =>
         _db.PayrollRuns.FirstOrDefaultAsync(r => r.Id == id);
 
-    public Task<PayrollRun?> GetByPeriodAsync(int year, int month) =>
-        _db.PayrollRuns.FirstOrDefaultAsync(
-            r => r.PeriodYear == year && r.PeriodMonth == month);
+    public Task<List<PayrollRun>> GetForPeriodAsync(int year, int month) =>
+        _db.PayrollRuns
+            .Where(r => r.PeriodYear == year && r.PeriodMonth == month)
+            .OrderBy(r => r.CreatedAt)
+            .ToListAsync();
 
     public async Task<PayrollRun> AddAsync(PayrollRun run)
     {
@@ -33,6 +37,45 @@ public class PayrollRunRepository : IPayrollRunRepository
         _db.PayrollRuns.Add(run);   // StampTenant sets OrganizationId
         await _db.SaveChangesAsync();
         return run;
+    }
+
+    public async Task<bool> TryAddWithRosterAsync(
+        PayrollRun run, IReadOnlyCollection<string> employeeProfileIds)
+    {
+        var now = DateTime.UtcNow;
+        run.CreatedAt = now;
+        run.UpdatedAt = now;
+        _db.PayrollRuns.Add(run);   // StampTenant sets OrganizationId on both
+        var members = employeeProfileIds.Distinct(StringComparer.Ordinal)
+            .Select(id => new PayrollRunMember
+            {
+                PayrollRunId = run.Id,
+                EmployeeProfileId = id,
+                PeriodYear = run.PeriodYear,
+                PeriodMonth = run.PeriodMonth,
+                CreatedAt = now,
+            })
+            .ToList();
+        _db.PayrollRunMembers.AddRange(members);
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return true;
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException is MySqlConnector.MySqlException
+            {
+                ErrorCode: MySqlConnector.MySqlErrorCode.DuplicateKeyEntry,
+            })
+        {
+            // A unique index said no (anything else is a real failure and
+            // propagates). Forget the rows so the context stays usable for
+            // the caller's refusal.
+            _db.Entry(run).State = EntityState.Detached;
+            foreach (var m in members) _db.Entry(m).State = EntityState.Detached;
+            return false;
+        }
     }
 
     public async Task UpdateAsync(PayrollRun run)
@@ -83,7 +126,7 @@ public class PayrollRunRepository : IPayrollRunRepository
     }
 
     public async Task MarkDraftsMutatedAsync(
-        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods)
+        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null)
     {
         // Ungenerated runs are skipped: with no payslips there is nothing to
         // be behind, and flagging one would show a stale banner on an empty run.
@@ -111,6 +154,26 @@ public class PayrollRunRepository : IPayrollRunRepository
             .ToListAsync();
         if (periods is not null)
             runs = runs.Where(r => periods.Contains((r.PeriodYear, r.PeriodMonth))).ToList();
+
+        // One person's change: leave out runs whose chosen roster doesn't hold
+        // them. Only a roster can rule a run out — a run without one is for
+        // everyone, so it stays marked.
+        if (userId is not null && runs.Count > 0)
+        {
+            var profileId = await _db.EmployeeProfiles.IgnoreQueryFilters()
+                .Where(p => p.OrganizationId == organizationId && p.UserId == userId)
+                .Select(p => p.Id)
+                .FirstOrDefaultAsync();
+            var runIds = runs.Select(r => r.Id).ToList();
+            var rosters = (await _db.PayrollRunMembers.IgnoreQueryFilters()
+                    .Where(m => runIds.Contains(m.PayrollRunId))
+                    .Select(m => new { m.PayrollRunId, m.EmployeeProfileId })
+                    .ToListAsync())
+                .ToLookup(m => m.PayrollRunId, m => m.EmployeeProfileId);
+            runs = runs.Where(r => !rosters.Contains(r.Id)
+                                   || (profileId is not null && rosters[r.Id].Contains(profileId)))
+                .ToList();
+        }
         if (runs.Count == 0) return;
 
         var now = DateTime.UtcNow;

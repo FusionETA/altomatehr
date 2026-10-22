@@ -241,6 +241,17 @@ async function fillLeaveEdit(page) {
 }
 
 // ─── Admin (desktop) ────────────────────────────────────────────────────
+// Moves the session to "AB Test Co A" (the local company with a November 2026
+// draft run), for the split-month payroll shots.
+async function toAbTestCoA(page) {
+  const switcher = page.getByRole("button", { name: "Switch company" });
+  if (!(await switcher.innerText()).includes("AB Test Co A")) {
+    await switcher.click();
+    await page.getByRole("button", { name: /AB Test Co A/ }).first().click();
+    await settle(page, 2500);
+  }
+}
+
 const admin = {
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
   "executive-overview": async (page) => {
@@ -520,6 +531,53 @@ const admin = {
     await scrollTo(page, "Working hours", 110, true);
     await shoot(page, "admin", "payroll-adjustments");
     await page.getByRole("button", { name: "Cancel" }).click();
+  },
+  // AB Test Co A has a November 2026 draft (unnamed): starting another run for that
+  // month needs a name, and the people already in it are greyed out.
+  "payroll-run-picker": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByRole("button", { name: "Create draft" }).first().click();
+    await page.getByText("Policies and employees").first().waitFor({ timeout: 20000 });
+    await page.locator("#runMonth").click();
+    await page.getByRole("option", { name: "November" }).click();
+    await page.locator("#runYear").fill("2026");
+    await page.getByText("11 in another run").first().waitFor({ timeout: 20000 });
+    // Expand the policy so the greyed people show, and scroll the dialog so the
+    // Run name field and the people around the two free ones are both in view.
+    await page.getByRole("button", { name: "Expand" }).first().click();
+    await page.getByText("Already in November 2026").first().waitFor({ timeout: 10000 });
+    await scrollTo(page, "Fiona Cp38", 40, true);
+    await scrollTo(page, "Run name", 20, true);
+    await settle(page, 600);
+    await shoot(page, "admin", "payroll-run-picker");
+    await page.keyboard.press("Escape");
+  },
+  // Needs: node setup.mjs split-run. The runs list with the "all runs" row.
+  "payroll-runs-split": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByText("November 2026 — all runs").first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    // Zoom the page out a little so the Summary and Excel buttons at the end of
+    // the row fit beside the figures (the table is wider than the card at 100%).
+    await page.evaluate(() => { document.body.style.zoom = "0.88"; });
+    await settle(page, 800);
+    await scrollTo(page, "November 2026 — all runs", 140);
+    await shoot(page, "admin", "payroll-runs-split");
+  },
+  // Needs: node setup.mjs split-run. A named run's header: its name and the pencil.
+  "payroll-run-name": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByText("November 2026 — all runs").first().waitFor({ timeout: 20000 });
+    await page.getByRole("cell", { name: "Workers" }).first().click();
+    await page.getByRole("button", { name: "Rename this run" }).waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await shoot(page, "admin", "payroll-run-name");
   },
   "annual-forms": async (page) => {
     await go(page, "payroll");

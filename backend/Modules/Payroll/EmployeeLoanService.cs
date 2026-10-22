@@ -17,15 +17,20 @@ public class EmployeeLoanService : IEmployeeLoanService
     // Optional so hand-built instances in tests need not supply it; the app
     // always does. See PayrollDraftStaleness for why saves here mark drafts.
     private readonly IPayrollDraftStaleness? _drafts;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. See FiledPeriodsAsync for the fallback.
+    private readonly IPayslipRepository? _payslips;
 
     public EmployeeLoanService(
         IEmployeeLoanRepository loans,
         IPayrollRunRepository runs,
         IDirectoryService directory,
         IAuditService audit,
-        IPayrollDraftStaleness? drafts = null)
+        IPayrollDraftStaleness? drafts = null,
+        IPayslipRepository? payslips = null)
     {
         _drafts = drafts;
+        _payslips = payslips;
         _loans = loans;
         _runs = runs;
         _directory = directory;
@@ -100,7 +105,7 @@ public class EmployeeLoanService : IEmployeeLoanService
         // earlier installments are inside payslips. Re-terming the whole loan
         // would leave those months deducting an amount this schedule no longer
         // contains. Only what is still owed can change, through Re-plan.
-        if (PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync()) > 0)
+        if (PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId)) > 0)
         {
             throw new PayrollLoanException(
                 "This loan has already started repaying, so the amount lent and the months already "
@@ -135,7 +140,7 @@ public class EmployeeLoanService : IEmployeeLoanService
         if (loan is null) return null;
         RequireActive(loan, "re-planned");
 
-        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync());
+        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
         var before = PayrollLoans.ResolveSchedule(loan);
 
         var after = PayrollLoans.Replan(
@@ -164,7 +169,7 @@ public class EmployeeLoanService : IEmployeeLoanService
         if (loan is null) return null;
         RequireActive(loan, "paused");
 
-        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync());
+        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
         var at = RequireChangeableMonth(loan, dto.FromYear, dto.FromMonth, firstEditable);
         var before = PayrollLoans.ResolveSchedule(loan);
         var after = PayrollLoans.InsertSkipped(before, at, dto.Months);
@@ -183,7 +188,7 @@ public class EmployeeLoanService : IEmployeeLoanService
         if (loan is null) return null;
         RequireActive(loan, "paused");
 
-        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync());
+        var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
         RequireChangeableMonth(loan, dto.FromYear, dto.FromMonth, firstEditable);
 
         loan.Status = LoanStatus.PAUSED;
@@ -213,7 +218,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             throw new PayrollLoanException("Only a paused loan can be resumed.");
         }
 
-        var locked = await LockedPeriodsAsync();
+        var locked = await LockedPeriodsAsync(loan.EmployeeProfileId);
         var resumeAt = PayrollLoans.PeriodIndex(loan, dto.Year, dto.Month);
 
         if (resumeAt < pausedAt)
@@ -263,7 +268,7 @@ public class EmployeeLoanService : IEmployeeLoanService
         // pause is gone, those months would read as repaid.
         if (loan.Status == LoanStatus.PAUSED && PayrollLoans.PausedIndex(loan) is { } pausedAt)
         {
-            var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync());
+            var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
             var filedWhilePaused = Math.Max(0, firstEditable - pausedAt);
             if (filedWhilePaused > 0)
             {
@@ -298,7 +303,7 @@ public class EmployeeLoanService : IEmployeeLoanService
 
         // Deleting a loan that has been repaying erases the explanation for
         // deductions already on filed payslips.
-        if (PayrollLoans.Summarise(loan, await SubmittedPeriodsAsync()).HasStarted)
+        if (PayrollLoans.Summarise(loan, await SubmittedPeriodsAsync(loan.EmployeeProfileId)).HasStarted)
         {
             throw new PayrollLoanException(
                 "This loan has already been deducted from at least one submitted run, so it cannot "
@@ -473,41 +478,56 @@ public class EmployeeLoanService : IEmployeeLoanService
         loan.PausedFromMonth = null;
     }
 
-    // Which periods have a SUBMITTED run. That is the only durable evidence a
-    // deduction was actually taken, and it is why reverting a month un-pays
-    // its installment without the loan row changing at all.
-    private async Task<IReadOnlyList<PayrollLoans.Period>> SubmittedPeriodsAsync() =>
-        [.. (await _runs.GetAllAsync())
-            .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
-            .Select(r => new PayrollLoans.Period(r.PeriodYear, r.PeriodMonth))];
+    // The borrower's months whose payslip is in a SUBMITTED run. That is the
+    // only durable evidence a deduction was actually taken, and it is why
+    // reverting a month un-pays its installment without the loan row changing
+    // at all. Per borrower, not per month: a month can hold several runs, and
+    // another group's approved run deducted nothing from this borrower.
+    private async Task<IReadOnlyList<PayrollLoans.Period>> SubmittedPeriodsAsync(string employeeProfileId) =>
+        [.. (await FiledPeriodsAsync(employeeProfileId))
+            .Where(p => p.Status == PayrollRunStatus.SUBMITTED)
+            .Select(p => new PayrollLoans.Period(p.Year, p.Month))];
 
     // Submitted OR awaiting approval: an approver is looking at that month's
-    // payslips, deductions included, so its installment must not move under
+    // payslip, deductions included, so its installment must not move under
     // them. Drafts are free to change — they are marked for a re-run.
-    private async Task<IReadOnlyList<PayrollLoans.Period>> LockedPeriodsAsync() =>
-        [.. (await _runs.GetAllAsync())
+    private async Task<IReadOnlyList<PayrollLoans.Period>> LockedPeriodsAsync(string employeeProfileId) =>
+        [.. (await FiledPeriodsAsync(employeeProfileId))
+            .Select(p => new PayrollLoans.Period(p.Year, p.Month))];
+
+    // Without the payslip store (hand-built instances in tests) every
+    // employee is treated as on every month's run — the old month-level rule.
+    private async Task<IReadOnlyList<PayslipFiledPeriod>> FiledPeriodsAsync(string? employeeProfileId)
+    {
+        if (_payslips is not null) return await _payslips.GetFiledPeriodsAsync(employeeProfileId);
+        return [.. (await _runs.GetAllAsync())
             .Where(r => r.Status is PayrollRunStatus.SUBMITTED or PayrollRunStatus.PENDING_APPROVAL)
-            .Select(r => new PayrollLoans.Period(r.PeriodYear, r.PeriodMonth))];
+            .Select(r => new PayslipFiledPeriod(employeeProfileId ?? string.Empty, r.PeriodYear, r.PeriodMonth, r.Status))];
+    }
 
     // Everything ToDto needs, loaded once per request rather than per loan.
     private sealed record LoanContext(
-        IReadOnlyList<PayrollLoans.Period> Submitted,
-        IReadOnlyList<PayrollLoans.Period> Locked,
+        Func<string, IReadOnlyList<PayrollLoans.Period>> SubmittedFor,
+        Func<string, IReadOnlyList<PayrollLoans.Period>> LockedFor,
         IReadOnlyDictionary<string, string> Names,
         IReadOnlyDictionary<string, EmployeeProfile> Profiles,
         ILookup<string, EmployeeLoan> LoansByEmployee);
 
     private async Task<LoanContext> LoadContextAsync()
     {
-        var runs = await _runs.GetAllAsync();
-        var submitted = runs
-            .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
-            .Select(r => new PayrollLoans.Period(r.PeriodYear, r.PeriodMonth))
-            .ToList();
-        var locked = runs
-            .Where(r => r.Status is PayrollRunStatus.SUBMITTED or PayrollRunStatus.PENDING_APPROVAL)
-            .Select(r => new PayrollLoans.Period(r.PeriodYear, r.PeriodMonth))
-            .ToList();
+        // One read for every borrower, then looked up per loan.
+        var filed = await FiledPeriodsAsync(null);
+        var submittedBy = filed.Where(p => p.Status == PayrollRunStatus.SUBMITTED)
+            .ToLookup(p => p.EmployeeProfileId, p => new PayrollLoans.Period(p.Year, p.Month), StringComparer.Ordinal);
+        var lockedBy = filed
+            .ToLookup(p => p.EmployeeProfileId, p => new PayrollLoans.Period(p.Year, p.Month), StringComparer.Ordinal);
+        // The month-level fallback has no employee on its rows, so it applies to all.
+        Func<string, IReadOnlyList<PayrollLoans.Period>> submitted = _payslips is null
+            ? _ => [.. submittedBy[string.Empty]]
+            : id => [.. submittedBy[id]];
+        Func<string, IReadOnlyList<PayrollLoans.Period>> locked = _payslips is null
+            ? _ => [.. lockedBy[string.Empty]]
+            : id => [.. lockedBy[id]];
 
         // The name lives on the User, not the profile, so the two are joined
         // the same way generation does it.
@@ -529,11 +549,13 @@ public class EmployeeLoanService : IEmployeeLoanService
 
     private static EmployeeLoanDto ToDto(EmployeeLoan loan, LoanContext context)
     {
-        var summary = PayrollLoans.Summarise(loan, context.Submitted);
+        var submittedPeriods = context.SubmittedFor(loan.EmployeeProfileId);
+        var lockedPeriods = context.LockedFor(loan.EmployeeProfileId);
+        var summary = PayrollLoans.Summarise(loan, submittedPeriods);
         var schedule = PayrollLoans.ResolveSchedule(loan);
-        var firstEditable = PayrollLoans.FirstEditableIndex(loan, context.Locked);
+        var firstEditable = PayrollLoans.FirstEditableIndex(loan, lockedPeriods);
         var firstEditablePeriod = PayrollLoans.PeriodAtIndex(loan.StartYear, loan.StartMonth, firstEditable);
-        var locked = context.Locked.ToHashSet();
+        var locked = lockedPeriods.ToHashSet();
         var profile = context.Profiles.GetValueOrDefault(loan.EmployeeProfileId);
 
         return new EmployeeLoanDto
@@ -551,7 +573,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             InstallmentCount = loan.InstallmentCount,
             Status = loan.Status,
             Notes = loan.Notes,
-            Schedule = [.. PayrollLoans.Breakdown(loan, context.Submitted).Select(i => new LoanInstallmentDto
+            Schedule = [.. PayrollLoans.Breakdown(loan, submittedPeriods).Select(i => new LoanInstallmentDto
             {
                 Index = i.Index,
                 Year = i.Year,
@@ -577,7 +599,7 @@ public class EmployeeLoanService : IEmployeeLoanService
             Warnings = PayrollLoans.Warnings(
                 loan,
                 context.LoansByEmployee[loan.EmployeeProfileId],
-                context.Submitted,
+                submittedPeriods,
                 profile?.SalaryType == SalaryType.MONTHLY ? profile.MonthlySalary : null,
                 profile?.LeaveDate),
         };

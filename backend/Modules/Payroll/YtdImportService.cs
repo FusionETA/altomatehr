@@ -260,7 +260,7 @@ public class YtdImportService : IYtdImportService
 
         foreach (var (month, entries) in byMonth.OrderBy(kv => kv.Key))
         {
-            var run = await _runs.GetByPeriodAsync(year, month);
+            var run = await ImportedRunAsync(year, month);
 
             if (run is null)
             {
@@ -454,6 +454,12 @@ public class YtdImportService : IYtdImportService
 
     // Months that already carry payroll THIS SYSTEM produced. Never
     // overwritten — see ImportAsync.
+    // The month's imported run, if any. History imports stay one run a month;
+    // a month with a computed run is blocked before this is asked.
+    private async Task<PayrollRun?> ImportedRunAsync(int year, int month) =>
+        (await _runs.GetForPeriodAsync(year, month))
+            .FirstOrDefault(r => r.Source == PayrollRunSource.IMPORTED);
+
     private async Task<List<int>> BlockedMonthsAsync(int year) =>
         [.. (await _runs.GetAllAsync())
             .Where(r => r.PeriodYear == year && r.Source == PayrollRunSource.COMPUTED)
@@ -470,7 +476,7 @@ public class YtdImportService : IYtdImportService
         var lost = new SortedDictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var month in months)
         {
-            var run = await _runs.GetByPeriodAsync(year, month);
+            var run = await ImportedRunAsync(year, month);
             if (run is null) continue;
             var keep = matched
                 .Where(m => m.Parsed.Months.Any(mo => mo.Month == month))
@@ -579,6 +585,8 @@ public class YtdImportService : IYtdImportService
         {
             PayrollRunId = run.Id,
             EmployeeProfileId = employee.Profile.Id,
+            PeriodYear = run.PeriodYear,
+            PeriodMonth = run.PeriodMonth,
             UserId = employee.Profile.UserId,
             SnapshotName = employee.Name,
             SnapshotEmployeeNumber = employee.EmployeeNumber,

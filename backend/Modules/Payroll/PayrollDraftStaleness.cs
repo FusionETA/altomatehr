@@ -28,7 +28,11 @@ public interface IPayrollDraftStaleness
     // belong to dates — unpaid leave, an overtime claim. Also stamps that
     // month's pending and submitted runs, which show nothing until they're
     // sent back or reverted to draft — then they read as needing a re-run.
-    Task MarkDraftsCoveringAsync(DateTime from, DateTime to);
+    //
+    // With `userId`, only runs that could hold that person: a run whose chosen
+    // roster leaves them out is skipped (a month can hold several runs for
+    // different groups). A run with no roster means everyone, so it's marked.
+    Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null);
 
     // Every generated draft in a NAMED org — for a change made from outside
     // that org (an employee transfer touches two companies; the transfer job
@@ -52,8 +56,8 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
     public Task MarkAllDraftsAsync() => MarkAsync(null);
 
-    public Task MarkDraftsCoveringAsync(DateTime from, DateTime to) =>
-        MarkAsync(MonthsBetween(from, to));
+    public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null) =>
+        MarkAsync(MonthsBetween(from, to), userId);
 
     public async Task MarkAllDraftsForOrgAsync(string organizationId)
     {
@@ -78,7 +82,7 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
         return months;
     }
 
-    private async Task MarkAsync(IReadOnlyCollection<(int Year, int Month)>? periods)
+    private async Task MarkAsync(IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null)
     {
         // No org, no sweep: without one the tenant filter is off, and a
         // background job must not mark every company's drafts.
@@ -87,7 +91,7 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
         try
         {
-            await _runs.MarkDraftsMutatedAsync(orgId, periods);
+            await _runs.MarkDraftsMutatedAsync(orgId, periods, userId);
         }
         catch (Exception ex)
         {

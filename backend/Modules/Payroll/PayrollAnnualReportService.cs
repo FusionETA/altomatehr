@@ -104,13 +104,13 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         if (years.Count == 0) return [];
 
         // Approval is the company's, not the employee's: a month counts once
-        // its run is submitted, whoever was on it.
+        // EVERY run in it is submitted — with one approved and another still a
+        // draft, the month's figures aren't final for everyone.
         var settings = _settings is null ? null : await _settings.GetAsync();
         var allRuns = await _runs.GetAllAsync();
-        var submitted = allRuns
-            .Where(r => r.Status == PayrollRunStatus.SUBMITTED)
-            .GroupBy(r => r.PeriodYear)
-            .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(r => r.PeriodMonth).ToHashSet());
+        var submitted = FullySubmittedMonths(allRuns)
+            .GroupBy(p => p.Year)
+            .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(p => p.Month).ToHashSet());
         var anyRun = allRuns
             .GroupBy(r => r.PeriodYear)
             .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(r => r.PeriodMonth).ToHashSet());
@@ -175,7 +175,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             OrganizationName = org?.Name ?? string.Empty,
             CompanyInfo = info,
             EmployerNo = PayrollAnnualReports.EmployerNumber(info?.EmployerTin),
-            SubmittedMonths = [.. runs.Select(r => r.PeriodMonth).Distinct().Order()],
+            SubmittedMonths = [.. FullySubmittedMonths(yearRuns).Select(p => p.Month).Order()],
             RunMonths = [.. yearRuns.Select(r => r.PeriodMonth).Distinct().Order()],
             StartMonth = settings?.YearEndStartMonth(year) ?? 1,
             PayrollStartYear = settings?.PayrollStartYear,
@@ -211,7 +211,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
                     totals[payslip.EmployeeProfileId] = acc;
                 }
 
-                Accumulate(acc, payslip, lineItems.GetValueOrDefault(payslip.Id) ?? [], run.PeriodMonth);
+                Accumulate(acc, payslip, lineItems.GetValueOrDefault(payslip.Id) ?? [], run.PeriodMonth,
+                    new LhdnMonthReceipts(run.PcbReceiptNo, run.PcbReceiptDate, run.Cp38ReceiptNo, run.Cp38ReceiptDate));
             }
         }
 
@@ -244,19 +245,27 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         public decimal Socso { get; set; }
         public decimal Eis { get; set; }
 
-        public SortedDictionary<int, (decimal Pcb, decimal Cp38, decimal Zakat)> Months { get; } = new();
+        public SortedDictionary<int, (decimal Pcb, decimal Cp38, decimal Zakat, LhdnMonthReceipts? Receipt)> Months { get; } = new();
 
         // Form EA, line by line (FormEaLines).
         public FormEaFigures Ea { get; } = new();
     }
 
+    // Months whose runs are ALL submitted (a month with no run isn't listed).
+    private static IEnumerable<(int Year, int Month)> FullySubmittedMonths(IEnumerable<PayrollRun> runs) =>
+        runs.GroupBy(r => (r.PeriodYear, r.PeriodMonth))
+            .Where(g => g.All(r => r.Status == PayrollRunStatus.SUBMITTED))
+            .Select(g => g.Key);
+
     private static void Accumulate(
-        Accumulator acc, Payslip payslip, IReadOnlyList<PayslipLineItem> lineItems, int month)
+        Accumulator acc, Payslip payslip, IReadOnlyList<PayslipLineItem> lineItems, int month,
+        LhdnMonthReceipts? receipt = null)
     {
         acc.Snapshot = payslip;
 
         var m = acc.Months.GetValueOrDefault(month);
-        acc.Months[month] = (m.Pcb + payslip.Pcb + payslip.VoluntaryPcb, m.Cp38 + payslip.Cp38, m.Zakat + payslip.Zakat);
+        acc.Months[month] = (m.Pcb + payslip.Pcb + payslip.VoluntaryPcb, m.Cp38 + payslip.Cp38, m.Zakat + payslip.Zakat,
+            receipt ?? m.Receipt);
 
         acc.Pcb += payslip.Pcb;
         acc.Mtd += payslip.Pcb + payslip.VoluntaryPcb;
@@ -341,7 +350,8 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             TotalSocsoEmployee = Money.Round2(acc.Socso),
             TotalEisEmployee = Money.Round2(acc.Eis),
             Months = [.. acc.Months.Select(kv => new AnnualMonth(
-                kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat)))],
+                kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat),
+                kv.Value.Receipt))],
             Ea = acc.Ea.Rounded(),
             JoinDate = profile?.JoinDate,
             LeaveDate = profile?.LeaveDate,

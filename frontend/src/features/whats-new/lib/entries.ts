@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: be9ce43
+// whats-new-covered-up-to: d4c5b43
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,21 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-22",
+    new: [
+      "Admins: a month can now be paid in several runs, such as one for office staff and one for workers. Each person can be in only one run a month, and the picker greys out anyone already in another.",
+      "Admins: a month with several runs gets an \"all runs\" row showing its combined totals, plus a combined Summary to download as PDF or Excel. It's marked as a draft until every run is approved.",
+      "Admins: rename any run with the pencil next to its title, whatever its status.",
+    ],
+    improved: [
+      "Admins: a named run's files carry its name: summary, payslips, EPF, SOCSO, PCB and bank files. Its Xero journal narration includes it too.",
+      "Admins: the payroll overview's Latest card adds up all of the latest month's runs. It reads Not all approved until every one is approved.",
+      "Admins: reverting a run now only sends back later approved runs that share people with it.",
+      "EA forms count a month with several runs only once every run is approved. PCB 2(II) shows each person's own run's LHDN receipt. Single-run months don't change.",
+      "Admins: a staff loan installment now counts as paid only once the borrower's own payslip for that month is approved — a month they weren't paid in (left out of the run, or in another group's run) no longer shows as repaid.",
+    ],
+  },
   {
     date: "2026-10-21",
     new: [

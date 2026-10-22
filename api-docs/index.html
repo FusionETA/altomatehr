@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: be9ce43
+  api-docs-covered-up-to: d4c5b43
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -166,7 +166,7 @@
         <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
         <tbody>
           <tr><td><code>400</code></td><td>A field failed validation</td><td><code>{ "errors": { "Field": ["message"] } }</code></td></tr>
-          <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has a run)</td><td><code>{ "error": "message" }</code></td></tr>
+          <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has an unnamed run)</td><td><code>{ "error": "message" }</code></td></tr>
           <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Documents, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
           <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
           <tr><td><code>403</code></td><td>Missing scope (including an <code>employees:*</code> scope a Documents action needs), module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>

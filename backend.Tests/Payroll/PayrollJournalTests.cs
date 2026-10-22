@@ -587,6 +587,9 @@ public class PayrollJournalTests
     public void TheNarrationNamesThePeriod()
     {
         Assert.Equal("2026 - SALARY FOR MARCH 2026", Build(Input()).Narration);
+        // A month split into runs posts one journal each, told apart by name.
+        Assert.Equal("2026 - SALARY FOR MARCH 2026 - WORKERS",
+            Build(Input() with { RunName = "Workers" }).Narration);
     }
 
     // The journal belongs to the period it pays, not to the day it is posted.

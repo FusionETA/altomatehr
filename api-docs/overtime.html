@@ -335,7 +335,8 @@
         <div class="callout">
           Things that bite: the request must already have an after-work file; the decision
           notifies the employee; and a final approval marks any generated payroll draft that
-          covers the work date's month as stale, so regenerate it before submitting that run.
+          covers the work date's month as stale, so regenerate it before submitting that run. When the month
+          has several runs, only those that could hold that employee are marked.
           <code>reviewerId</code> is set on every step, not only the last.
         </div>
 <pre><code>curl -X POST https://&lt;api-host&gt;/overtime/ot_123/approve \

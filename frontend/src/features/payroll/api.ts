@@ -138,6 +138,12 @@ export type PayrollRun = {
   periodYear: number;
   periodMonth: number;
   periodLabel: string;
+  // A month can be split into runs, one per staff group. Every run after the
+  // month's first is named; `label` is "October 2026 – Workers" (just the
+  // month when unnamed) — show it wherever runs of one month sit together.
+  name: string | null;
+  label: string;
+  runNumber: number;
   status: PayrollRunStatus;
   source: PayrollRunSource;
   // Pay figures are final (an ABPay import): joiners and leavers are paid as
@@ -302,6 +308,10 @@ export type PayrollPickerMember = {
   name: string;
   employeeId: string;
   jobTitle: string;
+  // Already in another run this month — a person is paid in one run a month,
+  // so they're shown but can't be picked.
+  takenByRunId?: string | null;
+  takenByRunLabel?: string | null;
 };
 
 export type PayrollPickerPolicy = {
@@ -318,9 +328,16 @@ export type PayrollRunPicker = { policies: PayrollPickerPolicy[] };
 export const getPayrollRunPicker = (year: number, month: number) =>
   apiGet<PayrollRunPicker>(`/payroll/runs/picker?year=${year}&month=${month}`);
 
+// Rename a run (any status — it's a label). "" clears the name, which the
+// server refuses while another run in the month is unnamed.
+export const renamePayrollRun = (id: string, name: string) =>
+  apiPatch<PayrollRun>(`/payroll/runs/${id}`, { name });
+
 export type CreatePayrollRunInput = {
   periodYear: number;
   periodMonth: number;
+  // Needed when the month already has a run — it tells the runs apart.
+  name?: string;
   // The ticked policies and the individually-unticked employees. Omitted by
   // callers with no scope, which the backend reads as "the whole roster".
   policyIds?: string[];
@@ -579,6 +596,14 @@ export const downloadPayrollSummary = (runId: string) =>
 // plus the totals block and each employee's itemised pay on their own sheets.
 export const downloadPayrollSummaryXlsx = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/summary?format=xlsx`, "payroll-summary.xlsx");
+
+// Every run in a month as one summary — for checking a split month as a
+// whole. Read-only; each run still files and pays on its own.
+export const downloadMonthSummary = (year: number, month: number, format: "pdf" | "xlsx") =>
+  download(
+    `/payroll/runs/month/${year}/${month}/summary${format === "xlsx" ? "?format=xlsx" : ""}`,
+    `payroll-summary-${year}-${String(month).padStart(2, "0")}.${format}`,
+  );
 
 // Everyone the bank file doesn't pay — other banks / e-wallets, cash, cheque,
 // and anyone missing bank details — to pay by hand.

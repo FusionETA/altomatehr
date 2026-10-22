@@ -8,5 +8,5 @@ public interface IPayrollRunMemberRepository
     Task<List<PayrollRunMember>> GetForRunAsync(string payrollRunId);
 
     // Replace the whole selection in one shot — used when a draft is created.
-    Task ReplaceForRunAsync(string payrollRunId, IEnumerable<string> employeeProfileIds);
+    Task ReplaceForRunAsync(PayrollRun run, IEnumerable<string> employeeProfileIds);
 }

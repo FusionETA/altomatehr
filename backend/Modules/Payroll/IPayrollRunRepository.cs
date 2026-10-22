@@ -10,10 +10,16 @@ public interface IPayrollRunRepository
 
     Task<PayrollRun?> GetByIdAsync(string id);
 
-    // The run for a period, if one exists. There can only ever be one.
-    Task<PayrollRun?> GetByPeriodAsync(int year, int month);
+    // Every run of a period, oldest first — a month can hold several, one
+    // per staff group.
+    Task<List<PayrollRun>> GetForPeriodAsync(int year, int month);
 
     Task<PayrollRun> AddAsync(PayrollRun run);
+
+    // A new run and its roster, saved together. False when the database
+    // refused it — another run took that run number, or someone on the
+    // roster, at the same moment — and nothing is saved.
+    Task<bool> TryAddWithRosterAsync(PayrollRun run, IReadOnlyCollection<string> employeeProfileIds);
 
     Task UpdateAsync(PayrollRun run);
 
@@ -49,5 +55,6 @@ public interface IPayrollRunRepository
     // built before they changed is showing yesterday's numbers. The org is
     // explicit, not left to the tenant filter, because that filter is a no-op
     // without a current org and this must never reach another company's runs.
-    Task MarkDraftsMutatedAsync(string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods);
+    Task MarkDraftsMutatedAsync(
+        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null);
 }

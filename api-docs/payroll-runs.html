@@ -94,13 +94,21 @@
         <li><strong>SUBMITTED is final.</strong> It is the only status that feeds next month's
           year-to-date figures, so getting there is guarded (see
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
-          also reverts every later <em>submitted</em> month in the same year.</li>
+          also reverts every later <em>submitted</em> month in the same year in which someone from that run
+          was paid (see <a href="#revert">Revert</a>).</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
           SUBMITTED.</strong> Two exceptions: the single payslip PDF and the
           <a href="#doc-summary">run summary</a> (PDF or Excel) can be downloaded before approval, as
           marked previews.</li>
-        <li><strong>A run is unique per period.</strong> <code>POST /payroll/runs</code> for a month that
-          already has a run answers <code>409</code> — open the existing run instead of retrying.</li>
+        <li><strong>A month can hold several runs, but a person is in only one.</strong> A month may be
+          split into runs for different staff groups (&ldquo;Workers&rdquo;, &ldquo;Management&rdquo;), each
+          prepared, approved, filed and paid on its own. At most one run in a month may be unnamed, so
+          <a href="#create"><code>POST /payroll/runs</code></a> needs a <code>name</code> whenever the month
+          already has an unnamed run (<code>409</code> otherwise). Nobody is paid twice for a month: anyone
+          already in another run that month is dropped from a new one, and left out of a re-run. Every run
+          has its own <code>id</code>; the <a href="#run-object"><code>label</code></a> (&ldquo;October 2026
+          &ndash; Workers&rdquo;) tells them apart, and a named run's file names carry its
+          name (see <a href="#run-files">Run names in file names</a>).</li>
         <li><strong>Two employee ids.</strong> Every id on this page is an
           <code>employeeProfileId</code> from <code>GET /payroll/employees</code> or the
           <a href="#picker">picker</a> below — <strong>not</strong> the user id <code>GET /employees</code>
@@ -112,7 +120,10 @@
           thing.</li>
         <li><strong>Staleness.</strong> The run object's <code>isStale</code> field is <code>true</code>
           when something an adjustment, a claim attachment or a profile edit touched has changed since the
-          payslips were last generated. Submission is refused while it is true — re-run payroll first.</li>
+          payslips were last generated. Submission is refused while it is true — re-run payroll first. A change
+          to one person (an unpaid-leave or overtime approval) marks only the generated drafts that could
+          hold them: a run whose chosen roster leaves that person out is not marked, and a run with no
+          roster (everyone) is.</li>
       </ul>
       <div class="callout warn">
         Writes here move money and file paperwork with Malaysian authorities. Grant
@@ -131,7 +142,7 @@
           <span class="path">/payroll/runs</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>Every payroll run in the org, newest first by period. Totals only — no payslips.</p>
+        <p>Every payroll run in the org, newest first by period; a month's runs are in the order they were started. Totals only — no payslips.</p>
         <h3>Response <code>200</code></h3>
         <p>An array of <a href="#run-object">run objects</a>.</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs \
@@ -149,7 +160,8 @@
           it whose payroll profile is complete enough to be paid. Use this to build
           <code>policyIds</code> / <code>excludedEmployeeProfileIds</code> for
           <a href="#create">create</a> — an employee with an incomplete profile never appears here, so
-          they cannot be scoped into a run.
+          they cannot be scoped into a run. When the month already has runs, an employee who is in one of
+          them is still listed but marked <code>takenByRunId</code> / <code>takenByRunLabel</code>.
         </p>
         <h3>Query</h3>
         <div class="table-wrap">
@@ -158,6 +170,7 @@
             <tbody>
               <tr><td><code>year</code></td><td>number</td><td>no</td><td>Period year of the run you are about to create. Send with <code>month</code>.</td></tr>
               <tr><td><code>month</code></td><td>number</td><td>no</td><td>Period month, 1&ndash;12.</td></tr>
+              <tr><td><code>exceptRunId</code></td><td>string</td><td>no</td><td>A run to leave out when working out who is already taken that month &mdash; pass the run being edited so its own people are not shown as taken. Only used together with <code>year</code> and <code>month</code>; an id that is not one of the month's runs changes nothing.</td></tr>
             </tbody>
           </table>
         </div>
@@ -181,6 +194,8 @@
               <tr><td><code>policies[].members[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>policies[].members[].employeeId</code></td><td>string</td><td>The org's own employee number.</td></tr>
               <tr><td><code>policies[].members[].jobTitle</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].members[].takenByRunId</code></td><td>string or null</td><td>Id of the other run this month the employee is already in &mdash; as a payslip once that run has been generated, otherwise on its roster. <code>null</code> when free, and always <code>null</code> without <code>year</code> and <code>month</code>. A person who is taken is dropped from a new run even if you send them.</td></tr>
+              <tr><td><code>policies[].members[].takenByRunLabel</code></td><td>string or null</td><td>That run's <code>label</code>, e.g. <code>"October 2026 &ndash; Workers"</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -189,6 +204,10 @@
 
 # for the January 2026 run, including leavers still payable that month
 curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
+  -H "Authorization: Bearer wp_live_xxx"
+
+# while editing run_123 of that month, so its own people are not marked taken
+curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1&amp;exceptRunId=run_123" \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
 
@@ -206,7 +225,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tbody>
               <tr><td><code>run</code></td><td>object</td><td>A <a href="#run-object">run object</a>.</td></tr>
               <tr><td><code>payslips</code></td><td><a href="#payslip-object">payslip</a>[]</td><td>Empty until <a href="#generate">generate</a> has run.</td></tr>
-              <tr><td><code>memberEmployeeProfileIds</code></td><td>string[]</td><td>The roster chosen when the run was created. Empty means "everyone payable" (a run created before the picker existed, or one created with no <code>policyIds</code>/<code>excludedEmployeeProfileIds</code>).</td></tr>
+              <tr><td><code>memberEmployeeProfileIds</code></td><td>string[]</td><td>The roster chosen when the run was created. Empty means "everyone payable" (a run created before the picker existed, or one created with no <code>policyIds</code>/<code>excludedEmployeeProfileIds</code>) &mdash; only ever true of a month's sole run: when a second run is created in the month, the existing runs' people are written down as their rosters.</td></tr>
             </tbody>
           </table>
         </div>
@@ -222,7 +241,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Start a DRAFT run for a period. The id, status, totals and timestamps are the server's to set.</p>
+        <p>Start a DRAFT run for a period. The id, status, totals and timestamps are the server's to set. A month can have several runs &mdash; see the rules for <code>name</code> below.</p>
         <h3>Request body</h3>
         <div class="table-wrap">
           <table>
@@ -230,6 +249,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tbody>
               <tr><td><code>periodYear</code></td><td>number</td><td>yes</td><td>2000–2100.</td></tr>
               <tr><td><code>periodMonth</code></td><td>number</td><td>yes</td><td>1–12.</td></tr>
+              <tr><td><code>name</code></td><td>string or null</td><td>when the month already has an unnamed run</td><td>Max 60 characters (<code>400</code> beyond that); trimmed, and blank counts as no name. What sets this run apart from the month's others, e.g. <code>"Workers"</code>. At most one run a month may be unnamed. Names must be unique within the month, compared case-insensitively, and so must the letters-and-digits form used in file names (<code>"Team 1"</code> and <code>"Team-1"</code> both file as <code>Team1</code>).</td></tr>
               <tr><td><code>policyIds</code></td><td>string[] or null</td><td>no</td><td>Policy ids from the <a href="#picker">picker</a>. Null or omitted means every policy — the whole eligible roster.</td></tr>
               <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy. Remembered with <code>policyIds</code> — see the note below.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean</td><td>no</td><td>Default <code>false</code>. <code>true</code> means the pay figures are final (e.g. an import) and joiners and leavers are <strong>not</strong> prorated again. Can be changed later on a draft with <a href="#update">PATCH</a>.</td></tr>
@@ -242,17 +262,37 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <strong>The chosen roster is remembered.</strong> When the request sends at least one
           <code>policyIds</code> entry and resolves to at least one employee, the run stores the
           <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
-          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
+          resulting list of people &mdash; less anyone already in another run that month, who count as unticked,
+          so they do not drift into this run if that other run is deleted. <a href="#generate">Generate</a> uses them to pick up employees who become
           payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
           only exclusions), one that resolved to nobody, and one created before this was recorded store
           nothing: their roster stays exactly as frozen.
         </div>
+        <div class="callout warn">
+          <strong>People already in another run that month are dropped, silently.</strong> The run is created
+          with whoever is left; compare <code>employeeCount</code> or <code>memberEmployeeProfileIds</code> on
+          the response with what you sent. Use the <a href="#picker">picker</a> with <code>year</code> and
+          <code>month</code> to see who is taken before you create.
+        </div>
         <h3>Errors</h3>
-        <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
-<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs \
+        <ul>
+          <li><code>400</code> <code>{ "errors": { "Name": ["…"] } }</code> &mdash; <code>name</code> longer than 60 characters, or <code>periodYear</code> / <code>periodMonth</code> out of range.</li>
+          <li><code>409</code> <code>{ "error": "A payroll run already exists for January 2026. To add another run for the month, give it a name — for example the staff group it pays." }</code> &mdash; no <code>name</code> sent while the month has an unnamed run. A client that never sends a name keeps getting this refusal once its month has a run, and can recreate its own run after deleting it.</li>
+          <li><code>409</code> <code>{ "error": "January 2026 already has a run named \"Workers\". Choose another name." }</code> &mdash; or <code>"\"Team-1\" is too close to January 2026 – Team 1 — their files would have the same name. Choose a more different name."</code></li>
+          <li><code>409</code> <code>{ "error": "Everyone you picked is already in another January 2026 run. A person can be in only one run a month." }</code> &mdash; nobody would be left.</li>
+          <li><code>409</code> <code>{ "error": "Another January 2026 payroll run was started at the same moment. Reload and try again." }</code> &mdash; two creates raced and the database refused one; nothing was saved. Retry after reloading the picker.</li>
+        </ul>
+<pre><code># the month's first run, unnamed
+curl -X POST https://&lt;api-host&gt;/payroll/runs \
   -H "Authorization: Bearer wp_live_xxx" \
   -H "Content-Type: application/json" \
-  -d '{ "periodYear": 2026, "periodMonth": 1 }'</code></pre>
+  -d '{ "periodYear": 2026, "periodMonth": 1 }'
+
+# a second run for the same month, for one staff group
+curl -X POST https://&lt;api-host&gt;/payroll/runs \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "periodYear": 2026, "periodMonth": 1, "name": "Workers", "policyIds": ["pol_123"] }'</code></pre>
       </section>
 
       <section class="endpoint" id="update">
@@ -261,12 +301,13 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Change a DRAFT run's settings. Today the only setting is <code>skipProration</code>. Only fields you send change.</p>
+        <p>Change a run's settings: its <code>name</code> (in any status) or <code>skipProration</code> (DRAFT only). Only fields you send change.</p>
         <h3>Request body</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
+              <tr><td><code>name</code></td><td>string or null</td><td>no</td><td>Max 60 characters (<code>400</code> beyond that). Omitted or <code>null</code>: unchanged. <code>""</code> (or blank) clears the name, which is refused while another run in the month is unnamed. Same uniqueness rules as on <a href="#create">create</a>. Allowed on a run in any status &mdash; it is only a label &mdash; and it does not mark the run stale. Sending the name the run already has changes nothing.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean or null</td><td>no</td><td><code>true</code>: do not prorate joiners/leavers (pay figures are final). <code>false</code>: prorate as usual. Omitted or <code>null</code>: unchanged.</td></tr>
             </tbody>
           </table>
@@ -276,17 +317,27 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <div class="callout warn">
           Changing the value on a run that has already been generated marks it stale
           (<code>isStale: true</code>); call <a href="#generate">generate</a> again so the payslips
-          are re-priced. Sending the value the run already has changes nothing.
+          are re-priced. Sending the value the run already has changes nothing. Any
+          <code>skipProration</code> on a run that is not a draft is a <code>409</code>, and the whole
+          request is refused &mdash; a <code>name</code> sent with it is not saved either.
         </div>
         <h3>Errors</h3>
         <ul>
+          <li><code>400</code> <code>{ "errors": { "Name": ["…"] } }</code> &mdash; <code>name</code> longer than 60 characters.</li>
           <li><code>404</code> &mdash; no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "Only a draft payroll run can be changed." }</code></li>
+          <li><code>409</code> <code>{ "error": "Only a draft payroll run can be changed." }</code> &mdash; <code>skipProration</code> on a run that is not a draft.</li>
+          <li><code>409</code> <code>{ "error": "Another January 2026 run has no name, so this one needs one." }</code> &mdash; clearing a name while another run in the month is unnamed.</li>
+          <li><code>409</code> a duplicate-name refusal, with the same two messages as <a href="#create">create</a>.</li>
         </ul>
 <pre><code>curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
   -H "Authorization: Bearer wp_live_xxx" \
   -H "Content-Type: application/json" \
-  -d '{ "skipProration": true }'</code></pre>
+  -d '{ "skipProration": true }'
+
+curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Workers" }'</code></pre>
       </section>
 
       <section class="endpoint" id="delete">
@@ -295,8 +346,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Delete a DRAFT run along with its payslips, adjustments and claim attachments. Attached claims
-          themselves survive and become free to attach to another run.</p>
+        <p>Delete a DRAFT run along with its payslips, adjustments, chosen roster and claim attachments. Attached claims
+          themselves survive and become free to attach to another run, and its people become free to join another run that month.</p>
         <h3>Response</h3>
         <p><code>204</code> No Content.</p>
         <h3>Errors</h3>
@@ -315,7 +366,10 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <tbody>
             <tr><td><code>id</code></td><td>string</td><td></td></tr>
             <tr><td><code>periodYear</code> / <code>periodMonth</code></td><td>number</td><td></td></tr>
-            <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>, rendered server-side.</td></tr>
+            <tr><td><code>periodLabel</code></td><td>string</td><td>The month only, e.g. <code>"January 2026"</code>, rendered server-side. Identical for every run of the month.</td></tr>
+            <tr><td><code>name</code></td><td>string or null</td><td>The run's name within its month, e.g. <code>"Workers"</code>. Null for an unnamed run.</td></tr>
+            <tr><td><code>label</code></td><td>string</td><td>The label to show when a month has several runs: <code>"October 2026 &ndash; Workers"</code> (an en dash), or just the month when the run is unnamed. Also what <code>alsoReverted</code>, <code>attachedToRunPeriod</code> and the run's own documents use.</td></tr>
+            <tr><td><code>runNumber</code></td><td>number</td><td>1 for the month's first run, 2 for the next, and so on. Not reused while a later run exists. Used for a bank file's batch id and the file-name tag of an unnamed later run.</td></tr>
             <tr><td><code>status</code></td><td>string</td><td><code>"DRAFT"</code> · <code>"PENDING_APPROVAL"</code> · <code>"SUBMITTED"</code>.</td></tr>
             <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
             <tr><td><code>skipProration</code></td><td>boolean</td><td>True when the pay figures are final and joiners/leavers are not prorated. See <a href="#update">PATCH</a>.</td></tr>
@@ -409,7 +463,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           example an employee transferred into a chosen policy, or a new hire &mdash; and
           <code>memberEmployeeProfileIds</code> in the response then includes them. This holds whatever
           <code>skipProration</code> is set to. Employees listed in <code>excludedEmployeeProfileIds</code>
-          are never added, and nobody is ever removed from the roster by this. A run created without
+          are never added, and nobody is ever removed from the roster by this. Anyone who is in another run that
+          month is never added, and is left out of the payslips even if this run's roster still lists them. A run created without
           <code>policyIds</code> (e.g. from an explicit list, as an import does), a month reverted to draft
           after approval, and a run created before the roster was remembered keep their roster exactly as it was.
         </p>
@@ -521,8 +576,12 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <li>The run has no payslips yet (press <a href="#generate">generate</a> first).</li>
           <li>The run is <code>isStale</code> — something changed after the last generation.</li>
           <li>Any payslip's net pay is negative (exactly RM 0 is allowed).</li>
-          <li>The previous calendar month has no run, or has a run that is not yet SUBMITTED — months must
-            submit in order, because year-to-date figures compound off each filed month.</li>
+          <li>The previous calendar month has no run, or has a run that is not yet SUBMITTED and that shares
+            at least one person with this one &mdash; months must submit in order, because year-to-date figures
+            compound off each filed month. The order is <strong>per person</strong>: a previous-month run for a
+            different staff group does not hold this one up. A run's people are its roster plus anyone it has
+            a payslip for; a run with neither (nobody chosen, nothing generated) counts as everyone, so it
+            overlaps and blocks every other run.</li>
           <li><a href="#readiness">Readiness</a> is not <code>ok</code>.</li>
         </ul>
         <h3>Response <code>200</code></h3>
@@ -596,8 +655,12 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:write</span>
         </div>
         <p>
-          SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED month in the same year is
-          reverted too, because their year-to-date figures were computed off this one. Check
+          SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED run (a later month, same year)
+          that shares a person with this one is reverted too, because their year-to-date figures were computed
+          off this one. Year-to-date is per person, so another staff group's later run is left alone. A run
+          with neither roster nor payslips counts as everyone, so it cascades to every later run, and is
+          itself caught by any earlier run's revert. Other runs of the <em>same</em> month are never part of
+          the cascade. Check
           <a href="#revert-impact">revert-impact</a> first to see what else will move.
         </p>
         <h3>Response <code>200</code></h3>
@@ -606,7 +669,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>run</code></td><td>object</td><td>The <a href="#run-object">run object</a> that was asked for, reverted.</td></tr>
-              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Period labels of the other months reverted with it, e.g. <code>["February 2026", "March 2026"]</code>. Empty is the common case.</td></tr>
+              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Run <a href="#run-object">labels</a> of the other runs reverted with it, e.g. <code>["February 2026", "March 2026 – Workers"]</code>. Empty is the common case.</td></tr>
             </tbody>
           </table>
         </div>
@@ -627,7 +690,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         </div>
         <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>.</p>
         <h3>Response <code>200</code></h3>
-        <p><code>{ "alsoReverted": string[] }</code> — period labels. Empty if the run is not SUBMITTED (not an error — there is simply nothing to cascade).</p>
+        <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED (not an error — there is simply nothing to cascade).</p>
         <h3>Errors</h3>
         <p><code>404</code> — no such run.</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
@@ -982,7 +1045,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>category</code> / <code>claimType</code></td><td>string</td><td>Claim enums.</td></tr>
               <tr><td><code>amount</code> / <code>spentAt</code></td><td>number / string</td><td>ISO 8601 date.</td></tr>
               <tr><td><code>userId</code> / <code>employeeProfileId</code> / <code>employeeName</code> / <code>employeeNumber</code></td><td>string</td><td></td></tr>
-              <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach.</td></tr>
+              <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach. <code>attachedToRunPeriod</code> is that run's <code>label</code> (e.g. <code>"January 2026 &ndash; Workers"</code>), not just the month.</td></tr>
               <tr><td><code>blockedReason</code></td><td>string or null</td><td>Why it cannot be attached right now (e.g. the claimant has no payroll profile, or is an archived leaver with no last day). Null means it can. Here, with no run in view, an archived claimant who has a last day is not blocked; see the leaver rule under <a href="#attach-claim">attach</a>.</td></tr>
             </tbody>
           </table>
@@ -1065,6 +1128,23 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <code>409</code> <code>{ "error": "This run has not been approved yet, so its figures can still change. Submit and approve it before producing files." }</code>
         or, for an imported run, a message explaining the previous system already filed it. Both are
         omitted below to avoid repetition.
+      </div>
+      <div class="callout" id="run-files">
+        <strong>Run names in file names.</strong> A named run adds a tag to the file names it produces so two
+        runs in a month never hand out the same name. The tag is the run's name reduced to ASCII letters and
+        digits, cut to 30 characters (<code>"Team 1"</code> gives <code>Team1</code>); an unnamed run after the
+        month's first uses <code>Run2</code>, <code>Run3</code>&hellip;; an unnamed first run adds nothing, so
+        a month with one run keeps exactly the names shown below. The tag goes before the extension after an
+        underscore &mdash; <code>SOCSO_EIS_012026_Workers.txt</code>,
+        <code>Payslips_2026_01_Workers_All.zip</code>, <code>payroll-2026-01_Workers.zip</code>,
+        <code>Payroll_Summary_January_2026_Workers.pdf</code>,
+        <code>ABPay {Company name} 2026-01 Workers.xlsx</code> &mdash; except the PCB (CP39) file, whose name is
+        letters and digits only because the e-PCB upload refuses anything else: <code>{10-digit employer no}012026Workers.txt</code>.
+        This covers the statutory files, the bank file, the payslips ZIP, the documents bundle, the run
+        summary, payment schedule, PCB details, allowance, deduction and manual-payment reports and the
+        ABPay timesheet. The single payslip PDF and the TP1 documents are per employee and keep their names.
+        A run's own documents (summary, payment schedule, and so on) head their pages with the run
+        <code>label</code>; a payslip still shows the month only.
       </div>
 
       <section class="endpoint" id="file-epf">
@@ -1205,6 +1285,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <code>_FOR_APPROVAL</code> &mdash; because re-running payroll can change every figure. The documents
           bundle and every other document and file on this page still require approval.
         </div>
+        <p>This is one run's summary. To check a month that has been split into several runs as a whole, use the <a href="#month-summary">month summary</a>.</p>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1276,6 +1357,53 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
 
 curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xlsx" \
   -H "Authorization: Bearer wp_live_xxx" -o summary.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="month-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/month/{year}/{month}/summary</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every run in a month combined into one read-only summary, for checking a month that has been split into several runs. The same layout and figures as the <a href="#doc-summary">run summary</a>, with every run's employees on one sheet in employee-number order. Nothing is filed from it &mdash; each run still files on its own.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>In</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>path</td><td>integer</td><td>Period year. A non-integer segment does not match the route (<code>404</code>).</td></tr>
+              <tr><td><code>month</code></td><td>path</td><td>integer</td><td>Period month, 1&ndash;12.</td></tr>
+              <tr><td><code>format</code></td><td>query</td><td>string, optional</td><td><code>pdf</code> (the default, also when empty) or <code>xlsx</code>, case-insensitive.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <ul>
+          <li><code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}_All_Runs.pdf</code>, e.g. <code>Payroll_Summary_January_2026_All_Runs.pdf</code>. The page header reads <code>January 2026 &ndash; all runs</code>.</li>
+          <li><code>xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}_All_Runs.xlsx</code>, laid out as the <a href="#doc-summary">run summary</a> workbook.</li>
+        </ul>
+        <div class="callout warn">
+          <strong>Available before approval, and only as final as its least-approved run.</strong> The month counts as
+          <code>DRAFT</code> when any of its runs is a draft (including one not yet generated), otherwise
+          <code>PENDING_APPROVAL</code> when any is awaiting approval, and only <code>SUBMITTED</code> when every run is.
+          A month that is not fully submitted is marked not approved exactly as the run summary is: the PDF
+          carries the <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner, and the file name ends in
+          <code>_DRAFT</code> or <code>_FOR_APPROVAL</code> (<code>Payroll_Summary_January_2026_All_Runs_DRAFT.pdf</code>).
+          Imported runs are left out, and a run that has not been generated adds no rows.
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "error": "month must be 1–12." }</code> &mdash; a month outside 1&ndash;12.</li>
+          <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> &mdash; any other <code>format</code>.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; besides a missing scope or module, the caller must have access to every employee in the company; API keys do.</li>
+          <li><code>404</code> &mdash; the month has no computed run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "Run payroll on at least one of this month's runs before downloading its summary." }</code> &mdash; none of the month's runs has payslips yet.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary \
+  -H "Authorization: Bearer wp_live_xxx" -o month-summary.pdf
+
+curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o month-summary.xlsx</code></pre>
       </section>
 
       <section class="endpoint" id="doc-payment-schedule">
@@ -1399,6 +1527,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           </table>
         </div>
         <h3>Response <code>200</code></h3>
+        <p>Maybank's TXT batch id carries <code>R{runNumber}</code> after the period (e.g. <code>202601R2</code>) for a month's second and later runs, so each upload's batch id is unique; the first run keeps the plain period. Every format's file name also carries the run's <a href="#run-files">name tag</a>.</p>
         <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank's TXT, CIMB's Excel template, or Hong Leong's two formats).</p>
         <p>For CIMB, <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Bulk_Payroll_{MM}{YYYY}.xlsx</code> (e.g. <code>CIMB_Bulk_Payroll_012026.xlsx</code>). One sheet, <code>EPF</code> (CIMB's template name): row 1 is the template's field rules, row 2 the headers (<code>*Beneficiary Name</code>, <code>Beneficiary ID</code>, <code>*BNM Code</code>, <code>*Account Number</code>, <code>*Payment Amount</code>, <code>Reference Number</code>), and one payee per row from row 3. <code>Beneficiary ID</code> is blank; <code>*BNM Code</code> is CIMB's dropdown label (e.g. <code>35-CIMB Bank Berhad</code>); the account number is text; the amount is a number to 2 decimals. Names and reference have <code>-</code> and <code>/</code> replaced by spaces and are cut to CIMB's lengths (40 and 30).</p>
         <h3>Errors</h3>
@@ -1610,7 +1739,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td>Whether these lines would actually post — check this, not the HTTP status: a mapping problem still answers <code>200</code>.</td></tr>
               <tr><td><code>error</code></td><td>string or null</td><td>Why <code>ok</code> is false, e.g. an unmapped account.</td></tr>
-              <tr><td><code>narration</code> / <code>date</code></td><td>string</td><td></td></tr>
+              <tr><td><code>narration</code> / <code>date</code></td><td>string</td><td>Narration is <code>{year} - SALARY FOR {MONTH} {year}</code>, with <code> - {RUN NAME}</code> (upper-cased) added for a named run. Each run of a month is posted as its own journal.</td></tr>
               <tr><td><code>lines[].accountCode</code> / <code>.description</code> / <code>.amount</code> / <code>.trackingOption</code></td><td>mixed</td><td></td></tr>
               <tr><td><code>balance</code></td><td>number</td><td>Sum of every line's amount — should be 0 for a balanced journal.</td></tr>
               <tr><td><code>totalDebits</code> / <code>totalCredits</code></td><td>number</td><td></td></tr>

@@ -279,7 +279,8 @@ public sealed record Pcb2IiStatement
         var months = new Pcb2IiMonth?[12];
         foreach (var m in row.Months)
         {
-            var r = payload.Receipts.GetValueOrDefault(m.Month);
+            // The receipt of the run this person was paid in that month.
+            var r = m.Receipt ?? payload.Receipts.GetValueOrDefault(m.Month);
             months[m.Month - 1] = new Pcb2IiMonth(
                 m.Pcb, m.Cp38, r?.PcbReceiptNo, r?.PcbReceiptDate, r?.Cp38ReceiptNo, r?.Cp38ReceiptDate);
         }
