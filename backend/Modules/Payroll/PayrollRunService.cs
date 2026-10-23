@@ -489,6 +489,13 @@ public class PayrollRunService : IPayrollRunService
                 false, null, "Payroll can only be run on a draft.");
         }
 
+        // Nor an imported month, however it got here: running payroll would
+        // replace the previous system's figures with today's calculation.
+        if (run.Source == PayrollRunSource.IMPORTED)
+        {
+            return new PayrollRunGenerateResult(false, null, ImportedRevertRefusal);
+        }
+
         var settings = await _settings.GetEffectiveAsync();
 
         // Employees and Supervisors only. A draft created before this rule may
@@ -1022,7 +1029,13 @@ public class PayrollRunService : IPayrollRunService
     // group's later month never read this run's figures.
     private async Task<List<PayrollRun>> LaterRunsSharingPeopleAsync(PayrollRun run)
     {
-        var later = await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth);
+        // Imported months are left out: their figures are the previous
+        // system's, typed in rather than computed off this year-to-date, so
+        // reverting an earlier month doesn't make them wrong — and an imported
+        // month must never go back to draft (see RevertToDraftAsync).
+        var later = (await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth))
+            .Where(r => r.Source != PayrollRunSource.IMPORTED)
+            .ToList();
         var people = await PeopleOfAsync(run);
         if (people is null) return later;
 

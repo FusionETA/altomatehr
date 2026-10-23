@@ -659,6 +659,33 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Equal(PayrollRunStatus.SUBMITTED, (await _runs.GetByIdAsync(run.Id))!.Status);
     }
 
+    // An imported month later than a computed one (a company that ran January
+    // here, then imported February from its old system) is not pulled back by
+    // reverting January — its figures were typed in, not computed off it — and
+    // payroll can never be run on an imported month.
+    [Fact]
+    public async Task RevertingAnEarlierMonth_LeavesALaterImportedMonthApproved()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var january = await SubmittedRunAsync(2026, 1);
+        var february = await SubmittedRunAsync(2026, 2);
+        var march = await SubmittedRunAsync(2026, 3);
+        (await _runs.GetByIdAsync(february.Id))!.Source = PayrollRunSource.IMPORTED;
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(["March 2026"], await _service.GetRevertImpactAsync(january.Id));
+        Assert.True((await _service.RevertToDraftAsync(january.Id)).Ok);
+
+        Assert.Equal(PayrollRunStatus.SUBMITTED, (await _runs.GetByIdAsync(february.Id))!.Status);
+        Assert.Equal(PayrollRunStatus.DRAFT, (await _runs.GetByIdAsync(march.Id))!.Status);
+
+        // Even a draft imported month (however it got there) can't be re-run.
+        var imported = (await _runs.GetByIdAsync(february.Id))!;
+        imported.Status = PayrollRunStatus.DRAFT;
+        await _db.SaveChangesAsync();
+        Assert.False((await _service.GenerateAsync(february.Id)).Ok);
+    }
+
     // ─── LHDN receipts ──────────────────────────────────────────────────
 
     [Fact]
