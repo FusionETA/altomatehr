@@ -1134,7 +1134,7 @@
       </section>
     </section>
 
-    <section class="section">
+    <section class="section" id="ytd-import">
       <h2>Year-to-date import</h2>
       <p>
         Seed payroll history when an org migrates mid-year, so the PCB engine has the
@@ -1146,7 +1146,9 @@
         overwritten (silently skipped — see <code>skippedMonths</code>); a month previously
         <code>IMPORTED</code> is replaced. Imported months land as <code>SUBMITTED</code>
         immediately — there is no draft step — because only submitted runs count toward
-        year-to-date.
+        year-to-date. An imported month can never be reverted to draft or generated
+        (<code>409</code>) and is not pulled back by an earlier month's revert; to correct
+        one, import it again.
       </div>
 
       <section class="endpoint">
@@ -1177,6 +1179,7 @@
             </tbody>
           </table>
         </div>
+        <p>The HRDF column is read under any of these headers, case-insensitive (extra spaces ignored), so a history file exported from another payroll system needs no renaming: <code>HRDF</code>, <code>HRDF Levy</code>, <code>Employer HRDF</code>, <code>Employer HRDF Levy</code>, <code>HRDF Employer</code>, <code>HRDF (Employer)</code>, <code>HRD Corp</code>, <code>HRD Corp Levy</code>, <code>Employer HRD Corp Levy</code>. Under any other name it is reported as an unrecognised column and every imported month carries an HRDF of 0.</p>
         <p>Any adjustment-category label from <code>/payroll/adjustment-categories</code> also works as a column header — the amount is routed through that category's statutory rules (a benefit in kind lands as non-cash, a deduction comes off net).</p>
       </section>
 

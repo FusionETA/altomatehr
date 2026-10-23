@@ -95,7 +95,9 @@
           year-to-date figures, so getting there is guarded (see
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
           also reverts every later <em>submitted</em> month in the same year in which someone from that run
-          was paid (see <a href="#revert">Revert</a>).</li>
+          was paid (see <a href="#revert">Revert</a>). An <code>IMPORTED</code> month (seeded by the
+          <a href="payroll.html#ytd-import">YTD import</a>) is never part of that cascade and cannot be reverted
+          or generated itself &mdash; import it again to correct it.</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
           SUBMITTED.</strong> Two exceptions: the single payslip PDF and the
           <a href="#doc-summary">run summary</a> (PDF or Excel) can be downloaded before approval, as
@@ -484,7 +486,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "Payroll can only be run on a draft." }</code> — a submitted month's figures are filed and never rebuilt.</li>
+          <li><code>409</code> <code>{ "error": "Payroll can only be run on a draft." }</code> — a submitted month's figures are filed and never rebuilt. This is also what an imported month answers in practice, because an import lands as <code>SUBMITTED</code>.</li>
+          <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so payroll can't be run on it. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — a run with <code>source: "IMPORTED"</code> is never generated, whatever its status, because it would replace the previous system's figures with today's calculation.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/generate \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -664,6 +667,14 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           the cascade. Check
           <a href="#revert-impact">revert-impact</a> first to see what else will move.
         </p>
+        <p>
+          <strong>Imported months are out of both ends of this.</strong> A run with
+          <code>source: "IMPORTED"</code> cannot be reverted (<code>409</code> below), and it is
+          never pulled back by an earlier month's revert: its figures were typed in from the previous
+          system, not computed off this year-to-date, so they stay <code>SUBMITTED</code>. To correct an
+          imported month, upload it again with the <a href="payroll.html#ytd-import">YTD import</a>, which
+          replaces it.
+        </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
           <table>
@@ -678,6 +689,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "Only a submitted run can be reverted to draft." }</code></li>
+          <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so it can't go back to draft. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — the run has <code>source: "IMPORTED"</code>. Nothing is changed.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/revert \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -691,7 +703,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         </div>
         <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>.</p>
         <h3>Response <code>200</code></h3>
-        <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED (not an error — there is simply nothing to cascade).</p>
+        <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED or is an <code>IMPORTED</code> run (not an error — there is simply nothing to cascade, and an imported run cannot be reverted anyway). Imported months are never listed among the runs a revert would pull back.</p>
         <h3>Errors</h3>
         <p><code>404</code> — no such run.</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
