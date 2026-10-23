@@ -188,9 +188,10 @@ public class OrganizationsController : ControllerBase
         if (userId is null) return Unauthorized();
         try
         {
-            return Ok(await _organizations.CreateAsync(dto, userId, viaSso: _currentUser.IsSso));
+            return Ok(await _organizations.CreateAsync(
+                dto, userId, viaSso: _currentUser.IsSso, viaSupport: _currentUser.IsSupport));
         }
-        catch (SsoManagedActionException ex)
+        catch (Exception ex) when (ex is SsoManagedActionException or SupportModeActionException)
         {
             // { message }, as ChangePassword's SSO refusal — what the frontend's
             // api-client reads, so the reason reaches the screen.

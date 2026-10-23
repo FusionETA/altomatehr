@@ -214,7 +214,10 @@ export function AdminShell({
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Altomate provisions an SSO customer's companies itself, so
                   one made here would be unknown to it. */}
-              <OrgSwitcher allowCreate={!user.viaSso} />
+              {/* Not in support mode: the creator becomes the Owner, which
+                  would be the support person, not the customer. Support →
+                  Create company sets the customer as Owner instead. */}
+              <OrgSwitcher allowCreate={!user.viaSso && !user.supportMode} />
 
               <div className="hidden sm:block">
                 <NotificationBell onNavigate={navigateFromNotification} />

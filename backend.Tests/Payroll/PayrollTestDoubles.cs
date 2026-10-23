@@ -180,7 +180,7 @@ internal sealed class StubPayrollOrganizations : IOrganizationService
             Name = Name,
         });
 
-    public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false) =>
+    public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false) =>
         throw new NotSupportedException();
     public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>
         throw new NotSupportedException();
