@@ -258,8 +258,17 @@ public class OrganizationService : IOrganizationService
         return ToDto(org);
     }
 
-    public async Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false)
+    public async Task<OrganizationDto> CreateAsync(
+        CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false)
     {
+        // The creator becomes the Owner. In support mode that's the support
+        // person, not the customer — so the company would vanish from the
+        // customer's switcher. Support → Create company sets the right Owner.
+        if (viaSupport)
+            throw new Auth.SupportModeActionException(
+                "You're in support mode, so this company would belong to you, not the customer. "
+                + "Use Support → Create company and enter the owner's email instead.");
+
         // As with Change password: an SSO session belongs to an account the
         // external platform provisions and pays for. A company created from it
         // would be one that platform never set up, so it's refused here, not

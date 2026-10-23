@@ -143,7 +143,9 @@ fact is why:
 - **Getting out cascades.** Reverting a month also reverts every later SUBMITTED
   run in the same year that shares any of its people, because their
   YTD-cumulative figures were computed off it. `GetRevertImpactAsync` names
-  them for the confirm dialog first.
+  them for the confirm dialog first. IMPORTED months are never in the cascade
+  (their figures were typed in, not computed off this one), can't be reverted
+  themselves, and can't be generated — re-importing is how one is corrected.
 
 A status change never touches `LastMutatedAt` — submitting a run does not make
 its payslips any fresher.

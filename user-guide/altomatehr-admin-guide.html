@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: b07ef3e
+  user-guide-covered-up-to: dc574d4
 -->
 <html lang="en">
 <head>
@@ -1407,7 +1407,11 @@
     <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
       months that were worked out from it go back to draft too — the app lists them before you confirm. If the company
       pays a month in several runs, only the later runs that share people with this one are sent back; a run for a
-      different group of people is left alone.</p>
+      different group of people is left alone. A month you imported from earlier payroll is never sent back this way.</p>
+    <p><strong>An imported month can't be reverted.</strong> A month you brought in under <strong>Import earlier payroll</strong>
+      has no <span class="btn-name">Revert to draft</span> button. Its run page shows a note instead: <em>Imported from your
+      previous payroll system. To correct this month, import it again under “Import earlier payroll” at the foot of the
+      Payroll runs page — that replaces it.</em> See <a href="#ytd">Starting mid-year</a>.</p>
 
     <h3 id="payroll-split">Paying a month in several runs</h3>
     <p>Some companies pay one group of staff on a different day from another — say office staff and workers. Start a
@@ -1766,6 +1770,10 @@
       the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
       never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
       by name and check their figures.</p>
+    <p>If your file has an HRDF column, it's read under the names payroll systems usually give it: <strong>HRDF</strong>,
+      <strong>Employer HRDF Levy</strong> (the name PayrollPanda uses), <strong>HRDF Levy</strong>,
+      <strong>Employer HRDF</strong> or <strong>HRD Corp Levy</strong>. If you imported months before and their HRDF came
+      through empty, import the same file again: it replaces those months with the HRDF filled in.</p>
     <p>The preview checks every row against your employee list before anything is imported:</p>
     <ul>
       <li>If the IC on a row belongs to a different employee than the name on it, the preview refuses the file and tells
@@ -1783,6 +1791,9 @@
       import only September, the earlier months stay exactly as they are. The preview's warnings name only the months in
       your file: a month that was imported before <em>will be replaced</em>, and a month that already has payroll in
       AltomateHR <em>will be skipped</em>.</p>
+    <p>Imported months are history from your previous system, so they can't be reverted to draft or re-run. To correct
+      one, import that month again; it replaces the old figures. Reverting an earlier month in AltomateHR never pulls an
+      imported month back to draft.</p>
     <p>For someone who joined from another employer this year, fill in <strong>Previous employment (TP3)</strong> on the
       Employment tab of their record.</p>
     </div>

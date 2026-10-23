@@ -105,7 +105,24 @@ public static class YtdImportParser
 
     // HRDF and zakat are employer/statutory columns rather than categories,
     // so they land on their own payslip fields like the mandatory set.
-    private const string HrdfHeader = "hrdf";
+    //
+    // HRDF goes by several names: PayrollPanda exports it as "Employer HRDF
+    // Levy", others say "HRD Corp levy". Only "HRDF" used to match, so a
+    // PayrollPanda history file's levy was reported unrecognised and every
+    // imported month carried HRDF 0.
+    private static readonly IReadOnlySet<string> HrdfColumns =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "hrdf",
+            "hrdf levy",
+            "employer hrdf",
+            "employer hrdf levy",
+            "hrdf employer",
+            "hrdf (employer)",
+            "hrd corp",
+            "hrd corp levy",
+            "employer hrd corp levy",
+        };
     private const string ZakatHeader = "zakat";
     private const string Cp38Header = "cp38";
 
@@ -339,7 +356,7 @@ public static class YtdImportParser
                 continue;
             }
 
-            if (name == HrdfHeader) { columns[i] = new(nameof(YtdMonthAmounts.Hrdf), false); continue; }
+            if (HrdfColumns.Contains(name)) { columns[i] = new(nameof(YtdMonthAmounts.Hrdf), false); continue; }
             if (name == ZakatHeader) { columns[i] = new(nameof(YtdMonthAmounts.Zakat), false); continue; }
             if (name == Cp38Header) { columns[i] = new(nameof(YtdMonthAmounts.Cp38), false); continue; }
 

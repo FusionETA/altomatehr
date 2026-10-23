@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: b07ef3e
+// whats-new-covered-up-to: dc574d4
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -27,6 +27,13 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: each person's adjustments on a payroll run now have an Employer HRDF levy box. Blank keeps the computed levy, shown greyed; any amount, 0 included, replaces it.",
       "The levy is an employer cost only, so the employee's pay doesn't change. The run's adjustments list shows it as \"HRDF levy RM x\".",
       "Re-run payroll after changing it. Only the months where you type a levy are affected.",
+    ],
+    improved: [
+      "Admins: an imported month can no longer be reverted to draft. To correct it, import the file again under Import earlier payroll.",
+    ],
+    fixed: [
+      "Admins: earlier payroll imports now read HRDF columns with other names, such as \"Employer HRDF Levy\". Those months showed HRDF 0; import the file again to fix them.",
+      "Admins: reverting an earlier month no longer sends a later imported month back to draft, where its figures could be overwritten.",
     ],
   },
   {
