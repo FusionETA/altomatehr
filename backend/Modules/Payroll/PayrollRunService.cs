@@ -412,7 +412,10 @@ public class PayrollRunService : IPayrollRunService
             list.Add(new PayrollPickerMemberDto
             {
                 EmployeeProfileId = profile.Id,
-                Name = users.TryGetValue(profile.UserId, out var user) ? user.Name : string.Empty,
+                // A picker, so the nickname helps find them ("Ahmad (Mat)").
+                Name = users.TryGetValue(profile.UserId, out var user)
+                    ? PersonName.WithNickname(user.Name, membership?.Nickname)
+                    : string.Empty,
                 EmployeeId = membership?.EmployeeNumber ?? string.Empty,
                 JobTitle = membership?.JobTitle ?? string.Empty,
                 TakenByRunId = taken.GetValueOrDefault(profile.Id)?.Id,

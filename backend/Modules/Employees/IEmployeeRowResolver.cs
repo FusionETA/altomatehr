@@ -55,6 +55,13 @@ public sealed class EmployeeRowIndex
 
     public string NameOf(string? id) => ById(id)?.Name ?? string.Empty;
 
+    // For screens: the legal name with the nickname beside it ("Ahmad (Mat)").
+    // Imports and exports keep NameOf — the legal name is what they match on.
+    public string DisplayNameOf(string? id) =>
+        ById(id) is { } person && !string.IsNullOrWhiteSpace(person.Name)
+            ? Common.PersonName.WithNickname(person.Name, person.Nickname)
+            : string.Empty;
+
     // Email first (unambiguous), then name. Ambiguous=true means the name
     // matched more than one person and the caller must reject the row.
     public (string? Id, bool Ambiguous) Resolve(string? email, string? name)
@@ -85,7 +92,7 @@ public sealed class EmployeeRowIndex
     }
 }
 
-public sealed record EmployeeIdentity(string Id, string Email, string Name, string Role);
+public sealed record EmployeeIdentity(string Id, string Email, string Name, string Role, string? Nickname = null);
 
 // The identity columns every importer shares, and the fact that they SUBSTITUTE
 // for one another: email is preferred (unambiguous), but a file exported from

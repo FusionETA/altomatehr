@@ -24,4 +24,15 @@ public class PersonNameTests
     [Fact]
     public void TrimsWhatItReturns() =>
         Assert.Equal("Aisyah", PersonName.Display("  Aisyah ", null));
+
+    // A nickname rides beside the legal name, never instead of it — and only
+    // when it adds something.
+    [Theory]
+    [InlineData("Ahmad bin Ali", "Mat", "Ahmad bin Ali (Mat)")]
+    [InlineData("Ahmad bin Ali", "  Mat ", "Ahmad bin Ali (Mat)")]
+    [InlineData("Ahmad bin Ali", null, "Ahmad bin Ali")]
+    [InlineData("Ahmad bin Ali", "", "Ahmad bin Ali")]
+    [InlineData("Mat", "mat", "Mat")]
+    public void ShowsTheNicknameBesideTheName(string name, string? nickname, string expected) =>
+        Assert.Equal(expected, PersonName.WithNickname(name, nickname));
 }

@@ -285,7 +285,7 @@ public class AdminOverviewService : IAdminOverviewService
     {
         if (string.IsNullOrWhiteSpace(userId)) return "Unassigned";
 
-        var name = directory.NameOf(userId);
+        var name = directory.DisplayNameOf(userId);
         if (!string.IsNullOrWhiteSpace(name)) return name;
 
         var email = directory.EmailOf(userId);

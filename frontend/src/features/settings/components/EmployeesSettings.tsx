@@ -217,6 +217,7 @@ export function EmployeesSettings() {
       if (!query) return true;
       return [
         emp.name,
+        emp.nickname,
         emp.email,
         emp.employeeNumber,
         emp.jobTitle,
@@ -690,7 +691,7 @@ function EmployeeRows({
                 <td className={TD_FIRST}>
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">
-                      {personName(emp.name, emp.email)}
+                      {personName(emp.name, emp.email, undefined, emp.nickname)}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {[emp.jobTitle, emp.employeeNumber].filter(Boolean).join(" · ") || emp.email}

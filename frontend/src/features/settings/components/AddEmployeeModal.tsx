@@ -49,6 +49,7 @@ export function AddEmployeeModal({
       .catch(() => setNextNumber(null));
   }, []);
   const [jobTitle, setJobTitle] = useState("");
+  const [nickname, setNickname] = useState("");
   const [joinDate, setJoinDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,6 +84,7 @@ export function AddEmployeeModal({
         name: name.trim() || undefined,
         employeeNumber: employeeNumber.trim() || undefined,
         jobTitle: jobTitle.trim() || undefined,
+        nickname: nickname.trim() || undefined,
         joinDate: joinDate || undefined,
         dateOfBirth: dateOfBirth || undefined,
         sendWelcomeEmail: sendWelcome,
@@ -173,6 +175,20 @@ export function AddEmployeeModal({
                   placeholder="Optional"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="add-nickname" className={LABEL}>
+                Nickname
+              </label>
+              <input
+                id="add-nickname"
+                className={INPUT}
+                maxLength={60}
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Optional — what colleagues call them"
+              />
             </div>
 
             <div className="space-y-2">

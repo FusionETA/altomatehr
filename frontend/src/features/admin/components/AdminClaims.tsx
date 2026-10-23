@@ -72,7 +72,12 @@ export function AdminClaims() {
     const employees = employeesQuery.data ?? [];
     setEmployeeEmails(new Map(employees.map((employee) => [employee.id, employee.email])));
     setEmployeeNames(
-      new Map(employees.map((employee) => [employee.id, personName(employee.name, employee.email)])),
+      new Map(
+        employees.map((employee) => [
+          employee.id,
+          personName(employee.name, employee.email, undefined, employee.nickname),
+        ]),
+      ),
     );
   }, [employeesQuery.data]);
   useEffect(() => {

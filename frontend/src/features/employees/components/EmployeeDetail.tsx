@@ -160,6 +160,7 @@ type Placement = {
   email: string;
   employeeNumber: string;
   jobTitle: string;
+  nickname: string;
   joinDate: string;
 };
 
@@ -285,6 +286,7 @@ export function EmployeeDetail({
     email: employee.email,
     employeeNumber: employee.employeeNumber ?? "",
     jobTitle: employee.jobTitle ?? "",
+    nickname: employee.nickname ?? "",
     joinDate: employee.joinDate?.slice(0, 10) ?? "",
   };
   const [placement, setPlacement] = useState<Placement>(initialPlacement);
@@ -836,6 +838,7 @@ export function EmployeeDetail({
         email: placement.email.trim() || employee.email,
         employeeNumber: placement.employeeNumber.trim(),
         jobTitle: placement.jobTitle.trim(),
+        nickname: placement.nickname.trim(),
         joinDate: blank(placement.joinDate),
       });
       // The whole profile goes back: PUT replaces the record, so a partial
@@ -927,7 +930,11 @@ export function EmployeeDetail({
         <div className="flex flex-wrap items-center gap-4">
           <div className="min-w-0 flex-1 basis-full sm:basis-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-black text-foreground sm:text-xl">{name}</h2>
+              <h2 className="truncate text-lg font-black text-foreground sm:text-xl">
+                {placement.nickname.trim() && placement.nickname.trim().toLowerCase() !== name.toLowerCase()
+                  ? `${name} (${placement.nickname.trim()})`
+                  : name}
+              </h2>
               {placement.employeeNumber.trim() ? (
                 <span className="text-sm font-semibold text-muted-foreground">
                   {placement.employeeNumber}
@@ -1116,6 +1123,15 @@ export function EmployeeDetail({
                     <Text
                       value={placement.name}
                       onChange={(v) => setPlacement((p) => ({ ...p, name: v ?? "" }))}
+                    />
+                  </Field>
+                  <Field
+                    label="Nickname"
+                    hint="What colleagues call them. Shown beside the full name across the app; payslips, statutory files and letters keep the full name."
+                  >
+                    <Text
+                      value={placement.nickname}
+                      onChange={(v) => setPlacement((p) => ({ ...p, nickname: v ?? "" }))}
                     />
                   </Field>
                   <Field label="Email">

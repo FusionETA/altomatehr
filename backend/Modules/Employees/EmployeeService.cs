@@ -155,6 +155,7 @@ public class EmployeeService : IEmployeeService
                 ? dto.EmployeeNumber.Trim()
                 : OrgRoles.IsOnPayroll(role) ? await NextEmployeeNumberAsync() : null,
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
+            Nickname = string.IsNullOrWhiteSpace(dto.Nickname) ? null : dto.Nickname.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
@@ -318,6 +319,11 @@ public class EmployeeService : IEmployeeService
             membership.JobTitle = dto.JobTitle.Trim() is { Length: > 0 } title ? title : null;
         }
 
+        if (dto.Nickname is not null)
+        {
+            membership.Nickname = dto.Nickname.Trim() is { Length: > 0 } nick ? nick : null;
+        }
+
         // Setting or correcting the join date changes how much pro-rated leave
         // this person has earned, and nothing else would ever recalculate it —
         // the monthly cron only ever ADDS, never re-derives. Production hooks
@@ -437,6 +443,7 @@ public class EmployeeService : IEmployeeService
         Role = m.Role,
         EmployeeNumber = m.EmployeeNumber,
         JobTitle = m.JobTitle,
+        Nickname = m.Nickname,
         OtTimeBalanceMin = m.OtTimeBalanceMin,
         PolicyId = m.PolicyId,
         ShiftId = m.ShiftId,

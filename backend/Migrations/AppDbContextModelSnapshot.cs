@@ -1567,6 +1567,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
 
+                    b.Property<string>("Nickname")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)

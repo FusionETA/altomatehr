@@ -61,9 +61,17 @@ public class SupervisionService : ISupervisionService
         var wanted = userIds.ToHashSet();
         if (wanted.Count == 0) return new Dictionary<string, string>();
         var users = await _directory.GetUsersAsync();
+        // Shown on screens (lists, approvals, notifications), so the nickname
+        // rides along: "Ahmad bin Ali (Mat)".
+        var nicknames = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => !string.IsNullOrWhiteSpace(m.Nickname))
+            // A background job has no current org, so one person can appear
+            // once per company — never let that throw.
+            .GroupBy(m => m.UserId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Nickname, StringComparer.Ordinal);
         return users
             .Where(u => wanted.Contains(u.Id) && !string.IsNullOrWhiteSpace(u.Name))
-            .ToDictionary(u => u.Id, u => u.Name.Trim());
+            .ToDictionary(u => u.Id, u => PersonName.WithNickname(u.Name.Trim(), nicknames.GetValueOrDefault(u.Id)));
     }
 
     public bool IsOrgApprover(string? role) => OrgRoles.IsAdministrative(role);

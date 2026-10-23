@@ -24,8 +24,12 @@ export function personName(
   name: string | null | undefined,
   email: string | null | undefined,
   fallback = "Employee",
+  // Shown beside the name — "Ahmad bin Ali (Mat)" — never instead of it.
+  nickname?: string | null,
 ) {
-  return name?.trim() || email?.trim() || fallback;
+  const shown = name?.trim() || email?.trim() || fallback;
+  const nick = nickname?.trim();
+  return nick && nick.toLowerCase() !== shown.toLowerCase() ? `${shown} (${nick})` : shown;
 }
 
 // The claim figures on the employee dashboard.
