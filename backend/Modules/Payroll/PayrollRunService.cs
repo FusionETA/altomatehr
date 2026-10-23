@@ -493,7 +493,7 @@ public class PayrollRunService : IPayrollRunService
         // replace the previous system's figures with today's calculation.
         if (run.Source == PayrollRunSource.IMPORTED)
         {
-            return new PayrollRunGenerateResult(false, null, ImportedRevertRefusal);
+            return new PayrollRunGenerateResult(false, null, ImportedGenerateRefusal);
         }
 
         var settings = await _settings.GetEffectiveAsync();
@@ -1013,6 +1013,10 @@ public class PayrollRunService : IPayrollRunService
 
     private const string ImportedRevertRefusal =
         "This month was imported from your previous payroll system, so it can't go back to draft. "
+        + "To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month.";
+
+    private const string ImportedGenerateRefusal =
+        "This month was imported from your previous payroll system, so payroll can't be run on it. "
         + "To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month.";
 
     public async Task<IReadOnlyList<string>> GetRevertImpactAsync(string id)
