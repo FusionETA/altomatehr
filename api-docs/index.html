@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: dc574d4
+  api-docs-covered-up-to: 5016471
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -192,6 +192,12 @@
         endpoints take the profile id; each endpoint page says which one it needs.</li>
       <li><strong>Enums</strong> are strings, such as <code>"DRAFT"</code> or
         <code>"MONTHLY"</code>.</li>
+      <li><strong>Names</strong>: <code>name</code> on <code>/employees</code> is always the legal
+        name. Where an endpoint returns a person's name for display (the leave, claims, overtime
+        and attendance lists, the admin attendance audit and the payroll run picker), a
+        <a href="employees.html#create-employee">nickname</a>, if one is set, is appended:
+        <code>"Jane Tan (JT)"</code>. Don't match people on those fields; use ids or
+        <code>GET /employees</code>. Payslips and statutory files always use the legal name.</li>
       <li><strong>Money</strong> is a number with two decimal places, in Malaysian ringgit.</li>
       <li><strong>Dates</strong> are ISO 8601. A payroll month is given as
         <code>periodYear</code> + <code>periodMonth</code> (1–12).</li>

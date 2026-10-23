@@ -193,7 +193,7 @@
               <tr><td><code>policies[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>policies[].isDefault</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>policies[].members[].employeeProfileId</code></td><td>string</td><td>What <a href="#create">create</a> and every adjustment/claim route take as the employee id.</td></tr>
-              <tr><td><code>policies[].members[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].members[].name</code></td><td>string</td><td>The legal name with the <a href="employees.html">nickname</a> appended, <code>"Name (Nickname)"</code>, when one is set, to help find the person. Payslips use the legal name only.</td></tr>
               <tr><td><code>policies[].members[].employeeId</code></td><td>string</td><td>The org's own employee number.</td></tr>
               <tr><td><code>policies[].members[].jobTitle</code></td><td>string</td><td></td></tr>
               <tr><td><code>policies[].members[].takenByRunId</code></td><td>string or null</td><td>Id of the other run this month the employee is already in &mdash; as a payslip once that run has been generated, otherwise on its roster. <code>null</code> when free, and always <code>null</code> without <code>year</code> and <code>month</code>. A person who is taken is dropped from a new run even if you send them.</td></tr>

@@ -119,7 +119,7 @@
             <tr><td><code>id</code></td><td>string</td><td>Request id.</td></tr>
             <tr><td><code>employeeId</code></td><td>string</td><td>The employee's <strong>user id</strong> (the id from <code>/employees</code>), not the payroll profile id.</td></tr>
             <tr><td><code>employeeEmail</code></td><td>string | null</td><td>Filled only by <a href="#get-overtime-team">/overtime/team</a> and <a href="#get-overtime-all">/overtime/all</a>; null on every other endpoint.</td></tr>
-            <tr><td><code>employeeName</code></td><td>string | null</td><td>The person's name from the directory; null when none is set or on the endpoints above that don't fill it.</td></tr>
+            <tr><td><code>employeeName</code></td><td>string | null</td><td>The person's name from the directory, with the <a href="employees.html">nickname</a> appended, <code>"Name (Nickname)"</code>, when one is set; null when no name is set or on the endpoints above that don't fill it. <code>reviewerName</code> follows the same rule.</td></tr>
             <tr><td><code>projectId</code></td><td>string | null</td><td>The project the overtime was worked on, if any.</td></tr>
             <tr><td><code>workDate</code></td><td>string</td><td>The day worked, <code>"yyyy-MM-dd"</code>.</td></tr>
             <tr><td><code>startAt</code>, <code>endAt</code></td><td>string (ISO 8601, UTC)</td><td>When the overtime started and ended.</td></tr>

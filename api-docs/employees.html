@@ -109,6 +109,7 @@
               <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code> — in this org.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string | null</td><td>Staff/payroll number in this org.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>nickname</code></td><td>string | null</td><td>What colleagues call them in this org, e.g. <code>"JT"</code>. Per company (it belongs to the membership, not the user). <code>name</code> above stays the legal name; other endpoints that return a display name append the nickname as <code>"Name (Nickname)"</code>.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>First day of work in this org.</td></tr>
               <tr><td><code>otTimeBalanceMin</code></td><td>number</td><td>Banked overtime time-off, in minutes.</td></tr>
               <tr><td><code>policyId</code></td><td>string | null</td><td>Leave/attendance policy, if not the org default.</td></tr>
@@ -145,6 +146,7 @@
               <tr><td><code>name</code></td><td>string</td><td>Only for a new account</td><td>Max 160 chars. Ignored when reusing an existing identity.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string</td><td>No</td><td>Max 40 chars. Payroll's statutory files key on it. When blank, an <code>Employee</code> or <code>Supervisor</code> is assigned the next number in the company's own pattern (see <a href="#next-number">GET /employees/next-number</a>); an <code>Admin</code> or <code>Owner</code> gets none, as they are not on payroll.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string</td><td>No</td><td>Max 120 chars.</td></tr>
+              <tr><td><code>nickname</code></td><td>string</td><td>No</td><td>Max 60 chars. Trimmed; blank is stored as none. Applies to this company only, even when the email already belongs to someone at another company.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date)</td><td>No</td><td>Drives pro-rated leave accrual.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted.</td></tr>
               <tr><td><code>policyId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
@@ -216,9 +218,9 @@
         <p>Change a member's role, supervisor-layer placement, or roster basics. <code>{id}</code> is the user id.</p>
         <div class="callout">
           <strong>Patch semantics, not replace:</strong> <code>null</code> on
-          <code>name</code>, <code>email</code>, <code>employeeNumber</code>, <code>jobTitle</code>
-          or <code>joinDate</code> means "leave unchanged" — omit a field rather than send
-          <code>null</code> to clear it. <code>employeeNumber</code>/<code>jobTitle</code> accept
+          <code>name</code>, <code>email</code>, <code>employeeNumber</code>, <code>jobTitle</code>,
+          <code>nickname</code> or <code>joinDate</code> means "leave unchanged" — omit a field rather than send
+          <code>null</code> to clear it. <code>employeeNumber</code>/<code>jobTitle</code>/<code>nickname</code> accept
           <code>""</code> to clear them on purpose. <code>joinDate</code> needs
           <code>clearJoinDate: true</code> to be cleared, since <code>null</code> there is
           "unchanged". <code>role</code>, <code>policyId</code>/<code>shiftId</code> and
@@ -233,6 +235,7 @@
               <tr><td><code>email</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged; rejected if another user already has it.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string | null</td><td>No</td><td>Max 40 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
+              <tr><td><code>nickname</code></td><td>string | null</td><td>No</td><td>Max 60 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>No</td><td><code>null</code> = unchanged. Recomputes pro-rated leave accrual when it actually changes.</td></tr>
               <tr><td><code>clearJoinDate</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>. Wins over <code>joinDate</code>.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code>. Always replaced — resend the current value to leave it as is.</td></tr>
@@ -898,6 +901,7 @@
               <tr><td>Employee No</td><td>Yes</td><td>Can't be erased.</td></tr>
               <tr><td>Date of Birth</td><td>Yes</td><td>First password = email + birthday as <code>MMDD</code>.</td></tr>
               <tr><td>Job Title, Join Date, Policy, Shift</td><td>No</td><td>Policy/Shift are matched by <strong>name</strong>, not id.</td></tr>
+              <tr><td>Nickname</td><td>No</td><td>Aliases: <code>preferred name</code>, <code>known as</code>, <code>nick name</code>. Longer text is cut to 60 characters. In the template and the export, in the "Employee" group beside Name. A blank cell clears an existing nickname when <code>blankCells</code> is <code>Erase</code>; with <code>Keep</code> it's left alone.</td></tr>
               <tr><td>Salary Type, Contribute to EPF, Contribute to EIS</td><td>Default applies</td><td>Can't be erased (reset to their default instead: <code>MONTHLY</code> / <code>Yes</code> / <code>Yes</code>).</td></tr>
             </tbody>
           </table>
