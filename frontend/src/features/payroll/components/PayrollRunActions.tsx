@@ -231,7 +231,9 @@ export function PayrollRunActions({
           </>
         ) : null}
 
-        {run.status === "SUBMITTED" ? (
+        {/* An imported month is the previous system's history: it is corrected
+            by re-importing it, never reverted (the server refuses that too). */}
+        {run.status === "SUBMITTED" && run.source !== "IMPORTED" ? (
           <button
             type="button"
             className={BUTTON_DANGER}
@@ -243,6 +245,13 @@ export function PayrollRunActions({
           </button>
         ) : null}
       </div>
+
+      {run.status === "SUBMITTED" && run.source === "IMPORTED" ? (
+        <p className={HINT}>
+          Imported from your previous payroll system. To correct this month, import it again under
+          “Import earlier payroll” at the foot of the Payroll runs page — that replaces it.
+        </p>
+      ) : null}
 
       {run.status === "DRAFT" ? (
         <label htmlFor="skipProration" className="flex cursor-pointer items-start gap-3">

@@ -945,6 +945,17 @@ public class PayrollRunService : IPayrollRunService
                 false, null, [], "Only a submitted run can be reverted to draft.");
         }
 
+        // An imported month is history from the previous system, not a run
+        // this one computed. Back in draft it would leave every later month's
+        // year-to-date with a hole, cascade through the year, and a re-run
+        // would replace the old system's figures with today's. Re-importing
+        // is how it's corrected — the YTD import replaces imported months.
+        if (run.Source == PayrollRunSource.IMPORTED)
+        {
+            return new PayrollRunRevertResult(
+                false, null, [], ImportedRevertRefusal);
+        }
+
         // THE cascade. Every later submitted month in the same year carries
         // YTD-cumulative figures — PCB's annualisation, the SOCSO/EIS relief —
         // computed off this month. Reverting this one alone would leave them
@@ -993,10 +1004,15 @@ public class PayrollRunService : IPayrollRunService
         run.ApprovalRejectionReason = null;
     }
 
+    private const string ImportedRevertRefusal =
+        "This month was imported from your previous payroll system, so it can't go back to draft. "
+        + "To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month.";
+
     public async Task<IReadOnlyList<string>> GetRevertImpactAsync(string id)
     {
         var run = await _runs.GetByIdAsync(id);
-        if (run is null || run.Status != PayrollRunStatus.SUBMITTED) return [];
+        if (run is null || run.Status != PayrollRunStatus.SUBMITTED
+            || run.Source == PayrollRunSource.IMPORTED) return [];
 
         return (await LaterRunsSharingPeopleAsync(run)).Select(RunLabel).ToList();
     }

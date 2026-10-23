@@ -639,6 +639,26 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Contains("TAN", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    // An imported month is the previous system's history. Reverting it would
+    // leave the year-to-date with a hole and cascade through later months; it
+    // is corrected by importing it again instead.
+    [Fact]
+    public async Task AnImportedMonth_CannotBeRevertedToDraft()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);
+        var stored = await _runs.GetByIdAsync(run.Id);
+        stored!.Source = PayrollRunSource.IMPORTED;
+        await _db.SaveChangesAsync();
+
+        Assert.Empty(await _service.GetRevertImpactAsync(run.Id));
+        var result = await _service.RevertToDraftAsync(run.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains("Import earlier payroll", result.Error);
+        Assert.Equal(PayrollRunStatus.SUBMITTED, (await _runs.GetByIdAsync(run.Id))!.Status);
+    }
+
     // ─── LHDN receipts ──────────────────────────────────────────────────
 
     [Fact]
