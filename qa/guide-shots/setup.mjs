@@ -88,6 +88,19 @@ async function profileIdOf(name) {
   return row.employeeProfileId;
 }
 
+// Sets (or, with "", clears) an employee's nickname in the demo company. The
+// update replaces role/policy/shift, so they are sent back as they were.
+async function setNickname(userId, nickname) {
+  const t = await demoAdmin();
+  const list = (await call(t, "GET", "/employees")).data ?? [];
+  const e = list.find((x) => x.id === userId);
+  if (!e) throw new Error(`no ${userId} in the demo company`);
+  const r = await call(t, "PUT", `/employees/${userId}`, {
+    role: e.role, policyId: e.policyId, shiftId: e.shiftId, modules: e.modules, nickname,
+  });
+  console.log("nickname", userId, JSON.stringify(nickname), "→", r.status);
+}
+
 const steps = {
   // Two foreign workers with permits for the Executive Overview "Work permits"
   // card and the profile's work permit fields: one expired, one due soon.
@@ -376,6 +389,15 @@ const steps = {
       notes: "Moving to the Penang office",
     });
     console.log("queue transfer:", r.status, r.data?.transfer?.status ?? JSON.stringify(r.data));
+  },
+
+  // A nickname on two demo employees so the employee list and the record show
+  // "Full name (Nickname)". Rerunnable; `nicknames-remove` clears them again.
+  "nicknames": async () => {
+    for (const [id, nick] of [["usr-demo-mei", "Mei"], ["usr-demo-aisyah", "Ica"], ["usr-demo-arjun", "Arj"]]) await setNickname(id, nick);
+  },
+  "nicknames-remove": async () => {
+    for (const id of ["usr-demo-mei", "usr-demo-aisyah", "usr-demo-arjun"]) await setNickname(id, "");
   },
 
   // Cancels the queued demo transfer again (after the shots).

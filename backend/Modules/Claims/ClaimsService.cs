@@ -1622,9 +1622,11 @@ public class ClaimsService : IClaimsService
         foreach (var claim in claims)
         {
             claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
-            claim.EmployeeName = string.IsNullOrWhiteSpace(directory.NameOf(claim.EmployeeId))
+            // On screen, so with the nickname ("Ahmad (Mat)") — EmployeeName
+            // is display-only (NotMapped); the claims files keep NameOf.
+            claim.EmployeeName = string.IsNullOrWhiteSpace(directory.DisplayNameOf(claim.EmployeeId))
                 ? null
-                : directory.NameOf(claim.EmployeeId).Trim();
+                : directory.DisplayNameOf(claim.EmployeeId).Trim();
             if (claim.Status != ClaimStatus.PENDING) continue;
 
             var approvers = approversByKey.GetValueOrDefault(

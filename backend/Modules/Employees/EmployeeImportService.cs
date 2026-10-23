@@ -145,6 +145,7 @@ public class EmployeeImportService : IEmployeeImportService
                 [EmployeeImportSheet.RoleKey] = employee.Role,
                 [EmployeeImportSheet.EmployeeNumberKey] = employee.EmployeeNumber,
                 [EmployeeImportSheet.JobTitleKey] = employee.JobTitle,
+                [EmployeeImportSheet.NicknameKey] = employee.Nickname,
                 [EmployeeImportSheet.JoinDateKey] = TabularSheet.Date(employee.JoinDate ?? p.JoinDate),
                 [EmployeeImportSheet.DateOfBirthKey] = TabularSheet.Date(p.DateOfBirth),
                 // Names, not ids, because that is what the import reads back.
@@ -378,6 +379,7 @@ public class EmployeeImportService : IEmployeeImportService
                 Role = adding.Text(EmployeeImportSheet.RoleKey, 20) ?? "Employee",
                 EmployeeNumber = number,
                 JobTitle = adding.Text(EmployeeImportSheet.JobTitleKey, 120),
+                Nickname = adding.Text(EmployeeImportSheet.NicknameKey, 60),
                 JoinDate = joinDate,
                 DateOfBirth = dateOfBirth,
                 PolicyId = policyId,
@@ -455,6 +457,7 @@ public class EmployeeImportService : IEmployeeImportService
         cells.Required(EmployeeImportSheet.EmployeeNumberKey, "Employee No", 40, v => save.EmployeeNumber = v);
         // The service reads "" as "clear" for these two, null as "unchanged".
         cells.Text(EmployeeImportSheet.JobTitleKey, 120, v => save.JobTitle = v ?? string.Empty);
+        cells.Text(EmployeeImportSheet.NicknameKey, 60, v => save.Nickname = v ?? string.Empty);
         cells.Date(EmployeeImportSheet.JoinDateKey, v =>
         {
             if (v is null) save.ClearJoinDate = true;
@@ -591,7 +594,7 @@ public class EmployeeImportService : IEmployeeImportService
         [
             EmployeeImportSheet.EmailKey, EmployeeImportSheet.NameKey, EmployeeImportSheet.RoleKey,
             EmployeeImportSheet.EmployeeNumberKey, EmployeeImportSheet.JobTitleKey,
-            EmployeeImportSheet.PolicyKey, EmployeeImportSheet.ShiftKey,
+            EmployeeImportSheet.NicknameKey, EmployeeImportSheet.PolicyKey, EmployeeImportSheet.ShiftKey,
         ];
 
         private static readonly string[] ProfileKeys =

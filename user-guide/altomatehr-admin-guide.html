@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: dc574d4
+  user-guide-covered-up-to: 5016471
 -->
 <html lang="en">
 <head>
@@ -721,7 +721,7 @@
     </ul>
     <h3>Adding people</h3>
     <ul>
-      <li><span class="btn-name">Add employee</span> — name, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
+      <li><span class="btn-name">Add employee</span> — name, an optional <strong>Nickname</strong>, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
         of birth, role and policy. The policy starts on your default one (or, if you're an admin who can't see the default, on your own first policy). Their <strong>starting password</strong> is
         their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
         Tick <em>Send a welcome email</em> to have it sent to them.</li>
@@ -734,7 +734,8 @@
           <li><strong>Step 2</strong> — choose what a blank cell does: <em>Keep existing values</em> (the safe default —
             a partly filled file can't wipe anything) or <em>Erase existing values</em> (use only when the file is the
             full, up-to-date record; you're asked to confirm, and Name, Role, Employee No, Salary Type and EPF/EIS can't
-            be erased).</li>
+            be erased). The file has an optional <strong>Nickname</strong> column, next to Name; <span class="btn-name">Export</span>
+            includes it too.</li>
           <li><strong>Step 3</strong> — upload it. An email already in the company updates that person. Rows that
             were imported but need a look — for example a nationality it didn't recognise, kept as typed — are listed
             as warnings. New passwords are shown once — copy them then.</li>
@@ -772,7 +773,7 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
       <tbody>
-        <tr><td><strong>Personal</strong></td><td>Contact, identity (nationality is picked from a list), PR / tax resident /
+        <tr><td><strong>Personal</strong></td><td>Contact (<strong>Full name</strong> and <strong>Nickname</strong>), identity (nationality is picked from a list), PR / tax resident /
           OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
           the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
@@ -790,6 +791,37 @@
           <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
       </tbody>
     </table></div>
+    <h3>Nicknames</h3>
+    <p>Some people are known by a shorter name. Give them a <strong>Nickname</strong> and supervisors and
+      admins see it beside the full name wherever the app shows who someone is, for example
+      <em>Arjun Pillai (Arj)</em>. It never replaces the full name.</p>
+    <ol class="steps">
+      <li><h4>Set it</h4>
+        <p>Open the person, go to <strong>Personal</strong> and type it in <strong>Nickname</strong>, next to
+          <strong>Full name</strong>, then save. You can also set it when you press
+          <span class="btn-name">Add employee</span>, or fill the <strong>Nickname</strong> column in the
+          <span class="btn-name">Import</span> spreadsheet. Clear the box to remove it.</p></li>
+      <li><h4>Where it shows</h4>
+        <p>The employee list (you can search by nickname too), the leave, claims, overtime and attendance screens and
+          their approvals, the Executive Overview, and the list of people when you pick who to include in a payroll
+          run.</p></li>
+      <li><h4>Where it doesn't</h4>
+        <p>Payslips, statutory files, EA and other LHDN forms, bank files and HR letters always use the full name.
+          Matching people when you import a spreadsheet goes by the full name too, not the nickname.</p></li>
+    </ol>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-nickname.png" alt="An employee's Personal tab with Full name and Nickname side by side, the hint under Nickname, and the name in the header shown as Arjun Pillai (Arj)" loading="lazy">
+          <p class="shot-cap">Nickname on the Personal tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-nickname-list.png" alt="The employee list searched for a nickname, showing Aisyah Binti Rahman (Ica)" loading="lazy">
+          <p class="shot-cap">Searching the list by nickname</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">A nickname shows beside the full name</p>
+    </figure>
     <h3>Work permits</h3>
     <p>For a foreign worker, keep their Immigration work permit on file so a renewal isn't missed.</p>
     <ol class="steps">

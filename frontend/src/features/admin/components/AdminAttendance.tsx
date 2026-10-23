@@ -402,7 +402,7 @@ export function AdminAttendance() {
       new Map(
         (employeesQuery.data ?? [])
           .filter((e) => e.name.trim().length > 0)
-          .map((e) => [e.id, e.name] as const),
+          .map((e) => [e.id, personName(e.name, e.email, undefined, e.nickname)] as const),
       ),
     [employeesQuery.data],
   );

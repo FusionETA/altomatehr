@@ -26,6 +26,7 @@ public static class EmployeeImportSheet
     public const string RoleKey = "role";
     public const string EmployeeNumberKey = "employeeNumber";
     public const string JobTitleKey = "jobTitle";
+    public const string NicknameKey = "nickname";
     public const string JoinDateKey = "joinDate";
     public const string DateOfBirthKey = "dateOfBirth";
     public const string PolicyKey = "policy";
@@ -71,6 +72,8 @@ public static class EmployeeImportSheet
             "Needed for a new person — payroll files by it."),
         (new(JobTitleKey, "Job Title", false, "Site Engineer", ["position"]),
             "Free text."),
+        (new(NicknameKey, "Nickname", false, "Mat", ["preferred name", "known as", "nick name"]),
+            "What colleagues call them. Shown beside the name; payslips and forms keep the full name."),
         (new(JoinDateKey, "Join Date", false, "2026-01-15", ["start date", "date joined"]),
             "YYYY-MM-DD. Drives pro-rated leave and payroll."),
         (new(DateOfBirthKey, "Date of Birth", false, "1990-11-23", ["dob", "birth date", "birthday"]),
@@ -171,7 +174,7 @@ public static class EmployeeImportSheet
     // column cannot be added without deciding where people will find it.
     public static readonly IReadOnlyList<(string Group, string[] Keys)> Groups =
     [
-        ("Employee", [EmailKey, NameKey, RoleKey, EmployeeNumberKey, JobTitleKey, JoinDateKey, DateOfBirthKey, PolicyKey, ShiftKey]),
+        ("Employee", [EmailKey, NameKey, NicknameKey, RoleKey, EmployeeNumberKey, JobTitleKey, JoinDateKey, DateOfBirthKey, PolicyKey, ShiftKey]),
         ("Personal", ["idNumber", "idType", "nationality", "gender", "race", "maritalStatus", "hasPr", "isResident", "isOku",
             "workPermitNumber", "workPermitExpiry"]),
         ("Contact & address", ["phone", "alternateEmail", "addressLine1", "addressLine2", "city", "postcode", "state"]),

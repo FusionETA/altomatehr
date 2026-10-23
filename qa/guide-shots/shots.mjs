@@ -56,6 +56,17 @@ async function go(page, v) {
   await settle(page, 1500);
 }
 
+// Demo Admin belongs to several companies on this machine and sign-in can land
+// on any of them: move to the demo company before shooting.
+async function inDemoCo(page) {
+  const switcher = page.getByRole("button", { name: "Switch company" });
+  if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+    await switcher.click();
+    await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+    await settle(page, 2500);
+  }
+}
+
 async function shoot(page, group, name) {
   mkdirSync(`${OUT}${group}`, { recursive: true });
   await settle(page, 500);
@@ -363,6 +374,30 @@ const admin = {
     await page.getByRole("button", { name: "Account menu" }).click();
     await shoot(page, "admin", "layout-menu");
     await page.keyboard.press("Escape");
+  },
+  // Needs `node setup.mjs nicknames` (clear with `nicknames-remove`). The
+  // employee list, searched by a nickname: the person shows as "Full name (Nickname)".
+  "employee-nickname-list": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Ica");
+    await page.getByText("Aisyah Binti Rahman (Ica)").first().waitFor();
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-nickname-list");
+  },
+  // Personal tab, top: Full name with the Nickname field and its hint.
+  "employee-nickname": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Arj");
+    await page.getByText("Arjun Pillai (Arj)").first().click();
+    await settle(page);
+    await clickText(page, "Personal");
+    await page.getByText("Nickname", { exact: true }).first().waitFor();
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-nickname");
   },
   "manage-employee": async (page) => {
     await go(page, "company/manage-employee");

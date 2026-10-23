@@ -11,6 +11,8 @@ export type Employee = {
   role: string;
   employeeNumber: string | null;
   jobTitle: string | null;
+  /** What colleagues call them here; shown beside the name, never instead of it. */
+  nickname?: string | null;
   /** First day in THIS org. Drives pro-rated leave accrual. */
   joinDate: string | null;
   otTimeBalanceMin: number;
@@ -35,6 +37,7 @@ export type UpdateEmployee = {
   email?: string;
   employeeNumber?: string;
   jobTitle?: string;
+  nickname?: string;
   joinDate?: string | null;
   policyId?: string | null;
   shiftId?: string | null;
@@ -56,6 +59,7 @@ export const toUpdateEmployee = (employee: Employee): UpdateEmployee => ({
   email: employee.email,
   employeeNumber: employee.employeeNumber ?? undefined,
   jobTitle: employee.jobTitle ?? undefined,
+  nickname: employee.nickname ?? undefined,
   joinDate: employee.joinDate,
   policyId: employee.policyId,
   shiftId: employee.shiftId,
@@ -87,6 +91,7 @@ export type CreateEmployee = {
   name?: string;
   employeeNumber?: string;
   jobTitle?: string;
+  nickname?: string;
   joinDate?: string | null;
   role: string;
   policyId?: string | null;

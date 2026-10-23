@@ -317,6 +317,20 @@ public class EmployeeImportTests
         Assert.Equal("Safety Officer", Assert.Single(h.Employees.Updated).Dto.JobTitle);
     }
 
+    // A nickname column fills the membership's nickname; payslips and forms
+    // keep the legal name, so the Name sent is untouched.
+    [Fact]
+    public async Task ANicknameColumnIsImported()
+    {
+        var h = Make(Member("usr-1", "aisyah@example.com"));
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("aisyah@example.com", extra: [(EmployeeImportSheet.NicknameKey, "Ecah")])), TabularFormat.Csv);
+
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal("Ecah", Assert.Single(h.Employees.Updated).Dto.Nickname);
+    }
+
     // UpdateEmployeeDto writes policy, shift, modules and role unconditionally,
     // so they must be carried over, not left at the DTO's defaults.
     [Fact]

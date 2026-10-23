@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: dc574d4
+// whats-new-covered-up-to: 5016471
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -24,6 +24,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-23",
     new: [
+      "Admins: each employee can now have a Nickname, set per company next to their full name, in Add employee or in the import and export.",
+      "It shows beside the full name across the app, and the employee list searches it. Payslips, statutory files, EA forms, bank files and letters keep the full name.",
       "Admins: each person's adjustments on a payroll run now have an Employer HRDF levy box. Blank keeps the computed levy, shown greyed; any amount, 0 included, replaces it.",
       "The levy is an employer cost only, so the employee's pay doesn't change. The run's adjustments list shows it as \"HRDF levy RM x\".",
       "Re-run payroll after changing it. Only the months where you type a levy are affected.",

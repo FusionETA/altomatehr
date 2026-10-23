@@ -21,7 +21,7 @@ public class EmployeeRowResolver : IEmployeeRowResolver
 
         var identities = members
             .Select(m => usersById.TryGetValue(m.UserId, out var user)
-                ? new EmployeeIdentity(m.UserId, user.Email, user.Name, m.Role)
+                ? new EmployeeIdentity(m.UserId, user.Email, user.Name, m.Role, m.Nickname)
                 : null)
             .Where(i => i is not null)
             .Select(i => i!);

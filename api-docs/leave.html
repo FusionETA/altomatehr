@@ -130,7 +130,7 @@
             <tr><td><code>id</code></td><td>string</td><td>Application id.</td></tr>
             <tr><td><code>employeeId</code></td><td>string</td><td>The applicant's user id.</td></tr>
             <tr><td><code>employeeEmail</code></td><td>string | null</td><td>Filled only in <code>GET /leave/all</code>, <code>GET /leave/team</code> and <code>recentApplications</code>; <code>null</code> elsewhere.</td></tr>
-            <tr><td><code>employeeName</code></td><td>string | null</td><td>Same as <code>employeeEmail</code>; also <code>null</code> when the person has no name set.</td></tr>
+            <tr><td><code>employeeName</code></td><td>string | null</td><td>Same as <code>employeeEmail</code>; also <code>null</code> when the person has no name set. Shown as <code>"Name (Nickname)"</code> when the person has a <a href="employees.html">nickname</a>, otherwise the legal name.</td></tr>
             <tr><td><code>leaveTypeId</code></td><td>string</td><td>From <code>GET /leave-types</code>.</td></tr>
             <tr><td><code>startDate</code>, <code>endDate</code></td><td>string (date)</td><td>Inclusive.</td></tr>
             <tr><td><code>totalDays</code></td><td>number</td><td>Working days in the range under the company's working-week and public-holiday calendar (holidays from every year the range spans). A half day is <code>0.5</code> only when its date is a working day; on a weekend outside the company's working week or on a public holiday it counts <code>0</code>, and filing it is refused as "no working days".</td></tr>
@@ -486,7 +486,7 @@
             <tbody>
               <tr><td><code>userId</code></td><td>string</td><td>The user id.</td></tr>
               <tr><td><code>email</code></td><td>string</td><td></td></tr>
-              <tr><td><code>name</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>name</code></td><td>string | null</td><td>With the nickname appended, <code>"Name (Nickname)"</code>, when one is set.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td><code>Employee</code> or <code>Supervisor</code>. Admins and owners are not listed.</td></tr>
               <tr><td><code>balances</code></td><td>object[]</td><td>The leave balance shape, one per active leave type.</td></tr>
               <tr><td><code>teamId</code>, <code>teamName</code>, <code>projectId</code>, <code>projectName</code></td><td>string | null</td><td>Always <code>null</code> on this endpoint.</td></tr>
@@ -719,7 +719,7 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>employeeId</code></td><td>string</td><td>User id.</td></tr>
-              <tr><td><code>email</code>, <code>name</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>email</code>, <code>name</code></td><td>string | null</td><td><code>name</code> has the nickname appended, <code>"Name (Nickname)"</code>, when one is set.</td></tr>
               <tr><td><code>leaveTypeId</code>, <code>leaveTypeCode</code>, <code>leaveTypeName</code></td><td>string</td><td></td></tr>
               <tr><td><code>startDate</code>, <code>endDate</code></td><td>string (timestamp)</td><td>Midnight values such as <code>2026-03-02T00:00:00</code>.</td></tr>
               <tr><td><code>totalDays</code></td><td>number</td><td>Of the whole application, not just this day.</td></tr>
