@@ -225,6 +225,27 @@ public class EmployeeServiceTests
         Assert.True(unchanged.Ok, unchanged.Error);
     }
 
+    // Changing a login email then resetting the password is signing in as
+    // that person: an Admin can't do it to another Admin or to the Owner.
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Owner")]
+    public async Task An_admin_cannot_change_another_admin_s_or_the_owner_s_email(string role)
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        users.Add(User("usr-top", "top@altomate.com"));
+        memberships.Add(Membership("usr-top", role));
+
+        var result = await service.UpdateAsync("usr-top", new UpdateEmployeeDto
+        {
+            Role = role, Email = "taken-over@attacker.com",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("login email", result.Error);
+        Assert.Equal("top@altomate.com", users.Single(u => u.Id == "usr-top").Email);
+    }
+
     // An owner of every other company the login opens may change it.
     [Fact]
     public async Task The_owner_of_the_other_company_can_change_a_shared_login_s_email()

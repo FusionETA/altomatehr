@@ -280,10 +280,27 @@ public class EmployeeService : IEmployeeService
             // Re-sending the same address (the edit form always sends it) is
             // not a change, and must not trip the guard below.
             var current = await _users.GetByIdAsync(id);
-            if (current is not null
-                && !string.Equals(current.Email, newEmail, StringComparison.OrdinalIgnoreCase)
-                && await LoginEmailRule.RefusalAsync(_memberships, _currentUser, id) is { } refusal)
-                return new EmployeeSaveResult(false, null, refusal);
+            if (current is not null && !string.Equals(current.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                // Changing someone's login email, then resetting the password,
+                // is signing in as them — so the same rules as setting their
+                // password: an Owner's only through support, an Admin's only by
+                // the Owner. Your own is yours to change.
+                var self = string.Equals(id, _currentUser.UserId, StringComparison.Ordinal);
+                if (!self && !_currentUser.IsSupport)
+                {
+                    if (string.Equals(membership.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+                        return new EmployeeSaveResult(false, null,
+                            "An owner's login email can't be changed from here. Contact support.");
+                    if (OrgRoles.IsAdministrative(membership.Role)
+                        && !string.Equals(_currentUser.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+                        return new EmployeeSaveResult(false, null,
+                            "Only the organization's owner can change an admin's login email.");
+                }
+
+                if (await LoginEmailRule.RefusalAsync(_memberships, _currentUser, id) is { } refusal)
+                    return new EmployeeSaveResult(false, null, refusal);
+            }
         }
 
         // Name and email live on the global User. Patch semantics: null → leave
