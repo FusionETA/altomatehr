@@ -1163,7 +1163,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <code>Payroll_Summary_January_2026_Workers.pdf</code>,
         <code>ABPay {Company name} 2026-01 Workers.xlsx</code> &mdash; except the PCB (CP39) file, whose name is
         letters and digits only because the e-PCB upload refuses anything else: <code>{10-digit employer no}012026Workers.txt</code>.
-        This covers the statutory files, the bank file, the payslips ZIP, the documents bundle, the run
+        This covers the statutory files, the bank file, the payslips ZIP, the documents bundle, the statutory and allowance/deduction zips, the run
         summary, payment schedule, PCB details, allowance, deduction and manual-payment reports and the
         ABPay timesheet. The single payslip PDF and the TP1 documents are per employee and keep their names.
         A run's own documents (summary, payment schedule, and so on) head their pages with the run
@@ -1240,6 +1240,39 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/pcb \
   -H "Authorization: Bearer wp_live_xxx" -o pcb.txt</code></pre>
+      </section>
+
+      <section class="endpoint" id="file-statutory-zip">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/statutory</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The four statutory uploads above &mdash; EPF, SOCSO + EIS, SOCSO + EIS with SKBBK, and PCB (CP39) &mdash; in one zip, for the month-end filing.</p>
+        <p>The run must be approved and calculated here, as in the rest of this section: an unapproved run, or one imported from a previous system, answers <code>409</code>.</p>
+        <div class="callout warn">
+          <strong>A file that can't be produced is left out, not an error.</strong> A missing PERKESO Employer Code, a missing LHDN E-number or a non-numeric EPF number costs you that one file only; the rest still arrive. The same checks as the single-file routes apply &mdash; they just don't fail the request. Read the headers below to see what is missing. The reasons are not in a 200 response; call the single-file route for that file to read its message.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>Statutory_{Month}_{Year}.zip</code> (e.g. <code>Statutory_January_2026.zip</code>; a named run adds its <a href="#run-files">tag</a>). Inside, each file keeps the name it has when downloaded on its own, in the order EPF, SOCSO + EIS, SOCSO + EIS (SKBBK), PCB. Two extra headers:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Bundle-File-Count</code></td><td>How many files are in the zip (1 to 4).</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of files left out, from <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was left out.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Browsers calling from another origin can read both headers and <code>Content-Disposition</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> &mdash; no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; the run is not approved, or was imported from a previous system.</li>
+          <li><code>409</code> <code>{ "error": "None of the statutory files could be produced for this run. Each file's reason is listed with it.", "skipped": { "epf": "…", "socso-eis": "…", "socso-eis-skbbk": "…", "pcb": "…" } }</code> &mdash; none of the four could be produced. <code>skipped</code> maps each file's key to why. An empty zip is never returned.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/statutory \
+  -H "Authorization: Bearer wp_live_xxx" -D - -o statutory.zip</code></pre>
       </section>
     </section>
 
@@ -1527,6 +1560,35 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/deductions \
   -H "Authorization: Bearer wp_live_xxx" -o deductions.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="doc-allowances-deductions">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/allowances-deductions</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The <a href="#doc-allowances">Allowance report</a> and the <a href="#doc-deductions">Deduction report</a> in one zip. Same rules as the <a href="#file-statutory-zip">statutory zip</a>: the run must be approved and calculated here, and a report that can't be produced is left out rather than failing the request.</p>
+        <p>A run with only one of the two zips that one and names the other in <code>X-Bundle-Skipped</code> (for example a run with no allowances).</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>Allowance_Deduction_Reports_{Month}_{Year}.zip</code> (a named run adds its <a href="#run-files">tag</a>). Inside, the workbooks keep the names they have when downloaded on their own (<code>Allowance_Report_&hellip;.xlsx</code>, <code>Deduction_Report_&hellip;.xlsx</code>). Two extra headers:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Bundle-File-Count</code></td><td>How many reports are in the zip (1 or 2).</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of reports left out, from <code>allowances</code>, <code>deductions</code>. Omitted entirely when nothing was left out.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> &mdash; no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; the run is not approved, or was imported from a previous system.</li>
+          <li><code>409</code> <code>{ "error": "No allowances on this run, and no deductions other than EPF, SOCSO, EIS and PCB.", "skipped": { "allowances": "…", "deductions": "…" } }</code> &mdash; neither report has anything to show. An empty zip is never returned.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/allowances-deductions \
+  -H "Authorization: Bearer wp_live_xxx" -D - -o reports.zip</code></pre>
       </section>
 
       <section class="endpoint" id="doc-bank-file">

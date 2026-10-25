@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 5016471
+// whats-new-covered-up-to: dca207e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,19 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-25",
+    new: [
+      "Admins: Payroll → Run downloads has a new \"Download EPF, SOCSO & PCB (zip)\" button for the four statutory files. A file that isn't ready is left out, and its row says why.",
+      "Admins: Settings → Admins now shows each admin's and the owner's email under their name. The owner can also Edit an admin's name and login email.",
+    ],
+    improved: [
+      "Admins: in Payroll → Run downloads, the Allowance and Deduction reports are now one row, \"Allowance & Deduction Reports (ZIP)\", giving both Excel files in one zip.",
+      "Admins: if a run has only one of the two reports, the zip holds that one and says which is missing.",
+      "Admins: you can't change a login email if that login also opens a company you don't own, on the employee edit or the Admins page. Altomate support still can.",
+      "Admins: only the owner can change an admin's login email, and another owner's only through Altomate support.",
+    ],
+  },
   {
     date: "2026-10-23",
     new: [

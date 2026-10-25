@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 5016471
+  user-guide-covered-up-to: dca207e
 -->
 <html lang="en">
 <head>
@@ -544,9 +544,14 @@
           saying so.</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
-          an owner's access can't be restricted. Each admin row shows a one-line summary (for example
-          <em>5 modules (3 view only) · 1 policy · no settings</em>) and two buttons:</p>
+          an owner's access can't be restricted. Each admin row shows their name with their login email underneath, a one-line summary (for example
+          <em>5 modules (3 view only) · 1 policy · no settings</em>) and three buttons:</p>
         <ul>
+          <li><span class="btn-name">Edit</span> — opens <strong>Edit admin</strong> to change their
+            <strong>Name</strong> and <strong>Email</strong>, then <span class="btn-name">Save</span>. The email is the one
+            they sign in with, and it changes in every company they belong to. If that login also opens a company you
+            don't own, the email can't be changed here and the dialog tells you to ask Altomate support; the name can
+            still be changed.</li>
           <li><span class="btn-name">Manage access</span> — opens a dialog with three tabs, then
             <span class="btn-name">Save</span>:
             <ul>
@@ -576,8 +581,12 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/admins-list.png" alt="System Settings → Admins: the owner marked full access, and an admin row with Manage access and Remove buttons" loading="lazy">
+          <img src="shots/admin/admins-list.png" alt="System Settings → Admins: the owner marked full access, and two admin rows, each with the login email under the name and Edit, Manage access and Remove buttons" loading="lazy">
           <p class="shot-cap">Admins</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/admins-edit.png" alt="The Edit admin dialog with the Name and Email boxes, a note that the email changes in every company they belong to, and Cancel and Save" loading="lazy">
+          <p class="shot-cap">Edit admin</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/admins-access-modules.png" alt="The Manage access dialog on its Modules tab, with Off, View and Manage for each module" loading="lazy">
@@ -877,6 +886,13 @@
     </figure>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
+    <p>The <strong>Email</strong> on a person's record is the email they sign in with, so it changes everywhere they
+      work. Saving is refused, with a message saying why, in these cases:</p>
+    <ul>
+      <li>The person's login is also used in a company you don't own. Ask Altomate support to change it.</li>
+      <li>The person is an admin and you aren't the owner. Only the owner can change an admin's login email.</li>
+      <li>The person is an owner. An owner's login email is changed only through Altomate support (an owner can change their own).</li>
+    </ul>
     <h3>Archiving, and employment history</h3>
     <p>On the Employment tab, turn on <strong>Archive this employee</strong> and set their last day and reason. Payroll
       still pays them up to their last day, then leaves them out. At the bottom of the tab, <strong>Employment
@@ -1576,9 +1592,10 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
       <tbody>
-        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details, Allowance Report (Excel), Deduction Report (Excel)</td><td>Your records / approver</td></tr>
+        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details, Allowance &amp; Deduction Reports (ZIP)</td><td>Your records / approver</td></tr>
         <tr><td></td><td>AB Pay timesheet (Excel) — only if your company is connected to ABPay</td><td>The ABPay app, and your records</td></tr>
-        <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
+        <tr><td>Statutory</td><td><span class="btn-name">Download EPF, SOCSO &amp; PCB (zip)</span> — the four files below in one zip</td><td>See each file below</td></tr>
+        <tr><td></td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
         <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB — the file is named with your employer number, the month and the year, for example <em>6051351020072026.txt</em></td></tr>
@@ -1594,6 +1611,14 @@
         <em>… (1).txt</em>, and LHDN refuses that name. Rename it (for example to <em>6051351020072026.txt</em>), or
         use the first copy.</p>
     </div>
+    <h3>All the agency uploads in one zip</h3>
+    <p>At the <strong>Statutory uploads</strong> heading, <span class="btn-name">Download EPF, SOCSO &amp; PCB (zip)</span>
+      gives you one zip holding the EPF CSV, both SOCSO + EIS files (the v1 layout and the ASSIST 2.0 layout with SKBBK)
+      and the PCB file. Open the zip and upload each file to its own portal, named as in the table above. You don't have to tick anything first.</p>
+    <p>A file that can't be made yet — for example the PCB file when the employer tax number is missing — is left out
+      of the zip. A line under the heading says how many files came down, and the row of each missing file says why, in the
+      same words as when you download that file on its own. Fix what it asks for and press the button again. The single-file
+      buttons are still there when you only want one.</p>
     <h3>The bank file follows your bank</h3>
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
@@ -1659,13 +1684,14 @@
         deductions the company keeps (loans and Miscellaneous / Other Deduction), not other deductions taken from net
         pay, such as CP38.</p>
     </div>
-    <h3>Allowance and Deduction reports (Excel)</h3>
-    <p>The Reports group also has <strong>Allowance Report (Excel)</strong> and <strong>Deduction Report (Excel)</strong>.
-      Each has one row per employee and one column per item, with a totals row at the bottom.</p>
+    <h3>Allowance and Deduction reports (ZIP)</h3>
+    <p>The Reports group has one row, <strong>Allowance &amp; Deduction Reports (ZIP)</strong>, with both Excel reports in
+      a single zip. (They used to be two separate rows.) Each report has one row per employee and one column per item,
+      with a totals row at the bottom.</p>
     <ul>
-      <li><strong>Allowance Report</strong> lists every allowance on the run. Benefits in kind are listed but not
+      <li><strong>Allowance report</strong> lists every allowance on the run. Benefits in kind are listed but not
         counted as cash in the totals.</li>
-      <li><strong>Deduction Report</strong> lists deductions other than EPF, SOCSO, EIS and PCB, such as loans, unpaid
+      <li><strong>Deduction report</strong> lists deductions other than EPF, SOCSO, EIS and PCB, such as loans, unpaid
         leave and advances. Unpaid leave and advances are listed but not added into the total, because the payslip
         takes them off gross pay instead.</li>
     </ul>
@@ -1689,7 +1715,12 @@
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog, Reports group: Payroll Summary, Allowance Report (Excel), Deduction Report (Excel) and Payment Schedule" loading="lazy">
+          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog, Reports group: Payroll Summary, Allowance &amp; Deduction Reports (ZIP), Payment Schedule and PCB Calculation Details" loading="lazy">
+          <p class="shot-cap">Reports</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-downloads-statutory.png" alt="The Statutory uploads group in the Download files dialog, with the Download EPF, SOCSO &amp; PCB (zip) button beside the heading and the four agency files below it" loading="lazy">
+          <p class="shot-cap">Statutory uploads, one zip</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Downloading the month's files</p>

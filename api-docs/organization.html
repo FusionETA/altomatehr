@@ -803,7 +803,8 @@
       <h2>Not available to API keys</h2>
       <p>
         Listing admins and setting their module access (<code>GET /organizations/admins</code>,
-        <code>PUT /organizations/admins/{userId}/access</code>), removing an admin
+        <code>PUT /organizations/admins/{userId}/access</code>), editing an admin's name and login email
+        (<code>PUT /organizations/admins/{userId}</code>), removing an admin
         (<code>DELETE /organizations/admins/{userId}</code>), creating a company
         (<code>POST /organizations</code>) and changing a company's plan
         (<code>PUT /organizations/{organizationId}/plan</code>) answer <code>403</code> to any
