@@ -91,6 +91,18 @@ public interface IStatutoryFileService
     // short file list.
     Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate);
 
+    // The four statutory uploads alone — EPF, both SOCSO/EIS layouts and PCB —
+    // in one zip, for the admin who files them all at month end. Same rules as
+    // the bundle above: a file that can't be produced (a missing field) is
+    // left out and named in `Skipped` with its reason. If none can be, the
+    // result is a refusal carrying every reason, not an empty zip.
+    Task<PayrollBundleResult> RenderStatutoryBundleAsync(string runId);
+
+    // The Allowance and Deduction reports in one zip, by the same rules. A
+    // run with only one of the two zips that one, naming the other in
+    // `Skipped`; with neither it is a refusal.
+    Task<PayrollBundleResult> RenderLineReportsZipAsync(string runId);
+
     Task<StatutoryFileResult> RenderBankFileAsync(
         string runId,
         DateTime? paymentDate,

@@ -280,6 +280,100 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.True((await _statutory.RenderSummaryPdfAsync(run.Id)).Ok);
     }
 
+    // The four statutory uploads in one zip, named for the month.
+    [Fact]
+    public async Task TheStatutoryZip_HoldsTheFourUploads()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);
+        _db.PayrollCompanyInfos.Single().EmployerTin = "E2481379160";   // the CP39 header refuses a placeholder
+        await _db.SaveChangesAsync();
+
+        var zip = await _statutory.RenderStatutoryBundleAsync(run.Id);
+
+        Assert.True(zip.Ok, zip.Error);
+        Assert.Equal("Statutory_January_2026.zip", zip.FileName);
+        Assert.Equal(["epf", "socso-eis", "socso-eis-skbbk", "pcb"], zip.Included);
+        Assert.Empty(zip.Skipped);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip.Content!));
+        Assert.Equal(4, archive.Entries.Count);
+        var pcbName = (await _statutory.RenderPcbTxtAsync(run.Id)).FileName;
+        Assert.Contains(archive.Entries, e => e.FullName == pcbName);
+    }
+
+    // A file missing a field is left out with the same reason downloading it
+    // alone gives; the rest still come.
+    [Fact]
+    public async Task TheStatutoryZip_LeavesOutAFileThatCantBeProduced_AndSaysWhy()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);   // the fixture's placeholder TIN: no CP39
+
+        var zip = await _statutory.RenderStatutoryBundleAsync(run.Id);
+        var pcbAlone = await _statutory.RenderPcbTxtAsync(run.Id);
+
+        Assert.True(zip.Ok, zip.Error);
+        Assert.False(pcbAlone.Ok);
+        Assert.DoesNotContain("pcb", zip.Included);
+        Assert.Equal(pcbAlone.Error, zip.Skipped["pcb"]);
+        Assert.Contains("epf", zip.Included);
+    }
+
+    // Allowance and Deduction reports go together. The fixture's run has
+    // neither, so it is refused with both reasons rolled into one.
+    [Fact]
+    public async Task TheAllowanceDeductionZip_NeedsAtLeastOneOfTheTwo()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var run = await SubmittedRunAsync(2026, 1);
+
+        var zip = await _statutory.RenderLineReportsZipAsync(run.Id);
+
+        Assert.False(zip.Ok);
+        Assert.Contains("No allowances", zip.Error);
+        Assert.Equal(["allowances", "deductions"], zip.Skipped.Keys.Order());
+    }
+
+    // A run with an allowance but no deductions zips the allowance report
+    // alone and names the deduction report as left out.
+    [Fact]
+    public async Task TheAllowanceDeductionZip_HoldsTheReportThereIs()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        aisyah.FixedAllowancesJson = """[{"category":"allowance_standard","name":"Site","amount":300}]""";
+        await _db.SaveChangesAsync();
+        var run = await SubmittedRunAsync(2026, 1);
+
+        var zip = await _statutory.RenderLineReportsZipAsync(run.Id);
+
+        Assert.True(zip.Ok, zip.Error);
+        Assert.Equal("Allowance_Deduction_Reports_January_2026.zip", zip.FileName);
+        Assert.Equal(["allowances"], zip.Included);
+        Assert.Contains("No deductions", zip.Skipped["deductions"]);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip.Content!));
+        Assert.Equal("Allowance_Report_January_2026.xlsx", Assert.Single(archive.Entries).FullName);
+    }
+
+    [Fact]
+    public async Task TheStatutoryZip_IsRefusedBeforeApproval_AndForAnImportedMonth()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        var draft = await GeneratedRunAsync(2026, 1);
+
+        var refused = await _statutory.RenderStatutoryBundleAsync(draft.Id);
+        Assert.False(refused.Ok);
+        Assert.Contains("approved", refused.Error!, StringComparison.OrdinalIgnoreCase);
+
+        await SubmitAsync(draft.Id);
+        (await _runs.GetByIdAsync(draft.Id))!.Source = PayrollRunSource.IMPORTED;
+        await _db.SaveChangesAsync();
+
+        var imported = await _statutory.RenderStatutoryBundleAsync(draft.Id);
+        Assert.False(imported.Ok);
+        Assert.Contains("imported", imported.Error!);
+        Assert.Null((await _statutory.RenderStatutoryBundleAsync("no-such-run")).Error);
+    }
+
     // The Excel summary is the PDF's twin: same gate, and it rides in the
     // run's zip next to the PDF.
     [Fact]

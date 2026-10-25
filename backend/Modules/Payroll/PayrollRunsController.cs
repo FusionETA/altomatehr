@@ -227,6 +227,42 @@ public class PayrollRunsController : ControllerBase
     [HttpGet("{id}/files/pcb")]
     public Task<IActionResult> PcbTxt(string id) => File(_statutory.RenderPcbTxtAsync(id));
 
+    // GET /payroll/runs/{id}/files/statutory — the four files above in one zip.
+    //
+    // A file that can't be produced is left out and its key named in
+    // X-Bundle-Skipped, as with the full bundle. When none can be, the 409
+    // carries each file's reason under `skipped`.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/files/statutory")]
+    public async Task<IActionResult> StatutoryZip(string id) =>
+        Zip(await _statutory.RenderStatutoryBundleAsync(id));
+
+    // GET /payroll/runs/{id}/documents/allowances-deductions — the two reports
+    // below in one zip. Same answers as the statutory zip.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/allowances-deductions")]
+    public async Task<IActionResult> LineReportsZip(string id) =>
+        Zip(await _statutory.RenderLineReportsZipAsync(id));
+
+    private IActionResult Zip(PayrollBundleResult bundle)
+    {
+        if (!bundle.Ok)
+        {
+            if (bundle.Error is null) return NotFound();
+            return bundle.Skipped.Count > 0
+                ? Conflict(new { error = bundle.Error, skipped = bundle.Skipped })
+                : Conflict(new { error = bundle.Error });
+        }
+
+        Response.Headers["X-Bundle-File-Count"] = bundle.Included.Count.ToString();
+        if (bundle.Skipped.Count > 0)
+            Response.Headers["X-Bundle-Skipped"] = string.Join(",", bundle.Skipped.Keys);
+
+        return File(bundle.Content!, "application/zip", bundle.FileName);
+    }
+
     // What the files above still need. The run page shows this as a banner,
     // and submission refuses while it is not ok.
     [RequireScope("payroll:read")]

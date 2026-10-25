@@ -87,6 +87,9 @@ builder.Services.AddCors(options =>
                   "http://127.0.0.1:5173")
               .AllowAnyHeader()
               .AllowAnyMethod()
+              // A download's file name, and what a zip left out, are headers
+              // the browser hides from a cross-origin page unless named here.
+              .WithExposedHeaders("Content-Disposition", "X-Bundle-Skipped", "X-Bundle-File-Count")
               .AllowCredentials()));   // allow the browser to send/receive cookies cross-origin
 
 // Database (EF Core + Pomelo/MySQL). Connection string from user-secrets — never committed.

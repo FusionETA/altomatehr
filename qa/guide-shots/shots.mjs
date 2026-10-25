@@ -316,6 +316,7 @@ const admin = {
   "documents-ai-ask": (page) => aiEditorShot(page, "documents-ai-ask", true),
   // System Settings → Admins: each admin row with Manage access and Remove.
   "admins-list": async (page) => {
+    await inDemoCo(page);
     await go(page, "settings/settings-admins");
     await page.getByRole("button", { name: "Manage access" }).first().waitFor({ timeout: 15000 });
     await settle(page);
@@ -342,6 +343,15 @@ const admin = {
     await page.getByRole("tab", { name: "Employees" }).click();
     await settle(page);
     await shoot(page, "admin", "admins-access-employees");
+  },
+  // The Edit admin dialog (name and login email) from the Edit button on an admin row.
+  "admins-edit": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-admins");
+    await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+    await page.getByRole("heading", { name: "Edit admin" }).waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "admins-edit");
   },
   "employee-add": async (page) => {
     await go(page, "company/manage-employee");
@@ -503,14 +513,29 @@ const admin = {
     await shoot(page, "admin", "loans");
   },
   "payroll-downloads": async (page) => {
+    await inDemoCo(page);
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
     await clickText(page, "September 2026");
     await page.getByRole("button", { name: "Download files" }).click();
     await page.getByText("Statutory uploads").first().waitFor();
     await settle(page);
-    await scrollTo(page, "Allowance Report (Excel)", 200);
+    await scrollTo(page, "Allowance & Deduction Reports (ZIP)", 200);
     await shoot(page, "admin", "payroll-downloads");
+    await page.keyboard.press("Escape");
+  },
+  // The Statutory uploads group with its "Download EPF, SOCSO & PCB (zip)" button.
+  "payroll-downloads-statutory": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    await page.getByRole("button", { name: "Download files" }).click();
+    await page.getByText("Statutory uploads").first().waitFor();
+    await settle(page);
+    await scrollTo(page, "Statutory uploads", 40, true);
+    await page.getByRole("button", { name: /Download EPF, SOCSO/ }).waitFor();
+    await shoot(page, "admin", "payroll-downloads-statutory");
     await page.keyboard.press("Escape");
   },
   // A draft run (node setup.mjs payroll-draft): the "Payroll summary for approval" card.

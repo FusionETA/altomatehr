@@ -624,6 +624,22 @@ export const downloadAllowanceReport = (runId: string) =>
 export const downloadDeductionReport = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/deductions`, "deduction-report.xlsx");
 
+// Both reports in one zip. A run with only one of the two zips that one;
+// `note` then says which is missing and why.
+export const downloadAllowanceDeductionZip = async (runId: string) => {
+  const file = await download(
+    `/payroll/runs/${runId}/documents/allowances-deductions`,
+    "Allowance_Deduction_Reports.zip",
+  );
+  const skipped = file.headers?.get("X-Bundle-Skipped") ?? "";
+  const note = skipped.includes("deductions")
+    ? "Allowance report only: no deductions on this run other than EPF, SOCSO, EIS and PCB."
+    : skipped.includes("allowances")
+      ? "Deduction report only: no allowances on this run."
+      : undefined;
+  return { ...file, note };
+};
+
 export const downloadPaymentSchedule = (runId: string) =>
   download(
     `/payroll/runs/${runId}/documents/payment-schedule`,
@@ -697,6 +713,17 @@ export const downloadPerkesoSkbbkTxt = (runId: string) =>
 
 export const downloadPcbTxt = (runId: string) =>
   download(`/payroll/runs/${runId}/files/pcb`, "PCB.txt");
+
+// The four statutory uploads in one zip. A file that couldn't be produced is
+// left out and its key listed in `skipped` ("epf", "socso-eis",
+// "socso-eis-skbbk", "pcb"); its reason comes from downloading it alone.
+export const downloadStatutoryZip = async (runId: string) => {
+  const file = await download(`/payroll/runs/${runId}/files/statutory`, "Statutory.zip");
+  const skipped = (file.headers?.get("X-Bundle-Skipped") ?? "")
+    .split(",")
+    .filter((key) => key.length > 0);
+  return { file, skipped };
+};
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
