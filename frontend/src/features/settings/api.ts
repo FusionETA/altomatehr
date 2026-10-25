@@ -258,6 +258,10 @@ export const getAdmins = () => apiGet<AdminAccess[]>("/organizations/admins");
 export const removeAdmin = (userId: string) => apiDelete<void>(`/organizations/admins/${userId}`);
 export const setAdminAccess = (userId: string, body: SetAdminAccess) =>
   apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, body);
+// Owner-only: an Admin's name and login email. Both are on the person's
+// account, so they change in every company that person belongs to.
+export const updateAdminDetails = (userId: string, body: { name: string; email: string }) =>
+  apiPut<AdminAccess>(`/organizations/admins/${userId}`, body);
 
 // Every grantable module key, plus the caller's OWN access: which modules
 // they have and at what level, whether they may change settings, and whether

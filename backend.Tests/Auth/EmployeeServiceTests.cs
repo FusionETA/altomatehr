@@ -185,6 +185,63 @@ public class EmployeeServiceTests
         Assert.True(result.Ok);
     }
 
+    // A login email signs the person in to every company they belong to. An
+    // admin here may change it for someone who is only in this company...
+    [Fact]
+    public async Task An_admin_can_change_the_email_of_someone_only_in_this_company()
+    {
+        var service = MakeService(out _, out _, out var users);
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "renamed@altomate.com",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("renamed@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+    }
+
+    // ...but not when the login also opens a company the caller doesn't own:
+    // that would hand the other company's access to whoever owns the new address.
+    [Fact]
+    public async Task An_admin_cannot_change_the_email_of_a_login_shared_with_another_company()
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = "Admin" });
+
+        var refused = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "mine@attacker.com",
+        });
+        Assert.False(refused.Ok);
+        Assert.Contains("support", refused.Error);
+        Assert.Equal("employee@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+
+        // The edit form always sends the email back; the same address isn't a change.
+        var unchanged = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "employee@altomate.com", JobTitle = "Lead",
+        });
+        Assert.True(unchanged.Ok, unchanged.Error);
+    }
+
+    // An owner of every other company the login opens may change it.
+    [Fact]
+    public async Task The_owner_of_the_other_company_can_change_a_shared_login_s_email()
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = "Admin" });
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-admin", Role = "Owner" });
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "renamed@altomate.com",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("renamed@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+    }
+
     // Setting an admin's password is signing in as them — only the Owner may.
     [Fact]
     public async Task An_admin_cannot_set_another_admin_s_password()

@@ -276,6 +276,14 @@ public class EmployeeService : IEmployeeService
             var existing = await _users.GetByEmailAsync(newEmail);
             if (existing is not null && existing.Id != id)
                 return new EmployeeSaveResult(false, null, "That email is already in use.");
+
+            // Re-sending the same address (the edit form always sends it) is
+            // not a change, and must not trip the guard below.
+            var current = await _users.GetByIdAsync(id);
+            if (current is not null
+                && !string.Equals(current.Email, newEmail, StringComparison.OrdinalIgnoreCase)
+                && await LoginEmailRule.RefusalAsync(_memberships, _currentUser, id) is { } refusal)
+                return new EmployeeSaveResult(false, null, refusal);
         }
 
         // Name and email live on the global User. Patch semantics: null → leave

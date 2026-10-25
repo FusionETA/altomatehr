@@ -79,6 +79,19 @@ public class OrganizationsController : ControllerBase
         }
     }
 
+    // PUT /organizations/admins/{userId} — change an Admin's name and login
+    // email. Owners only. Both are on the person's account, so they change in
+    // every company that person belongs to.
+    [Authorize(Roles = "Owner")]
+    [HumanOnly]
+    [HttpPut("admins/{userId}")]
+    public async Task<IActionResult> UpdateAdminDetails(string userId, UpdateAdminDetailsDto dto)
+    {
+        var (notFound, error, admin) = await _organizations.UpdateAdminDetailsAsync(userId, dto);
+        if (notFound) return NotFound();
+        return error is null ? Ok(admin) : BadRequest(new { message = error });
+    }
+
     // DELETE /organizations/admins/{userId} — remove an Admin from this company.
     // Owners only. Their login stays; their access here ends at once.
     [Authorize(Roles = "Owner")]

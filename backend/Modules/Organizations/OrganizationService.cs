@@ -25,6 +25,9 @@ public class OrganizationService : IOrganizationService
     private readonly Policies.IEmployeePolicyRepository? _policies;
     private readonly AltomateHR.Api.Common.ICurrentUser? _currentUser;
 
+    // Only for editing an admin's name and email, which live on the account.
+    private readonly Auth.IUserRepository? _users;
+
     public OrganizationService(
         IOrganizationRepository repo,
         IOrganizationMembershipRepository memberships,
@@ -34,8 +37,10 @@ public class OrganizationService : IOrganizationService
         IDirectoryService directory,
         IOrganizationDefaultsService defaults,
         Policies.IEmployeePolicyRepository? policies = null,
-        AltomateHR.Api.Common.ICurrentUser? currentUser = null)
+        AltomateHR.Api.Common.ICurrentUser? currentUser = null,
+        Auth.IUserRepository? users = null)
     {
+        _users = users;
         _policies = policies;
         _currentUser = currentUser;
         _repo = repo;
@@ -116,6 +121,47 @@ public class OrganizationService : IOrganizationService
             Metadata: new { membership.UserId }));
 
         return (false, null);
+    }
+
+    public async Task<(bool NotFound, string? Error, AdminAccessDto? Admin)> UpdateAdminDetailsAsync(
+        string userId, UpdateAdminDetailsDto dto)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null || _users is null
+            || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return (true, null, null);
+
+        var user = await _users.GetByIdAsync(userId);
+        if (user is null) return (true, null, null);
+
+        var name = dto.Name.Trim();
+        var email = dto.Email.Trim();
+        if (name.Length == 0) return (false, "A name is required.", null);
+        if (email.Length == 0) return (false, "An email is required.", null);
+
+        var emailChanged = !string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase);
+        if (emailChanged)
+        {
+            if (await _users.GetByEmailAsync(email) is { } taken && taken.Id != userId)
+                return (false, "That email is already used by another account.", null);
+
+            if (await Employees.LoginEmailRule.RefusalAsync(_memberships, _currentUser, userId) is { } refusal)
+                return (false, refusal, null);
+        }
+
+        var previousEmail = user.Email;
+        user.Name = name;
+        user.Email = email;
+        await _users.UpdateAsync(user);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            emailChanged ? $"Changed admin {previousEmail}'s email to {email}" : $"Updated admin {email}'s name",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId, Name = name, PreviousEmail = previousEmail, Email = email }));
+
+        return (false, null, ToAccessDto(membership, user.Name, user.Email));
     }
 
     public async Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto)

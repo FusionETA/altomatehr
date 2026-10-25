@@ -6,6 +6,7 @@ import {
   getModuleAccess,
   removeAdmin,
   setAdminAccess,
+  updateAdminDetails,
   type AdminAccess,
   type ModuleLevel,
 } from "../api";
@@ -45,6 +46,7 @@ export function AdminsSettings() {
   const adminsQuery = useCachedQuery("/organizations/admins", getAdmins);
   const modulesQuery = useCachedQuery("/organizations/modules", getModuleAccess);
   const [editing, setEditing] = useState<AdminAccess | null>(null);
+  const [editingDetails, setEditingDetails] = useState<AdminAccess | null>(null);
   const [tab, setTab] = useState<"manage" | "add">("manage");
   const [confirm, confirmDialog] = useConfirm();
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -139,6 +141,9 @@ export function AdminsSettings() {
                     <p className="truncate font-semibold text-foreground">
                       {owner.name || owner.email}
                     </p>
+                    {owner.name ? (
+                      <p className="truncate text-xs text-muted-foreground">{owner.email}</p>
+                    ) : null}
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <ShieldCheck className="h-3 w-3" />
                       Owner · full access
@@ -169,6 +174,9 @@ export function AdminsSettings() {
                     <p className="truncate font-semibold text-foreground">
                       {admin.name || admin.email}
                     </p>
+                    {admin.name ? (
+                      <p className="truncate text-xs text-muted-foreground">{admin.email}</p>
+                    ) : null}
                     <span
                       className={`inline-flex items-center gap-1 text-xs ${
                         admin.levels && Object.keys(admin.levels).length === 0
@@ -181,6 +189,13 @@ export function AdminsSettings() {
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingDetails(admin)}
+                      className="rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       onClick={() => setEditing(admin)}
@@ -216,6 +231,17 @@ export function AdminsSettings() {
 
       {confirmDialog}
 
+      {editingDetails ? (
+        <DetailsDialog
+          admin={editingDetails}
+          onClose={() => setEditingDetails(null)}
+          onSaved={() => {
+            setEditingDetails(null);
+            void adminsQuery.refresh();
+          }}
+        />
+      ) : null}
+
       {editing ? (
         <AccessDialog
           admin={editing}
@@ -228,6 +254,121 @@ export function AdminsSettings() {
         />
       ) : null}
     </div>
+  );
+}
+
+// An admin's name and login email. Both are on their account, so a change here
+// shows in every company they belong to — the hint says so before saving. The
+// server refuses an email change when the login also opens a company this
+// owner doesn't own.
+function DetailsDialog({
+  admin,
+  onClose,
+  onSaved,
+}: {
+  admin: AdminAccess;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(admin.name);
+  const [email, setEmail] = useState(admin.email);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateAdminDetails(admin.userId, { name: name.trim(), email: email.trim() });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the changes.");
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={(e) => void save(e)}
+        className="flex w-full max-w-md flex-col gap-4 rounded-[28px] border border-border/70 bg-card p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-base font-black text-foreground">Edit admin</h3>
+            <p className="truncate text-xs text-muted-foreground">{admin.name || admin.email}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="edit-admin-name" className="text-sm font-semibold text-foreground">
+            Name
+          </label>
+          <input
+            id="edit-admin-name"
+            className={INPUT}
+            value={name}
+            maxLength={160}
+            onChange={(e) => setName(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="edit-admin-email" className="text-sm font-semibold text-foreground">
+            Email
+          </label>
+          <input
+            id="edit-admin-email"
+            type="email"
+            className={INPUT}
+            value={email}
+            maxLength={120}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={saving}
+          />
+          <p className="text-xs text-muted-foreground">
+            This is the email they sign in with. It changes in every company they belong to.
+          </p>
+        </div>
+
+        {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-2xl bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !name.trim() || !email.trim()}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            Save
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
   );
 }
 

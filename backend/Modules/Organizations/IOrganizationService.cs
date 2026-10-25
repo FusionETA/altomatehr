@@ -38,6 +38,13 @@ public interface IOrganizationService
     Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto) =>
         Task.FromResult<AdminAccessDto?>(null);
 
+    // Owner-only "Edit" on an Admin: their name and login email. NotFound = no
+    // such Admin here; Error = refused (email taken, or the login is also used
+    // in a company the caller doesn't own). (Default keeps test doubles compiling.)
+    Task<(bool NotFound, string? Error, AdminAccessDto? Admin)> UpdateAdminDetailsAsync(
+        string userId, UpdateAdminDetailsDto dto) =>
+        Task.FromResult<(bool, string?, AdminAccessDto?)>((true, null, null));
+
     Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto);
 
     // Sets the org's claim settings: the day of month that closes the claims run
