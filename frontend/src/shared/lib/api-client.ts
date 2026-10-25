@@ -246,7 +246,9 @@ async function requestBlob(path: string): Promise<Blob> {
 // A download: the bytes plus the filename the server chose. Kept separate from
 // apiGetBlob because a file the user saves needs a name, and only the
 // Content-Disposition header knows it.
-export type ApiFile = { blob: Blob; fileName: string };
+// `headers` is there for the few downloads that report more than the file
+// (a zip naming what it left out); saving ignores it.
+export type ApiFile = { blob: Blob; fileName: string; headers?: Headers };
 
 // `body` turns this into a POST: some downloads are built from input too large
 // or too structured for a query string (the CP8D converter posts a whole table
@@ -284,6 +286,7 @@ async function requestFile(
   return {
     blob: await res.blob(),
     fileName: parseFileName(res.headers.get("Content-Disposition")) ?? fallbackName,
+    headers: res.headers,
   };
 }
 

@@ -208,20 +208,70 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { Error: { } refusal })
             return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), refusal);
 
+        var (content, included, skipped) =
+            await ZipAsync(BundleDocuments, document => RenderBundleDocumentAsync(document, runId, paymentDate));
+
+        var fileName = $"payroll-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}{RunTag(model.Run)}.zip";
+        return new PayrollBundleResult(true, fileName, content, included, skipped, null);
+    }
+
+    // The uploads KWSP, PERKESO and LHDN take, in the order of the download
+    // window's Statutory section.
+    private static readonly string[] StatutoryDocuments = ["epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+
+    public Task<PayrollBundleResult> RenderStatutoryBundleAsync(string runId) =>
+        RenderZipOfAsync(runId, StatutoryDocuments, "Statutory",
+            "None of the statutory files could be produced for this run. Each file's reason is listed with it.");
+
+    // The two line-item reports travel together: whoever reads one wants the
+    // other. A run with no allowances (or no deductions) zips the one it has.
+    private static readonly string[] LineReportDocuments = ["allowances", "deductions"];
+
+    public Task<PayrollBundleResult> RenderLineReportsZipAsync(string runId) =>
+        RenderZipOfAsync(runId, LineReportDocuments, "Allowance_Deduction_Reports",
+            "No allowances on this run, and no deductions other than EPF, SOCSO, EIS and PCB.");
+
+    // A zip of some of the run's documents, gated once up front like the
+    // bundle: four copies of "not approved" (or "imported") say nothing the
+    // first one didn't. `emptyError` is the answer when none could be made —
+    // a zip with nothing in it would read as a download that worked.
+    private async Task<PayrollBundleResult> RenderZipOfAsync(
+        string runId, IEnumerable<string> documents, string fileStem, string emptyError)
+    {
+        var model = await LoadDocumentAsync(runId);
+        if (model is null)
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), null);
+
+        if ((RefuseUnlessApproved(model.Run) ?? RefuseIfImported(model.Run)) is { Error: { } refusal })
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), refusal);
+
+        var (content, included, skipped) =
+            await ZipAsync(documents, document => RenderBundleDocumentAsync(document, runId, null));
+
+        if (included.Count == 0)
+            return new PayrollBundleResult(false, null, null, included, skipped, emptyError);
+
+        return new PayrollBundleResult(true, $"{fileStem}_{MonthYear(model.Run)}.zip", content, included, skipped, null);
+    }
+
+    // Each document into the zip under its own file name. One document failing
+    // must not cost the others — an org with no payor account still needs its
+    // statutory files — so a failure is recorded against it and skipped.
+    private static async Task<(byte[] Content, List<string> Included, Dictionary<string, string> Skipped)> ZipAsync(
+        IEnumerable<string> documents, Func<string, Task<StatutoryFileResult>> render)
+    {
         var included = new List<string>();
         var skipped = new Dictionary<string, string>(StringComparer.Ordinal);
 
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var document in BundleDocuments)
+            foreach (var document in documents)
             {
-                // One document failing must not cost the other five. An org
-                // with no payor account still needs its statutory files.
                 StatutoryFileResult result;
                 try
                 {
-                    result = await RenderBundleDocumentAsync(document, runId, paymentDate);
+                    result = await render(document);
                 }
                 catch (Exception ex)
                 {
@@ -242,8 +292,7 @@ public class StatutoryFileService : IStatutoryFileService
             }
         }
 
-        var fileName = $"payroll-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}{RunTag(model.Run)}.zip";
-        return new PayrollBundleResult(true, fileName, buffer.ToArray(), included, skipped, null);
+        return (buffer.ToArray(), included, skipped);
     }
 
     private Task<StatutoryFileResult> RenderBundleDocumentAsync(

@@ -222,6 +222,10 @@ public class PayslipEmailServiceTests : IDisposable
     // The bundle is an integration surface; payslip email does not build one.
     public Task<AltomateHR.Api.Modules.Payroll.PayrollBundleResult> RenderRunBundleAsync(
         string runId, DateTime? paymentDate) => throw new NotSupportedException();
+    public Task<AltomateHR.Api.Modules.Payroll.PayrollBundleResult> RenderStatutoryBundleAsync(
+        string runId) => throw new NotSupportedException();
+    public Task<AltomateHR.Api.Modules.Payroll.PayrollBundleResult> RenderLineReportsZipAsync(
+        string runId) => throw new NotSupportedException();
 }
 
     private sealed record SentEmail(
