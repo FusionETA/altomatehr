@@ -268,6 +268,9 @@ export type Payslip = {
   grossShown: number;
   netPay: number;
   totalCostToEmployer: number;
+  // The part of `pcb` the company paid instead of deducting it ("PCB borne by
+  // employer"); 0 otherwise. Not taken from net pay.
+  pcbBorneByEmployer: number;
   // Missing TIN / EPF / SOCSO numbers, recorded at generation. The
   // readiness guard reads the same facts before a submission is accepted.
   statutoryWarnings: string[];
@@ -1414,6 +1417,8 @@ export const XERO_EXPENSE_SLOTS = [
   { key: "socsoEmployer", label: "SOCSO — employer contribution" },
   { key: "eisEmployer", label: "EIS — employer contribution" },
   { key: "hrdfEmployer", label: "HRD Corp levy" },
+  // Optional — left blank, it posts to Salary.
+  { key: "taxBorneByEmployer", label: "PCB borne by employer (optional — Salary if blank)" },
 ] as const;
 
 export const XERO_ACCRUAL_SLOTS = [

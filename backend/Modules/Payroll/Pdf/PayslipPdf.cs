@@ -149,7 +149,11 @@ public static class PayslipPdf
                     // Post-zakat: the calculator has already offset it, so this
                     // is what is actually withheld. Includes Additional PCB —
                     // remitted in the same CP39 field, so shown as one figure.
-                    PayrollPdfShared.AmountRow(deductions, "PCB / MTD", p.Pcb + p.VoluntaryPcb);
+                    // PCB the company pays is shown with its contributions below,
+                    // not taken from the employee.
+                    var employeePcb = p.Pcb - p.PcbBorneByEmployer + p.VoluntaryPcb;
+                    if (p.PcbBorneByEmployer == 0m || employeePcb != 0m)
+                        PayrollPdfShared.AmountRow(deductions, "PCB / MTD", employeePcb);
 
                     if (p.Cp38 > 0m)
                         PayrollPdfShared.AmountRow(deductions, "CP38 arrears", p.Cp38);
@@ -200,6 +204,8 @@ public static class PayslipPdf
                     {
                         PayrollPdfShared.AmountRow(right, "Employer EIS", p.EisEmployer);
                         PayrollPdfShared.AmountRow(right, "HRDF", p.Hrdf);
+                        if (p.PcbBorneByEmployer > 0m)
+                            PayrollPdfShared.AmountRow(right, "PCB / MTD (paid by employer)", p.PcbBorneByEmployer);
                     });
                 });
             });
@@ -210,7 +216,7 @@ public static class PayslipPdf
             if (p.TotalBenefitsInKind > 0m)
             {
                 var bik = model.LineItems
-                    .Where(li => li.Category?.StartsWith("bik_", StringComparison.Ordinal) == true)
+                    .Where(li => PayrollAdjustmentCategories.Find(li.Category)?.NonCash == true)
                     .ToList();
 
                 col.Item().PaddingTop(12).Column(section =>
@@ -286,7 +292,7 @@ public static class PayslipPdf
     // and CP38).
     public static decimal TotalDeductions(Payslip p) =>
         p.EpfEmployee + p.SocsoEmployee + p.EisEmployee + p.SkbbkEmployee
-        + p.TotalDeductions + p.Pcb;
+        + p.TotalDeductions + p.Pcb - p.PcbBorneByEmployer;
 
     private static void HeaderCell(TableCellDescriptor header, string text, bool right = false)
     {

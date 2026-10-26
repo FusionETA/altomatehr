@@ -471,6 +471,19 @@ const admin = {
     await clickText(page, "Statutory");
     await shoot(page, "admin", "employee-statutory");
   },
+  // Statutory tab scrolled to "Income tax": the "PCB borne by employer" switch
+  // and its hint. Nothing is changed or saved.
+  "employee-pcb-borne": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Aisyah");
+    await settle(page, 800);
+    await clickText(page, "Aisyah Binti Rahman");
+    await clickText(page, "Statutory");
+    await scrollTo(page, "PCB borne by employer", 360, true);
+    await shoot(page, "admin", "employee-pcb-borne");
+  },
   "salary-change": async (page) => {
     await go(page, "company/manage-employee");
     await clickText(page, "Evan Employee");

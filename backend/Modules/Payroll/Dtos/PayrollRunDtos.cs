@@ -195,6 +195,10 @@ public class PayslipDto
     public decimal NetPay { get; set; }
     public decimal TotalCostToEmployer { get; set; }
 
+    // The part of Pcb the company paid instead of deducting it; 0 unless the
+    // employee's PCB is borne by the employer.
+    public decimal PcbBorneByEmployer { get; set; }
+
     // Stable codes (MISSING_INCOME_TAX_NUMBER etc.) the admin UI maps to copy.
     // The figures are still correct — these block a filing, not the calc.
     public List<string> StatutoryWarnings { get; set; } = [];

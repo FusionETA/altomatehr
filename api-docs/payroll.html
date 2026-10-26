@@ -430,6 +430,14 @@
             </tbody>
           </table>
         </div>
+        <div class="callout">
+          <code>bik_tax_borne_by_employer</code> ("Tax Borne by Employer &ndash; previous year (perquisite)") is
+          normally added by the engine, not by you: on a person's first run of a year it carries the PCB the
+          company paid for them last year. It is non-cash, subject to PCB as additional remuneration only
+          (no EPF, SOCSO, EIS or HRDF). It is a different code from <code>wages_tax_borne_by_employer</code>,
+          which remains a <strong>cash</strong> line. See
+          <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.
+        </div>
 <pre><code>curl https://&lt;api-host&gt;/payroll/adjustment-categories \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -469,7 +477,7 @@
               <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>.</td></tr>
               <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>epfEmployee</code>, <code>socsoEmployee</code>, <code>eisEmployee</code></td><td>decimal</td><td></td></tr>
-              <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually withheld — includes any Additional PCB.</td></tr>
+              <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually taken from the employee's pay — includes any Additional PCB and <strong>excludes PCB the company paid for them</strong> (<code>pcbBorneByEmployer</code> on the payslip). Not the same as <code>pcb</code> on the payslip detail, which still contains the borne part.</td></tr>
               <tr><td><code>submittedAt</code></td><td>string?</td><td>ISO timestamp the run went live.</td></tr>
             </tbody>
           </table>
@@ -575,10 +583,11 @@
               <tr><td><code>totalAllowances</code>, <code>totalReimbursements</code>, <code>totalDeductions</code>, <code>totalBenefitsInKind</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>epfEmployee</code>, <code>epfEmployer</code>, <code>socsoEmployee</code>, <code>socsoEmployer</code>, <code>eisEmployee</code>, <code>eisEmployer</code>, <code>skbbkEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code>, <code>pcbNormal</code>, <code>pcbAdditional</code>, <code>voluntaryPcb</code>, <code>cp38</code>, <code>zakat</code>, <code>hrdf</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>pcbBorneByEmployer</code></td><td>decimal</td><td>The part of <code>pcb</code> the company paid instead of deducting it; <code>0.00</code> unless the employee's profile has <code>pcbBorneByEmployer</code> on. It is still inside <code>pcb</code> (and in the CP39 file), but is not taken from <code>netPay</code> and is added to <code>totalCostToEmployer</code>. See <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.</td></tr>
               <tr><td><code>pcbCalculationJson</code></td><td>string?</td><td>The LHDN formula decomposition, as a JSON string. Null for payslips generated before this feature shipped.</td></tr>
               <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td><code>grossPay</code> is the statutory gross (what was earned).</td></tr>
               <tr><td><code>grossShown</code></td><td>decimal</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the payroll screens and run summary show it. Display only; <code>grossPay</code> stays the figure EPF, SOCSO, EIS and PCB are worked on. Can be negative. See <a href="payroll-runs.html#payslip-object">the payslip object</a>. (The list row from <code>GET /payslips</code> does not carry it.)</td></tr>
-              <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
+              <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. PCB the company pays for the employee (<code>pcbBorneByEmployer</code>) is added to it. Imported (YTD) payslips follow the same rule.</td></tr>
               <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
               <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each. A line settling unpaid leave from an earlier month has its month and days in the <code>label</code>; see <a href="payroll-runs.html#generate">Generate</a>.</td></tr>
             </tbody>
@@ -880,7 +889,7 @@
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
-              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td></td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>.</td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it).</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
               <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>true</code> once the settings were saved (<code>PUT /payroll/settings</code>, i.e. Payroll &rarr; Settings &rarr; General) or set during onboarding. <code>false</code> = nobody has reviewed these yet, so they are the statutory defaults, even if a settings row already exists (for instance one created by <code>PUT /payroll/annual/start</code>).</td></tr>
@@ -1199,7 +1208,7 @@
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems, and rows that cannot be matched safely (see <em>Refused rows</em> below).</td></tr>
-              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns; months that will be skipped (already have payroll in this system) or replaced (previously imported) &mdash; only months that appear in the uploaded file are listed, other months of the year are never touched; rows whose IC is not on file (<code>"Jane Tan: the IC in the sheet (…) isn't on file, so the row was matched by name — check the IC."</code>); and people who would <strong>lose</strong> already-imported months when a month is replaced, per month (<code>"Importing this file removes imported months for: Jane Tan (January 2026) — this file has no row for them in those months…"</code>). Warnings never block the import.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns; months that will be skipped (already have payroll in this system) or replaced (previously imported) &mdash; only months that appear in the uploaded file are listed, other months of the year are never touched; rows whose IC is not on file (<code>"Jane Tan: the IC in the sheet (…) isn't on file, so the row was matched by name — check the IC."</code>); and people who would <strong>lose</strong> already-imported months when a month is replaced, per month (<code>"Importing this file removes imported months for: Jane Tan (January 2026) — this file has no row for them in those months…"</code>). People whose profile has <code>pcbBorneByEmployer</code> on and who have PCB in the file (<code>"PCB borne by employer is on for: Jane Tan. Imported months aren't counted as PCB the company paid, so their first 2027 run won't add these months' PCB as a perquisite. If the company paid it, add it on that run as \"Tax Borne by Employer – previous year\"."</code>) &mdash; the file says what PCB was paid, not who paid it. Warnings never block the import.</td></tr>
               <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person. When the sheet spells the name differently from the employee it landed on, <code>employeeName</code> reads <code>"Sheet name → Matched name"</code> (a display string, not a name to match on &mdash; use <code>employeeProfileId</code>).</td></tr>
               <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
             </tbody>

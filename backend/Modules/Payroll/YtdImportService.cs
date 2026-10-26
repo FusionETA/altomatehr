@@ -169,6 +169,22 @@ public class YtdImportService : IYtdImportService
             c => $"Column '{c}' was not recognised and will be ignored."));
         warnings.AddRange(matchWarnings);
 
+        // The file says what PCB was paid, not who paid it, so imported months
+        // never count as PCB borne by the employer — next year's perquisite
+        // (LHDN PR 3/2024 §6.1) would leave them out without a word.
+        var borne = matched
+            .Where(m => m.Profile.PcbBorneByEmployer && m.Parsed.Months.Sum(mo => mo.Pcb) > 0m)
+            .Select(m => m.ProfileName)
+            .ToList();
+        if (borne.Count > 0)
+        {
+            warnings.Add(
+                "PCB borne by employer is on for: " + string.Join(", ", borne)
+                + $". Imported months aren't counted as PCB the company paid, so their first {year + 1} run "
+                + $"won't add these months' PCB as a perquisite. If the company paid it, add it on that run as "
+                + "\"Tax Borne by Employer – previous year\".");
+        }
+
         // Months that already have a COMPUTED run are the dangerous case:
         // importing over one would replace payroll this system produced with
         // figures typed into a spreadsheet.

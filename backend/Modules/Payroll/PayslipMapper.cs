@@ -69,6 +69,7 @@ public static class PayslipMapper
         GrossShown = PayrollGrossShown.Of(p),
         NetPay = p.NetPay,
         TotalCostToEmployer = p.TotalCostToEmployer,
+        PcbBorneByEmployer = p.PcbBorneByEmployer,
 
         StatutoryWarnings = string.IsNullOrWhiteSpace(p.StatutoryWarnings)
             ? []

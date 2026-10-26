@@ -91,6 +91,12 @@ public class Payslip : ITenantScoped
     // on payslips from before the records existed. See UnpaidLeaveCarryForward.
     public bool TracksUnpaidLeave { get; set; }
 
+    // The PCB the company paid instead of deducting it ("PCB borne by
+    // employer" was on for this month); 0 otherwise. Still inside `Pcb` and
+    // remitted with it, but not taken from net pay — and the year's total is
+    // added as a perquisite on the person's first run of the next year.
+    [Precision(12, 2)] public decimal PcbBorneByEmployer { get; set; }
+
     // ---- Earnings ----
 
     [Precision(12, 2)] public decimal BasicPay { get; set; }

@@ -197,6 +197,8 @@ public class PayslipCalculatorTests
             "deduct_tp1_life_insurance", "deduct_tp1_medical_insurance", "deduct_tp1_prs",
             "deduct_tp1_serious_disease_medical", "deduct_tp1_lifestyle",
             "deduct_tp1_sports_equipment", "deduct_tp1_other",
+            // Not v1: last year's employer-paid PCB, a stated yearly total.
+            "bik_tax_borne_by_employer",
         ];
 
         var unprorated = PayrollAdjustmentCategories.All.Values.Where(c => c.SkipProration).Select(c => c.Code).ToHashSet();
@@ -1325,5 +1327,38 @@ public class PayslipCalculatorTests
             month: 7, monthlySalary: 9000m, ytdTaxable: 54_000m, ytdEpf: 5_940m));
 
         Assert.True(withHistory.Pcb > freshYear.Pcb);
+    }
+
+    // PCB borne by the employer: worked out the same, kept out of net pay,
+    // added to the company's cost.
+    [Fact]
+    public void PcbBorneByEmployer_IsNotTakenFromNetPay_ButCostsTheEmployer()
+    {
+        var usual = PayslipCalculator.Calculate(Make(monthlySalary: 9000m));
+        var borne = PayslipCalculator.Calculate(Make(monthlySalary: 9000m) with { PcbBorneByEmployer = true });
+
+        Assert.True(usual.Pcb > 0m);
+        Assert.Equal(usual.Pcb, borne.Pcb);
+        Assert.Equal(usual.Pcb, borne.PcbBorneByEmployer);
+        Assert.Equal(usual.NetPay + usual.Pcb, borne.NetPay);
+        Assert.Equal(usual.TotalCostToEmployer + usual.Pcb, borne.TotalCostToEmployer);
+        Assert.Equal(0m, usual.PcbBorneByEmployer);
+    }
+
+    // v1 had admins enter the borne tax by hand as a CASH wages line; old
+    // payslips and profile rows with it must still pay it out. Only the
+    // automatic next-year perquisite is non-cash.
+    [Fact]
+    public void WagesTaxBorneByEmployer_StaysCash_TheAutomaticPerquisiteDoesNot()
+    {
+        var plain = PayslipCalculator.Calculate(Make(monthlySalary: 9000m));
+        var cash = PayslipCalculator.Calculate(Make(
+            monthlySalary: 9000m, allowances: [Allowance("wages_tax_borne_by_employer", 500m)]));
+        var perquisite = PayslipCalculator.Calculate(Make(
+            monthlySalary: 9000m, allowances: [Allowance("bik_tax_borne_by_employer", 500m)]));
+
+        Assert.Equal(9500m, cash.GrossPay);
+        Assert.Equal(9000m, perquisite.GrossPay);
+        Assert.True(perquisite.Pcb > plain.Pcb);
     }
 }

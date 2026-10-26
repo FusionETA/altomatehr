@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: d8edc34
+  user-guide-covered-up-to: dae3ed8
 -->
 <html lang="en">
 <head>
@@ -694,7 +694,8 @@
       encrypted, but anyone who can open this page can reveal them.</p>
     <h3>Xero sync</h3>
     <p>With Xero connected: how expense lines are grouped, the tracking category for projects, and which Xero
-      accounts each payroll line posts to.</p>
+      accounts each payroll line posts to (including the optional <em>PCB borne by employer</em> expense account; left
+      blank, it posts to Salary).</p>
     <p>Changes are saved with the bar that appears at the bottom — <span class="btn-name">Save changes</span>.</p>
     
     <figure class="shot" data-place="Payroll settings">
@@ -1015,6 +1016,11 @@
         same message appears on the bar at the bottom, and <span class="btn-name">Save changes</span> does nothing
         until you fix it. A year that isn't four digits says <em>Enter a 4-digit year, e.g. 2026.</em> The empty box
         shows <em>e.g. 2026</em> in grey as an example; it isn't filled in until you type it.</li>
+      <li><strong>PCB borne by employer</strong> — in the <strong>Income tax</strong> section. Turn it on when the company
+        pays this person's PCB instead of taking it from their pay. PCB is still worked out as usual and still goes to
+        LHDN, but it is no longer taken off their net pay: it counts as a cost to the company instead. Because tax the
+        company pays for someone counts as their income, the person's first payslip next year adds it as a taxable
+        benefit — see <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>.</li>
       <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
         or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
         them PCB goes back to the normal resident rates.</li>
@@ -1029,6 +1035,10 @@
         <div class="shot-item">
           <img src="shots/admin/employee-employment.png" alt="An employee record on the Employment tab, with compensation, Salary history and fixed adjustments" loading="lazy">
           <p class="shot-cap">Employment tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-pcb-borne.png" alt="The Income tax section on an employee's Statutory tab, with the PCB borne by employer switch off and its hint underneath" loading="lazy">
+          <p class="shot-cap">PCB borne by employer, Statutory tab</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">An employee's record</p>
@@ -1486,6 +1496,11 @@
       approval are sent back to draft as well, and are listed in the same message. If the company pays a month in several
       runs, a run for a completely different group of people is left alone. A month you imported from earlier payroll is
       never sent back this way.</p>
+    <p><strong>Revert is refused while next year's run uses this month's PCB.</strong> If this month has PCB the company paid
+      for someone (see <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>) and a run in the following
+      year that is awaiting approval or approved has already added it, <span class="btn-name">Revert to draft</span>
+      doesn't go ahead. The message says <em>Revert [that run] first</em>: revert the next year's run, then this
+      month, because reverting this month could change the amount that run added.</p>
     <p><strong>An imported month can't be reverted.</strong> A month you brought in under <strong>Import earlier payroll</strong>
       has no <span class="btn-name">Revert to draft</span> button. Its run page shows a note instead: <em>Imported from your
       previous payroll system. To correct this month, import it again under “Import earlier payroll” at the foot of the
@@ -1585,10 +1600,37 @@
       <p class="shot-cap shot-cap-main">Payroll summary for approval, on a draft run</p>
     </figure>
 
+    <h3 id="payroll-borne-pcb">When the company pays someone's PCB</h3>
+    <p>For anyone with <strong>PCB borne by employer</strong> turned on (Statutory tab of their record), the run works
+      out their PCB as usual, but it isn't taken from their net pay. Here is what you'll see:</p>
+    <ul>
+      <li><strong>On the run's Payslips list</strong> — the PCB column still shows the amount, with <em>paid by employer</em>
+        under it, because the tax is still paid to LHDN.</li>
+      <li><strong>In a person's payslip panel</strong> (click their name) — <strong>PCB / MTD</strong> no longer appears under
+        <strong>Deductions from the employee</strong>. It is listed as <strong>PCB / MTD (paid by employer)</strong> under
+        <strong>Paid by the employer</strong>, with EPF, SOCSO and EIS (employer), and is part of
+        <strong>Total cost to employer</strong>. CP38, zakat and any additional PCB are still the employee's.</li>
+      <li><strong>Benefits in kind</strong> — this section of the panel now lists each non-cash item by name, for example
+        <em>Tax Borne by Employer – 2026 (perquisite)</em>, instead of one total. They are shown for information and are
+        not in gross pay.</li>
+      <li><strong>Next year's first payslip</strong> — tax the company paid is the person's income the following year. So
+        their first payslip of the next year (January, or the first month they are paid in) gets an extra line,
+        <em>Tax Borne by Employer – 2026 (perquisite)</em>, with the total PCB the company paid them that year. It is
+        taxable but not paid in cash, so it appears under benefits in kind and doesn't change their take-home pay. It is
+        added once only. If you need to enter one by hand, it's in the allowance list as <em>Tax Borne by Employer –
+        previous year (perquisite)</em>.</li>
+      <li><strong>Months you imported</strong> — imported figures say what PCB was paid, not who paid it, so imported months
+        never count as PCB the company paid. See <a href="#ytd">Starting mid-year</a>.</li>
+      <li><strong>Xero</strong> — see the optional <em>PCB borne by employer</em> account under <a href="#xero">Xero</a>.</li>
+    </ul>
+    <p>If you approve or revert a month that has PCB the company paid for someone, any draft for the next year is marked
+      <strong>Stale</strong>, since it may be missing that line. Press <span class="btn-name">Re-run payroll</span> on it.</p>
+
     <h3>Cost to employer</h3>
     <p>The <strong>Cost to employer</strong> column on <strong>Payroll runs</strong> (and the <em>Cost</em> figure on the
       Overview, and on each person's payslip detail) is what the company actually pays out for the month: gross pay plus
-      its own EPF, SOCSO, EIS and HRDF contributions. A deduction the company keeps — <em>Loan Repayment</em> and
+      its own EPF, SOCSO, EIS and HRDF contributions, plus any PCB it pays for the person (see
+      <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>). A deduction the company keeps — <em>Loan Repayment</em> and
       <em>Miscellaneous / Other Deduction</em> — is taken off that cost as well as off the person's net pay, because the
       company never pays that money out. Deductions passed on to someone else, such as CP38 and extra PCB to LHDN, or
       zakat, still count as cost. Months you imported from earlier payroll follow the same rule.</p>
@@ -1887,6 +1929,11 @@
     <p>Imported months are history from your previous system, so they can't be reverted to draft or re-run. To correct
       one, import that month again; it replaces the old figures. Reverting an earlier month in AltomateHR never pulls an
       imported month back to draft.</p>
+    <p><strong>PCB paid by the company.</strong> If anyone in your file has <strong>PCB borne by employer</strong> turned on
+      and PCB in the file, the preview warns you, naming them. Imported months aren't counted as PCB the company paid, so
+      their first payslip next year won't add those months' PCB as a taxable benefit. If the company did pay it, add it
+      on that payslip yourself as <em>Tax Borne by Employer – previous year</em> (one-off allowances on the run, under
+      Benefits-in-kind / Perquisites).</p>
     <p>For someone who joined from another employer this year, fill in <strong>Previous employment (TP3)</strong> on the
       Employment tab of their record.</p>
     </div>
@@ -2127,7 +2174,9 @@
       <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on. In
         <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables
         (EPF, SOCSO, EIS, PCB, net salary) offer liability accounts — sync from Xero first if a list is empty. A saved
-        account of the wrong type is flagged so you can pick again.</li>
+        account of the wrong type is flagged so you can pick again. There is one optional expense account,
+        <strong>PCB borne by employer</strong>: PCB the company pays for staff is posted there as its own line, and if you
+        leave it blank it goes to the Salary account instead.</li>
       <li><strong>If a Connect or Reconnect doesn't finish</strong> while Xero is still connected, the card shows a
         calm note that nothing changed and the organisation is still connected. Reloading the page after a successful
         connect no longer shows "Xero didn't finish connecting".</li>

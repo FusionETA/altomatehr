@@ -61,6 +61,7 @@ public class PayrollJournalTests
         decimal cp38 = 0m,
         decimal zakat = 0m,
         decimal hrdf = 0m,
+        decimal pcbBorne = 0m,
         IReadOnlyList<PayrollJournal.JournalLineItem>? allowances = null,
         IReadOnlyList<PayrollJournal.JournalLineItem>? deductions = null,
         IReadOnlyList<PayrollJournal.JournalReimbursement>? reimbursements = null)
@@ -81,7 +82,8 @@ public class PayrollJournalTests
 
         var gross = proratedPay - unpaidLeave + otPay + cashAllowances;
         var net = gross + reimbursements.Sum(r => r.Amount)
-            - (epfEmployee + socsoEmployee + eisEmployee + skbbk + pcb + cp38 + zakat + otherDeductions);
+            - (epfEmployee + socsoEmployee + eisEmployee + skbbk + pcb + cp38 + zakat + otherDeductions)
+            + pcbBorne;   // the company pays it, so it stays in net
 
         return new PayrollJournal.EmployeeRow
         {
@@ -98,6 +100,7 @@ public class PayrollJournalTests
             EisEmployer = eisEmployer,
             SkbbkEmployee = skbbk,
             Pcb = pcb,
+            PcbBorneByEmployer = pcbBorne,
             Cp38 = cp38,
             Zakat = zakat,
             Hrdf = hrdf,
@@ -136,6 +139,32 @@ public class PayrollJournalTests
     public void ASimpleRun_Balances()
     {
         Assert.Equal(0m, Build(Input()).Balance);
+    }
+
+    // PCB the company pays stays in net pay and is still owed to LHDN, so it
+    // needs a debit of its own — its own account, or salary when unset.
+    [Fact]
+    public void PcbBorneByEmployer_IsDebitedAndBalances()
+    {
+        var result = Build(Input(rows: Row(pcb: 110m, pcbBorne: 110m)));
+
+        Assert.Equal(0m, result.Balance);
+        var line = Assert.Single(result.Lines!, l => l.Description.StartsWith("PCB BORNE BY EMPLOYER"));
+        Assert.Equal("CODE-taxBorneByEmployer", line.AccountCode);
+        Assert.Equal(110m, line.Amount);
+    }
+
+    [Fact]
+    public void PcbBorneByEmployer_FallsBackToSalaryWhenItsAccountIsUnset()
+    {
+        var mapping = Mapping();
+        var accounts = mapping.Accounts.Where(kv => kv.Key != PayrollXeroAccounts.TaxBorneByEmployer)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        var result = Build(Input(mapping: mapping with { Accounts = accounts }, rows: Row(pcbBorne: 110m)));
+
+        Assert.Equal(0m, result.Balance);
+        Assert.Equal("CODE-salary",
+            Assert.Single(result.Lines!, l => l.Description.StartsWith("PCB BORNE BY EMPLOYER")).AccountCode);
     }
 
     [Fact]

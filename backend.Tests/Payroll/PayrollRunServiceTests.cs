@@ -2140,6 +2140,87 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(200m, Assert.Single(payslip.LineItems).Amount);
     }
 
+    // ---- PCB borne by employer ----
+
+    // Last year's employer-paid PCB is this year's income: the person's first
+    // run of the year carries it as a taxable, non-cash perquisite — once.
+    [Fact]
+    public async Task GenerateAsync_AddsLastYearsEmployerPaidPcbAsAPerquisiteOnTheFirstRunOfTheYear()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+        profile.PcbBorneByEmployer = true;
+        await _db.SaveChangesAsync();
+
+        var lastYear = await CreateRunAsync(2025, 1);   // a month PCB is due on its own
+        var lastYearSlip = await GenerateOneAsync(lastYear);
+        Assert.True(lastYearSlip.Pcb > 0m);
+        Assert.Equal(lastYearSlip.Pcb, lastYearSlip.PcbBorneByEmployer);
+        Assert.Equal(lastYearSlip.GrossPay - lastYearSlip.EpfEmployee - lastYearSlip.SocsoEmployee
+                     - lastYearSlip.EisEmployee - lastYearSlip.SkbbkEmployee, lastYearSlip.NetPay);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == lastYear.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var january = await GenerateOneAsync(await CreateRunAsync(2026, 1));
+
+        var line = Assert.Single(january.LineItems, l => l.Category == "bik_tax_borne_by_employer");
+        Assert.Equal("Tax Borne by Employer – 2025 (perquisite)", line.Label);
+        Assert.Equal(lastYearSlip.PcbBorneByEmployer, line.Amount);
+        Assert.Equal(9000m, january.GrossPay);               // never paid out
+        Assert.True(january.Pcb > lastYearSlip.Pcb);         // but taxed
+
+        Assert.DoesNotContain((await GenerateOneAsync(await CreateRunAsync(2026, 2))).LineItems,
+            l => l.Category == "bik_tax_borne_by_employer");
+    }
+
+    // Last year's month approved AFTER this year's first draft was built: the
+    // draft left that month's borne PCB out of the perquisite, so it must be
+    // re-run before it can go for approval.
+    [Fact]
+    public async Task ApproveAsync_MarksNextYearsDraftsStale_WhenItsPcbWasBorneByTheEmployer()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+        profile.PcbBorneByEmployer = true;
+        await _db.SaveChangesAsync();
+
+        var lastYear = await CreateRunAsync(2025, 1);   // a month PCB is due on its own
+        Assert.True((await GenerateOneAsync(lastYear)).PcbBorneByEmployer > 0m);
+        var january = await CreateRunAsync(2026, 1);
+        await GenerateOneAsync(january);
+        Assert.False((await _service.GetAsync(january.Id))!.Run.IsStale);
+
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == lastYear.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(lastYear.Id)).Ok);
+
+        Assert.True((await _service.GetAsync(january.Id))!.Run.IsStale);
+    }
+
+    // The year-to-date cascade stops at December, but next year's first run
+    // carries this year's borne PCB — so reverting this year waits for it.
+    [Fact]
+    public async Task RevertToDraftAsync_Refuses_WhileNextYearsRunCarriesTheBornePcb()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+        profile.PcbBorneByEmployer = true;
+        await _db.SaveChangesAsync();
+
+        var lastYear = await CreateRunAsync(2025, 1);   // a month PCB is due on its own
+        Assert.True((await GenerateOneAsync(lastYear)).PcbBorneByEmployer > 0m);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == lastYear.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        var january = await CreateRunAsync(2026, 1);
+        await GenerateOneAsync(january);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == january.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var refused = await _service.RevertToDraftAsync(lastYear.Id);
+        Assert.False(refused.Ok);
+        Assert.Contains("January 2026", refused.Error);
+
+        Assert.True((await _service.RevertToDraftAsync(january.Id)).Ok);
+        Assert.True((await _service.RevertToDraftAsync(lastYear.Id)).Ok);
+    }
+
     // ---- Unpaid leave decided after its month was filed ----
 
     private static UnpaidLeavePartDto Leave(

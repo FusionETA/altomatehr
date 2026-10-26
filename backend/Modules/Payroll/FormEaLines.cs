@@ -42,6 +42,7 @@ public static class FormEaLines
         [PayrollAdjustmentCategories.BikAward] = Line.B1c,
 
         [PayrollAdjustmentCategories.WagesTaxBorneByEmployer] = Line.B1d,
+        [PayrollAdjustmentCategories.BikTaxBorneByEmployer] = Line.B1d,
         [PayrollAdjustmentCategories.BikShareScheme] = Line.B1e,
         [PayrollAdjustmentCategories.WagesGratuity] = Line.B1f,
         [PayrollAdjustmentCategories.BikLivingAccommodation] = Line.B4,
