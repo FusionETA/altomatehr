@@ -589,9 +589,6 @@ public class PayrollRunService : IPayrollRunService
         var loanRepayments = await _loans.GetRepaymentsForPeriodAsync(
             run.PeriodYear, run.PeriodMonth);
 
-        var workingDaysBasis = PayPeriod.WorkingDaysForPeriod(
-            run.PeriodYear, run.PeriodMonth, settings.WorkingDaysRule);
-
         var payslips = new List<Payslip>();
         var lineItems = new List<PayslipLineItem>();
         var skipped = new List<SkippedEmployeeDto>();
@@ -635,7 +632,7 @@ public class PayrollRunService : IPayrollRunService
             var result = PayslipCalculator.Calculate(
                 BuildInput(
                     profile, settings, run, ytd, adjustment, attached, policy,
-                    buckets, unpaidDays, workingDaysBasis, loanRepayment, overtime));
+                    buckets, unpaidDays, loanRepayment, overtime));
 
             memberships.TryGetValue(profile.UserId, out var membership);
 
@@ -1164,7 +1161,6 @@ public class PayrollRunService : IPayrollRunService
         EmployeePolicy? policy,
         HoursBucketsDto? hours,
         decimal unpaidLeaveDays,
-        int workingDaysBasis,
         decimal loanRepayment,
         PayrollOvertimeHours.Hours overtime)
     {
@@ -1249,7 +1245,7 @@ public class PayrollRunService : IPayrollRunService
                 WithUnpaidLeave(
                     PayrollRunAdjustments.Merge(
                         ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
-                    profile, unpaidLeaveDays, workingDaysBasis),
+                    profile, unpaidLeaveDays, run.PeriodYear, run.PeriodMonth),
                 loanRepayment),
             JoinDate = profile.JoinDate,
             LeaveDate = LastPayableDay(profile),
@@ -1350,12 +1346,13 @@ public class PayrollRunService : IPayrollRunService
         IReadOnlyList<FixedAllowance> rows,
         EmployeeProfile profile,
         decimal unpaidLeaveDays,
-        int workingDaysBasis)
+        int year,
+        int month)
     {
         if (profile.SalaryType != SalaryType.MONTHLY) return rows;
 
         var amount = PayPeriod.UnpaidLeaveDeduction(
-            profile.MonthlySalary, unpaidLeaveDays, workingDaysBasis);
+            profile.MonthlySalary, unpaidLeaveDays, year, month);
 
         if (amount <= 0m) return rows;
 
