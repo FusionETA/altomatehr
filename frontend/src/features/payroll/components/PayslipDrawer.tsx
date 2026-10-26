@@ -33,7 +33,8 @@ export function PayslipDrawer({
     { label: "SOCSO (employee)", value: payslip.socsoEmployee },
     { label: "EIS (employee)", value: payslip.eisEmployee },
     { label: "SKBBK", value: payslip.skbbkEmployee },
-    { label: "PCB / MTD", value: payslip.pcb + payslip.voluntaryPcb },
+    // PCB the company pays is listed under "Paid by the employer" instead.
+    { label: "PCB / MTD", value: payslip.pcb - payslip.pcbBorneByEmployer + payslip.voluntaryPcb },
     { label: "CP38", value: payslip.cp38 },
     { label: "Zakat", value: payslip.zakat },
   ].filter((row) => row.value > 0);
@@ -115,6 +116,9 @@ export function PayslipDrawer({
           <Row label="EPF (employer)" value={payslip.epfEmployer} />
           <Row label="SOCSO (employer)" value={payslip.socsoEmployer} />
           <Row label="EIS (employer)" value={payslip.eisEmployer} />
+          {payslip.pcbBorneByEmployer > 0 ? (
+            <Row label="PCB / MTD (paid by employer)" value={payslip.pcbBorneByEmployer} />
+          ) : null}
           {payslip.hrdf > 0 ? <Row label="HRD Corp levy" value={payslip.hrdf} /> : null}
           <Row label="Total cost to employer" value={payslip.totalCostToEmployer} total />
         </Section>

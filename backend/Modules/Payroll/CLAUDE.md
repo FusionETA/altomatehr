@@ -408,6 +408,18 @@ later runs awaiting approval back to draft, needing a re-run. Imported months an
 never revisited. Approving a run, or a change to unpaid leave, marks later
 drafts of the year stale (`MarkLaterDraftsAsync`, drafts only).
 
+## PCB borne by employer
+
+With the profile's `PcbBorneByEmployer` on, PCB is worked out exactly as usual —
+no gross-up in the month (LHDN PR 3/2024 §6.1: the tax is a perquisite of the
+FOLLOWING year) — but stays out of net pay and joins the company's cost
+(`Payslip.PcbBorneByEmployer` records the amount; it's still inside `Pcb`, the
+CP39 file and the YTD). The person's first run of the next year (January, or
+their first month paid) adds last year's total as `wages_tax_borne_by_employer`:
+non-cash, taxed as additional remuneration, no EPF/SOCSO/EIS, Form EA B1(d).
+The Xero journal debits it to the optional "PCB borne by employer" account,
+falling back to Salary. CP38, zakat and voluntary PCB stay the employee's.
+
 ## One formula, one implementation
 
 `PcbCalculator.Explain` returns the deducted money AND every intermediate the

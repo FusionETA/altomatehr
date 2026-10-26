@@ -490,8 +490,14 @@ function Row({
 
       <td className={`${CELL} font-semibold text-foreground`}>{rm(payslip.grossShown)}</td>
 
-      {/* Includes Additional PCB — withheld and filed as PCB. */}
-      <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.pcb + payslip.voluntaryPcb)}</td>
+      {/* Includes Additional PCB — withheld and filed as PCB. PCB the
+          company pays still shows here (it's remitted), marked as theirs. */}
+      <td className={`${CELL} ${EMP_TINT}`}>
+        {rm(payslip.pcb + payslip.voluntaryPcb)}
+        {payslip.pcbBorneByEmployer > 0 ? (
+          <span className="block text-[10px] font-normal text-muted-foreground">paid by employer</span>
+        ) : null}
+      </td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.epfEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.socsoEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.eisEmployee)}</td>

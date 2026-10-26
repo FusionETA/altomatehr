@@ -284,6 +284,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 EisEmployer = p.EisEmployer,
                 SkbbkEmployee = p.SkbbkEmployee,
                 Pcb = p.Pcb,
+                PcbBorneByEmployer = p.PcbBorneByEmployer,
                 Cp38 = p.Cp38,
                 Zakat = p.Zakat,
                 Hrdf = p.Hrdf,

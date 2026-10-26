@@ -2140,6 +2140,38 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(200m, Assert.Single(payslip.LineItems).Amount);
     }
 
+    // ---- PCB borne by employer ----
+
+    // Last year's employer-paid PCB is this year's income: the person's first
+    // run of the year carries it as a taxable, non-cash perquisite — once.
+    [Fact]
+    public async Task GenerateAsync_AddsLastYearsEmployerPaidPcbAsAPerquisiteOnTheFirstRunOfTheYear()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 9000m);
+        profile.PcbBorneByEmployer = true;
+        await _db.SaveChangesAsync();
+
+        var lastYear = await CreateRunAsync(2025, 1);   // a month PCB is due on its own
+        var lastYearSlip = await GenerateOneAsync(lastYear);
+        Assert.True(lastYearSlip.Pcb > 0m);
+        Assert.Equal(lastYearSlip.Pcb, lastYearSlip.PcbBorneByEmployer);
+        Assert.Equal(lastYearSlip.GrossPay - lastYearSlip.EpfEmployee - lastYearSlip.SocsoEmployee
+                     - lastYearSlip.EisEmployee - lastYearSlip.SkbbkEmployee, lastYearSlip.NetPay);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == lastYear.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+
+        var january = await GenerateOneAsync(await CreateRunAsync(2026, 1));
+
+        var line = Assert.Single(january.LineItems, l => l.Category == "wages_tax_borne_by_employer");
+        Assert.Equal("Tax Borne by Employer – 2025 (perquisite)", line.Label);
+        Assert.Equal(lastYearSlip.PcbBorneByEmployer, line.Amount);
+        Assert.Equal(9000m, january.GrossPay);               // never paid out
+        Assert.True(january.Pcb > lastYearSlip.Pcb);         // but taxed
+
+        Assert.DoesNotContain((await GenerateOneAsync(await CreateRunAsync(2026, 2))).LineItems,
+            l => l.Category == "wages_tax_borne_by_employer");
+    }
+
     // ---- Unpaid leave decided after its month was filed ----
 
     private static UnpaidLeavePartDto Leave(

@@ -460,6 +460,9 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
                 SkipProration = true,
+                // The tax the company paid is income the employee is taxed on,
+                // not money they receive — out of gross and net like a BIK.
+                NonCash = true,
             },
 
             // A director who is not an employee has no contract of service, so

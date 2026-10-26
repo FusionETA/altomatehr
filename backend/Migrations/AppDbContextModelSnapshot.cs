@@ -3066,6 +3066,10 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<decimal>("PcbBorneByEmployer")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("PcbCalculationJson")
                         .HasColumnType("longtext");
 

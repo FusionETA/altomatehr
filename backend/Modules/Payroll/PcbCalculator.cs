@@ -22,8 +22,9 @@ namespace AltomateHR.Api.Modules.Payroll;
 //     ThisMonthAllowableDeductions if collected.
 //   (The 15% REP / knowledge-worker / C-suite approvals ARE implemented —
 //   `SpecialTaxScheme`; see PcbTaxBands.AnnualTax.)
-//   - `PcbBorneByEmployer` gross-up is NOT implemented; the figure is the same
-//     whoever legally pays it.
+//   (PCB borne by the employer needs no gross-up in the month: LHDN PR 3/2024
+//   §6.1 makes the tax a perquisite of the FOLLOWING year, added on that
+//   year's first run — see PayslipCalculator.Input.PcbBorneByEmployer.)
 //
 // Validate against LHDN's published test cases before relying on this for a
 // live submission.

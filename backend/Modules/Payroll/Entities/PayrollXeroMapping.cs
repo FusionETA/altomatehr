@@ -79,6 +79,8 @@ public static class PayrollXeroAccounts
     public const string SocsoEmployer = "socsoEmployer";
     public const string EisEmployer = "eisEmployer";
     public const string HrdfEmployer = "hrdfEmployer";
+    // Optional: PCB the company pays for staff. Unset falls back to Salary.
+    public const string TaxBorneByEmployer = "taxBorneByEmployer";
 
     // ---- Accrual, credited, always summed ----
     public const string AccrualEpf = "accrualEpf";
@@ -91,7 +93,7 @@ public static class PayrollXeroAccounts
     public static readonly IReadOnlyList<string> All =
     [
         Salary, Allowance, Deduction,
-        EpfEmployer, SocsoEmployer, EisEmployer, HrdfEmployer,
+        EpfEmployer, SocsoEmployer, EisEmployer, HrdfEmployer, TaxBorneByEmployer,
         AccrualEpf, AccrualSocso, AccrualEis, AccrualPcb, AccrualHrdf, AccrualSalary,
     ];
 
@@ -107,6 +109,7 @@ public static class PayrollXeroAccounts
         SocsoEmployer => "SOCSO — employer contribution",
         EisEmployer => "EIS — employer contribution",
         HrdfEmployer => "HRD Corp levy",
+        TaxBorneByEmployer => "PCB borne by employer",
         AccrualSalary => "Net pay payable",
         AccrualEpf => "EPF payable",
         AccrualSocso => "SOCSO payable",

@@ -1326,4 +1326,20 @@ public class PayslipCalculatorTests
 
         Assert.True(withHistory.Pcb > freshYear.Pcb);
     }
+
+    // PCB borne by the employer: worked out the same, kept out of net pay,
+    // added to the company's cost.
+    [Fact]
+    public void PcbBorneByEmployer_IsNotTakenFromNetPay_ButCostsTheEmployer()
+    {
+        var usual = PayslipCalculator.Calculate(Make(monthlySalary: 9000m));
+        var borne = PayslipCalculator.Calculate(Make(monthlySalary: 9000m) with { PcbBorneByEmployer = true });
+
+        Assert.True(usual.Pcb > 0m);
+        Assert.Equal(usual.Pcb, borne.Pcb);
+        Assert.Equal(usual.Pcb, borne.PcbBorneByEmployer);
+        Assert.Equal(usual.NetPay + usual.Pcb, borne.NetPay);
+        Assert.Equal(usual.TotalCostToEmployer + usual.Pcb, borne.TotalCostToEmployer);
+        Assert.Equal(0m, usual.PcbBorneByEmployer);
+    }
 }

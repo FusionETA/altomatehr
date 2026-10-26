@@ -91,6 +91,14 @@ public static class PayslipCalculator
         // PayrollRunAdjustment.HrdfLevy). Null = compute it.
         public decimal? HrdfOverride { get; init; }
 
+        // The company pays this person's PCB instead of deducting it (the
+        // profile's "PCB borne by employer"). PCB is worked out exactly as
+        // usual — no gross-up in the month (LHDN PR 3/2024 §6.1: the tax is a
+        // perquisite of the FOLLOWING year, added on that year's first run) —
+        // but it stays out of net pay and joins the company's cost. CP38,
+        // zakat and voluntary PCB are still the employee's.
+        public bool PcbBorneByEmployer { get; init; }
+
         // Auto-apply the RM 350 PERKESO relief inside PCB. Off means the
         // employee claims it themselves at year end instead.
         public bool AutoApplySocsoEisRelief { get; init; } = true;
@@ -243,6 +251,10 @@ public static class PayslipCalculator
         public required decimal GrossPay { get; init; }
         public required decimal NetPay { get; init; }
         public required decimal TotalCostToEmployer { get; init; }
+
+        // The PCB the company paid instead of deducting it; 0 unless the
+        // employee's PCB is borne by the employer.
+        public decimal PcbBorneByEmployer { get; init; }
 
         public required IReadOnlyList<LineItem> LineItems { get; init; }
         public required EpfRatesSnapshot EpfRates { get; init; }
@@ -510,10 +522,14 @@ public static class PayslipCalculator
         // above has already lowered `pcb` to what the employee actually pays, so
         // neither is subtracted twice. SKBBK is employee-only, which is why it
         // appears here but not in the employer's cost below.
+        // PCB borne by the employer is still withheld and remitted (CP39), but
+        // from the company's pocket: out of the employee's deductions, into
+        // its cost.
+        var bornePcb = input.PcbBorneByEmployer ? pcb : 0m;
         var netPay = Money.Round2(
             grossPay
             - epf.Employee - socso.Employee - eis.Employee - socso.EmployeeSkbbk
-            - totalDeductions - pcb);
+            - totalDeductions - (pcb - bornePcb));
 
         // What the company actually pays out: gross plus its own contributions,
         // less any deduction it keeps (a loan or other debt recovered from pay,
@@ -521,7 +537,7 @@ public static class PayslipCalculator
         // PCB to LHDN, zakat to the zakat centre — are still paid out, so they
         // stay in. Matches PayrollPanda's cost for the same payslip.
         var totalCostToEmployer = Money.Round2(
-            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf
+            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf + bornePcb
             - buckets.RetainedDeductions);
 
         return new Result
@@ -569,6 +585,7 @@ public static class PayslipCalculator
             GrossPay = grossPay,
             NetPay = netPay,
             TotalCostToEmployer = totalCostToEmployer,
+            PcbBorneByEmployer = bornePcb,
 
             LineItems = lineItems,
             EpfRates = SnapshotEpfRates(
