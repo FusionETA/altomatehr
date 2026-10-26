@@ -2350,6 +2350,79 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 11))).LineItems);
     }
 
+    private PayrollRun StoredRun(int month, PayrollRunStatus status, int number, params EmployeeProfile[] people)
+    {
+        var run = new PayrollRun
+        {
+            OrganizationId = "org-1", PeriodYear = 2026, PeriodMonth = month, Status = status,
+            RunNumber = number, Name = number == 1 ? null : $"Run {number}",
+            GeneratedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        _db.PayrollRuns.Add(run);
+        foreach (var person in people)
+        {
+            _db.PayrollRunMembers.Add(new PayrollRunMember
+            {
+                OrganizationId = "org-1", PayrollRunId = run.Id, EmployeeProfileId = person.Id,
+                PeriodYear = 2026, PeriodMonth = month,
+            });
+        }
+        return run;
+    }
+
+    // Split September {Ali} reaches October {Ali, Ben}, which reaches
+    // November {Ben}: reverting September takes October back to draft and
+    // sends November (awaiting approval) back too — November's figures were
+    // built on October's.
+    [Fact]
+    public async Task RevertToDraftAsync_ReachesRunsLinkedThroughAnotherRun()
+    {
+        var ali = AddEmployee("usr-1", "Ali");
+        var ben = AddEmployee("usr-2", "Ben");
+        var septemberAli = StoredRun(9, PayrollRunStatus.SUBMITTED, 1, ali);
+        StoredRun(9, PayrollRunStatus.SUBMITTED, 2, ben);
+        var october = StoredRun(10, PayrollRunStatus.SUBMITTED, 1, ali, ben);
+        var novemberBen = StoredRun(11, PayrollRunStatus.PENDING_APPROVAL, 1, ben);
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(2, (await _service.GetRevertImpactAsync(septemberAli.Id)).Count);
+        Assert.True((await _service.RevertToDraftAsync(septemberAli.Id)).Ok);
+
+        Assert.Equal(PayrollRunStatus.DRAFT, (await _service.GetAsync(october.Id))!.Run.Status);
+        var november = (await _service.GetAsync(novemberBen.Id))!.Run;
+        Assert.Equal(PayrollRunStatus.DRAFT, november.Status);
+        Assert.True(november.IsStale);
+    }
+
+    // A later draft was built on the reverted month's figures, so it must be
+    // re-run before it can be sent for approval.
+    [Fact]
+    public async Task RevertToDraftAsync_MarksLaterDraftsToReRun()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var august = await FiledThroughApprovalAsync(8);
+        var october = await CreateRunAsync(2026, 10);
+        await GenerateOneAsync(october);
+
+        Assert.True((await _service.RevertToDraftAsync(august.Id)).Ok);
+
+        Assert.True((await _service.GetAsync(october.Id))!.Run.IsStale);
+    }
+
+    // An approved unpaid part that counted 0 days (a weekend) is recorded at
+    // 0, so a later change to the work week doesn't dock it.
+    [Fact]
+    public async Task GenerateAsync_DoesNotDockAZeroDayPartAfterTheWorkWeekChanges()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var weekend = Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-30)) with { Days = 0 };
+        _leave.Parts.Add(weekend);
+        await FiledThroughApprovalAsync(9);
+        Replace(weekend with { Days = 1 });   // now a six-day week
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
+    }
+
     // An imported month's figures came from the previous system, which may
     // already have docked it; a month whose unpaid days were typed on the run
     // replaced the Leave module's on purpose. Neither is revisited.

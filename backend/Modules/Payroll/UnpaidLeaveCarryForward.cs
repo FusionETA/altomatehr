@@ -79,7 +79,10 @@ public static class UnpaidLeaveCarryForward
                 if (unchanged) continue;
 
                 var now = part is { IsApprovedUnpaid: true } ? (decimal)part.Days : 0m;
-                owed.Add(new Owed(id, now - rows.Sum(r => r.Days), part, last));
+                var diff = now - rows.Sum(r => r.Days);
+                // Gone and already refunded: nothing left to record.
+                if (diff == 0m && part is not { Status: LeaveStatus.APPROVED }) continue;
+                owed.Add(new Owed(id, diff, part, last));
             }
             else if (part!.Days > 0 && (m.TracksUnpaidLeave || part.DecidedAt > m.PayslipGeneratedAt))
             {

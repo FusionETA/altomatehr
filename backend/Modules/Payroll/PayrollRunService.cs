@@ -586,20 +586,27 @@ public class PayrollRunService : IPayrollRunService
         var hoursByUser = await _hours.GetHoursForEmployeesAsync(
             profiles.Select(p => p.UserId), periodStart, periodEnd);
 
-        // Keyed by user id, like the hours — the Leave module works in users.
-        var unpaidDaysByUser = await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd);
-
         // Unpaid leave decided after an earlier month of this year was filed —
         // approved late, cancelled or changed — settled on this run; and which
         // applications this month docks, recorded so a later run can tell.
+        // Every approved unpaid part is recorded, a 0-day one too (a weekend
+        // part): settled at 0, a later work-week change can't re-price it.
         var carriesByProfile = await UnpaidLeaveCarriesAsync(run, profiles);
         var ownPartsByUser = _settlements is null
             ? []
             : (await _leave.GetLeavePartsForOrgAsync(periodStart, periodEnd))
-                .Where(p => p.IsApprovedUnpaid && p.Days > 0)
+                .Where(p => p.IsApprovedUnpaid)
                 .GroupBy(p => p.UserId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
         var settlements = new List<UnpaidLeaveSettlement>();
+
+        // Keyed by user id, like the hours — the Leave module works in users.
+        // With settlements, from the same read as what's recorded, so a leave
+        // decided mid-generation can't be docked without a record or the
+        // other way round.
+        var unpaidDaysByUser = _settlements is null
+            ? await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd)
+            : ownPartsByUser.ToDictionary(kv => kv.Key, kv => kv.Value.Sum(p => p.Days), StringComparer.Ordinal);
 
         // Approved overtime requests for the month, split by day type. Paid by
         // default — see PayrollOvertimeHours for when the admin's figure wins.
@@ -1012,13 +1019,12 @@ public class PayrollRunService : IPayrollRunService
         // YTD-cumulative figures — PCB's annualisation, the SOCSO/EIS relief —
         // computed off this month. Reverting this one alone would leave them
         // filed against a year-to-date that no longer exists.
-        var later = await LaterRunsSharingPeopleAsync(run);
-
+        //
         // A later month awaiting approval was built on this month too — its
         // year-to-date, and any unpaid leave it settled for this month. It
         // goes back to draft, needing a re-run, rather than being approved
         // on figures that are about to change.
-        var pending = await LaterRunsSharingPeopleAsync(run, PayrollRunStatus.PENDING_APPROVAL);
+        var (later, pending) = await LaterRunsReachedAsync(run);
         var now = DateTime.UtcNow;
         foreach (var p in pending)
         {
@@ -1037,6 +1043,12 @@ public class PayrollRunService : IPayrollRunService
         // Back in draft, what they docked or settled is provisional again.
         if (_settlements is not null)
             await _settlements.SetFinalForRunsAsync(reverted.Select(r => r.Id).ToList(), false);
+
+        // A later DRAFT was built on this month's figures too — its
+        // year-to-date, and any unpaid leave it settled for this month — so
+        // it must be re-run before it can be sent for approval.
+        if (_drafts is not null)
+            await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
 
         var alsoReverted = later.Concat(pending).Select(RunLabel).ToList();
 
@@ -1089,39 +1101,48 @@ public class PayrollRunService : IPayrollRunService
         if (run is null || run.Status != PayrollRunStatus.SUBMITTED
             || run.Source == PayrollRunSource.IMPORTED) return [];
 
-        return (await LaterRunsSharingPeopleAsync(run))
-            .Concat(await LaterRunsSharingPeopleAsync(run, PayrollRunStatus.PENDING_APPROVAL))
-            .Select(RunLabel)
-            .ToList();
+        var (later, pending) = await LaterRunsReachedAsync(run);
+        return later.Concat(pending).Select(RunLabel).ToList();
     }
 
-    // The later submitted runs in the year whose year-to-date this run feeds:
-    // those sharing anyone with it. Year-to-date is per person, so another
-    // group's later month never read this run's figures.
-    private async Task<List<PayrollRun>> LaterRunsSharingPeopleAsync(
-        PayrollRun run, PayrollRunStatus status = PayrollRunStatus.SUBMITTED)
+    // The later submitted (and awaiting-approval) runs in the year whose
+    // year-to-date this run feeds, directly or through another: a run sharing
+    // anyone with it, then anyone sharing with THAT run, and so on — split
+    // September {Ali} reaches October {Ali, Ben}, which reaches November
+    // {Ben}. Walked in month order, widening the people as runs are reached.
+    // Year-to-date is per person, so a group never reached never read these
+    // figures.
+    private async Task<(List<PayrollRun> Submitted, List<PayrollRun> Pending)> LaterRunsReachedAsync(PayrollRun run)
     {
         // Imported months are left out: their figures are the previous
         // system's, typed in rather than computed off this year-to-date, so
         // reverting an earlier month doesn't make them wrong — and an imported
         // month must never go back to draft (see RevertToDraftAsync).
-        var later = (status == PayrollRunStatus.SUBMITTED
-                ? await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth)
-                : (await _runs.GetAllAsync())
-                    .Where(r => r.PeriodYear == run.PeriodYear && r.PeriodMonth > run.PeriodMonth && r.Status == status)
-                    .ToList())
-            .Where(r => r.Source != PayrollRunSource.IMPORTED)
+        var later = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == run.PeriodYear
+                        && r.PeriodMonth > run.PeriodMonth
+                        && (r.Status == PayrollRunStatus.SUBMITTED || r.Status == PayrollRunStatus.PENDING_APPROVAL)
+                        && r.Source != PayrollRunSource.IMPORTED)
+            .OrderBy(r => r.PeriodMonth)
             .ToList();
-        var people = await PeopleOfAsync(run);
-        if (people is null) return later;
 
-        var sharing = new List<PayrollRun>();
+        // Null = everyone (a run with no roster).
+        var start = await PeopleOfAsync(run);
+        HashSet<string>? people = start is null ? null : new HashSet<string>(start, StringComparer.Ordinal);
+        var reached = new List<PayrollRun>();
         foreach (var other in later)
         {
             var theirs = await PeopleOfAsync(other);
-            if (theirs is null || people.Overlaps(theirs)) sharing.Add(other);
+            if (people is not null && theirs is not null && !people.Overlaps(theirs)) continue;
+
+            reached.Add(other);
+            if (theirs is null) people = null;
+            else people?.UnionWith(theirs);
         }
-        return sharing;
+
+        return (
+            reached.Where(r => r.Status == PayrollRunStatus.SUBMITTED).ToList(),
+            reached.Where(r => r.Status == PayrollRunStatus.PENDING_APPROVAL).ToList());
     }
 
     public async Task<PayrollRunSaveResult> DeleteDraftAsync(string id)

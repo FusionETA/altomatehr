@@ -77,9 +77,16 @@ internal sealed class StubPayrollLeave : ILeaveService
     // Approved unpaid ones also count towards the month's unpaid days.
     public List<UnpaidLeavePartDto> Parts { get; } = [];
 
+    // SetUnpaidDays shows up as one approved unpaid application per person in
+    // whatever window is asked, approved long ago.
     public Task<IReadOnlyList<UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to) =>
         Task.FromResult<IReadOnlyList<UnpaidLeavePartDto>>(
-            [.. Parts.Where(p => p.StartDate <= to.Date && p.EndDate >= from.Date)]);
+        [
+            .. Parts.Where(p => p.StartDate <= to.Date && p.EndDate >= from.Date),
+            .. _unpaidByUser.Select(kv => new UnpaidLeavePartDto(
+                $"stub-{kv.Key}-{from:yyyyMM}", kv.Key, "type-unpaid", false, AltomateHR.Api.Modules.Leave.Entities.LeaveStatus.APPROVED,
+                from.Date, from.Date, DateTime.MinValue, kv.Value)),
+        ]);
 
     // Applications the org-wide read returns. Seeded by the attendance export
     // tests, which overlay approved leave onto a day-by-day calendar; payroll's
