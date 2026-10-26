@@ -96,6 +96,7 @@ public class AppDbContext : DbContext
     public DbSet<PayrollRunAdjustment> PayrollRunAdjustments => Set<PayrollRunAdjustment>();
     public DbSet<PayrollRunClaim> PayrollRunClaims => Set<PayrollRunClaim>();
     public DbSet<PayrollRunMember> PayrollRunMembers => Set<PayrollRunMember>();
+    public DbSet<UnpaidLeaveSettlement> UnpaidLeaveSettlements => Set<UnpaidLeaveSettlement>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
     public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
@@ -365,6 +366,11 @@ public class AppDbContext : DbContext
         // And one run per person per month: two runs of a month can't both
         // hold the same person, even if two admins pick them at once.
         runMember.HasIndex(m => new { m.OrganizationId, m.PeriodYear, m.PeriodMonth, m.EmployeeProfileId }).IsUnique();
+
+        // Which payslip settled which unpaid leave — read by year, rebuilt by run.
+        var settlement = modelBuilder.Entity<UnpaidLeaveSettlement>();
+        settlement.HasIndex(s => new { s.OrganizationId, s.PeriodYear });
+        settlement.HasIndex(s => s.PayrollRunId);
         lineItem.Property(li => li.Kind).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
@@ -505,6 +511,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PayrollRunMember>().HasQueryFilter(
             m => (_currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId)
                  && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(m.EmployeeProfileId)));
+        modelBuilder.Entity<UnpaidLeaveSettlement>().HasQueryFilter(
+            s => (_currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(s.EmployeeProfileId)));
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<DocumentTemplate>().HasQueryFilter(

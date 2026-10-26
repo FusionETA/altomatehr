@@ -3354,6 +3354,72 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("SalaryChanges");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Payroll.Entities.UnpaidLeaveSettlement", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Days")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("EmployeeProfileId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("Final")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LeaveApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("LeaveEndDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LeaveStartDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LeaveTypeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PayrollRunId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PayslipId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
+
+                    b.HasIndex("OrganizationId", "PeriodYear");
+
+                    b.ToTable("UnpaidLeaveSettlements");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Policies.Entities.EmployeePolicy", b =>
                 {
                     b.Property<string>("Id")

@@ -336,6 +336,7 @@ builder.Services.AddScoped<IPayrollRunAdjustmentService, PayrollRunAdjustmentSer
 builder.Services.AddScoped<IPayrollAdjustmentImportService, PayrollAdjustmentImportService>();
 builder.Services.AddScoped<IPayrollRunClaimRepository, PayrollRunClaimRepository>();
 builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberRepository>();
+builder.Services.AddScoped<IUnpaidLeaveSettlementRepository, UnpaidLeaveSettlementRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
 builder.Services.AddScoped<ITp1FormService, Tp1FormService>();

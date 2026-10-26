@@ -72,15 +72,14 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public void SetUnpaidDays(string userId, double days) => _unpaidByUser[userId] = days;
 
-    // Days for one month only, which win over SetUnpaidDays for that month —
-    // for unpaid leave approved or cancelled after its month was filed.
-    private readonly Dictionary<(int, int), Dictionary<string, double>> _unpaidByMonth = [];
-    public void SetUnpaidDaysIn(int year, int month, string userId, double days)
-    {
-        if (!_unpaidByMonth.TryGetValue((year, month), out var byUser))
-            _unpaidByMonth[(year, month)] = byUser = new Dictionary<string, double>(StringComparer.Ordinal);
-        byUser[userId] = days;
-    }
+    // Individual applications, for the unpaid-leave settlement: a test
+    // changes one (cancels it, flips its type) by replacing it in the list.
+    // Approved unpaid ones also count towards the month's unpaid days.
+    public List<UnpaidLeavePartDto> Parts { get; } = [];
+
+    public Task<IReadOnlyList<UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to) =>
+        Task.FromResult<IReadOnlyList<UnpaidLeavePartDto>>(
+            [.. Parts.Where(p => p.StartDate <= to.Date && p.EndDate >= from.Date)]);
 
     // Applications the org-wide read returns. Seeded by the attendance export
     // tests, which overlay approved leave onto a day-by-day calendar; payroll's
@@ -90,9 +89,11 @@ internal sealed class StubPayrollLeave : ILeaveService
     public Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
         DateTime from, DateTime to) =>
         Task.FromResult<IReadOnlyDictionary<string, double>>(
-            _unpaidByMonth.TryGetValue((from.Year, from.Month), out var byUser)
-                ? _unpaidByUser.Concat(byUser).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Last().Value)
-                : _unpaidByUser);
+            _unpaidByUser
+                .Concat(Parts.Where(p => p.IsApprovedUnpaid && p.StartDate <= to.Date && p.EndDate >= from.Date)
+                    .Select(p => KeyValuePair.Create(p.UserId, p.Days)))
+                .GroupBy(kv => kv.Key)
+                .ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value), StringComparer.Ordinal));
 
     public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
         throw new NotSupportedException();

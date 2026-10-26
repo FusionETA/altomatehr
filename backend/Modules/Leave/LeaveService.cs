@@ -794,6 +794,34 @@ public class LeaveService : ILeaveService
         return totals;
     }
 
+    public async Task<IReadOnlyList<UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        if (end < start) return [];
+
+        var overlapping = (await _apps.GetAllAsync())
+            .Where(a => a.StartDate.Date <= end && a.EndDate.Date >= start)
+            .ToList();
+        if (overlapping.Count == 0) return [];
+
+        var paidByType = (await _types.GetAllAsync()).ToDictionary(t => t.Id, t => t.Paid, StringComparer.Ordinal);
+        var (workingDays, holidays) = await ResolveCalendarAsync(start, end);
+
+        return [.. overlapping.Select(app =>
+        {
+            var clippedStart = app.StartDate.Date < start ? start : app.StartDate.Date;
+            var clippedEnd = app.EndDate.Date > end ? end : app.EndDate.Date;
+            return new UnpaidLeavePartDto(
+                app.Id, app.EmployeeId, app.LeaveTypeId,
+                // A type deleted since counts as paid: nothing to dock for it.
+                paidByType.GetValueOrDefault(app.LeaveTypeId, true),
+                app.Status, app.StartDate.Date, app.EndDate.Date, app.DecidedAt,
+                Math.Max(0, LeaveAccrualMath.ComputeTotalDays(
+                    clippedStart, clippedEnd, app.Duration, workingDays, holidays)));
+        })];
+    }
+
     // Org dashboard: status totals, days used per type, who's out, and the
     // most recent requests.
     public async Task<LeaveOverviewDto> GetOverviewAsync(int year)

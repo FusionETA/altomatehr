@@ -62,8 +62,8 @@ public class PayslipLineItem : ITenantScoped
 
     // Set on a line that settles unpaid leave from an EARLIER, already-filed
     // month of the same year: which month, and how many days (positive =
-    // docked late, negative = refunded after the leave was cancelled). What
-    // stops the same days being settled twice. See UnpaidLeaveCarryForward.
+    // docked late, negative = refunded). For display and audit — what was
+    // settled per leave application is UnpaidLeaveSettlement.
     public int? CarriedFromYear { get; set; }
     public int? CarriedFromMonth { get; set; }
     [Precision(6, 2)] public decimal? CarriedDays { get; set; }

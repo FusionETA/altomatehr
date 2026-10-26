@@ -4,6 +4,8 @@ using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Leave.Dtos;
+using AltomateHR.Api.Modules.Leave.Entities;
 using AltomateHR.Api.Modules.Overtime;
 using AltomateHR.Api.Modules.Payroll;
 using AltomateHR.Api.Modules.Payroll.Dtos;
@@ -88,7 +90,11 @@ public class PayrollRunServiceTests : IDisposable
             _audit,
             _xeroSync,
             _loanService,
-            _approvedOt);
+            _approvedOt,
+            settlements: new UnpaidLeaveSettlementRepository(_db),
+            drafts: new PayrollDraftStaleness(
+                new PayrollRunRepository(_db), _currentUser,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<PayrollDraftStaleness>.Instance));
     }
 
     public void Dispose() => _db.Dispose();
@@ -2136,40 +2142,55 @@ public class PayrollRunServiceTests : IDisposable
 
     // ---- Unpaid leave decided after its month was filed ----
 
-    private async Task<PayrollRunDto> FiledMonthAsync(int month)
+    private static UnpaidLeavePartDto Leave(
+        string id, int month, double days, DateTime decidedAt,
+        LeaveStatus status = LeaveStatus.APPROVED, bool paid = false) =>
+        new(id, "usr-1", "type-unpaid", paid, status,
+            new DateTime(2026, month, 14), new DateTime(2026, month, 14).AddDays(days - 1), decidedAt, days);
+
+    private void Replace(UnpaidLeavePartDto part)
+    {
+        _leave.Parts.RemoveAll(p => p.ApplicationId == part.ApplicationId);
+        _leave.Parts.Add(part);
+    }
+
+    // Generated and approved through the service, so what it settled is final.
+    private async Task<PayrollRunDto> FiledThroughApprovalAsync(int month)
     {
         var run = await CreateRunAsync(2026, month);
-        await _service.GenerateAsync(run.Id);
-        (await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id)).Status = PayrollRunStatus.SUBMITTED;
+        Assert.True((await _service.GenerateAsync(run.Id)).Ok);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
         await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(run.Id)).Ok);
         return run;
     }
 
-    // Approved after September was filed: docked on October, at September's
-    // rate (3000 ÷ 30 calendar days), once — re-running October or running
-    // November after it doesn't dock the same days again.
+    private async Task<PayslipDto> GenerateOneAsync(PayrollRunDto run) =>
+        Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+    // Approved after September was filed: docked on October at September's
+    // rate (3000 ÷ 30 calendar days), and once — not again on November.
     [Fact]
     public async Task GenerateAsync_DocksLateApprovedUnpaidLeaveFromAFiledMonthOnce()
     {
         AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
-        await FiledMonthAsync(9);
-        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
+        await FiledThroughApprovalAsync(9);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(1)));
 
         var october = await CreateRunAsync(2026, 10);
-        await _service.GenerateAsync(october.Id);
-        var payslip = Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips);
+        await GenerateOneAsync(october);
+        var payslip = await GenerateOneAsync(october);   // re-running changes nothing
 
         var line = Assert.Single(payslip.LineItems);
         Assert.Equal("Unpaid Leave – Sep 2026 (approved late, 2 days)", line.Label);
         Assert.Equal(200m, line.Amount);
-        Assert.Null(payslip.UnpaidLeaveDays);   // October's own unpaid days: none
-        var stored = await _db.PayslipLineItems.SingleAsync();
-        Assert.Equal((2026, 9, 2m), (stored.CarriedFromYear, stored.CarriedFromMonth, stored.CarriedDays));
+        Assert.Null(payslip.UnpaidLeaveDays);   // October's own: none
 
-        (await _db.PayrollRuns.FirstAsync(r => r.Id == october.Id)).Status = PayrollRunStatus.SUBMITTED;
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == october.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
         await _db.SaveChangesAsync();
-        var november = await CreateRunAsync(2026, 11);
-        Assert.Empty(Assert.Single((await _service.GenerateAsync(november.Id)).Result!.Detail.Payslips).LineItems);
+        Assert.True((await _service.ApproveAsync(october.Id)).Ok);
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 11))).LineItems);
     }
 
     // Docked in September, cancelled afterwards: paid back on October as
@@ -2178,17 +2199,92 @@ public class PayrollRunServiceTests : IDisposable
     public async Task GenerateAsync_RefundsUnpaidLeaveCancelledAfterItsMonthWasFiled()
     {
         AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
-        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
-        await FiledMonthAsync(9);
-        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 0);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-1)));
+        await FiledThroughApprovalAsync(9);
+        Replace(Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-1), LeaveStatus.CANCELLED));
 
-        var october = await CreateRunAsync(2026, 10);
-        var payslip = Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips);
+        var payslip = await GenerateOneAsync(await CreateRunAsync(2026, 10));
 
         var line = Assert.Single(payslip.LineItems);
-        Assert.Equal("Unpaid Leave refund – Sep 2026 (cancelled, 2 days)", line.Label);
+        Assert.Equal("Unpaid Leave refund – Sep 2026 (2 days)", line.Label);
         Assert.Equal(200m, line.Amount);
         Assert.Equal(3200m, payslip.GrossPay);
+    }
+
+    // Leave settled in its month is never recounted: making its type paid
+    // later (or changing the work week or holidays) doesn't re-price it.
+    [Fact]
+    public async Task GenerateAsync_DoesNotRepriceAFiledMonthWhenTheLeaveTypeChanges()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-1)));
+        await FiledThroughApprovalAsync(9);
+        Replace(Leave("leave-a", 9, 1, DateTime.UtcNow.AddDays(-1), paid: true) with
+        {
+            EndDate = new DateTime(2026, 9, 15),   // same dates as settled
+        });
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
+    }
+
+    // Leave approved BEFORE its month was generated was docked by it, even
+    // when no settlement was recorded (a month filed before they existed).
+    [Fact]
+    public async Task GenerateAsync_DoesNotDockAgainLeaveItsOwnMonthAlreadyCounted()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-1)));
+        await FiledThroughApprovalAsync(9);
+        _db.UnpaidLeaveSettlements.RemoveRange(_db.UnpaidLeaveSettlements);
+        await _db.SaveChangesAsync();
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
+    }
+
+    // Approving a run settles its leave for good; a later draft built before
+    // that may have settled the same leave, so it must be re-run.
+    [Fact]
+    public async Task ApproveAsync_MarksLaterDraftsToReRun()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        await FiledThroughApprovalAsync(9);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(1)));
+        var october = await CreateRunAsync(2026, 10);
+        await GenerateOneAsync(october);
+        var november = await CreateRunAsync(2026, 11);
+        await GenerateOneAsync(november);
+
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == october.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(october.Id)).Ok);
+
+        Assert.True((await _service.GetAsync(november.Id))!.Run.IsStale);
+        Assert.Empty((await GenerateOneAsync(november)).LineItems);   // October settled it
+    }
+
+    // Reverting makes what a run settled provisional: September re-run docks
+    // the leave itself, and October (carried it, reverted with September)
+    // drops the carry once re-run.
+    [Fact]
+    public async Task RevertToDraftAsync_LetsTheEarlierMonthDockItself_WithoutDockingTwice()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var september = await FiledThroughApprovalAsync(9);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(1)));
+        var october = await FiledThroughApprovalAsync(10);
+        Assert.Single(await _db.UnpaidLeaveSettlements.Where(s => s.Final).ToListAsync());
+
+        Assert.True((await _service.RevertToDraftAsync(september.Id)).Ok);   // October goes with it
+        Assert.Empty(await _db.UnpaidLeaveSettlements.Where(s => s.Final).ToListAsync());
+
+        var septemberAgain = await GenerateOneAsync(september);
+        Assert.Equal(2m, septemberAgain.UnpaidLeaveDays);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == september.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(september.Id)).Ok);
+
+        Assert.True((await _service.GetAsync(october.Id))!.Run.IsStale);
+        Assert.Empty((await GenerateOneAsync(october)).LineItems);
     }
 
     // An imported month's figures came from the previous system, which may
@@ -2200,7 +2296,7 @@ public class PayrollRunServiceTests : IDisposable
     public async Task GenerateAsync_LeavesImportedAndTypedMonthsAlone(bool imported, bool typed)
     {
         var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
-        var september = await FiledMonthAsync(9);
+        var september = await FiledThroughApprovalAsync(9);
         var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == september.Id);
         if (imported) stored.Source = PayrollRunSource.IMPORTED;
         if (typed)
@@ -2212,11 +2308,9 @@ public class PayrollRunServiceTests : IDisposable
             });
         }
         await _db.SaveChangesAsync();
-        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(1)));
 
-        var october = await CreateRunAsync(2026, 10);
-
-        Assert.Empty(Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips).LineItems);
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
     }
 
     [Fact]

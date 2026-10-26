@@ -61,13 +61,6 @@ public interface IPayslipRepository
     Task<List<(Payslip Payslip, PayrollRun Run)>> GetEarlierInYearAsync(int year, int beforeMonth) =>
         Task.FromResult(new List<(Payslip, PayrollRun)>());
 
-    // Lines in this year that settled an earlier month's unpaid leave, with
-    // their payslip's employee — every run's but `exceptRunId`, which is
-    // being rebuilt.
-    Task<List<(string EmployeeProfileId, PayslipLineItem Line)>> GetUnpaidLeaveCarriesAsync(
-        int year, string exceptRunId) =>
-        Task.FromResult(new List<(string, PayslipLineItem)>());
-
     // Wipe the run's payslips and line items and write these instead. One
     // transaction, because a half-regenerated run is worse than a stale one.
     Task ReplaceForRunAsync(

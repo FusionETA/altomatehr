@@ -387,14 +387,22 @@ EA s.18A incomplete-month case, and s.18A overrides the s.60I ÷26. The
 CALENDAR/TWENTY_SIX setting still drives proration and the overtime rate. The
 run-adjustment form's preview and its typed-days cap use the same divisor.
 
-Unpaid leave decided AFTER its month was filed (approved late, or cancelled
-after it was docked) is settled on the person's next run of the same year —
-`UnpaidLeaveCarryForward`: a "approved late" deduction or a "cancelled" refund
-(arrears of wages), priced at THAT month's salary ÷ its calendar days. The line
-records `CarriedFromYear/Month/Days`, which is what stops the same days being
-settled twice. Imported months and months whose unpaid days were typed on the
-run are never revisited. A change to unpaid leave marks later drafts of the
-year stale (`MarkLaterDraftsAsync`, drafts only).
+Unpaid leave decided AFTER its month was filed (approved late, cancelled or
+edited after it was docked) is settled on the person's next run of the same year
+— `UnpaidLeaveCarryForward`: an "approved late" deduction or a refund (arrears of
+wages), priced at THAT month's salary ÷ its calendar days.
+
+What each payslip docked is recorded per leave application and month in
+`UnpaidLeaveSettlement`. Generation writes them provisional; approval makes them
+final; a revert makes them provisional again; only final ones count. So drafts
+never see each other's settlements, and a settled application that is still
+approved with the same type and dates is never recounted — a later change to the
+leave type, work week or holidays can't re-price a filed month. Leave with no
+record (months filed before the table existed) counts as late only if approved
+after that month's payslip was generated; its cancellations aren't refunded
+automatically. Imported months and months with unpaid days typed on the run are
+never revisited. Approving a run, or a change to unpaid leave, marks later
+drafts of the year stale (`MarkLaterDraftsAsync`, drafts only).
 
 ## One formula, one implementation
 

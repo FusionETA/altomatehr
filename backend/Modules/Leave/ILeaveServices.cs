@@ -79,6 +79,12 @@ public interface ILeaveService
     // working-day calendar, so each day is paid for — or not — exactly once.
     Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
         DateTime from, DateTime to);
+
+    // Every application overlapping [from, to] — any status, any type — with
+    // its part clipped to the window and counted the same way. For payroll's
+    // unpaid-leave settlement. (Default keeps test doubles compiling.)
+    Task<IReadOnlyList<Dtos.UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to) =>
+        Task.FromResult<IReadOnlyList<Dtos.UnpaidLeavePartDto>>([]);
     Task<LeaveOverviewDto> GetOverviewAsync(int year);
 
     // The yearly summary tables for one employee (JSON), and the same

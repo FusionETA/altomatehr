@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll.Dtos;
@@ -49,6 +50,10 @@ public class PayrollRunService : IPayrollRunService
     // stored totals are company-wide, so for them they're re-summed from what
     // they can see.
     private readonly IEmployeeScope? _scope;
+    // Optional for the same reason. Without it, unpaid leave decided after
+    // its month was filed is not settled on a later run.
+    private readonly IUnpaidLeaveSettlementRepository? _settlements;
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -68,9 +73,13 @@ public class PayrollRunService : IPayrollRunService
         IEmployeeLoanService loans,
         Overtime.IApprovedOvertimeService approvedOvertime,
         Employees.IEmployeeTransferService? transfers = null,
-        IEmployeeScope? scope = null)
+        IEmployeeScope? scope = null,
+        IUnpaidLeaveSettlementRepository? settlements = null,
+        IPayrollDraftStaleness? drafts = null)
     {
         _scope = scope;
+        _settlements = settlements;
+        _drafts = drafts;
         _transfers = transfers;
         _approvedOvertime = approvedOvertime;
         _statutory = statutory;
@@ -581,8 +590,16 @@ public class PayrollRunService : IPayrollRunService
         var unpaidDaysByUser = await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd);
 
         // Unpaid leave decided after an earlier month of this year was filed —
-        // approved late, or cancelled after it was docked — settled on this run.
+        // approved late, cancelled or changed — settled on this run; and which
+        // applications this month docks, recorded so a later run can tell.
         var carriesByProfile = await UnpaidLeaveCarriesAsync(run, profiles);
+        var ownPartsByUser = _settlements is null
+            ? []
+            : (await _leave.GetLeavePartsForOrgAsync(periodStart, periodEnd))
+                .Where(p => p.IsApprovedUnpaid && p.Days > 0)
+                .GroupBy(p => p.UserId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var settlements = new List<UnpaidLeaveSettlement>();
 
         // Approved overtime requests for the month, split by day type. Paid by
         // default — see PayrollOvertimeHours for when the admin's figure wins.
@@ -645,9 +662,20 @@ public class PayrollRunService : IPayrollRunService
             payslips.Add(payslip);
             lineItems.AddRange(result.LineItems.Select((li, i) =>
                 WithCarry(ToLineItem(payslip.Id, li, now, i + 1), carries)));
+
+            // Typed days replaced the Leave module's on purpose, so this month
+            // settles no application; an hourly person docks nothing.
+            var ownParts = adjustment?.UnpaidLeaveDays is null && profile.SalaryType == SalaryType.MONTHLY
+                ? ownPartsByUser.GetValueOrDefault(profile.UserId) ?? []
+                : [];
+            settlements.AddRange(ownParts.Select(p =>
+                Settlement(run, payslip, run.PeriodYear, run.PeriodMonth, p.ApplicationId, (decimal)p.Days, p, null, now)));
+            settlements.AddRange(carries.SelectMany(c => c.ByApplication.Select(o =>
+                Settlement(run, payslip, c.Year, c.Month, o.ApplicationId, o.Days, o.Part, o.Last, now))));
         }
 
         await _payslips.ReplaceForRunAsync(run.Id, payslips, lineItems);
+        if (_settlements is not null) await _settlements.ReplaceForRunAsync(run.Id, settlements);
 
         ApplyTotals(run, payslips);
         run.GeneratedAt = now;
@@ -858,6 +886,15 @@ public class PayrollRunService : IPayrollRunService
         run.SubmittedById = _currentUser.UserId;
         await _runs.UpdateAsync(run);
 
+        // What this run docked or settled now counts; a later draft built
+        // before this approval may have settled the same leave too.
+        if (_settlements is not null)
+        {
+            await _settlements.SetFinalForRunsAsync([run.Id], true);
+            if (_drafts is not null)
+                await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
+        }
+
         if (_transfers is not null)
             await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
 
@@ -980,6 +1017,10 @@ public class PayrollRunService : IPayrollRunService
 
         await _runs.UpdateManyAsync(reverted);
 
+        // Back in draft, what they docked or settled is provisional again.
+        if (_settlements is not null)
+            await _settlements.SetFinalForRunsAsync(reverted.Select(r => r.Id).ToList(), false);
+
         var alsoReverted = later.Select(RunLabel).ToList();
 
         await _audit.WriteAsync(new AuditEvent(
@@ -1074,6 +1115,7 @@ public class PayrollRunService : IPayrollRunService
         // lists to ReplaceForRunAsync is the delete half of the same
         // transactional replace generation uses.
         await _payslips.ReplaceForRunAsync(run.Id, [], []);
+        if (_settlements is not null) await _settlements.ReplaceForRunAsync(run.Id, []);
         await _adjustments.DeleteForRunAsync(run.Id);
         // Its chosen roster too — left behind, the rows would still count as
         // "this person is on a run this month" under the one-run-per-person rule.
@@ -1380,8 +1422,10 @@ public class PayrollRunService : IPayrollRunService
         UnpaidLeaveCarriesAsync(PayrollRun run, IReadOnlyCollection<EmployeeProfile> profiles)
     {
         var none = new Dictionary<string, IReadOnlyList<UnpaidLeaveCarryForward.Carry>>(StringComparer.Ordinal);
-        if (run.PeriodMonth == 1 || profiles.Count == 0) return none;
+        if (_settlements is null || run.PeriodMonth == 1 || profiles.Count == 0) return none;
 
+        // Only months filed HERE: an imported month's figures came from the
+        // previous system, which may already have docked the leave.
         var wanted = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         var filed = (await _payslips.GetEarlierInYearAsync(run.PeriodYear, run.PeriodMonth))
             .Where(x => x.Run.Status == PayrollRunStatus.SUBMITTED
@@ -1391,40 +1435,61 @@ public class PayrollRunService : IPayrollRunService
             .ToList();
         if (filed.Count == 0) return none;
 
+        // A month whose unpaid days were typed on the run replaced the Leave
+        // module's figure on purpose — it isn't second-guessed.
         var typed = (await _adjustments.GetForRunsAsync(filed.Select(f => f.Run.Id).Distinct().ToList()))
             .Where(a => a.UnpaidLeaveDays is not null)
             .Select(a => (a.PayrollRunId, a.EmployeeProfileId))
             .ToHashSet();
-        var settled = (await _payslips.GetUnpaidLeaveCarriesAsync(run.PeriodYear, run.Id))
-            .GroupBy(c => (c.EmployeeProfileId, Month: c.Line.CarriedFromMonth ?? 0))
-            .ToDictionary(g => g.Key, g => g.Sum(c => c.Line.CarriedDays ?? 0m));
+        filed = filed.Where(f => !typed.Contains((f.Run.Id, f.Payslip.EmployeeProfileId))).ToList();
 
-        var approvedByMonth = new Dictionary<int, IReadOnlyDictionary<string, double>>();
+        var settled = (await _settlements.GetFinalForYearAsync(run.PeriodYear))
+            .GroupBy(s => (s.EmployeeProfileId, s.PeriodMonth))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var partsByMonth = new Dictionary<int, ILookup<string, UnpaidLeavePartDto>>();
         foreach (var month in filed.Select(f => f.Run.PeriodMonth).Distinct())
         {
             var start = new DateTime(run.PeriodYear, month, 1);
-            approvedByMonth[month] =
-                await _leave.GetApprovedUnpaidDaysForOrgAsync(start, start.AddMonths(1).AddDays(-1));
+            partsByMonth[month] = (await _leave.GetLeavePartsForOrgAsync(start, start.AddMonths(1).AddDays(-1)))
+                .ToLookup(p => p.UserId, StringComparer.Ordinal);
         }
 
         return filed
             .GroupBy(f => f.Payslip.EmployeeProfileId, StringComparer.Ordinal)
             .ToDictionary(
                 g => g.Key,
-                g =>
-                {
-                    var userId = g.First().Payslip.UserId;
-                    return UnpaidLeaveCarryForward.For(
-                        g.Select(f => new UnpaidLeaveCarryForward.FiledMonth(
-                            run.PeriodYear, f.Run.PeriodMonth,
-                            f.Payslip.SnapshotMonthlySalary ?? 0m,
-                            f.Payslip.UnpaidLeaveDays ?? 0m,
-                            typed.Contains((f.Run.Id, g.Key)))),
-                        (_, month) => (decimal)approvedByMonth[month].GetValueOrDefault(userId),
-                        (_, month) => settled.GetValueOrDefault((g.Key, month)));
-                },
+                g => (IReadOnlyList<UnpaidLeaveCarryForward.Carry>)g
+                    .OrderBy(f => f.Run.PeriodMonth)
+                    .SelectMany(f => UnpaidLeaveCarryForward.For(new UnpaidLeaveCarryForward.FiledMonth(
+                        run.PeriodYear, f.Run.PeriodMonth,
+                        f.Payslip.SnapshotMonthlySalary ?? 0m,
+                        f.Payslip.CreatedAt,
+                        [.. partsByMonth[f.Run.PeriodMonth][f.Payslip.UserId]],
+                        settled.GetValueOrDefault((g.Key, f.Run.PeriodMonth)) ?? [])))
+                    .ToList(),
                 StringComparer.Ordinal);
     }
+
+    private static UnpaidLeaveSettlement Settlement(
+        PayrollRun run, Payslip payslip, int year, int month, string applicationId, decimal days,
+        UnpaidLeavePartDto? part, UnpaidLeaveSettlement? last, DateTime now) => new()
+        {
+            OrganizationId = run.OrganizationId,
+            PayrollRunId = run.Id,
+            PayslipId = payslip.Id,
+            EmployeeProfileId = payslip.EmployeeProfileId,
+            LeaveApplicationId = applicationId,
+            PeriodYear = year,
+            PeriodMonth = month,
+            Days = days,
+            // The leave as it is now; for one no longer in that month, as it
+            // was last settled.
+            LeaveTypeId = part?.LeaveTypeId ?? last?.LeaveTypeId ?? string.Empty,
+            LeaveStartDate = part?.StartDate ?? last?.LeaveStartDate ?? default,
+            LeaveEndDate = part?.EndDate ?? last?.LeaveEndDate ?? default,
+            CreatedAt = now,
+        };
 
     // Marks the line that settled a carry with the month and days it settled,
     // so a later run doesn't settle them again.
