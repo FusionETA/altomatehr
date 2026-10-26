@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: d219a8b
+// whats-new-covered-up-to: d8edc34
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -24,11 +24,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-26",
     improved: [
-      "Payroll: unpaid leave is now docked at the monthly salary ÷ the month's calendar days, whatever the company's working-days setting. RM 3,000 in October is RM 96.77 a day.",
-      "Until now, companies on the 26-day setting were docked ÷26. The working-days setting still decides proration for joining or leaving mid-month, and the overtime rate.",
-      "Weekends and public holidays inside an unpaid leave are still not deducted; only its working days are.",
-      "Admins: the Unpaid days box under Unpaid leave in a run's adjustments previews the same figure, and accepts up to the month's calendar days.",
-      "Draft payroll runs that are re-run from now on dock unpaid leave this way; only months with unpaid leave change. Approved runs are not affected and keep what was filed.",
+      "Payroll: unpaid leave is now docked at the monthly salary ÷ the month's calendar days, whatever the working-days setting (the 26-day setting used ÷26). RM 3,000 in October is RM 96.77 a day.",
+      "Only draft runs re-run from now on change, and approved runs keep what was filed. Imported months, and months with unpaid days typed on the run, are left alone.",
+      "Payroll: unpaid leave approved after its month was approved is now deducted on that person's next run that year, as its own line, e.g. \"Unpaid Leave – Sep 2026 (approved late, 2 days)\". Each leave is settled once.",
+      "If that leave is later cancelled or moved, its days are paid back on the next run as arrears of wages, so EPF, SOCSO, EIS and PCB apply.",
+      "Admins: the first re-run after this update also deducts late-approved leave for earlier months this year, so check any you handled by hand. Leave cancelled in months approved before this update isn't refunded automatically.",
+      "Admins: approving or reverting a run, or approving or cancelling unpaid leave for an earlier month, now flags later draft runs that year as needing a re-run.",
+      "Admins: reverting a run now also reverts later runs linked through other runs, and sends later runs awaiting approval back to draft. The confirmation lists them.",
+      "Admins: a run can't be sent for approval while an earlier month's run for any of its people is still unapproved.",
     ],
   },
   {

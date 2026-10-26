@@ -580,7 +580,7 @@
               <tr><td><code>grossShown</code></td><td>decimal</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the payroll screens and run summary show it. Display only; <code>grossPay</code> stays the figure EPF, SOCSO, EIS and PCB are worked on. Can be negative. See <a href="payroll-runs.html#payslip-object">the payslip object</a>. (The list row from <code>GET /payslips</code> does not carry it.)</td></tr>
               <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
               <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
-              <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each.</td></tr>
+              <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each. A line settling unpaid leave from an earlier month has its month and days in the <code>label</code>; see <a href="payroll-runs.html#generate">Generate</a>.</td></tr>
             </tbody>
           </table>
         </div>
