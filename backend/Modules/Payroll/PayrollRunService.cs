@@ -934,6 +934,11 @@ public class PayrollRunService : IPayrollRunService
                 await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
         }
 
+        // Next year's first run carries this year's borne PCB; a draft built
+        // before this approval left this month's out.
+        if (_drafts is not null && await HasPcbBorneByEmployerAsync(run))
+            await _drafts.MarkDraftsOfYearAsync(run.PeriodYear + 1);
+
         if (_transfers is not null)
             await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
 
@@ -1045,6 +1050,18 @@ public class PayrollRunService : IPayrollRunService
                 false, null, [], ImportedRevertRefusal);
         }
 
+        // Next year's first run added this year's borne PCB as a perquisite
+        // (LHDN PR 3/2024 §6.1). Re-running this month could change that
+        // total, and the year-to-date cascade below stops at the year's end —
+        // so that run has to come back to draft first.
+        if (await NextYearRunUsingBornePcbAsync(run) is { } nextYear)
+        {
+            return new PayrollRunRevertResult(
+                false, null, [],
+                $"Revert {RunLabel(nextYear)} first — it added {run.PeriodYear}'s PCB borne by the "
+                + "employer as a taxable perquisite, and reverting this month could change that amount.");
+        }
+
         // THE cascade. Every later submitted month in the same year carries
         // YTD-cumulative figures — PCB's annualisation, the SOCSO/EIS relief —
         // computed off this month. Reverting this one alone would leave them
@@ -1079,6 +1096,8 @@ public class PayrollRunService : IPayrollRunService
         // it must be re-run before it can be sent for approval.
         if (_drafts is not null)
             await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
+        if (_drafts is not null && await HasPcbBorneByEmployerAsync(run))
+            await _drafts.MarkDraftsOfYearAsync(run.PeriodYear + 1);
 
         var alsoReverted = later.Concat(pending).Select(RunLabel).ToList();
 
@@ -1096,6 +1115,32 @@ public class PayrollRunService : IPayrollRunService
             await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
 
         return new PayrollRunRevertResult(true, ToDto(run), alsoReverted, null);
+    }
+
+    private async Task<bool> HasPcbBorneByEmployerAsync(PayrollRun run) =>
+        (await _payslips.GetForRunAsync(run.Id)).Any(p => p.PcbBorneByEmployer > 0m);
+
+    // A next-year run, awaiting approval or approved, holding someone whose
+    // PCB this run paid for them. Their first run of that year carries it.
+    private async Task<PayrollRun?> NextYearRunUsingBornePcbAsync(PayrollRun run)
+    {
+        var borne = (await _payslips.GetForRunAsync(run.Id))
+            .Where(p => p.PcbBorneByEmployer > 0m)
+            .Select(p => p.EmployeeProfileId)
+            .ToHashSet(StringComparer.Ordinal);
+        if (borne.Count == 0) return null;
+
+        var nextYear = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == run.PeriodYear + 1
+                        && r.Status != PayrollRunStatus.DRAFT
+                        && r.Source != PayrollRunSource.IMPORTED)
+            .OrderBy(r => r.PeriodMonth);
+        foreach (var other in nextYear)
+        {
+            var theirs = await PeopleOfAsync(other);
+            if (theirs is null || theirs.Overlaps(borne)) return other;
+        }
+        return null;
     }
 
     // Back to DRAFT, with the approval trail cleared so a re-submission records
@@ -1581,7 +1626,7 @@ public class PayrollRunService : IPayrollRunService
                 g => g.Key,
                 g => new FixedAllowance
                 {
-                    Category = PayrollAdjustmentCategories.WagesTaxBorneByEmployer,
+                    Category = PayrollAdjustmentCategories.BikTaxBorneByEmployer,
                     Name = $"Tax Borne by Employer – {run.PeriodYear - 1} (perquisite)",
                     Amount = Money.Round2(g.Sum(x => x.Payslip.PcbBorneByEmployer)),
                 },

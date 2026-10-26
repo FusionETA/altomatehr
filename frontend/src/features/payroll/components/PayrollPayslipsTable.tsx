@@ -311,7 +311,7 @@ export function PayrollPayslipsTable({
         </dl>
       </div>
 
-      {open ? <PayslipDrawer payslip={open} onClose={() => setOpen(null)} /> : null}
+      {open ? <PayslipDrawer payslip={open} nonCash={nonCash} onClose={() => setOpen(null)} /> : null}
     </section>
   );
 }

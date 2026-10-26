@@ -146,6 +146,7 @@ public static class PayrollAdjustmentCategories
     public const string BikSubsidisedLoan = "bik_subsidised_loan";
     public const string BikPhonePdaGift = "bik_phone_pda_gift";
     public const string BikOtherExempt = "bik_other_exempt";
+    public const string BikTaxBorneByEmployer = "bik_tax_borne_by_employer";
 
     // ---- Deductions ----
     public const string DeductUnpaidLeave = "deduct_unpaid_leave";
@@ -460,9 +461,6 @@ public static class PayrollAdjustmentCategories
                 SubjectToPcb = true, SubjectToHrdf = false,
                 IsAdditionalRemuneration = true,
                 SkipProration = true,
-                // The tax the company paid is income the employee is taxed on,
-                // not money they receive — out of gross and net like a BIK.
-                NonCash = true,
             },
 
             // A director who is not an employee has no contract of service, so
@@ -580,6 +578,24 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = false, SubjectToHrdf = false,
+                NonCash = true,
+            },
+
+            // Last year's PCB the company paid for the employee ("PCB borne by
+            // employer"), added automatically on their first run of this year
+            // (LHDN PR 3/2024 §6.1). Taxable income they never receive in cash.
+            // Kept apart from `wages_tax_borne_by_employer`, which stays a cash
+            // line: v1 entered the borne tax by hand with it, and old payslips
+            // and profile rows must keep reading as cash.
+            new PayrollAdjustmentCategoryMeta
+            {
+                Code = BikTaxBorneByEmployer,
+                Label = "Tax Borne by Employer – previous year (perquisite)",
+                Kind = PayslipLineKind.ALLOWANCE,
+                SubjectToEpf = false, SubjectToSocso = false, SubjectToEis = false,
+                SubjectToPcb = true, SubjectToHrdf = false,
+                IsAdditionalRemuneration = true,
+                SkipProration = true,
                 NonCash = true,
             },
 

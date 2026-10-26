@@ -415,10 +415,18 @@ no gross-up in the month (LHDN PR 3/2024 §6.1: the tax is a perquisite of the
 FOLLOWING year) — but stays out of net pay and joins the company's cost
 (`Payslip.PcbBorneByEmployer` records the amount; it's still inside `Pcb`, the
 CP39 file and the YTD). The person's first run of the next year (January, or
-their first month paid) adds last year's total as `wages_tax_borne_by_employer`:
+their first month paid) adds last year's total as `bik_tax_borne_by_employer`:
 non-cash, taxed as additional remuneration, no EPF/SOCSO/EIS, Form EA B1(d).
+`wages_tax_borne_by_employer` is NOT that line — it stays CASH, because v1 had
+admins enter the borne tax by hand with it and old payslips must read the same.
 The Xero journal debits it to the optional "PCB borne by employer" account,
 falling back to Salary. CP38, zakat and voluntary PCB stay the employee's.
+
+The perquisite crosses the year boundary, which the YTD rules don't: approving
+or reverting a run with borne PCB marks next year's drafts stale
+(`MarkDraftsOfYearAsync`), and a run can't be reverted while a next-year run
+holding the same people is pending or approved. Imported months never count
+as borne (the file doesn't say who paid); the YTD preview warns.
 
 ## One formula, one implementation
 

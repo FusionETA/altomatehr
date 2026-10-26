@@ -40,6 +40,12 @@ public interface IPayrollDraftStaleness
     // Default keeps test doubles compiling.
     Task MarkLaterDraftsAsync(DateTime after, string? userId = null) => Task.CompletedTask;
 
+    // DRAFTS ONLY, every month of `year`. For PCB borne by the employer: a
+    // person's first run of a year adds the PREVIOUS year's borne PCB as a
+    // perquisite, so approving or reverting one of last year's runs changes
+    // what that draft should hold. Default keeps test doubles compiling.
+    Task MarkDraftsOfYearAsync(int year) => Task.CompletedTask;
+
     // Every generated draft in a NAMED org — for a change made from outside
     // that org (an employee transfer touches two companies; the transfer job
     // has no current org at all). Default keeps test doubles compiling.
@@ -71,6 +77,9 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
             : MarkAsync(
                 MonthsBetween(new DateTime(after.Year, after.Month, 1).AddMonths(1), new DateTime(after.Year, 12, 1)),
                 userId, draftsOnly: true);
+
+    public Task MarkDraftsOfYearAsync(int year) =>
+        MarkAsync(MonthsBetween(new DateTime(year, 1, 1), new DateTime(year, 12, 1)), draftsOnly: true);
 
     public async Task MarkAllDraftsForOrgAsync(string organizationId)
     {

@@ -1953,7 +1953,7 @@ export function EmployeeDetail({
                   </Field>
                   <Toggle
                     label="PCB borne by employer"
-                    hint="The company pays the tax instead of deducting it."
+                    hint="The company pays this person's PCB: it's no longer taken from their net pay, and their first payslip next year adds it as a taxable perquisite."
                     checked={profile.pcbBorneByEmployer}
                     onChange={(v) => set("pcbBorneByEmployer", v)}
                   />

@@ -12,14 +12,20 @@ import { DrawerPortal } from "./DrawerPortal";
 // looking at the same shape.
 export function PayslipDrawer({
   payslip,
+  nonCash,
   onClose,
 }: {
   payslip: Payslip;
+  // Benefit-in-kind category codes: never in gross, so not listed as earnings.
+  nonCash: Set<string>;
   onClose: () => void;
 }) {
+  const isNonCash = (item: Payslip["lineItems"][number]) =>
+    item.kind === "ALLOWANCE" && item.category !== null && nonCash.has(item.category);
   const earnings = payslip.lineItems.filter(
-    (item) => item.kind === "ALLOWANCE" || item.kind === "REIMBURSEMENT",
+    (item) => (item.kind === "ALLOWANCE" || item.kind === "REIMBURSEMENT") && !isNonCash(item),
   );
+  const benefits = payslip.lineItems.filter(isNonCash);
   // Additional PCB is already inside the PCB / MTD row below, so its line is
   // not listed again.
   const deductions = payslip.lineItems.filter(
@@ -108,7 +114,11 @@ export function PayslipDrawer({
             the employee declares. Kept apart so nobody adds it to the net. */}
         {payslip.totalBenefitsInKind > 0 ? (
           <Section title="Benefits in kind">
-            <Row label="Reportable, not paid in cash" value={payslip.totalBenefitsInKind} />
+            {benefits.length > 0 ? (
+              benefits.map((item) => <Row key={item.id} label={item.label} value={item.amount} />)
+            ) : (
+              <Row label="Reportable, not paid in cash" value={payslip.totalBenefitsInKind} />
+            )}
           </Section>
         ) : null}
 
