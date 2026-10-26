@@ -891,6 +891,9 @@
           generated payroll draft covering those dates as out of date, so it has to be re-run
           before it can be submitted. Where a month is split into several runs, only the drafts that
           could hold that employee are marked (a run whose chosen roster leaves them out is not).
+          Drafts of the <em>later</em> months of the same year are marked too, because leave decided after its
+          month was filed is settled on the person's next payroll run; only drafts are marked there, never
+          filed or pending runs.
         </p>
         <h3>Errors</h3>
         <div class="table-wrap">
@@ -947,8 +950,8 @@
         <div class="callout">
           <strong>Days come back automatically</strong> — a balance's <code>takenDays</code> only
           sums <code>APPROVED</code> applications, so there is nothing to refund. Cancelling
-          <em>approved unpaid</em> leave marks open payroll drafts covering those dates as out of
-          date. The employee is notified, and the action is written to the company's activity log.
+          <em>approved unpaid</em> leave marks open payroll drafts covering those dates, and the drafts of
+          later months of the same year, as out of date. The employee is notified, and the action is written to the company's activity log.
         </div>
         <h3>Errors</h3>
         <div class="table-wrap">
@@ -1025,8 +1028,8 @@
           reason-only change); the change is written to the company's activity log as
           <code>leave.admin-edit</code> ("Leave changed by admin"); and, for
           <em>approved unpaid</em> leave whose type, dates or duration changed, generated payroll
-          drafts covering the old or the new dates are marked out of date and must be re-run
-          before they can be submitted.
+          drafts covering the old or the new dates, and drafts of later months of the same year, are
+          marked out of date and must be re-run before they can be submitted.
         </p>
         <h3>Errors</h3>
         <div class="table-wrap">
@@ -1180,7 +1183,7 @@
         <p>
           Approve an employee's request to cancel approved leave, as the approver at its current
           step. Not the last layer: it moves up one. The last layer's approval cancels the leave
-          and returns the days (and marks payroll drafts out of date if the leave was unpaid). No
+          and returns the days (and marks payroll drafts, including later months' drafts of the year, out of date if the leave was unpaid). No
           request body.
         </p>
         <h3>Response <code>200</code></h3>

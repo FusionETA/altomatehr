@@ -86,6 +86,11 @@ public class Payslip : ITenantScoped
     [Precision(8, 2)] public decimal? ExpectedHours { get; set; }
     [Precision(5, 2)] public decimal? UnpaidLeaveDays { get; set; }
 
+    // Generated with UnpaidLeaveSettlement records: every unpaid leave this
+    // payslip docked is recorded, so one with no record wasn't docked. False
+    // on payslips from before the records existed. See UnpaidLeaveCarryForward.
+    public bool TracksUnpaidLeave { get; set; }
+
     // ---- Earnings ----
 
     [Precision(12, 2)] public decimal BasicPay { get; set; }

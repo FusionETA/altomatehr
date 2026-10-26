@@ -794,6 +794,34 @@ public class LeaveService : ILeaveService
         return totals;
     }
 
+    public async Task<IReadOnlyList<UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        if (end < start) return [];
+
+        var overlapping = (await _apps.GetAllAsync())
+            .Where(a => a.StartDate.Date <= end && a.EndDate.Date >= start)
+            .ToList();
+        if (overlapping.Count == 0) return [];
+
+        var paidByType = (await _types.GetAllAsync()).ToDictionary(t => t.Id, t => t.Paid, StringComparer.Ordinal);
+        var (workingDays, holidays) = await ResolveCalendarAsync(start, end);
+
+        return [.. overlapping.Select(app =>
+        {
+            var clippedStart = app.StartDate.Date < start ? start : app.StartDate.Date;
+            var clippedEnd = app.EndDate.Date > end ? end : app.EndDate.Date;
+            return new UnpaidLeavePartDto(
+                app.Id, app.EmployeeId, app.LeaveTypeId,
+                // A type deleted since counts as paid: nothing to dock for it.
+                paidByType.GetValueOrDefault(app.LeaveTypeId, true),
+                app.Status, app.StartDate.Date, app.EndDate.Date, app.DecidedAt,
+                Math.Max(0, LeaveAccrualMath.ComputeTotalDays(
+                    clippedStart, clippedEnd, app.Duration, workingDays, holidays)));
+        })];
+    }
+
     // Org dashboard: status totals, days used per type, who's out, and the
     // most recent requests.
     public async Task<LeaveOverviewDto> GetOverviewAsync(int year)
@@ -1513,6 +1541,7 @@ public class LeaveService : ILeaveService
         var type = await _types.GetByIdAsync(app.LeaveTypeId);
         if (type is null || type.Paid) return;
         await _drafts.MarkDraftsCoveringAsync(app.StartDate, app.EndDate, app.EmployeeId);
+        await _drafts.MarkLaterDraftsAsync(app.EndDate, app.EmployeeId);
     }
 
     public async Task<LeaveTransitionResult> ApproveAsync(string id, string approverId)
@@ -1833,8 +1862,16 @@ public class LeaveService : ILeaveService
         // old dates or the new ones was built from days that have now moved.
         if (app.Status == LeaveStatus.APPROVED && !unchanged && _drafts is not null)
         {
-            if (oldType is { Paid: false }) await _drafts.MarkDraftsCoveringAsync(oldStart, oldEnd, app.EmployeeId);
-            if (!type.Paid) await _drafts.MarkDraftsCoveringAsync(start, end, app.EmployeeId);
+            if (oldType is { Paid: false })
+            {
+                await _drafts.MarkDraftsCoveringAsync(oldStart, oldEnd, app.EmployeeId);
+                await _drafts.MarkLaterDraftsAsync(oldEnd, app.EmployeeId);
+            }
+            if (!type.Paid)
+            {
+                await _drafts.MarkDraftsCoveringAsync(start, end, app.EmployeeId);
+                await _drafts.MarkLaterDraftsAsync(end, app.EmployeeId);
+            }
         }
 
         await NotifyAsync(app, RealtimeAction.UPDATED, notifyApplicant: true);
@@ -2090,7 +2127,11 @@ public class LeaveService : ILeaveService
     {
         if (_drafts is null) return;
         var type = await _types.GetByIdAsync(a.LeaveTypeId);
-        if (type is { Paid: false }) await _drafts.MarkDraftsCoveringAsync(a.StartDate, a.EndDate, a.EmployeeId);
+        if (type is { Paid: false })
+        {
+            await _drafts.MarkDraftsCoveringAsync(a.StartDate, a.EndDate, a.EmployeeId);
+            await _drafts.MarkLaterDraftsAsync(a.EndDate, a.EmployeeId);
+        }
     }
 
     private async Task<string> PersonAsync(string userId)

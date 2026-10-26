@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Attendance.Dtos;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Leave;
+using AltomateHR.Api.Modules.Leave.Dtos;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll.Dtos;
@@ -49,6 +50,10 @@ public class PayrollRunService : IPayrollRunService
     // stored totals are company-wide, so for them they're re-summed from what
     // they can see.
     private readonly IEmployeeScope? _scope;
+    // Optional for the same reason. Without it, unpaid leave decided after
+    // its month was filed is not settled on a later run.
+    private readonly IUnpaidLeaveSettlementRepository? _settlements;
+    private readonly IPayrollDraftStaleness? _drafts;
 
     public PayrollRunService(
         IPayrollRunRepository runs,
@@ -68,9 +73,13 @@ public class PayrollRunService : IPayrollRunService
         IEmployeeLoanService loans,
         Overtime.IApprovedOvertimeService approvedOvertime,
         Employees.IEmployeeTransferService? transfers = null,
-        IEmployeeScope? scope = null)
+        IEmployeeScope? scope = null,
+        IUnpaidLeaveSettlementRepository? settlements = null,
+        IPayrollDraftStaleness? drafts = null)
     {
         _scope = scope;
+        _settlements = settlements;
+        _drafts = drafts;
         _transfers = transfers;
         _approvedOvertime = approvedOvertime;
         _statutory = statutory;
@@ -577,8 +586,27 @@ public class PayrollRunService : IPayrollRunService
         var hoursByUser = await _hours.GetHoursForEmployeesAsync(
             profiles.Select(p => p.UserId), periodStart, periodEnd);
 
+        // Unpaid leave decided after an earlier month of this year was filed —
+        // approved late, cancelled or changed — settled on this run; and which
+        // applications this month docks, recorded so a later run can tell.
+        // Every approved unpaid part is recorded, a 0-day one too (a weekend
+        // part): settled at 0, a later work-week change can't re-price it.
+        var carriesByProfile = await UnpaidLeaveCarriesAsync(run, profiles);
+        var ownPartsByUser = _settlements is null
+            ? []
+            : (await _leave.GetLeavePartsForOrgAsync(periodStart, periodEnd))
+                .Where(p => p.IsApprovedUnpaid)
+                .GroupBy(p => p.UserId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var settlements = new List<UnpaidLeaveSettlement>();
+
         // Keyed by user id, like the hours — the Leave module works in users.
-        var unpaidDaysByUser = await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd);
+        // With settlements, from the same read as what's recorded, so a leave
+        // decided mid-generation can't be docked without a record or the
+        // other way round.
+        var unpaidDaysByUser = _settlements is null
+            ? await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd)
+            : ownPartsByUser.ToDictionary(kv => kv.Key, kv => kv.Value.Sum(p => p.Days), StringComparer.Ordinal);
 
         // Approved overtime requests for the month, split by day type. Paid by
         // default — see PayrollOvertimeHours for when the admin's figure wins.
@@ -629,19 +657,34 @@ public class PayrollRunService : IPayrollRunService
             var overtime = PayrollOvertimeHours.Resolve(
                 adjustment, approvedOtByUser.GetValueOrDefault(profile.UserId));
 
+            var settledMonths = carriesByProfile.GetValueOrDefault(profile.Id) ?? [];
+            var carries = settledMonths.SelectMany(r => r.Lines).ToList();
             var result = PayslipCalculator.Calculate(
                 BuildInput(
                     profile, settings, run, ytd, adjustment, attached, policy,
-                    buckets, unpaidDays, loanRepayment, overtime));
+                    buckets, unpaidDays, loanRepayment, overtime, carries));
 
             memberships.TryGetValue(profile.UserId, out var membership);
 
             var payslip = ToPayslip(run, profile, name, membership, result, now);
+            payslip.TracksUnpaidLeave = _settlements is not null;
             payslips.Add(payslip);
-            lineItems.AddRange(result.LineItems.Select((li, i) => ToLineItem(payslip.Id, li, now, i + 1)));
+            lineItems.AddRange(result.LineItems.Select((li, i) =>
+                WithCarry(ToLineItem(payslip.Id, li, now, i + 1), carries)));
+
+            // Typed days replaced the Leave module's on purpose, so this month
+            // settles no application; an hourly person docks nothing.
+            var ownParts = adjustment?.UnpaidLeaveDays is null && profile.SalaryType == SalaryType.MONTHLY
+                ? ownPartsByUser.GetValueOrDefault(profile.UserId) ?? []
+                : [];
+            settlements.AddRange(ownParts.Select(p =>
+                Settlement(run, payslip, run.PeriodYear, run.PeriodMonth, p.ApplicationId, (decimal)p.Days, p, null, now)));
+            settlements.AddRange(settledMonths.SelectMany(r => r.Owed.Select(o =>
+                Settlement(run, payslip, r.Year, r.Month, o.ApplicationId, o.Days, o.Part, o.Last, now))));
         }
 
         await _payslips.ReplaceForRunAsync(run.Id, payslips, lineItems);
+        if (_settlements is not null) await _settlements.ReplaceForRunAsync(run.Id, settlements);
 
         ApplyTotals(run, payslips);
         run.GeneratedAt = now;
@@ -805,11 +848,15 @@ public class PayrollRunService : IPayrollRunService
                            + "submitted in order, and that month's run is still a draft.";
                 }
             }
-            return null;
+            return await EarlierUnsubmittedRefusalAsync(run, people);
         }
 
-        // No run for the previous month at all. That is fine for an org's very
-        // first run, and a gap otherwise.
+        // No run for the previous month at all — but an earlier month may still
+        // hold a draft for these people.
+        if (await EarlierUnsubmittedRefusalAsync(run, await PeopleOfAsync(run)) is { } earlierDraft)
+            return earlierDraft;
+
+        // Otherwise fine for an org's very first run, and a gap after that.
         var hasEarlier = await _runs.HasEarlierSubmittedRunAsync(run.PeriodYear, run.PeriodMonth);
 
         return hasEarlier
@@ -818,6 +865,30 @@ public class PayrollRunService : IPayrollRunService
               + "month's PCB, EPF and SOCSO against a zero year-to-date, and a submitted "
               + "payslip cannot be edited afterwards."
             : null;
+    }
+
+    // Per person, across the whole year — not just last month. Someone may be
+    // in no run last month (another group's month) yet still have an earlier
+    // run waiting: this run would be filed before it, freezing their
+    // year-to-date without it and settling unpaid leave that run settles too.
+    private async Task<string?> EarlierUnsubmittedRefusalAsync(PayrollRun run, HashSet<string>? people)
+    {
+        var earlier = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == run.PeriodYear
+                        && r.PeriodMonth < run.PeriodMonth
+                        && r.Status != PayrollRunStatus.SUBMITTED)
+            .OrderBy(r => r.PeriodMonth)
+            .ToList();
+        foreach (var other in earlier)
+        {
+            var theirs = await PeopleOfAsync(other);
+            if (people is null || theirs is null || people.Overlaps(theirs))
+            {
+                return $"Submit {PeriodLabel(other.PeriodYear, other.PeriodMonth)} first — payroll runs are "
+                       + "submitted in order, and that month's run for some of these people is still a draft.";
+            }
+        }
+        return null;
     }
 
     // Who a run is for: its chosen roster AND whoever it has a payslip for
@@ -851,6 +922,15 @@ public class PayrollRunService : IPayrollRunService
         // who proposed it.
         run.SubmittedById = _currentUser.UserId;
         await _runs.UpdateAsync(run);
+
+        // What this run docked or settled now counts; a later draft built
+        // before this approval may have settled the same leave too.
+        if (_settlements is not null)
+        {
+            await _settlements.SetFinalForRunsAsync([run.Id], true);
+            if (_drafts is not null)
+                await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
+        }
 
         if (_transfers is not null)
             await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
@@ -967,14 +1047,38 @@ public class PayrollRunService : IPayrollRunService
         // YTD-cumulative figures — PCB's annualisation, the SOCSO/EIS relief —
         // computed off this month. Reverting this one alone would leave them
         // filed against a year-to-date that no longer exists.
-        var later = await LaterRunsSharingPeopleAsync(run);
+        //
+        // A later month awaiting approval was built on this month too — its
+        // year-to-date, and any unpaid leave it settled for this month. It
+        // goes back to draft, needing a re-run, rather than being approved
+        // on figures that are about to change.
+        var (later, pending) = await LaterRunsReachedAsync(run);
+        var now = DateTime.UtcNow;
+        foreach (var p in pending)
+        {
+            p.Status = PayrollRunStatus.DRAFT;
+            p.SubmittedForApprovalAt = null;
+            p.SubmittedForApprovalById = null;
+            p.ApprovalRejectionReason = $"Sent back: the {RunLabel(run)} payroll run was reverted to draft.";
+            p.LastMutatedAt = now;
+        }
 
         var reverted = later.Append(run).ToList();
         foreach (var target in reverted) RevertOne(target);
 
-        await _runs.UpdateManyAsync(reverted);
+        await _runs.UpdateManyAsync([.. reverted, .. pending]);
 
-        var alsoReverted = later.Select(RunLabel).ToList();
+        // Back in draft, what they docked or settled is provisional again.
+        if (_settlements is not null)
+            await _settlements.SetFinalForRunsAsync(reverted.Select(r => r.Id).ToList(), false);
+
+        // A later DRAFT was built on this month's figures too — its
+        // year-to-date, and any unpaid leave it settled for this month — so
+        // it must be re-run before it can be sent for approval.
+        if (_drafts is not null)
+            await _drafts.MarkLaterDraftsAsync(new DateTime(run.PeriodYear, run.PeriodMonth, 1));
+
+        var alsoReverted = later.Concat(pending).Select(RunLabel).ToList();
 
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunRevertToDraft,
@@ -1025,31 +1129,48 @@ public class PayrollRunService : IPayrollRunService
         if (run is null || run.Status != PayrollRunStatus.SUBMITTED
             || run.Source == PayrollRunSource.IMPORTED) return [];
 
-        return (await LaterRunsSharingPeopleAsync(run)).Select(RunLabel).ToList();
+        var (later, pending) = await LaterRunsReachedAsync(run);
+        return later.Concat(pending).Select(RunLabel).ToList();
     }
 
-    // The later submitted runs in the year whose year-to-date this run feeds:
-    // those sharing anyone with it. Year-to-date is per person, so another
-    // group's later month never read this run's figures.
-    private async Task<List<PayrollRun>> LaterRunsSharingPeopleAsync(PayrollRun run)
+    // The later submitted (and awaiting-approval) runs in the year whose
+    // year-to-date this run feeds, directly or through another: a run sharing
+    // anyone with it, then anyone sharing with THAT run, and so on — split
+    // September {Ali} reaches October {Ali, Ben}, which reaches November
+    // {Ben}. Walked in month order, widening the people as runs are reached.
+    // Year-to-date is per person, so a group never reached never read these
+    // figures.
+    private async Task<(List<PayrollRun> Submitted, List<PayrollRun> Pending)> LaterRunsReachedAsync(PayrollRun run)
     {
         // Imported months are left out: their figures are the previous
         // system's, typed in rather than computed off this year-to-date, so
         // reverting an earlier month doesn't make them wrong — and an imported
         // month must never go back to draft (see RevertToDraftAsync).
-        var later = (await _runs.GetSubmittedLaterInYearAsync(run.PeriodYear, run.PeriodMonth))
-            .Where(r => r.Source != PayrollRunSource.IMPORTED)
+        var later = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == run.PeriodYear
+                        && r.PeriodMonth > run.PeriodMonth
+                        && (r.Status == PayrollRunStatus.SUBMITTED || r.Status == PayrollRunStatus.PENDING_APPROVAL)
+                        && r.Source != PayrollRunSource.IMPORTED)
+            .OrderBy(r => r.PeriodMonth)
             .ToList();
-        var people = await PeopleOfAsync(run);
-        if (people is null) return later;
 
-        var sharing = new List<PayrollRun>();
+        // Null = everyone (a run with no roster).
+        var start = await PeopleOfAsync(run);
+        HashSet<string>? people = start is null ? null : new HashSet<string>(start, StringComparer.Ordinal);
+        var reached = new List<PayrollRun>();
         foreach (var other in later)
         {
             var theirs = await PeopleOfAsync(other);
-            if (theirs is null || people.Overlaps(theirs)) sharing.Add(other);
+            if (people is not null && theirs is not null && !people.Overlaps(theirs)) continue;
+
+            reached.Add(other);
+            if (theirs is null) people = null;
+            else people?.UnionWith(theirs);
         }
-        return sharing;
+
+        return (
+            reached.Where(r => r.Status == PayrollRunStatus.SUBMITTED).ToList(),
+            reached.Where(r => r.Status == PayrollRunStatus.PENDING_APPROVAL).ToList());
     }
 
     public async Task<PayrollRunSaveResult> DeleteDraftAsync(string id)
@@ -1068,6 +1189,7 @@ public class PayrollRunService : IPayrollRunService
         // lists to ReplaceForRunAsync is the delete half of the same
         // transactional replace generation uses.
         await _payslips.ReplaceForRunAsync(run.Id, [], []);
+        if (_settlements is not null) await _settlements.ReplaceForRunAsync(run.Id, []);
         await _adjustments.DeleteForRunAsync(run.Id);
         // Its chosen roster too — left behind, the rows would still count as
         // "this person is on a run this month" under the one-run-per-person rule.
@@ -1162,7 +1284,8 @@ public class PayrollRunService : IPayrollRunService
         HoursBucketsDto? hours,
         decimal unpaidLeaveDays,
         decimal loanRepayment,
-        PayrollOvertimeHours.Hours overtime)
+        PayrollOvertimeHours.Hours overtime,
+        IReadOnlyList<UnpaidLeaveCarryForward.Carry>? carries = null)
     {
         // The employee's prior-employer carryover (their TP3) folds into the YTD
         // figures, so a mid-year joiner is not over-withheld until December.
@@ -1242,10 +1365,13 @@ public class PayrollRunService : IPayrollRunService
             // ceilings and the six `SubjectTo*` flags exactly as a recurring one
             // does.
             FixedAllowances = WithLoanRepayment(
-                WithUnpaidLeave(
-                    PayrollRunAdjustments.Merge(
-                        ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
-                    profile, unpaidLeaveDays, run.PeriodYear, run.PeriodMonth),
+                [
+                    .. WithUnpaidLeave(
+                        PayrollRunAdjustments.Merge(
+                            ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
+                        profile, unpaidLeaveDays, run.PeriodYear, run.PeriodMonth),
+                    .. (carries ?? []).Select(c => c.Row),
+                ],
                 loanRepayment),
             JoinDate = profile.JoinDate,
             LeaveDate = LastPayableDay(profile),
@@ -1362,6 +1488,108 @@ public class PayrollRunService : IPayrollRunService
             Name = "Unpaid Leave",
             Amount = amount,
         }];
+    }
+
+    // Earlier months of this year, filed here, whose unpaid leave has changed
+    // since — see UnpaidLeaveCarryForward. Keyed by employee profile.
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<SettledMonth>>>
+        UnpaidLeaveCarriesAsync(PayrollRun run, IReadOnlyCollection<EmployeeProfile> profiles)
+    {
+        var none = new Dictionary<string, IReadOnlyList<SettledMonth>>(StringComparer.Ordinal);
+        if (_settlements is null || run.PeriodMonth == 1 || profiles.Count == 0) return none;
+
+        // Only months filed HERE: an imported month's figures came from the
+        // previous system, which may already have docked the leave.
+        var wanted = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        var filed = (await _payslips.GetEarlierInYearAsync(run.PeriodYear, run.PeriodMonth))
+            .Where(x => x.Run.Status == PayrollRunStatus.SUBMITTED
+                        && x.Run.Source == PayrollRunSource.COMPUTED
+                        && x.Payslip.SnapshotSalaryType == SalaryType.MONTHLY
+                        && wanted.Contains(x.Payslip.EmployeeProfileId))
+            .ToList();
+        if (filed.Count == 0) return none;
+
+        // A month whose unpaid days were typed on the run replaced the Leave
+        // module's figure on purpose — it isn't second-guessed.
+        var typed = (await _adjustments.GetForRunsAsync(filed.Select(f => f.Run.Id).Distinct().ToList()))
+            .Where(a => a.UnpaidLeaveDays is not null)
+            .Select(a => (a.PayrollRunId, a.EmployeeProfileId))
+            .ToHashSet();
+        filed = filed.Where(f => !typed.Contains((f.Run.Id, f.Payslip.EmployeeProfileId))).ToList();
+
+        var settled = (await _settlements.GetFinalForYearAsync(run.PeriodYear))
+            .GroupBy(s => (s.EmployeeProfileId, s.PeriodMonth))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var partsByMonth = new Dictionary<int, ILookup<string, UnpaidLeavePartDto>>();
+        foreach (var month in filed.Select(f => f.Run.PeriodMonth).Distinct())
+        {
+            var start = new DateTime(run.PeriodYear, month, 1);
+            partsByMonth[month] = (await _leave.GetLeavePartsForOrgAsync(start, start.AddMonths(1).AddDays(-1)))
+                .ToLookup(p => p.UserId, StringComparer.Ordinal);
+        }
+
+        return filed
+            .GroupBy(f => f.Payslip.EmployeeProfileId, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<SettledMonth>)g
+                    .OrderBy(f => f.Run.PeriodMonth)
+                    .Select(f =>
+                    {
+                        var result = UnpaidLeaveCarryForward.For(new UnpaidLeaveCarryForward.FiledMonth(
+                            run.PeriodYear, f.Run.PeriodMonth,
+                            f.Payslip.SnapshotMonthlySalary ?? 0m,
+                            f.Payslip.CreatedAt,
+                            f.Payslip.TracksUnpaidLeave,
+                            [.. partsByMonth[f.Run.PeriodMonth][f.Payslip.UserId]],
+                            settled.GetValueOrDefault((g.Key, f.Run.PeriodMonth)) ?? []));
+                        return new SettledMonth(run.PeriodYear, f.Run.PeriodMonth, result.Lines, result.Owed);
+                    })
+                    .ToList(),
+                StringComparer.Ordinal);
+    }
+
+    // One filed month's carry lines, and every application it settles.
+    private sealed record SettledMonth(
+        int Year, int Month,
+        IReadOnlyList<UnpaidLeaveCarryForward.Carry> Lines,
+        IReadOnlyList<UnpaidLeaveCarryForward.Owed> Owed);
+
+    private static UnpaidLeaveSettlement Settlement(
+        PayrollRun run, Payslip payslip, int year, int month, string applicationId, decimal days,
+        UnpaidLeavePartDto? part, UnpaidLeaveSettlement? last, DateTime now) => new()
+        {
+            OrganizationId = run.OrganizationId,
+            PayrollRunId = run.Id,
+            PayslipId = payslip.Id,
+            EmployeeProfileId = payslip.EmployeeProfileId,
+            LeaveApplicationId = applicationId,
+            PeriodYear = year,
+            PeriodMonth = month,
+            Days = days,
+            // The leave as it is now.
+            // A leave no longer in that month records no type or dates, so if
+            // it's moved back later it reads as changed and is docked again.
+            LeaveTypeId = part?.LeaveTypeId ?? string.Empty,
+            LeaveStartDate = part?.StartDate ?? default,
+            LeaveEndDate = part?.EndDate ?? default,
+            CreatedAt = now,
+        };
+
+    // Marks the line that settled a carry with the month and days it settled,
+    // so a later run doesn't settle them again.
+    private static PayslipLineItem WithCarry(
+        PayslipLineItem line, IReadOnlyList<UnpaidLeaveCarryForward.Carry> carries)
+    {
+        var carry = carries.FirstOrDefault(c =>
+            c.Row.Name == line.Label && c.Row.Category == line.Category);
+        if (carry is null) return line;
+
+        line.CarriedFromYear = carry.Year;
+        line.CarriedFromMonth = carry.Month;
+        line.CarriedDays = carry.Days;
+        return line;
     }
 
     // A staff loan's installment for this period, as a deduction row.

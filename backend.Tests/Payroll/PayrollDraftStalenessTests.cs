@@ -110,6 +110,25 @@ public class PayrollDraftStalenessTests : IDisposable
         Assert.NotNull((await Reload(oct.Id)).LastMutatedAt);
     }
 
+    // A filed month's unpaid leave is settled on a LATER run, so those drafts
+    // are behind too — drafts only: a filed later month settled nothing.
+    [Fact]
+    public async Task MarkLater_FlagsLaterDraftsOfTheYear_ButNotFiledOnes()
+    {
+        var sep = Run(9, PayrollRunStatus.SUBMITTED);
+        var oct = Run(10);
+        var nov = Run(11, PayrollRunStatus.SUBMITTED);
+        var dec = Run(12);
+        await _db.SaveChangesAsync();
+
+        await _staleness.MarkLaterDraftsAsync(new DateTime(2026, 9, 30));
+
+        Assert.Null((await Reload(sep.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(oct.Id)).LastMutatedAt);
+        Assert.Null((await Reload(nov.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(dec.Id)).LastMutatedAt);
+    }
+
     [Fact]
     public async Task MarkCovering_AlsoStampsThatMonthsPendingAndSubmittedRuns()
     {

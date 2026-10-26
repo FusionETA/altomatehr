@@ -72,6 +72,22 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public void SetUnpaidDays(string userId, double days) => _unpaidByUser[userId] = days;
 
+    // Individual applications, for the unpaid-leave settlement: a test
+    // changes one (cancels it, flips its type) by replacing it in the list.
+    // Approved unpaid ones also count towards the month's unpaid days.
+    public List<UnpaidLeavePartDto> Parts { get; } = [];
+
+    // SetUnpaidDays shows up as one approved unpaid application per person in
+    // whatever window is asked, approved long ago.
+    public Task<IReadOnlyList<UnpaidLeavePartDto>> GetLeavePartsForOrgAsync(DateTime from, DateTime to) =>
+        Task.FromResult<IReadOnlyList<UnpaidLeavePartDto>>(
+        [
+            .. Parts.Where(p => p.StartDate <= to.Date && p.EndDate >= from.Date),
+            .. _unpaidByUser.Select(kv => new UnpaidLeavePartDto(
+                $"stub-{kv.Key}-{from:yyyyMM}", kv.Key, "type-unpaid", false, AltomateHR.Api.Modules.Leave.Entities.LeaveStatus.APPROVED,
+                from.Date, from.Date, DateTime.MinValue, kv.Value)),
+        ]);
+
     // Applications the org-wide read returns. Seeded by the attendance export
     // tests, which overlay approved leave onto a day-by-day calendar; payroll's
     // own tests leave it empty and never call the reader.
@@ -79,7 +95,12 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
         DateTime from, DateTime to) =>
-        Task.FromResult<IReadOnlyDictionary<string, double>>(_unpaidByUser);
+        Task.FromResult<IReadOnlyDictionary<string, double>>(
+            _unpaidByUser
+                .Concat(Parts.Where(p => p.IsApprovedUnpaid && p.StartDate <= to.Date && p.EndDate >= from.Date)
+                    .Select(p => KeyValuePair.Create(p.UserId, p.Days)))
+                .GroupBy(kv => kv.Key)
+                .ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value), StringComparer.Ordinal));
 
     public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
         throw new NotSupportedException();

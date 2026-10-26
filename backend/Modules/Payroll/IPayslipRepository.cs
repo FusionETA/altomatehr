@@ -55,6 +55,12 @@ public interface IPayslipRepository
 
     Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId);
 
+    // Every payslip in this year's months before `beforeMonth`, with its run —
+    // for settling unpaid leave decided after its month was filed.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<List<(Payslip Payslip, PayrollRun Run)>> GetEarlierInYearAsync(int year, int beforeMonth) =>
+        Task.FromResult(new List<(Payslip, PayrollRun)>());
+
     // Wipe the run's payslips and line items and write these instead. One
     // transaction, because a half-regenerated run is worse than a stale one.
     Task ReplaceForRunAsync(

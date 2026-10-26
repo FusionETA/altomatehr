@@ -15,6 +15,11 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
             .Where(a => a.PayrollRunId == payrollRunId)
             .ToListAsync();
 
+    public Task<List<PayrollRunAdjustment>> GetForRunsAsync(IReadOnlyCollection<string> payrollRunIds) =>
+        _db.PayrollRunAdjustments
+            .Where(a => payrollRunIds.Contains(a.PayrollRunId))
+            .ToListAsync();
+
     public Task<PayrollRunAdjustment?> GetAsync(string payrollRunId, string employeeProfileId) =>
         _db.PayrollRunAdjustments.FirstOrDefaultAsync(
             a => a.PayrollRunId == payrollRunId && a.EmployeeProfileId == employeeProfileId);

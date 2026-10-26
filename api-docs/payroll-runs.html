@@ -94,8 +94,9 @@
         <li><strong>SUBMITTED is final.</strong> It is the only status that feeds next month's
           year-to-date figures, so getting there is guarded (see
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
-          also reverts every later <em>submitted</em> month in the same year in which someone from that run
-          was paid (see <a href="#revert">Revert</a>). An <code>IMPORTED</code> month (seeded by the
+          also reverts every later <em>submitted</em> month in the same year that reaches it through shared
+          people, and sends later months <em>awaiting approval</em> back to draft
+          (see <a href="#revert">Revert</a>). An <code>IMPORTED</code> month (seeded by the
           <a href="payroll.html#ytd-import">YTD import</a>) is never part of that cascade and cannot be reverted
           or generated itself &mdash; import it again to correct it.</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
@@ -125,7 +126,12 @@
           payslips were last generated. Submission is refused while it is true — re-run payroll first. A change
           to one person (an unpaid-leave or overtime approval) marks only the generated drafts that could
           hold them: a run whose chosen roster leaves that person out is not marked, and a run with no
-          roster (everyone) is.</li>
+          roster (everyone) is.
+          Approving or reverting a run also marks the generated <em>drafts</em> of the later months of the same
+          year stale (filed or pending runs are never marked), and so does approving, cancelling or editing
+          <em>unpaid</em> leave: a change to an earlier, already-filed month is settled on the person's next
+          run (see <a href="#generate">Generate</a>), so those drafts were built from old figures. Run
+          <a href="#generate">generate</a> again on them.</li>
       </ul>
       <div class="callout warn">
         Writes here move money and file paperwork with Malaysian authorities. Grant
@@ -432,7 +438,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
             <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
-            <tr><td><code>lineItems[].label</code> / <code>.amount</code> / <code>.category</code></td><td>mixed</td><td></td></tr>
+            <tr><td><code>lineItems[].label</code> / <code>.amount</code> / <code>.category</code></td><td>mixed</td><td>A line settling unpaid leave from an earlier month carries its month and days in the <code>label</code> (<code>Unpaid Leave – Sep 2026 (approved late, 2 days)</code>, category <code>deduct_unpaid_leave</code>; or <code>Unpaid Leave refund – Sep 2026 (1 day)</code>, category <code>wages_arrears</code>). See <a href="#generate">Generate</a>.</td></tr>
             <tr><td><code>lineItems[].pcbTaxableAmount</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>lineItems[].claimId</code></td><td>string or null</td><td>Set when the line came from an <a href="#claims">attached claim</a>.</td></tr>
             <tr><td><code>lineItems[].subjectToEpf</code> / <code>.subjectToSocso</code> / <code>.subjectToEis</code> / <code>.subjectToPcb</code></td><td>boolean</td><td>Which wage bases this line fed, as the category defines it.</td></tr>
@@ -456,6 +462,34 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           "Run payroll": build every payslip on the run from the employees' current profiles. Safe to call
           repeatedly on a draft — each call <strong>discards</strong> the previous payslips and line items
           and rebuilds from scratch, folding in whatever adjustments and claims are on the run.
+        </p>
+        <p>
+          <strong>Unpaid leave decided after its month was filed is settled here.</strong> For each MONTHLY
+          employee, generation looks at the earlier months of the <em>same year</em> that were computed and
+          approved (<code>SUBMITTED</code>) here. If unpaid leave in one of them was approved after that month
+          was run, or was cancelled or changed after being docked, the difference is added to this payslip as
+          its own line item, priced at <em>that</em> month's salary &divide; its calendar days:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Line <code>label</code></th><th><code>category</code></th><th>When</th></tr></thead>
+            <tbody>
+              <tr><td><code>Unpaid Leave – Sep 2026 (approved late, 2 days)</code></td><td><code>deduct_unpaid_leave</code></td><td>Days owed that were not docked in their own month. A deduction; it reduces the statutory bases like the ordinary <code>Unpaid Leave</code> line.</td></tr>
+              <tr><td><code>Unpaid Leave refund – Sep 2026 (1 day)</code></td><td><code>wages_arrears</code></td><td>Days docked earlier that have since been cancelled or shortened. A payment (arrears of wages).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The month is written as the three-letter English month and year (<code>Sep 2026</code>); the day count
+          is <code>1 day</code> / <code>2 days</code> / <code>1.5 days</code>. A month can add one line of each kind.
+          These days are <strong>not</strong> in the payslip's <code>unpaidLeaveDays</code>, which counts only
+          the run's own month. The API returns the line only through the usual
+          <a href="#payslip-object"><code>lineItems[]</code></a> fields (<code>label</code>, <code>category</code>,
+          <code>amount</code>); it does not expose which month a line settled as a separate field, so read it from
+          the label. Months imported from a previous system, and months where unpaid days were typed on the
+          run's <a href="#save-adjustment">adjustment</a>, are never revisited. Once a run is approved, what it
+          settled is final and is not settled again by a later run; reverting it to draft makes that provisional
+          again.
         </p>
         <p>
           <strong>The roster can grow on a re-run.</strong> If the draft was created with
@@ -586,6 +620,11 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             different staff group does not hold this one up. A run's people are its roster plus anyone it has
             a payslip for; a run with neither (nobody chosen, nothing generated) counts as everyone, so it
             overlaps and blocks every other run.</li>
+          <li><strong>Any earlier month of the same year</strong> has a run that is not yet SUBMITTED (draft or
+            awaiting approval) and shares at least one person with this one &mdash; not only last month's. This
+            is checked even when last month has no run at all, or has one for other people. Filing this month
+            first would freeze those people's year-to-date without the earlier run, and would settle unpaid leave
+            that run settles too. The earliest such month is named.</li>
           <li><a href="#readiness">Readiness</a> is not <code>ok</code>.</li>
         </ul>
         <h3>Response <code>200</code></h3>
@@ -595,7 +634,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "…" }</code> — one of: already awaiting approval / already submitted / the guards above, each with its own message (e.g.
             <code>"Submit December 2025 first — payroll runs are submitted in order, and that month's run is still a draft."</code> or
-            <code>"Cannot submit — fix these first: …"</code>).</li>
+            <code>"Cannot submit — fix these first: …"</code>). For an earlier month that is still open: <code>"Submit March 2026 first — payroll runs are submitted in order, and that month's run for some of these people is still a draft."</code> (the wording says &ldquo;draft&rdquo; even when that run is awaiting approval).</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/submit \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -611,6 +650,12 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           PENDING_APPROVAL → SUBMITTED, by a different actor than the one who submitted (both are recorded
           on the run). If the org has opted into automatic Xero posting, this also posts the run's journal —
           best effort: a Xero failure here never un-approves the run.
+        </p>
+        <p>
+          <strong>Side effect:</strong> approving marks the generated <em>drafts</em> of the later months of the
+          same year stale (<code>isStale: true</code>), because unpaid leave this run settled must not be settled a
+          second time by a draft built before the approval. Re-run those drafts with
+          <a href="#generate">generate</a> before submitting them.
         </p>
         <h3>Response <code>200</code></h3>
         <p>The updated <a href="#run-object">run object</a>.</p>
@@ -661,11 +706,22 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <p>
           SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED run (a later month, same year)
           that shares a person with this one is reverted too, because their year-to-date figures were computed
-          off this one. Year-to-date is per person, so another staff group's later run is left alone. A run
-          with neither roster nor payslips counts as everyone, so it cascades to every later run, and is
-          itself caught by any earlier run's revert. Other runs of the <em>same</em> month are never part of
-          the cascade. Check
+          off this one. The reach is <strong>transitive</strong>: runs are walked in month order, and once a run
+          is caught, its people count too. A September run for Ali reaches an October run for Ali and Ben, which
+          in turn reaches a November run for Ben only. Year-to-date is per person, so a group that is never
+          reached is left alone. A run with neither roster nor payslips counts as everyone, so it cascades to
+          every later run, and is itself caught by any earlier run's revert. Other runs of the <em>same</em>
+          month are never part of the cascade. Check
           <a href="#revert-impact">revert-impact</a> first to see what else will move.
+        </p>
+        <p>
+          <strong>Later runs awaiting approval are sent back to draft too.</strong> A later
+          <code>PENDING_APPROVAL</code> run reached the same way is moved to <code>DRAFT</code>, its submission is
+          cleared, and its <code>approvalRejectionReason</code> is set to
+          <code>"Sent back: the March 2026 payroll run was reverted to draft."</code> (the reverted run's
+          label). It needs a fresh generate before it can be submitted again. Later <em>drafts</em> that were
+          already generated are marked stale (<code>isStale: true</code>) and need a re-run as well; they are not
+          listed in <code>alsoReverted</code>.
         </p>
         <p>
           <strong>Imported months are out of both ends of this.</strong> A run with
@@ -681,7 +737,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>run</code></td><td>object</td><td>The <a href="#run-object">run object</a> that was asked for, reverted.</td></tr>
-              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Run <a href="#run-object">labels</a> of the other runs reverted with it, e.g. <code>["February 2026", "March 2026 – Workers"]</code>. Empty is the common case.</td></tr>
+              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Run <a href="#run-object">labels</a> of the other runs moved back to draft with it, e.g. <code>["February 2026", "March 2026 – Workers"]</code>: the later submitted runs first, then the later runs that were awaiting approval. Empty is the common case.</td></tr>
             </tbody>
           </table>
         </div>
@@ -701,11 +757,16 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <span class="path">/payroll/runs/{id}/revert-impact</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>.</p>
+        <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>. It lists exactly the set <a href="#revert"><code>alsoReverted</code></a> would return: later submitted runs (reached through shared people, directly or through another run), then later runs awaiting approval.</p>
+        <p>
+          This endpoint needs access to <strong>every employee</strong> in the company, reads included, because for
+          an admin limited to some policies the list would be wrong. API keys have that, so you will not meet the
+          <code>403</code> a limited human admin gets.
+        </p>
         <h3>Response <code>200</code></h3>
         <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED or is an <code>IMPORTED</code> run (not an error — there is simply nothing to cascade, and an imported run cannot be reverted anyway). Imported months are never listed among the runs a revert would pull back.</p>
         <h3>Errors</h3>
-        <p><code>404</code> — no such run.</p>
+        <p><code>404</code> — no such run. <code>403</code> — only for a caller without access to every employee (not an API key).</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: d219a8b
+  user-guide-covered-up-to: d8edc34
 -->
 <html lang="en">
 <head>
@@ -1246,8 +1246,9 @@
         reason, or saving with nothing different, doesn't send one.</li>
       <li>The approval trail shows <em>Changed by admin</em> with the leave before and after, and the change goes in the
         <a href="#audit">Activity Log</a>.</li>
-      <li>Changing approved <em>unpaid</em> leave marks any open payroll draft for the old and new dates for a re-run; a
-        payroll already submitted isn't changed.</li>
+      <li>Changing approved <em>unpaid</em> leave marks any open payroll draft for the old and new dates for a re-run. A
+        month already approved isn't changed: the difference is settled on the person's next payroll run instead (see
+        <a href="#payroll">Running payroll</a>).</li>
     </ul>
     <figure class="shot" data-place="Leave">
       <div class="shot-grid" data-orient="screen">
@@ -1268,7 +1269,8 @@
       <span class="btn-name">Cancel leave</span> (or <span class="btn-name">Keep it</span> to back out). Approved days go
       back into their balance and they're notified; it can't be undone, so they'd need to apply again. If they'd already
       asked to cancel, cancelling here completes it at once. Cancelling approved <em>unpaid</em> leave marks any open
-      payroll draft for those dates for a re-run; a payroll already submitted isn't changed. The cancellation is recorded
+      payroll draft for those dates for a re-run. If that month's payroll was already approved and the days were
+      deducted, they're paid back on the person's next run. The cancellation is recorded
       in the <a href="#audit">Activity Log</a>.</p>
 
     <figure class="shot" data-place="Leave">
@@ -1305,8 +1307,10 @@
     <p>Year rollover and monthly accrual run by themselves; the buttons under <em>Maintenance</em> are there if you need
       to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
-      <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
-        payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>. If a person's
+      <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved while the month's
+        payroll is still a draft, the run is marked for a re-run. If it's approved after that month's payroll was
+        approved, it's deducted on the person's next run instead, and cancelled leave that was already deducted is paid
+        back the same way — see <a href="#payroll">Running payroll</a>. If a person's
         unpaid leave isn't in the Leave module, you can type their unpaid days on the payroll draft instead.</p>
     </div>
     
@@ -1381,6 +1385,19 @@
           off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
           shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then
           <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
+      <li><h4>Unpaid leave decided after its month was approved</h4>
+        <p>You don't have to do anything for this. When unpaid leave is approved after the month's payroll was approved,
+          the person's next run later that year picks it up on its own, as a line on their payslip, for example
+          <em>Unpaid Leave – Sep 2026 (approved late, 2 days)</em>. It's worked out at that month's rate, the salary ÷
+          that month's calendar days, not the month you're running. If approved unpaid leave that was already deducted is
+          later cancelled or moved, the next run pays it back as <em>Unpaid Leave refund – Sep 2026 (2 days)</em>.</p>
+        <ul>
+          <li>A month you imported from earlier payroll, or a month where you typed the person's unpaid days on the
+            run, is never revisited.</li>
+          <li>Approving or cancelling unpaid leave for an earlier month, approving a run, or reverting one marks any later
+            drafts as <strong>Stale</strong>, since they may now carry one of these lines. Press
+            <span class="btn-name">Re-run payroll</span> on them.</li>
+        </ul></li>
       <li><h4>Employer HRDF levy for one person</h4>
         <p>The HRDF levy is what the company pays HRD Corp for each person, worked out for you as the levy rate in your
           payroll settings times their HRDF wages, for Malaysian citizens. To set a different figure for one person on this
@@ -1440,6 +1457,8 @@
         <li>an employee's payroll details, or a salary change</li>
         <li>a loan</li>
         <li>approved unpaid leave or overtime in that month</li>
+        <li>unpaid leave for an earlier month being approved or cancelled, or an earlier run being approved or
+          reverted</li>
         <li>payroll settings, or year-to-date figures imported</li>
         <li>an adjustment or an attached claim</li>
       </ul>
@@ -1453,16 +1472,20 @@
         <li>Someone in the run has an EPF number that isn't digits only. They're listed as <em>EPF number (digits only)</em>,
           the same way a missing IC number is. Click the field in <strong>Needs attention</strong> to open it on their Statutory tab, fix the number, then press
           <span class="btn-name">Re-run payroll</span>.</li>
-        <li>The previous month hasn't been filed yet — months are filed in order.</li>
+        <li>An earlier run this year that includes any of the same people isn't approved yet, whichever month it's for —
+          runs are approved in order. The message names the month to approve first.</li>
       </ul>
     </div>
     <p>Once a run is approved, a <strong>LHDN payment receipts</strong> card appears on it. Enter the receipt number and
       date LHDN issued when you paid that month's PCB (MTD) — and CP38, if you had any — and press
       <span class="btn-name">Save receipts</span>. They're printed on each employee's PCB 2(II) statement; no figure changes.</p>
     <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
-      months that were worked out from it go back to draft too — the app lists them before you confirm. If the company
-      pays a month in several runs, only the later runs that share people with this one are sent back; a run for a
-      different group of people is left alone. A month you imported from earlier payroll is never sent back this way.</p>
+      months that were worked out from it go back to draft too — the app lists them before you confirm. That includes a
+      later run that only shares people with this one through another run: if September has Ali, October has Ali and
+      Ben, and November has Ben, reverting September also reverts October and November. Later runs still waiting for
+      approval are sent back to draft as well, and are listed in the same message. If the company pays a month in several
+      runs, a run for a completely different group of people is left alone. A month you imported from earlier payroll is
+      never sent back this way.</p>
     <p><strong>An imported month can't be reverted.</strong> A month you brought in under <strong>Import earlier payroll</strong>
       has no <span class="btn-name">Revert to draft</span> button. Its run page shows a note instead: <em>Imported from your
       previous payroll system. To correct this month, import it again under “Import earlier payroll” at the foot of the
