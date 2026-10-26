@@ -63,6 +63,8 @@ public static class PayrollSummaryPdf
     private const float ColSocsoEr = 0.95f;
     private const float ColEisEr = 0.85f;
     private const float ColHrdf = 0.85f;
+    // Only when some PCB in the run is borne by the employer.
+    private const float ColPcbEr = 0.95f;
     private const float ColCost = 1.15f;
 
     private enum Tint { None, Emp, Er }
@@ -150,6 +152,7 @@ public static class PayrollSummaryPdf
     {
         var payslips = model.Rows.Select(r => r.Payslip).ToList();
         var totals = PayrollSummaryTotals.Of(payslips);
+        var borne = totals.PcbEr > 0m;
 
         container.Column(col =>
         {
@@ -172,7 +175,7 @@ public static class PayrollSummaryPdf
                 Band(row.RelativeItem(ColPcb + ColEpfEmp + ColSocsoEmp + ColEisEmp + ColSkbbkEmp),
                     "Employee contributions", EmpBand, EmpBandBg, EmpBandUnderline);
                 row.RelativeItem(ColNet);
-                Band(row.RelativeItem(ColEpfEr + ColSocsoEr + ColEisEr + ColHrdf),
+                Band(row.RelativeItem(ColEpfEr + ColSocsoEr + ColEisEr + ColHrdf + (borne ? ColPcbEr : 0f)),
                     "Employer contributions", ErBand, ErBandBg, ErBandUnderline);
                 row.RelativeItem(ColCost);
             });
@@ -186,7 +189,7 @@ public static class PayrollSummaryPdf
                     h.RelativeItem(ColEmployee).Element(HeadCell).PaddingHorizontal(3)
                         .Text("EMPLOYEE NAME").Style(HeadLabel);
                     ColHead(h.RelativeItem(ColGross), "GROSS", totals.Gross, Tint.None);
-                    ColHead(h.RelativeItem(ColPcb), "PCB", totals.Pcb, Tint.Emp);
+                    ColHead(h.RelativeItem(ColPcb), "PCB", totals.PcbEmp, Tint.Emp);
                     ColHead(h.RelativeItem(ColEpfEmp), "EPF", totals.EpfEmp, Tint.Emp);
                     ColHead(h.RelativeItem(ColSocsoEmp), "SOCSO", totals.SocsoEmp, Tint.Emp);
                     ColHead(h.RelativeItem(ColEisEmp), "EIS", totals.EisEmp, Tint.Emp);
@@ -196,6 +199,7 @@ public static class PayrollSummaryPdf
                     ColHead(h.RelativeItem(ColSocsoEr), "SOCSO", totals.SocsoEr, Tint.Er);
                     ColHead(h.RelativeItem(ColEisEr), "EIS", totals.EisEr, Tint.Er);
                     ColHead(h.RelativeItem(ColHrdf), "HRDF", totals.Hrdf, Tint.Er);
+                    if (borne) ColHead(h.RelativeItem(ColPcbEr), "PCB", totals.PcbEr, Tint.Er);
                     ColHead(h.RelativeItem(ColCost), "COST", totals.Cost, Tint.None);
                 });
 
@@ -204,7 +208,7 @@ public static class PayrollSummaryPdf
                     foreach (var p in payslips)
                     {
                         var items = model.LineItems.GetValueOrDefault(p.Id) ?? [];
-                        body.Item().ShowEntire().Element(c => EmployeeRow(c, p, items));
+                        body.Item().ShowEntire().Element(c => EmployeeRow(c, p, items, borne));
                     }
                 });
             });
@@ -284,7 +288,8 @@ public static class PayrollSummaryPdf
             col.Item().PaddingTop(1.5f).AlignRight().Text(Fmt(total)).FontSize(8.5f).Bold();
         });
 
-    private static void EmployeeRow(IContainer container, Payslip p, IReadOnlyList<PayslipLineItem> items) =>
+    private static void EmployeeRow(
+        IContainer container, Payslip p, IReadOnlyList<PayslipLineItem> items, bool borne) =>
         container.BorderBottom(0.5f).BorderColor(Divider).Row(row =>
         {
             row.RelativeItem(ColEmployee).PaddingVertical(5).PaddingHorizontal(3).Column(cell =>
@@ -312,7 +317,9 @@ public static class PayrollSummaryPdf
             });
 
             AmountCell(row.RelativeItem(ColGross), PayrollGrossShown.Of(p), Tint.None, bold: true);
-            AmountCell(row.RelativeItem(ColPcb), p.Pcb, Tint.Emp);
+            // What left the employee's pay; PCB the company paid sits in the
+            // employer band, so both bands still add up to net and to cost.
+            AmountCell(row.RelativeItem(ColPcb), p.Pcb - p.PcbBorneByEmployer, Tint.Emp);
             AmountCell(row.RelativeItem(ColEpfEmp), p.EpfEmployee, Tint.Emp);
             AmountCell(row.RelativeItem(ColSocsoEmp), p.SocsoEmployee, Tint.Emp);
             AmountCell(row.RelativeItem(ColEisEmp), p.EisEmployee, Tint.Emp);
@@ -322,6 +329,7 @@ public static class PayrollSummaryPdf
             AmountCell(row.RelativeItem(ColSocsoEr), p.SocsoEmployer, Tint.Er);
             AmountCell(row.RelativeItem(ColEisEr), p.EisEmployer, Tint.Er);
             AmountCell(row.RelativeItem(ColHrdf), p.Hrdf, Tint.Er);
+            if (borne) AmountCell(row.RelativeItem(ColPcbEr), p.PcbBorneByEmployer, Tint.Er);
             AmountCell(row.RelativeItem(ColCost), p.TotalCostToEmployer, Tint.None, bold: true);
         });
 

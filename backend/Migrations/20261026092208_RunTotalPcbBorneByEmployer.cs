@@ -18,6 +18,14 @@ namespace AltomateHR.Api.Migrations
                 scale: 2,
                 nullable: false,
                 defaultValue: 0m);
+
+            // Runs generated since Payslips.PcbBorneByEmployer arrived already
+            // carry it per payslip; without this their run total stays 0 and
+            // the run's gross keeps showing that PCB (filed runs can't be
+            // regenerated to fix it).
+            migrationBuilder.Sql(
+                "UPDATE PayrollRuns r SET r.TotalPcbBorneByEmployer = COALESCE(("
+                + "SELECT SUM(p.PcbBorneByEmployer) FROM Payslips p WHERE p.PayrollRunId = r.Id), 0)");
         }
 
         /// <inheritdoc />

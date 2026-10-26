@@ -55,22 +55,31 @@ public static class PayrollSummaryXlsx
     private enum Band { None, Emp, Er }
 
     // The PDF's columns, in its order. Employee number, name and position
-    // are separate columns here (one cell in the PDF) so they filter.
-    private static readonly (string Header, Band Band, Func<Payslip, decimal> Value, Func<PayrollSummaryTotals, decimal> Total)[] Amounts =
-    [
-        ("Gross", Band.None, p => PayrollGrossShown.Of(p), t => t.Gross),
-        ("PCB", Band.Emp, p => p.Pcb, t => t.Pcb),
-        ("EPF (employee)", Band.Emp, p => p.EpfEmployee, t => t.EpfEmp),
-        ("SOCSO (employee)", Band.Emp, p => p.SocsoEmployee, t => t.SocsoEmp),
-        ("EIS (employee)", Band.Emp, p => p.EisEmployee, t => t.EisEmp),
-        ("SKBBK (employee)", Band.Emp, p => p.SkbbkEmployee, t => t.SkbbkEmp),
-        ("Net", Band.None, p => p.NetPay, t => t.Net),
-        ("EPF (employer)", Band.Er, p => p.EpfEmployer, t => t.EpfEr),
-        ("SOCSO (employer)", Band.Er, p => p.SocsoEmployer, t => t.SocsoEr),
-        ("EIS (employer)", Band.Er, p => p.EisEmployer, t => t.EisEr),
-        ("HRDF", Band.Er, p => p.Hrdf, t => t.Hrdf),
-        ("Cost to employer", Band.None, p => p.TotalCostToEmployer, t => t.Cost),
-    ];
+    // are separate columns here (one cell in the PDF) so they filter. PCB the
+    // company pays for staff gets its own employer column, only when there is
+    // some — the employee's PCB column is what left their pay.
+    private static List<(string Header, Band Band, Func<Payslip, decimal> Value, Func<PayrollSummaryTotals, decimal> Total)> Amounts(
+        PayrollSummaryTotals totals)
+    {
+        var columns = new List<(string, Band, Func<Payslip, decimal>, Func<PayrollSummaryTotals, decimal>)>
+        {
+            ("Gross", Band.None, p => PayrollGrossShown.Of(p), t => t.Gross),
+            ("PCB", Band.Emp, p => p.Pcb - p.PcbBorneByEmployer, t => t.PcbEmp),
+            ("EPF (employee)", Band.Emp, p => p.EpfEmployee, t => t.EpfEmp),
+            ("SOCSO (employee)", Band.Emp, p => p.SocsoEmployee, t => t.SocsoEmp),
+            ("EIS (employee)", Band.Emp, p => p.EisEmployee, t => t.EisEmp),
+            ("SKBBK (employee)", Band.Emp, p => p.SkbbkEmployee, t => t.SkbbkEmp),
+            ("Net", Band.None, p => p.NetPay, t => t.Net),
+            ("EPF (employer)", Band.Er, p => p.EpfEmployer, t => t.EpfEr),
+            ("SOCSO (employer)", Band.Er, p => p.SocsoEmployer, t => t.SocsoEr),
+            ("EIS (employer)", Band.Er, p => p.EisEmployer, t => t.EisEr),
+            ("HRDF", Band.Er, p => p.Hrdf, t => t.Hrdf),
+        };
+        if (totals.PcbEr > 0m)
+            columns.Add(("PCB (paid by employer)", Band.Er, p => p.PcbBorneByEmployer, t => t.PcbEr));
+        columns.Add(("Cost to employer", Band.None, p => p.TotalCostToEmployer, t => t.Cost));
+        return columns;
+    }
 
     private static readonly string[] IdentityHeaders = ["Emp no.", "Employee", "Position"];
 
@@ -92,7 +101,8 @@ public static class PayrollSummaryXlsx
     private static void WriteSummary(
         IXLWorksheet sheet, PayrollDocumentModel model, List<Payslip> payslips, PayrollSummaryTotals totals)
     {
-        var lastCol = IdentityHeaders.Length + Amounts.Length;
+        var amounts = Amounts(totals);
+        var lastCol = IdentityHeaders.Length + amounts.Count;
 
         // ── Header block ──
         sheet.Cell(1, 1).Value = model.OrganizationName;
@@ -124,16 +134,16 @@ public static class PayrollSummaryXlsx
 
         // ── Contribution bands over the employee / employer columns ──
         const int bandRow = HeaderRow - 1;
-        BandCell(sheet, bandRow, Band.Emp, "Employee contributions");
-        BandCell(sheet, bandRow, Band.Er, "Employer contributions");
+        BandCell(sheet, amounts, bandRow, Band.Emp, "Employee contributions");
+        BandCell(sheet, amounts, bandRow, Band.Er, "Employer contributions");
 
         // ── Column headings ──
         for (var c = 0; c < IdentityHeaders.Length; c++)
             Heading(sheet.Cell(HeaderRow, c + 1), IdentityHeaders[c], Band.None);
-        for (var c = 0; c < Amounts.Length; c++)
+        for (var c = 0; c < amounts.Count; c++)
         {
             var cell = sheet.Cell(HeaderRow, IdentityHeaders.Length + c + 1);
-            Heading(cell, Amounts[c].Header, Amounts[c].Band);
+            Heading(cell, amounts[c].Header, amounts[c].Band);
             cell.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
         }
 
@@ -146,8 +156,8 @@ public static class PayrollSummaryXlsx
             sheet.Cell(r, 2).Value = p.SnapshotName;
             sheet.Cell(r, 3).Value = p.SnapshotPosition ?? string.Empty;
 
-            for (var c = 0; c < Amounts.Length; c++)
-                Money(sheet.Cell(r, IdentityHeaders.Length + c + 1), Amounts[c].Value(p), Amounts[c].Band);
+            for (var c = 0; c < amounts.Count; c++)
+                Money(sheet.Cell(r, IdentityHeaders.Length + c + 1), amounts[c].Value(p), amounts[c].Band);
             r++;
         }
         var lastEmployeeRow = r - 1;
@@ -155,8 +165,8 @@ public static class PayrollSummaryXlsx
         // ── Totals row ──
         var totalsRow = r;
         sheet.Cell(totalsRow, 2).Value = $"Total ({totals.Employees} employee{(totals.Employees == 1 ? "" : "s")})";
-        for (var c = 0; c < Amounts.Length; c++)
-            Money(sheet.Cell(totalsRow, IdentityHeaders.Length + c + 1), Amounts[c].Total(totals), Amounts[c].Band);
+        for (var c = 0; c < amounts.Count; c++)
+            Money(sheet.Cell(totalsRow, IdentityHeaders.Length + c + 1), amounts[c].Total(totals), amounts[c].Band);
 
         var totalsRange = sheet.Range(totalsRow, 1, totalsRow, lastCol);
         totalsRange.Style.Font.SetBold();
@@ -171,8 +181,8 @@ public static class PayrollSummaryXlsx
         sheet.Column(1).Width = 11;
         sheet.Column(2).Width = 34;
         sheet.Column(3).Width = 24;
-        for (var c = 0; c < Amounts.Length; c++)
-            sheet.Column(IdentityHeaders.Length + c + 1).Width = Math.Max(13, Amounts[c].Header.Length + 4);
+        for (var c = 0; c < amounts.Count; c++)
+            sheet.Column(IdentityHeaders.Length + c + 1).Width = Math.Max(13, amounts[c].Header.Length + 4);
 
         sheet.PageSetup.PageOrientation = XLPageOrientation.Landscape;
         sheet.PageSetup.FitToPages(1, 0);
@@ -349,10 +359,13 @@ public static class PayrollSummaryXlsx
         cell.Style.Alignment.SetVertical(XLAlignmentVerticalValues.Center);
     }
 
-    private static void BandCell(IXLWorksheet sheet, int row, Band band, string text)
+    private static void BandCell(
+        IXLWorksheet sheet,
+        List<(string Header, Band Band, Func<Payslip, decimal> Value, Func<PayrollSummaryTotals, decimal> Total)> amounts,
+        int row, Band band, string text)
     {
-        var columns = Enumerable.Range(0, Amounts.Length)
-            .Where(i => Amounts[i].Band == band)
+        var columns = Enumerable.Range(0, amounts.Count)
+            .Where(i => amounts[i].Band == band)
             .Select(i => IdentityHeaders.Length + i + 1)
             .ToList();
 
