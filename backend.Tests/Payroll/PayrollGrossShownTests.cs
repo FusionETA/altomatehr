@@ -48,4 +48,25 @@ public class PayrollGrossShownTests
         Assert.Equal(-1000m, PayrollGrossShown.Of(a));
         Assert.Equal(PayrollGrossShown.Of(a) + PayrollGrossShown.Of(b), PayrollGrossShown.Of(run));
     }
+
+    // Wang Deye's month: base 10,600, PCB 3,180 paid by the company. Cost
+    // carries the 3,180, but it was never pay — gross shows 10,600, not
+    // 13,780, so net (10,313.60) doesn't read as having had PCB taken off.
+    [Fact]
+    public void PcbBorneByEmployer_IsNotShownAsGross()
+    {
+        var p = new Payslip
+        {
+            GrossPay = 10600m, EpfEmployer = 424m, SocsoEmployer = 104.15m, PcbBorneByEmployer = 3180m,
+            TotalCostToEmployer = 10600m + 424m + 104.15m + 3180m,
+        };
+        var run = new PayrollRun
+        {
+            TotalGross = 10600m, TotalEmployerEpf = 424m, TotalEmployerSocso = 104.15m,
+            TotalPcbBorneByEmployer = 3180m, TotalCostToEmployer = p.TotalCostToEmployer,
+        };
+
+        Assert.Equal(10600m, PayrollGrossShown.Of(p));
+        Assert.Equal(10600m, PayrollGrossShown.Of(run));
+    }
 }

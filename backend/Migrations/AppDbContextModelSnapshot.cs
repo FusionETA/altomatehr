@@ -2684,6 +2684,10 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("decimal(14,2)");
 
+                    b.Property<decimal>("TotalPcbBorneByEmployer")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("decimal(14,2)");
+
                     b.Property<decimal>("TotalWagesSubjectToHrdf")
                         .HasPrecision(14, 2)
                         .HasColumnType("decimal(14,2)");
