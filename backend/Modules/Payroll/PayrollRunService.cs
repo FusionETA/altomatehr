@@ -1848,6 +1848,7 @@ public class PayrollRunService : IPayrollRunService
         run.TotalEmployerEis = payslips.Sum(p => p.EisEmployer);
         run.TotalEmployeeSkbbk = payslips.Sum(p => p.SkbbkEmployee);
         run.TotalPcb = payslips.Sum(p => p.Pcb);
+        run.TotalPcbBorneByEmployer = payslips.Sum(p => p.PcbBorneByEmployer);
         run.TotalCp38 = payslips.Sum(p => p.Cp38);
         run.TotalZakat = payslips.Sum(p => p.Zakat);
 

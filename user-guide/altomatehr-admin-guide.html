@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: dae3ed8
+  user-guide-covered-up-to: 7022a42
 -->
 <html lang="en">
 <head>
@@ -1604,8 +1604,16 @@
     <p>For anyone with <strong>PCB borne by employer</strong> turned on (Statutory tab of their record), the run works
       out their PCB as usual, but it isn't taken from their net pay. Here is what you'll see:</p>
     <ul>
-      <li><strong>On the run's Payslips list</strong> — the PCB column still shows the amount, with <em>paid by employer</em>
-        under it, because the tax is still paid to LHDN.</li>
+      <li><strong>On the run's Payslips list</strong> — <strong>Gross</strong> leaves out the PCB the company pays, because
+        it was never part of their pay. The <strong>PCB</strong> column shows only what came out of the person's pay,
+        with <em>+ RM x paid by employer</em> under it (for example <em>+ RM 150.00 paid by employer</em>) for the part
+        the company pays. So Gross less the deduction columns still comes to net pay. <strong>Total PCB payment</strong>
+        under <strong>What gets remitted</strong> is still every ringgit paid to LHDN, the company's part included.</li>
+      <li><strong>In the Payroll Summary (PDF and Excel)</strong> — the <strong>PCB</strong> column under
+        <strong>Employee contributions</strong> is again only what came out of the person's pay. When anyone in the run
+        has PCB paid by the company, an extra column appears under <strong>Employer contributions</strong>, just before
+        cost (<em>PCB (paid by employer)</em> in Excel). Each row then adds up both ways: Gross less the employee columns
+        is net pay, and Gross plus the employer columns is cost to employer. A run with no company-paid PCB looks as before.</li>
       <li><strong>In a person's payslip panel</strong> (click their name) — <strong>PCB / MTD</strong> no longer appears under
         <strong>Deductions from the employee</strong>. It is listed as <strong>PCB / MTD (paid by employer)</strong> under
         <strong>Paid by the employer</strong>, with EPF, SOCSO and EIS (employer), and is part of

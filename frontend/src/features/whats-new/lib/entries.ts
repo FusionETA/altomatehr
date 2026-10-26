@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: dae3ed8
+// whats-new-covered-up-to: 7022a42
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -34,7 +34,9 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Admins: the first re-run after this update also deducts late-approved leave for earlier months this year, so check any you handled by hand. Leave cancelled in months approved before this update isn't refunded automatically.",
       "Admins: approving or reverting a run, or approving or cancelling leave for an earlier month, flags later draft runs that year for re-run. Reverting also reverts linked later runs, and the confirmation lists them.",
       "Admins: a run can't be sent for approval while an earlier month's run for any of its people is still unapproved.",
-      "With an employee's \"PCB borne by employer\" on, the company pays that PCB, so it's no longer taken from their net pay. Payslips list it as \"Paid by your employer\"; re-run drafts to pick it up.",
+      "With \"PCB borne by employer\" on, the company pays that PCB, so it's not taken from net pay. Gross shows real pay, and payslips show \"+ RM x paid by employer\"; re-run drafts to pick it up.",
+      "Past runs with it on, filed ones included, show the corrected gross and summaries automatically. Net pay and PCB amounts don't change.",
+      "Admins: the summary PDF and Excel get an employer-paid PCB column when some PCB is company-paid. Total PCB payment is still the full amount sent to LHDN.",
       "Admins: with PCB borne by the employer, approving or reverting a run also flags next year's drafts. A revert is refused while next year's run for those people is approved.",
     ],
   },

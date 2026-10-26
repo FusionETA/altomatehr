@@ -83,7 +83,12 @@ public class PayrollRun : ITenantScoped
     public int EmployeesSubjectToHrdf { get; set; }
     [Precision(14, 2)] public decimal TotalWagesSubjectToHrdf { get; set; }
 
-    // Gross + employer EPF + employer SOCSO + employer EIS + HRDF.
+    // The part of TotalPcb the company paid for staff ("PCB borne by
+    // employer"). Inside TotalCostToEmployer, never inside TotalGross.
+    [Precision(14, 2)] public decimal TotalPcbBorneByEmployer { get; set; }
+
+    // Gross + employer EPF + employer SOCSO + employer EIS + HRDF + PCB the
+    // company paid for staff.
     [Precision(14, 2)] public decimal TotalCostToEmployer { get; set; }
 
     // ---- Approval trail ----
