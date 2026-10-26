@@ -1065,6 +1065,20 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Contains("September 2026", result.Error);
     }
 
+    // Same when last month has no run at all: January's draft still comes first.
+    [Fact]
+    public async Task SubmitForApprovalAsync_RefusesWhileAnEarlierRunIsADraft_WithNoRunLastMonth()
+    {
+        var ali = AddEmployee("usr-1", "Ali");
+        await GroupRunAsync(2026, 1, ali);
+        var march = await GroupRunAsync(2026, 3, ali);
+
+        var result = await _service.SubmitForApprovalAsync(march.Id);
+
+        Assert.False(result.Ok);
+        Assert.Contains("January 2026", result.Error);
+    }
+
     // The gap case: no January run at all, but the org has submitted earlier
     // months. Skipping January would freeze February against a zero YTD.
     [Fact]

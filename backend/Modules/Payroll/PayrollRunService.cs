@@ -851,8 +851,12 @@ public class PayrollRunService : IPayrollRunService
             return await EarlierUnsubmittedRefusalAsync(run, people);
         }
 
-        // No run for the previous month at all. That is fine for an org's very
-        // first run, and a gap otherwise.
+        // No run for the previous month at all — but an earlier month may still
+        // hold a draft for these people.
+        if (await EarlierUnsubmittedRefusalAsync(run, await PeopleOfAsync(run)) is { } earlierDraft)
+            return earlierDraft;
+
+        // Otherwise fine for an org's very first run, and a gap after that.
         var hasEarlier = await _runs.HasEarlierSubmittedRunAsync(run.PeriodYear, run.PeriodMonth);
 
         return hasEarlier
