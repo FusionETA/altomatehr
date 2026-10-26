@@ -3172,6 +3172,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<int>("TotalWorkingDays")
                         .HasColumnType("int");
 
+                    b.Property<bool>("TracksUnpaidLeave")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<decimal?>("UnpaidLeaveDays")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");

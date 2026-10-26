@@ -11,6 +11,13 @@ namespace AltomateHR.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<bool>(
+                name: "TracksUnpaidLeave",
+                table: "Payslips",
+                type: "tinyint(1)",
+                nullable: false,
+                defaultValue: false);
+
             migrationBuilder.AddColumn<decimal>(
                 name: "CarriedDays",
                 table: "PayslipLineItems",
@@ -79,6 +86,10 @@ namespace AltomateHR.Api.Migrations
         {
             migrationBuilder.DropTable(
                 name: "UnpaidLeaveSettlements");
+
+            migrationBuilder.DropColumn(
+                name: "TracksUnpaidLeave",
+                table: "Payslips");
 
             migrationBuilder.DropColumn(
                 name: "CarriedDays",

@@ -18,10 +18,13 @@ namespace AltomateHR.Api.Modules.Payroll;
 //     holidays later can't re-price a filed month.
 //   - settled before, and since cancelled or changed → owed = what it counts
 //     now − what was settled (a refund if it's gone).
-//   - never settled → owed only if it was approved after that month's
-//     payslip was generated; anything approved before was docked by it.
-//     (Payslips from before these records existed are covered by this too —
-//     but a cancellation of their leave can't be refunded automatically.)
+//   - never settled → owed. That month's payslip recorded every application
+//     it docked, so one with no record wasn't docked: approved late, or
+//     moved into the month or made unpaid by an admin's edit since.
+//     A payslip from before these records existed (TracksUnpaidLeave false)
+//     only knows when leave was approved, so there it's owed only if approved
+//     after the payslip was generated — and its cancellations aren't
+//     refunded automatically.
 //
 // owed > 0 → a deduction: "Unpaid Leave – Sep 2026 (approved late, 2 days)".
 // owed < 0 → a refund, as arrears of wages.
@@ -38,6 +41,7 @@ public static class UnpaidLeaveCarryForward
         int Month,
         decimal MonthlySalary,
         DateTime PayslipGeneratedAt,
+        bool TracksUnpaidLeave,
         IReadOnlyList<UnpaidLeavePartDto> Parts,
         IReadOnlyList<UnpaidLeaveSettlement> Settled);
 
@@ -46,6 +50,11 @@ public static class UnpaidLeaveCarryForward
     public sealed record Owed(string ApplicationId, decimal Days, UnpaidLeavePartDto? Part, UnpaidLeaveSettlement? Last);
 
     public sealed record Carry(int Year, int Month, decimal Days, FixedAllowance Row, IReadOnlyList<Owed> ByApplication);
+
+    // A month's lines, plus every application to record a settlement for —
+    // including a changed one that owes nothing (0 days), so its new type and
+    // dates are what a later change is compared with.
+    public sealed record MonthResult(IReadOnlyList<Carry> Lines, IReadOnlyList<Owed> Owed);
 
     public static IReadOnlyList<Owed> OwedFor(FiledMonth m)
     {
@@ -70,10 +79,9 @@ public static class UnpaidLeaveCarryForward
                 if (unchanged) continue;
 
                 var now = part is { IsApprovedUnpaid: true } ? (decimal)part.Days : 0m;
-                var diff = now - rows.Sum(r => r.Days);
-                if (diff != 0m) owed.Add(new Owed(id, diff, part, last));
+                owed.Add(new Owed(id, now - rows.Sum(r => r.Days), part, last));
             }
-            else if (part!.DecidedAt > m.PayslipGeneratedAt && part.Days > 0)
+            else if (part!.Days > 0 && (m.TracksUnpaidLeave || part.DecidedAt > m.PayslipGeneratedAt))
             {
                 owed.Add(new Owed(id, (decimal)part.Days, part, null));
             }
@@ -82,7 +90,7 @@ public static class UnpaidLeaveCarryForward
     }
 
     // The lines for one filed month: a late deduction and/or a refund.
-    public static IReadOnlyList<Carry> For(FiledMonth m)
+    public static MonthResult For(FiledMonth m)
     {
         var owed = OwedFor(m);
         var carries = new List<Carry>();
@@ -95,7 +103,7 @@ public static class UnpaidLeaveCarryForward
         if (back.Count > 0 && Line(m, back.Sum(o => o.Days), refund: true) is { } refund)
             carries.Add(new Carry(m.Year, m.Month, back.Sum(o => o.Days), refund, back));
 
-        return carries;
+        return new MonthResult(carries, owed);
     }
 
     private static FixedAllowance? Line(FiledMonth m, decimal days, bool refund)

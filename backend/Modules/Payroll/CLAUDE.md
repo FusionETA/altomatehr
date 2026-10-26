@@ -397,10 +397,14 @@ What each payslip docked is recorded per leave application and month in
 final; a revert makes them provisional again; only final ones count. So drafts
 never see each other's settlements, and a settled application that is still
 approved with the same type and dates is never recounted — a later change to the
-leave type, work week or holidays can't re-price a filed month. Leave with no
-record (months filed before the table existed) counts as late only if approved
-after that month's payslip was generated; its cancellations aren't refunded
-automatically. Imported months and months with unpaid days typed on the run are
+leave type, work week or holidays can't re-price a filed month (a changed one
+gets a fresh 0-day record even when its days don't move). An approved unpaid
+leave with no record in a month whose payslip `TracksUnpaidLeave` wasn't docked
+there, so it's owed — approved late, or moved in / made unpaid by an admin edit
+(which doesn't touch `DecidedAt`). A payslip from before the records existed
+only has `DecidedAt` to go on: owed only if approved after it was generated, and
+its cancellations aren't refunded automatically. Reverting a month also sends
+later runs awaiting approval back to draft, needing a re-run. Imported months and months with unpaid days typed on the run are
 never revisited. Approving a run, or a change to unpaid leave, marks later
 drafts of the year stale (`MarkLaterDraftsAsync`, drafts only).
 
