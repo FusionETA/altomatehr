@@ -180,6 +180,9 @@ public class PayrollRunsController : ControllerBase
     // What a revert would drag back with it — for the confirm dialog, so the
     // admin is told before rather than after. Empty is the common case.
     [RequireScope("payroll:read")]
+    // Only someone who may revert needs it, and a policy-limited admin sees
+    // runs outside their scope as empty — the list would be wrong for them.
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/revert-impact")]
     public async Task<IActionResult> RevertImpact(string id)
     {

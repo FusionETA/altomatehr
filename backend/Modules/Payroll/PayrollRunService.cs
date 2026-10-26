@@ -848,7 +848,7 @@ public class PayrollRunService : IPayrollRunService
                            + "submitted in order, and that month's run is still a draft.";
                 }
             }
-            return null;
+            return await EarlierUnsubmittedRefusalAsync(run, people);
         }
 
         // No run for the previous month at all. That is fine for an org's very
@@ -861,6 +861,30 @@ public class PayrollRunService : IPayrollRunService
               + "month's PCB, EPF and SOCSO against a zero year-to-date, and a submitted "
               + "payslip cannot be edited afterwards."
             : null;
+    }
+
+    // Per person, across the whole year — not just last month. Someone may be
+    // in no run last month (another group's month) yet still have an earlier
+    // run waiting: this run would be filed before it, freezing their
+    // year-to-date without it and settling unpaid leave that run settles too.
+    private async Task<string?> EarlierUnsubmittedRefusalAsync(PayrollRun run, HashSet<string>? people)
+    {
+        var earlier = (await _runs.GetAllAsync())
+            .Where(r => r.PeriodYear == run.PeriodYear
+                        && r.PeriodMonth < run.PeriodMonth
+                        && r.Status != PayrollRunStatus.SUBMITTED)
+            .OrderBy(r => r.PeriodMonth)
+            .ToList();
+        foreach (var other in earlier)
+        {
+            var theirs = await PeopleOfAsync(other);
+            if (people is null || theirs is null || people.Overlaps(theirs))
+            {
+                return $"Submit {PeriodLabel(other.PeriodYear, other.PeriodMonth)} first — payroll runs are "
+                       + "submitted in order, and that month's run for some of these people is still a draft.";
+            }
+        }
+        return null;
     }
 
     // Who a run is for: its chosen roster AND whoever it has a payslip for
@@ -1540,11 +1564,12 @@ public class PayrollRunService : IPayrollRunService
             PeriodYear = year,
             PeriodMonth = month,
             Days = days,
-            // The leave as it is now; for one no longer in that month, as it
-            // was last settled.
-            LeaveTypeId = part?.LeaveTypeId ?? last?.LeaveTypeId ?? string.Empty,
-            LeaveStartDate = part?.StartDate ?? last?.LeaveStartDate ?? default,
-            LeaveEndDate = part?.EndDate ?? last?.LeaveEndDate ?? default,
+            // The leave as it is now.
+            // A leave no longer in that month records no type or dates, so if
+            // it's moved back later it reads as changed and is docked again.
+            LeaveTypeId = part?.LeaveTypeId ?? string.Empty,
+            LeaveStartDate = part?.StartDate ?? default,
+            LeaveEndDate = part?.EndDate ?? default,
             CreatedAt = now,
         };
 

@@ -2350,6 +2350,26 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 11))).LineItems);
     }
 
+    // Moved out of September (refunded there, docked in October), then moved
+    // back: September docks it again.
+    [Fact]
+    public async Task GenerateAsync_DocksLeaveMovedOutOfAFiledMonthAndBackAgain()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var inSeptember = Leave("leave-a", 9, 2, DateTime.UtcNow.AddDays(-30));
+        _leave.Parts.Add(inSeptember);
+        await FiledThroughApprovalAsync(9);
+
+        Replace(inSeptember with { StartDate = new DateTime(2026, 10, 14), EndDate = new DateTime(2026, 10, 15) });
+        await FiledThroughApprovalAsync(10);    // refunds September, docks October
+
+        Replace(inSeptember);                   // back to 14–15 Sep
+        var november = await GenerateOneAsync(await CreateRunAsync(2026, 11));
+
+        Assert.Contains(november.LineItems, l => l.Label == "Unpaid Leave – Sep 2026 (approved late, 2 days)");
+        Assert.Contains(november.LineItems, l => l.Label == "Unpaid Leave refund – Oct 2026 (2 days)");
+    }
+
     private PayrollRun StoredRun(int month, PayrollRunStatus status, int number, params EmployeeProfile[] people)
     {
         var run = new PayrollRun
