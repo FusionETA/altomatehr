@@ -2001,17 +2001,17 @@ public class PayrollRunServiceTests : IDisposable
     [Fact]
     public async Task GenerateAsync_DocksApprovedUnpaidLeaveAsItsOwnLine()
     {
-        AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
         _leave.SetUnpaidDays("usr-1", 2);
         var run = await CreateRunAsync();
 
         var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
         var line = Assert.Single(payslip.LineItems);
 
-        // Default TWENTY_SIX basis: 2600 / 26 = RM 100/day × 2 days.
+        // January's 31 calendar days: 3100 / 31 = RM 100/day × 2 days.
         Assert.Equal("Unpaid Leave", line.Label);
         Assert.Equal(200m, line.Amount);
-        Assert.Equal(2600m, payslip.BasicPay);   // the salary itself is untouched
+        Assert.Equal(3100m, payslip.BasicPay);   // the salary itself is untouched
         Assert.Equal(2m, payslip.UnpaidLeaveDays);
     }
 
@@ -2020,7 +2020,7 @@ public class PayrollRunServiceTests : IDisposable
     [Fact]
     public async Task GenerateAsync_TakesUnpaidLeaveOutOfTheStatutoryBasesToo()
     {
-        AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
         var run = await CreateRunAsync();
         var withoutLeave = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
@@ -2052,25 +2052,27 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(2000m, payslip.GrossPay);
     }
 
-    // The org's s.60I basis decides what one day of pay is worth, so it
-    // legitimately reaches the deduction — unlike s.18A proration, which it
-    // must never reach.
-    [Fact]
-    public async Task GenerateAsync_UsesTheOrgsWorkingDaysBasisForTheDailyRate()
+    // Leave without pay is an EA s.18A incomplete month: the day is worth the
+    // salary ÷ that month's CALENDAR days, whatever the org's working-days
+    // setting (which only reaches the s.60I overtime rate).
+    [Theory]
+    [InlineData(WorkingDaysRule.CALENDAR)]
+    [InlineData(WorkingDaysRule.TWENTY_SIX)]
+    public async Task GenerateAsync_DocksUnpaidLeaveByCalendarDaysWhateverTheSetting(WorkingDaysRule rule)
     {
-        AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
         _db.PayrollSettings.Add(new PayrollSettings
         {
             OrganizationId = "org-1",
-            WorkingDaysRule = WorkingDaysRule.CALENDAR,
+            WorkingDaysRule = rule,
         });
         await _db.SaveChangesAsync();
-        _leave.SetUnpaidDays("usr-1", 1);
-        var run = await CreateRunAsync(2026, 1);   // January has 31 days
+        _leave.SetUnpaidDays("usr-1", 2);
+        var run = await CreateRunAsync(2026, 10);   // October has 31 days, 27 of them Mon-Sat
 
         var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
-        Assert.Equal(100m, Assert.Single(payslip.LineItems).Amount);   // 3100 / 31
+        Assert.Equal(193.55m, Assert.Single(payslip.LineItems).Amount);   // 3000 / 31 × 2
     }
 
     // ---- Unpaid days typed on the run (staff not on the Leave module yet) ----
@@ -2089,7 +2091,7 @@ public class PayrollRunServiceTests : IDisposable
     [Fact]
     public async Task GenerateAsync_DocksUnpaidDaysTypedOnTheRun()
     {
-        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
         var run = await CreateRunAsync();
         await TypeUnpaidDaysAsync(run, profile, 1.5m);
 
@@ -2097,7 +2099,7 @@ public class PayrollRunServiceTests : IDisposable
         var line = Assert.Single(payslip.LineItems);
 
         Assert.Equal("Unpaid Leave", line.Label);
-        Assert.Equal(150m, line.Amount);   // 2600 / 26 × 1.5
+        Assert.Equal(150m, line.Amount);   // 3100 / 31 × 1.5
         Assert.Equal(1.5m, payslip.UnpaidLeaveDays);
     }
 
@@ -2108,7 +2110,7 @@ public class PayrollRunServiceTests : IDisposable
     [InlineData(0, 0)]
     public async Task GenerateAsync_TypedUnpaidDaysReplaceApprovedLeave(int typed, int expectedDock)
     {
-        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
         _leave.SetUnpaidDays("usr-1", 2);
         var run = await CreateRunAsync();
         await TypeUnpaidDaysAsync(run, profile, typed);
@@ -2122,7 +2124,7 @@ public class PayrollRunServiceTests : IDisposable
     [Fact]
     public async Task GenerateAsync_BlankTypedDaysUseApprovedLeave()
     {
-        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
         _leave.SetUnpaidDays("usr-1", 2);
         var run = await CreateRunAsync();
         await TypeUnpaidDaysAsync(run, profile, null);

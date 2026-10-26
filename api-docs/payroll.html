@@ -876,7 +876,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>workingDaysRule</code></td><td>string</td><td><code>CALENDAR</code> or <code>TWENTY_SIX</code> — the ÷ divisor for the ordinary rate of pay.</td></tr>
+              <tr><td><code>workingDaysRule</code></td><td>string</td><td><code>CALENDAR</code> or <code>TWENTY_SIX</code> — the ÷ divisor for the ordinary rate of pay (overtime). It does not apply to unpaid leave, which is always docked at monthly salary ÷ the month's calendar days.</td></tr>
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
