@@ -3218,6 +3218,16 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<decimal?>("CarriedDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("CarriedFromMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CarriedFromYear")
+                        .HasColumnType("int");
+
                     b.Property<string>("Category")
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");

@@ -29,6 +29,27 @@ public class PayslipRepository : IPayslipRepository
         return [.. rows.Select(x => (x.Payslip, x.Run))];
     }
 
+    public async Task<List<(Payslip Payslip, PayrollRun Run)>> GetEarlierInYearAsync(int year, int beforeMonth)
+    {
+        var rows = await (from p in _db.Payslips
+                          join r in _db.PayrollRuns on p.PayrollRunId equals r.Id
+                          where r.PeriodYear == year && r.PeriodMonth < beforeMonth
+                          select new { Payslip = p, Run = r }).ToListAsync();
+
+        return [.. rows.Select(x => (x.Payslip, x.Run))];
+    }
+
+    public async Task<List<(string EmployeeProfileId, PayslipLineItem Line)>> GetUnpaidLeaveCarriesAsync(
+        int year, string exceptRunId)
+    {
+        var rows = await (from li in _db.PayslipLineItems
+                          join p in _db.Payslips on li.PayslipId equals p.Id
+                          where li.CarriedFromYear == year && p.PayrollRunId != exceptRunId
+                          select new { p.EmployeeProfileId, Line = li }).ToListAsync();
+
+        return [.. rows.Select(x => (x.EmployeeProfileId, x.Line))];
+    }
+
     public async Task<(Payslip Payslip, PayrollRun Run)?> GetWithRunAsync(string payslipId)
     {
         var pair = await (from p in _db.Payslips

@@ -11,6 +11,15 @@ public interface IPayrollRunAdjustmentRepository
     // than one row per employee.
     Task<List<PayrollRunAdjustment>> GetForRunAsync(string payrollRunId);
 
+    // Several runs' adjustments at once. The default asks run by run, which
+    // keeps test doubles compiling; the real repository does one query.
+    async Task<List<PayrollRunAdjustment>> GetForRunsAsync(IReadOnlyCollection<string> payrollRunIds)
+    {
+        var all = new List<PayrollRunAdjustment>();
+        foreach (var id in payrollRunIds) all.AddRange(await GetForRunAsync(id));
+        return all;
+    }
+
     Task<PayrollRunAdjustment?> GetAsync(string payrollRunId, string employeeProfileId);
 
     // Create or update the row for (run, employee). The caller supplies the

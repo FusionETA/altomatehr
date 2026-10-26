@@ -387,6 +387,15 @@ EA s.18A incomplete-month case, and s.18A overrides the s.60I ÷26. The
 CALENDAR/TWENTY_SIX setting still drives proration and the overtime rate. The
 run-adjustment form's preview and its typed-days cap use the same divisor.
 
+Unpaid leave decided AFTER its month was filed (approved late, or cancelled
+after it was docked) is settled on the person's next run of the same year —
+`UnpaidLeaveCarryForward`: a "approved late" deduction or a "cancelled" refund
+(arrears of wages), priced at THAT month's salary ÷ its calendar days. The line
+records `CarriedFromYear/Month/Days`, which is what stops the same days being
+settled twice. Imported months and months whose unpaid days were typed on the
+run are never revisited. A change to unpaid leave marks later drafts of the
+year stale (`MarkLaterDraftsAsync`, drafts only).
+
 ## One formula, one implementation
 
 `PcbCalculator.Explain` returns the deducted money AND every intermediate the

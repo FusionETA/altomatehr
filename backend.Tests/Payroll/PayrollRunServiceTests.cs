@@ -2134,6 +2134,91 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(200m, Assert.Single(payslip.LineItems).Amount);
     }
 
+    // ---- Unpaid leave decided after its month was filed ----
+
+    private async Task<PayrollRunDto> FiledMonthAsync(int month)
+    {
+        var run = await CreateRunAsync(2026, month);
+        await _service.GenerateAsync(run.Id);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == run.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        return run;
+    }
+
+    // Approved after September was filed: docked on October, at September's
+    // rate (3000 ÷ 30 calendar days), once — re-running October or running
+    // November after it doesn't dock the same days again.
+    [Fact]
+    public async Task GenerateAsync_DocksLateApprovedUnpaidLeaveFromAFiledMonthOnce()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        await FiledMonthAsync(9);
+        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
+
+        var october = await CreateRunAsync(2026, 10);
+        await _service.GenerateAsync(october.Id);
+        var payslip = Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips);
+
+        var line = Assert.Single(payslip.LineItems);
+        Assert.Equal("Unpaid Leave – Sep 2026 (approved late, 2 days)", line.Label);
+        Assert.Equal(200m, line.Amount);
+        Assert.Null(payslip.UnpaidLeaveDays);   // October's own unpaid days: none
+        var stored = await _db.PayslipLineItems.SingleAsync();
+        Assert.Equal((2026, 9, 2m), (stored.CarriedFromYear, stored.CarriedFromMonth, stored.CarriedDays));
+
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == october.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        var november = await CreateRunAsync(2026, 11);
+        Assert.Empty(Assert.Single((await _service.GenerateAsync(november.Id)).Result!.Detail.Payslips).LineItems);
+    }
+
+    // Docked in September, cancelled afterwards: paid back on October as
+    // arrears of wages.
+    [Fact]
+    public async Task GenerateAsync_RefundsUnpaidLeaveCancelledAfterItsMonthWasFiled()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
+        await FiledMonthAsync(9);
+        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 0);
+
+        var october = await CreateRunAsync(2026, 10);
+        var payslip = Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips);
+
+        var line = Assert.Single(payslip.LineItems);
+        Assert.Equal("Unpaid Leave refund – Sep 2026 (cancelled, 2 days)", line.Label);
+        Assert.Equal(200m, line.Amount);
+        Assert.Equal(3200m, payslip.GrossPay);
+    }
+
+    // An imported month's figures came from the previous system, which may
+    // already have docked it; a month whose unpaid days were typed on the run
+    // replaced the Leave module's on purpose. Neither is revisited.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task GenerateAsync_LeavesImportedAndTypedMonthsAlone(bool imported, bool typed)
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var september = await FiledMonthAsync(9);
+        var stored = await _db.PayrollRuns.FirstAsync(r => r.Id == september.Id);
+        if (imported) stored.Source = PayrollRunSource.IMPORTED;
+        if (typed)
+        {
+            _db.PayrollRunAdjustments.Add(new PayrollRunAdjustment
+            {
+                OrganizationId = "org-1", PayrollRunId = september.Id, EmployeeProfileId = profile.Id,
+                UnpaidLeaveDays = 0m, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        await _db.SaveChangesAsync();
+        _leave.SetUnpaidDaysIn(2026, 9, "usr-1", 2);
+
+        var october = await CreateRunAsync(2026, 10);
+
+        Assert.Empty(Assert.Single((await _service.GenerateAsync(october.Id)).Result!.Detail.Payslips).LineItems);
+    }
+
     [Fact]
     public async Task GenerateAsync_AddsNoUnpaidLeaveLineWhenThereIsNone()
     {

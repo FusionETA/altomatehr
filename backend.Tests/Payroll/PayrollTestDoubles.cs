@@ -72,6 +72,16 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public void SetUnpaidDays(string userId, double days) => _unpaidByUser[userId] = days;
 
+    // Days for one month only, which win over SetUnpaidDays for that month —
+    // for unpaid leave approved or cancelled after its month was filed.
+    private readonly Dictionary<(int, int), Dictionary<string, double>> _unpaidByMonth = [];
+    public void SetUnpaidDaysIn(int year, int month, string userId, double days)
+    {
+        if (!_unpaidByMonth.TryGetValue((year, month), out var byUser))
+            _unpaidByMonth[(year, month)] = byUser = new Dictionary<string, double>(StringComparer.Ordinal);
+        byUser[userId] = days;
+    }
+
     // Applications the org-wide read returns. Seeded by the attendance export
     // tests, which overlay approved leave onto a day-by-day calendar; payroll's
     // own tests leave it empty and never call the reader.
@@ -79,7 +89,10 @@ internal sealed class StubPayrollLeave : ILeaveService
 
     public Task<IReadOnlyDictionary<string, double>> GetApprovedUnpaidDaysForOrgAsync(
         DateTime from, DateTime to) =>
-        Task.FromResult<IReadOnlyDictionary<string, double>>(_unpaidByUser);
+        Task.FromResult<IReadOnlyDictionary<string, double>>(
+            _unpaidByMonth.TryGetValue((from.Year, from.Month), out var byUser)
+                ? _unpaidByUser.Concat(byUser).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Last().Value)
+                : _unpaidByUser);
 
     public Task<IEnumerable<LeaveApplicationDto>> GetMineAsync(string userId) =>
         throw new NotSupportedException();

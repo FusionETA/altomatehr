@@ -34,6 +34,12 @@ public interface IPayrollDraftStaleness
     // different groups). A run with no roster means everyone, so it's marked.
     Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null);
 
+    // DRAFTS ONLY, in the months after `after` to the end of its year. For
+    // unpaid leave: a change to a filed month is settled on a later run (see
+    // UnpaidLeaveCarryForward), so those drafts were built from old days.
+    // Default keeps test doubles compiling.
+    Task MarkLaterDraftsAsync(DateTime after, string? userId = null) => Task.CompletedTask;
+
     // Every generated draft in a NAMED org — for a change made from outside
     // that org (an employee transfer touches two companies; the transfer job
     // has no current org at all). Default keeps test doubles compiling.
@@ -59,6 +65,13 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
     public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null) =>
         MarkAsync(MonthsBetween(from, to), userId);
 
+    public Task MarkLaterDraftsAsync(DateTime after, string? userId = null) =>
+        after.Month == 12
+            ? Task.CompletedTask
+            : MarkAsync(
+                MonthsBetween(new DateTime(after.Year, after.Month, 1).AddMonths(1), new DateTime(after.Year, 12, 1)),
+                userId, draftsOnly: true);
+
     public async Task MarkAllDraftsForOrgAsync(string organizationId)
     {
         if (string.IsNullOrEmpty(organizationId)) return;
@@ -82,7 +95,8 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
         return months;
     }
 
-    private async Task MarkAsync(IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null)
+    private async Task MarkAsync(
+        IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null, bool draftsOnly = false)
     {
         // No org, no sweep: without one the tenant filter is off, and a
         // background job must not mark every company's drafts.
@@ -91,7 +105,7 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
         try
         {
-            await _runs.MarkDraftsMutatedAsync(orgId, periods, userId);
+            await _runs.MarkDraftsMutatedAsync(orgId, periods, userId, draftsOnly);
         }
         catch (Exception ex)
         {

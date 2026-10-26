@@ -56,5 +56,6 @@ public interface IPayrollRunRepository
     // explicit, not left to the tenant filter, because that filter is a no-op
     // without a current org and this must never reach another company's runs.
     Task MarkDraftsMutatedAsync(
-        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null);
+        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null,
+        bool draftsOnly = false);
 }

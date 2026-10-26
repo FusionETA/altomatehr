@@ -126,7 +126,8 @@ public class PayrollRunRepository : IPayrollRunRepository
     }
 
     public async Task MarkDraftsMutatedAsync(
-        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null)
+        string organizationId, IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null,
+        bool draftsOnly = false)
     {
         // Ungenerated runs are skipped: with no payslips there is nothing to
         // be behind, and flagging one would show a stale banner on an empty run.
@@ -141,7 +142,9 @@ public class PayrollRunRepository : IPayrollRunRepository
         // Plain comparisons, not statuses.Contains(r.Status): against the
         // string-converted enum that version stamped nothing in the tests, and
         // the caller swallows errors by design — so it failed silently.
-        var includeLocked = periods is not null;
+        // `draftsOnly`: a later month's draft that may settle the change — its
+        // filed runs settled nothing then and must not be told to re-run.
+        var includeLocked = periods is not null && !draftsOnly;
         // Keyed by the org passed in, not the session's: an employee transfer
         // marks the TARGET company's drafts from a request scoped to the source.
         var runs = await _db.PayrollRuns.IgnoreQueryFilters()
