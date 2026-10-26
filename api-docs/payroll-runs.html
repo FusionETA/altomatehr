@@ -132,11 +132,49 @@
           <em>unpaid</em> leave: a change to an earlier, already-filed month is settled on the person's next
           run (see <a href="#generate">Generate</a>), so those drafts were built from old figures. Run
           <a href="#generate">generate</a> again on them.</li>
+        <li><strong>Across the year boundary.</strong> If the run holds PCB the company paid for someone
+          (<a href="#pcb-borne">PCB borne by the employer</a>), approving or reverting it also marks every
+          generated <em>draft</em> of the <em>next</em> year stale, because a person's first run of that year
+          carries this year's borne PCB as a perquisite.</li>
       </ul>
       <div class="callout warn">
         Writes here move money and file paperwork with Malaysian authorities. Grant
         <code>payroll:write</code> only to a system that genuinely needs to run payroll, not just to read it.
       </div>
+    </section>
+
+    <section class="section" id="pcb-borne">
+      <h2>PCB borne by the employer</h2>
+      <p>
+        When an employee's profile has <code>pcbBorneByEmployer</code> on (see
+        <a href="employees.html">Employees</a>), the company pays their PCB instead of deducting it. The
+        figures behave as follows:
+      </p>
+      <ul>
+        <li><strong>In the month.</strong> PCB is worked out exactly as usual &mdash; no gross-up. It stays in
+          <code>pcb</code>, the CP39 file and the year-to-date, but is not taken from <code>netPay</code>.
+          The payslip's <code>pcbBorneByEmployer</code> carries that amount (<code>0.00</code> for everyone
+          else), and <code>totalCostToEmployer</code> includes it. CP38, zakat and <code>voluntaryPcb</code>
+          are still the employee's.</li>
+        <li><strong>In the next year.</strong> The tax is a perquisite of the <em>following</em> year (LHDN PR
+          3/2024 &sect;6.1). On the person's first run of the next year (January, or the first month they are
+          paid) <a href="#generate">generate</a> adds last year's approved total as a line with category
+          <code>bik_tax_borne_by_employer</code> and a label like
+          <code>Tax Borne by Employer &ndash; 2026 (perquisite)</code>: non-cash, taxed as additional
+          remuneration, no EPF, SOCSO or EIS, and reported on Form EA B1(d). It is not part of
+          <code>grossPay</code> or <code>netPay</code>.</li>
+        <li><strong>Imported months don't count.</strong> A <a href="payroll.html#ytd-import">YTD import</a>
+          says what PCB was paid, not who paid it, so imported months never produce
+          <code>pcbBorneByEmployer</code>; the import preview warns when this applies.</li>
+        <li><strong>Not the same as <code>wages_tax_borne_by_employer</code></strong>, which stays a
+          cash line.</li>
+        <li><strong>Xero.</strong> The journal debits the borne amount to the optional
+          <code>taxBorneByEmployer</code> account slot, falling back to <code>salary</code> (see
+          <a href="#xero-preview">Xero journal preview</a>).</li>
+        <li><strong>Cross-year coupling.</strong> Approving or reverting a run that holds borne PCB marks the
+          next year's generated drafts stale, and the run cannot be reverted while a later-year run holding the
+          same people is awaiting approval or approved (<a href="#revert">revert</a>, <code>409</code>).</li>
+      </ul>
     </section>
 
     <!-- ───────────────────────── Runs ───────────────────────── -->
@@ -426,15 +464,16 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>socsoEmployee</code> / <code>socsoEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>eisEmployee</code> / <code>eisEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>skbbkEmployee</code> / <code>skbbkWage</code></td><td>number</td><td></td></tr>
-            <tr><td><code>pcb</code> / <code>pcbNormal</code> / <code>pcbAdditional</code></td><td>number</td><td><code>pcb</code> is what was actually withheld; the <a href="#doc-pcb-details">PCB details</a> document explains the breakdown behind it.</td></tr>
+            <tr><td><code>pcb</code> / <code>pcbNormal</code> / <code>pcbAdditional</code></td><td>number</td><td><code>pcb</code> is what was actually withheld and remitted &mdash; including any part the company paid for the employee (<code>pcbBorneByEmployer</code>); the <a href="#doc-pcb-details">PCB details</a> document explains the breakdown behind it.</td></tr>
             <tr><td><code>pcbCalculationJson</code></td><td>string or null</td><td>The raw LHDN-form decomposition, as stored — JSON-encoded text, not a nested object. Null only on payslips generated before this field existed.</td></tr>
             <tr><td><code>cp38</code></td><td>number</td><td>Court-ordered arrears instalment, filed separately from PCB.</td></tr>
             <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
+            <tr><td><code>pcbBorneByEmployer</code></td><td>number</td><td>MYR. The part of <code>pcb</code> the company paid instead of deducting it; <code>0.00</code> unless the employee's profile has <code>pcbBorneByEmployer</code> on (and for imported months, always). Not taken from <code>netPay</code>; added to <code>totalCostToEmployer</code>. See <a href="#pcb-borne">PCB borne by the employer</a>.</td></tr>
             <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
             <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
             <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td><code>grossPay</code> is the statutory gross (what was earned): EPF, SOCSO, EIS and PCB are worked out on it.</td></tr>
             <tr><td><code>grossShown</code></td><td>number</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the run table and the <a href="#doc-summary">run summary</a> show it. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF, rounded to 2 decimals, so a YTD-imported payslip with no line items behind it still gets the right figure. Display only &mdash; use <code>grossPay</code> for anything statutory. Not clamped: it is negative when the kept deductions exceed pay. Example: earnings 9,000.00 and a 175.00 miscellaneous deduction gives <code>grossPay</code> 9000.00 and <code>grossShown</code> 8825.00.</td></tr>
-            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost, and so does PCB the company pays for the employee (<code>pcbBorneByEmployer</code>). Imported (YTD) payslips follow the same rule.</td></tr>
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes such as <code>MISSING_INCOME_TAX_NUMBER</code> — these flag a filing, not an error in the figures.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
             <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
@@ -490,6 +529,13 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           run's <a href="#save-adjustment">adjustment</a>, are never revisited. Once a run is approved, what it
           settled is final and is not settled again by a later run; reverting it to draft makes that provisional
           again.
+        </p>
+        <p>
+          <strong>Last year's borne PCB is added on a person's first run of the year.</strong> For an employee
+          who had PCB paid by the company in an approved run of the previous year, generation adds one
+          non-cash line, category <code>bik_tax_borne_by_employer</code>, for that total &mdash; but only on
+          their first payslip of the year (no earlier payslip this year, draft or not). See
+          <a href="#pcb-borne">PCB borne by the employer</a>.
         </p>
         <p>
           <strong>The roster can grow on a re-run.</strong> If the draft was created with
@@ -655,7 +701,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <strong>Side effect:</strong> approving marks the generated <em>drafts</em> of the later months of the
           same year stale (<code>isStale: true</code>), because unpaid leave this run settled must not be settled a
           second time by a draft built before the approval. Re-run those drafts with
-          <a href="#generate">generate</a> before submitting them.
+          <a href="#generate">generate</a> before submitting them. If the run holds PCB borne by the employer,
+          next year's generated drafts are marked stale too (<a href="#pcb-borne">see above</a>).
         </p>
         <h3>Response <code>200</code></h3>
         <p>The updated <a href="#run-object">run object</a>.</p>
@@ -731,6 +778,15 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           imported month, upload it again with the <a href="payroll.html#ytd-import">YTD import</a>, which
           replaces it.
         </p>
+        <p>
+          <strong>A next-year run can block the revert.</strong> If this run holds PCB the company paid for
+          someone (<a href="#pcb-borne">PCB borne by the employer</a>), the next year's run that carried it
+          forward as a perquisite has to come back to draft first. The revert is refused (<code>409</code>
+          below) while a run of the following year &mdash; other than an imported one &mdash; that is awaiting
+          approval or approved includes any of those people (or has no roster, which counts as everyone). It
+          is <em>not</em> pulled back automatically, and <a href="#revert-impact">revert-impact</a> does not
+          list it. After a successful revert the next year's generated drafts are marked stale.
+        </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
           <table>
@@ -745,6 +801,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "Only a submitted run can be reverted to draft." }</code></li>
+          <li><code>409</code> <code>{ "error": "Revert January 2027 first — it added 2026's PCB borne by the employer as a taxable perquisite, and reverting this month could change that amount." }</code> &mdash; the blocking run's <a href="#run-object">label</a> and this run's year are filled in. Nothing is changed.</li>
           <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so it can't go back to draft. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — the run has <code>source: "IMPORTED"</code>. Nothing is changed.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/revert \
@@ -1879,6 +1936,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The manual journal that WOULD post, so it can be checked against the chart of accounts before committing. Writes nothing.</p>
+        <p>PCB the company pays for staff (<a href="#pcb-borne">PCB borne by the employer</a>) is its own debit line, <code>PCB BORNE BY EMPLOYER - {project}</code>, since net pay no longer carries it. It goes to the optional <code>taxBorneByEmployer</code> account slot ("PCB borne by employer") in the payroll settings' <code>xeroMappingJson</code>; if that slot is not set it posts to the <code>salary</code> account, so it never blocks a post by itself. The PCB payable credit is unchanged.</p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
           <table>

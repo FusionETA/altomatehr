@@ -510,7 +510,7 @@
               <tr><td><code>specialTaxScheme</code></td><td>string | null</td><td><code>RETURNING_EXPERT</code>, <code>KNOWLEDGE_WORKER</code> or <code>C_SUITE</code> — the three 15% flat-tax approvals.</td></tr>
               <tr><td><code>specialTaxFrom</code> / <code>specialTaxTo</code></td><td>string (date) | null</td><td>Stored as the first of the month; ignored unless <code>specialTaxScheme</code> is set.</td></tr>
               <tr><td><code>incomeTaxNumber</code></td><td>string | null</td><td></td></tr>
-              <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>. When on, the company pays this person's PCB: it is still calculated, remitted and counted in year-to-date, but stays out of net pay (<code>pcbBorneByEmployer</code> on the payslip), and the year's total is added as a taxable perquisite on their first payroll run of the next year. See <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.</td></tr>
               <tr><td><code>ssfwNumber</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>workPermitNumber</code></td><td>string | null</td><td>Max 40 characters. A foreign worker's Immigration work permit (PLKS) number &mdash; a separate document from <code>ssfwNumber</code>.</td></tr>
               <tr><td><code>workPermitExpiry</code></td><td>string (date) | null</td><td>When the work permit lapses. Stored date-only: any time part you send is dropped. <code>null</code> clears it. Meaningful for foreign workers only.</td></tr>

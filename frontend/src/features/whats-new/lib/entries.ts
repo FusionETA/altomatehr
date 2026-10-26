@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: d8edc34
+// whats-new-covered-up-to: dae3ed8
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -23,15 +23,19 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-26",
+    new: [
+      "The first payslip of each year adds last year's PCB the company paid as a taxable perquisite on the EA form. It isn't paid in cash and carries no EPF, SOCSO or EIS. Imported months don't count, and the YTD import warns about them.",
+      "Admins: Payroll → Settings → Xero sync has an optional \"PCB borne by employer\" account. Left blank, that PCB posts to Salary.",
+    ],
     improved: [
       "Payroll: unpaid leave is now docked at the monthly salary ÷ the month's calendar days, whatever the working-days setting (the 26-day setting used ÷26). RM 3,000 in October is RM 96.77 a day.",
       "Only draft runs re-run from now on change, and approved runs keep what was filed. Imported months, and months with unpaid days typed on the run, are left alone.",
-      "Payroll: unpaid leave approved after its month was approved is now deducted on that person's next run that year, as its own line, e.g. \"Unpaid Leave – Sep 2026 (approved late, 2 days)\". Each leave is settled once.",
-      "If that leave is later cancelled or moved, its days are paid back on the next run as arrears of wages, so EPF, SOCSO, EIS and PCB apply.",
+      "Payroll: unpaid leave approved after its month is deducted on that person's next run that year, as its own line, and settled once. If it's later cancelled or moved, the days are paid back as arrears of wages.",
       "Admins: the first re-run after this update also deducts late-approved leave for earlier months this year, so check any you handled by hand. Leave cancelled in months approved before this update isn't refunded automatically.",
-      "Admins: approving or reverting a run, or approving or cancelling unpaid leave for an earlier month, now flags later draft runs that year as needing a re-run.",
-      "Admins: reverting a run now also reverts later runs linked through other runs, and sends later runs awaiting approval back to draft. The confirmation lists them.",
+      "Admins: approving or reverting a run, or approving or cancelling leave for an earlier month, flags later draft runs that year for re-run. Reverting also reverts linked later runs, and the confirmation lists them.",
       "Admins: a run can't be sent for approval while an earlier month's run for any of its people is still unapproved.",
+      "With an employee's \"PCB borne by employer\" on, the company pays that PCB, so it's no longer taken from their net pay. Payslips list it as \"Paid by your employer\"; re-run drafts to pick it up.",
+      "Admins: with PCB borne by the employer, approving or reverting a run also flags next year's drafts. A revert is refused while next year's run for those people is approved.",
     ],
   },
   {
