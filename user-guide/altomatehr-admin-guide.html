@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: dca207e
+  user-guide-covered-up-to: d219a8b
 -->
 <html lang="en">
 <head>
@@ -668,7 +668,10 @@
       Choosing the payroll start month under Annual forms doesn't count as setting up.</p>
     <h3>General</h3>
     <ul>
-      <li><strong>Working-days rule</strong> — calendar days in the month, or 26 days.</li>
+      <li><strong>Working-days rule</strong> — calendar days in the month, or 26 days. It sets the daily and hourly rate
+        used for overtime, and how a mid-month joiner or leaver is prorated (26 days: that month's Monday–Saturday days;
+        calendar: its calendar days). It doesn't change how unpaid leave is deducted — that always uses the month's calendar days
+        (see <a href="#payroll">Running payroll</a>).</li>
       <li><strong>EPF defaults</strong> and your <strong>EPF employer no.</strong></li>
       <li><strong>HRD Corp levy</strong> — whether you pay it, the rate, and your HRD Corp employer no.</li>
       <li><strong>PCB compliance</strong> — auto-apply the RM 350 SOCSO + EIS relief.</li>
@@ -1362,14 +1365,18 @@
           <strong>Unpaid leave</strong> box with one field, <strong>Unpaid days</strong>. Half days are fine (type 0.5).</p>
         <ul>
           <li>As you type, the box works out the deduction for you, for example
-            <em>RM 3,000.00 ÷ 26 working days × 2 days = RM 230.77</em>. The days it divides by follow the
-            working-days setting in your payroll settings.</li>
+            <em>RM 3,000.00 ÷ 30 calendar days × 2 days = RM 200.00</em>. It always divides by the number of calendar
+            days in that month (30 for November, 31 for December), whichever Working-days rule you chose in your payroll
+            settings.</li>
           <li>Leave it <strong>blank</strong> to use the unpaid leave approved in the Leave module for that month; the
             number of days shows greyed in the field. A number you type <strong>replaces</strong> it, so a day is never
             docked twice. Type 0 to cancel the Leave module's unpaid days for this month.</li>
-          <li>You can type from 0 up to the number of days in that month's basis (26 in the example). Anything more is refused.</li>
+          <li>You can type from 0 up to the number of calendar days in that month (30 in the example). Anything more is refused.</li>
           <li>The box is only there for monthly staff. Hourly staff are paid for the hours they worked.</li>
         </ul>
+        <p>Approved unpaid leave from the Leave module is worked out the same way: monthly salary ÷ the month's calendar
+          days × the unpaid days. Only working days of the leave count, so a weekend or public holiday inside an unpaid
+          leave isn't deducted.</p>
         <p>The days are docked exactly as approved unpaid leave is — its own line on the payslip, taken off gross pay and
           off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
           shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then

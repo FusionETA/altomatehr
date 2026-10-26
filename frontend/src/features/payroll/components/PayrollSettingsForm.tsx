@@ -318,9 +318,9 @@ export function PayrollSettingsForm() {
               <h3 className="text-[15px] font-semibold text-foreground">Working-days rule</h3>
               <p className={HINT}>
                 Used to convert a monthly salary into the daily and hourly rate for
-                overtime. It does <strong>not</strong> govern proration for a mid-month
-                joiner or leaver — Employment Act s.18A fixes that to calendar days
-                whatever is chosen here.
+                overtime, and to prorate a mid-month joiner or leaver (26 days: that
+                month's Monday–Saturday days; Calendar: its calendar days). Unpaid leave
+                always uses the month's calendar days, whatever is chosen here.
               </p>
             </header>
 

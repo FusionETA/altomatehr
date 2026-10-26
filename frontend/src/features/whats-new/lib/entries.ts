@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: dca207e
+// whats-new-covered-up-to: d219a8b
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,16 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-26",
+    improved: [
+      "Payroll: unpaid leave is now docked at the monthly salary ÷ the month's calendar days, whatever the company's working-days setting. RM 3,000 in October is RM 96.77 a day.",
+      "Until now, companies on the 26-day setting were docked ÷26. The working-days setting still decides proration for joining or leaving mid-month, and the overtime rate.",
+      "Weekends and public holidays inside an unpaid leave are still not deducted; only its working days are.",
+      "Admins: the Unpaid days box under Unpaid leave in a run's adjustments previews the same figure, and accepts up to the month's calendar days.",
+      "Draft payroll runs that are re-run from now on dock unpaid leave this way; only months with unpaid leave change. Approved runs are not affected and keep what was filed.",
+    ],
+  },
   {
     date: "2026-10-25",
     new: [
