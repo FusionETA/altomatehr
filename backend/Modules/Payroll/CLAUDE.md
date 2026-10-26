@@ -382,8 +382,10 @@ per run by the admin. Two rules:
 
 Approved UNPAID leave is docked as its own `deduct_unpaid_leave` line (MONTHLY
 only) rather than by shrinking the salary, so the payslip says why. The divisor
-is the s.60I ordinary-rate basis — this is a rate question, so the org's
-CALENDAR/TWENTY_SIX setting DOES apply, unlike proration.
+is the month's CALENDAR days whatever the org's setting: leave without pay is an
+EA s.18A incomplete-month case, and s.18A overrides the s.60I ÷26. The
+CALENDAR/TWENTY_SIX setting still drives proration and the overtime rate. The
+run-adjustment form's preview and its typed-days cap use the same divisor.
 
 ## One formula, one implementation
 

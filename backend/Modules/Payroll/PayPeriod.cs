@@ -123,6 +123,11 @@ public static class PayPeriod
     // overtime). So a RM 3,100 salary docks RM 100 a day in January and
     // RM 103.33 in April.
     //
+    // `unpaidDays` is the Leave module's count: WORKING days only. A weekend or
+    // public holiday inside an unpaid leave stays paid — a decision, not an
+    // oversight (Mon 5 – Fri 16 Oct docks 10 days, not 12), even though the
+    // divisor is calendar days.
+    //
     // Returns 0 when it does not apply: HOURLY staff are paid for the hours
     // they worked, so there is nothing to dock.
     public static decimal UnpaidLeaveDeduction(

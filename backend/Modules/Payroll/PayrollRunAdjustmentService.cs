@@ -116,13 +116,13 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         var adjustment = await _adjustments.GetAsync(runId, employeeProfileId);
 
         // The same two figures generation uses: approved unpaid days from the
-        // Leave module, and the day basis from Payroll Settings.
+        // Leave module, and the month's calendar days (EA s.18A — see
+        // PayPeriod.UnpaidLeaveDeduction; the working-days setting doesn't apply).
         var approvedUnpaid = _leave is null
             ? 0m
             : (decimal)(await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd))
                 .GetValueOrDefault(profile.UserId);
-        var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
-        var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+        var basis = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
 
         return new PayrollAdjustmentContextDto
         {
@@ -144,7 +144,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 : null,
             UnpaidMonthlySalary = profile.SalaryType == SalaryType.MONTHLY ? profile.MonthlySalary : null,
             UnpaidDayBasis = basis,
-            UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
+            UnpaidDayBasisLabel = "calendar days",
             AttendanceApplies = attendanceApplies,
             ComputedHrdfLevy = await ComputedHrdfLevyAsync(runId, employeeProfileId),
 
@@ -225,18 +225,17 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 "This run is no longer a draft — revert it before editing adjustments.");
         }
 
-        // No more unpaid days than the month's day basis — beyond it the dock
-        // exceeds the salary itself. Negative is never meaningful.
+        // No more unpaid days than the month's calendar days — the dock's
+        // divisor, so beyond it the dock exceeds the salary itself. Negative
+        // is never meaningful.
         if (dto.UnpaidLeaveDays is { } typedDays)
         {
-            var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
-            var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+            var basis = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
             if (typedDays < 0m || typedDays > basis)
             {
                 return new PayrollRunAdjustmentSaveResult(
                     true, false, null,
-                    $"Unpaid days must be between 0 and {basis} — the month's {basis} "
-                    + $"{(rule == WorkingDaysRule.CALENDAR ? "calendar" : "working")} days.");
+                    $"Unpaid days must be between 0 and {basis} — the month's {basis} calendar days.");
             }
         }
 
