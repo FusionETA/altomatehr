@@ -143,6 +143,35 @@ async function openClaimReceiptStep(page) {
   await settle(page);
 }
 
+// A made-up route screenshot for the mileage shots, drawn from HTML like the
+// receipt above: a plain map-style card, no real map or place data.
+async function demoRoutePng(page) {
+  const art = await page.context().newPage();
+  await art.setViewportSize({ width: 300, height: 240 });
+  await art.setContent(`<meta name="viewport" content="width=300"><body style="margin:0;font-family:sans-serif;background:#e8efe6">
+    <div style="position:relative;width:300px;height:170px;background:#dfe9dc">
+      <div style="position:absolute;left:40px;top:120px;width:12px;height:12px;border-radius:50%;background:#1a73e8;border:2px solid #fff"></div>
+      <svg width="300" height="170" style="position:absolute;left:0;top:0"><path d="M46 126 C 100 120, 120 60, 180 70 S 250 40, 258 34" stroke="#1a73e8" stroke-width="5" fill="none"/></svg>
+      <div style="position:absolute;left:252px;top:20px;width:14px;height:14px;border-radius:50%;background:#d93025;border:2px solid #fff"></div>
+    </div>
+    <div style="background:#fff;height:70px;padding:10px 14px;box-sizing:border-box;font-size:12px;color:#222">
+      <div style="font-size:18px;color:#188038"><b>28 min</b> <span style="color:#555;font-size:13px">(23.4 km)</span></div>
+      <div>via Federal Hwy</div><div style="color:#555">Bangsar South to i-City, Shah Alam</div></div></body>`);
+  const buffer = await art.screenshot({ type: "png" });
+  await art.close();
+  return buffer;
+}
+
+async function openMileageRouteStep(page) {
+  await go(page, "dashboard");
+  await page.getByText("Submit new claim").filter({ visible: true }).first().click();
+  await page.getByText("Who paid for this?").waitFor({ timeout: 15000 });
+  await page.getByText("My own money", { exact: true }).click();
+  await page.getByText("Mileage claim", { exact: true }).click();
+  await page.getByText("Attach a route screenshot").waitFor({ timeout: 15000 });
+  await settle(page);
+}
+
 // Stub for POST /documents/templates/ai — made-up demo letters using real merge
 // field keys. A request with a current draft (the editor's Ask AI) gets a revision.
 async function stubTemplateAi(page) {
@@ -873,6 +902,81 @@ const evan = {
     await page.getByText("Attached", { exact: true }).first().waitFor({ timeout: 15000 });
     await scrollTo(page, "Supporting documents", 120, true);
     await shoot(page, "employee", "claim-edit-attached");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // Mileage claim, step 3: no screenshot attached yet. Needs
+  // `node setup.mjs mileage-account`. Never calls the route AI.
+  "claim-route": async (page) => {
+    await page.route("**/claims/mileage/analyze", (route) => route.abort());
+    await openMileageRouteStep(page);
+    await settle(page, 1000);
+    await scrollTo(page, "Skip AI and fill manually", 520);
+    await shoot(page, "employee", "claim-route");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // After "Read route & continue": the form filled in from a stubbed read
+  // (the local AI is off), with the "Filled in from your route screenshot" note.
+  "claim-route-read": async (page) => {
+    await page.route("**/claims/mileage/analyze", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          receiptUrl: "/claims/receipts/demo.png",
+          extraction: {
+            isRoute: true, distance: 23.4, unit: "KM", detectedDistance: 23.4, detectedUnit: "KM",
+            origin: "Bangsar South", destination: "i-City, Shah Alam", via: "Federal Hwy",
+            date: null, travelMode: null, otherRoutesShown: true,
+            description: "Drive from Bangsar South to i-City, Shah Alam", provider: "demo",
+          },
+        }),
+      }));
+    await openMileageRouteStep(page);
+    const buffer = await demoRoutePng(page);
+    await page.locator("#claimReceipt").setInputFiles({ name: "demo-route.png", mimeType: "image/png", buffer });
+    await page.getByRole("button", { name: "Read route & continue" }).click();
+    await page.getByText("Filled in from your route screenshot").waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    // Pick the mileage item type (its rate sets the amount).
+    await page.getByText(/Select mileage claim item/).filter({ visible: true }).first().click();
+    await page.getByText(/Mileage/).filter({ visible: true }).last().click();
+    await settle(page, 800);
+    await scrollTo(page, "Filled in from your route screenshot", 20);
+    await shoot(page, "employee", "claim-route-read");
+    // Further down: where the trip was filled in, and the screenshot kept on the claim.
+    await scrollTo(page, "Route screenshot", 140, true);
+    await shoot(page, "employee", "claim-route-form");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // A submitted mileage claim opened from My claims. The demo employee has none,
+  // so GET /claims and the stored file are stubbed in the browser.
+  "claim-route-view": async (page) => {
+    const route = await demoRoutePng(page);
+    await page.route(/\/claims\/receipts\/demo-/, (r) =>
+      r.fulfill({ status: 200, contentType: "image/png", body: route }));
+    await page.route(/\/claims$/, (r) => {
+      if (r.request().method() !== "GET") return r.continue();
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          id: "demo-claim-2", claimNumber: "CLM-0413", title: "Client visit, Shah Alam",
+          description: "Drive from Bangsar South to i-City, Shah Alam",
+          category: "Motor Vehicle / Mileage", amount: 14.04, currency: "MYR", status: "PENDING",
+          xeroSyncStatus: "NOT_SYNCED", settlement: "NONE", currentStep: 0,
+          updatedAt: new Date().toISOString(), claimType: "MILEAGE", paymentType: "OWN_MONEY",
+          employeeId: "demo", spentAt: new Date().toISOString(), submittedAt: new Date().toISOString(),
+          exceedsLimit: false, distance: 23.4, mileageRateUsed: 0.6, mileageUnitUsed: "KM",
+          mileageOriginAddress: "Bangsar South", mileageDestinationAddress: "i-City, Shah Alam",
+          receiptUrl: "/claims/receipts/demo-route.png", supportingDocumentUrls: [],
+        }]),
+      });
+    });
+    await go(page, "claims");
+    await page.getByText("Client visit, Shah Alam").filter({ visible: true }).first().click();
+    await page.getByText("View route screenshot").waitFor({ timeout: 15000 });
+    await scrollTo(page, "Route screenshot", 140, true);
+    await shoot(page, "employee", "claim-route-view");
     await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
   "overtime-list": async (page) => {
