@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 89c27fb
+  user-guide-covered-up-to: 748840f
 -->
 <html lang="en">
 <head>
@@ -515,7 +515,10 @@
           <li><strong>Bank accounts</strong> — what a company-paid claim was paid <em>from</em>. Tick
             <strong>Offer for company-paid claims</strong> on the ones employees should be able to pick.</li>
         </ul>
-        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles).</p>
+        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles). For employees to file
+          mileage claims, at least one claim item type needs <em>Allow mileage</em> switched on (with a rate, or the default
+          one). Until then the mileage claim picker tells employees “No mileage claim item type enabled yet. Ask your admin
+          to switch on mileage for one.” Mileage distances read from a route screenshot use the unit set here.</p>
         <p><strong>Without Xero</strong> the page opens with the hint <em>What employees can claim for, with optional spend
           limits and mileage</em>. Fill in a <strong>Code</strong>, <strong>Name</strong> and <strong>Type</strong>, add a
           <strong>Spend limit (optional)</strong> if you want one, tick <em>Selectable for claims</em> and
@@ -1176,7 +1179,9 @@
     <h3>All claims</h3>
     <p>Filter by project, employee, own-money or company-money, and dates. The last column tells you where each
       claim stands — who it's waiting with, “In Xero”, “In the payroll run”, or a button to retry a Xero push that
-      failed. Open a claim to see its details: the employee is shown by name, and for company money the <em>Company bank</em> line shows the name of the account that paid.</p>
+      failed. Open a claim to see its details: the employee is shown by name, and for company money the <em>Company bank</em> line shows the name of the account that paid. On a mileage claim the
+      receipt line reads <strong>Route screenshot</strong> with a <span class="btn-name">View route screenshot</span> button,
+      so you and the approvers can see the route the employee planned. Supervisors see the same when they open the claim in their queue.</p>
     <h3>Settings</h3>
     <ul>
       <li><strong>Default currency</strong>.</li>

@@ -340,6 +340,31 @@ const steps = {
     }
   },
 
+  // Switches mileage on for one claim item type so the mileage claim shots have
+  // something to pick (the starter 449 Motor Vehicle / Mileage item starts with
+  // mileage off). Does it in the demo company AND in whichever company Evan
+  // signs in to (on a machine where he was transferred, that is another demo
+  // company). Creates "6150 Motor Vehicle / Mileage" if there is no mileage
+  // item. Rerunnable.
+  "mileage-account": async () => {
+    const evanOrg = JSON.parse(Buffer.from(evan.split(".")[1], "base64url").toString()).org;
+    for (const orgId of new Set(["org-altomate", evanOrg])) {
+      const sw = await call(admin, "POST", `/auth/switch-org/${orgId}`);
+      if (sw.status !== 200 || !sw.data?.token) { console.log(orgId, "switch:", sw.status); continue; }
+      const t = sw.data.token;
+      const rows = (await call(t, "GET", "/accounts")).data ?? [];
+      const found = rows.find((a) => a.type === "EXPENSE" && !a.isArchived && /mileage/i.test(a.name));
+      const body = (a) => ({
+        code: a.code, name: a.name, type: "EXPENSE", isSelectable: true,
+        limitAmount: a.limitAmount ?? null, allowMileageClaim: true, mileageRate: 0.6,
+      });
+      const r = found
+        ? await call(t, "PUT", `/accounts/${found.id}`, body(found))
+        : await call(t, "POST", "/accounts", body({ code: "6150", name: "Motor Vehicle / Mileage" }));
+      console.log("mileage item type", orgId, found?.code ?? "6150", "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+    }
+  },
+
   // Evan's overtime with two before-work files and one after-work file.
   // Adds a request each run.
   overtime: async () => {
