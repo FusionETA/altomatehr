@@ -9,6 +9,9 @@ public class XeroAppResolver : IXeroAppResolver
     public const string BlockedMessage =
         "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app.";
 
+    public const string DisabledMessage =
+        "Xero isn't switched on for your company. Contact AltomateHR if you need it.";
+
     private readonly IXeroAppRepository _apps;
     private readonly IDataProtector _protector;
     private readonly XeroOptions _options;
@@ -33,6 +36,9 @@ public class XeroAppResolver : IXeroAppResolver
             case XeroAppChoice.Original:
                 return new XeroAppAssignment(null, Blocked: false, OwnApp: true);
 
+            case XeroAppChoice.None:
+                return new XeroAppAssignment(null, Blocked: true, OwnApp: false, Disabled: true);
+
             case XeroAppChoice.Standalone:
                 var app = setting!.XeroAppId is { } id ? await _apps.GetAppAsync(id) : null;
                 return app is null
@@ -49,7 +55,8 @@ public class XeroAppResolver : IXeroAppResolver
     public async Task<XeroAppCredentials> ForConnectAsync(string organizationId)
     {
         var assignment = await AssignmentAsync(organizationId);
-        if (assignment.Blocked) throw new XeroConnectionException(BlockedMessage);
+        if (assignment.Blocked)
+            throw new XeroConnectionException(assignment.Disabled ? DisabledMessage : BlockedMessage);
         return await ForAppAsync(assignment.AppId);
     }
 

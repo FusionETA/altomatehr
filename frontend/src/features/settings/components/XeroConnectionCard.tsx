@@ -83,6 +83,8 @@ export function XeroConnectionCard() {
   const needsReconnect = connected && status?.needsReconnect === true;
   // The owner is set to their own Xero app and AltomateHR hasn't added it yet.
   const blocked = status?.connectBlocked === true;
+  // AltomateHR switched Xero off for this company: no Connect, no Reconnect.
+  const disabled = status?.xeroDisabled === true;
   const moveApp = connected && !needsReconnect && status?.reconnectToMoveApp === true;
 
   return (
@@ -98,16 +100,18 @@ export function XeroConnectionCard() {
               ? "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts."
               : connected
                 ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
-                : blocked
-                  ? "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app."
-                  : "Connect Xero to push approved claims as bills and import the chart of accounts."}
+                : disabled
+                  ? "Xero isn't switched on for your company. Contact AltomateHR if you need it."
+                  : blocked
+                    ? "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app."
+                    : "Connect Xero to push approved claims as bills and import the chart of accounts."}
           </p>
           {status?.ownApp && !blocked ? (
             <p className="mt-1 text-xs font-semibold text-muted-foreground">Uses your company's own Xero app.</p>
           ) : null}
         </div>
 
-        {status !== null && !connected ? (
+        {status !== null && !connected && !disabled ? (
           <button
             type="button"
             disabled={busy || blocked}
@@ -215,15 +219,17 @@ export function XeroConnectionCard() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={startConnect}
-              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-card px-4 text-xs font-bold text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              Reconnect
-            </button>
+            {disabled ? null : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={startConnect}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-card px-4 text-xs font-bold text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Reconnect
+              </button>
+            )}
             <button
               type="button"
               disabled={busy}

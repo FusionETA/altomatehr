@@ -11,7 +11,9 @@ public sealed record XeroAppAssignment(
     // Standalone with no app added yet: Connect is refused until there is one.
     bool Blocked,
     // True when the company is on its owner's own app rather than the shared one.
-    bool OwnApp);
+    bool OwnApp,
+    // The owner's companies don't use Xero at all (also Blocked).
+    bool Disabled = false);
 
 // Picks the Xero app for a company. Two different questions, deliberately:
 //   - connecting: the app the company's owner is set to now;

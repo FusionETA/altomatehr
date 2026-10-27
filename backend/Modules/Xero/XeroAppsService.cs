@@ -62,8 +62,9 @@ public class XeroAppsService : IXeroAppsService
 
         bool Blocked(string? ownerUserId) =>
             ownerUserId is not null
-            && settings.GetValueOrDefault(ownerUserId) is { Choice: XeroAppChoice.Standalone } s
-            && (s.XeroAppId is null || apps.All(a => a.Id != s.XeroAppId));
+            && settings.GetValueOrDefault(ownerUserId) is { } s
+            && (s.Choice == XeroAppChoice.None
+                || (s.Choice == XeroAppChoice.Standalone && (s.XeroAppId is null || apps.All(a => a.Id != s.XeroAppId))));
 
         var groups = new Dictionary<string, List<XeroAppCompanyDto>>(StringComparer.Ordinal);
         var withoutOwner = new List<XeroAppCompanyDto>();
@@ -261,6 +262,9 @@ public class XeroAppsService : IXeroAppsService
             case XeroAppChoice.Original:
                 label = "the original app";
                 break;
+            case XeroAppChoice.None:
+                label = "no app";
+                break;
             default:
                 label = "the shared app";
                 break;
@@ -279,7 +283,9 @@ public class XeroAppsService : IXeroAppsService
         {
             await _audit.WriteAsync(new AuditEvent(
                 AuditActions.XeroAppChoiceSet,
-                $"Xero now connects through {label}",
+                dto.Choice == XeroAppChoice.None
+                    ? "Xero switched off for this company"
+                    : $"Xero now connects through {label}",
                 TargetType: "Organization",
                 TargetId: company.Id,
                 OrganizationId: company.Id,

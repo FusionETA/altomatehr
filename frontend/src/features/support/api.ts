@@ -64,7 +64,8 @@ export const updateOrganizationPlan = (
 // Which Xero app each owner's companies connect through. A secret is sent in
 // and never comes back; a client id only by its last 4 characters.
 
-export type XeroAppChoice = "Shared" | "Original" | "Standalone";
+/** "None": the owner's companies don't use Xero — Connect is hidden. */
+export type XeroAppChoice = "Shared" | "Original" | "Standalone" | "None";
 
 export type XeroAppCompany = {
   id: string;

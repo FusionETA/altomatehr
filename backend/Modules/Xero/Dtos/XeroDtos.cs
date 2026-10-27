@@ -27,6 +27,10 @@ public class XeroStatusDto
     // Connect is refused until AltomateHR finishes setting it up.
     public bool ConnectBlocked { get; set; }
 
+    // The company doesn't use Xero (set by AltomateHR): no Connect at all.
+    // Also ConnectBlocked. A company already connected keeps its connection.
+    public bool XeroDisabled { get; set; }
+
     // Connected through a different app from the one the owner is on now.
     // Still works; reconnecting moves it.
     public bool ReconnectToMoveApp { get; set; }

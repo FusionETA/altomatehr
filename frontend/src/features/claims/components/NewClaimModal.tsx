@@ -58,6 +58,9 @@ const DEFAULT_CURRENCY = "MYR";
 
 const INPUT =
   "h-12 w-full rounded-2xl border border-border bg-white/80 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+// iPhone Safari draws a date input at its own minimum width and centres the
+// text; this lets it shrink to the field like the others.
+const DATE_INPUT = `${INPUT} block min-w-0 appearance-none text-left`;
 const TEXTAREA =
   "min-h-[112px] w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 const LABEL = "text-sm font-semibold text-foreground";
@@ -116,7 +119,7 @@ export function NewClaimModal({
       >
         <ModalHeader onClose={onClose} isEditing={isEditing} />
 
-        <div className="nice-scrollbar flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-8 sm:pb-8">
+        <div className="nice-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-6 pb-6 pt-0 sm:px-8 sm:pb-8">
           {step === "payment" && !isEditing ? (
             <PaymentStep
               onPick={(type) => {
@@ -754,7 +757,10 @@ function ClaimDetailsForm({
 
       {route ? <RouteReadNote route={route} /> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* grid-cols-1 (minmax(0, 1fr)), not the implicit auto column: iPhone
+          Safari gives a date input a minimum width, and an auto column grew to
+          fit it, so the whole form slid sideways. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="space-y-3 sm:col-span-2">
           <span className={LABEL}>Title</span>
           <input
@@ -825,7 +831,7 @@ function ClaimDetailsForm({
                 type="date"
                 value={spentAt}
                 onChange={(e) => setSpentAt(e.target.value)}
-                className={INPUT}
+                className={DATE_INPUT}
               />
             </label>
           </>
@@ -852,7 +858,7 @@ function ClaimDetailsForm({
                 type="date"
                 value={spentAt}
                 onChange={(e) => setSpentAt(e.target.value)}
-                className={INPUT}
+                className={DATE_INPUT}
               />
             </label>
             <label className="space-y-3">

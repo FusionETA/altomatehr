@@ -247,6 +247,7 @@ public class XeroService : IXeroService
                 Connected = false,
                 OwnApp = assignment.OwnApp,
                 ConnectBlocked = assignment.Blocked,
+                XeroDisabled = assignment.Disabled,
             };
         }
 
@@ -255,6 +256,7 @@ public class XeroService : IXeroService
             Connected = true,
             OwnApp = assignment.OwnApp,
             ConnectBlocked = assignment.Blocked,
+            XeroDisabled = assignment.Disabled,
             // Connected through another app than the one the owner is on now:
             // it keeps working until an admin reconnects, which moves it.
             ReconnectToMoveApp = !assignment.Blocked && connection.XeroAppId != assignment.AppId,
