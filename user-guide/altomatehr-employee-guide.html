@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 7022a42
+  user-guide-covered-up-to: 89c27fb
 -->
 <html lang="en">
 <head>
@@ -751,7 +751,7 @@
     </ul>
     <h3>The fields worth getting right</h3>
     <ul>
-      <li><strong>Chart of account</strong> — what the expense was for. Your company decides which ones you can pick.</li>
+      <li><strong>Claim item type</strong> — what the expense was for, such as Office Expenses or Travel. Your company decides which ones you can pick. If your company uses Xero, this field is called <strong>Account</strong> instead, and so is the matching line in claim details and the supervisor queue. On a mileage claim it reads <strong>Mileage claim item type</strong> (or <strong>Mileage account</strong>).</li>
       <li><strong>Project</strong> — the site or job it belongs to.</li>
       <li><strong>Company bank account</strong> — for company money: which card or account paid.</li>
       <li><strong>Spending at</strong> — the shop or supplier (required for company money).</li>
@@ -765,7 +765,7 @@
     <p>Enter the distance, the date, and where you went from and to. The amount is worked out from your company's
       mileage rate.</p>
     <div class="note warn"><span class="nt">Over the limit?</span>
-      <p>If a claim is over the spend limit for that account, you can still submit it — it's flagged for your approver
+      <p>If a claim is over the spend limit for that claim item type, you can still submit it — it's flagged for your approver
         to look at.</p>
     </div>
     
@@ -780,7 +780,7 @@
           <p class="shot-cap">Attach the main receipt</p>
         </div>
         <div class="shot-item">
-          <img src="shots/employee/claim-details.png" alt="The final step, filled in from the receipt" loading="lazy">
+          <img src="shots/employee/claim-details.png" alt="The final step of the claim wizard: Title, the Claim item type dropdown, Amount and Expense date" loading="lazy">
           <p class="shot-cap">Claim details</p>
         </div>
         <div class="shot-item">

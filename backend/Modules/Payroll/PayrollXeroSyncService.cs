@@ -238,6 +238,14 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         // the page showed one. Local ids resolve first; a Xero id is still
         // accepted so a blob written the other way keeps working.
         var accountCodeById = new Dictionary<string, string>(codeByLocalId, StringComparer.Ordinal);
+
+        // A claim posts only to an account Xero has, as the claim bill does. A
+        // local one (e.g. a starter claim item type) may share a code with a
+        // different Xero account and post to the wrong ledger; leaving it out
+        // refuses the claim as unmapped instead.
+        var claimCodeByLocalId = accounts
+            .Where(a => !string.IsNullOrWhiteSpace(a.Code) && !string.IsNullOrWhiteSpace(a.XeroAccountId))
+            .ToDictionary(a => a.Id, a => a.Code, StringComparer.Ordinal);
         foreach (var a in accounts)
         {
             if (string.IsNullOrWhiteSpace(a.XeroAccountId) || string.IsNullOrWhiteSpace(a.Code)) continue;
@@ -310,7 +318,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                             li.ClaimId!,
                             li.Amount,
                             li.Label,
-                            ClaimAccountCode(li.ClaimId!, claimAccounts, codeByLocalId),
+                            ClaimAccountCode(li.ClaimId!, claimAccounts, claimCodeByLocalId),
                             null)),
                 ],
             };

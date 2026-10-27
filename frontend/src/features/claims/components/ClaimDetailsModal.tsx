@@ -5,6 +5,7 @@ import { formatCurrency, formatShortDate } from "../lib/claim-formatters";
 import { ClaimStatusBadge } from "./ClaimStatusBadge";
 import { OverLimitBadge } from "./OverLimitBadge";
 import { ViewReceiptButton } from "./ViewReceiptButton";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 
 export function ClaimDetailsModal({
   claim,
@@ -24,6 +25,7 @@ export function ClaimDetailsModal({
   onClose: () => void;
   footer?: ReactNode;
 }) {
+  const terms = useAccountTerms();
   const isMileage = claim.claimType === "MILEAGE";
   const paidWith = claim.paymentType === "COMPANY" ? "Company money" : "My own money";
   const supportingDocuments = claim.supportingDocumentUrls ?? [];
@@ -79,7 +81,7 @@ export function ClaimDetailsModal({
               value={employeeLabel ?? claim.employeeName ?? claim.employeeEmail ?? "Unknown employee"}
             />
             <InfoRow label="Category" value={claim.category} />
-            <InfoRow label="Account" value={accountLabel ?? "Not assigned"} />
+            <InfoRow label={terms.singular} value={accountLabel ?? "Not assigned"} />
             <InfoRow label="Project" value={projectLabel ?? "Not assigned"} />
           </InfoPanel>
 

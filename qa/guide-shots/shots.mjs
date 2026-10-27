@@ -266,6 +266,7 @@ async function toAbTestCoA(page) {
 const admin = {
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
   "executive-overview": async (page) => {
+    await inDemoCo(page);
     await go(page, "overview");
     await page.getByText("Work permits").first().waitFor({ timeout: 15000 });
     await settle(page);
@@ -511,10 +512,13 @@ const admin = {
     await page.keyboard.press("Escape");
   },
   "accounts-bank": async (page) => {
+    await inDemoCo(page);
     await go(page, "settings/settings-accounts");
+    await page.getByText("Add claim item type").first().waitFor({ timeout: 15000 });
     await clickText(page, "Expenses");
     await page.getByText("Site Materials").first().waitFor();
-    await scrollTo(page, "Bank accounts", 40);
+    await page.evaluate(() => window.scrollTo(0, 40));
+    await page.mouse.move(800, 60);
     await shoot(page, "admin", "accounts-bank");
   },
   loans: async (page) => {
@@ -807,6 +811,18 @@ const evan = {
     await shoot(page, "employee", "claim-supporting");
     await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
+  // The details form on the "Skip AI and fill manually" path, from the top, so
+  // the claim item type / chart of account field shows.
+  "claim-details": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    await page.getByRole("button", { name: "Skip AI and fill manually" }).click();
+    await page.getByText("Tap to add the main receipt (optional)").waitFor({ timeout: 15000 });
+    await page.getByPlaceholder("Client dinner").fill("Team lunch");
+    await settle(page, 800);
+    await shoot(page, "employee", "claim-details");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
   // The details form after "Skip AI and fill manually" with no receipt: the
   // optional "Tap to add the main receipt" box.
   "claim-add-receipt": async (page) => {
@@ -914,6 +930,14 @@ const sara = {
     await page.getByRole("button", { name: "Account menu" }).click();
     await shoot(page, "employee", "account-menu");
     await page.keyboard.press("Escape");
+  },
+  // Claims queue: the field label follows the company (Claim item type without Xero).
+  "sup-claims-queue": async (page) => {
+    await go(page, "claims");
+    await page.getByText("Claims queue").filter({ visible: true }).first().click();
+    await page.getByText("Client lunch").filter({ visible: true }).first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await shoot(page, "employee", "sup-claims-queue");
   },
   "sup-leave-cancel": async (page) => {
     await go(page, "leave/leave-approvals");

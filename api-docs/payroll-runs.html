@@ -1956,6 +1956,17 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
         </div>
         <h3>Errors</h3>
         <p><code>404</code> — no such run.</p>
+        <div class="callout warn">
+          <strong>Reimbursed claims need a Xero-linked account.</strong> Each claim attached to the
+          run debits the account it was coded to, and only an account that has been synced from
+          Xero (it has a <code>xeroAccountId</code>, see <a href="accounts.html#accounts">Accounts</a>)
+          counts. A claim coded to a hand-made account, or to none, makes the journal
+          <code>ok: false</code> with <code>error</code> reading
+          <code>This run cannot post to Xero yet — reimbursement claims with no Xero-linked expense account: …</code>
+          followed by the claim labels. The reason is that a hand-made account can share a code with a
+          different Xero account and post to the wrong ledger. Fix it by changing the claim's account
+          to a Xero one, then preview again.
+        </div>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/xero/preview \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -1983,7 +1994,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — note the body here is just <code>{ "error" }</code>, not the full shape above: not <code>SUBMITTED</code> yet, the org is not connected to Xero, an unmapped account, or an unbalanced journal.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — note the body here is just <code>{ "error" }</code>, not the full shape above: not <code>SUBMITTED</code> yet, the org is not connected to Xero, an unmapped account (including a reimbursed claim coded to an account without a Xero id, see <a href="#xero-preview">the preview</a>), or an unbalanced journal.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/xero/sync \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>

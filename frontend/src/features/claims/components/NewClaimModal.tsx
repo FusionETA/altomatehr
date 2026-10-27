@@ -43,6 +43,7 @@ import {
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Skeleton } from "@/shared/components/Skeleton";
 import { businessToday } from "@/shared/lib/business-day";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 
 type FlowStep = "payment" | "type" | "receipt" | "form";
 type ClaimType = "EXPENSE" | "MILEAGE";
@@ -443,6 +444,7 @@ function ClaimDetailsForm({
   editingClaim?: Claim;
   onUpdated?: (claim: Claim) => void;
 }) {
+  const terms = useAccountTerms();
   const isEditing = Boolean(editingClaim);
 
   // Seeded from the OCR read where there is one. Pre-fill only — every field
@@ -689,8 +691,12 @@ function ClaimDetailsForm({
         </label>
 
         <SelectField
-          label={claimType === "MILEAGE" ? "Mileage account" : "Chart of account"}
-          placeholder={claimType === "MILEAGE" ? "Select mileage account" : "Select chart of account"}
+          label={claimType === "MILEAGE" ? `Mileage ${terms.singular.toLowerCase()}` : terms.singular}
+          placeholder={
+            claimType === "MILEAGE"
+              ? `Select mileage ${terms.singular.toLowerCase()}`
+              : `Select ${terms.singular.toLowerCase()}`
+          }
           value={chartOfAccountId}
           onValueChange={setChartOfAccountId}
           options={visibleAccounts.map((account) => ({

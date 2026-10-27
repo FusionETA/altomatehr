@@ -7,6 +7,7 @@ import { PushToggleMenuItem } from "@/features/notifications/components/PushTogg
 import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
 import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
@@ -51,6 +52,7 @@ export function AdminShell({
   // Superadmins only: opens the Fusioneta support page.
   onOpenSupport?: () => void;
 }) {
+  const accountTerms = useAccountTerms();
   // The view lives in the URL so Back steps through the app rather than out of
   // it. The shell still owns the state; the hook only keeps the two in step.
   //
@@ -187,7 +189,7 @@ export function AdminShell({
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                         >
-                          {child.label}
+                          {child.id === "settings-accounts" ? accountTerms.plural : child.label}
                         </button>
                       );
                     })}
@@ -394,7 +396,7 @@ export function AdminShell({
                       : "border-border/60 bg-card text-muted-foreground"
                   }`}
                 >
-                  {child.label}
+                  {child.id === "settings-accounts" ? accountTerms.plural : child.label}
                 </button>
               );
             })}

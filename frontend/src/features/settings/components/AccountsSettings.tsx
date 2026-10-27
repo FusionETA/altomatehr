@@ -148,7 +148,7 @@ export function AccountsSettings() {
       setAccounts((current) => [...current, created]);
       setForm(emptyForm);
     } catch (err) {
-      setError(message(err, "Could not add the account."));
+      setError(message(err, `Could not add the ${xeroConnected ? "account" : "claim item type"}.`));
     } finally {
       setAdding(false);
     }
@@ -163,7 +163,7 @@ export function AccountsSettings() {
         : await archiveAccount(account.id);
       setAccounts((current) => current.map((a) => (a.id === updated.id ? updated : a)));
     } catch (err) {
-      setError(message(err, "Could not update the account."));
+      setError(message(err, `Could not update the ${xeroConnected ? "account" : "claim item type"}.`));
     } finally {
       setBusyId(null);
     }
@@ -205,7 +205,7 @@ export function AccountsSettings() {
         <section className={`${CARD} space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
+              <h2 className="text-lg font-black text-foreground">Chart of accounts</h2>
               <p className="text-sm text-muted-foreground">
                 Xero owns these while it's connected. Add or rename an account in Xero, then sync.
               </p>
@@ -256,9 +256,10 @@ export function AccountsSettings() {
       // up on a Xero-connected org for a moment before its status arrived.
       <form onSubmit={handleAdd} className={`${CARD} space-y-4`}>
         <div>
-          <h2 className="text-lg font-black text-foreground">Chart of Accounts</h2>
+          <h2 className="text-lg font-black text-foreground">Claim item types</h2>
           <p className="text-sm text-muted-foreground">
-            Accounts claims are posted to, with optional spend limits and mileage.
+            What employees can claim for, with optional spend limits and mileage. Connect Xero
+            and this becomes Xero's chart of accounts.
           </p>
         </div>
 
@@ -351,7 +352,7 @@ export function AccountsSettings() {
           className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90 disabled:opacity-50"
         >
           {adding ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Add account
+          Add claim item type
         </button>
       </form>
       )}
@@ -418,7 +419,9 @@ export function AccountsSettings() {
           <SkeletonPanel />
         ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {accounts.length === 0 ? "No accounts yet." : "No active accounts."}
+            {accounts.length === 0
+              ? `No ${xeroConnected ? "accounts" : "claim item types"} yet.`
+              : `No active ${xeroConnected ? "accounts" : "claim item types"}.`}
           </p>
         ) : (
           <div className="overflow-x-auto">

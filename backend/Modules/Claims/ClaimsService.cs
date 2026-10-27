@@ -862,9 +862,16 @@ public class ClaimsService : IClaimsService
 
         var result = new TabularImportResult();
         var employees = await _employees.GetSnapshotAsync();
+        // Two accounts can share a code (a starter claim item type archived when
+        // Xero's own came in): prefer the live one, then the one Xero has.
         var accountIdsByCode = (await _accounts.GetAllAsync())
             .GroupBy(a => a.Code.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(a => a.IsArchived)
+                    .ThenBy(a => string.IsNullOrWhiteSpace(a.XeroAccountId))
+                    .First().Id,
+                StringComparer.OrdinalIgnoreCase);
 
         var existing = await _repo.GetAllAsync();
         var seenNumbers = existing

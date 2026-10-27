@@ -11,6 +11,9 @@ import {
 export type Organization = {
   id: string;
   name: string;
+  // Whether Xero is connected; readable by any member. Decides whether claim
+  // accounts are called "Chart of accounts" or "Claim item types".
+  xeroConnected?: boolean;
   defaultCurrency: string;
   defaultMileageRate: number;
   mileageUnit: "KM" | "MILE";

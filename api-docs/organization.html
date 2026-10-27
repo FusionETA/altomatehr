@@ -118,6 +118,7 @@
             <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>Day of the month (1–28) the claims run closes. Read-only here.</td></tr>
             <tr><td><code>claimSettlementRoute</code></td><td>string</td><td>Where approved claims are paid out: <code>"XERO_BILL"</code> or <code>"PAYROLL"</code>. Read-only here.</td></tr>
             <tr><td><code>xeroBillStage</code></td><td>string</td><td>Status a claim bill is created with in Xero: <code>"AwaitingPayment"</code> or <code>"Draft"</code>. Read-only here.</td></tr>
+            <tr><td><code>xeroConnected</code></td><td>boolean</td><td><code>true</code> when the company is connected to Xero. Read-only.</td></tr>
             <tr><td><code>supervisorSlaMinutes</code></td><td>integer</td><td>The line the attendance performance report measures supervisors against. Read-only here.</td></tr>
             <tr><td><code>plan</code></td><td>string</td><td><code>"DIY"</code> or <code>"EXPERT"</code>. Read-only.</td></tr>
             <tr><td><code>tier</code></td><td>string | null</td><td><code>"FREE"</code> or <code>"PAID"</code>; <code>null</code> when none is set. Read-only.</td></tr>
@@ -156,6 +157,7 @@
   "claimRunCutoffDay": 25,
   "claimSettlementRoute": "XERO_BILL",
   "xeroBillStage": "AwaitingPayment",
+  "xeroConnected": true,
   "supervisorSlaMinutes": 60,
   "plan": "DIY",
   "tier": "PAID",
@@ -202,7 +204,9 @@
           its default is then saved. See below.
         </p>
         <h3>Response <code>200</code></h3>
-        <p>The updated <a href="#settings">organization object</a>.</p>
+        <p>
+          The updated <a href="#settings">organization object</a>.
+        </p>
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "errors": { … } }</code> — a field is out of range, malformed, or not a valid <code>mileageUnit</code>.</li>

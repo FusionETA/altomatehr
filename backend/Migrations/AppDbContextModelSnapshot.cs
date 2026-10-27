@@ -30,6 +30,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("AllowMileageClaim")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("ArchivedByXeroConnect")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -42,6 +45,9 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsCustom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDefault")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsSelectable")
