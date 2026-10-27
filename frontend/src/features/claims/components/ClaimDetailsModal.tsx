@@ -137,16 +137,18 @@ export function ClaimDetailsModal({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Main receipt
+                {isMileage ? "Route screenshot" : "Main receipt"}
               </span>
               {claim.receiptUrl ? (
                 <ViewReceiptButton
                   receiptUrl={claim.receiptUrl}
-                  label="View main receipt"
+                  label={isMileage ? "View route screenshot" : "View main receipt"}
                   className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
                 />
               ) : (
-                <span className="text-sm text-muted-foreground">No main receipt attached</span>
+                <span className="text-sm text-muted-foreground">
+                  {isMileage ? "No route screenshot attached" : "No main receipt attached"}
+                </span>
               )}
             </div>
 

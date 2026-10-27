@@ -374,6 +374,7 @@ builder.Services.AddScoped<IOrgAdminService, OrgAdminService>();
 builder.Services.AddScoped<IPartnerIdentityService, PartnerIdentityService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
+builder.Services.AddScoped<IMileageScanService, MileageScanService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
 builder.Services.AddHttpClient<IPublicHolidaySource, PublicHolidaySource>();
 

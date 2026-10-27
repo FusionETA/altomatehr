@@ -18,11 +18,14 @@ import {
   createClaim,
   updateClaim,
   analyzeClaimReceipt,
+  analyzeMileageScreenshot,
   loadClaimReceiptObjectUrl,
   openClaimReceipt,
   uploadClaimReceipt,
+  type AnalyzeMileageResponse,
   type AnalyzeReceiptResponse,
   type Claim,
+  type MileageExtraction,
   type CreateClaimRequest,
 } from "../api";
 import {
@@ -83,6 +86,8 @@ export function NewClaimModal({
   // the url matters: analyze stores the receipt itself, so submitting must reuse
   // it rather than uploading the same bytes a second time.
   const [scan, setScan] = useState<AnalyzeReceiptResponse | null>(null);
+  // The same for a mileage claim's route screenshot.
+  const [routeScan, setRouteScan] = useState<AnalyzeMileageResponse | null>(null);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
 
   useEffect(() => {
@@ -129,20 +134,29 @@ export function NewClaimModal({
               }}
               onPick={(type) => {
                 setClaimType(type);
-                setStep(type === "MILEAGE" ? "form" : "receipt");
+                setStep("receipt");
               }}
             />
           ) : null}
 
-          {step === "receipt" && claimType === "EXPENSE" && paymentType && !isEditing ? (
+          {step === "receipt" && claimType && paymentType && !isEditing ? (
             <ReceiptStep
+              copy={claimType === "MILEAGE" ? ROUTE_COPY : RECEIPT_COPY}
               receiptFile={receiptFile}
               setReceiptFile={(file) => {
                 setReceiptFile(file);
                 // A new file invalidates the previous read, and its stored copy.
                 setScan(null);
+                setRouteScan(null);
               }}
-              onScanned={setScan}
+              read={async (file) => {
+                if (claimType === "MILEAGE") setRouteScan(await analyzeMileageScreenshot(file));
+                else setScan(await analyzeClaimReceipt(file));
+              }}
+              onSkip={() => {
+                setScan(null);
+                setRouteScan(null);
+              }}
               onBack={() => {
                 setClaimType(null);
                 setStep("type");
@@ -160,11 +174,13 @@ export function NewClaimModal({
                 setReceiptFile(file);
                 // A new file invalidates the previous read, and its stored copy.
                 setScan(null);
+                setRouteScan(null);
               }}
               scan={scan}
+              routeScan={routeScan}
               supportingFiles={supportingFiles}
               setSupportingFiles={setSupportingFiles}
-              onBack={() => setStep(claimType === "MILEAGE" ? "type" : "receipt")}
+              onBack={() => setStep("receipt")}
               onClose={onClose}
               onCreated={onCreated}
               editingClaim={editingClaim}
@@ -253,7 +269,7 @@ function TypeStep({
         <ChoiceCard
           icon={<MapPin className="h-5 w-5" />}
           title="Mileage claim"
-          description="Enter distance, origin, and destination. Amount is calculated from mileage rate."
+          description="Upload a Google Maps or Waze route screenshot and AI reads the distance, or enter it yourself. Amount is calculated from the mileage rate."
           onClick={() => onPick("MILEAGE")}
         />
       </div>
@@ -261,16 +277,52 @@ function TypeStep({
   );
 }
 
+// The document step's wording: a receipt for an expense, a route screenshot
+// for mileage. Same upload, same AI read, different words.
+type DocumentStepCopy = {
+  title: string;
+  noun: string;
+  empty: string;
+  attached: string;
+  hint: string;
+  read: string;
+  reading: string;
+};
+
+const RECEIPT_COPY: DocumentStepCopy = {
+  title: "Attach the main receipt",
+  noun: "receipt",
+  empty: "Upload main receipt",
+  attached: "Main receipt attached",
+  hint: "Optional. JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. AI can read the supplier, amount and date off it so you don't have to type them.",
+  read: "Read receipt & continue",
+  reading: "Reading receipt…",
+};
+
+const ROUTE_COPY: DocumentStepCopy = {
+  title: "Attach a route screenshot",
+  noun: "screenshot",
+  empty: "Upload route screenshot",
+  attached: "Route screenshot attached",
+  hint: "Optional. Plan the trip in Google Maps or Waze and screenshot the route with its distance. AI reads the distance, start and end, and the screenshot stays on the claim for your approver.",
+  read: "Read route & continue",
+  reading: "Reading route…",
+};
+
 function ReceiptStep({
+  copy,
   receiptFile,
   setReceiptFile,
-  onScanned,
+  read,
+  onSkip,
   onBack,
   onContinue,
 }: {
+  copy: DocumentStepCopy;
   receiptFile: File | null;
   setReceiptFile: (file: File | null) => void;
-  onScanned: (scan: AnalyzeReceiptResponse | null) => void;
+  read: (file: File) => Promise<void>;
+  onSkip: () => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -310,14 +362,14 @@ function ReceiptStep({
     setReading(true);
     setReadError(null);
     try {
-      onScanned(await analyzeClaimReceipt(receiptFile));
+      await read(receiptFile);
       onContinue();
     } catch (e: unknown) {
-      onScanned(null);
+      onSkip();
       setReadError(
         e instanceof Error
-          ? `Couldn't read the receipt (${e.message}). Fill it in below.`
-          : "Couldn't read the receipt. Fill it in below.",
+          ? `Couldn't read the ${copy.noun} (${e.message}). Fill it in below.`
+          : `Couldn't read the ${copy.noun}. Fill it in below.`,
       );
       setReading(false);
     }
@@ -325,7 +377,7 @@ function ReceiptStep({
 
   return (
     <section className="space-y-5">
-      <StepWithBack eyebrow="Step 3 - Main document" title="Attach the main receipt" onBack={onBack} />
+      <StepWithBack eyebrow="Step 3 - Main document" title={copy.title} onBack={onBack} />
       {/* Once a file is attached the receipt itself replaces the prompt. Reading
           it is about to be done by a model, and the only way to know it picked
           the right document — or that the photo is legible at all — is to see
@@ -339,7 +391,7 @@ function ReceiptStep({
           <>
             <img
               src={previewUrl}
-              alt={`Receipt preview: ${receiptFile.name}`}
+              alt={`Preview: ${receiptFile.name}`}
               onError={() => setPreviewBroken(true)}
               // Contained and capped: a portrait phone photo would otherwise
               // push the buttons off the bottom of the modal.
@@ -356,7 +408,7 @@ function ReceiptStep({
               {receiptFile ? <FileText className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
             </div>
             <p className="mt-4 text-sm font-bold text-foreground">
-              {receiptFile ? "Main receipt attached" : "Upload main receipt"}
+              {receiptFile ? copy.attached : copy.empty}
             </p>
             {receiptFile ? (
               <>
@@ -370,10 +422,7 @@ function ReceiptStep({
                 </p>
               </>
             ) : (
-              <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-                Optional. JPG, PNG, WEBP, HEIC, HEIF, or PDF up to 8 MB. AI can read the supplier,
-                amount and date off it so you don't have to type them.
-              </p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{copy.hint}</p>
             )}
           </>
         )}
@@ -395,7 +444,7 @@ function ReceiptStep({
           type="button"
           disabled={reading}
           onClick={() => {
-            onScanned(null);
+            onSkip();
             onContinue();
           }}
           className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
@@ -409,7 +458,7 @@ function ReceiptStep({
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:opacity-60"
         >
           {reading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {reading ? "Reading receipt…" : receiptFile ? "Read receipt & continue" : "Continue"}
+          {reading ? copy.reading : receiptFile ? copy.read : "Continue"}
           {reading ? null : <ArrowRight className="h-4 w-4" />}
         </button>
       </div>
@@ -423,6 +472,7 @@ function ClaimDetailsForm({
   receiptFile,
   setReceiptFile,
   scan,
+  routeScan,
   supportingFiles,
   setSupportingFiles,
   onBack,
@@ -436,6 +486,7 @@ function ClaimDetailsForm({
   receiptFile: File | null;
   setReceiptFile: (file: File) => void;
   scan: AnalyzeReceiptResponse | null;
+  routeScan: AnalyzeMileageResponse | null;
   supportingFiles: File[];
   setSupportingFiles: (files: File[]) => void;
   onBack: () => void;
@@ -451,6 +502,7 @@ function ClaimDetailsForm({
   // stays editable, because the model is instructed to return null rather than
   // guess and a receipt can still be misread.
   const read = scan?.extraction ?? null;
+  const route = routeScan?.extraction ?? null;
 
   // Claims carried over from the previous system can hold blank entries; the
   // server ignores them, so the list and the limit do too.
@@ -463,14 +515,16 @@ function ClaimDetailsForm({
   const [readFromReplaced, setReadFromReplaced] = useState(false);
 
   const [title, setTitle] = useState(editingClaim?.title ?? read?.supplier ?? "");
-  const [description, setDescription] = useState(editingClaim?.description ?? read?.description ?? "");
+  const [description, setDescription] = useState(
+    editingClaim?.description ?? read?.description ?? route?.description ?? "",
+  );
   const [amount, setAmount] = useState(
     editingClaim ? String(editingClaim.amount) : read?.total != null ? String(read.total) : "",
   );
   const [spentAt, setSpentAt] = useState(
     editingClaim?.spentAt
       ? editingClaim.spentAt.slice(0, 10)
-      : (read?.date ?? businessToday()),
+      : (read?.date ?? route?.date ?? businessToday()),
   );
   const [projectId, setProjectId] = useState(editingClaim?.projectId ?? "");
   const [chartOfAccountId, setChartOfAccountId] = useState(
@@ -479,9 +533,19 @@ function ClaimDetailsForm({
   const [payViaAccountId, setPayViaAccountId] = useState(editingClaim?.payViaAccountId ?? "");
   const [spendingAt, setSpendingAt] = useState(editingClaim?.spendingAt ?? "");
   const [spendingWith, setSpendingWith] = useState(editingClaim?.spendingWith ?? "");
-  const [distance, setDistance] = useState(editingClaim?.distance ? String(editingClaim.distance) : "");
-  const [mileageOriginAddress, setMileageOriginAddress] = useState(editingClaim?.mileageOriginAddress ?? "");
-  const [mileageDestinationAddress, setMileageDestinationAddress] = useState(editingClaim?.mileageDestinationAddress ?? "");
+  const [distance, setDistance] = useState(
+    editingClaim?.distance
+      ? String(editingClaim.distance)
+      : route?.distance != null
+        ? String(route.distance)
+        : "",
+  );
+  const [mileageOriginAddress, setMileageOriginAddress] = useState(
+    editingClaim?.mileageOriginAddress ?? route?.origin ?? "",
+  );
+  const [mileageDestinationAddress, setMileageDestinationAddress] = useState(
+    editingClaim?.mileageDestinationAddress ?? route?.destination ?? "",
+  );
   const [additionalSupportingFiles, setAdditionalSupportingFiles] = useState<File[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
@@ -591,8 +655,9 @@ function ClaimDetailsForm({
       const existingSupportingDocumentUrls = existingDocuments;
       // Analyze already stored this exact file and gave us its url — uploading
       // again would leave two copies on disk and charge the claim the second.
-      const uploadedReceipt = scan
-        ? { receiptUrl: scan.receiptUrl }
+      const storedByRead = scan?.receiptUrl ?? routeScan?.receiptUrl ?? null;
+      const uploadedReceipt = storedByRead
+        ? { receiptUrl: storedByRead }
         : receiptFile
           ? await uploadClaimReceipt(receiptFile)
           : null;
@@ -678,6 +743,8 @@ function ClaimDetailsForm({
         </div>
       ) : null}
 
+      {route ? <RouteReadNote route={route} /> : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-3 sm:col-span-2">
           <span className={LABEL}>Title</span>
@@ -705,8 +772,8 @@ function ClaimDetailsForm({
           }))}
           emptyMessage={
             claimType === "MILEAGE"
-              ? "No mileage account enabled yet."
-              : "No selectable claim account enabled yet."
+              ? `No mileage ${terms.singular.toLowerCase()} enabled yet. Ask your admin to switch on mileage for one.`
+              : `No ${terms.singular.toLowerCase()} enabled yet.`
           }
           loading={accountsQuery.loading}
         />
@@ -880,21 +947,21 @@ function ClaimDetailsForm({
       ) : null}
 
       <MainReceiptField
+        label={claimType === "MILEAGE" ? "Route screenshot" : "Main receipt"}
         file={receiptFile}
-        storedUrl={scan?.receiptUrl ?? editingClaim?.receiptUrl ?? null}
+        storedUrl={scan?.receiptUrl ?? routeScan?.receiptUrl ?? editingClaim?.receiptUrl ?? null}
         onPick={(file) => {
-          if (read) setReadFromReplaced(true);
+          if (read || route) setReadFromReplaced(true);
           setReceiptFile(file);
         }}
-        // Mileage has no receipt to add; one already on it can still be replaced.
-        canAdd={claimType === "EXPENSE"}
       />
       {readFromReplaced ? (
         <p className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            The details above were read from the receipt you replaced. Check them against the new one,
-            especially the amount and date.
+            {claimType === "MILEAGE"
+              ? "The trip above was read from the screenshot you replaced. Check it against the new one, especially the distance."
+              : "The details above were read from the receipt you replaced. Check them against the new one, especially the amount and date."}
           </span>
         </p>
       ) : null}
@@ -958,6 +1025,52 @@ function ClaimDetailsForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// Where a mileage form's values came from. Like the receipt note, it's there
+// because the employee signs the claim, not the model — and a screenshot shows
+// the route planned, so it asks them to check it's the one they drove.
+function RouteReadNote({ route }: { route: MileageExtraction }) {
+  if (!route.isRoute) {
+    return (
+      <p className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          This doesn't look like a route screenshot, so nothing was filled in. Enter the trip below; the
+          screenshot stays attached.
+        </span>
+      </p>
+    );
+  }
+
+  const unit = (u: "KM" | "MILE") => (u === "MILE" ? "miles" : "km");
+  const notes = [
+    route.via ? `Route via ${route.via.replace(/^via\s+/i, "")}.` : null,
+    route.detectedDistance != null && route.detectedUnit && route.detectedUnit !== route.unit
+      ? `The screenshot showed ${route.detectedDistance} ${unit(route.detectedUnit)}, converted to ${unit(route.unit)}.`
+      : null,
+    route.distance == null ? "The distance couldn't be read, so enter it yourself." : null,
+    route.otherRoutesShown ? "It showed more than one route; the highlighted one was read." : null,
+    !route.origin ? "The start wasn't an address (e.g. \"Your location\"), so enter where you set off from." : null,
+  ].filter(Boolean);
+
+  return (
+    <div className="flex gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3">
+      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div className="min-w-0 text-xs">
+        <p className="font-bold text-primary">Filled in from your route screenshot</p>
+        <p className="mt-0.5 text-muted-foreground">
+          Check the distance, and that this is the route you actually drove. {notes.join(" ")}
+        </p>
+        {route.travelMode ? (
+          <p className="mt-1 font-semibold text-amber-700">
+            This route is for {route.travelMode.toLowerCase()}, not driving. Mileage is normally claimed for a
+            driving route.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -1194,15 +1307,15 @@ function ChoiceCard({
 // Read-only on purpose: the file is chosen on the previous step, and a second
 // picker here would be a second way to disagree about which receipt this is.
 function MainReceiptField({
+  label,
   file,
   storedUrl,
   onPick,
-  canAdd,
 }: {
+  label: string;
   file: File | null;
   storedUrl: string | null;
   onPick: (file: File) => void;
-  canAdd: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const has = Boolean(file || storedUrl);
@@ -1226,17 +1339,16 @@ function MainReceiptField({
   );
 
   if (!has) {
-    if (!canAdd) return null;
     return (
       <div className="space-y-2">
-        <span className={LABEL}>Main receipt</span>
+        <span className={LABEL}>{label}</span>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
           className="flex h-12 w-full items-center gap-3 rounded-2xl border border-dashed border-border/80 bg-white/80 px-4 text-left text-sm text-muted-foreground shadow-sm transition hover:border-primary/50 hover:bg-card"
         >
           <Upload className="h-4 w-4 shrink-0 text-primary" />
-          Tap to add the main receipt (optional)
+          Tap to add the {label.toLowerCase()} (optional)
         </button>
         {picker}
       </div>
@@ -1246,7 +1358,7 @@ function MainReceiptField({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className={LABEL}>Main receipt</span>
+        <span className={LABEL}>{label}</span>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
