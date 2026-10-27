@@ -208,6 +208,41 @@ public class EmployeeService : IEmployeeService
         }
     }
 
+    // Send the welcome email again — the hire who was added without it ticked,
+    // or who lost it. Unlike the create path, this one reports a failed send:
+    // sending is the whole action, so there's no success to protect.
+    public async Task<SetPasswordResult> ResendWelcomeAsync(string userId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return new SetPasswordResult(false, null);   // → 404
+        var user = await _users.GetByIdAsync(userId);
+        if (user is null) return new SetPasswordResult(false, null);
+
+        var profile = await _profiles.GetByUserAsync(userId);
+        if (profile?.IsArchived == true)
+            return new SetPasswordResult(false, "This employee has left. Restore them before sending the welcome email.");
+
+        // Describe the house rule only while it still opens the account. Once
+        // they've changed it (or an admin set one), the rule would send them to
+        // a password that no longer works.
+        var houseRule = DefaultPassword.For(user.Email, profile?.DateOfBirth);
+        var mode = houseRule is not null && PasswordHasher.Verify(houseRule, user.PasswordHash)
+            ? WelcomeEmail.PasswordMode.Default
+            : WelcomeEmail.PasswordMode.Reminder;
+
+        if (!await TrySendWelcomeAsync(user, mode))
+            return new SetPasswordResult(false, "The email couldn't be sent. Try again in a few minutes.");
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeWelcomeResend,
+            $"Resent the welcome email to {user.Email}.",
+            TargetType: "Employee",
+            TargetId: user.Id,
+            Metadata: new { TargetEmail = user.Email }));
+
+        return new SetPasswordResult(true, null);
+    }
+
     // Names the change rather than saying "updated": a feed of twenty identical
     // "Employee updated" lines is a feed nobody reads.
     // A sentence an admin can read in the activity log. This used to be the

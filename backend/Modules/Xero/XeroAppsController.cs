@@ -52,6 +52,21 @@ public class XeroAppsController : ControllerBase
         }
     }
 
+    // POST /support/xero/apps/adopt-original — the original app (server
+    // settings) becomes a normal app, connections and owners moved with it.
+    [HttpPost("apps/adopt-original")]
+    public async Task<IActionResult> AdoptOriginal(AdoptOriginalXeroAppDto dto)
+    {
+        try
+        {
+            return Ok(await _apps.AdoptOriginalAppAsync(dto.Name));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     // DELETE /support/xero/apps/{id}
     [HttpDelete("apps/{id}")]
     public async Task<IActionResult> DeleteApp(string id)

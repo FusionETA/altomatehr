@@ -48,6 +48,24 @@ public class XeroAppRepository : IXeroAppRepository
         await _db.SaveChangesAsync();
     }
 
+    public async Task AdoptOriginalAppAsync(XeroApp app)
+    {
+        _db.XeroApps.Add(app);
+        // Every company's connection, not just the current one's.
+        foreach (var connection in await _db.XeroConnections.IgnoreQueryFilters()
+                     .Where(c => c.XeroAppId == null).ToListAsync())
+            connection.XeroAppId = app.Id;
+        foreach (var setting in await _db.XeroOwnerSettings
+                     .Where(s => s.Choice == XeroAppChoice.Original).ToListAsync())
+        {
+            setting.Choice = XeroAppChoice.Standalone;
+            setting.XeroAppId = app.Id;
+            setting.UpdatedAt = app.UpdatedAt;
+            setting.UpdatedByUserId = app.UpdatedByUserId;
+        }
+        await _db.SaveChangesAsync();
+    }
+
     public Task<XeroOwnerSetting?> GetOwnerSettingAsync(string ownerUserId) =>
         _db.XeroOwnerSettings.FirstOrDefaultAsync(s => s.OwnerUserId == ownerUserId);
 

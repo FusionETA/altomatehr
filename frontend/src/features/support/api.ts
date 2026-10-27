@@ -99,7 +99,14 @@ export type XeroAppSummary = {
 
 export type XeroAppsOverview = {
   redirectUri: string;
-  originalApp: { configured: boolean; clientIdEnding: string | null; isShared: boolean; connections: number };
+  originalApp: {
+    configured: boolean;
+    clientIdEnding: string | null;
+    isShared: boolean;
+    connections: number;
+    /** Set once it's been moved into the apps list: the app that took it over. */
+    movedToAppId: string | null;
+  };
   apps: XeroAppSummary[];
   owners: XeroOwnerGroup[];
   companiesWithoutOwner: XeroAppCompany[];
@@ -113,6 +120,9 @@ export const getXeroAppsOverview = () => apiGet<XeroAppsOverview>(XERO_APPS_PATH
 export const addXeroApp = (body: SaveXeroApp) => apiPost<XeroAppSummary>(`${XERO_APPS_PATH}/apps`, body);
 export const updateXeroApp = (id: string, body: SaveXeroApp) =>
   apiPut<XeroAppSummary>(`${XERO_APPS_PATH}/apps/${id}`, body);
+/** The original app (server settings) becomes a normal, editable app; its connections move with it. */
+export const adoptOriginalXeroApp = (name: string) =>
+  apiPost<XeroAppSummary>(`${XERO_APPS_PATH}/apps/adopt-original`, { name });
 export const deleteXeroApp = (id: string) => apiDelete<unknown>(`${XERO_APPS_PATH}/apps/${id}`);
 export const setXeroOwnerChoice = (userId: string, body: { choice: XeroAppChoice; xeroAppId: string | null }) =>
   apiPut<unknown>(`${XERO_APPS_PATH}/owners/${userId}`, body);

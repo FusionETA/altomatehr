@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Copy, LoaderCircle, Plus, X } from "lucide-react";
 import { SearchInput } from "@/shared/components/SearchInput";
+import { TablePager } from "@/shared/components/TablePager";
+import { usePaged } from "@/shared/lib/use-paged";
 import { Switch } from "@/shared/components/ui/switch";
 import {
   Select,
@@ -13,6 +15,7 @@ import {
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   addXeroApp,
+  adoptOriginalXeroApp,
   deleteXeroApp,
   getXeroAppsOverview,
   setXeroCompanyOwner,
@@ -44,11 +47,14 @@ export function XeroAppsCard() {
   const query = useCachedQuery(XERO_APPS_PATH, getXeroAppsOverview);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<XeroAppSummary | "new" | null>(null);
+  const [adopting, setAdopting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const data = query.data;
+  // Which app "Shared app" means right now: the one ticked Shared, else none named.
+  const sharedName = data?.apps.find((a) => a.isShared)?.name ?? null;
   const owners = useMemo(() => {
     const term = search.trim().toLowerCase();
     const all = data?.owners ?? [];
@@ -60,6 +66,7 @@ export function XeroAppsCard() {
         o.companies.some((c) => c.name.toLowerCase().includes(term)),
     );
   }, [data, search]);
+  const paged = usePaged(owners, 10);
 
   async function run(key: string, action: () => Promise<unknown>) {
     setBusy(key);
@@ -137,6 +144,7 @@ export function XeroAppsCard() {
             data={data}
             busy={busy}
             onEdit={setEditing}
+            onAdopt={() => setAdopting(true)}
             onDelete={(app) => {
               if (window.confirm(`Delete the Xero app "${app.name}"?`)) {
                 void run(`del:${app.id}`, () => deleteXeroApp(app.id));
@@ -159,7 +167,7 @@ export function XeroAppsCard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {owners.map((o) => (
+                  {paged.pageItems.map((o) => (
                     <tr key={o.userId} className="border-b border-border/30 align-top last:border-0">
                       <td className="px-4 py-3">
                         <span className="block font-semibold text-foreground">{o.name}</span>
@@ -193,9 +201,16 @@ export function XeroAppsCard() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Shared">Shared app</SelectItem>
-                            <SelectItem value="Original">Original app (server settings)</SelectItem>
-                            {data.apps.map((a) => (
+                            <SelectItem value="Shared">Shared app{sharedName ? `: ${sharedName}` : ""}</SelectItem>
+                            {/* Gone once it's moved into the list (its owners moved with
+                                it); kept only for an owner still set to it. */}
+                            {!data.originalApp.movedToAppId || o.choice === "Original" ? (
+                              <SelectItem value="Original">Original app (server settings)</SelectItem>
+                            ) : null}
+                            {/* The shared app is already the "Shared app" choice above;
+                                listing it again here read as a second shared app.
+                                Kept only for an owner already pinned to it. */}
+                            {data.apps.filter((a) => !a.isShared || encode(o) === `Standalone:${a.id}`).map((a) => (
                               <SelectItem key={a.id} value={`Standalone:${a.id}`}>
                                 Own app: {a.name}
                               </SelectItem>
@@ -210,6 +225,7 @@ export function XeroAppsCard() {
                 </tbody>
               </table>
             </div>
+            <TablePager paged={paged} noun="owner" />
             {data.companiesWithoutOwner.length > 0 ? (
               <p className="text-xs text-muted-foreground">
                 {data.companiesWithoutOwner.length} companies have no owner and use the shared app.
@@ -217,6 +233,17 @@ export function XeroAppsCard() {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {adopting && data ? (
+        <AdoptOriginalDialog
+          connections={data.originalApp.connections}
+          onClose={() => setAdopting(false)}
+          onSaved={() => {
+            setAdopting(false);
+            void query.refresh();
+          }}
+        />
       ) : null}
 
       {editing ? (
@@ -237,11 +264,13 @@ function AppsTable({
   data,
   busy,
   onEdit,
+  onAdopt,
   onDelete,
 }: {
   data: XeroAppsOverview;
   busy: string | null;
   onEdit: (app: XeroAppSummary) => void;
+  onAdopt: () => void;
   onDelete: (app: XeroAppSummary) => void;
 }) {
   const shared = <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Shared</span>;
@@ -258,20 +287,35 @@ function AppsTable({
           </tr>
         </thead>
         <tbody>
-          <tr className="border-b border-border/30">
-            <td className="px-4 py-3 font-semibold text-foreground">
-              Original app {data.originalApp.isShared ? shared : null}
-              <span className="block text-xs font-normal text-muted-foreground">From the server settings</span>
-            </td>
-            <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-              {data.originalApp.configured ? data.originalApp.clientIdEnding : "Not configured"}
-            </td>
-            <td className="px-4 py-3 text-right text-muted-foreground">
-              {data.owners.filter((o) => o.choice === "Original").length}
-            </td>
-            <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{data.originalApp.connections}</td>
-            <td className="px-4 py-3" />
-          </tr>
+          {/* Hidden once moved into the list: the app that took it over is below. */}
+          {data.originalApp.movedToAppId ? null : (
+            <tr className="border-b border-border/30">
+              <td className="px-4 py-3 font-semibold text-foreground">
+                Original app {data.originalApp.isShared ? shared : null}
+                <span className="block text-xs font-normal text-muted-foreground">From the server settings</span>
+              </td>
+              <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                {data.originalApp.configured ? data.originalApp.clientIdEnding : "Not configured"}
+              </td>
+              <td className="px-4 py-3 text-right text-muted-foreground">
+                {data.owners.filter((o) => o.choice === "Original").length}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{data.originalApp.connections}</td>
+              <td className="px-4 py-3">
+                {data.originalApp.configured ? (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={onAdopt}
+                      className="rounded-full border border-border/70 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+                    >
+                      Move into the apps list
+                    </button>
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          )}
           {data.apps.map((a) => (
             <tr key={a.id} className="border-b border-border/30 last:border-0">
               <td className="px-4 py-3 font-semibold text-foreground">
@@ -354,6 +398,92 @@ function CompanyLine({
         </label>
       ) : null}
     </li>
+  );
+}
+
+// The original app lives in the server settings, so it can't be renamed or
+// edited. Moving it copies it into the list under the same client id and
+// secret: its companies stay connected, and from then on it edits like the rest.
+function AdoptOriginalDialog({
+  connections,
+  onClose,
+  onSaved,
+}: {
+  connections: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("Globe App");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await adoptOriginalXeroApp(name.trim());
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move the app.");
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-[28px] border border-border/70 bg-card p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-base font-black text-foreground">Move the original app into the list</h3>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          It keeps the same client id and secret, so the {connections}{" "}
+          {connections === 1 ? "company" : "companies"} connected through it stay connected with no
+          reconnect. Owners set to "Original app" move with it. After this you can rename it and
+          change its secret like any other app. This can't be undone from here.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-foreground">Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} className={INPUT} />
+          </label>
+
+          {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-2xl bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || name.trim().length === 0}
+              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+            >
+              {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              Move app
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

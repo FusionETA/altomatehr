@@ -310,6 +310,50 @@ public class XeroAppsTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => AddAppAsync("Copy", "ORIGINAL-CLIENT-ID"));
     }
 
+    // Moving the original app into the list keeps its client id and secret, so
+    // connections made through it refresh on as before — now through the copy.
+    [Fact]
+    public async Task MovingTheOriginalApp_TakesItsConnectionsAndOwnersAlong()
+    {
+        var shared = await AddAppAsync("Shared", "SHARED-CLIENT-ID", shared: true);
+        await Apps().SetOwnerChoiceAsync("usr-globe", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.Original });
+        _db.XeroConnections.AddRange(
+            new XeroConnection { OrganizationId = "org-globe", TenantId = "t-g" },
+            new XeroConnection { OrganizationId = "org-ayu", TenantId = "t-a", XeroAppId = shared });
+        await _db.SaveChangesAsync();
+
+        var globe = await Apps().AdoptOriginalAppAsync(" Globe App ");
+
+        Assert.Equal("Globe App", globe.Name);
+        Assert.False(globe.IsShared);   // a shared app already existed
+        Assert.Equal(1, globe.Connections);
+        var credentials = await Resolver().ForConnectAsync("org-globe");
+        Assert.Equal((globe.Id, "ORIGINAL-CLIENT-ID", "original-secret"),
+            (credentials.AppId, credentials.ClientId, credentials.ClientSecret));
+        // Untouched: it never used the original app.
+        Assert.Equal(shared, _db.XeroConnections.IgnoreQueryFilters().Single(c => c.OrganizationId == "org-ayu").XeroAppId);
+
+        var overview = await Apps().GetOverviewAsync();
+        Assert.Equal(globe.Id, overview.OriginalApp.MovedToAppId);
+        Assert.Equal(0, overview.OriginalApp.Connections);
+        Assert.False(overview.Owners.Single(o => o.UserId == "usr-globe").Companies.Single().ReconnectToMoveApp);
+
+        // Now editable like any other, and only movable once.
+        await Apps().UpdateAppAsync(globe.Id, new SaveXeroAppDto { Name = "Globe", ClientSecret = "rotated" });
+        Assert.Equal("rotated", (await Resolver().ForConnectAsync("org-globe")).ClientSecret);
+        await Assert.ThrowsAsync<ArgumentException>(() => Apps().AdoptOriginalAppAsync("Again"));
+    }
+
+    // While no other app is shared the original is the shared one; the move keeps that.
+    [Fact]
+    public async Task MovingTheOriginalApp_KeepsItSharedWhenItWas()
+    {
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+
+        Assert.True(globe.IsShared);
+        Assert.Equal(globe.Id, (await Resolver().ForConnectAsync("org-none")).AppId);
+    }
+
     [Fact]
     public async Task OnlyOneAppIsShared()
     {

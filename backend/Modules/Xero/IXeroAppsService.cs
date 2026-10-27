@@ -12,6 +12,10 @@ public interface IXeroAppsService
     Task<XeroAppDto> AddAppAsync(SaveXeroAppDto dto);
     Task<XeroAppDto?> UpdateAppAsync(string id, SaveXeroAppDto dto);
 
+    // Turns the original app (server settings) into a normal, editable app
+    // under `name`. ArgumentException when it isn't set up or already moved.
+    Task<XeroAppDto> AdoptOriginalAppAsync(string name);
+
     // Refused while a company is connected through it or an owner is set to it.
     Task<(bool NotFound, string? Error)> DeleteAppAsync(string id);
 

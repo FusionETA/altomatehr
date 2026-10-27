@@ -14,6 +14,10 @@ public interface IEmployeeService
     // Overwrite an employee's login password with one the admin types, for the
     // employee who can no longer reach the email the reset code goes to.
     Task<SetPasswordResult> SetPasswordAsync(string userId, string newPassword);
+
+    // Send the welcome email again, for the hire who never got it or lost it.
+    Task<SetPasswordResult> ResendWelcomeAsync(string userId) =>
+        Task.FromResult(new SetPasswordResult(false, null));   // default for test doubles
 }
 
 // Ok=false with Error → 400; Ok=false and Error null → the user wasn't found (404).
