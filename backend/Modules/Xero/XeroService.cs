@@ -142,7 +142,11 @@ public class XeroService : IXeroService
         // claim, bill or timesheet can ever be costed against. Reversed on
         // disconnect.
         if (firstConnect)
+        {
             await _repo.ArchiveManualProjectsAsync(storedState.OrganizationId);
+            // Same for the starter claim item types: Xero's chart replaces them.
+            await _repo.ArchiveDefaultAccountsAsync(storedState.OrganizationId);
+        }
 
         storedState.UsedAt = now;
         storedState.ConnectedTenantId = tenant.TenantId;
@@ -241,6 +245,7 @@ public class XeroService : IXeroService
         // Hand-created projects come back — without Xero there is nothing else
         // to pick, and an org with no selectable project can't clock in at all.
         await _repo.RestoreProjectsArchivedByXeroConnectAsync(connection.OrganizationId);
+        await _repo.RestoreAccountsArchivedByXeroConnectAsync(connection.OrganizationId);
 
         // Disconnecting stops every approved claim reaching the accounting
         // system. Worth a name and a timestamp.
@@ -418,6 +423,11 @@ public class XeroService : IXeroService
                 }
             }
         }
+
+        // Xero's chart now stands in for the starter claim item types (a
+        // reconnect skips the first-connect archive).
+        if (result.Imported + result.Updated > 0)
+            await _repo.ArchiveDefaultAccountsAsync(orgId);
 
         // A sync rewrites the chart of accounts every claim is coded against,
         // so the counts are worth keeping even though nothing failed.

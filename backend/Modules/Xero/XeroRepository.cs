@@ -118,6 +118,23 @@ public class XeroRepository : IXeroRepository
                 .SetProperty(p => p.IsArchived, true)
                 .SetProperty(p => p.ArchivedByXeroConnect, true));
 
+    public Task<int> ArchiveDefaultAccountsAsync(string organizationId) =>
+        _db.ChartOfAccounts
+            .Where(a => a.OrganizationId == organizationId
+                && a.IsDefault
+                && a.XeroAccountId == null
+                && !a.IsArchived)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.IsArchived, true)
+                .SetProperty(a => a.ArchivedByXeroConnect, true));
+
+    public Task<int> RestoreAccountsArchivedByXeroConnectAsync(string organizationId) =>
+        _db.ChartOfAccounts
+            .Where(a => a.OrganizationId == organizationId && a.ArchivedByXeroConnect)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.IsArchived, false)
+                .SetProperty(a => a.ArchivedByXeroConnect, false));
+
     public Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId) =>
         _db.Projects
             .Where(p => p.OrganizationId == organizationId && p.ArchivedByXeroConnect)

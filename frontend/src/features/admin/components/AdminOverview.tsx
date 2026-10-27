@@ -13,6 +13,7 @@ import { getAdminOverview, type AdminOverview as AdminOverviewData } from "../ap
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanels } from "@/shared/components/Skeleton";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 
 type QuickLink = { parent: string; child: string; label: string; hint: string; icon: LucideIcon };
 
@@ -33,6 +34,7 @@ export function AdminOverview({
   user: SignedInUser;
   onOpen: (parentId: string, childId: string) => void;
 }) {
+  const terms = useAccountTerms();
   const [overview, setOverview] = useState<AdminOverviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +68,9 @@ export function AdminOverview({
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-bold text-foreground">{link.label}</span>
+                  <span className="block text-sm font-bold text-foreground">
+                    {link.child === "settings-accounts" ? terms.plural : link.label}
+                  </span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{link.hint}</span>
                 </span>
               </button>

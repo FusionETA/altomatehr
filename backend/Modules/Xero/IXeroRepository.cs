@@ -24,6 +24,10 @@ public interface IXeroRepository
     Task AddAccountAsync(ChartOfAccount account);
     Task UpdateAccountAsync(ChartOfAccount account);
     Task<int> ArchiveManualProjectsAsync(string organizationId);
+    // The starter claim item types drop out while Xero owns the chart, and
+    // come back on disconnect (see DefaultClaimItemTypes).
+    Task<int> ArchiveDefaultAccountsAsync(string organizationId) => Task.FromResult(0);
+    Task<int> RestoreAccountsArchivedByXeroConnectAsync(string organizationId) => Task.FromResult(0);
     Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId);
     Task<Project?> GetProjectByXeroIdAsync(string organizationId, string xeroProjectId);
     Task<Project?> GetProjectByTrackingOptionAsync(string organizationId, string trackingOptionId);

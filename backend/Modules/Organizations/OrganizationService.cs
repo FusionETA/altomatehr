@@ -55,7 +55,13 @@ public class OrganizationService : IOrganizationService
     public async Task<OrganizationDto?> GetByIdAsync(string organizationId)
     {
         var org = await _repo.GetByIdAsync(organizationId);
-        return org is null ? null : ToDto(org);
+        if (org is null) return null;
+
+        var dto = ToDto(org);
+        // The status reads the caller's current org; only report it for that one.
+        if (organizationId == _currentUser?.OrganizationId)
+            dto.XeroConnected = (await _xero.GetStatusAsync()).Connected;
+        return dto;
     }
 
     public async Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync()

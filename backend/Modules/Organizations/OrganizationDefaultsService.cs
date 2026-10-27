@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Teams.Entities;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Accounts;
 
 namespace AltomateHR.Api.Modules.Organizations;
 
@@ -29,9 +30,9 @@ public interface IOrganizationDefaultsService
 }
 
 public readonly record struct OrganizationDefaultsResult(
-    int PoliciesCreated, bool ProjectCreated, bool TeamCreated)
+    int PoliciesCreated, bool ProjectCreated, bool TeamCreated, int AccountsCreated = 0)
 {
-    public bool AnythingCreated => PoliciesCreated > 0 || ProjectCreated || TeamCreated;
+    public bool AnythingCreated => PoliciesCreated > 0 || ProjectCreated || TeamCreated || AccountsCreated > 0;
 }
 
 public class OrganizationDefaultsService : IOrganizationDefaultsService
@@ -39,10 +40,14 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
     private readonly IEmployeePolicyRepository _policies;
     private readonly IProjectRepository _projects;
     private readonly ITeamRepository _teams;
+    // Optional so hand-built instances in tests need not supply it.
+    private readonly IChartOfAccountRepository? _accounts;
 
     public OrganizationDefaultsService(
-        IEmployeePolicyRepository policies, IProjectRepository projects, ITeamRepository teams)
+        IEmployeePolicyRepository policies, IProjectRepository projects, ITeamRepository teams,
+        IChartOfAccountRepository? accounts = null)
     {
+        _accounts = accounts;
         _policies = policies;
         _projects = projects;
         _teams = teams;
@@ -111,7 +116,21 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
             teamCreated = true;
         }
 
-        return new OrganizationDefaultsResult(policiesCreated, projectCreated, teamCreated);
+        // Claim item types, so claims work before anyone sets up accounts. A
+        // new company has no Xero yet; one that has any account already keeps
+        // its own list.
+        var accountsCreated = 0;
+        if (_accounts is not null
+            && !(await _accounts.GetAllAsync()).Any(a => a.OrganizationId == organizationId))
+        {
+            foreach (var item in DefaultClaimItemTypes.All)
+            {
+                await _accounts.AddAsync(DefaultClaimItemTypes.ToAccount(item, organizationId, now));
+                accountsCreated++;
+            }
+        }
+
+        return new OrganizationDefaultsResult(policiesCreated, projectCreated, teamCreated, accountsCreated);
     }
 
     // The legacy defaults, field for field: full module access, geofence on,

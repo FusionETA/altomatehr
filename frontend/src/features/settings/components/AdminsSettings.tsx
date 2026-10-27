@@ -27,7 +27,7 @@ const MODULE_LABELS: Record<string, string> = {
   leave: "Leave",
   projects: "Projects",
   teams: "Teams",
-  accounts: "Accounts",
+  accounts: "Claim item types / Chart of accounts",
   policies: "Policies",
   overtime: "Overtime",
   claims: "Claims",
