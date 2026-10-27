@@ -39,6 +39,8 @@ export function ClaimSettings() {
 
   const query = useCachedQuery("/claims/settings", getClaimSettings);
   const xeroQuery = useCachedQuery("/xero/status", getXeroStatus);
+  // AltomateHR switched Xero off for this company: never tell them to connect it.
+  const xeroOff = xeroQuery.data?.xeroDisabled === true;
   const loading = query.loading;
 
   // Undefined while it loads, and left as "assume yes" if the status call
@@ -169,10 +171,19 @@ export function ClaimSettings() {
                 {option === "XERO_BILL" && !xeroConnected ? (
                   <div className="border-t border-border/60 bg-muted/30 px-3.5 py-2.5">
                     <p className="text-xs leading-snug text-muted-foreground">
-                      Xero isn&apos;t connected, so nothing can be pushed to it right now. This is
-                      still the saved route — connect Xero under{" "}
-                      <span className="font-semibold text-foreground">System Settings → Xero</span>,
-                      or choose another route below.
+                      {xeroOff ? (
+                        <>
+                          Xero is switched off for your company, so nothing can be pushed to it.
+                          This is still the saved route — choose another route below.
+                        </>
+                      ) : (
+                        <>
+                          Xero isn&apos;t connected, so nothing can be pushed to it right now. This
+                          is still the saved route — connect Xero under{" "}
+                          <span className="font-semibold text-foreground">System Settings → Xero</span>,
+                          or choose another route below.
+                        </>
+                      )}
                     </p>
                   </div>
                 ) : null}
@@ -238,7 +249,7 @@ export function ClaimSettings() {
             options themselves. */}
         {/* Absence needs explaining too: one lonely radio button reads as a
             half-built screen unless it says why the other one isn't there. */}
-        {!xeroConnected && !stranded ? (
+        {!xeroConnected && !stranded && !xeroOff ? (
           <p className="rounded-2xl border border-border/60 bg-muted/30 p-3 text-xs leading-snug text-muted-foreground">
             Connect Xero under{" "}
             <span className="font-semibold text-foreground">System Settings → Xero</span> to also

@@ -209,6 +209,25 @@ public class XeroAppsTests : IDisposable
         Assert.Equal(ayu, repo.Connection!.XeroAppId);
     }
 
+    // A sign-in that was already open when Xero was switched off doesn't connect.
+    [Fact]
+    public async Task ASignInFinishingAfterNoXero_DoesntConnect()
+    {
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState { OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.None });
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(
+            new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        var url = await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Contains("xero=failed", url);
+        Assert.Null(client.ExchangedWith);
+        Assert.Null(repo.Connection);
+        Assert.NotNull(repo.States.Single().UsedAt);
+    }
+
     // ---- the superadmin's screen ----
 
     [Fact]

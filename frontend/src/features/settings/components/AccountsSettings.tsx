@@ -258,8 +258,8 @@ export function AccountsSettings() {
         <div>
           <h2 className="text-lg font-black text-foreground">Claim item types</h2>
           <p className="text-sm text-muted-foreground">
-            What employees can claim for, with optional spend limits and mileage. Connect Xero
-            and this becomes Xero's chart of accounts.
+            What employees can claim for, with optional spend limits and mileage.
+            {xero?.xeroDisabled ? null : " Connect Xero and this becomes Xero's chart of accounts."}
           </p>
         </div>
 

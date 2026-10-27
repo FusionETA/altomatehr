@@ -109,6 +109,14 @@ public class XeroService : IXeroService
         if (storedState is null || storedState.ExpiresAt < DateTime.UtcNow)
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
+        // Xero was switched off for the company while this sign-in was open.
+        if ((await _apps.AssignmentAsync(storedState.OrganizationId)).Disabled)
+        {
+            storedState.UsedAt = DateTime.UtcNow;
+            await _repo.UpdateStateAsync(storedState);
+            return WithOutcome(_options.FailureRedirectUrl, "failed");
+        }
+
         // The same app the sign-in started with: a code only swaps with it.
         var app = await _apps.ForAppAsync(storedState.XeroAppId);
         var token = await _client.ExchangeCodeAsync(app, code);

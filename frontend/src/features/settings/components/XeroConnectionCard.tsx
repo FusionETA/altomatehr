@@ -87,6 +87,19 @@ export function XeroConnectionCard() {
   const disabled = status?.xeroDisabled === true;
   const moveApp = connected && !needsReconnect && status?.reconnectToMoveApp === true;
 
+  function headline() {
+    if (needsReconnect && disabled)
+      return "This connection has stopped working, and Xero is switched off for your company. Disconnect it, or contact AltomateHR if you need Xero.";
+    if (needsReconnect)
+      return "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts.";
+    if (connected)
+      return "Connected for this company. Xero owns the chart of accounts and projects while it is.";
+    if (disabled) return "Xero isn't switched on for your company. Contact AltomateHR if you need it.";
+    if (blocked)
+      return "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app.";
+    return "Connect Xero to push approved claims as bills and import the chart of accounts.";
+  }
+
   return (
     <section className={CARD}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -96,15 +109,7 @@ export function XeroConnectionCard() {
             Xero connection
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {needsReconnect
-              ? "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts."
-              : connected
-                ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
-                : disabled
-                  ? "Xero isn't switched on for your company. Contact AltomateHR if you need it."
-                  : blocked
-                    ? "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app."
-                    : "Connect Xero to push approved claims as bills and import the chart of accounts."}
+            {headline()}
           </p>
           {status?.ownApp && !blocked ? (
             <p className="mt-1 text-xs font-semibold text-muted-foreground">Uses your company's own Xero app.</p>
@@ -166,7 +171,7 @@ export function XeroConnectionCard() {
         </div>
       ) : null}
 
-      {needsReconnect ? (
+      {needsReconnect && !disabled ? (
         <div className="mt-4 flex gap-3 rounded-2xl border border-amber-300/50 bg-amber-50/70 p-4 text-sm dark:bg-amber-500/10">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div>
