@@ -415,6 +415,80 @@ public class EmployeeServiceTests
         Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
     }
 
+    // Resending explains the house rule only while it still opens the account.
+    [Fact]
+    public async Task ResendWelcome_DescribesTheHousePasswordWhileItStillWorks()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out var users, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", DateOfBirth = new DateTime(1990, 11, 23) });
+        users.Single(u => u.Id == "usr-emp").PasswordHash = PasswordHasher.HashBcrypt("employee@altomate.com1123");
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.True(result.Ok, result.Error);
+        var sent = Assert.Single(email.Sent);
+        Assert.Equal("employee@altomate.com", sent.To);
+        Assert.Contains("birthday", sent.Html);
+    }
+
+    // Once they've changed it, the rule would send them to a dead password.
+    [Fact]
+    public async Task ResendWelcome_PointsAtForgotPasswordOnceThePasswordChanged()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out var users, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", DateOfBirth = new DateTime(1990, 11, 23) });
+        users.Single(u => u.Id == "usr-emp").PasswordHash = PasswordHasher.HashBcrypt("something-they-chose");
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.True(result.Ok, result.Error);
+        var sent = Assert.Single(email.Sent);
+        Assert.Contains("Forgot password", sent.Html);
+        Assert.DoesNotContain("birthday", sent.Html);
+    }
+
+    [Fact]
+    public async Task ResendWelcome_RefusesSomeoneWhoHasLeft()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out _, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", IsArchived = true });
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.False(result.Ok);
+        Assert.Contains("left", result.Error);
+        Assert.Empty(email.Sent);
+    }
+
+    // Sending is the whole action here, so a failed send is reported.
+    [Fact]
+    public async Task ResendWelcome_ReportsAFailedSend()
+    {
+        var email = new CapturingEmailSender { Deliver = false };
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), email: email);
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.False(result.Ok);
+        Assert.Contains("couldn't be sent", result.Error);
+    }
+
+    [Fact]
+    public async Task ResendWelcome_TreatsSomeoneOutsideTheOrgAsNotFound()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), email: email);
+
+        var result = await service.ResendWelcomeAsync("usr-stranger");
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+        Assert.Empty(email.Sent);
+    }
+
     private static EmployeeService MakeService(out List<OrganizationMembership> memberships) =>
         MakeService(out memberships, out _);
 
@@ -433,7 +507,8 @@ public class EmployeeServiceTests
         out List<EmployeeProfile> profiles,
         out List<User> users,
         FakeApproverPositions positions,
-        AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null)
+        AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null,
+        CapturingEmailSender? email = null)
     {
         users = new List<User>
         {
@@ -455,7 +530,7 @@ public class EmployeeServiceTests
             new FakeLeaveService(),
             new FakeAuditService(),
             new StubCurrentUser(),
-            new CapturingEmailSender(),
+            email ?? new CapturingEmailSender(),
             new FakeOrgRepositoryForWelcome(),
             positions,
             Options.Create(new PortalOptions()),

@@ -118,6 +118,9 @@ export const getNextEmployeeNumber = () =>
 export const setEmployeePassword = (id: string, newPassword: string) =>
   apiPost<void>(`/employees/${id}/password`, { newPassword });
 
+/** Send the welcome email again — where to sign in and how their password works. */
+export const resendWelcomeEmail = (id: string) => apiPost<void>(`/employees/${id}/welcome-email`, {});
+
 // ---- Transfer to another company ----
 //
 // Moves an employee to another company the signed-in admin also runs. The

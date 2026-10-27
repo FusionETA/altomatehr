@@ -462,10 +462,29 @@ const admin = {
   // Header with the Transfer and Duplicate buttons (someone with nothing queued).
   "employee-transfer-buttons": async (page) => {
     await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
     await clickText(page, "Chan Mei Ling");
     await page.getByRole("button", { name: "Duplicate", exact: true }).waitFor({ timeout: 15000 });
     await page.mouse.move(5, 5);
     await shoot(page, "admin", "employee-transfer-buttons");
+  },
+  // The "Resend welcome email" confirmation, opened from the employee header.
+  // Cancelled afterwards so nothing is sent.
+  "employee-resend-welcome": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
+    await clickText(page, "Chan Mei Ling");
+    await page.getByRole("button", { name: "Resend welcome email" }).click();
+    await page.getByText("Resend welcome email?").waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "employee-resend-welcome");
+    await page.getByRole("button", { name: "Cancel", exact: true }).filter({ visible: true }).last().click();
   },
   // The Transfer dialog for someone with no transfer queued (Chan Mei Ling).
   "employee-transfer-dialog": async (page) => {

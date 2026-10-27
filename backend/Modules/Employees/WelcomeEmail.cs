@@ -33,6 +33,11 @@ public static class WelcomeEmail
         // An admin typed one. We don't know it and wouldn't email it, so we say
         // the admin will pass it on.
         Manual,
+
+        // Sent again later, once the house password no longer opens the account
+        // — they changed it, or an admin set one. We can't know which, so point
+        // at the password they use and at Forgot password.
+        Reminder,
     }
 
     public static string BuildHtml(
@@ -70,6 +75,11 @@ public static class WelcomeEmail
         PasswordMode.Existing => EmailTemplate.Paragraph(
             $"You already have an AltomateHR account, so sign in with <strong>{safeEmail}</strong> "
             + "and the password you use today — it hasn't changed."),
+
+        PasswordMode.Reminder => EmailTemplate.Paragraph(
+            $"Your username is <strong>{safeEmail}</strong>. Sign in with the password you already "
+            + "use. If you don't know it, tap <strong>Forgot password</strong> on the sign-in page "
+            + "and we'll email you a code to set a new one."),
 
         PasswordMode.Manual => EmailTemplate.Paragraph(
             $"Your username is <strong>{safeEmail}</strong>. Your administrator will pass you the "

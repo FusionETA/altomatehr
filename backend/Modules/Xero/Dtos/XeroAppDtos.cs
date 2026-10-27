@@ -22,6 +22,9 @@ public class XeroOriginalAppDto
     // True while no added app is the shared one: the original app is then shared.
     public bool IsShared { get; set; }
     public int Connections { get; set; }
+
+    // Set once it's been moved into the apps list: the app that took it over.
+    public string? MovedToAppId { get; set; }
 }
 
 public class XeroAppDto
@@ -82,6 +85,12 @@ public class SaveXeroAppDto
     public string? ClientSecret { get; set; }
 
     public bool IsShared { get; set; }
+}
+
+public class AdoptOriginalXeroAppDto
+{
+    [Required, StringLength(80, MinimumLength = 1)]
+    public string Name { get; set; } = string.Empty;
 }
 
 public class SetXeroOwnerChoiceDto

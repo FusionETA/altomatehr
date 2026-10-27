@@ -20,6 +20,10 @@ public interface IXeroAppRepository
     // Makes `id` the only shared app (or none, with null).
     Task SetSharedAppAsync(string? id);
 
+    // Adds `app` and points everything on the original app at it — its live
+    // connections and the owners set to "Original" — in one save.
+    Task AdoptOriginalAppAsync(XeroApp app);
+
     Task<XeroOwnerSetting?> GetOwnerSettingAsync(string ownerUserId);
     Task<List<XeroOwnerSetting>> GetOwnerSettingsAsync();
     Task SaveOwnerSettingAsync(XeroOwnerSetting setting);

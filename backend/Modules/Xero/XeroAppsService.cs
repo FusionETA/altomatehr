@@ -47,14 +47,16 @@ public class XeroAppsService : IXeroAppsService
         var ownersByOrg = ownerSeats
             .GroupBy(m => m.OrganizationId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Select(m => m.UserId).ToList(), StringComparer.Ordinal);
-        var shared = apps.FirstOrDefault(a => a.IsShared);
+        // Once the original is moved into the list, it stands in for "no app" everywhere.
+        var moved = MovedTo(apps);
+        var shared = apps.FirstOrDefault(a => a.IsShared) ?? moved;
 
         string? AppOf(string? ownerUserId)
         {
             var setting = ownerUserId is null ? null : settings.GetValueOrDefault(ownerUserId);
             return (setting?.Choice ?? XeroAppChoice.Shared) switch
             {
-                XeroAppChoice.Original => null,
+                XeroAppChoice.Original => moved?.Id,
                 XeroAppChoice.Standalone => setting!.XeroAppId,
                 _ => shared?.Id,
             };
@@ -115,6 +117,7 @@ public class XeroAppsService : IXeroAppsService
                 ClientIdEnding = Ending(_options.ClientId),
                 IsShared = shared is null,
                 Connections = live.Values.Count(c => c.XeroAppId is null),
+                MovedToAppId = moved?.Id,
             },
             Apps = [.. apps.Select(a => new XeroAppDto
             {
@@ -170,6 +173,46 @@ public class XeroAppsService : IXeroAppsService
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.XeroAppSave,
             $"Xero app \"{app.Name}\" added{(dto.IsShared ? " as the shared app" : "")}",
+            TargetType: "XeroApp",
+            TargetId: app.Id,
+            Support: Actor()));
+
+        return await GetAppDtoAsync(app.Id);
+    }
+
+    // The original app lives in the server settings, where nothing can rename
+    // or rotate it. This copies it into the apps list under the same client id
+    // and secret, so every connection made through it keeps refreshing with no
+    // reconnect, and moves those connections and its owners onto the copy.
+    public async Task<XeroAppDto> AdoptOriginalAppAsync(string name)
+    {
+        var clientId = _options.ClientId?.Trim();
+        var secret = _options.ClientSecret?.Trim();
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret))
+            throw new ArgumentException("The original app isn't set up in the server settings.");
+        var apps = await _apps.GetAppsAsync();
+        if (MovedTo(apps) is { } existing)
+            throw new ArgumentException($"The original app is already in the list as \"{existing.Name}\".");
+        name = name.Trim();
+        if (name.Length == 0) throw new ArgumentException("Give the app a name.");
+
+        var now = DateTime.UtcNow;
+        var app = new XeroApp
+        {
+            Name = name,
+            ClientId = clientId,
+            ClientSecretProtected = _protector.Protect(secret),
+            // It was the shared app while no other was: keep it that way.
+            IsShared = apps.All(a => !a.IsShared),
+            CreatedAt = now,
+            UpdatedAt = now,
+            UpdatedByUserId = _currentUser.UserId,
+        };
+        await _apps.AdoptOriginalAppAsync(app);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.XeroAppSave,
+            $"Original Xero app moved into the apps list as \"{app.Name}\"",
             TargetType: "XeroApp",
             TargetId: app.Id,
             Support: Actor()));
@@ -321,15 +364,22 @@ public class XeroAppsService : IXeroAppsService
     private SupportActor? Actor() =>
         _currentUser.UserId is { } id ? new SupportActor(id, _currentUser.Email ?? string.Empty) : null;
 
+    // The app the original was moved into: the one carrying its client id.
+    private XeroApp? MovedTo(IEnumerable<XeroApp> apps) =>
+        string.IsNullOrWhiteSpace(_options.ClientId)
+            ? null
+            : apps.FirstOrDefault(a => string.Equals(a.ClientId, _options.ClientId.Trim(), StringComparison.Ordinal));
+
     private async Task<XeroAppDto> GetAppDtoAsync(string id) =>
         (await GetOverviewAsync()).Apps.First(a => a.Id == id);
 
     private async Task EnsureClientIdFreeAsync(string clientId, string? exceptId)
     {
-        if (string.Equals(clientId, _options.ClientId?.Trim(), StringComparison.Ordinal))
-            throw new ArgumentException("That's the original app's client id. Pick \"Original app\" for the owner instead.");
+        // The list first: once the original is moved in, it's simply "another app".
         if ((await _apps.GetAppsAsync()).Any(a => a.Id != exceptId && a.ClientId == clientId))
             throw new ArgumentException("Another app already uses that client id.");
+        if (string.Equals(clientId, _options.ClientId?.Trim(), StringComparison.Ordinal))
+            throw new ArgumentException("That's the original app's client id. Use \"Move into the apps list\" on the original app instead.");
     }
 
     private static (string Name, string ClientId) Clean(SaveXeroAppDto dto, string? keepClientId)

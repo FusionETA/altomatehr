@@ -34,7 +34,7 @@ public class XeroAppResolver : IXeroAppResolver
         switch (setting?.Choice ?? XeroAppChoice.Shared)
         {
             case XeroAppChoice.Original:
-                return new XeroAppAssignment(null, Blocked: false, OwnApp: true);
+                return new XeroAppAssignment((await MovedOriginalAsync())?.Id, Blocked: false, OwnApp: true);
 
             case XeroAppChoice.None:
                 return new XeroAppAssignment(null, Blocked: true, OwnApp: false, Disabled: true);
@@ -47,7 +47,7 @@ public class XeroAppResolver : IXeroAppResolver
 
             default:
                 // With no shared app added yet, the original app is the shared one.
-                var shared = await _apps.GetSharedAppAsync();
+                var shared = await _apps.GetSharedAppAsync() ?? await MovedOriginalAsync();
                 return new XeroAppAssignment(shared?.Id, Blocked: false, OwnApp: false);
         }
     }
@@ -63,7 +63,14 @@ public class XeroAppResolver : IXeroAppResolver
     public async Task<XeroAppCredentials> ForAppAsync(string? appId)
     {
         if (appId is null)
-            return new XeroAppCredentials(null, _options.ClientId, _options.ClientSecret);
+        {
+            // Once moved into the list, "the original app" IS that app — one
+            // client id must never count as two apps, or a reconnect would
+            // revoke the company's own live connection as "the old app's".
+            return await MovedOriginalAsync() is { } moved
+                ? new XeroAppCredentials(moved.Id, moved.ClientId, _protector.Unprotect(moved.ClientSecretProtected))
+                : new XeroAppCredentials(null, _options.ClientId, _options.ClientSecret);
+        }
 
         // Deleting an app that a connection still uses is refused, so this
         // only happens if the row was removed by hand.
@@ -72,6 +79,14 @@ public class XeroAppResolver : IXeroAppResolver
                 "The Xero app this connection was made through no longer exists. Reconnect Xero to continue.");
 
         return new XeroAppCredentials(app.Id, app.ClientId, _protector.Unprotect(app.ClientSecretProtected));
+    }
+
+    // The app the original (server settings) was moved into: the one carrying its client id.
+    private async Task<XeroApp?> MovedOriginalAsync()
+    {
+        var clientId = _options.ClientId?.Trim();
+        if (string.IsNullOrEmpty(clientId)) return null;
+        return (await _apps.GetAppsAsync()).FirstOrDefault(a => string.Equals(a.ClientId, clientId, StringComparison.Ordinal));
     }
 }
 

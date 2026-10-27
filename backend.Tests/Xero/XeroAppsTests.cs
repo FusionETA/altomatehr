@@ -310,6 +310,108 @@ public class XeroAppsTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => AddAppAsync("Copy", "ORIGINAL-CLIENT-ID"));
     }
 
+    // Moving the original app into the list keeps its client id and secret, so
+    // connections made through it refresh on as before — now through the copy.
+    [Fact]
+    public async Task MovingTheOriginalApp_TakesItsConnectionsAndOwnersAlong()
+    {
+        var shared = await AddAppAsync("Shared", "SHARED-CLIENT-ID", shared: true);
+        await Apps().SetOwnerChoiceAsync("usr-globe", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.Original });
+        _db.XeroConnections.AddRange(
+            new XeroConnection { OrganizationId = "org-globe", TenantId = "t-g" },
+            new XeroConnection { OrganizationId = "org-ayu", TenantId = "t-a", XeroAppId = shared });
+        await _db.SaveChangesAsync();
+
+        var globe = await Apps().AdoptOriginalAppAsync(" Globe App ");
+
+        Assert.Equal("Globe App", globe.Name);
+        Assert.False(globe.IsShared);   // a shared app already existed
+        Assert.Equal(1, globe.Connections);
+        var credentials = await Resolver().ForConnectAsync("org-globe");
+        Assert.Equal((globe.Id, "ORIGINAL-CLIENT-ID", "original-secret"),
+            (credentials.AppId, credentials.ClientId, credentials.ClientSecret));
+        // Untouched: it never used the original app.
+        Assert.Equal(shared, _db.XeroConnections.IgnoreQueryFilters().Single(c => c.OrganizationId == "org-ayu").XeroAppId);
+
+        var overview = await Apps().GetOverviewAsync();
+        Assert.Equal(globe.Id, overview.OriginalApp.MovedToAppId);
+        Assert.Equal(0, overview.OriginalApp.Connections);
+        Assert.False(overview.Owners.Single(o => o.UserId == "usr-globe").Companies.Single().ReconnectToMoveApp);
+
+        // Now editable like any other, and only movable once.
+        await Apps().UpdateAppAsync(globe.Id, new SaveXeroAppDto { Name = "Globe", ClientSecret = "rotated" });
+        Assert.Equal("rotated", (await Resolver().ForConnectAsync("org-globe")).ClientSecret);
+        await Assert.ThrowsAsync<ArgumentException>(() => Apps().AdoptOriginalAppAsync("Again"));
+    }
+
+    // While no other app is shared the original is the shared one; the move keeps that.
+    [Fact]
+    public async Task MovingTheOriginalApp_KeepsItSharedWhenItWas()
+    {
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+
+        Assert.True(globe.IsShared);
+        Assert.Equal(globe.Id, (await Resolver().ForConnectAsync("org-none")).AppId);
+    }
+
+    // One client id must never count as two apps. Unsharing the moved app puts
+    // the server-settings app back as the fallback; reconnecting through it is
+    // the SAME Xero app, and revoking "the old one" would cut the company off.
+    [Fact]
+    public async Task AfterTheMove_UnsharingIt_DoesntMakeAReconnectRevokeTheLiveConnection()
+    {
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+        await Apps().UpdateAppAsync(globe.Id, new SaveXeroAppDto { Name = "Globe App", IsShared = false });
+
+        var repo = new FakeXeroRepository { Connection = LiveConnection(globe.Id) };
+        var connectApp = await Resolver().ForConnectAsync("org-ayu");
+        Assert.Equal(globe.Id, connectApp.AppId);
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = connectApp.AppId,
+        });
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        Assert.False((await service.GetStatusAsync()).ReconnectToMoveApp);
+        await service.CompleteCallbackAsync("code-1", "s-1");
+        Assert.Null(client.Deleted);
+        Assert.Equal(globe.Id, repo.Connection!.XeroAppId);
+    }
+
+    // A sign-in started before the move and finished after it.
+    [Fact]
+    public async Task ASignInLeftOpenAcrossTheMove_LandsOnTheMovedApp()
+    {
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = null,
+        });
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+        repo.Connection = LiveConnection(globe.Id);
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Null(client.Deleted);
+        Assert.Equal(globe.Id, repo.Connection!.XeroAppId);
+        Assert.False((await service.GetStatusAsync()).ReconnectToMoveApp);
+    }
+
+    private static XeroConnection LiveConnection(string? appId)
+    {
+        var tokens = Provider.CreateProtector("AltomateHR.XeroTokens.v1");
+        return new XeroConnection
+        {
+            OrganizationId = "org-ayu", TenantId = "t-1", TenantName = "Ayu One", ConnectionId = "conn-1",
+            AccessTokenProtected = tokens.Protect("old-access"), RefreshTokenProtected = tokens.Protect("old-refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1), ConnectedAt = DateTime.UtcNow.AddMonths(-1),
+            XeroAppId = appId,
+        };
+    }
+
     [Fact]
     public async Task OnlyOneAppIsShared()
     {

@@ -103,6 +103,7 @@ public static class AuditActions
     // People
     public const string EmployeeCreate = "employee.create";
     public const string EmployeeUpdate = "employee.update";
+    public const string EmployeeWelcomeResend = "employee.welcome.resend";
     public const string EmployeeTransferSchedule = "employee.transfer.schedule";
     public const string EmployeeTransferCancel = "employee.transfer.cancel";
     public const string EmployeeTransferExecute = "employee.transfer.execute";
@@ -198,6 +199,7 @@ public static class AuditActions
         [ProjectRestore] = "Project restored",
         [EmployeeCreate] = "Employee added",
         [EmployeeUpdate] = "Employee updated",
+        [EmployeeWelcomeResend] = "Welcome email resent",
         [EmployeeTransferSchedule] = "Employee transfer scheduled",
         [EmployeeTransferCancel] = "Employee transfer cancelled",
         [EmployeeTransferExecute] = "Employee transferred",
