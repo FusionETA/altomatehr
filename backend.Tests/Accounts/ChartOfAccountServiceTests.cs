@@ -67,4 +67,26 @@ public class ChartOfAccountServiceTests : IDisposable
         Assert.Equal(ChartOfAccountTypes.Liability, updated!.Type);
         Assert.False(updated.IsSelectable);
     }
+
+    // An admin's archive or restore of a starter claim item type is theirs to
+    // keep: a later Xero sync or disconnect must not reverse it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SetArchivedAsync_HandsAStarterRowToTheAdmin(bool archived)
+    {
+        _db.ChartOfAccounts.Add(new ChartOfAccount
+        {
+            Id = "starter", OrganizationId = "org-1", Code = "479", Name = "Medical (Staff)",
+            Type = ChartOfAccountTypes.Expense, IsDefault = true, IsArchived = !archived, ArchivedByXeroConnect = !archived,
+        });
+        await _db.SaveChangesAsync();
+
+        await _service.SetArchivedAsync("starter", archived);
+
+        var row = await _db.ChartOfAccounts.AsNoTracking().SingleAsync(a => a.Id == "starter");
+        Assert.Equal(archived, row.IsArchived);
+        Assert.False(row.IsDefault);
+        Assert.False(row.ArchivedByXeroConnect);
+    }
 }
