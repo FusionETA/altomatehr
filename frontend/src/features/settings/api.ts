@@ -363,6 +363,8 @@ export type XeroStatus = {
   ownApp?: boolean;
   /** The owner's own app isn't set up yet, so Connect is refused. */
   connectBlocked?: boolean;
+  /** AltomateHR switched Xero off for this company: no Connect at all. */
+  xeroDisabled?: boolean;
   /** Connected through an older app; reconnecting moves it to the current one. */
   reconnectToMoveApp?: boolean;
 };

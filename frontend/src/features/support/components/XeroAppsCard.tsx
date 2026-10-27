@@ -29,7 +29,7 @@ import {
 const INPUT =
   "h-11 w-full rounded-2xl border border-border bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
-// The owner's choice as one select value: "Shared", "Original", or
+// The owner's choice as one select value: "Shared", "Original", "None", or
 // "Standalone:<appId>" ("Standalone:" = their own app, not added yet).
 const encode = (o: XeroOwnerGroup) => (o.choice === "Standalone" ? `Standalone:${o.xeroAppId ?? ""}` : o.choice);
 function decode(value: string): { choice: XeroAppChoice; xeroAppId: string | null } {
@@ -201,6 +201,7 @@ export function XeroAppsCard() {
                               </SelectItem>
                             ))}
                             <SelectItem value="Standalone:">Own app, not added yet (blocks Connect)</SelectItem>
+                            <SelectItem value="None">No Xero (hides Connect)</SelectItem>
                           </SelectContent>
                         </Select>
                       </td>

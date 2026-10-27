@@ -42,6 +42,9 @@ public enum XeroAppChoice
     Original,
     // XeroAppId; with none set, Connect is blocked until the superadmin adds one.
     Standalone,
+    // The owner's companies don't use Xero: Connect is hidden and refused.
+    // A company already connected keeps working until it disconnects.
+    None,
 }
 
 // One owner's choice. An owner with no row is on Shared. Like XeroApp, it

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: b4b92c8
+// whats-new-covered-up-to: 1d2dd6e
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -28,14 +28,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "Mileage claims can now start from an optional Google Maps or Waze route screenshot. AI fills in the distance, start and end; the approver sees the screenshot.",
     ],
     improved: [
-      "Without Xero, \"Chart of accounts\" is now called \"Claim item types\" in Settings, the admin menu, the overview, claim forms, claim details and approvals.",
+      "Without Xero, \"Chart of accounts\" is now called \"Claim item types\" everywhere in the app. A company set to No Xero is no longer asked to connect Xero on the claim settings or item types pages.",
       "Admins: connecting Xero archives the starter claim item types, and disconnecting brings them back. Your own archive or restore choices are kept either way.",
-      "Admins: the Xero card can now say \"Uses your company's own Xero app\". Connect is paused until AltomateHR finishes setting that app up, and after a move it says \"Reconnect when convenient\" while your connection keeps working.",
+      "Admins: the Xero card can say \"Uses your company's own Xero app\", and Connect waits for AltomateHR to set that app up. A company set to No Xero sees \"Xero isn't switched on for your company\" instead of Connect.",
       "Admins: the Motor Vehicle / Mileage item starts switched off, so mileage claims are refused until you switch it on after setting its per-km rate. Until one is on, the claim form tells staff to ask their admin.",
       "Admins: posting payroll to Xero now stops on a reimbursed claim whose account isn't linked to Xero, and names the claim, instead of posting it under a code Xero may use for a different account.",
     ],
     fixed: [
-      "Claims: going back and switching from an expense to a mileage claim no longer keeps the receipt's details and attachment on it.",
+      "Claims: on iPhone, the expense and mileage forms no longer slide sideways, now that the date fields fit the screen. Going back and switching from an expense to a mileage claim no longer keeps the receipt's details and attachment.",
     ],
   },
   {

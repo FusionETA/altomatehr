@@ -105,6 +105,24 @@ public class XeroAppsTests : IDisposable
         Assert.Equal(XeroAppResolver.BlockedMessage, ex.Message);
     }
 
+    [Fact]
+    public async Task NoXero_HidesAndRefusesConnect()
+    {
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.None });
+
+        var assignment = await Resolver().AssignmentAsync("org-ayu");
+        Assert.True(assignment.Disabled && assignment.Blocked);
+        var ex = await Assert.ThrowsAsync<XeroConnectionException>(() => Resolver().ForConnectAsync("org-ayu"));
+        Assert.Equal(XeroAppResolver.DisabledMessage, ex.Message);
+
+        // Nothing to move to, so a connected company isn't asked to reconnect.
+        _db.XeroConnections.Add(new XeroConnection { OrganizationId = "org-ayu", TenantId = "t" });
+        await _db.SaveChangesAsync();
+        var row = (await Apps().GetOverviewAsync()).Owners.Single(o => o.UserId == "usr-ayu")
+            .Companies.Single(c => c.Id == "org-ayu");
+        Assert.False(row.ReconnectToMoveApp);
+    }
+
     // A co-owned company follows the owner who joined first, until the
     // superadmin moves it — and only to someone who still owns it.
     [Fact]
@@ -189,6 +207,25 @@ public class XeroAppsTests : IDisposable
         Assert.Equal("AYU-CLIENT-ID", client.ExchangedWith?.ClientId);
         Assert.Equal(("old-access", "conn-old"), client.Deleted);
         Assert.Equal(ayu, repo.Connection!.XeroAppId);
+    }
+
+    // A sign-in that was already open when Xero was switched off doesn't connect.
+    [Fact]
+    public async Task ASignInFinishingAfterNoXero_DoesntConnect()
+    {
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState { OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.None });
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(
+            new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        var url = await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Contains("xero=failed", url);
+        Assert.Null(client.ExchangedWith);
+        Assert.Null(repo.Connection);
+        Assert.NotNull(repo.States.Single().UsedAt);
     }
 
     // ---- the superadmin's screen ----
