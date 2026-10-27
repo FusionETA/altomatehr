@@ -97,8 +97,10 @@ public class XeroAppsService : IXeroAppsService
             else (groups.TryGetValue(groupOwner, out var list) ? list : groups[groupOwner] = []).Add(row);
         }
 
+        // Only owners a company follows: a setting left behind by someone who
+        // no longer owns a company holds nothing up.
         var appIdsInUse = settings.Values
-            .Where(s => s.Choice == XeroAppChoice.Standalone && s.XeroAppId is not null)
+            .Where(s => s.Choice == XeroAppChoice.Standalone && s.XeroAppId is not null && groups.ContainsKey(s.OwnerUserId))
             .GroupBy(s => s.XeroAppId!)
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -168,7 +170,8 @@ public class XeroAppsService : IXeroAppsService
             AuditActions.XeroAppSave,
             $"Xero app \"{app.Name}\" added{(dto.IsShared ? " as the shared app" : "")}",
             TargetType: "XeroApp",
-            TargetId: app.Id));
+            TargetId: app.Id,
+            Support: Actor()));
 
         return await GetAppDtoAsync(app.Id);
     }
@@ -208,7 +211,8 @@ public class XeroAppsService : IXeroAppsService
             AuditActions.XeroAppSave,
             $"Xero app \"{app.Name}\" updated{(string.IsNullOrEmpty(secret) ? "" : " (new secret)")}",
             TargetType: "XeroApp",
-            TargetId: app.Id));
+            TargetId: app.Id,
+            Support: Actor()));
 
         return await GetAppDtoAsync(app.Id);
     }
@@ -220,7 +224,7 @@ public class XeroAppsService : IXeroAppsService
 
         if ((await _apps.GetConnectionsAsync()).Any(c => c.IsConnected && c.XeroAppId == id))
             return (false, "Companies are still connected through this app. Move them and let them reconnect first.");
-        if ((await _apps.GetOwnerSettingsAsync()).Any(s => s.XeroAppId == id && s.Choice == XeroAppChoice.Standalone))
+        if ((await GetOverviewAsync()).Owners.Any(o => o.XeroAppId == id && o.Choice == XeroAppChoice.Standalone))
             return (false, "An owner is still set to this app. Move them to another app first.");
 
         await _apps.DeleteAppAsync(app);
@@ -228,7 +232,8 @@ public class XeroAppsService : IXeroAppsService
             AuditActions.XeroAppDelete,
             $"Xero app \"{app.Name}\" deleted",
             TargetType: "XeroApp",
-            TargetId: app.Id));
+            TargetId: app.Id,
+            Support: Actor()));
         return (false, null);
     }
 
@@ -277,7 +282,8 @@ public class XeroAppsService : IXeroAppsService
                 $"Xero now connects through {label}",
                 TargetType: "Organization",
                 TargetId: company.Id,
-                OrganizationId: company.Id));
+                OrganizationId: company.Id,
+                Support: Actor()));
         }
     }
 
@@ -299,9 +305,15 @@ public class XeroAppsService : IXeroAppsService
             $"Xero now follows {name}'s app choice",
             TargetType: "Organization",
             TargetId: org.Id,
-            OrganizationId: org.Id));
+            OrganizationId: org.Id,
+            Support: Actor()));
         return (false, null);
     }
+
+    // Fusioneta staff acting from the Support page: shown in a company's log as
+    // "System (Support)", with the real person in the internal support log.
+    private SupportActor? Actor() =>
+        _currentUser.UserId is { } id ? new SupportActor(id, _currentUser.Email ?? string.Empty) : null;
 
     private async Task<XeroAppDto> GetAppDtoAsync(string id) =>
         (await GetOverviewAsync()).Apps.First(a => a.Id == id);

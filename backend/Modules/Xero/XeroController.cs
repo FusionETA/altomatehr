@@ -50,7 +50,11 @@ public class XeroController : ControllerBase
             var redirectUrl = await _xero.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty);
             return Redirect(redirectUrl);
         }
-        catch (Exception ex) when (ex is XeroConfigurationException or XeroConnectionException)
+        // A browser landed here from Xero: any Xero failure, including the app
+        // the sign-in started with having been deleted since, goes back to the
+        // app as "failed" rather than an API error page.
+        catch (Exception ex) when (ex is XeroConfigurationException or XeroConnectionException
+                                       or XeroReconnectRequiredException)
         {
             _logger.LogWarning(ex, "Xero callback failed.");
             return Redirect(_options.FailureRedirectUrl);

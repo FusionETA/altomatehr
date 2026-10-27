@@ -239,6 +239,34 @@ public class XeroAppsTests : IDisposable
         Assert.Equal("rotated", (await Resolver().ForAppAsync(ayu)).ClientSecret);
     }
 
+    // An owner who no longer owns a company drops off the screen; their old
+    // setting must not keep their app undeletable.
+    [Fact]
+    public async Task ASettingLeftBySomeoneWhoOwnsNothing_DoesntHoldAnAppUp()
+    {
+        var ayu = await AddAppAsync("Ayu", "AYU-CLIENT-ID");
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.Standalone, XeroAppId = ayu });
+        Assert.NotNull((await Apps().DeleteAppAsync(ayu)).Error);
+
+        foreach (var seat in _db.OrganizationMemberships.IgnoreQueryFilters().Where(m => m.UserId == "usr-ayu"))
+            seat.Role = "Admin";
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(0, (await Apps().GetOverviewAsync()).Apps.Single().Owners);
+        Assert.Null((await Apps().DeleteAppAsync(ayu)).Error);
+    }
+
+    // Written into customers' logs, so masked as support like every other
+    // Fusioneta action there.
+    [Fact]
+    public async Task ChangesAreAuditedAsSupport()
+    {
+        await Apps().SetOwnerChoiceAsync("usr-globe", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.Original });
+
+        var entry = Assert.Single(_audit.Written, e => e.OrganizationId == "org-globe");
+        Assert.Equal("usr-super", entry.Support?.UserId);
+    }
+
     [Fact]
     public async Task TheOriginalAppsClientId_CantBeAddedAgain()
     {

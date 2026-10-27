@@ -70,7 +70,7 @@ public class XeroAppRepository : IXeroAppRepository
         var owners = await _db.OrganizationMemberships
             .IgnoreQueryFilters()
             .Where(m => m.OrganizationId == organizationId && m.Role == OrgRoles.Owner)
-            .OrderBy(m => m.CreatedAt)
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
             .Select(m => m.UserId)
             .ToListAsync();
 
@@ -90,7 +90,9 @@ public class XeroAppRepository : IXeroAppRepository
         _db.OrganizationMemberships
             .IgnoreQueryFilters()
             .Where(m => m.Role == OrgRoles.Owner)
-            .OrderBy(m => m.CreatedAt)
+            // Same order as GetXeroOwnerOfAsync, so the screen and Connect agree
+            // on a co-owned company's first owner even on a CreatedAt tie.
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
             .ToListAsync();
 
     public Task<List<User>> GetUsersAsync(IEnumerable<string> ids)
