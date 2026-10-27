@@ -57,9 +57,14 @@ public class OrganizationService : IOrganizationService
         var org = await _repo.GetByIdAsync(organizationId);
         if (org is null) return null;
 
+        return await WithXeroAsync(org);
+    }
+
+    // The Xero status reads the caller's current org; only report it for that one.
+    private async Task<OrganizationDto> WithXeroAsync(Organization org)
+    {
         var dto = ToDto(org);
-        // The status reads the caller's current org; only report it for that one.
-        if (organizationId == _currentUser?.OrganizationId)
+        if (org.Id == _currentUser?.OrganizationId)
             dto.XeroConnected = (await _xero.GetStatusAsync()).Connected;
         return dto;
     }
@@ -307,7 +312,7 @@ public class OrganizationService : IOrganizationService
                 org.WorkingDays,
             }));
 
-        return ToDto(org);
+        return await WithXeroAsync(org);
     }
 
     public async Task<OrganizationDto> CreateAsync(
@@ -400,7 +405,7 @@ public class OrganizationService : IOrganizationService
                 XeroBillStage = xeroBillStage.ToString(),
             }));
 
-        return ToDto(org);
+        return await WithXeroAsync(org);
     }
 
     public async Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto)

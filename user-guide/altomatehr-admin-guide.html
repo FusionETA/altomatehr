@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 7022a42
+  user-guide-covered-up-to: 89c27fb
 -->
 <html lang="en">
 <head>
@@ -430,7 +430,7 @@
     <p class="topic-lede">Where you land. Built around what needs a decision, not vanity totals.</p>
     <ul>
       <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
-        Accounts and Projects.</li>
+        Claim item types (Chart of accounts once Xero is connected) and Projects.</li>
       <li><strong>Work permits</strong> — shown first, and only when it applies: foreign workers whose work permit
         has expired or runs out within 60 days, soonest first, with the permit number and how many days are left
         (or how long ago it expired). With nothing to renew, the card isn't there.</li>
@@ -503,8 +503,10 @@
           <p>A saved signature is an image of a signature printed on the letter, like signing on paper and scanning it.
             It isn't a certified or legally verified digital signature. Only save a signature for someone who has agreed
             to it being printed on company letters.</p></div></li>
-      <li><h4>Accounts</h4>
-        <p>The chart of accounts, in two tabs:</p>
+      <li><h4>Claim item types / Chart of accounts</h4>
+        <p>What employees can claim for. Without Xero this page is called <strong>Claim item types</strong>; once Xero
+          is connected it becomes <strong>Chart of accounts</strong> (in the sidebar, on the Executive Overview card and in
+          the claim form, where the field reads <em>Claim item type</em> or <em>Account</em> to match). It has two tabs:</p>
         <ul>
           <li><strong>Expenses</strong> — what a claim is coded to. Each can be <em>Selectable for claims</em>,
             carry a <strong>spend limit</strong>, and <em>Allow mileage</em> at its own rate. A <strong>Type</strong>
@@ -513,8 +515,21 @@
           <li><strong>Bank accounts</strong> — what a company-paid claim was paid <em>from</em>. Tick
             <strong>Offer for company-paid claims</strong> on the ones employees should be able to pick.</li>
         </ul>
-        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles). With Xero
-          connected, Xero owns the list — press <span class="btn-name">Sync from Xero</span> after changing it there.</p></li>
+        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles).</p>
+        <p><strong>Without Xero</strong> the page opens with the hint <em>What employees can claim for, with optional spend
+          limits and mileage</em>. Fill in a <strong>Code</strong>, <strong>Name</strong> and <strong>Type</strong>, add a
+          <strong>Spend limit (optional)</strong> if you want one, tick <em>Selectable for claims</em> and
+          <em>Allow mileage</em> as needed, and press <span class="btn-name">Add claim item type</span>.
+          A new company starts with 22 starter claim item types — common expense headings such as Advertising &amp; Marketing,
+          Office Expenses and Travel – Local, numbered 400 to 494 — plus a <strong>090 Business Bank Account</strong> on the
+          Bank accounts tab, so employees can file claims from day one. Press <span class="btn-name">Archive</span> on any you
+          don't want; archived ones are hidden until you press <span class="btn-name">Show … archived</span>, where
+          <span class="btn-name">Restore</span> brings one back. <strong>449 Motor Vehicle / Mileage</strong>
+          starts with mileage switched off: press <span class="btn-name">Edit</span> and set your own rate before
+          employees file mileage claims.</p>
+        <p><strong>With Xero connected</strong>, Xero owns the list — press <span class="btn-name">Sync from Xero</span>
+          after changing it there. Connecting Xero archives the starter claim item types, and disconnecting restores them.
+          Anything you archived or restored by hand stays as you left it.</p></li>
       <li><h4>Projects</h4>
         <p>Your work sites. Open a project with <span class="btn-name">Edit</span> to set:</p>
         <ul>
@@ -556,7 +571,7 @@
             <span class="btn-name">Save</span>:
             <ul>
               <li><strong>Modules</strong> — tick <em>All modules, full control</em>, or set each module
-                (Employees, Leave, Projects, Teams, Accounts, Overtime, Claims, Attendance, Payroll, Documents,
+                (Employees, Leave, Projects, Teams, Claim item types / Chart of accounts, Overtime, Claims, Attendance, Payroll, Documents,
                 Activity log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
                 <span class="btn-name">Manage</span>. <em>View</em> lets them see the screens and download what's
                 there; <em>Manage</em> also lets them edit, approve and run. A module set to Off disappears from that
@@ -568,7 +583,7 @@
               <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
                 (run payroll, approve, edit employees) without changing how the company is set up. It covers
                 Organization, Work Schedule, Payroll settings, company and statutory details, portal logins and the Xero
-                connection. Accounts and Projects follow their own module level.</li>
+                connection. Claim item types and Projects follow their own module level.</li>
             </ul></li>
           <li><span class="btn-name">Remove</span> — takes the person off as an admin straight away (you confirm
             first). Their login isn't deleted, and you can add them again later.</li>
@@ -603,15 +618,15 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/accounts-bank.png" alt="System Settings → Accounts: the Expenses list with its Type filter (Depreciation, Direct Costs, Expense, Overhead) and Type column" loading="lazy">
-          <p class="shot-cap">Accounts</p>
+          <img src="shots/admin/accounts-bank.png" alt="System Settings → Claim item types: the hint, the add form with the Add claim item type button, and the Expenses list with its Type filter and Type column" loading="lazy">
+          <p class="shot-cap">Claim item types</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/project-editor.png" alt="System Settings → Projects with Active / Archived tabs and the geofence radius" loading="lazy">
           <p class="shot-cap">Projects</p>
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Accounts and Projects</p>
+      <p class="shot-cap shot-cap-main">Claim item types and Projects</p>
     </figure>
 
     
@@ -2174,7 +2189,9 @@
     <ul>
       <li><strong>Connect</strong> — sign in to Xero and choose <em>only this company's</em> organisation.</li>
       <li><strong>Chart of accounts</strong> — Xero owns it while connected; <span class="btn-name">Sync from Xero</span> in
-        Accounts. Accounts no longer in Xero are archived.</li>
+        <strong>Chart of accounts</strong> (the page is called Claim item types until Xero is connected). Accounts no longer
+        in Xero are archived. Connecting also archives the starter claim item types a new company begins with;
+        disconnecting restores them.</li>
       <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.
         Once you choose a category, it <em>is</em> the project list: projects made by hand, or not in that category, are
         hidden from the pickers (clearing the category brings them back).</li>

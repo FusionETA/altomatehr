@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 7022a42
+// whats-new-covered-up-to: 89c27fb
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,19 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-27",
+    new: [
+      "Companies without Xero now start with 22 ready-made claim item types, such as Travel – Local, Telephone & Internet and Medical (Staff). Existing companies that don't use Xero and have none get them automatically.",
+    ],
+    improved: [
+      "Without Xero, \"Chart of accounts\" is now called \"Claim item types\" in Settings, the admin menu, the overview, claim forms, claim details and approvals.",
+      "Admins: connecting Xero archives the starter claim item types, since Xero's chart takes over. Disconnecting Xero brings them back.",
+      "Admins: archiving or restoring a starter item yourself keeps your choice, even when you connect or disconnect Xero.",
+      "Admins: the Motor Vehicle / Mileage item starts switched off, so mileage claims on it are refused. Switch it on once your company has set its per-km rate.",
+      "Admins: posting payroll to Xero now stops on a reimbursed claim whose account isn't linked to Xero, and names the claim, instead of posting it under a code Xero may use for a different account.",
+    ],
+  },
   {
     date: "2026-10-26",
     new: [

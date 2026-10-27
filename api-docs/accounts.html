@@ -113,6 +113,19 @@
         A claim over its account's <code>limitAmount</code> isn't refused; it's flagged as
         exceeding the limit.
       </div>
+      <div class="callout warn">
+        <strong>Starter accounts come and go with Xero.</strong> A company created without
+        Xero starts with a list of ready-made hand-made accounts (21 <code>EXPENSE</code>
+        accounts such as <code>"Office Expenses"</code>, and one <code>BANK</code> account,
+        <code>"Business Bank Account"</code>) so claims can be filed from day one. When Xero
+        is connected, or a sync brings its accounts in, the starter accounts that were never
+        touched come back with <code>isArchived: true</code>, because Xero's chart replaces
+        them. Disconnecting Xero restores them. Archiving or restoring an account yourself
+        (<a href="#archive-account">archive</a>, <a href="#restore-account">restore</a>) takes
+        it out of that cycle: Xero won't archive or restore it again. Starter accounts can
+        share a <code>code</code> with an account that arrives from Xero, so don't treat
+        <code>code</code> as unique; <code>id</code> is.
+      </div>
 
       <section class="endpoint" id="get-accounts">
         <div class="endpoint-head">
@@ -275,6 +288,10 @@
         </p>
         <h3>Response <code>200</code></h3>
         <p>The <a href="#accounts">account object</a> with <code>isArchived: true</code>.</p>
+        <p>
+          Either way you set it, the account is then yours to manage: a later Xero connect,
+          sync or disconnect leaves its archived state alone.
+        </p>
         <h3>Errors</h3>
         <p><code>404</code> (empty body) — no account with that id in this company.</p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/accounts/acc_123/archive \

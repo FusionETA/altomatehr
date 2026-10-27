@@ -108,14 +108,15 @@ const steps = {
   "work-permits": async () => {
     // Gender, birth date, passport and marital status are made up too, so the
     // profile screen doesn't show red "Required" outlines in the guide shot.
+    const adminToken = await demoAdmin(); // the demo company, wherever sign-in landed
     for (const [userId, nationality, number, days, gender, passport] of [
       ["usr-demo-arjun", "Indian", "PLKS-DEMO-0001", 24, "MALE", "X0000001"],
       ["usr-demo-priya", "Indonesian", "PLKS-DEMO-0002", -6, "FEMALE", "X0000002"],
     ]) {
-      const got = await call(admin, "GET", `/employees/${userId}/profile`);
+      const got = await call(adminToken, "GET", `/employees/${userId}/profile`);
       if (got.status !== 200) { console.log(userId, "profile:", got.status, got.data); continue; }
       const p = got.data;
-      const r = await call(admin, "PUT", `/employees/${userId}/profile`, {
+      const r = await call(adminToken, "PUT", `/employees/${userId}/profile`, {
         ...p,
         nationality,
         gender,
