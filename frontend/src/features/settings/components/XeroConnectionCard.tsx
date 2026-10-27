@@ -81,6 +81,9 @@ export function XeroConnectionCard() {
   const connected = status?.connected === true;
   // Connected but dead: the row is still there, the tokens are not usable.
   const needsReconnect = connected && status?.needsReconnect === true;
+  // The owner is set to their own Xero app and AltomateHR hasn't added it yet.
+  const blocked = status?.connectBlocked === true;
+  const moveApp = connected && !needsReconnect && status?.reconnectToMoveApp === true;
 
   return (
     <section className={CARD}>
@@ -95,14 +98,19 @@ export function XeroConnectionCard() {
               ? "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts."
               : connected
                 ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
-                : "Connect Xero to push approved claims as bills and import the chart of accounts."}
+                : blocked
+                  ? "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app."
+                  : "Connect Xero to push approved claims as bills and import the chart of accounts."}
           </p>
+          {status?.ownApp && !blocked ? (
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">Uses your company's own Xero app.</p>
+          ) : null}
         </div>
 
         {status !== null && !connected ? (
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || blocked}
             onClick={startConnect}
             className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
           >
@@ -162,6 +170,22 @@ export function XeroConnectionCard() {
             <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
               Xero has expired or revoked this connection, so claims cannot be pushed and accounts
               cannot sync. Nothing is lost — press Reconnect and sign in to Xero again.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {moveApp ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-sm">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="font-semibold text-foreground">Reconnect when convenient</p>
+            <p className="mt-1 text-muted-foreground">
+              {status?.ownApp
+                ? "Your company now has its own Xero app."
+                : "Your company has moved to AltomateHR's shared Xero app."}{" "}
+              The current connection keeps working; press Reconnect and sign in to Xero once to move
+              it across. Nothing in Xero changes.
             </p>
           </div>
         </div>

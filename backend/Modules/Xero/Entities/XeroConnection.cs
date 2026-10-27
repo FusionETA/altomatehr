@@ -54,6 +54,12 @@ public class XeroConnection : ITenantScoped
     [MaxLength(160)]
     public string? ProjectTrackingCategoryName { get; set; }
 
+    // The Xero app that issued these tokens; null = the original app in the
+    // server's settings. A refresh token only works with the app that issued
+    // it, so this — not the company's current choice — decides how to refresh.
+    [MaxLength(40)]
+    public string? XeroAppId { get; set; }
+
     [NotMapped]
     public bool IsConnected => DisconnectedAt is null;
 

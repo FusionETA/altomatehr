@@ -39,14 +39,14 @@ public class XeroClient : IXeroClient
         _options = options.Value;
     }
 
-    public string BuildAuthorizationUrl(string state)
+    public string BuildAuthorizationUrl(XeroAppCredentials app, string state)
     {
-        EnsureConfigured();
+        EnsureConfigured(app);
 
         var query = new Dictionary<string, string?>
         {
             ["response_type"] = "code",
-            ["client_id"] = _options.ClientId,
+            ["client_id"] = app.ClientId,
             ["redirect_uri"] = _options.RedirectUri,
             ["scope"] = _options.Scopes,
             ["state"] = state,
@@ -55,16 +55,16 @@ public class XeroClient : IXeroClient
         return $"{AuthorizeUrl}?{string.Join("&", query.Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value ?? string.Empty)}"))}";
     }
 
-    public Task<XeroTokenResponse> ExchangeCodeAsync(string code) =>
-        RequestTokenAsync(new Dictionary<string, string>
+    public Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code) =>
+        RequestTokenAsync(app, new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
             ["redirect_uri"] = _options.RedirectUri,
         });
 
-    public Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken) =>
-        RequestTokenAsync(new Dictionary<string, string>
+    public Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string refreshToken) =>
+        RequestTokenAsync(app, new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
@@ -459,14 +459,14 @@ public class XeroClient : IXeroClient
         return projects;
     }
 
-    private async Task<XeroTokenResponse> RequestTokenAsync(Dictionary<string, string> form)
+    private async Task<XeroTokenResponse> RequestTokenAsync(XeroAppCredentials app, Dictionary<string, string> form)
     {
-        EnsureConfigured();
+        EnsureConfigured(app);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, TokenUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue(
             "Basic",
-            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{app.ClientId}:{app.ClientSecret}")));
         request.Content = new FormUrlEncodedContent(form);
 
         using var response = await _http.SendAsync(request);
@@ -486,14 +486,15 @@ public class XeroClient : IXeroClient
             payload.Scope ?? string.Empty);
     }
 
-    private void EnsureConfigured()
+    private void EnsureConfigured(XeroAppCredentials app)
     {
-        if (string.IsNullOrWhiteSpace(_options.ClientId) ||
-            string.IsNullOrWhiteSpace(_options.ClientSecret) ||
+        if (string.IsNullOrWhiteSpace(app.ClientId) ||
+            string.IsNullOrWhiteSpace(app.ClientSecret) ||
             string.IsNullOrWhiteSpace(_options.RedirectUri))
         {
-            throw new XeroConfigurationException(
-                "Xero is not configured. Set Xero:ClientId, Xero:ClientSecret and Xero:RedirectUri.");
+            throw new XeroConfigurationException(app.AppId is null
+                ? "Xero is not configured. Set Xero:ClientId, Xero:ClientSecret and Xero:RedirectUri."
+                : "This Xero app is missing its client id or secret, or Xero:RedirectUri is not set.");
         }
     }
 

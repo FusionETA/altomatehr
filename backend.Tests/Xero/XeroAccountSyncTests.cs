@@ -376,8 +376,12 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public List<XeroOAuthState> States { get; } = [];
     public Task<XeroOAuthState?> GetStateAsync(string state) =>
         Task.FromResult(States.FirstOrDefault(s => s.State == state));
-    public Task UpdateStateAsync(XeroOAuthState state) => throw new NotImplementedException();
-    public Task<XeroConnection> UpsertConnectionAsync(XeroConnection c) => throw new NotImplementedException();
+    public Task UpdateStateAsync(XeroOAuthState state) => Task.CompletedTask;
+    public Task<XeroConnection> UpsertConnectionAsync(XeroConnection c)
+    {
+        Connection = c;
+        return Task.FromResult(c);
+    }
     public Task UpdateConnectionAsync(XeroConnection c) => Task.CompletedTask;
     public List<Project> Projects { get; } = [];
 
@@ -434,9 +438,9 @@ internal sealed class FakeXeroAccountsClient : IXeroClient
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string accessToken, string tenantId) =>
         Task.FromResult(_accounts);
 
-    public string BuildAuthorizationUrl(string state) => throw new NotImplementedException();
-    public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
-    public Task<XeroTokenResponse> RefreshTokenAsync(string r) => throw new NotImplementedException();
+    public string BuildAuthorizationUrl(XeroAppCredentials app, string state) => throw new NotImplementedException();
+    public Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code) => throw new NotImplementedException();
+    public Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string r) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
     public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroProjectResponse>> GetProjectsAsync(string a, string t) => throw new NotImplementedException();

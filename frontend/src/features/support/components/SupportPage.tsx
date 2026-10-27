@@ -9,6 +9,7 @@ import { getSupportOrganizations, SUPPORT_ORGS_PATH, type SupportOrganization } 
 import { matchesSearch, planLabel } from "../lib/plan";
 import { CreateCompanyCard } from "./CreateCompanyCard";
 import { ManagePlanDialog } from "./ManagePlanDialog";
+import { XeroAppsCard } from "./XeroAppsCard";
 
 // Fusioneta support: every company on the platform, to step into as support,
 // re-package, or provision. Superadmins only — the server refuses anyone else.
@@ -149,6 +150,8 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
         </section>
 
         <CreateCompanyCard onCreated={() => void query.refresh()} />
+
+        <XeroAppsCard />
       </main>
 
       {editing ? (

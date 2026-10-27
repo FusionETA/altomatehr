@@ -2059,6 +2059,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("XeroOwnerUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Organizations");
@@ -4012,6 +4016,43 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("TeamMemberships");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroApp", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("ClientSecretProtected")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsShared")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("XeroApps");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroConnection", b =>
                 {
                     b.Property<string>("Id")
@@ -4081,6 +4122,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId")
@@ -4128,12 +4173,50 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("State")
                         .IsUnique();
 
                     b.ToTable("XeroOAuthStates");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroOwnerSetting", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Choice")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId")
+                        .IsUnique();
+
+                    b.ToTable("XeroOwnerSettings");
                 });
 #pragma warning restore 612, 618
         }

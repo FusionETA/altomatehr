@@ -67,6 +67,7 @@ public class XeroRepository : IXeroRepository
         existing.RefreshTokenProtected = connection.RefreshTokenProtected;
         existing.AccessTokenExpiresAt = connection.AccessTokenExpiresAt;
         existing.UpdatedAt = connection.UpdatedAt;
+        existing.XeroAppId = connection.XeroAppId;
         existing.DisconnectedAt = null;
         existing.ReconnectRequiredAt = null;
         await _db.SaveChangesAsync();
