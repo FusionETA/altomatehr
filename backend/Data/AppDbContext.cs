@@ -70,6 +70,9 @@ public class AppDbContext : DbContext
     public DbSet<TeamApprovalOverride> TeamApprovalOverrides => Set<TeamApprovalOverride>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
+    // Platform-level, set by the superadmin: deliberately NOT company-filtered.
+    public DbSet<XeroApp> XeroApps => Set<XeroApp>();
+    public DbSet<XeroOwnerSetting> XeroOwnerSettings => Set<XeroOwnerSetting>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     // Not ITenantScoped, so it gets no global query filter — that is the point.
@@ -244,6 +247,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
         modelBuilder.Entity<XeroOAuthState>().HasIndex(s => s.State).IsUnique();
+        modelBuilder.Entity<XeroOwnerSetting>().HasIndex(s => s.OwnerUserId).IsUnique();
+        modelBuilder.Entity<XeroOwnerSetting>().Property(s => s.Choice).HasConversion<string>().HasMaxLength(20);
 
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);

@@ -20,6 +20,7 @@ public class XeroService : IXeroService
     private readonly IXeroClient _client;
     private readonly IDataProtector _protector;
     private readonly XeroOptions _options;
+    private readonly IXeroAppResolver _apps;
 
     public XeroService(
         ICurrentUser currentUser,
@@ -30,7 +31,10 @@ public class XeroService : IXeroService
         IAuditService audit,
         // Optional so the many test call sites need not thread one through;
         // DI always supplies the real logger.
-        ILogger<XeroService>? logger = null)
+        ILogger<XeroService>? logger = null,
+        // Optional for the same reason; without one, every company is on the
+        // original app from the server's settings.
+        IXeroAppResolver? apps = null)
     {
         _currentUser = currentUser;
         _repo = repo;
@@ -39,6 +43,18 @@ public class XeroService : IXeroService
         _options = options.Value;
         _audit = audit;
         _logger = logger ?? NullLogger<XeroService>.Instance;
+        _apps = apps ?? new OriginalAppOnly(_options);
+    }
+
+    private sealed class OriginalAppOnly(XeroOptions options) : IXeroAppResolver
+    {
+        public Task<XeroAppAssignment> AssignmentAsync(string organizationId) =>
+            Task.FromResult(new XeroAppAssignment(null, Blocked: false, OwnApp: false));
+
+        public Task<XeroAppCredentials> ForConnectAsync(string organizationId) => ForAppAsync(null);
+
+        public Task<XeroAppCredentials> ForAppAsync(string? appId) =>
+            Task.FromResult(new XeroAppCredentials(null, options.ClientId, options.ClientSecret));
     }
 
     public async Task<XeroConnectUrlDto> CreateConnectUrlAsync(string? returnUrl)
@@ -48,6 +64,10 @@ public class XeroService : IXeroService
         var stateValue = CreateStateValue();
         var now = DateTime.UtcNow;
 
+        // The app the company's owner is on now. Refused here, before Xero's
+        // sign-in, when the owner's own app hasn't been added yet.
+        var app = await _apps.ForConnectAsync(orgId);
+
         await _repo.AddStateAsync(new XeroOAuthState
         {
             OrganizationId = orgId,
@@ -56,9 +76,10 @@ public class XeroService : IXeroService
             ReturnUrl = string.IsNullOrWhiteSpace(returnUrl) ? null : returnUrl,
             CreatedAt = now,
             ExpiresAt = now.AddMinutes(15),
+            XeroAppId = app.AppId,
         });
 
-        return new XeroConnectUrlDto { Url = _client.BuildAuthorizationUrl(stateValue) };
+        return new XeroConnectUrlDto { Url = _client.BuildAuthorizationUrl(app, stateValue) };
     }
 
     public async Task<string> CompleteCallbackAsync(string code, string state)
@@ -88,7 +109,9 @@ public class XeroService : IXeroService
         if (storedState is null || storedState.ExpiresAt < DateTime.UtcNow)
             return WithOutcome(_options.FailureRedirectUrl, "failed");
 
-        var token = await _client.ExchangeCodeAsync(code);
+        // The same app the sign-in started with: a code only swaps with it.
+        var app = await _apps.ForAppAsync(storedState.XeroAppId);
+        var token = await _client.ExchangeCodeAsync(app, code);
         var tenants = await _client.GetTenantsAsync(token.AccessToken);
 
         // Which org this sign-in connects — see XeroTenantChoice. It used to be
@@ -120,6 +143,13 @@ public class XeroService : IXeroService
         var previous = await _repo.GetConnectionAsync(storedState.OrganizationId);
         var firstConnect = previous is null || !previous.IsConnected;
 
+        // Reconnecting through a different app (the owner was moved to their
+        // own app, or to the shared one): take the old app out of the Xero
+        // org's connected apps, with the old app's tokens, before they are
+        // replaced. Best-effort, as on disconnect.
+        if (previous is { IsConnected: true } && previous.XeroAppId != app.AppId)
+            await RevokeOnXeroAsync(previous);
+
         await _repo.UpsertConnectionAsync(new XeroConnection
         {
             OrganizationId = storedState.OrganizationId,
@@ -134,6 +164,7 @@ public class XeroService : IXeroService
             AccessTokenExpiresAt = now.AddSeconds(Math.Max(60, token.ExpiresIn - 60)),
             ConnectedAt = now,
             UpdatedAt = now,
+            XeroAppId = app.AppId,
         });
 
         // Xero is now the source of truth for which projects exist, so the ones
@@ -207,12 +238,26 @@ public class XeroService : IXeroService
     public async Task<XeroStatusDto> GetStatusAsync()
     {
         var connection = await GetCurrentConnectionAsync();
+        var assignment = await _apps.AssignmentAsync(RequireOrganization());
+
         if (connection is null || !connection.IsConnected)
-            return new XeroStatusDto { Connected = false };
+        {
+            return new XeroStatusDto
+            {
+                Connected = false,
+                OwnApp = assignment.OwnApp,
+                ConnectBlocked = assignment.Blocked,
+            };
+        }
 
         return new XeroStatusDto
         {
             Connected = true,
+            OwnApp = assignment.OwnApp,
+            ConnectBlocked = assignment.Blocked,
+            // Connected through another app than the one the owner is on now:
+            // it keeps working until an admin reconnects, which moves it.
+            ReconnectToMoveApp = !assignment.Blocked && connection.XeroAppId != assignment.AppId,
             TenantId = connection.TenantId,
             TenantName = connection.TenantName,
             ConnectedAt = connection.ConnectedAt,
@@ -717,7 +762,9 @@ public class XeroService : IXeroService
         XeroTokenResponse refreshed;
         try
         {
-            refreshed = await _client.RefreshTokenAsync(refreshToken);
+            // The app that issued the tokens, not the company's current choice.
+            var app = await _apps.ForAppAsync(connection.XeroAppId);
+            refreshed = await _client.RefreshTokenAsync(app, refreshToken);
         }
         catch (XeroConnectionException ex) when (ex.StatusCode is 400 or 401)
         {

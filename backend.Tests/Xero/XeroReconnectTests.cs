@@ -199,14 +199,14 @@ internal sealed class FakeRefreshFailureClient : IXeroClient
 
     public FakeRefreshFailureClient(Exception onRefresh) => _onRefresh = onRefresh;
 
-    public Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken) =>
+    public Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string refreshToken) =>
         throw _onRefresh;
 
     public Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string accessToken, string tenantId) =>
         Task.FromResult(new List<XeroCurrencyResponse> { new("MYR", "Malaysian Ringgit") });
 
-    public string BuildAuthorizationUrl(string state) => throw new NotImplementedException();
-    public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
+    public string BuildAuthorizationUrl(XeroAppCredentials app, string state) => throw new NotImplementedException();
+    public Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
     public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string a, string t) => throw new NotImplementedException();
@@ -237,14 +237,14 @@ internal sealed class FakeRefreshFailureClient : IXeroClient
 // Refreshes successfully, so the healthy path can be asserted too.
 internal sealed class FakeWorkingRefreshClient : IXeroClient
 {
-    public Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken) =>
+    public Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string refreshToken) =>
         Task.FromResult(new XeroTokenResponse("new-access", "new-refresh", 1800, "Bearer", "accounting.settings"));
 
     public Task<List<XeroCurrencyResponse>> GetCurrenciesAsync(string accessToken, string tenantId) =>
         Task.FromResult(new List<XeroCurrencyResponse> { new("MYR", "Malaysian Ringgit") });
 
-    public string BuildAuthorizationUrl(string state) => throw new NotImplementedException();
-    public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotImplementedException();
+    public string BuildAuthorizationUrl(XeroAppCredentials app, string state) => throw new NotImplementedException();
+    public Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code) => throw new NotImplementedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotImplementedException();
     public Task DeleteConnectionAsync(string a, string connectionId) => throw new NotImplementedException();
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string a, string t) => throw new NotImplementedException();

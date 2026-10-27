@@ -128,6 +128,10 @@ public static class AuditActions
     public const string XeroReconnectRequired = "xero.reconnect_required";
     public const string XeroSyncAccounts = "xero.accounts.sync";
     public const string XeroProjectTrackingSet = "xero.project-tracking.set";
+    // Superadmin: the Xero apps, and which one an owner's companies use.
+    public const string XeroAppSave = "xero.app.save";
+    public const string XeroAppDelete = "xero.app.delete";
+    public const string XeroAppChoiceSet = "xero.app.choice";
 
     // Auth. Successful sign-ins are recorded as well as failed ones: "has this
     // supervisor been in this week" is a question the log gets asked, and a feed
@@ -210,6 +214,9 @@ public static class AuditActions
         [XeroReconnectRequired] = "Xero reconnect required",
         [XeroSyncAccounts] = "Xero accounts synced",
         [XeroProjectTrackingSet] = "Project tracking category set",
+        [XeroAppSave] = "Xero app saved",
+        [XeroAppDelete] = "Xero app deleted",
+        [XeroAppChoiceSet] = "Xero app changed",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",

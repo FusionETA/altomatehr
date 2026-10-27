@@ -19,6 +19,17 @@ public class XeroStatusDto
     // Connected, but the stored tokens are unusable — only fresh consent fixes
     // it. Lets the UI say "reconnect" instead of waiting for a sync to fail.
     public bool NeedsReconnect { get; set; }
+
+    // The company is on its owner's own Xero app, not AltomateHR's shared one.
+    public bool OwnApp { get; set; }
+
+    // The owner is set to their own app but it hasn't been added yet, so
+    // Connect is refused until AltomateHR finishes setting it up.
+    public bool ConnectBlocked { get; set; }
+
+    // Connected through a different app from the one the owner is on now.
+    // Still works; reconnecting moves it.
+    public bool ReconnectToMoveApp { get; set; }
 }
 
 public class XeroSyncAccountsResultDto

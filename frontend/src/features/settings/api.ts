@@ -359,6 +359,12 @@ export type XeroStatus = {
    * looking healthy until the next sync fails with a 409.
    */
   needsReconnect?: boolean;
+  /** On the owner's own Xero app rather than AltomateHR's shared one. */
+  ownApp?: boolean;
+  /** The owner's own app isn't set up yet, so Connect is refused. */
+  connectBlocked?: boolean;
+  /** Connected through an older app; reconnecting moves it to the current one. */
+  reconnectToMoveApp?: boolean;
 };
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");

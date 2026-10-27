@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 748840f
+// whats-new-covered-up-to: b4b92c8
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -30,8 +30,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     improved: [
       "Without Xero, \"Chart of accounts\" is now called \"Claim item types\" in Settings, the admin menu, the overview, claim forms, claim details and approvals.",
       "Admins: connecting Xero archives the starter claim item types, and disconnecting brings them back. Your own archive or restore choices are kept either way.",
-      "Admins: the Motor Vehicle / Mileage item starts switched off, so mileage claims on it are refused. Switch it on once your company has set its per-km rate.",
-      "When no mileage account or item type is switched on, the claim form now tells you to ask your admin.",
+      "Admins: the Xero card can now say \"Uses your company's own Xero app\". Connect is paused until AltomateHR finishes setting that app up, and after a move it says \"Reconnect when convenient\" while your connection keeps working.",
+      "Admins: the Motor Vehicle / Mileage item starts switched off, so mileage claims are refused until you switch it on after setting its per-km rate. Until one is on, the claim form tells staff to ask their admin.",
       "Admins: posting payroll to Xero now stops on a reimbursed claim whose account isn't linked to Xero, and names the claim, instead of posting it under a code Xero may use for a different account.",
     ],
     fixed: [

@@ -30,4 +30,9 @@ public class XeroOAuthState : ITenantScoped
     // connection's dates can't work, since ConnectedAt keeps the FIRST connect.
     [MaxLength(80)]
     public string? ConnectedTenantId { get; set; }
+
+    // The Xero app this sign-in started with (null = the original app), so the
+    // callback swaps the code with the same app.
+    [MaxLength(40)]
+    public string? XeroAppId { get; set; }
 }

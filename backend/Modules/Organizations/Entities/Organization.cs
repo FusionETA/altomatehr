@@ -24,6 +24,11 @@ public class Organization
 
     public MileageUnit MileageUnit { get; set; } = MileageUnit.KM;
 
+    // Whose Xero app choice this company follows, when it has more than one
+    // owner (set by the superadmin). Null = the owner who joined first.
+    [MaxLength(40)]
+    public string? XeroOwnerUserId { get; set; }
+
     // How far (metres) from a project's geofence centre still counts as on-site.
     public int GeofenceRadiusMeters { get; set; } = 200;
 
