@@ -185,7 +185,7 @@ export function XeroConnectionCard() {
                 ? "Your company now has its own Xero app."
                 : "Your company has moved to AltomateHR's shared Xero app."}{" "}
               The current connection keeps working; press Reconnect and sign in to Xero once to move
-              it across. Nothing in Xero changes.
+              it across. Your bills, files and records in Xero stay as they are.
             </p>
           </div>
         </div>
