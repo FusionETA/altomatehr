@@ -150,8 +150,15 @@ export function NewClaimModal({
                 setRouteScan(null);
               }}
               read={async (file) => {
-                if (claimType === "MILEAGE") setRouteScan(await analyzeMileageScreenshot(file));
-                else setScan(await analyzeClaimReceipt(file));
+                // Only this claim type's read may pre-fill the form: one left over
+                // from going back and switching type would win on submit.
+                if (claimType === "MILEAGE") {
+                  setScan(null);
+                  setRouteScan(await analyzeMileageScreenshot(file));
+                } else {
+                  setRouteScan(null);
+                  setScan(await analyzeClaimReceipt(file));
+                }
               }}
               onSkip={() => {
                 setScan(null);
@@ -159,6 +166,8 @@ export function NewClaimModal({
               }}
               onBack={() => {
                 setClaimType(null);
+                setScan(null);
+                setRouteScan(null);
                 setStep("type");
               }}
               onContinue={() => setStep("form")}

@@ -67,6 +67,16 @@ public class MileageScanServiceTests
         Assert.Equal(orgUnit, read.Unit);
     }
 
+    // The note says what the screenshot showed: metres as km, not 850 "km".
+    [Fact]
+    public async Task MetresInAMileOrg_AreReportedAsKm()
+    {
+        var read = await Service(Json(distance: "850", unit: "\"m\""), MileageUnit.MILE).AnalyzeAsync([1], "image/png");
+
+        Assert.Equal(0.53m, read.Distance);
+        Assert.Equal((0.85m, "KM"), (read.DetectedDistance, read.DetectedUnit));
+    }
+
     // A wrong pre-fill is worse than an empty field.
     [Theory]
     [InlineData("0", "\"km\"")]
@@ -78,6 +88,7 @@ public class MileageScanServiceTests
         var read = await Service(Json(distance: distance, unit: unit)).AnalyzeAsync([1], "image/png");
 
         Assert.Null(read.Distance);
+        Assert.Null(read.DetectedDistance);
         Assert.Equal("Shah Alam", read.Destination);
     }
 

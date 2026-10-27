@@ -74,9 +74,11 @@ public class MileageScanService : IMileageScanService
             IsRoute = isRoute,
             Distance = distance,
             Unit = unit,
-            DetectedDistance = isRoute ? detected : null,
-            // Metres are shown as km: the form only knows km and miles.
-            DetectedUnit = detectedUnit == "M" ? "KM" : detectedUnit,
+            // What the screenshot showed, for the "converted from" note — only
+            // alongside a distance that was used. Metres are given as km: the
+            // form only knows km and miles.
+            DetectedDistance = km is null ? null : detectedUnit == "M" ? detected / 1000m : detected,
+            DetectedUnit = km is null ? null : detectedUnit == "M" ? "KM" : detectedUnit,
             Origin = isRoute ? Place(GeminiJson.StringOrNull(root, "origin")) : null,
             Destination = isRoute ? Place(GeminiJson.StringOrNull(root, "destination")) : null,
             Via = isRoute ? GeminiJson.StringOrNull(root, "via") : null,
