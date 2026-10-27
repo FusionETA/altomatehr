@@ -53,8 +53,11 @@ export function XeroAppsCard() {
   const [copied, setCopied] = useState(false);
 
   const data = query.data;
-  // Which app "Shared app" means right now: the one ticked Shared, else none named.
-  const sharedName = data?.apps.find((a) => a.isShared)?.name ?? null;
+  // Which app "Shared app" means right now: the one ticked Shared, else the
+  // original moved into the list (which stands in for it), else none named.
+  const sharedName =
+    (data?.apps.find((a) => a.isShared) ?? data?.apps.find((a) => a.id === data.originalApp.movedToAppId))?.name ??
+    null;
   const owners = useMemo(() => {
     const term = search.trim().toLowerCase();
     const all = data?.owners ?? [];

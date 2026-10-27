@@ -354,6 +354,64 @@ public class XeroAppsTests : IDisposable
         Assert.Equal(globe.Id, (await Resolver().ForConnectAsync("org-none")).AppId);
     }
 
+    // One client id must never count as two apps. Unsharing the moved app puts
+    // the server-settings app back as the fallback; reconnecting through it is
+    // the SAME Xero app, and revoking "the old one" would cut the company off.
+    [Fact]
+    public async Task AfterTheMove_UnsharingIt_DoesntMakeAReconnectRevokeTheLiveConnection()
+    {
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+        await Apps().UpdateAppAsync(globe.Id, new SaveXeroAppDto { Name = "Globe App", IsShared = false });
+
+        var repo = new FakeXeroRepository { Connection = LiveConnection(globe.Id) };
+        var connectApp = await Resolver().ForConnectAsync("org-ayu");
+        Assert.Equal(globe.Id, connectApp.AppId);
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = connectApp.AppId,
+        });
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        Assert.False((await service.GetStatusAsync()).ReconnectToMoveApp);
+        await service.CompleteCallbackAsync("code-1", "s-1");
+        Assert.Null(client.Deleted);
+        Assert.Equal(globe.Id, repo.Connection!.XeroAppId);
+    }
+
+    // A sign-in started before the move and finished after it.
+    [Fact]
+    public async Task ASignInLeftOpenAcrossTheMove_LandsOnTheMovedApp()
+    {
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = null,
+        });
+        var globe = await Apps().AdoptOriginalAppAsync("Globe App");
+        repo.Connection = LiveConnection(globe.Id);
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Null(client.Deleted);
+        Assert.Equal(globe.Id, repo.Connection!.XeroAppId);
+        Assert.False((await service.GetStatusAsync()).ReconnectToMoveApp);
+    }
+
+    private static XeroConnection LiveConnection(string? appId)
+    {
+        var tokens = Provider.CreateProtector("AltomateHR.XeroTokens.v1");
+        return new XeroConnection
+        {
+            OrganizationId = "org-ayu", TenantId = "t-1", TenantName = "Ayu One", ConnectionId = "conn-1",
+            AccessTokenProtected = tokens.Protect("old-access"), RefreshTokenProtected = tokens.Protect("old-refresh"),
+            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1), ConnectedAt = DateTime.UtcNow.AddMonths(-1),
+            XeroAppId = appId,
+        };
+    }
+
     [Fact]
     public async Task OnlyOneAppIsShared()
     {
