@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 1d2dd6e
+  user-guide-covered-up-to: 5041d89
 -->
 <html lang="en">
 <head>
@@ -908,6 +908,21 @@
     </figure>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
+    <p>If someone never got their welcome email, or lost it, press <span class="btn-name">Resend welcome email</span>
+      in the header, next to <span class="btn-name">Set password</span>, then <span class="btn-name">Send email</span>
+      to confirm. The button changes to <em>Welcome email sent</em>. The email tells them where to sign in. While their
+      starting password (email followed by birth month and day) still works, it explains that rule; once they've changed
+      it, it tells them to use their current password, or <em>Forgot password</em> on the sign-in page. It never
+      contains the password itself. The button is greyed out for employees who have left — restore them first. On a
+      narrow screen the header buttons move below the name.</p>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-resend-welcome.png" alt="The Resend welcome email confirmation over an employee's record, with Cancel and Send email buttons" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Confirming Resend welcome email</p>
+    </figure>
     <p>The <strong>Email</strong> on a person's record is the email they sign in with, so it changes everywhere they
       work. Saving is refused, with a message saying why, in these cases:</p>
     <ul>
@@ -932,7 +947,7 @@
     </figure>
     <h3>Moving someone to another company</h3>
     <p>If you look after more than one company, two buttons sit in the employee's header, next to
-      <span class="btn-name">Set password</span>. They appear for staff, not for owners or admins, and only when there is
+      <span class="btn-name">Set password</span> and <span class="btn-name">Resend welcome email</span>. They appear for staff, not for owners or admins, and only when there is
       a company you run where the person doesn't already work. Archived people must be restored first.</p>
     <ul>
       <li><span class="btn-name">Transfer</span> — they leave this company and start at the other one.
@@ -956,7 +971,7 @@
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/employee-transfer-buttons.png" alt="An employee's header with Set password, Transfer and Duplicate buttons" loading="lazy">
+          <img src="shots/admin/employee-transfer-buttons.png" alt="An employee's header with Set password, Resend welcome email, Transfer and Duplicate buttons" loading="lazy">
           <p class="shot-cap">Transfer and Duplicate</p>
         </div>
         <div class="shot-item">
@@ -2298,7 +2313,8 @@
         that day, then they drop out of future runs but keep every payslip and form.</p></div></details>
     <details class="qa"><summary>A new employee can't sign in.</summary>
       <div class="body"><p>Their starting password is their email followed by their birth month and day, so their date
-        of birth must be on file. Or use <span class="btn-name">Set password</span> on their record.</p></div></details>
+        of birth must be on file. Press <span class="btn-name">Resend welcome email</span> on their record to remind them how
+        to sign in, or use <span class="btn-name">Set password</span> to give them a new password.</p></div></details>
     </div>
   </details>
 

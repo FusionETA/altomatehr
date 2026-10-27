@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 1d2dd6e
+// whats-new-covered-up-to: 5041d89
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -24,12 +24,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-10-27",
     new: [
-      "Companies without Xero now start with 22 ready-made claim item types, such as Travel – Local, Telephone & Internet and Medical (Staff). Existing companies that don't use Xero and have none get them automatically.",
+      "Companies without Xero that have no claim item types now get 22 ready-made ones, such as Travel – Local, Telephone & Internet and Medical (Staff). Admins: connecting Xero archives them, and disconnecting restores them. Your own archive choices stay either way.",
       "Mileage claims can now start from an optional Google Maps or Waze route screenshot. AI fills in the distance, start and end; the approver sees the screenshot.",
+      "Admins: an employee's page has a new Resend welcome email button. It explains how to sign in, pointing to Forgot password if their first password no longer works.",
     ],
     improved: [
       "Without Xero, \"Chart of accounts\" is now called \"Claim item types\" everywhere in the app. A company set to No Xero is no longer asked to connect Xero on the claim settings or item types pages.",
-      "Admins: connecting Xero archives the starter claim item types, and disconnecting brings them back. Your own archive or restore choices are kept either way.",
       "Admins: the Xero card can say \"Uses your company's own Xero app\", and Connect waits for AltomateHR to set that app up. A company set to No Xero sees \"Xero isn't switched on for your company\" instead of Connect.",
       "Admins: the Motor Vehicle / Mileage item starts switched off, so mileage claims are refused until you switch it on after setting its per-km rate. Until one is on, the claim form tells staff to ask their admin.",
       "Admins: posting payroll to Xero now stops on a reimbursed claim whose account isn't linked to Xero, and names the claim, instead of posting it under a code Xero may use for a different account.",
