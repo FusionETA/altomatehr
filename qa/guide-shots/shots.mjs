@@ -589,6 +589,20 @@ const admin = {
     await shoot(page, "admin", "payroll-downloads");
     await page.keyboard.press("Escape");
   },
+  // The Bank group of the Download files dialog when the payroll bank is OCBC
+  // (node setup.mjs payroll-bank-ocbc first; payroll-bank-restore afterwards).
+  "payroll-downloads-ocbc": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    await page.getByRole("button", { name: "Download files" }).click();
+    await page.getByText("OCBC Velocity GIRO (Payroll)").first().waitFor({ timeout: 20000 });
+    await settle(page);
+    await scrollTo(page, "OCBC Velocity GIRO (Payroll)", 60);
+    await shoot(page, "admin", "payroll-downloads-ocbc");
+    await page.keyboard.press("Escape");
+  },
   // The Statutory uploads group with its "Download EPF, SOCSO & PCB (zip)" button.
   "payroll-downloads-statutory": async (page) => {
     await inDemoCo(page);

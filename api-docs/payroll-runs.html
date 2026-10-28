@@ -1720,14 +1720,19 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
         <div class="callout">
           <strong>CIMB is an Excel file.</strong> For a CIMB company this is CIMB's own BizChannel@CIMB bulk-payroll Excel template, and it carries every bank-transfer payee, NRIC and passport holders alike (the <code>Beneficiary ID</code> column is left blank). <code>paymentDate</code> is not used for CIMB: the value date is set in BizChannel when you upload.
         </div>
+        <div class="callout">
+          <strong>OCBC is a fixed-width TXT file.</strong> For an OCBC company (<code>payrollBankName</code> <code>"OCBC Bank (Malaysia) Berhad"</code>) this is the OCBC Velocity &ldquo;GIRO&rdquo; payroll file. The debiting account is the company's <code>ecpPayorAccountNo</code> from <a href="payroll.html#payroll-settings">payroll settings</a>. Each payee is routed by their own bank, which must be a bank OCBC has a routing ID for.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the value date. Defaults to the last day of the payroll period. Ignored for CIMB.</td></tr>
-              <tr><td><code>recipientReference</code></td><td>string, optional</td><td>Hong Leong only; every other bank ignores it.</td></tr>
+              <tr><td><code>recipientReference</code></td><td>string, optional</td><td>The reference the payee sees on their statement. <strong>Required for Hong Leong</strong> (the file is refused without it). <strong>Optional for OCBC</strong>: blank gives <code>SALARY &lt;MON&gt; &lt;YEAR&gt;</code> (e.g. <code>SALARY JAN 2026</code>); text is cut to 20 characters and reduced to plain keyboard characters. Every other bank ignores it.</td></tr>
               <tr><td><code>channel</code></td><td>string, optional</td><td>Hong Leong only: <code>"ConnectFirst"</code> or <code>"ConnectBiz"</code> — the two upload portals take different files, so this is required for an HLB org.</td></tr>
+              <tr><td><code>tapeId</code></td><td>string, optional</td><td>OCBC only. A number from <code>001</code> to <code>999</code>; blank means <code>001</code>. Use a different one for each file you send OCBC with the same value date and debiting account, whenever you upload them. Anything else is a <code>409</code>. Ignored by every other bank.</td></tr>
+              <tr><td><code>idCheck</code></td><td>boolean, optional</td><td>OCBC only. Default <code>false</code>. <code>true</code> asks each payee's bank to match their IC or passport number to the account before crediting. Safer, but OCBC warns it is prone to rejections, so leave it off unless you want it. When on, every payee needs a 12-digit NRIC or a passport number on file. Ignored by every other bank.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1735,13 +1740,17 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
         <p>Maybank's TXT batch id carries <code>R{runNumber}</code> after the period (e.g. <code>202601R2</code>) for a month's second and later runs, so each upload's batch id is unique; the first run keeps the plain period. Every format's file name also carries the run's <a href="#run-files">name tag</a>.</p>
         <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank's TXT, CIMB's Excel template, or Hong Leong's two formats).</p>
         <p>For CIMB, <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Bulk_Payroll_{MM}{YYYY}.xlsx</code> (e.g. <code>CIMB_Bulk_Payroll_012026.xlsx</code>). One sheet, <code>EPF</code> (CIMB's template name): row 1 is the template's field rules, row 2 the headers (<code>*Beneficiary Name</code>, <code>Beneficiary ID</code>, <code>*BNM Code</code>, <code>*Account Number</code>, <code>*Payment Amount</code>, <code>Reference Number</code>), and one payee per row from row 3. <code>Beneficiary ID</code> is blank; <code>*BNM Code</code> is CIMB's dropdown label (e.g. <code>35-CIMB Bank Berhad</code>); the account number is text; the amount is a number to 2 decimals. Names and reference have <code>-</code> and <code>/</code> replaced by spaces and are cut to CIMB's lengths (40 and 30).</p>
+        <p>For OCBC, <code>Content-Type</code> is <code>text/plain</code> (ASCII, CRLF line endings), filename <code>OCBC_GIRO_Payroll_{MM}{YYYY}_T{tapeId}.txt</code> (e.g. <code>OCBC_GIRO_Payroll_012026_T001.txt</code>, plus the run's name tag when it has one). Every line is exactly 480 characters: one header (<code>01</code>) with the company, its debiting account, the tape id and the value date; one detail line (<code>02</code>) per payee with account, amount in sen, name, routing ID and reference; one trailer (<code>03</code>) with the payee count and total. Beneficiary names are cut to 22 characters, and an account number longer than 17 digits is refused rather than cut.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), one whose <code>bankAccountNumber</code> has no digits at all, e.g. <code>"N/A"</code> (named too), for CIMB an account number longer than 16 digits (named &mdash; never cut to fit), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; Hong Leong with no <code>channel</code>; for OCBC, no debiting account (<code>ecpPayorAccountNo</code>) set, a <code>tapeId</code> that is not 001&ndash;999, or payees it can't include (the message names each one: a bank OCBC has no routing ID for, an account number over 17 digits, or, with <code>idCheck</code>, no IC or passport number). For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), one whose <code>bankAccountNumber</code> has no digits at all, e.g. <code>"N/A"</code> (named too), for CIMB an account number longer than 16 digits (named &mdash; never cut to fit), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
         </ul>
 <pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
+<pre><code># OCBC: second file for the same value date, with the ID check on
+curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31&amp;tapeId=002&amp;idCheck=true" \
+  -H "Authorization: Bearer wp_live_xxx" -o ocbc-giro.txt</code></pre>
       </section>
 
       <section class="endpoint" id="doc-manual-payments">
@@ -1831,7 +1840,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file (CIMB ignores it).</td></tr>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file (CIMB ignores it). The zip's bank file takes none of the bank-file options: OCBC gets tape id <code>001</code> with no ID check and the default reference, and Hong Leong, which needs a <code>channel</code>, is left out (<code>bank-file</code> in <code>X-Bundle-Skipped</code>). Fetch those with the <a href="#doc-bank-file">bank-file endpoint</a>.</td></tr>
             </tbody>
           </table>
         </div>
