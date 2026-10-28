@@ -22,6 +22,11 @@ public class FahChatResponseDto
     // A change waiting for the admin's Confirm or Cancel, or null.
     public FahPendingActionDto? PendingAction { get; set; }
 
+    // On a Confirm or Cancel: what happened to the change — "made", "failed",
+    // "cancelled", or "unknown" (AltomateHR didn't say). Reported even when
+    // FAH's reply after it failed, so the card never says "not made" wrongly.
+    public string? ChangeOutcome { get; set; }
+
     // What FAH looked up along the way, in order ("list_employees"), for the
     // "Checking employees…" lines in the chat.
     public List<FahStepDto> Steps { get; set; } = [];

@@ -58,8 +58,9 @@ public class ClaudeFahModel : IFahModel
         {
             response = await client.Beta.Messages.Create(parameters, cancellationToken: ct);
         }
-        catch (AnthropicApiException ex)
+        catch (AnthropicException ex)
         {
+            // API errors, network failures and timeouts alike.
             throw new FahModelException("FAH couldn't reach its AI service just now. Try again in a moment.", ex);
         }
 

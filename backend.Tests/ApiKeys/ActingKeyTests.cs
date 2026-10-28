@@ -94,17 +94,6 @@ public class ActingKeyTests
         await Assert.ThrowsAsync<ActingKeyException>(() => service.IssueAsync());
     }
 
-    [Fact]
-    public async Task Revoking_EndsThePersonsKeys()
-    {
-        var repo = Repo(("org-1", "usr-admin", "Admin"));
-        var service = new ActingKeyService(repo, new StubCurrentUser());
-        await service.IssueAsync();
-
-        await service.RevokeMineAsync();
-
-        Assert.DoesNotContain(repo.Keys, k => k.Active);
-    }
 
     // ─── Authenticating with one ────────────────────────────────────────
 

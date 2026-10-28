@@ -45,6 +45,9 @@ public partial class FahService : IFahService
 
     private const string CancelledText = "The admin pressed Cancel. Nothing was changed.";
     private const string MovedOnText = "The admin sent a new message instead of confirming. Nothing was changed.";
+    private const string UnknownText = "AltomateHR didn't answer, so it's not known whether the change was made. Check before trying again.";
+    private const string NotWaitingText = "That change is no longer waiting. Ask FAH again if you still want it.";
+    private const string BusyText = "FAH is still answering in this chat. Wait a moment, then try again.";
 
     private readonly IFahRepository _conversations;
     private readonly IActingKeyService _keys;
@@ -96,7 +99,14 @@ public partial class FahService : IFahService
             var found = await _conversations.GetAsync(dto.ConversationId!, userId);
             if (found is null) return new FahResult(false, NotFound: true);
             conversation = found;
+            if (!await _conversations.TryStartTurnAsync(conversation.Id, userId))
+                return new FahResult(false, Error: BusyText);
         }
+
+        // The key before anything about the chat changes: if it can't be had,
+        // the chat is left exactly as it was.
+        var (key, refusal) = await IssueKeyAsync(conversation, isNew);
+        if (key is null) return new FahResult(false, Error: refusal);
 
         var messages = MessagesOf(conversation);
 
@@ -109,7 +119,7 @@ public partial class FahService : IFahService
         }
 
         messages.Add(UserText($"(Today is {MalaysiaToday():dddd, d MMMM yyyy}.)\n\n{message}"));
-        return await RunTurnAsync(conversation, isNew, messages, settle: null, progress, ct);
+        return await RunTurnAsync(conversation, isNew, messages, key, settle: null, progress, ct);
     }
 
     public async Task<FahResult> ConfirmAsync(FahConfirmRequestDto dto, Func<FahProgressEvent, Task>? progress, CancellationToken ct)
@@ -118,67 +128,83 @@ public partial class FahService : IFahService
         var conversation = await _conversations.GetAsync(dto.ConversationId, userId);
         if (conversation is null) return new FahResult(false, NotFound: true);
 
-        // Only the change on the card the admin is looking at, and only once:
-        // a stale card, one already answered, or a second click finds nothing.
         var held = PendingOf(conversation);
-        if (held is null || held.Id != dto.ActionId
-            || !await _conversations.TryClaimPendingAsync(conversation.Id, userId, held.Id))
-            return new FahResult(false, Error: "That change is no longer waiting. Ask FAH again if you still want it.");
+        if (held is null || held.Id != dto.ActionId) return new FahResult(false, Error: NotWaitingText);
+        if (!await _conversations.TryStartTurnAsync(conversation.Id, userId))
+            return new FahResult(false, Error: BusyText);
+
+        var (key, refusal) = await IssueKeyAsync(conversation, isNew: false);
+        if (key is null) return new FahResult(false, Error: refusal);
+
+        // Only the change on the card the admin is looking at, and only once:
+        // a second click or a retry finds nothing to take.
+        if (!await _conversations.TryClaimPendingAsync(conversation.Id, userId, held.Id))
+        {
+            await _keys.RevokeAsync(key.Id);
+            await _conversations.EndTurnAsync(conversation.Id);
+            return new FahResult(false, Error: NotWaitingText);
+        }
 
         conversation.PendingJson = null;
         var messages = MessagesOf(conversation);
 
-        return await RunTurnAsync(conversation, isNew: false, messages, settle: async (token, steps) =>
+        return await RunTurnAsync(conversation, isNew: false, messages, key, settle: async (token, steps) =>
         {
-            FahToolAnswer answer;
             if (!dto.Approve)
             {
-                answer = new FahToolAnswer(held.ToolUseId, CancelledText, false);
+                messages.Add(ToolResults([.. held.Results, new FahToolAnswer(held.ToolUseId, CancelledText, false)]));
+                return "cancelled";
             }
-            else
+
+            McpToolResult result;
+            try
             {
-                try
-                {
-                    await Report(progress, new FahProgressEvent("started", held.Tool));
-                    var result = await _mcp.CallToolAsync(token, held.Tool, held.Arguments, ct);
-                    await Report(progress, new FahProgressEvent("done", held.Tool, !result.IsError));
-                    steps.Add(new FahStepDto { Tool = held.Tool, Ok = !result.IsError });
-                    answer = new FahToolAnswer(held.ToolUseId, TextOf(result), result.IsError);
-                }
-                catch (McpUnavailableException)
-                {
-                    // The call may or may not have landed: say so, rather than
-                    // let anyone assume either way and make it twice.
-                    messages.Add(ToolResults([.. held.Results, new FahToolAnswer(held.ToolUseId,
-                        "AltomateHR didn't answer, so it's not known whether the change was made. Check before trying again.", true)]));
-                    throw;
-                }
+                await Report(progress, new FahProgressEvent("started", held.Tool));
+                result = await _mcp.CallToolAsync(token, held.Tool, held.Arguments, ct);
+                await Report(progress, new FahProgressEvent("done", held.Tool, !result.IsError));
             }
-            messages.Add(ToolResults([.. held.Results, answer]));
+            catch
+            {
+                // The call may or may not have landed: say so, rather than let
+                // anyone assume either way and make it twice.
+                messages.Add(ToolResults([.. held.Results, new FahToolAnswer(held.ToolUseId, UnknownText, true)]));
+                throw;
+            }
+            steps.Add(new FahStepDto { Tool = held.Tool, Ok = !result.IsError });
+            messages.Add(ToolResults([.. held.Results, new FahToolAnswer(held.ToolUseId, TextOf(result), result.IsError)]));
+            return result.IsError ? "failed" : "made";
         }, progress, ct);
     }
 
-    // Issues the turn's key, lets `settle` finish anything left from before
-    // (a confirmed change), then runs the model until it answers or holds a
-    // change. The key is ended and the conversation saved whatever happens.
+    // The turn's key, or the reason there isn't one — with the chat's turn
+    // released, so a refused key leaves nothing half-done.
+    private async Task<(ActingKey? Key, string? Refusal)> IssueKeyAsync(FahConversation conversation, bool isNew)
+    {
+        try
+        {
+            return (await _keys.IssueAsync(), null);
+        }
+        catch (ActingKeyException ex)
+        {
+            if (!isNew) await _conversations.EndTurnAsync(conversation.Id);
+            return (null, ex.Message);
+        }
+    }
+
+    // Lets `settle` finish anything left from before (a confirmed change),
+    // then runs the model until it answers or holds a change. Whatever
+    // happens — any failure, not just the expected ones — the key is ended,
+    // every tool call gets its answer, and the chat is saved with its turn
+    // released, so it can always carry on.
     private async Task<FahResult> RunTurnAsync(
         FahConversation conversation,
         bool isNew,
         List<JsonElement> messages,
-        Func<string, List<FahStepDto>, Task>? settle,
+        ActingKey key,
+        Func<string, List<FahStepDto>, Task<string>>? settle,
         Func<FahProgressEvent, Task>? progress,
         CancellationToken ct)
     {
-        ActingKey key;
-        try
-        {
-            key = await _keys.IssueAsync();
-        }
-        catch (ActingKeyException ex)
-        {
-            return new FahResult(false, Error: ex.Message);
-        }
-
         var steps = new List<FahStepDto>();
         string? reply = null;
         FahPendingAction? held = null;
@@ -188,9 +214,13 @@ public partial class FahService : IFahService
         // the saved conversation can always continue.
         IReadOnlyList<FahToolUse> unanswered = [];
         var answers = new List<FahToolAnswer>();
+        // What happened to a confirmed or cancelled change, told apart from
+        // whether FAH then managed to reply: "made", "failed", "cancelled",
+        // or "unknown" when AltomateHR didn't say.
+        string? outcome = null;
         try
         {
-            if (settle is not null) await settle(key.Token, steps);
+            if (settle is not null) outcome = await settle(key.Token, steps);
 
             var instructions = await _mcp.GetInstructionsAsync(key.Token, ct);
             var tools = FahTools.Offer(await _mcp.ListToolsAsync(key.Token, ct));
@@ -284,37 +314,59 @@ public partial class FahService : IFahService
             _log.LogWarning(ex, "FAH: model call failed");
             failure = ex.Message;
         }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "FAH: turn failed");
+            failure = "Something went wrong on FAH's side. Try again in a moment.";
+        }
         finally
         {
             await _keys.RevokeAsync(key.Id);
         }
+
+        // A settle that threw part-way: its call may have landed.
+        if (settle is not null && outcome is null) outcome = "unknown";
 
         if (unanswered.Count > 0)
         {
             var done = answers.Select(a => a.ToolUseId).ToHashSet(StringComparer.Ordinal);
             messages.Add(ToolResults([.. answers, .. unanswered
                 .Where(u => !done.Contains(u.Id))
-                .Select(u => new FahToolAnswer(u.Id, "Not run: AltomateHR couldn't be reached.", true))]));
+                .Select(u => new FahToolAnswer(u.Id, "Not run: the turn stopped before it.", true))]));
         }
 
         conversation.MessagesJson = JsonSerializer.Serialize(messages);
         conversation.UpdatedAt = DateTime.UtcNow;
+        conversation.TurnStartedAt = null;
         if (isNew) await _conversations.AddAsync(conversation);
         else await _conversations.UpdateAsync(conversation);
 
-        if (failure is not null)
+        // A failure after a change was answered still reports the change: the
+        // card must say what happened to it, not just that the reply failed.
+        if (failure is not null && outcome is null)
             return new FahResult(false, Error: failure, Unavailable: true);
 
         return new FahResult(true, new FahChatResponseDto
         {
             ConversationId = conversation.Id,
-            Reply = string.IsNullOrWhiteSpace(reply)
-                ? held is not null ? "Here's the change. Press Confirm to make it." : "Sorry, I don't have an answer for that one."
-                : reply.Trim(),
+            Reply = failure is not null
+                ? $"{OutcomeText(outcome!)} {failure}"
+                : string.IsNullOrWhiteSpace(reply)
+                    ? held is not null ? "Here's the change. Press Confirm to make it." : "Sorry, I don't have an answer for that one."
+                    : reply.Trim(),
             PendingAction = held is null ? null : CardOf(held),
+            ChangeOutcome = outcome,
             Steps = steps,
         });
     }
+
+    private static string OutcomeText(string outcome) => outcome switch
+    {
+        "made" => "The change was made.",
+        "cancelled" => "Cancelled — nothing was changed.",
+        "failed" => "AltomateHR didn't make the change.",
+        _ => "It's not known whether the change was made, so check before trying again.",
+    };
 
     public FahStatusDto Status() => new()
     {

@@ -90,6 +90,11 @@ public class McpClient : IMcpClient
         {
             throw new McpUnavailableException("The MCP server couldn't be reached.", ex);
         }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // HttpClient.Timeout ran out. The call may still have landed.
+            throw new McpUnavailableException("The MCP server took too long to answer.", ex);
+        }
 
         JsonElement envelope;
         try

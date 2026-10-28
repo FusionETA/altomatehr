@@ -56,10 +56,4 @@ public class ActingKeyService : IActingKeyService
     }
 
     public Task RevokeAsync(string id) => _keys.RevokeActingKeyAsync(id);
-
-    public async Task RevokeMineAsync()
-    {
-        if (_currentUser.UserId is { } userId && !_currentUser.IsScopedMachine)
-            await _keys.RevokeActingKeysAsync(userId);
-    }
 }

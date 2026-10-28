@@ -41,6 +41,7 @@ namespace AltomateHR.Api.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     PendingJson = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
+                    TurnStartedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     InputTokens = table.Column<long>(type: "bigint", nullable: false),
                     CacheWriteTokens = table.Column<long>(type: "bigint", nullable: false),
                     CacheReadTokens = table.Column<long>(type: "bigint", nullable: false),

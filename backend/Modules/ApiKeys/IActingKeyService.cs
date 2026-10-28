@@ -11,11 +11,9 @@ public interface IActingKeyService
     // ActingKeyException when the caller can't have one.
     Task<ActingKey> IssueAsync();
 
-    // Ends one key (the turn's).
+    // Ends one key (the turn's). A turn cut off before it can (a crash, a
+    // restart) leaves its key until ExpiresAt, at most ActingKeyService.Lifetime.
     Task RevokeAsync(string id);
-
-    // Ends every key the caller holds here — when they sign out.
-    Task RevokeMineAsync();
 }
 
 // The raw token never leaves the server: FAH passes it only to the MCP server.

@@ -15,6 +15,13 @@ public interface IFahRepository
     // retry) finds nothing to take, so a change can't be made twice.
     Task<bool> TryClaimPendingAsync(string id, string userId, string actionId);
 
+    // Marks a turn as running on the chat, in one statement: false while
+    // another turn holds it (unless that one is stale).
+    Task<bool> TryStartTurnAsync(string id, string userId);
+
+    // Releases the turn without saving anything else.
+    Task EndTurnAsync(string id);
+
     Task AddAsync(FahConversation conversation);
     Task UpdateAsync(FahConversation conversation);
 }

@@ -82,14 +82,6 @@ public class ApiKeyRepository : IApiKeyRepository
         await _db.SaveChangesAsync();
     }
 
-    public async Task RevokeActingKeysAsync(string userId)
-    {
-        foreach (var live in await _db.ApiKeys
-                     .Where(k => k.ActingUserId == userId && k.Active)
-                     .ToListAsync())
-            live.Active = false;
-        await _db.SaveChangesAsync();
-    }
 
     public async Task UpdateAsync(ApiKey key)
     {

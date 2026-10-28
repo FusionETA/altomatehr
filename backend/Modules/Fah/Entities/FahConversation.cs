@@ -29,6 +29,11 @@ public class FahConversation : ITenantScoped
     // is the model's tool call waiting for its answer.
     public string? PendingJson { get; set; }
 
+    // Set while a turn is running, so a second one on the same chat (another
+    // tab, a retry after a dropped connection) waits instead of overwriting it.
+    // Treated as free once old: a turn cut off by a crash mustn't lock the chat.
+    public DateTime? TurnStartedAt { get; set; }
+
     // Running totals, to see what FAH costs per company. Input is split the way
     // it's billed: fresh, written to the prompt cache, and read from it (cheap).
     public long InputTokens { get; set; }

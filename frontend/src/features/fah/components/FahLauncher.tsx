@@ -17,7 +17,15 @@ import {
 import { toolLabel } from "../lib/tool-labels";
 import { FahText } from "./FahText";
 
-type ChangeState = "waiting" | "confirming" | "cancelling" | "made" | "cancelled" | "dropped" | "failed";
+type ChangeState =
+  | "waiting"
+  | "confirming"
+  | "cancelling"
+  | "made"
+  | "cancelled"
+  | "dropped"
+  | "failed"
+  | "unknown";
 
 type Entry =
   | { kind: "user"; text: string }
@@ -108,12 +116,14 @@ function FahPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
     ]);
   }
 
-  async function run(work: () => Promise<FahReply>, onFail?: () => void) {
+  async function run(work: () => Promise<FahReply>, onFail?: () => void, onDone?: (reply: FahReply) => void) {
     setRunning(true);
     setSteps([]);
     setError(null);
     try {
-      apply(await work());
+      const reply = await work();
+      onDone?.(reply);
+      apply(reply);
     } catch (err) {
       onFail?.();
       setError(err instanceof Error ? err.message : "FAH couldn't answer that. Try again.");
@@ -133,24 +143,40 @@ function FahPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
     const message = text.trim();
     if (!message || running) return;
     setInput("");
-    // Moving on drops a change still waiting — the server does the same.
-    setEntries((current) => [
-      ...current.map((e) => (e.kind === "change" && e.state === "waiting" ? { ...e, state: "dropped" as const } : e)),
-      { kind: "user", text: message },
-    ]);
-    void run(() => sendFahMessage({ conversationId, message }, onProgress));
+    setEntries((current) => [...current, { kind: "user", text: message }]);
+    void run(
+      () => sendFahMessage({ conversationId, message }, onProgress),
+      undefined,
+      // Moving on drops a change still waiting — but only once the server
+      // took the message; a refused send leaves the change waiting there too.
+      () =>
+        setEntries((current) =>
+          current.map((e) => (e.kind === "change" && e.state === "waiting" ? { ...e, state: "dropped" as const } : e)),
+        ),
+    );
   }
 
   function answer(action: FahPendingAction, approve: boolean) {
     if (!conversationId || running) return;
     setChange(action.id, approve ? "confirming" : "cancelling");
     void run(
-      async () => {
-        const reply = await answerFahChange({ conversationId, actionId: action.id, approve }, onProgress);
-        setChange(action.id, approve ? "made" : "cancelled");
-        return reply;
+      () => answerFahChange({ conversationId, actionId: action.id, approve }, onProgress),
+      // No answer at all (the connection dropped): a Confirm may still have
+      // gone through on the server, so don't claim it didn't.
+      () => setChange(action.id, approve ? "unknown" : "failed"),
+      // The server says what happened to the change, even when FAH's reply
+      // after it failed.
+      (reply) => {
+        const outcome = reply.changeOutcome;
+        setChange(
+          action.id,
+          outcome === "made" || outcome === "cancelled" || outcome === "failed" || outcome === "unknown"
+            ? outcome
+            : approve
+              ? "made"
+              : "cancelled",
+        );
       },
-      () => setChange(action.id, "failed"),
     );
   }
 
@@ -174,6 +200,8 @@ function FahPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   }
 
   async function openConversation(id: string) {
+    // A turn still running would put its answer into the chat opened instead.
+    if (running) return;
     setShowHistory(false);
     setError(null);
     try {
@@ -203,7 +231,11 @@ function FahPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
           <p className="text-sm font-black text-foreground">FAH</p>
           <p className="text-xs text-muted-foreground">Friendly AltomateHR</p>
         </div>
-        <IconButton label="Past chats" onClick={() => (showHistory ? setShowHistory(false) : void openHistory())}>
+        <IconButton
+          label="Past chats"
+          onClick={() => (showHistory ? setShowHistory(false) : void openHistory())}
+          disabled={running}
+        >
           <History className="size-4" />
         </IconButton>
         <IconButton label="New chat" onClick={newChat} disabled={running}>
@@ -368,7 +400,8 @@ function ChangeCard({
     made: "Confirmed",
     cancelled: "Cancelled — nothing was changed",
     dropped: "Not made — you moved on",
-    failed: "Not confirmed",
+    failed: "Not made",
+    unknown: "May have been made — check before trying again",
   };
 
   return (

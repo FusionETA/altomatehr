@@ -28,9 +28,6 @@ public interface IApiKeyRepository
 
     // Retires one FAH key — FAH ends each key with the chat turn it was made for.
     Task RevokeActingKeyAsync(string id);
-
-    // Retires every live FAH key the person holds in this company.
-    Task RevokeActingKeysAsync(string userId);
     Task UpdateAsync(ApiKey key);
 
     // Best-effort: write one audit row + bump LastUsedAt in a single save.

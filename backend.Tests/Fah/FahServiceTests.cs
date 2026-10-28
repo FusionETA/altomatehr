@@ -258,6 +258,99 @@ public class FahServiceTests
         Assert.Equal(["t1", "t2"], answered);
     }
 
+    // Not just the expected failures: anything that ends a turn early still
+    // leaves a chat that can carry on.
+    [Fact]
+    public async Task AnUnexpectedFailure_StillSavesAChatThatCanCarryOn()
+    {
+        _mcp.FailCallsAfter = 0;
+        _mcp.Failure = new TaskCanceledException("timed out");
+        _model.Script.Enqueue(Turn(tools: [("t1", "who_is_on_leave", "{}")]));
+
+        var first = await Service().ChatAsync(new FahChatRequestDto { Message = "Who's away?" }, null, default);
+
+        Assert.True(first.Unavailable);
+        var row = _conversations.Rows.Single();
+        Assert.Null(row.TurnStartedAt);
+        var saved = JsonSerializer.Deserialize<List<JsonElement>>(row.MessagesJson)!;
+        Assert.Equal("tool_result", saved[^1].GetProperty("content")[0].GetProperty("type").GetString());
+        Assert.DoesNotContain(_keyRepo.Keys, k => k.Active);
+    }
+
+    // The change went through; only FAH's reply after it failed. The card
+    // must still say it was made.
+    [Fact]
+    public async Task AChangeMade_IsReported_EvenWhenTheReplyAfterItFails()
+    {
+        _model.Script.Enqueue(Turn(tools: [("t1", "update_employee", Change)]));
+        var held = await Service().ChatAsync(new FahChatRequestDto { Message = "Make Fay a lead" }, null, default);
+        _model.FailNext = new FahModelException("busy");
+
+        var result = await Service().ConfirmAsync(new FahConfirmRequestDto
+        {
+            ConversationId = held.Response!.ConversationId, ActionId = held.Response.PendingAction!.Id, Approve = true,
+        }, null, default);
+
+        Assert.True(result.Ok);
+        Assert.Equal("made", result.Response!.ChangeOutcome);
+        Assert.StartsWith("The change was made.", result.Response.Reply);
+    }
+
+    // AltomateHR didn't answer the real call: it may have landed. Say so.
+    [Fact]
+    public async Task AChangeWhoseCallFailed_IsReportedAsUnknown()
+    {
+        _model.Script.Enqueue(Turn(tools: [("t1", "update_employee", Change)]));
+        var held = await Service().ChatAsync(new FahChatRequestDto { Message = "Make Fay a lead" }, null, default);
+        _mcp.FailCallsAfter = 1;   // the preview already ran
+        _mcp.Failure = new InvalidOperationException("boom");
+
+        var result = await Service().ConfirmAsync(new FahConfirmRequestDto
+        {
+            ConversationId = held.Response!.ConversationId, ActionId = held.Response.PendingAction!.Id, Approve = true,
+        }, null, default);
+
+        Assert.Equal("unknown", result.Response!.ChangeOutcome);
+        var saved = JsonSerializer.Deserialize<List<JsonElement>>(_conversations.Rows.Single().MessagesJson)!;
+        Assert.Contains("not known", saved[^1].GetProperty("content")[0].GetProperty("content").GetString());
+        Assert.Null(_conversations.Rows.Single().TurnStartedAt);
+    }
+
+    // Another tab, or a retry after a dropped connection, waits its turn.
+    [Fact]
+    public async Task OneTurnAtATime_PerChat()
+    {
+        _model.Script.Enqueue(Turn(text: "First"));
+        var first = await Service().ChatAsync(new FahChatRequestDto { Message = "First" }, null, default);
+        _conversations.Rows.Single().TurnStartedAt = DateTime.UtcNow;   // a turn still running
+
+        var second = await Service().ChatAsync(
+            new FahChatRequestDto { ConversationId = first.Response!.ConversationId, Message = "Second" }, null, default);
+
+        Assert.False(second.Ok);
+        Assert.Contains("still answering", second.Error);
+    }
+
+    // No key (say the person was just made an employee): the held change
+    // stays held, untouched.
+    [Fact]
+    public async Task ARefusedKey_LeavesTheHeldChangeAlone()
+    {
+        _model.Script.Enqueue(Turn(tools: [("t1", "update_employee", Change)]));
+        var held = await Service().ChatAsync(new FahChatRequestDto { Message = "Make Fay a lead" }, null, default);
+        _keyRepo.Members[("org-1", "usr-admin")] = new ActingMember("Employee", "admin@x.test");
+
+        var result = await Service().ConfirmAsync(new FahConfirmRequestDto
+        {
+            ConversationId = held.Response!.ConversationId, ActionId = held.Response.PendingAction!.Id, Approve = true,
+        }, null, default);
+
+        Assert.False(result.Ok);
+        var row = _conversations.Rows.Single();
+        Assert.NotNull(row.PendingJson);
+        Assert.Null(row.TurnStartedAt);
+    }
+
     [Fact]
     public void TheCard_DropsTheBannerAndTheLinesMeantForTheModel()
     {
@@ -418,6 +511,8 @@ public class FahServiceTests
     {
         public bool IsConfigured => true;
         public Queue<FahModelTurn> Script { get; } = new();
+        // Thrown on the next call instead of answering, once.
+        public Exception? FailNext { get; set; }
         public List<List<JsonElement>> Seen { get; } = [];
         public IReadOnlyList<FahTool> OfferedTools { get; private set; } = [];
 
@@ -425,6 +520,11 @@ public class FahServiceTests
         {
             OfferedTools = tools;
             Seen.Add([.. messages]);
+            if (FailNext is { } failure)
+            {
+                FailNext = null;
+                throw failure;
+            }
             return Task.FromResult(Script.Dequeue());
         }
     }
@@ -434,6 +534,8 @@ public class FahServiceTests
         public string[] Tools { get; set; } = ["who_is_on_leave", "get_employee", "update_employee"];
         public bool Down { get; set; }
         public int FailCallsAfter { get; set; } = int.MaxValue;
+        // What the failing call throws: an MCP outage by default.
+        public Exception Failure { get; set; } = new McpUnavailableException("down");
         public List<(string Token, string Name, JsonElement Arguments)> Calls { get; } = [];
 
         public Task<string> GetInstructionsAsync(string token, CancellationToken ct) =>
@@ -447,7 +549,7 @@ public class FahServiceTests
 
         public Task<McpToolResult> CallToolAsync(string token, string name, JsonElement arguments, CancellationToken ct)
         {
-            if (Calls.Count >= FailCallsAfter) throw new McpUnavailableException("down");
+            if (Calls.Count >= FailCallsAfter) throw Failure;
             Calls.Add((token, name, arguments));
             var preview = name == "update_employee" && !(arguments.TryGetProperty("dryRun", out var d) && d.ValueKind == JsonValueKind.False);
             return Task.FromResult(new McpToolResult(
@@ -467,6 +569,20 @@ public class FahServiceTests
 
         public Task<List<FahConversation>> ListAsync(string userId, int take) =>
             Task.FromResult(Rows.Where(c => c.UserId == userId).OrderByDescending(c => c.UpdatedAt).Take(take).ToList());
+
+        public Task<bool> TryStartTurnAsync(string id, string userId)
+        {
+            var row = Rows.FirstOrDefault(c => c.Id == id && c.UserId == userId && c.TurnStartedAt == null);
+            if (row is null) return Task.FromResult(false);
+            row.TurnStartedAt = DateTime.UtcNow;
+            return Task.FromResult(true);
+        }
+
+        public Task EndTurnAsync(string id)
+        {
+            foreach (var row in Rows.Where(c => c.Id == id)) row.TurnStartedAt = null;
+            return Task.CompletedTask;
+        }
 
         // Like the real one: takes the held change only if it is still there.
         public Task<bool> TryClaimPendingAsync(string id, string userId, string actionId)

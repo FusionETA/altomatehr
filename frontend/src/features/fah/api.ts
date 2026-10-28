@@ -14,6 +14,8 @@ export type FahReply = {
   conversationId: string;
   reply: string;
   pendingAction: FahPendingAction | null;
+  /** On Confirm or Cancel: what happened to the change, even if FAH's reply after it failed. */
+  changeOutcome: "made" | "failed" | "cancelled" | "unknown" | null;
   steps: FahStep[];
 };
 

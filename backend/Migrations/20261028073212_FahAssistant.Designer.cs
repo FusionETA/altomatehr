@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261028020743_FahAssistant")]
+    [Migration("20261028073212_FahAssistant")]
     partial class FahAssistant
     {
         /// <inheritdoc />
@@ -1666,6 +1666,9 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime?>("TurnStartedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

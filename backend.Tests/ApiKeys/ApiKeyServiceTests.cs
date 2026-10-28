@@ -117,9 +117,4 @@ internal sealed class FakeApiKeyRepository : IApiKeyRepository
         return Task.CompletedTask;
     }
 
-    public Task RevokeActingKeysAsync(string userId)
-    {
-        foreach (var live in Keys.Where(k => k.ActingUserId == userId && k.Active)) live.Active = false;
-        return Task.CompletedTask;
-    }
 }

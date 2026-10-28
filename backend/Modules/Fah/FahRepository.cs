@@ -31,6 +31,23 @@ public class FahRepository : IFahRepository
         return claimed == 1;
     }
 
+    public async Task<bool> TryStartTurnAsync(string id, string userId)
+    {
+        var now = DateTime.UtcNow;
+        var stale = now - StaleTurn;
+        return await _db.FahConversations
+            .Where(c => c.Id == id && c.UserId == userId && (c.TurnStartedAt == null || c.TurnStartedAt < stale))
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.TurnStartedAt, now)) == 1;
+    }
+
+    public Task EndTurnAsync(string id) =>
+        _db.FahConversations
+            .Where(c => c.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.TurnStartedAt, (DateTime?)null));
+
+    // Longer than any real turn (ten rounds of tools and model calls).
+    private static readonly TimeSpan StaleTurn = TimeSpan.FromMinutes(10);
+
     public async Task AddAsync(FahConversation conversation)
     {
         _db.FahConversations.Add(conversation);

@@ -1664,6 +1664,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<DateTime?>("TurnStartedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
