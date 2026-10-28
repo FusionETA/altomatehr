@@ -92,11 +92,13 @@ const MANUAL_PAYMENTS_ITEM: Item = {
   download: (runId) => downloadManualPayments(runId),
 };
 
-// What the bank files need beyond the run itself. Only Hong Leong reads the
-// reference; the date reaches every format.
+// What the bank files need beyond the run itself. Hong Leong and OCBC read the
+// reference, OCBC the tape ID and ID check; the date reaches every format.
 type DownloadContext = {
   paymentDate: string;
   recipientReference: string;
+  tapeId: string;
+  idCheck: boolean;
 };
 
 const ITEMS: Item[] = [
@@ -290,6 +292,23 @@ function bankItems(bankName: string | null | undefined): Item[] {
         },
       ];
 
+    case "OcbcVelocityGiroTxt":
+      return [
+        {
+          key: "bank",
+          group: "BANK",
+          title: "OCBC Velocity GIRO (Payroll)",
+          description: `Fixed-width GIRO file for Velocity — every employee's bank routed by OCBC's own routing ID, OCBC staff included. ${refusedByServer}`,
+          portal: "Velocity@ocbc → GIRO file upload",
+          download: (runId, ctx) =>
+            downloadBankFile(runId, ctx.paymentDate, {
+              recipientReference: ctx.recipientReference,
+              tapeId: ctx.tapeId,
+              idCheck: ctx.idCheck,
+            }),
+        },
+      ];
+
     default:
       // "Other" and unset both produce no file. Saying so here beats a row
       // that downloads a 409 — but they are different problems, so the
@@ -418,9 +437,23 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // Hong Leong makes this mandatory and nothing in payroll data implies it —
   // it is what the employee sees on their own bank statement. Prefilled with
   // the period, which is what an admin types anyway, but still theirs to edit.
-  const [recipientReference, setRecipientReference] = useState(
-    () => `SALARY ${run.periodLabel}`.toUpperCase().slice(0, 20),
+  // The 3-letter month, as the server's own default: "SALARY SEPTEMBER 2026"
+  // is 21 characters and would lose its last digit to the 20-character limit.
+  const [recipientReference, setRecipientReference] = useState(() =>
+    `SALARY ${new Date(Date.UTC(run.periodYear, run.periodMonth - 1, 1)).toLocaleString("en", {
+      month: "short",
+      timeZone: "UTC",
+    })} ${run.periodYear}`
+      .toUpperCase()
+      .slice(0, 20),
   );
+
+  // OCBC: Tape ID must differ between files with the same payment date from
+  // the same account (a second run paid that day takes 002). ID check asks
+  // the employee's bank to match the IC to the account — safer, but OCBC
+  // warns it rejects more payments, so it starts off.
+  const [tapeId, setTapeId] = useState("001");
+  const [idCheck, setIdCheck] = useState(false);
 
   // Which bank file this org gets is a setting, so the rows are not known
   // until it loads. Cached, so reopening the modal doesn't re-fetch.
@@ -453,6 +486,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     [bankName, abPayEnabled, imported],
   );
   const needsReference = formatFor(bankName) === "HlbConnect";
+  const isOcbc = formatFor(bankName) === "OcbcVelocityGiroTxt";
   // Whether this company's payroll bank produces an upload file at all.
   const hasBankFile = bankItems(bankName).length > 0;
   // CIMB's Excel template has no value date — it's set in BizChannel at upload.
@@ -471,7 +505,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     [items],
   );
 
-  const context: DownloadContext = { paymentDate, recipientReference };
+  const context: DownloadContext = { paymentDate, recipientReference, tapeId, idCheck };
 
   function toggle(key: string) {
     setPicked((current) => {
@@ -691,8 +725,9 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                   </div>
 
                   {/* Hong Leong refuses the file without one, so it is asked
-                      for here rather than discovered as a 409. */}
-                  {needsReference ? (
+                      for here rather than discovered as a 409. OCBC takes it
+                      too, but falls back to "SALARY <MON> <YEAR>". */}
+                  {needsReference || isOcbc ? (
                     <div className="w-56">
                       <label className={`${LABEL} text-xs`} htmlFor="recipientReference">
                         Recipient reference
@@ -709,6 +744,41 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                         What your employees see on their bank statement. Max 20 characters.
                       </p>
                     </div>
+                  ) : null}
+
+                  {isOcbc ? (
+                    <>
+                      <div className="w-28">
+                        <label className={`${LABEL} text-xs`} htmlFor="tapeId">
+                          Tape ID
+                        </label>
+                        <input
+                          id="tapeId"
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={3}
+                          className={INPUT_SM}
+                          value={tapeId}
+                          onChange={(e) => setTapeId(e.target.value.replace(/\D/g, ""))}
+                        />
+                        <p className={`${HINT} text-[11px]`}>001–999, new for each file on the same date.</p>
+                      </div>
+                      <label className="flex max-w-xs items-start gap-2 pb-1 text-xs text-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={idCheck}
+                          onChange={(e) => setIdCheck(e.target.checked)}
+                        />
+                        <span>
+                          <span className="font-semibold">ID check</span>
+                          <span className={`${HINT} block text-[11px]`}>
+                            The employee's bank matches their IC or passport to the account before crediting.
+                            Safer, but mismatches get rejected.
+                          </span>
+                        </span>
+                      </label>
+                    </>
                   ) : null}
                 </div>
               ) : null}

@@ -209,6 +209,166 @@ public class XeroAppsTests : IDisposable
         Assert.Equal(ayu, repo.Connection!.XeroAppId);
     }
 
+    // ─── An app shared with another product ─────────────────────────────
+
+    private async Task<string> SharedWithWazzAsync()
+    {
+        var app = (await Apps().AddAppAsync(new SaveXeroAppDto
+        {
+            Name = "Ayu", ClientId = "AYU-CLIENT-ID", ClientSecret = "s", UsedByAnotherProduct = true,
+        })).Id;
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.Standalone, XeroAppId = app });
+        return app;
+    }
+
+    private static XeroConnection Live(string? appId, string tenantId = "t-1") => new()
+    {
+        OrganizationId = "org-ayu", TenantId = tenantId, TenantName = "Ayu One", ConnectionId = "conn-old",
+        AccessTokenProtected = Provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("old-access"),
+        RefreshTokenProtected = Provider.CreateProtector("AltomateHR.XeroTokens.v1").Protect("old-refresh"),
+        AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1), ConnectedAt = DateTime.UtcNow.AddMonths(-1),
+        XeroAppId = appId,
+    };
+
+    // Removing the app from the Xero org would cut the other product off.
+    [Fact]
+    public async Task Disconnecting_LeavesAnAppAnotherProductUsesInXero()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository { Connection = Live(app) };
+        var client = new RecordingRefreshClient();
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        await service.DisconnectAsync();
+
+        Assert.Null(client.Deleted);
+        Assert.False(repo.Connection!.IsConnected);
+    }
+
+    // The Section 14 case: the shared app re-approves every org it has, and the
+    // reconnect keeps the one the company is on.
+    [Fact]
+    public async Task ReconnectingThroughAnAppWithManyOrgs_KeepsTheCompanysOrg()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository { Connection = Live(appId: null, tenantId: "t-s14") };
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-a", "t-a", "Ayu AP", "ORGANISATION", null), new("c-s14", "t-s14", "Ayu Section 14", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        var url = await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Contains("xero=connected", url);
+        Assert.Equal(("t-s14", app), (repo.Connection!.TenantId, repo.Connection.XeroAppId));
+    }
+
+    // A first connect with several orgs waits for the admin to pick one.
+    [Fact]
+    public async Task AFirstConnectWithSeveralOrgs_WaitsForThePick_ThenConnectsIt()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+
+        var url = await service.CompleteCallbackAsync("code-1", "s-1");
+
+        Assert.Contains("xero=choose", url);
+        Assert.Null(repo.Connection);
+        var status = await service.GetStatusAsync();
+        Assert.Equal(["Ayu AP", "Ayu BLK"], status.PendingChoice!.Select(c => c.TenantName));
+
+        Assert.False(await service.ChooseTenantAsync("t-not-offered"));
+        Assert.True(await service.ChooseTenantAsync("t-b"));
+
+        Assert.Equal(("t-b", app), (repo.Connection!.TenantId, repo.Connection.XeroAppId));
+        Assert.Null((await service.GetStatusAsync()).PendingChoice);
+    }
+
+    // Xero switched off while the pick was waiting: no connection.
+    [Fact]
+    public async Task APick_IsRefused_OnceXeroIsSwitchedOff()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.None });
+
+        Assert.Null((await service.GetStatusAsync()).PendingChoice);
+        Assert.False(await service.ChooseTenantAsync("t-b"));
+        Assert.Null(repo.Connection);
+    }
+
+    // The access token expires when Xero said, counted from when it was
+    // issued — not from a pick made minutes later.
+    [Fact]
+    public async Task APick_KeepsTheTokensRealExpiry()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+        var issued = DateTime.UtcNow;
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        await service.ChooseTenantAsync("t-b");
+
+        // The fake issues a 1800s token; the saved expiry stays ~29 min after issue.
+        Assert.InRange(repo.Connection!.AccessTokenExpiresAt, issued.AddSeconds(1700), issued.AddSeconds(1760));
+    }
+
+    [Fact]
+    public async Task APendingPick_CanBeDropped()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        await service.CancelPendingChoiceAsync();
+
+        Assert.Null((await service.GetStatusAsync()).PendingChoice);
+        Assert.False(await service.ChooseTenantAsync("t-b"));
+    }
+
     // A sign-in that was already open when Xero was switched off doesn't connect.
     [Fact]
     public async Task ASignInFinishingAfterNoXero_DoesntConnect()
@@ -456,8 +616,9 @@ public class XeroAppsTests : IDisposable
             return Task.FromResult(new XeroTokenResponse("new-access", "new-refresh", 1800, "Bearer", "accounting.settings"));
         }
 
-        public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) =>
-            Task.FromResult(new List<XeroTenantResponse> { new("conn-new", "t-1", "Ayu One", "ORGANISATION", null) });
+        public List<XeroTenantResponse> Tenants { get; set; } = [new("conn-new", "t-1", "Ayu One", "ORGANISATION", null)];
+
+        public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => Task.FromResult(Tenants);
 
         public Task DeleteConnectionAsync(string a, string connectionId)
         {

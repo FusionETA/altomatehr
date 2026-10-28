@@ -680,13 +680,14 @@ export const downloadPcbDetails = (runId: string) =>
   );
 
 // The layout is decided by the company's own payroll bank, not by the caller
-// — so there is one endpoint and the server picks. `channel` and
-// `recipientReference` apply to Hong Leong only, which publishes two upload
-// portals taking different files; every other bank ignores them.
+// — so there is one endpoint and the server picks. `channel` applies to Hong
+// Leong only, which publishes two upload portals taking different files;
+// `recipientReference` to Hong Leong and OCBC; `tapeId` and `idCheck` to OCBC.
+// Every other bank ignores them.
 export const downloadBankFile = (
   runId: string,
   paymentDate?: string,
-  options?: { channel?: HlbChannel; recipientReference?: string },
+  options?: { channel?: HlbChannel; recipientReference?: string; tapeId?: string; idCheck?: boolean },
 ) => {
   const query = new URLSearchParams();
   if (paymentDate) query.set("paymentDate", paymentDate);
@@ -694,6 +695,8 @@ export const downloadBankFile = (
   if (options?.recipientReference) {
     query.set("recipientReference", options.recipientReference);
   }
+  if (options?.tapeId) query.set("tapeId", options.tapeId);
+  if (options?.idCheck) query.set("idCheck", "true");
 
   return download(
     `/payroll/runs/${runId}/documents/bank-file${query.size > 0 ? `?${query}` : ""}`,

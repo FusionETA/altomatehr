@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: fba85be
+  user-guide-covered-up-to: 99a79a1
 -->
 <html lang="en">
 <head>
@@ -693,8 +693,8 @@
       <li><strong>EPF defaults</strong> and your <strong>EPF employer no.</strong></li>
       <li><strong>HRD Corp levy</strong> — whether you pay it, the rate, and your HRD Corp employer no.</li>
       <li><strong>PCB compliance</strong> — auto-apply the RM 350 SOCSO + EIS relief.</li>
-      <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank or Hong Leong, with the account
-        details. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
+      <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank, Hong Leong or OCBC (<em>OCBC (incl. OCBC Al-Amin)</em> in the list), with the account
+        details. For OCBC, the first 3 digits of the account number are OCBC's branch code. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
         salaries another way.</li>
       <li><strong>Xero sync on submit</strong> — post the payroll journal to Xero when a run is approved.</li>
     </ul>
@@ -1740,6 +1740,7 @@
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
       <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
+      <li><strong>OCBC</strong> — Velocity GIRO file (.txt), see below</li>
     </ul>
     <p>Set the <strong>payment date</strong> before downloading. (For CIMB the box isn't shown — CIMB's template has no
       payment date; you choose it in BizChannel when you upload.) The file is refused — with a message saying why — if a
@@ -1749,6 +1750,31 @@
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
       <strong>Manual Payments</strong>.</p>
+    <h3>OCBC: Velocity GIRO file</h3>
+    <p>When your payroll bank is OCBC, the Bank group offers <span class="btn-name">OCBC Velocity GIRO (Payroll)</span>.
+      Upload it under <strong>GIRO file upload</strong> in Velocity@ocbc. It pays every employee paid by bank transfer,
+      whichever bank they use, OCBC staff included. Above the file, fill in:</p>
+    <ul>
+      <li><strong>Payment date</strong> — the day the money should go out.</li>
+      <li><strong>Recipient reference</strong> — what employees see on their bank statement, up to 20 characters. It
+        starts as something like <em>SALARY OCT 2026</em>; change it if you like, or leave it empty to use that.</li>
+      <li><strong>Tape ID</strong> — starts at 001. Each file you send for the same payment date from the same account
+        needs a different one (001–999), so a second run paid that day takes 002.</li>
+      <li><strong>ID check</strong> — a tickbox, off to begin with. Tick it and the employee's bank matches their IC or
+        passport to the account number before crediting. That is safer, but payments that don't match are rejected.</li>
+    </ul>
+    <p>The file is refused, with a message saying why, if a bank setting is missing or an employee's bank isn't
+      recognised, as with the other banks. For Hong Leong, the <strong>Recipient reference</strong> box likewise starts
+      with the period, such as <em>SALARY OCT 2026</em>.</p>
+    <figure class="shot" data-place="Files">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-downloads-ocbc.png" alt="The Download files dialog for a company whose payroll bank is OCBC: payment date, recipient reference, tape ID and ID check above the OCBC Velocity GIRO (Payroll) and Manual Payments rows" loading="lazy">
+          <p class="shot-cap">OCBC Velocity GIRO file</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Downloading the OCBC bank file</p>
+    </figure>
     <h3>CIMB: one Excel file for everyone</h3>
     <p>For CIMB the download is <span class="btn-name">BizChannel@CIMB Bulk Payroll (Excel)</span>: CIMB's own bulk
       payroll template, filled in with the name, bank, account number and amount of everyone paid by bank transfer.
@@ -2219,6 +2245,13 @@
         If it isn't ready yet, <span class="btn-name">Connect this company to Xero</span> is greyed out and the card
         says <em>Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero
         app.</em> Contact AltomateHR, then come back and connect as normal.</li>
+      <li><strong>Which Xero organisation is this company?</strong> — if signing in to Xero comes back with several
+        organisations (this happens when the Xero app is connected to many organisations and Xero re-approves them all),
+        the card asks <em>Which Xero organisation is this company?</em> instead of connecting. Choose your company's own
+        organisation from the list and press <span class="btn-name">Connect this organisation</span>, or press
+        <span class="btn-name">Cancel</span> to drop the sign-in. Organisations already connected to another company in
+        AltomateHR aren't listed. <span class="btn-name">Reconnect</span> keeps your company's current organisation
+        automatically, so you aren't asked.</li>
       <li><strong>Reconnect when convenient</strong> — if your company is moved to a different Xero app while it is
         connected, the card shows this note. The current connection keeps working. Press
         <span class="btn-name">Reconnect</span> and sign in to Xero once to move it across; your bills, files and records in Xero stay as they are, and the old app is removed from the Xero organisation's connected apps.</li>

@@ -9,6 +9,10 @@ public interface IXeroRepository
     Task<XeroOAuthState> AddStateAsync(XeroOAuthState state);
     Task<XeroOAuthState?> GetStateAsync(string state);
     Task UpdateStateAsync(XeroOAuthState state);
+
+    // This person's latest sign-in still waiting for them to pick the Xero
+    // org, in the current company, or null (none, or it has expired).
+    Task<XeroOAuthState?> GetPendingChoiceAsync(string organizationId, string userId);
     Task<XeroConnection?> GetConnectionAsync(string organizationId);
 
     // Of these Xero orgs, the ones actively connected to a DIFFERENT

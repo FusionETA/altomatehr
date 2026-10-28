@@ -28,4 +28,8 @@ public interface IXeroAppResolver
     Task<XeroAppCredentials> ForConnectAsync(string organizationId);
 
     Task<XeroAppCredentials> ForAppAsync(string? appId);
+
+    // The app also serves another product, so AltomateHR must leave it in the
+    // Xero org's "Connected apps" (see XeroApp.UsedByAnotherProduct).
+    Task<bool> KeepOnXeroAsync(string? appId) => Task.FromResult(false);
 }

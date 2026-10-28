@@ -21,12 +21,16 @@ public static class XeroTenantChoice
 {
     public enum Refusal { None, NothingAuthorised, SeveralAuthorised, InUseElsewhere }
 
-    public sealed record Result(XeroTenantResponse? Tenant, Refusal Refusal, string? TenantName = null);
+    // Candidates: on SeveralAuthorised, the orgs the admin can pick from.
+    public sealed record Result(
+        XeroTenantResponse? Tenant, Refusal Refusal, string? TenantName = null,
+        IReadOnlyList<XeroTenantResponse>? Candidates = null);
 
     public static Result Choose(
         IReadOnlyList<XeroTenantResponse> tenants,
         string? authEventId,
-        IReadOnlySet<string> tenantIdsUsedElsewhere)
+        IReadOnlySet<string> tenantIdsUsedElsewhere,
+        string? currentTenantId = null)
     {
         if (tenants.Count == 0) return new(null, Refusal.NothingAuthorised);
 
@@ -44,9 +48,18 @@ public static class XeroTenantChoice
         if (connectable.Count == 0)
             return new(null, Refusal.InUseElsewhere, justAuthorised[0].TenantName);
 
-        return connectable.Count == 1
-            ? new(connectable[0], Refusal.None)
-            : new(null, Refusal.SeveralAuthorised);
+        if (connectable.Count == 1) return new(connectable[0], Refusal.None);
+
+        // Rule 3, for a reconnect: an app already connected to many orgs
+        // (one shared with another product) re-approves them all at once, and
+        // Xero's consent screen offers no way to narrow that. The org this
+        // company is connected to now is the one being re-authorised.
+        if (currentTenantId is not null
+            && connectable.FirstOrDefault(t => t.TenantId == currentTenantId) is { } current)
+            return new(current, Refusal.None);
+
+        return new(null, Refusal.SeveralAuthorised,
+            Candidates: [.. connectable.OrderBy(t => t.TenantName, StringComparer.OrdinalIgnoreCase)]);
     }
 
     // The authentication_event_id claim of a Xero access token (a JWT). Only

@@ -60,6 +60,9 @@ public class XeroAppResolver : IXeroAppResolver
         return await ForAppAsync(assignment.AppId);
     }
 
+    public async Task<bool> KeepOnXeroAsync(string? appId) =>
+        appId is not null && (await _apps.GetAppAsync(appId))?.UsedByAnotherProduct == true;
+
     public async Task<XeroAppCredentials> ForAppAsync(string? appId)
     {
         if (appId is null)

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 8a9c534
+// whats-new-covered-up-to: 99a79a1
 
 export type WhatsNewEntry = {
   /** Release day, yyyy-MM-dd (Malaysia time). Also what "unread" compares. */
@@ -21,6 +21,21 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-10-28",
+    new: [
+      "Admins: OCBC (incl. OCBC Al-Amin) can now be picked as the payroll bank in Payroll → Settings. Its run download is an OCBC Velocity GIRO file, with a recipient reference like \"SALARY OCT 2026\".",
+      "Admins: the OCBC download asks for a Tape ID. It's 001 by default; use a new one for each file sent for the same payment date.",
+      "Admins: the OCBC download has an optional ID check tickbox, off by default. It has the employee's bank match their IC or passport to the account.",
+      "Admins: when connecting Xero finds several organisations, the Xero card asks \"Which Xero organisation is this company?\" The admin who connected picks one.",
+    ],
+    improved: [
+      "Admins: reconnecting Xero now keeps the organisation the company is already connected to.",
+    ],
+    fixed: [
+      "Admins: a September run's Hong Leong bank-file reference was pre-filled as \"SALARY SEPTEMBER 202\", losing its last digit. It now reads \"SALARY SEP 2026\".",
+    ],
+  },
   {
     date: "2026-10-27",
     new: [

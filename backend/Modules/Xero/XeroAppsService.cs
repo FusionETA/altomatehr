@@ -125,6 +125,7 @@ public class XeroAppsService : IXeroAppsService
                 Name = a.Name,
                 ClientIdEnding = Ending(a.ClientId) ?? string.Empty,
                 IsShared = a.IsShared,
+                UsedByAnotherProduct = a.UsedByAnotherProduct,
                 Owners = appIdsInUse.GetValueOrDefault(a.Id),
                 Connections = live.Values.Count(c => c.XeroAppId == a.Id),
                 UpdatedAt = a.UpdatedAt,
@@ -163,6 +164,7 @@ public class XeroAppsService : IXeroAppsService
             Name = name,
             ClientId = clientId,
             ClientSecretProtected = _protector.Protect(secret),
+            UsedByAnotherProduct = dto.UsedByAnotherProduct,
             CreatedAt = now,
             UpdatedAt = now,
             UpdatedByUserId = _currentUser.UserId,
@@ -243,6 +245,7 @@ public class XeroAppsService : IXeroAppsService
 
         app.Name = name;
         app.ClientId = clientId;
+        app.UsedByAnotherProduct = dto.UsedByAnotherProduct;
         if (!string.IsNullOrEmpty(secret)) app.ClientSecretProtected = _protector.Protect(secret);
         app.UpdatedAt = DateTime.UtcNow;
         app.UpdatedByUserId = _currentUser.UserId;

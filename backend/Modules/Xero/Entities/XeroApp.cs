@@ -26,6 +26,12 @@ public class XeroApp
     // original app is the shared one.
     public bool IsShared { get; set; }
 
+    // The same Xero app also serves another product (a single Xero app
+    // subscription for both). Then AltomateHR must never take it out of a Xero
+    // org's "Connected apps" — on Disconnect or when moving a company to
+    // another app — because that would cut the other product off too.
+    public bool UsedByAnotherProduct { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

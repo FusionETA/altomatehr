@@ -4110,6 +4110,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<bool>("UsedByAnotherProduct")
+                        .HasColumnType("tinyint(1)");
+
                     b.HasKey("Id");
 
                     b.ToTable("XeroApps");
@@ -4217,6 +4220,12 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("PendingChoiceExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PendingChoiceProtected")
+                        .HasColumnType("longtext");
 
                     b.Property<string>("ReturnUrl")
                         .HasMaxLength(1000)

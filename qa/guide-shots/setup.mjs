@@ -163,6 +163,31 @@ const steps = {
     if (r.status === 200) rmSync(saved);
   },
 
+  // For the payroll "Download files" bank section: switch the demo company's
+  // payroll bank to OCBC. The full original settings are kept in
+  // .out/payroll-bank.json; run `payroll-bank-restore` afterwards.
+  "payroll-bank-ocbc": async () => {
+    const t = await demoAdmin();
+    const got = await call(t, "GET", "/payroll/settings");
+    if (got.status !== 200) throw new Error(`settings: ${got.status}`);
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    const saved = new URL("./.out/payroll-bank.json", import.meta.url);
+    if (!existsSync(saved)) writeFileSync(saved, JSON.stringify(got.data));
+    const { isConfigured, updatedAt, abPayEnabled, ...rest } = got.data;
+    const r = await call(t, "PUT", "/payroll/settings", { ...rest, payrollBankName: "OCBC Bank (Malaysia) Berhad" });
+    console.log("payroll bank → OCBC:", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+  },
+
+  "payroll-bank-restore": async () => {
+    const saved = new URL("./.out/payroll-bank.json", import.meta.url);
+    if (!existsSync(saved)) { console.log("nothing to restore"); return; }
+    const t = await demoAdmin();
+    const { isConfigured, updatedAt, abPayEnabled, ...rest } = JSON.parse(readFileSync(saved, "utf8"));
+    const r = await call(t, "PUT", "/payroll/settings", rest);
+    console.log("payroll bank restored to", rest.payrollBankName, "→", r.status);
+    if (r.status === 200) rmSync(saved);
+  },
+
   // Approve one of Evan's future leaves (approved, not started) — for the
   // admin and employee leave-cancellation shots. Prefers the seeded lv-demo-5
   // (dates are relative to the day the seed ran), else his next pending leave,

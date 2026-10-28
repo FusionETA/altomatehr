@@ -14,6 +14,32 @@ public class XeroTenantChoiceTests
     private static readonly XeroTenantResponse TestOrg = Tenant("t-test", "AltomateHR-V2", "evt-old");
     private static readonly XeroTenantResponse Globe = Tenant("t-globe", "GLOBE ENGINEERING SDN. BHD.", "evt-now");
 
+    // An app shared with another product re-approves every org it has at once.
+    // On a reconnect, the org the company is connected to now is the answer.
+    [Fact]
+    public void AReconnectKeepsTheCurrentOrgAmongSeveralReapproved()
+    {
+        var result = XeroTenantChoice.Choose(
+            [Tenant("t-a", "Ayu Borneo (AP)", "evt-now"), Tenant("t-s14", "Ayu Borneo (Section 14)", "evt-now")],
+            "evt-now", new HashSet<string>(), currentTenantId: "t-s14");
+
+        Assert.Equal("t-s14", result.Tenant!.TenantId);
+    }
+
+    // No current org: the admin picks — from the ones not already used by
+    // another company, in name order.
+    [Fact]
+    public void SeveralWithNothingToGoOn_OffersThemToPick()
+    {
+        var result = XeroTenantChoice.Choose(
+            [Tenant("t-z", "Zeta", "evt-now"), Tenant("t-used", "Used", "evt-now"), Tenant("t-a", "Alpha", "evt-now")],
+            "evt-now", new HashSet<string> { "t-used" });
+
+        Assert.Null(result.Tenant);
+        Assert.Equal(XeroTenantChoice.Refusal.SeveralAuthorised, result.Refusal);
+        Assert.Equal(["Alpha", "Zeta"], result.Candidates!.Select(t => t.TenantName));
+    }
+
     // The exact bug: the test org is listed first, Globe was chosen just now.
     [Fact]
     public void PicksTheOrgAuthorisedInThisSignInNotTheFirstListed()

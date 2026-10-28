@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Cryptography;
+using System.Text.Json;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Accounts.Entities;
@@ -97,6 +98,9 @@ public class XeroService : IXeroService
         // still the org's live connection. A refused sign-in recorded none.
         if (storedState?.UsedAt is not null)
         {
+            if (storedState.PendingChoiceProtected is not null && storedState.PendingChoiceExpiresAt > DateTime.UtcNow)
+                return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "choose");
+
             var current = await _repo.GetConnectionAsync(storedState.OrganizationId);
             var thisSignInConnected = storedState.ConnectedTenantId is { } tenantId
                                       && current is { IsConnected: true }
@@ -125,13 +129,27 @@ public class XeroService : IXeroService
         // Which org this sign-in connects — see XeroTenantChoice. It used to be
         // tenants[0], i.e. whichever org the app was connected to FIRST, so an
         // admin who chose their company's Xero got another company's instead.
+        var connectedNow = await _repo.GetConnectionAsync(storedState.OrganizationId);
         var choice = XeroTenantChoice.Choose(
             tenants,
             XeroTenantChoice.AuthEventIdOf(token.AccessToken),
             await _repo.GetTenantIdsConnectedElsewhereAsync(
-                tenants.Select(t => t.TenantId), storedState.OrganizationId));
+                tenants.Select(t => t.TenantId), storedState.OrganizationId),
+            connectedNow is { IsConnected: true } ? connectedNow.TenantId : null);
 
         var now = DateTime.UtcNow;
+
+        // Several orgs and nothing to tell them apart: hold the sign-in for
+        // the person who made it to pick on the Xero card, rather than guess.
+        if (choice is { Refusal: XeroTenantChoice.Refusal.SeveralAuthorised, Candidates: { Count: > 0 } candidates })
+        {
+            storedState.UsedAt = now;
+            storedState.PendingChoiceProtected = _protector.Protect(
+                JsonSerializer.Serialize(new PendingChoice(token, [.. candidates], now)));
+            storedState.PendingChoiceExpiresAt = now.Add(PendingChoiceLifetime);
+            await _repo.UpdateStateAsync(storedState);
+            return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "choose");
+        }
 
         if (choice.Tenant is null)
         {
@@ -142,7 +160,89 @@ public class XeroService : IXeroService
             return WithRefusal(_options.FailureRedirectUrl, choice);
         }
 
-        var tenant = choice.Tenant;
+        await FinishConnectAsync(storedState, app.AppId, token, choice.Tenant, tokenIssuedAt: now);
+
+        // The frontend has no router, so the return URL is only ever the app
+        // root — the marker is what actually gets the admin back to the Xero
+        // card, and tells them it worked. Without it a successful connect just
+        // drops them on the dashboard with nothing said.
+        return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "connected");
+    }
+
+    // How long a sign-in waits for its org to be picked. Xero's refresh token
+    // outlives it by far; this only bounds how long half a connect lingers.
+    private static readonly TimeSpan PendingChoiceLifetime = TimeSpan.FromMinutes(30);
+
+    // IssuedAt: when Xero issued Token, so a pick made minutes later doesn't
+    // push the access token's expiry past the real one.
+    private sealed record PendingChoice(XeroTokenResponse Token, List<XeroTenantResponse> Tenants, DateTime IssuedAt);
+
+    public async Task<bool> ChooseTenantAsync(string tenantId)
+    {
+        var state = await _repo.GetPendingChoiceAsync(RequireOrganization(), _currentUser.UserId ?? string.Empty);
+        if (state is null) return false;
+
+        PendingChoice? pending;
+        try
+        {
+            pending = JsonSerializer.Deserialize<PendingChoice>(_protector.Unprotect(state.PendingChoiceProtected!));
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException)
+        {
+            pending = null;
+        }
+        var tenant = pending?.Tenants.FirstOrDefault(t => t.TenantId == tenantId);
+        if (pending is null || tenant is null) return false;
+
+        // Xero switched off for the company while the pick was waiting: the
+        // same refusal as the callback, and the pick is dropped.
+        if ((await _apps.AssignmentAsync(state.OrganizationId)).Disabled)
+        {
+            state.PendingChoiceProtected = null;
+            state.PendingChoiceExpiresAt = null;
+            await _repo.UpdateStateAsync(state);
+            return false;
+        }
+
+        // Checked again: another company may have connected it meanwhile.
+        if ((await _repo.GetTenantIdsConnectedElsewhereAsync([tenant.TenantId], state.OrganizationId)).Count > 0)
+            return false;
+
+        // The app as the callback resolves it: a sign-in started on the
+        // server-settings app that has since been moved into the list belongs
+        // to that app now.
+        string? appId;
+        try
+        {
+            appId = (await _apps.ForAppAsync(state.XeroAppId)).AppId;
+        }
+        catch (XeroReconnectRequiredException)
+        {
+            return false;
+        }
+
+        state.PendingChoiceProtected = null;
+        state.PendingChoiceExpiresAt = null;
+        await FinishConnectAsync(state, appId, pending.Token, tenant, pending.IssuedAt);
+        return true;
+    }
+
+    public async Task CancelPendingChoiceAsync()
+    {
+        var state = await _repo.GetPendingChoiceAsync(RequireOrganization(), _currentUser.UserId ?? string.Empty);
+        if (state is null) return;
+        state.PendingChoiceProtected = null;
+        state.PendingChoiceExpiresAt = null;
+        await _repo.UpdateStateAsync(state);
+    }
+
+    // Records the connection to `tenant` for the sign-in in `storedState`,
+    // made through the app `appId` (null = the server-settings app).
+    private async Task FinishConnectAsync(
+        XeroOAuthState storedState, string? appId, XeroTokenResponse token, XeroTenantResponse tenant,
+        DateTime tokenIssuedAt)
+    {
+        var now = DateTime.UtcNow;
 
         // Read before the upsert, because the upsert is what clears
         // DisconnectedAt. An org that was already connected is re-authorising,
@@ -155,7 +255,7 @@ public class XeroService : IXeroService
         // own app, or to the shared one): take the old app out of the Xero
         // org's connected apps, with the old app's tokens, before they are
         // replaced. Best-effort, as on disconnect.
-        if (previous is { IsConnected: true } && previous.XeroAppId != app.AppId)
+        if (previous is { IsConnected: true } && previous.XeroAppId != appId)
             await RevokeOnXeroAsync(previous);
 
         await _repo.UpsertConnectionAsync(new XeroConnection
@@ -169,10 +269,10 @@ public class XeroService : IXeroService
             Scope = token.Scope,
             AccessTokenProtected = _protector.Protect(token.AccessToken),
             RefreshTokenProtected = _protector.Protect(token.RefreshToken),
-            AccessTokenExpiresAt = now.AddSeconds(Math.Max(60, token.ExpiresIn - 60)),
+            AccessTokenExpiresAt = tokenIssuedAt.AddSeconds(Math.Max(60, token.ExpiresIn - 60)),
             ConnectedAt = now,
             UpdatedAt = now,
-            XeroAppId = app.AppId,
+            XeroAppId = appId,
         });
 
         // Xero is now the source of truth for which projects exist, so the ones
@@ -202,12 +302,6 @@ public class XeroService : IXeroService
             TargetId: tenant.TenantId,
             Metadata: new { tenant.TenantName, tenant.TenantType },
             OrganizationId: storedState.OrganizationId));
-
-        // The frontend has no router, so the return URL is only ever the app
-        // root — the marker is what actually gets the admin back to the Xero
-        // card, and tells them it worked. Without it a successful connect just
-        // drops them on the dashboard with nothing said.
-        return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "connected");
     }
 
     // Appends ?xero=connected / ?xero=failed, respecting whatever query the
@@ -247,6 +341,7 @@ public class XeroService : IXeroService
     {
         var connection = await GetCurrentConnectionAsync();
         var assignment = await _apps.AssignmentAsync(RequireOrganization());
+        var pendingChoice = assignment.Disabled ? null : await PendingChoiceForCallerAsync();
 
         if (connection is null || !connection.IsConnected)
         {
@@ -256,6 +351,7 @@ public class XeroService : IXeroService
                 OwnApp = assignment.OwnApp,
                 ConnectBlocked = assignment.Blocked,
                 XeroDisabled = assignment.Disabled,
+                PendingChoice = pendingChoice,
             };
         }
 
@@ -278,7 +374,27 @@ public class XeroService : IXeroService
             // no longer decrypt. Either way the tenant name above still shows, so
             // the admin knows which Xero org to reconnect.
             NeedsReconnect = connection.NeedsReconnect || !CanDecryptTokens(connection),
+            PendingChoice = pendingChoice,
         };
+    }
+
+    // Names only: the tokens never leave the server.
+    private async Task<List<XeroOrgChoiceDto>?> PendingChoiceForCallerAsync()
+    {
+        if (_currentUser.UserId is not { } userId) return null;
+        var state = await _repo.GetPendingChoiceAsync(RequireOrganization(), userId);
+        if (state is null) return null;
+        try
+        {
+            var pending = JsonSerializer.Deserialize<PendingChoice>(_protector.Unprotect(state.PendingChoiceProtected!));
+            return pending is null
+                ? null
+                : [.. pending.Tenants.Select(t => new XeroOrgChoiceDto { TenantId = t.TenantId, TenantName = t.TenantName })];
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException)
+        {
+            return null;
+        }
     }
 
     public async Task DisconnectAsync()
@@ -316,6 +432,16 @@ public class XeroService : IXeroService
 
     private async Task<bool> RevokeOnXeroAsync(XeroConnection connection)
     {
+        // An app another product also uses stays in the Xero org: removing it
+        // would cut that product off too. AltomateHR only forgets its tokens.
+        if (await _apps.KeepOnXeroAsync(connection.XeroAppId))
+        {
+            _logger.LogInformation(
+                "Not removing the Xero app from {Tenant}: another product uses the same app.",
+                connection.TenantName);
+            return false;
+        }
+
         // Never pull access another AltomateHR company is still using: the
         // Xero grant is per org, so revoking it here would disconnect them too.
         // (One Xero org on two companies is refused at connect time now, but

@@ -39,6 +39,12 @@ public interface IXeroService : IXeroFileUploader, IXeroFileReader
     Task<string> CompleteCallbackAsync(string code, string state);
     Task<XeroStatusDto> GetStatusAsync();
     Task DisconnectAsync();
+
+    // A sign-in that came back with several Xero orgs: connect the one picked
+    // (from XeroStatusDto.PendingChoice), or drop the sign-in. False when there
+    // is no such sign-in any more, or the org isn't one of its choices.
+    Task<bool> ChooseTenantAsync(string tenantId) => Task.FromResult(false);   // default for test doubles
+    Task CancelPendingChoiceAsync() => Task.CompletedTask;
     Task<XeroSyncAccountsResultDto> SyncAccountsAsync();
 
     // The currencies the connected Xero org is subscribed to. Empty when there

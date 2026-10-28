@@ -92,6 +92,8 @@ export type XeroAppSummary = {
   name: string;
   clientIdEnding: string;
   isShared: boolean;
+  /** Also serves another product: AltomateHR never removes it from a Xero organisation. */
+  usedByAnotherProduct: boolean;
   owners: number;
   connections: number;
   updatedAt: string;
@@ -113,7 +115,13 @@ export type XeroAppsOverview = {
 };
 
 /** On an edit, a blank client id or secret keeps the saved one. */
-export type SaveXeroApp = { name: string; clientId?: string; clientSecret?: string; isShared: boolean };
+export type SaveXeroApp = {
+  name: string;
+  clientId?: string;
+  clientSecret?: string;
+  isShared: boolean;
+  usedByAnotherProduct: boolean;
+};
 
 export const XERO_APPS_PATH = "/support/xero";
 export const getXeroAppsOverview = () => apiGet<XeroAppsOverview>(XERO_APPS_PATH);

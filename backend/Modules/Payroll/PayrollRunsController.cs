@@ -385,8 +385,9 @@ public class PayrollRunsController : ControllerBase
 
     // The bank disbursement file, in the layout of the company's own payroll
     // bank. `paymentDate` is the value date; omitted means the last day of the
-    // payroll period. `recipientReference` and `channel` apply to Hong Leong
-    // only — every other bank ignores them.
+    // payroll period. `channel` applies to Hong Leong only; `recipientReference`
+    // to Hong Leong (required) and OCBC (optional); `tapeId` and `idCheck` to
+    // OCBC only — every other bank ignores them.
     [RequireScope("payroll:read")]
     [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/bank-file")]
@@ -394,8 +395,10 @@ public class PayrollRunsController : ControllerBase
         string id,
         [FromQuery] DateTime? paymentDate,
         [FromQuery] string? recipientReference,
-        [FromQuery] HlbChannel? channel) =>
-        File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
+        [FromQuery] HlbChannel? channel,
+        [FromQuery] string? tapeId,
+        [FromQuery] bool idCheck = false) =>
+        File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel, tapeId, idCheck));
 
     // Everyone the bank file doesn't pay (other banks / e-wallets, cash,
     // cheque, missing accounts), as an Excel sheet to pay from by hand.
