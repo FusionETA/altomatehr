@@ -211,10 +211,9 @@ public static class PayrollBankFileOcbc
         lines.Add(trailer);
 
         var content = Encoding.ASCII.GetBytes(string.Join("\r\n", lines) + "\r\n");
-        var fileName =
-            $"OCBC_GIRO_Payroll_{model.Run.PeriodMonth:D2}{model.Run.PeriodYear}"
-            + $"{(PayrollPeriodLabel.FileTag(model.Run) is { Length: > 0 } tag ? "_" + tag : "")}"
-            + $"_T{tapeNumber:D3}.txt";
+        // The run's name is added by the caller (StatutoryFileService.Tagged),
+        // as for every bank file.
+        var fileName = $"OCBC_GIRO_Payroll_{model.Run.PeriodMonth:D2}{model.Run.PeriodYear}_T{tapeNumber:D3}.txt";
         return new StatutoryFileResult(true, fileName, content, ContentType, null);
     }
 

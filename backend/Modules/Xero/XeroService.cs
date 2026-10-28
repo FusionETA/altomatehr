@@ -145,7 +145,7 @@ public class XeroService : IXeroService
         {
             storedState.UsedAt = now;
             storedState.PendingChoiceProtected = _protector.Protect(
-                JsonSerializer.Serialize(new PendingChoice(token, [.. candidates])));
+                JsonSerializer.Serialize(new PendingChoice(token, [.. candidates], now)));
             storedState.PendingChoiceExpiresAt = now.Add(PendingChoiceLifetime);
             await _repo.UpdateStateAsync(storedState);
             return WithOutcome(storedState.ReturnUrl ?? _options.SuccessRedirectUrl, "choose");
@@ -160,7 +160,7 @@ public class XeroService : IXeroService
             return WithRefusal(_options.FailureRedirectUrl, choice);
         }
 
-        await FinishConnectAsync(storedState, app.AppId, token, choice.Tenant);
+        await FinishConnectAsync(storedState, app.AppId, token, choice.Tenant, tokenIssuedAt: now);
 
         // The frontend has no router, so the return URL is only ever the app
         // root — the marker is what actually gets the admin back to the Xero
@@ -173,7 +173,9 @@ public class XeroService : IXeroService
     // outlives it by far; this only bounds how long half a connect lingers.
     private static readonly TimeSpan PendingChoiceLifetime = TimeSpan.FromMinutes(30);
 
-    private sealed record PendingChoice(XeroTokenResponse Token, List<XeroTenantResponse> Tenants);
+    // IssuedAt: when Xero issued Token, so a pick made minutes later doesn't
+    // push the access token's expiry past the real one.
+    private sealed record PendingChoice(XeroTokenResponse Token, List<XeroTenantResponse> Tenants, DateTime IssuedAt);
 
     public async Task<bool> ChooseTenantAsync(string tenantId)
     {
@@ -192,13 +194,36 @@ public class XeroService : IXeroService
         var tenant = pending?.Tenants.FirstOrDefault(t => t.TenantId == tenantId);
         if (pending is null || tenant is null) return false;
 
+        // Xero switched off for the company while the pick was waiting: the
+        // same refusal as the callback, and the pick is dropped.
+        if ((await _apps.AssignmentAsync(state.OrganizationId)).Disabled)
+        {
+            state.PendingChoiceProtected = null;
+            state.PendingChoiceExpiresAt = null;
+            await _repo.UpdateStateAsync(state);
+            return false;
+        }
+
         // Checked again: another company may have connected it meanwhile.
         if ((await _repo.GetTenantIdsConnectedElsewhereAsync([tenant.TenantId], state.OrganizationId)).Count > 0)
             return false;
 
+        // The app as the callback resolves it: a sign-in started on the
+        // server-settings app that has since been moved into the list belongs
+        // to that app now.
+        string? appId;
+        try
+        {
+            appId = (await _apps.ForAppAsync(state.XeroAppId)).AppId;
+        }
+        catch (XeroReconnectRequiredException)
+        {
+            return false;
+        }
+
         state.PendingChoiceProtected = null;
         state.PendingChoiceExpiresAt = null;
-        await FinishConnectAsync(state, state.XeroAppId, pending.Token, tenant);
+        await FinishConnectAsync(state, appId, pending.Token, tenant, pending.IssuedAt);
         return true;
     }
 
@@ -214,7 +239,8 @@ public class XeroService : IXeroService
     // Records the connection to `tenant` for the sign-in in `storedState`,
     // made through the app `appId` (null = the server-settings app).
     private async Task FinishConnectAsync(
-        XeroOAuthState storedState, string? appId, XeroTokenResponse token, XeroTenantResponse tenant)
+        XeroOAuthState storedState, string? appId, XeroTokenResponse token, XeroTenantResponse tenant,
+        DateTime tokenIssuedAt)
     {
         var now = DateTime.UtcNow;
 
@@ -243,7 +269,7 @@ public class XeroService : IXeroService
             Scope = token.Scope,
             AccessTokenProtected = _protector.Protect(token.AccessToken),
             RefreshTokenProtected = _protector.Protect(token.RefreshToken),
-            AccessTokenExpiresAt = now.AddSeconds(Math.Max(60, token.ExpiresIn - 60)),
+            AccessTokenExpiresAt = tokenIssuedAt.AddSeconds(Math.Max(60, token.ExpiresIn - 60)),
             ConnectedAt = now,
             UpdatedAt = now,
             XeroAppId = appId,
@@ -315,7 +341,7 @@ public class XeroService : IXeroService
     {
         var connection = await GetCurrentConnectionAsync();
         var assignment = await _apps.AssignmentAsync(RequireOrganization());
-        var pendingChoice = await PendingChoiceForCallerAsync();
+        var pendingChoice = assignment.Disabled ? null : await PendingChoiceForCallerAsync();
 
         if (connection is null || !connection.IsConnected)
         {

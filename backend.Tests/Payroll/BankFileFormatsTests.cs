@@ -541,6 +541,16 @@ public class BankFileFormatsTests
         Assert.Contains("17 digits", result.Error!);
     }
 
+    // The run's name is added once, by StatutoryFileService — not here too.
+    [Fact]
+    public void Ocbc_FileNameCarriesTheTapeIdButNotTheRunName()
+    {
+        var model = Model();
+        model.Run.Name = "Workers";
+
+        Assert.Equal("OCBC_GIRO_Payroll_032026_T002.txt", Ocbc(model, tapeId: "2").FileName);
+    }
+
     // "Only characters visible in standard English keyboard."
     [Fact]
     public void Ocbc_KeepsNamesToKeyboardCharacters()

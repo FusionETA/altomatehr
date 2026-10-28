@@ -298,6 +298,55 @@ public class XeroAppsTests : IDisposable
         Assert.Null((await service.GetStatusAsync()).PendingChoice);
     }
 
+    // Xero switched off while the pick was waiting: no connection.
+    [Fact]
+    public async Task APick_IsRefused_OnceXeroIsSwitchedOff()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        await Apps().SetOwnerChoiceAsync("usr-ayu", new SetXeroOwnerChoiceDto { Choice = XeroAppChoice.None });
+
+        Assert.Null((await service.GetStatusAsync()).PendingChoice);
+        Assert.False(await service.ChooseTenantAsync("t-b"));
+        Assert.Null(repo.Connection);
+    }
+
+    // The access token expires when Xero said, counted from when it was
+    // issued — not from a pick made minutes later.
+    [Fact]
+    public async Task APick_KeepsTheTokensRealExpiry()
+    {
+        var app = await SharedWithWazzAsync();
+        var repo = new FakeXeroRepository();
+        repo.States.Add(new XeroOAuthState
+        {
+            OrganizationId = "org-ayu", UserId = "usr-ayu", State = "s-1", ExpiresAt = DateTime.UtcNow.AddMinutes(10), XeroAppId = app,
+        });
+        var client = new RecordingRefreshClient
+        {
+            Tenants = [new("c-b", "t-b", "Ayu BLK", "ORGANISATION", null), new("c-a", "t-a", "Ayu AP", "ORGANISATION", null)],
+        };
+        var service = new XeroService(new AyuAdmin(), repo, client, Provider, Options.Create(Original), _audit, apps: Resolver());
+        var issued = DateTime.UtcNow;
+        await service.CompleteCallbackAsync("code-1", "s-1");
+
+        await service.ChooseTenantAsync("t-b");
+
+        // The fake issues a 1800s token; the saved expiry stays ~29 min after issue.
+        Assert.InRange(repo.Connection!.AccessTokenExpiresAt, issued.AddSeconds(1700), issued.AddSeconds(1760));
+    }
+
     [Fact]
     public async Task APendingPick_CanBeDropped()
     {

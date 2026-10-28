@@ -437,8 +437,15 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // Hong Leong makes this mandatory and nothing in payroll data implies it —
   // it is what the employee sees on their own bank statement. Prefilled with
   // the period, which is what an admin types anyway, but still theirs to edit.
-  const [recipientReference, setRecipientReference] = useState(
-    () => `SALARY ${run.periodLabel}`.toUpperCase().slice(0, 20),
+  // The 3-letter month, as the server's own default: "SALARY SEPTEMBER 2026"
+  // is 21 characters and would lose its last digit to the 20-character limit.
+  const [recipientReference, setRecipientReference] = useState(() =>
+    `SALARY ${new Date(Date.UTC(run.periodYear, run.periodMonth - 1, 1)).toLocaleString("en", {
+      month: "short",
+      timeZone: "UTC",
+    })} ${run.periodYear}`
+      .toUpperCase()
+      .slice(0, 20),
   );
 
   // OCBC: Tape ID must differ between files with the same payment date from
