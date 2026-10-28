@@ -514,7 +514,7 @@ export function PayrollSettingsForm() {
                 value={settings.ecpPayorAccountNo}
                 onChange={(ecpPayorAccountNo) => patchSettings({ ecpPayorAccountNo })}
                 placeholder="Company payroll account no."
-                hint="The account salaries are debited from. Public Bank needs exactly 10 digits — the file is refused otherwise rather than rejected later by the portal."
+                hint="The account salaries are debited from. Public Bank needs exactly 10 digits — the file is refused otherwise rather than rejected later by the portal. For OCBC, its first 3 digits are the branch code."
               />
               <Field
                 id="payorAccountHolderName"
@@ -529,7 +529,7 @@ export function PayrollSettingsForm() {
                 value={settings.payorOrganisationCode}
                 onChange={(payorOrganisationCode) => patchSettings({ payorOrganisationCode })}
                 placeholder="Issued by your bank"
-                hint="Required by Maybank (Corporate ID). CIMB, Public Bank and Hong Leong do not use it."
+                hint="Required by Maybank (Corporate ID). CIMB, Public Bank, Hong Leong and OCBC do not use it."
               />
             </div>
           </section>

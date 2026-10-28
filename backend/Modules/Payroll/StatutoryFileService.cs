@@ -604,7 +604,9 @@ public class StatutoryFileService : IStatutoryFileService
         string runId,
         DateTime? paymentDate,
         string? recipientReference = null,
-        HlbChannel? channel = null)
+        HlbChannel? channel = null,
+        string? tapeId = null,
+        bool idCheck = false)
     {
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
@@ -674,6 +676,12 @@ public class StatutoryFileService : IStatutoryFileService
                     + "Connect First or ConnectBiz in the download panel — whichever one your "
                     + "company uses to submit bulk payroll."),
             },
+
+            // OCBC Velocity GIRO. Tape ID and the ID check are per file; the
+            // reference falls back to "SALARY <MON> <YEAR>" when left blank.
+            PayrollFileFormat.OcbcVelocityGiroTxt =>
+                PayrollBankFileOcbc.RenderGiroTxt(
+                    model, valueDate, settings.EcpPayorAccountNo, tapeId, idCheck, recipientReference),
 
             _ => StatutoryFileResult.Refused(
                 $"The upload file for {settings.PayrollBankName} isn't available yet. Use the "

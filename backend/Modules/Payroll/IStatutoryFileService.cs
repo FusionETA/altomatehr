@@ -107,7 +107,9 @@ public interface IStatutoryFileService
         string runId,
         DateTime? paymentDate,
         string? recipientReference = null,
-        HlbChannel? channel = null);
+        HlbChannel? channel = null,
+        string? tapeId = null,
+        bool idCheck = false);
 }
 
 // A zip, plus what did not make it in and why. Ok=false with Error → the whole

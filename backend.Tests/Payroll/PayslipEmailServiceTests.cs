@@ -216,7 +216,8 @@ public class PayslipEmailServiceTests : IDisposable
         public Task<StatutoryFileResult> RenderPcbDetailsPdfAsync(string runId) =>
             throw new NotSupportedException();
         public Task<StatutoryFileResult> RenderBankFileAsync(
-            string runId, DateTime? paymentDate, string? recipientReference = null, HlbChannel? channel = null) =>
+            string runId, DateTime? paymentDate, string? recipientReference = null, HlbChannel? channel = null,
+            string? tapeId = null, bool idCheck = false) =>
             throw new NotSupportedException();
     
     // The bundle is an integration surface; payslip email does not build one.
