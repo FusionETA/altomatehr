@@ -1,0 +1,31 @@
+// What FAH is doing, in words, while a tool runs: "Checking who's on leave…".
+const LABELS: Record<string, string> = {
+  list_pending: "Checking what's waiting",
+  whoami: "Checking access",
+  list_employees: "Looking through employees",
+  get_employee: "Opening the employee's record",
+  list_admins: "Checking admins",
+  list_policies: "Checking policies",
+  list_claims: "Looking through claims",
+  get_claim: "Opening the claim",
+  list_payroll_runs: "Checking payroll runs",
+  get_payroll_run: "Opening the payroll run",
+  get_payroll_readiness: "Checking the run is ready",
+  list_adjustment_categories: "Checking adjustment types",
+  list_loans: "Checking loans",
+  get_salary_history: "Checking salary history",
+  list_leave_applications: "Looking through leave applications",
+  get_leave_balances: "Checking leave balances",
+  list_leave_balances: "Checking leave balances",
+  who_is_on_leave: "Checking who's on leave",
+  get_attendance_summary: "Checking attendance",
+  who_is_clocked_in: "Checking who's clocked in",
+  create_employee: "Preparing the new employee",
+  update_employee: "Preparing the change",
+  create_payroll_run: "Preparing the payroll run",
+  run_payroll: "Recalculating payroll",
+  add_payroll_adjustment: "Preparing the adjustment",
+  change_payroll_adjustment: "Preparing the change",
+};
+
+export const toolLabel = (tool: string) => LABELS[tool] ?? "Checking AltomateHR";

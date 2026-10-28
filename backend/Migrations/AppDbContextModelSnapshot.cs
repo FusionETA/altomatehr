@@ -103,10 +103,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("ActingUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<bool>("Active")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("LastUsedAt")
@@ -1618,6 +1625,58 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("OrganizationMemberships");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Fah.Entities.FahConversation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<long>("CacheReadTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CacheWriteTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("MessagesJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PendingJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId", "UpdatedAt");
+
+                    b.ToTable("FahConversations");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Holidays.Entities.Holiday", b =>

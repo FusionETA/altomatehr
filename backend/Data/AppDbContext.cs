@@ -19,6 +19,7 @@ using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts.Entities;
 using AltomateHR.Api.Modules.Teams.Entities;
 using AltomateHR.Api.Modules.Xero.Entities;
+using AltomateHR.Api.Modules.Fah.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Data;
@@ -74,6 +75,7 @@ public class AppDbContext : DbContext
     public DbSet<XeroApp> XeroApps => Set<XeroApp>();
     public DbSet<XeroOwnerSetting> XeroOwnerSettings => Set<XeroOwnerSetting>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<FahConversation> FahConversations => Set<FahConversation>();
 
     // Not ITenantScoped, so it gets no global query filter — that is the point.
     // See MasterKey: provisioning cannot require a credential that already
@@ -476,6 +478,10 @@ public class AppDbContext : DbContext
         // known. ApiKeyAuditLog is NOT tenant-scoped (internal operational log).
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
+        // A FAH chat belongs to one person in one company; FahRepository adds the person.
+        modelBuilder.Entity<FahConversation>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<FahConversation>().HasIndex(c => new { c.OrganizationId, c.UserId, c.UpdatedAt });
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
             p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
                  && (_scope.UserIds == null || _scope.UserIds.Contains(p.UserId)));

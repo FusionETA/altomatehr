@@ -32,6 +32,7 @@ using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
+using AltomateHR.Api.Modules.Fah;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -225,6 +226,18 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // FAH, the assistant: every message is a paid model call, often several.
+    options.AddPolicy("fah", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "fah"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 15,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     // "Write with AI" for document templates — also paid per request, and a
     // drafting session is a handful of turns, not dozens.
     options.AddPolicy("ai-documents", httpContext =>
@@ -365,6 +378,14 @@ builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddScoped<IXeroAppRepository, XeroAppRepository>();
 builder.Services.AddScoped<IXeroAppResolver, XeroAppResolver>();
 builder.Services.AddScoped<IXeroAppsService, XeroAppsService>();
+
+// FAH, the in-app assistant: the model, the MCP server it reaches AltomateHR through, its chats.
+builder.Services.Configure<FahOptions>(builder.Configuration.GetSection("Fah"));
+builder.Services.AddHttpClient<IMcpClient, McpClient>(
+    http => http.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddScoped<IFahModel, ClaudeFahModel>();
+builder.Services.AddScoped<IFahRepository, FahRepository>();
+builder.Services.AddScoped<IFahService, FahService>();
 builder.Services.AddScoped<IProjectTrackingScope, ProjectTrackingScope>();
 // Same instance behind the narrow upload port the storage classes take.
 builder.Services.AddScoped<IXeroFileUploader>(sp => sp.GetRequiredService<IXeroService>());
@@ -433,6 +454,7 @@ builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
+builder.Services.AddScoped<IActingKeyService, ActingKeyService>();
 
 // API monitoring: one row per request, queued by the middleware and saved by the
 // writer in batches; the cleanup worker enforces the retention window.
@@ -546,6 +568,7 @@ app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
 app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();
 app.UseMiddleware<AltomateHR.Api.Modules.Employees.EmployeeScopeMiddleware>();  // a policy-limited admin sees only their employees  // a former employer's company is view-only
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
+app.UseMiddleware<ActingKeyWriteAllowlistMiddleware>();  // FAH keys change data only through FAH's own routes (refusals still audited above)
 app.MapControllers();
 
 // `dotnet run -- dump-chains <path>` writes every COMPUTED approval chain and

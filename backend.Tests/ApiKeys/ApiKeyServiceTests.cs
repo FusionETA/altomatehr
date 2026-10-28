@@ -98,4 +98,28 @@ internal sealed class FakeApiKeyRepository : IApiKeyRepository
     public Task UpdateAsync(ApiKey key) => Task.CompletedTask;   // mutates in place (same ref)
 
     public Task RecordUsageAsync(ApiKeyAuditLog log) => Task.CompletedTask;
+
+    // (organizationId, userId) → member, for FAH keys.
+    public Dictionary<(string Org, string User), ActingMember> Members { get; } = new();
+
+    public Task<ActingMember?> GetActingMemberAsync(string organizationId, string userId) =>
+        Task.FromResult(Members.TryGetValue((organizationId, userId), out var m) ? m : null);
+
+    public Task AddActingKeyAsync(ApiKey key)
+    {
+        Keys.Add(key);
+        return Task.CompletedTask;
+    }
+
+    public Task RevokeActingKeyAsync(string id)
+    {
+        foreach (var live in Keys.Where(k => k.Id == id && k.ActingUserId != null)) live.Active = false;
+        return Task.CompletedTask;
+    }
+
+    public Task RevokeActingKeysAsync(string userId)
+    {
+        foreach (var live in Keys.Where(k => k.ActingUserId == userId && k.Active)) live.Active = false;
+        return Task.CompletedTask;
+    }
 }
