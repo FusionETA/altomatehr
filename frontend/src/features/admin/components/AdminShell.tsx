@@ -6,6 +6,7 @@ import { NotificationBell } from "@/features/notifications/components/Notificati
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
 import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
+import { FahLauncher } from "@/features/fah/components/FahLauncher";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
 import { useAccountTerms } from "@/features/settings/lib/account-terms";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
@@ -425,6 +426,8 @@ export function AdminShell({
         </main>
       </div>
       {whatsNew.panel}
+      {/* FAH acts as the signed-in admin, so not while in a company as support. */}
+      {!user.supportMode ? <FahLauncher /> : null}
     </div>
   );
 }

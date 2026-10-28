@@ -24,8 +24,10 @@ public class ApiKeyRepository : IApiKeyRepository
 
     // Management reads run under a JWT Owner, so the tenant filter scopes these to the
     // Owner's active org automatically.
+    // FAH keys are left out: they belong to one person's assistant session, not
+    // to the integrations an Owner manages.
     public Task<List<ApiKey>> GetForCurrentOrgAsync() =>
-        _db.ApiKeys.OrderByDescending(k => k.CreatedAt).ToListAsync();
+        _db.ApiKeys.Where(k => k.ActingUserId == null).OrderByDescending(k => k.CreatedAt).ToListAsync();
 
     public Task<ApiKey?> GetByIdForCurrentOrgAsync(string id) =>
         _db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id);
@@ -33,7 +35,7 @@ public class ApiKeyRepository : IApiKeyRepository
     // A handful of rows per org, so the names come back and the caller matches
     // them in code. The tenant filter keeps it to the current org.
     public Task<List<string>> GetActiveNamesForCurrentOrgAsync() =>
-        _db.ApiKeys.Where(k => k.Active).Select(k => k.Name).ToListAsync();
+        _db.ApiKeys.Where(k => k.Active && k.ActingUserId == null).Select(k => k.Name).ToListAsync();
 
     public async Task AddAsync(ApiKey key)
     {
@@ -41,6 +43,45 @@ public class ApiKeyRepository : IApiKeyRepository
         _db.ApiKeys.Add(key);
         await _db.SaveChangesAsync();
     }
+
+    public async Task<ActingMember?> GetActingMemberAsync(string organizationId, string userId)
+    {
+        var role = await _db.OrganizationMemberships
+            .IgnoreQueryFilters()
+            .Where(m => m.OrganizationId == organizationId && m.UserId == userId)
+            .Select(m => m.Role)
+            .FirstOrDefaultAsync();
+        if (role is null) return null;
+
+        var email = await _db.Users.Where(u => u.Id == userId).Select(u => u.Email).FirstOrDefaultAsync();
+        return email is null ? null : new ActingMember(role, email);
+    }
+
+    public async Task AddActingKeyAsync(ApiKey key)
+    {
+        var now = DateTime.UtcNow;
+        // Kept a while after expiry so the API-key request log can still name
+        // the key; nothing refers to it after that.
+        var cutoff = now.AddDays(-30);
+        _db.ApiKeys.RemoveRange(await _db.ApiKeys
+            .Where(k => k.ActingUserId != null && k.ExpiresAt < cutoff)
+            .ToListAsync());
+
+        key.CreatedAt = key.CreatedAt == default ? now : key.CreatedAt;
+        _db.ApiKeys.Add(key);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task RevokeActingKeyAsync(string id)
+    {
+        // By id, whatever org the request is in: the turn that made it ends it.
+        var key = await _db.ApiKeys.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(k => k.Id == id && k.ActingUserId != null);
+        if (key is null || !key.Active) return;
+        key.Active = false;
+        await _db.SaveChangesAsync();
+    }
+
 
     public async Task UpdateAsync(ApiKey key)
     {

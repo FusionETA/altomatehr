@@ -341,6 +341,38 @@ export async function apiOpenStream(path: string, signal: AbortSignal): Promise<
   return res;
 }
 
+// POSTs a JSON body and opens the streamed (SSE) answer — for a request whose
+// response arrives in parts. Same token, refresh-and-retry and error handling
+// as apiPost; reading the stream is the caller's.
+export async function apiPostStream(path: string, body: unknown): Promise<Response> {
+  const res = await withRefresh(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+
+  if (!res.ok || !res.body) {
+    let data: unknown;
+    let msg = `POST ${path} failed: ${res.status}`;
+    try {
+      data = await res.json();
+      msg = getErrorMessage(data, msg);
+    } catch {
+      /* body wasn't JSON */
+    }
+    throw new ApiError(msg, res.status, data);
+  }
+
+  return res;
+}
+
 // GETs are de-duplicated and their answers cached; see api-cache. Callers get
 // the same promise contract as before — the cache only changes how fast it
 // settles, and useCachedQuery is what turns that into "no spinner".
