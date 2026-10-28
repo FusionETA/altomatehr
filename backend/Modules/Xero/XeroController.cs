@@ -61,6 +61,28 @@ public class XeroController : ControllerBase
         }
     }
 
+    // POST /xero/choose-org — the caller's sign-in came back with several Xero
+    // orgs; connect the one they picked (from status.pendingChoice).
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
+    [HumanOnly]
+    [HttpPost("choose-org")]
+    public async Task<IActionResult> ChooseOrg(XeroChooseTenantDto dto) =>
+        await _xero.ChooseTenantAsync(dto.TenantId)
+            ? NoContent()
+            : Conflict(new { error = "That choice is no longer available. Press Connect and sign in to Xero again." });
+
+    // DELETE /xero/choose-org — drop that sign-in without connecting.
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
+    [HumanOnly]
+    [HttpDelete("choose-org")]
+    public async Task<IActionResult> CancelChooseOrg()
+    {
+        await _xero.CancelPendingChoiceAsync();
+        return NoContent();
+    }
+
     [Authorize(Roles = "Admin,Owner")]
     [RequireSettings]
     [HttpPost("disconnect")]

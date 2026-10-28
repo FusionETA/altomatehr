@@ -33,6 +33,8 @@ public class XeroAppDto
     public string Name { get; set; } = string.Empty;
     public string ClientIdEnding { get; set; } = string.Empty;
     public bool IsShared { get; set; }
+    // Also serves another product: AltomateHR never removes it from a Xero org.
+    public bool UsedByAnotherProduct { get; set; }
     public int Owners { get; set; }
     public int Connections { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -85,6 +87,8 @@ public class SaveXeroAppDto
     public string? ClientSecret { get; set; }
 
     public bool IsShared { get; set; }
+
+    public bool UsedByAnotherProduct { get; set; }
 }
 
 public class AdoptOriginalXeroAppDto

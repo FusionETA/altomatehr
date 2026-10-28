@@ -377,6 +377,12 @@ internal sealed class FakeXeroRepository : IXeroRepository
     public Task<XeroOAuthState?> GetStateAsync(string state) =>
         Task.FromResult(States.FirstOrDefault(s => s.State == state));
     public Task UpdateStateAsync(XeroOAuthState state) => Task.CompletedTask;
+    public Task<XeroOAuthState?> GetPendingChoiceAsync(string organizationId, string userId) =>
+        Task.FromResult(States
+            .Where(s => s.OrganizationId == organizationId && s.UserId == userId
+                        && s.PendingChoiceProtected != null && s.PendingChoiceExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefault());
     public Task<XeroConnection> UpsertConnectionAsync(XeroConnection c)
     {
         Connection = c;

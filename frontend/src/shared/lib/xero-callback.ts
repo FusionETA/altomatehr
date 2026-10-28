@@ -9,7 +9,9 @@
 // render path, which StrictMode's double-invoke turns into a value that
 // vanishes on the second pass.
 
-export type XeroCallbackOutcome = "connected" | "failed";
+// "choose": the sign-in came back with several Xero organisations, and the
+// card asks which one is this company's (status.pendingChoice).
+export type XeroCallbackOutcome = "connected" | "failed" | "choose";
 
 // Why a connect was refused, when the server said:
 //   in-use  — that Xero org is already connected to a different company
@@ -24,7 +26,7 @@ function read(): XeroCallbackOutcome | null {
 
   const params = new URLSearchParams(window.location.search);
   const outcome = params.get("xero");
-  if (outcome !== "connected" && outcome !== "failed") return null;
+  if (outcome !== "connected" && outcome !== "failed" && outcome !== "choose") return null;
 
   const reason = params.get("xeroReason");
   if (outcome === "failed" && (reason === "in-use" || reason === "several" || reason === "none")) {

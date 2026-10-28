@@ -34,6 +34,22 @@ public class XeroStatusDto
     // Connected through a different app from the one the owner is on now.
     // Still works; reconnecting moves it.
     public bool ReconnectToMoveApp { get; set; }
+
+    // The caller's sign-in came back with several Xero orgs: pick one. Null
+    // when nothing is waiting.
+    public List<XeroOrgChoiceDto>? PendingChoice { get; set; }
+}
+
+public class XeroOrgChoiceDto
+{
+    public string TenantId { get; set; } = string.Empty;
+    public string TenantName { get; set; } = string.Empty;
+}
+
+public class XeroChooseTenantDto
+{
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(64)]
+    public string TenantId { get; set; } = string.Empty;
 }
 
 public class XeroSyncAccountsResultDto

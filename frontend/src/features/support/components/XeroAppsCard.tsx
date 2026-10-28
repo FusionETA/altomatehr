@@ -323,6 +323,11 @@ function AppsTable({
             <tr key={a.id} className="border-b border-border/30 last:border-0">
               <td className="px-4 py-3 font-semibold text-foreground">
                 {a.name} {a.isShared ? shared : null}
+                {a.usedByAnotherProduct ? (
+                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                    Also used elsewhere
+                  </span>
+                ) : null}
               </td>
               <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{a.clientIdEnding}</td>
               <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{a.owners}</td>
@@ -504,6 +509,7 @@ function AppDialog({
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [isShared, setIsShared] = useState(app?.isShared ?? false);
+  const [usedByAnotherProduct, setUsedByAnotherProduct] = useState(app?.usedByAnotherProduct ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -521,6 +527,7 @@ function AppDialog({
         clientId: clientId.trim() || undefined,
         clientSecret: clientSecret.trim() || undefined,
         isShared,
+        usedByAnotherProduct,
       };
       if (app) await updateXeroApp(app.id, body);
       else await addXeroApp(body);
@@ -585,6 +592,16 @@ function AppDialog({
               </span>
             </span>
             <Switch checked={isShared} onCheckedChange={setIsShared} />
+          </label>
+          <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-4 py-2.5">
+            <span className="text-sm font-medium text-foreground">
+              Also used by another product
+              <span className="block text-xs font-normal text-muted-foreground">
+                The same Xero app serves another product too. Disconnecting in AltomateHR then never
+                removes it from a company&apos;s Xero, so the other product keeps working.
+              </span>
+            </span>
+            <Switch checked={usedByAnotherProduct} onCheckedChange={setUsedByAnotherProduct} />
           </label>
 
           {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}

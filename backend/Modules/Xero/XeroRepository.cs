@@ -28,6 +28,16 @@ public class XeroRepository : IXeroRepository
         await _db.SaveChangesAsync();
     }
 
+    public Task<XeroOAuthState?> GetPendingChoiceAsync(string organizationId, string userId)
+    {
+        var now = DateTime.UtcNow;
+        return _db.XeroOAuthStates
+            .Where(s => s.OrganizationId == organizationId && s.UserId == userId
+                        && s.PendingChoiceProtected != null && s.PendingChoiceExpiresAt > now)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync();
+    }
+
     public Task<XeroConnection?> GetConnectionAsync(string organizationId) =>
         _db.XeroConnections.FirstOrDefaultAsync(c => c.OrganizationId == organizationId);
 

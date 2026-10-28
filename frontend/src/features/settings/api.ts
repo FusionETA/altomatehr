@@ -367,6 +367,11 @@ export type XeroStatus = {
   xeroDisabled?: boolean;
   /** Connected through an older app; reconnecting moves it to the current one. */
   reconnectToMoveApp?: boolean;
+  /**
+   * The caller's sign-in came back with several Xero organisations (an app
+   * shared with another product re-approves them all): pick this company's.
+   */
+  pendingChoice?: { tenantId: string; tenantName: string }[] | null;
 };
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");
@@ -388,6 +393,10 @@ export const getXeroConnectUrl = (returnUrl?: string) =>
   );
 
 export const disconnectXero = () => apiPost<void>("/xero/disconnect", {});
+
+export const chooseXeroOrg = (tenantId: string) => apiPost<void>("/xero/choose-org", { tenantId });
+
+export const cancelXeroOrgChoice = () => apiDelete<void>("/xero/choose-org");
 
 // Pulls Xero's chart of accounts in. While Xero is connected this is the only
 // way accounts get created — the backend refuses hand-made ones, because an
