@@ -496,8 +496,10 @@ builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ITeamChatQueue,
     AltomateHR.Api.Modules.TeamChat.TeamChatQueue>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts,
     AltomateHR.Api.Modules.TeamChat.TeamChatAlerts>();
+// No request logging: the webhook's token is in the URL path, which the
+// default HttpClient logs would write out on every message.
 builder.Services.AddHttpClient<AltomateHR.Api.Modules.TeamChat.IBitrixClient,
-    AltomateHR.Api.Modules.TeamChat.BitrixClient>();
+    AltomateHR.Api.Modules.TeamChat.BitrixClient>().RemoveAllLoggers();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatSenderBackgroundService>();
 builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
 builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
