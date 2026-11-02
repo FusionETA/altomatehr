@@ -75,3 +75,23 @@ public class PolicyLeaveEntitlementRepository : IPolicyLeaveEntitlementRepositor
         await _db.SaveChangesAsync();
     }
 }
+
+public class PolicyOvertimeRateRepository : IPolicyOvertimeRateRepository
+{
+    private readonly AppDbContext _db;
+
+    public PolicyOvertimeRateRepository(AppDbContext db) => _db = db;
+
+    public Task<List<PolicyOvertimeRate>> GetByPolicyAsync(string policyId) =>
+        _db.PolicyOvertimeRates.Where(r => r.PolicyId == policyId).ToListAsync();
+
+    public Task<List<PolicyOvertimeRate>> GetAllAsync() => _db.PolicyOvertimeRates.ToListAsync();
+
+    public async Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyOvertimeRate> rates)
+    {
+        var existing = await _db.PolicyOvertimeRates.Where(r => r.PolicyId == policyId).ToListAsync();
+        _db.PolicyOvertimeRates.RemoveRange(existing);
+        _db.PolicyOvertimeRates.AddRange(rates);
+        await _db.SaveChangesAsync();
+    }
+}

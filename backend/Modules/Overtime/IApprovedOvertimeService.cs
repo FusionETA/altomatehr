@@ -17,7 +17,10 @@ public interface IApprovedOvertimeService
 }
 
 // Minutes rather than hours so nothing is rounded before payroll decides how.
-public record ApprovedOvertimeMinutes(int NormalDayMin, int RestDayMin, int PublicHolidayMin)
+// CustomMin: minutes requested under one of the company's own overtime
+// types, by type id (never sorted by the calendar).
+public record ApprovedOvertimeMinutes(
+    int NormalDayMin, int RestDayMin, int PublicHolidayMin, IReadOnlyDictionary<string, int>? CustomMin = null)
 {
-    public int TotalMin => NormalDayMin + RestDayMin + PublicHolidayMin;
+    public int TotalMin => NormalDayMin + RestDayMin + PublicHolidayMin + (CustomMin?.Values.Sum() ?? 0);
 }

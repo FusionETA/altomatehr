@@ -114,6 +114,9 @@ public static class PayslipCalculator
         public decimal OtRestHours { get; init; }
         public decimal OtPublicHours { get; init; }
 
+        // The company's own overtime types, each at its policy multiplier.
+        public IReadOnlyList<CustomOvertime> OtCustom { get; init; } = [];
+
         // Effective daily hours for the monthly→hourly conversion. Null falls
         // back to OvertimePay's standard day.
         public decimal? DailyHours { get; init; }
@@ -215,6 +218,7 @@ public static class PayslipCalculator
         public required decimal OtNormalHours { get; init; }
         public required decimal OtRestHours { get; init; }
         public required decimal OtPublicHours { get; init; }
+        public IReadOnlyList<PayslipOvertimeLine> OtCustom { get; init; } = [];
         public required decimal OtPay { get; init; }
         public required decimal TotalAllowances { get; init; }
         public required decimal TotalReimbursements { get; init; }
@@ -316,7 +320,13 @@ public static class PayslipCalculator
         var otPay = OvertimePay.Calculate(
             hourlyRate,
             input.OtNormalHours, input.OtRestHours, input.OtPublicHours,
-            input.OtRateNormal, input.OtRateRest, input.OtRatePublicHoliday);
+            input.OtRateNormal, input.OtRateRest, input.OtRatePublicHoliday,
+            input.OtCustom.Select(c => (c.Hours, c.Multiplier)));
+        var otCustom = input.OtCustom
+            .Where(c => c.Hours > 0m)
+            .Select(c => new PayslipOvertimeLine(
+                c.TypeId, c.Name, c.Hours, c.Multiplier, Money.Round2(c.Hours * hourlyRate * c.Multiplier)))
+            .ToList();
 
         // 4. Fixed adjustments. Each row can land in six wage bases at once, and
         //    the category's flags are the only thing that decides which.
@@ -555,6 +565,7 @@ public static class PayslipCalculator
             OtNormalHours = input.OtNormalHours,
             OtRestHours = input.OtRestHours,
             OtPublicHours = input.OtPublicHours,
+            OtCustom = otCustom,
             OtPay = otPay,
             TotalAllowances = buckets.Allowances,
             TotalReimbursements = totalReimbursements,
@@ -1043,3 +1054,7 @@ public static class PayslipCalculator
     private static decimal Lookup(IReadOnlyDictionary<string, decimal> map, string key) =>
         map.TryGetValue(key, out var value) ? value : 0m;
 }
+
+// One of the company's own overtime types for this payslip: its hours and the
+// multiplier the person's policy pays.
+public sealed record CustomOvertime(string TypeId, string Name, decimal Hours, decimal Multiplier);

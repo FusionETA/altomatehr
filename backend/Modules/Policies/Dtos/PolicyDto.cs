@@ -9,6 +9,19 @@ public class PolicyLeaveEntitlementDto
     public double DefaultDays { get; set; }
 }
 
+// The policy's take on one of the company's own overtime types: its own
+// multiplier (null = the company's), or off for this policy's staff.
+public class PolicyOvertimeRateDto
+{
+    [Required]
+    public string OvertimeTypeId { get; set; } = string.Empty;
+
+    [Range(0, 99.99)]
+    public decimal? Multiplier { get; set; }
+
+    public bool Enabled { get; set; } = true;
+}
+
 public class PolicyDto
 {
     public string Id { get; set; } = string.Empty;
@@ -38,11 +51,14 @@ public class PolicyDto
     public bool OtEnabled { get; set; }
     public int OtDailyThresholdMinutes { get; set; }
     public OtMethod OtMethod { get; set; }
-    public decimal OtRateNormalDay { get; set; }
-    public decimal OtRatePublicHoliday { get; set; }
-    public decimal OtRateRestDay { get; set; }
-    public decimal OtRatePublicHolidayInShift { get; set; }
-    public decimal OtRateRestDayInShift { get; set; }
+    // Null = the company's multiplier for that built-in overtime type.
+    public decimal? OtRateNormalDay { get; set; }
+    public decimal? OtRatePublicHoliday { get; set; }
+    public decimal? OtRateRestDay { get; set; }
+
+    // Only the company's own types this policy changes; any other is on, at
+    // the company's multiplier.
+    public List<PolicyOvertimeRateDto> OvertimeRates { get; set; } = [];
     public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }
     public List<PolicyLeaveEntitlementDto> LeaveEntitlements { get; set; } = [];
@@ -83,11 +99,14 @@ public class SavePolicyDto
 
     public OtMethod OtMethod { get; set; } = OtMethod.CASH;
 
-    [Range(0, 99.99)] public decimal OtRateNormalDay { get; set; } = 1.50m;
-    [Range(0, 99.99)] public decimal OtRatePublicHoliday { get; set; } = 3.00m;
-    [Range(0, 99.99)] public decimal OtRateRestDay { get; set; } = 2.00m;
-    [Range(0, 99.99)] public decimal OtRatePublicHolidayInShift { get; set; } = 2.00m;
-    [Range(0, 99.99)] public decimal OtRateRestDayInShift { get; set; } = 1.00m;
+    // Null = the company's multiplier (System Settings → Overtime types).
+    [Range(0, 99.99)] public decimal? OtRateNormalDay { get; set; }
+    [Range(0, 99.99)] public decimal? OtRatePublicHoliday { get; set; }
+    [Range(0, 99.99)] public decimal? OtRateRestDay { get; set; }
+
+    // The company's own overtime types: null = leave this policy's as they
+    // are; a list replaces them (a type left out is on, at the company rate).
+    public List<PolicyOvertimeRateDto>? OvertimeRates { get; set; }
     [Range(0, 99999999.99)] public decimal? OtSalaryThreshold { get; set; }
     public bool Temporary { get; set; }
 

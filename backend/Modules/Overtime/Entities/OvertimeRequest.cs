@@ -24,6 +24,12 @@ public class OvertimeRequest : ITenantScoped
     public DateTime EndAt { get; set; }
     public int RequestedMinutes { get; set; }
 
+    // One of the company's CUSTOM overtime types, picked by the employee.
+    // Null = automatic: payroll sorts the hours by the calendar into normal
+    // day, rest day or public holiday.
+    [MaxLength(40)]
+    public string? OvertimeTypeId { get; set; }
+
     [MaxLength(1000)]
     public string Reason { get; set; } = string.Empty;
 

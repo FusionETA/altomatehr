@@ -35,6 +35,17 @@ public static class PayrollRunAdjustments
         Parse<Dictionary<string, FixedAllowanceOverride>>(json)
         ?? new Dictionary<string, FixedAllowanceOverride>();
 
+    // Overtime type id → hours typed for the company's own overtime types.
+    // Zero and negative hours are dropped: they mean "none".
+    public static Dictionary<string, decimal> ParseOtCustomHours(string? json) =>
+        (Parse<Dictionary<string, decimal>>(json) ?? [])
+            .Where(h => h.Value > 0m)
+            .ToDictionary(h => h.Key, h => h.Value, StringComparer.Ordinal);
+
+    // The custom overtime a payslip paid (Payslip.OtCustomJson).
+    public static IReadOnlyList<PayslipOvertimeLine> ParseOtCustomLines(string? json) =>
+        Parse<List<PayslipOvertimeLine>>(json) ?? [];
+
     private static T? Parse<T>(string? json) where T : class
     {
         if (string.IsNullOrWhiteSpace(json)) return null;

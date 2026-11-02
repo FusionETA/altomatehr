@@ -64,6 +64,8 @@ public class AppDbContext : DbContext
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
+    public DbSet<OvertimeType> OvertimeTypes => Set<OvertimeType>();
+    public DbSet<PolicyOvertimeRate> PolicyOvertimeRates => Set<PolicyOvertimeRate>();
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<Team> Teams => Set<Team>();
@@ -222,6 +224,12 @@ public class AppDbContext : DbContext
             .Property(e => e.AccrualMethod).HasConversion<string>().HasMaxLength(20);
         modelBuilder.Entity<PolicyLeaveEntitlement>()
             .HasIndex(e => new { e.PolicyId, e.LeaveTypeId }).IsUnique();
+
+        var otType = modelBuilder.Entity<OvertimeType>();
+        otType.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20);
+        otType.HasIndex(t => new { t.OrganizationId, t.Kind });
+        modelBuilder.Entity<PolicyOvertimeRate>()
+            .HasIndex(r => new { r.PolicyId, r.OvertimeTypeId }).IsUnique();
 
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.Name }).IsUnique();
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.IsDefault });
@@ -454,6 +462,10 @@ public class AppDbContext : DbContext
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PolicyLeaveEntitlement>().HasQueryFilter(
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<OvertimeType>().HasQueryFilter(
+            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PolicyOvertimeRate>().HasQueryFilter(
+            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Shift>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Holiday>().HasQueryFilter(

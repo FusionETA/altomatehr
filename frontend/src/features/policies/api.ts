@@ -33,11 +33,13 @@ export type Policy = {
   captureLocationOnBreakEnd: boolean;
   autoClockOutEnabled: boolean;
   autoClockOutAfterMinutes: number | null;
-  otRateNormalDay: number;
-  otRatePublicHoliday: number;
-  otRateRestDay: number;
-  otRatePublicHolidayInShift: number;
-  otRateRestDayInShift: number;
+  // Null = the company's rate for that built-in overtime type.
+  otRateNormalDay: number | null;
+  otRatePublicHoliday: number | null;
+  otRateRestDay: number | null;
+  // Only the company's own types this policy changes; any other is on at the
+  // company's rate.
+  overtimeRates: PolicyOvertimeRate[];
   otSalaryThreshold: number | null;
   leaveEntitlements: PolicyLeaveEntitlement[];
 };
@@ -64,13 +66,22 @@ export type SavePolicy = {
   captureLocationOnBreakEnd: boolean;
   autoClockOutEnabled: boolean;
   autoClockOutAfterMinutes: number | null;
-  otRateNormalDay: number;
-  otRatePublicHoliday: number;
-  otRateRestDay: number;
-  otRatePublicHolidayInShift: number;
-  otRateRestDayInShift: number;
+  // Null = the company's rate for that built-in overtime type.
+  otRateNormalDay: number | null;
+  otRatePublicHoliday: number | null;
+  otRateRestDay: number | null;
+  // Only the company's own types this policy changes; any other is on at the
+  // company's rate.
+  overtimeRates: PolicyOvertimeRate[];
   otSalaryThreshold: number | null;
   leaveEntitlements: PolicyLeaveEntitlement[];
+};
+
+// A policy's take on one of the company's own overtime types.
+export type PolicyOvertimeRate = {
+  overtimeTypeId: string;
+  multiplier: number | null; // null = the company's
+  enabled: boolean;
 };
 
 export const getPolicies = () => apiGet<Policy[]>("/policies");
@@ -92,3 +103,26 @@ export type MyModuleAccess = {
 
 export const getMyModuleAccess = () =>
   apiGet<MyModuleAccess>("/policies/mine/modules");
+
+// ---- The company's overtime types ----
+// Three are built in (filled by the calendar; renamable, never removed);
+// the rest are the company's own, picked on an overtime request.
+
+export type OvertimeTypeKind = "NORMAL_DAY" | "REST_DAY" | "PUBLIC_HOLIDAY" | "CUSTOM";
+
+export type OvertimeType = {
+  id: string;
+  name: string;
+  kind: OvertimeTypeKind;
+  multiplier: number;
+  isArchived: boolean;
+};
+
+export type SaveOvertimeType = { name: string; multiplier: number };
+
+export const OVERTIME_TYPES_PATH = "/overtime-types";
+export const getOvertimeTypes = () => apiGet<OvertimeType[]>(OVERTIME_TYPES_PATH);
+export const createOvertimeType = (body: SaveOvertimeType) => apiPost<OvertimeType>(OVERTIME_TYPES_PATH, body);
+export const updateOvertimeType = (id: string, body: SaveOvertimeType) =>
+  apiPut<OvertimeType>(`${OVERTIME_TYPES_PATH}/${id}`, body);
+export const archiveOvertimeType = (id: string) => apiPost<OvertimeType>(`${OVERTIME_TYPES_PATH}/${id}/archive`);

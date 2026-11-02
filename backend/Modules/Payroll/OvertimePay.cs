@@ -52,7 +52,8 @@ public static class OvertimePay
     }
 
     // Combined OT pay. The per-category breakdown is persisted separately on the
-    // payslip for audit; this is just the money.
+    // payslip for audit; this is just the money. `custom` is the company's own
+    // overtime types (hours, multiplier) — rounded once with the rest.
     public static decimal Calculate(
         decimal hourlyRate,
         decimal otNormalHours,
@@ -60,13 +61,15 @@ public static class OvertimePay
         decimal otPublicHours,
         decimal otRateNormal,
         decimal otRateRest,
-        decimal otRatePublicHoliday)
+        decimal otRatePublicHoliday,
+        IEnumerable<(decimal Hours, decimal Multiplier)>? custom = null)
     {
         var normal = otNormalHours * hourlyRate * otRateNormal;
         var rest = otRestHours * hourlyRate * otRateRest;
         var publicHoliday = otPublicHours * hourlyRate * otRatePublicHoliday;
+        var own = (custom ?? []).Sum(c => c.Hours * hourlyRate * c.Multiplier);
 
-        return Money.Round2(normal + rest + publicHoliday);
+        return Money.Round2(normal + rest + publicHoliday + own);
     }
 
     private const decimal DefaultDailyHours = 8m;

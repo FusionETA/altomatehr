@@ -124,6 +124,8 @@ public static class PayrollSummaryPdf
             if (payslip.OtNormalHours > 0m) parts.Add($"{Hours(payslip.OtNormalHours)} normal");
             if (payslip.OtRestHours > 0m) parts.Add($"{Hours(payslip.OtRestHours)} rest");
             if (payslip.OtPublicHours > 0m) parts.Add($"{Hours(payslip.OtPublicHours)} PH");
+            parts.AddRange(PayrollRunAdjustments.ParseOtCustomLines(payslip.OtCustomJson)
+                .Select(c => $"{Hours(c.Hours)} {c.Name}"));
             var tail = parts.Count > 0 ? $" ({string.Join(" + ", parts)})" : string.Empty;
 
             lines.Add(new BreakdownLine($"Overtime{tail}", payslip.OtPay, true));

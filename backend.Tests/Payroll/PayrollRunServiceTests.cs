@@ -34,6 +34,7 @@ public class PayrollRunServiceTests : IDisposable
     private readonly PayslipRepository _payslips;
     private readonly PayrollRunAdjustmentRepository _adjustments;
     private readonly PayrollRunClaimRepository _runClaims;
+    private readonly OvertimeTypeService _otTypes;
 
     public PayrollRunServiceTests()
     {
@@ -58,6 +59,13 @@ public class PayrollRunServiceTests : IDisposable
             new PayrollRunRepository(_db),
             directory,
             _audit);
+
+        var policies = new PolicyService(
+            new EmployeePolicyRepository(_db),
+            new PolicyLeaveEntitlementRepository(_db),
+            directory);
+        _otTypes = new OvertimeTypeService(
+            new OvertimeTypeRepository(_db), new PolicyOvertimeRateRepository(_db), policies);
 
         _service = new PayrollRunService(
             new PayrollRunRepository(_db),
@@ -94,7 +102,8 @@ public class PayrollRunServiceTests : IDisposable
             settlements: new UnpaidLeaveSettlementRepository(_db),
             drafts: new PayrollDraftStaleness(
                 new PayrollRunRepository(_db), _currentUser,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<PayrollDraftStaleness>.Instance));
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<PayrollDraftStaleness>.Instance),
+            overtimeTypes: _otTypes);
     }
 
     public void Dispose() => _db.Dispose();
@@ -1394,9 +1403,9 @@ public class PayrollRunServiceTests : IDisposable
     private EmployeePolicy AddPolicy(
         bool otEnabled = true,
         OtMethod otMethod = OtMethod.CASH,
-        decimal normal = 1.5m,
-        decimal rest = 2.0m,
-        decimal publicHoliday = 3.0m,
+        decimal? normal = 1.5m,
+        decimal? rest = 2.0m,
+        decimal? publicHoliday = 3.0m,
         string organizationId = "org-1")
     {
         var policy = new EmployeePolicy
@@ -1423,10 +1432,12 @@ public class PayrollRunServiceTests : IDisposable
         decimal otPublic = 0m,
         string? manualJson = null,
         string? overridesJson = null,
-        decimal? workedHours = null)
+        decimal? workedHours = null,
+        string? otCustomJson = null)
     {
         _db.PayrollRunAdjustments.Add(new PayrollRunAdjustment
         {
+            OtCustomHoursJson = otCustomJson ?? "{}",
             OrganizationId = "org-1",
             PayrollRunId = runId,
             EmployeeProfileId = employeeProfileId,
@@ -1514,6 +1525,80 @@ public class PayrollRunServiceTests : IDisposable
 
         // RM 25/h x 2 h x (1.5 + 2 + 3) = RM 325.00.
         Assert.Equal(325m, payslip.OtPay);
+    }
+
+    // ---- The company's own overtime types ----
+
+    // A type the employee picked is paid at its own multiplier, and the
+    // payslip names it.
+    [Fact]
+    public async Task GenerateAsync_PaysTheCompanysOwnOvertimeTypeAtItsRate()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy();
+        var night = (await _otTypes.CreateAsync(new() { Name = "Night OT", Multiplier = 1.25m })).Type!;
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(0, 0, 0, new Dictionary<string, int> { [night.Id] = 120 });
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        // RM 25/h x 2 h x 1.25 = RM 62.50.
+        Assert.Equal(62.5m, payslip.OtPay);
+        var line = Assert.Single(payslip.OtCustom);
+        Assert.Equal(("Night OT", 2m, 1.25m, 62.5m), (line.Name, line.Hours, line.Multiplier, line.Amount));
+    }
+
+    // A policy can pay a company type at its own rate.
+    [Fact]
+    public async Task GenerateAsync_APolicysOwnRateForACompanyType_Wins()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        var policy = AddPolicy();
+        var night = (await _otTypes.CreateAsync(new() { Name = "Night OT", Multiplier = 1.25m })).Type!;
+        _db.PolicyOvertimeRates.Add(new PolicyOvertimeRate
+            { OrganizationId = "org-1", PolicyId = policy.Id, OvertimeTypeId = night.Id, Multiplier = 2m });
+        await _db.SaveChangesAsync();
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(0, 0, 0, new Dictionary<string, int> { [night.Id] = 120 });
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(100m, payslip.OtPay);   // RM 25/h x 2 h x 2
+    }
+
+    // A policy with no rate of its own for a built-in type pays the
+    // company's, which the company can change.
+    [Fact]
+    public async Task GenerateAsync_APolicyWithoutItsOwnRate_PaysTheCompanys()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy(normal: null);
+        var normal = (await _otTypes.GetAllAsync()).Single(t => t.Kind == Modules.Overtime.Entities.OvertimeTypeKind.NORMAL_DAY);
+        await _otTypes.UpdateAsync(normal.Id, new() { Name = "Weekday OT", Multiplier = 1.75m });
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(120, 0, 0);
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(87.5m, payslip.OtPay);   // RM 25/h x 2 h x 1.75
+    }
+
+    // Typed hours for a company type replace all the approved overtime, as
+    // the built-in boxes do.
+    [Fact]
+    public async Task GenerateAsync_TypedHoursForACompanyType_ReplaceTheApprovedOvertime()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 5200m);
+        AddPolicy();
+        var night = (await _otTypes.CreateAsync(new() { Name = "Night OT", Multiplier = 1.25m })).Type!;
+        _approvedOt.ByUser["usr-1"] = new ApprovedOvertimeMinutes(600, 0, 0);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, otCustomJson: $$"""{"{{night.Id}}":4}""");
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.OtNormalHours);
+        Assert.Equal(125m, payslip.OtPay);   // RM 25/h x 4 h x 1.25
     }
 
     // ---- Overtime from approved requests ----

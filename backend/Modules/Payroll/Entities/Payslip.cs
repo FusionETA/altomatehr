@@ -105,6 +105,13 @@ public class Payslip : ITenantScoped
     [Precision(8, 2)] public decimal OtNormalHours { get; set; }
     [Precision(8, 2)] public decimal OtRestHours { get; set; }
     [Precision(8, 2)] public decimal OtPublicHours { get; set; }
+
+    // The company's CUSTOM overtime types paid this month, as a JSON array of
+    // `PayslipOvertimeLine` — name and multiplier SNAPSHOTTED, so renaming or
+    // re-rating a type later doesn't rewrite what this payslip says. Inside
+    // OtPay. Empty array, never null.
+    public string OtCustomJson { get; set; } = "[]";
+
     [Precision(12, 2)] public decimal OtPay { get; set; }
 
     [Precision(12, 2)] public decimal TotalAllowances { get; set; }

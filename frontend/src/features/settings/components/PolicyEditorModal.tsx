@@ -1,7 +1,14 @@
 import { type FormEvent, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoaderCircle, X } from "lucide-react";
-import { createPolicy, updatePolicy, type Policy, type SavePolicy } from "@/features/policies/api";
+import {
+  createPolicy,
+  updatePolicy,
+  type OvertimeType,
+  type Policy,
+  type PolicyOvertimeRate,
+  type SavePolicy,
+} from "@/features/policies/api";
 import type { LeaveType } from "@/features/leave/api";
 import {
   Select,
@@ -36,11 +43,11 @@ const empty: SavePolicy = {
   otEnabled: true,
   otDailyThresholdMinutes: 480,
   otMethod: "CASH",
-  otRateNormalDay: 1.5,
-  otRatePublicHoliday: 3,
-  otRateRestDay: 2,
-  otRatePublicHolidayInShift: 2,
-  otRateRestDayInShift: 1,
+  // Blank: the company's rates (System Settings → Overtime types).
+  otRateNormalDay: null,
+  otRatePublicHoliday: null,
+  otRateRestDay: null,
+  overtimeRates: [],
   otSalaryThreshold: null,
   temporary: false,
   leaveEntitlements: [],
@@ -73,15 +80,20 @@ function Check({
   );
 }
 
-// A labelled OT multiplier input (× the hourly rate).
+// A labelled OT multiplier input (× the hourly rate). Blank = the company's
+// rate, shown as the placeholder.
 function Rate({
   label,
   value,
+  companyRate,
   onChange,
+  disabled = false,
 }: {
   label: string;
-  value: number;
-  onChange: (v: number) => void;
+  value: number | null;
+  companyRate: number | undefined;
+  onChange: (v: number | null) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-white/40 px-4 py-2">
@@ -91,9 +103,11 @@ function Rate({
         min="0"
         max="99.99"
         step="0.05"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-10 w-24 rounded-2xl border border-border bg-white/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        disabled={disabled}
+        placeholder={companyRate === undefined ? "" : String(companyRate)}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        className="h-10 w-24 rounded-2xl border border-border bg-white/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
       />
     </label>
   );
@@ -102,11 +116,13 @@ function Rate({
 export function PolicyEditorModal({
   policy,
   leaveTypes,
+  overtimeTypes,
   onClose,
   onSaved,
 }: {
   policy: Policy | null;
   leaveTypes: LeaveType[];
+  overtimeTypes: OvertimeType[];
   onClose: () => void;
   onSaved: (p: Policy) => void;
 }) {
@@ -122,6 +138,16 @@ export function PolicyEditorModal({
 
   const set = <K extends keyof SavePolicy>(key: K, value: SavePolicy[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  const companyRate = (kind: OvertimeType["kind"]) => overtimeTypes.find((t) => t.kind === kind)?.multiplier;
+  const builtInName = (kind: OvertimeType["kind"], fallback: string) =>
+    overtimeTypes.find((t) => t.kind === kind)?.name ?? fallback;
+  const ownTypes = overtimeTypes.filter((t) => t.kind === "CUSTOM" && !t.isArchived);
+  // This policy's row for one of the company's own types; none = on, at the company's rate.
+  const ownRate = (typeId: string): PolicyOvertimeRate =>
+    form.overtimeRates.find((r) => r.overtimeTypeId === typeId) ?? { overtimeTypeId: typeId, multiplier: null, enabled: true };
+  const setOwnRate = (next: PolicyOvertimeRate) =>
+    set("overtimeRates", [...form.overtimeRates.filter((r) => r.overtimeTypeId !== next.overtimeTypeId), next]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -333,18 +359,59 @@ export function PolicyEditorModal({
                 <div className="space-y-2 pt-1">
                   <p className="text-xs text-muted-foreground">
                     OT rate multipliers (× the hourly rate), applied when overtime is paid as cash.
+                    Leave a box blank to use the company&apos;s rate (System Settings → Policies →
+                    Overtime types).
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Rate label="Normal day" value={form.otRateNormalDay} onChange={(v) => set("otRateNormalDay", v)} />
-                    <Rate label="Rest day" value={form.otRateRestDay} onChange={(v) => set("otRateRestDay", v)} />
-                    <Rate label="Public holiday" value={form.otRatePublicHoliday} onChange={(v) => set("otRatePublicHoliday", v)} />
-                    <Rate label="Rest day (in shift)" value={form.otRateRestDayInShift} onChange={(v) => set("otRateRestDayInShift", v)} />
                     <Rate
-                      label="Public holiday (in shift)"
-                      value={form.otRatePublicHolidayInShift}
-                      onChange={(v) => set("otRatePublicHolidayInShift", v)}
+                      label={builtInName("NORMAL_DAY", "Normal day")}
+                      value={form.otRateNormalDay}
+                      companyRate={companyRate("NORMAL_DAY")}
+                      onChange={(v) => set("otRateNormalDay", v)}
+                    />
+                    <Rate
+                      label={builtInName("REST_DAY", "Rest day")}
+                      value={form.otRateRestDay}
+                      companyRate={companyRate("REST_DAY")}
+                      onChange={(v) => set("otRateRestDay", v)}
+                    />
+                    <Rate
+                      label={builtInName("PUBLIC_HOLIDAY", "Public holiday")}
+                      value={form.otRatePublicHoliday}
+                      companyRate={companyRate("PUBLIC_HOLIDAY")}
+                      onChange={(v) => set("otRatePublicHoliday", v)}
                     />
                   </div>
+                  {ownTypes.length > 0 ? (
+                    <div className="space-y-2 pt-2">
+                      <p className="text-xs text-muted-foreground">
+                        Your own overtime types. Switch one off to stop this policy&apos;s staff picking it.
+                      </p>
+                      {ownTypes.map((t) => {
+                        const r = ownRate(t.id);
+                        return (
+                          <div key={t.id} className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Offer ${t.name}`}
+                              className="h-4 w-4 shrink-0 rounded border-border accent-primary"
+                              checked={r.enabled}
+                              onChange={(e) => setOwnRate({ ...r, enabled: e.target.checked })}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <Rate
+                                label={t.name}
+                                value={r.multiplier}
+                                companyRate={t.multiplier}
+                                disabled={!r.enabled}
+                                onChange={(v) => setOwnRate({ ...r, multiplier: v })}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

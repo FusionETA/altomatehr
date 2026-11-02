@@ -187,8 +187,6 @@ public class OnboardingService : IOnboardingService
             if (overtime.NormalDay is { } normal) policy.OtRateNormalDay = normal;
             if (overtime.RestDay is { } rest) policy.OtRateRestDay = rest;
             if (overtime.PublicHoliday is { } holiday) policy.OtRatePublicHoliday = holiday;
-            if (overtime.RestDayInShift is { } restIn) policy.OtRateRestDayInShift = restIn;
-            if (overtime.PublicHolidayInShift is { } holidayIn) policy.OtRatePublicHolidayInShift = holidayIn;
 
             policy.UpdatedAt = DateTime.UtcNow;
             await _policies.UpdateAsync(policy);

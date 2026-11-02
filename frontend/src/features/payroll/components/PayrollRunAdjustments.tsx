@@ -240,7 +240,10 @@ function summarise(adjustment: PayrollRunAdjustment): string[] {
   const chips: string[] = [];
 
   const ot =
-    adjustment.otNormalHours + adjustment.otRestHours + adjustment.otPublicHours;
+    adjustment.otNormalHours +
+    adjustment.otRestHours +
+    adjustment.otPublicHours +
+    Object.values(adjustment.otCustomHours ?? {}).reduce((sum, h) => sum + h, 0);
   if (ot > 0) chips.push(`${ot}h overtime`);
 
   if (adjustment.manualLineItems.length > 0) {

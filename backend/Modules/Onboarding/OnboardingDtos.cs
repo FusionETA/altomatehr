@@ -48,8 +48,6 @@ public class OnboardingOvertimeDto
     public decimal? NormalDay { get; set; }
     public decimal? RestDay { get; set; }
     public decimal? PublicHoliday { get; set; }
-    public decimal? RestDayInShift { get; set; }
-    public decimal? PublicHolidayInShift { get; set; }
 
     // Hours x 60.
     public int? DailyThresholdMinutes { get; set; }

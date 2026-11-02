@@ -31,3 +31,12 @@ public interface IPolicyLeaveEntitlementRepository
     Task<List<PolicyLeaveEntitlement>> GetAllAsync();
     Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyLeaveEntitlement> entitlements);
 }
+
+public interface IPolicyOvertimeRateRepository
+{
+    Task<List<PolicyOvertimeRate>> GetByPolicyAsync(string policyId);
+
+    // Every row in the company, for pricing a whole payroll run at once.
+    Task<List<PolicyOvertimeRate>> GetAllAsync();
+    Task ReplaceForPolicyAsync(string policyId, IEnumerable<PolicyOvertimeRate> rates);
+}

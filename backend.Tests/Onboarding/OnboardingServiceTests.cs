@@ -83,7 +83,8 @@ public class OnboardingServiceTests
             Overtime = new OnboardingOvertimeDto { NormalDay = 1.75m },
         });
 
-        Assert.Equal(1.50m, fx.Policies.Single(p => p.IsArchived).OtRateNormalDay);
+        // Untouched: still following the company's rate.
+        Assert.Null(fx.Policies.Single(p => p.IsArchived).OtRateNormalDay);
     }
 
     // ─── Validation runs before any write ───────────────────────────────
@@ -108,7 +109,7 @@ public class OnboardingServiceTests
         Assert.NotNull(result.ValidationError);
         Assert.Empty(result.Applied);
         // And nothing ran — the overtime block in the same body is untouched.
-        Assert.Equal(1.50m, fx.Policies[0].OtRateNormalDay);
+        Assert.Null(fx.Policies[0].OtRateNormalDay);
     }
 
     // A null rate levies nothing at all, which looks like a working

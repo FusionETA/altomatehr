@@ -119,8 +119,26 @@ public class PayrollAdjustmentContextDto
     public decimal ApprovedOtRestHours { get; set; }
     public decimal ApprovedOtPublicHours { get; set; }
 
+    // Every overtime box the form shows, in order: the three built-in types
+    // (under the company's names) and the company's own types this person's
+    // policy offers — plus any other with hours approved or typed, so nothing
+    // owed is hidden. Multiplier is what this person's policy pays.
+    public IReadOnlyList<AdjustmentOvertimeTypeDto> OvertimeTypes { get; set; } = [];
+
     public IReadOnlyList<LoanInstallmentPreviewDto> LoanInstallments { get; set; } = [];
 
     // Only a DRAFT run accepts an edit.
     public bool Editable { get; set; }
+}
+
+public class AdjustmentOvertimeTypeDto
+{
+    // "normalDay" / "restDay" / "publicHoliday" for the built-ins (the boxes
+    // the OtNormalHours / OtRestHours / OtPublicHours fields fill); otherwise
+    // the overtime type id, the key in OtCustomHours.
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool BuiltIn { get; set; }
+    public decimal Multiplier { get; set; }
+    public decimal ApprovedHours { get; set; }
 }

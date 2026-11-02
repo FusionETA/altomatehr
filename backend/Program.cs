@@ -332,6 +332,10 @@ builder.Services.AddScoped<IOvertimePhotoStorage, OvertimePhotoStorage>();
 builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IOtRateService, OtRateService>();
 builder.Services.AddScoped<IApprovedOvertimeService, ApprovedOvertimeService>();
+builder.Services.AddScoped<IOvertimeTypeRepository, OvertimeTypeRepository>();
+builder.Services.AddScoped<IOvertimeTypeService, OvertimeTypeService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Policies.IPolicyOvertimeRateRepository,
+    AltomateHR.Api.Modules.Policies.PolicyOvertimeRateRepository>();
 builder.Services.AddScoped<IHolidayRepository, HolidayRepository>();
 builder.Services.AddScoped<IHolidayService, HolidayService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
