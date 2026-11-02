@@ -91,6 +91,7 @@ else
         EngineMailer__ApiKey= \
         Gemini__ApiKey= \
         Xero__ClientId= Xero__ClientSecret= \
+        Bitrix__WebhookUrl="${DEMO_BITRIX_WEBHOOK:-}" Bitrix__DialogId="${DEMO_BITRIX_DIALOG:-}" \
         nohup dotnet run --launch-profile http >"$out/backend.log" 2>&1 &
     record $! "$out/backend.pid"
   )

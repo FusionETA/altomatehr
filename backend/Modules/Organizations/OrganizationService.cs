@@ -27,6 +27,7 @@ public class OrganizationService : IOrganizationService
 
     // Only for editing an admin's name and email, which live on the account.
     private readonly Auth.IUserRepository? _users;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
 
     public OrganizationService(
         IOrganizationRepository repo,
@@ -38,8 +39,10 @@ public class OrganizationService : IOrganizationService
         IOrganizationDefaultsService defaults,
         Policies.IEmployeePolicyRepository? policies = null,
         AltomateHR.Api.Common.ICurrentUser? currentUser = null,
-        Auth.IUserRepository? users = null)
+        Auth.IUserRepository? users = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _users = users;
         _policies = policies;
         _currentUser = currentUser;
@@ -371,6 +374,7 @@ public class OrganizationService : IOrganizationService
         // discover why.
         await _defaults.EnsureForOrganizationAsync(org.Id, org.Name);
 
+        if (_teamChat is not null) await _teamChat.CompanyCreatedAsync(org.Id, ownerUserId, "AltomateHR");
         return ToDto(org);
     }
 

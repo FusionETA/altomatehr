@@ -31,10 +31,13 @@ public class ProvisioningService : IProvisioningService
     private readonly IMasterKeyRepository _masterKeys;
     private readonly IOrganizationRepository _organizations;
     private readonly AppDbContext _db;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
 
     public ProvisioningService(
-        IMasterKeyRepository masterKeys, IOrganizationRepository organizations, AppDbContext db)
+        IMasterKeyRepository masterKeys, IOrganizationRepository organizations, AppDbContext db,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _masterKeys = masterKeys;
         _organizations = organizations;
         _db = db;
@@ -88,6 +91,7 @@ public class ProvisioningService : IProvisioningService
         });
         await _db.SaveChangesAsync();
 
+        if (_teamChat is not null) await _teamChat.CompanyCreatedAsync(org.Id, null, "provisioning API");
         return new ProvisionedOrganization(org.Id, org.Name, raw, prefix);
     }
 }
