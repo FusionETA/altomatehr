@@ -20,8 +20,9 @@ public class SaveOvertimeTypeDto
     [Required, StringLength(60, MinimumLength = 1)]
     public string Name { get; set; } = string.Empty;
 
-    [Range(0, 99.99)]
-    public decimal Multiplier { get; set; }
+    // Required: left out, it would save a type that pays nothing.
+    [Required, Range(0, 99.99)]
+    public decimal? Multiplier { get; set; }
 }
 
 // A custom type an employee may pick on an overtime request, at their

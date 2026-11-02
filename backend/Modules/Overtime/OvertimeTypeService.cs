@@ -55,7 +55,7 @@ public class OvertimeTypeService : IOvertimeTypeService
         {
             Name = name,
             Kind = OvertimeTypeKind.CUSTOM,
-            Multiplier = dto.Multiplier,
+            Multiplier = dto.Multiplier!.Value,
             SortOrder = types.Count(t => t.Kind == OvertimeTypeKind.CUSTOM),
             CreatedAt = now,
             UpdatedAt = now,
@@ -77,7 +77,7 @@ public class OvertimeTypeService : IOvertimeTypeService
 
         var rateChanged = type.Multiplier != dto.Multiplier;
         type.Name = name;
-        type.Multiplier = dto.Multiplier;
+        type.Multiplier = dto.Multiplier!.Value;
         type.UpdatedAt = DateTime.UtcNow;
         await _types.UpdateAsync(type);
 
