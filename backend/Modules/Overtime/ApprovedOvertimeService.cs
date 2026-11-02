@@ -43,8 +43,17 @@ public class ApprovedOvertimeService : IApprovedOvertimeService
             var normal = 0;
             var rest = 0;
             var holiday = 0;
+            var custom = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var request in group)
             {
+                // A type the employee picked is paid as that type, whatever
+                // the calendar says about the day.
+                if (request.OvertimeTypeId is { } typeId)
+                {
+                    custom[typeId] = custom.GetValueOrDefault(typeId) + request.RequestedMinutes;
+                    continue;
+                }
+
                 switch (dayTypes.GetValueOrDefault(request.WorkDate.Date, OtDayType.NORMAL_DAY))
                 {
                     case OtDayType.PUBLIC_HOLIDAY: holiday += request.RequestedMinutes; break;
@@ -54,12 +63,15 @@ public class ApprovedOvertimeService : IApprovedOvertimeService
             }
 
             var existing = result.GetValueOrDefault(group.Key.EmployeeId);
+            if (existing?.CustomMin is { } earlier)
+                foreach (var (typeId, minutes) in earlier) custom[typeId] = custom.GetValueOrDefault(typeId) + minutes;
             result[group.Key.EmployeeId] = existing is null
-                ? new ApprovedOvertimeMinutes(normal, rest, holiday)
+                ? new ApprovedOvertimeMinutes(normal, rest, holiday, custom)
                 : new ApprovedOvertimeMinutes(
                     existing.NormalDayMin + normal,
                     existing.RestDayMin + rest,
-                    existing.PublicHolidayMin + holiday);
+                    existing.PublicHolidayMin + holiday,
+                    custom);
         }
 
         return result;

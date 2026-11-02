@@ -19,6 +19,18 @@ public class SupportOrganizationDto
     public int EmployeeCount { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    // Set when a superadmin deactivated it: when, why and who.
+    public DateTime? DeactivatedAt { get; set; }
+    public string? DeactivatedReason { get; set; }
+    public string? DeactivatedBy { get; set; }
+}
+
+// Deactivating a company needs a reason, kept for the support page.
+public class DeactivateCompanyDto
+{
+    [Required, StringLength(500, MinimumLength = 3)]
+    public string Reason { get; set; } = string.Empty;
 }
 
 // Provision a brand-new company and its Owner's sign-in, as the previous

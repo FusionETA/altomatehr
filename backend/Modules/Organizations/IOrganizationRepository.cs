@@ -13,4 +13,7 @@ public interface IOrganizationRepository
     Task AddAsync(Organization organization);
     Task UpdateAsync(Organization organization);
     Task<bool> AnyAsync();
+
+    // The ids of every deactivated company (a handful, usually none).
+    Task<List<string>> GetDeactivatedIdsAsync() => Task.FromResult(new List<string>());
 }

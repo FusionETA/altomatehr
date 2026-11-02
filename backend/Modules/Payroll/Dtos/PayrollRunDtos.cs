@@ -161,6 +161,10 @@ public class PayslipDto
     public decimal OtNormalHours { get; set; }
     public decimal OtRestHours { get; set; }
     public decimal OtPublicHours { get; set; }
+
+    // The company's own overtime types paid, with the name and rate as they
+    // were at generation. Inside OtPay.
+    public IReadOnlyList<Entities.PayslipOvertimeLine> OtCustom { get; set; } = [];
     public decimal OtPay { get; set; }
     public decimal TotalAllowances { get; set; }
     public decimal TotalReimbursements { get; set; }

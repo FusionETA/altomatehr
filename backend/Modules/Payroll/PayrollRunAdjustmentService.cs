@@ -27,6 +27,8 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     private readonly IPayrollSettingsService? _settings;
     private readonly IPayslipRepository? _payslips;
 
+    private readonly Overtime.IOvertimeTypeService? _overtimeTypes;
+
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
         IPayrollRunRepository runs,
@@ -38,8 +40,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         Overtime.IApprovedOvertimeService approvedOvertime,
         Leave.ILeaveService? leave = null,
         IPayrollSettingsService? settings = null,
-        IPayslipRepository? payslips = null)
+        IPayslipRepository? payslips = null,
+        Overtime.IOvertimeTypeService? overtimeTypes = null)
     {
+        _overtimeTypes = overtimeTypes;
         _payslips = payslips;
         _approvedOvertime = approvedOvertime;
         _leave = leave;
@@ -152,6 +156,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             ApprovedOtNormalHours = PayrollOvertimeHours.ToHours(approvedOt?.NormalDayMin ?? 0),
             ApprovedOtRestHours = PayrollOvertimeHours.ToHours(approvedOt?.RestDayMin ?? 0),
             ApprovedOtPublicHours = PayrollOvertimeHours.ToHours(approvedOt?.PublicHolidayMin ?? 0),
+            OvertimeTypes = await OvertimeBoxesAsync(policy, approvedOt, adjustment),
             OvertimeDisabledReason = cashOt
                 ? null
                 : policy!.OtEnabled
@@ -239,6 +244,21 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             }
         }
 
+        // Each custom box must be one of the company's own overtime types.
+        if (dto.OtCustomHours.Count > 0)
+        {
+            var known = _overtimeTypes is null
+                ? []
+                : (await _overtimeTypes.GetAllAsync(includeArchived: true))
+                    .Where(t => t.Kind == Overtime.Entities.OvertimeTypeKind.CUSTOM)
+                    .Select(t => t.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+            if (dto.OtCustomHours.Keys.FirstOrDefault(k => !known.Contains(k)) is { } unknown)
+                return new PayrollRunAdjustmentSaveResult(true, false, null, $"Unknown overtime type '{unknown}'.");
+            if (dto.OtCustomHours.Values.Any(h => h is < 0m or > 999.99m))
+                return new PayrollRunAdjustmentSaveResult(true, false, null, "Overtime hours must be between 0 and 999.99.");
+        }
+
         // An unrecognised category is skipped silently by the calculator, so
         // catching it here is the difference between a 400 and an admin's row
         // vanishing without explanation at generation time.
@@ -276,6 +296,8 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             OtNormalHours = dto.OtNormalHours,
             OtRestHours = dto.OtRestHours,
             OtPublicHours = dto.OtPublicHours,
+            OtCustomHoursJson = PayrollRunAdjustments.Serialize(
+                dto.OtCustomHours.Where(h => h.Value > 0m).ToDictionary(h => h.Key, h => h.Value)),
             ManualLineItemsJson = PayrollRunAdjustments.Serialize(items),
             FixedAllowanceOverridesJson = PayrollRunAdjustments.Serialize(overrides),
             WorkedHours = dto.WorkedHours,
@@ -300,6 +322,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtNormalHours,
                 saved.OtRestHours,
                 saved.OtPublicHours,
+                OtCustomHours = PayrollRunAdjustments.ParseOtCustomHours(saved.OtCustomHoursJson),
                 saved.UnpaidLeaveDays,
                 saved.HrdfLevy,
                 ManualLineItemCount = items.Count,
@@ -340,6 +363,40 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         return new PayrollRunAdjustmentSaveResult(true, true, null, null);
     }
 
+    // The overtime boxes, with what each pays this person and what was
+    // approved for it.
+    private async Task<IReadOnlyList<AdjustmentOvertimeTypeDto>> OvertimeBoxesAsync(
+        EmployeePolicy? policy, Overtime.ApprovedOvertimeMinutes? approved, PayrollRunAdjustment? adjustment)
+    {
+        if (_overtimeTypes is null) return [];
+        var rates = await _overtimeTypes.RatesForPolicyAsync(policy);
+        var names = (await _overtimeTypes.GetAllAsync(includeArchived: true))
+            .Where(t => t.Kind != Overtime.Entities.OvertimeTypeKind.CUSTOM)
+            .ToDictionary(t => t.Kind, t => t.Name);
+        string Name(Overtime.Entities.OvertimeTypeKind kind, string fallback) => names.GetValueOrDefault(kind) ?? fallback;
+
+        var typed = PayrollRunAdjustments.ParseOtCustomHours(adjustment?.OtCustomHoursJson);
+        var boxes = new List<AdjustmentOvertimeTypeDto>
+        {
+            new() { Key = "normalDay", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.NORMAL_DAY, "Normal day"),
+                Multiplier = rates.Normal, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.NormalDayMin ?? 0) },
+            new() { Key = "restDay", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.REST_DAY, "Rest day"),
+                Multiplier = rates.Rest, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.RestDayMin ?? 0) },
+            new() { Key = "publicHoliday", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.PUBLIC_HOLIDAY, "Public holiday"),
+                Multiplier = rates.PublicHoliday, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.PublicHolidayMin ?? 0) },
+        };
+        foreach (var rate in rates.Custom.Values)
+        {
+            var approvedHours = PayrollOvertimeHours.ToHours(approved?.CustomMin?.GetValueOrDefault(rate.TypeId) ?? 0);
+            if (!rate.Offered && approvedHours == 0m && !typed.ContainsKey(rate.TypeId)) continue;
+            boxes.Add(new AdjustmentOvertimeTypeDto
+            {
+                Key = rate.TypeId, Name = rate.Name, Multiplier = rate.Multiplier, ApprovedHours = approvedHours,
+            });
+        }
+        return boxes;
+    }
+
     // ─── Mapping ────────────────────────────────────────────────────────
 
     private static PayrollRunAdjustmentDto ToDto(PayrollRunAdjustment a) => new()
@@ -350,6 +407,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         OtNormalHours = a.OtNormalHours,
         OtRestHours = a.OtRestHours,
         OtPublicHours = a.OtPublicHours,
+        OtCustomHours = PayrollRunAdjustments.ParseOtCustomHours(a.OtCustomHoursJson),
         ManualLineItems = PayrollRunAdjustments
             .ParseManualLineItems(a.ManualLineItemsJson)
             .Select(li => new ManualLineItemResponseDto

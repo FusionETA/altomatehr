@@ -458,7 +458,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>Display-only for MONTHLY staff; for HOURLY staff <code>workedHours</code> is the paid quantity.</td></tr>
             <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Unpaid days docked on this payslip: the days typed on the run's <a href="#save-adjustment">adjustment</a> if there are any, otherwise approved unpaid leave from the Leave module. Null when none. The money is the <code>Unpaid Leave</code> line.</td></tr>
             <tr><td><code>basicPay</code> / <code>proratedPay</code></td><td>number</td><td></td></tr>
-            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td>Hours at the three built-in overtime types, and the month's total overtime pay, which includes the custom types below.</td></tr>
+            <tr><td><code>otCustom</code></td><td>object[]</td><td>The company's own <a href="policies.html#overtime-types">overtime types</a> paid on this payslip, each <code>{ "typeId": string, "name": string, "hours": number, "multiplier": number, "amount": number }</code>. <code>name</code> and <code>multiplier</code> are as they were when the run was generated, so renaming or re-rating a type later does not change a payslip already made. <code>amount</code> is hours &times; the hourly rate &times; multiplier, rounded for display, and is <strong>already inside <code>otPay</code></strong>: don't add it again. These hours are not in <code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code>. Empty array when none.</td></tr>
             <tr><td><code>totalAllowances</code> / <code>totalReimbursements</code> / <code>totalDeductions</code> / <code>totalBenefitsInKind</code></td><td>number</td><td></td></tr>
             <tr><td><code>epfEmployee</code> / <code>epfEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>socsoEmployee</code> / <code>socsoEmployer</code></td><td>number</td><td></td></tr>
@@ -1009,6 +1010,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
               <tr><td><code>cashOvertime</code></td><td>boolean</td><td>False when the employee's policy banks overtime as time off, or disables it — typed OT hours are then ignored at generation.</td></tr>
               <tr><td><code>overtimeDisabledReason</code></td><td>string or null</td><td>Explains a false <code>cashOvertime</code>.</td></tr>
               <tr><td><code>approvedOtNormalHours</code> / <code>approvedOtRestHours</code> / <code>approvedOtPublicHours</code></td><td>number</td><td>What generation pays by default, before any typed override.</td></tr>
+              <tr><td><code>overtimeTypes</code></td><td>object[]</td><td>Every overtime box an editor should show, in order: the three built-in types, then the company's own <a href="policies.html#overtime-types">overtime types</a> this person's policy offers, plus any other type that has approved or typed hours so nothing owed is hidden. Each is <code>{ "key": string, "name": string, "builtIn": boolean, "multiplier": number, "approvedHours": number }</code>. <code>key</code> is <code>"normalDay"</code>, <code>"restDay"</code> or <code>"publicHoliday"</code> for the built-ins (the boxes <code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> fill), otherwise the overtime type id, which is the key <code>otCustomHours</code> uses. <code>multiplier</code> is what this person's policy pays; <code>approvedHours</code> is what generation would pay by default.</td></tr>
               <tr><td><code>loanInstallments[].loanId</code> / <code>.label</code> / <code>.amount</code></td><td>mixed</td><td>Read-only here — loans are managed elsewhere.</td></tr>
               <tr><td><code>editable</code></td><td>boolean</td><td>False once the run has left DRAFT.</td></tr>
             </tbody>
@@ -1037,6 +1039,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td>no (default 0)</td><td>0–999.99.</td></tr>
+              <tr><td><code>otCustomHours</code></td><td>object</td><td>no (default <code>{}</code>)</td><td>Hours for the company's own overtime types, keyed by overtime type id, each 0–999.99, e.g. <code>{ "ot_type_123": 3.5 }</code>. An id that is not one of the company's own (custom) types is refused; an archived type is still accepted. Zeros are not stored. <strong>If any hours are typed here or in the three fields above, they replace every approved overtime hour for this person</strong>, so retype all the types you want paid. This follows the full-replace rule: omitting it clears what was saved.</td></tr>
               <tr><td><code>manualLineItems[].category</code></td><td>string</td><td>yes (per row)</td><td>Max 60 chars. A code from the Categories sheet / <code>GET /payroll/runs/{id}/adjustments/template</code>'s Categories sheet. Unrecognised → <code>400</code>.</td></tr>
               <tr><td><code>manualLineItems[].label</code></td><td>string or null</td><td>no</td><td>Max 200 chars.</td></tr>
               <tr><td><code>manualLineItems[].amount</code></td><td>number</td><td>yes (per row)</td><td>0–99999999.99. Always non-negative — the category already decides whether it adds or deducts.</td></tr>
@@ -1076,6 +1079,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before editing adjustments." }</code></li>
           <li><code>409</code> <code>{ "error": "Unpaid days must be between 0 and 31 — the month's 31 calendar days." }</code> — <code>unpaidLeaveDays</code> is more than the month's calendar days (<code>unpaidDayBasis</code>); the number is the month's length (28–31) and the wording never changes. Note this one is a <strong>409</strong>, not a 400.</li>
+          <li><code>400</code> <code>{ "error": "Unknown overtime type 'ot_type_999'." }</code> — a key of <code>otCustomHours</code> is not one of the company's own overtime types. <code>{ "error": "Overtime hours must be between 0 and 999.99." }</code> — an <code>otCustomHours</code> value is out of range.</li>
         </ul>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
   -H "Authorization: Bearer wp_live_xxx" \
@@ -1084,6 +1088,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
     "otNormalHours": 4,
     "otRestHours": 0,
     "otPublicHours": 0,
+    "otCustomHours": { "ot_type_123": 3.5 },
     "manualLineItems": [
       { "category": "allowance_travel", "label": "February site travel", "amount": 250.00, "treatAsRecurring": false }
     ],
@@ -1118,6 +1123,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <tbody>
             <tr><td><code>id</code> / <code>payrollRunId</code> / <code>employeeProfileId</code></td><td>string</td><td></td></tr>
             <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td></td></tr>
+            <tr><td><code>otCustomHours</code></td><td>object</td><td>Typed hours for the company's own overtime types, keyed by overtime type id. <code>{}</code> when none. Same shape as the request.</td></tr>
             <tr><td><code>manualLineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code> — derived from the category, never trusted from input.</td></tr>
             <tr><td><code>manualLineItems[].category</code> / <code>.label</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td></td></tr>
             <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>Same shape as the request.</td></tr>
@@ -1494,7 +1500,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
               <tr><td><code>Basic</code></td><td>The prorated pay actually paid for the period.</td></tr>
               <tr><td><code>U/L</code></td><td>Unpaid-leave deduction, negative.</td></tr>
               <tr><td><code>Travelling</code>, <code>Meal</code>, <code>Parking</code></td><td>The travel (private), meal and parking allowance lines.</td></tr>
-              <tr><td><code>Hours</code></td><td>Overtime hours paid (normal + rest day + public holiday). The only column that is not money, and it is not part of Total Gross.</td></tr>
+              <tr><td><code>Hours</code></td><td>Overtime hours paid (normal + rest day + public holiday + any of the company's own overtime types). The only column that is not money, and it is not part of Total Gross.</td></tr>
               <tr><td><code>OT</code></td><td>Calculated overtime pay plus any overtime wage lines.</td></tr>
               <tr><td><code>Comm</code>, <code>Bonus</code></td><td>Commission lines and non-annual bonus lines.</td></tr>
               <tr><td><code>Deduction</code></td><td>Miscellaneous deduction lines, negative.</td></tr>

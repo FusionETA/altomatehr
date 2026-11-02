@@ -38,6 +38,11 @@ public class PayrollRunAdjustment : ITenantScoped
     [Precision(8, 2)] public decimal OtRestHours { get; set; }
     [Precision(8, 2)] public decimal OtPublicHours { get; set; }
 
+    // Hours for the company's CUSTOM overtime types, as a JSON object of
+    // overtime type id → hours. Empty object, never null. Any hours here or
+    // above replace ALL the approved overtime, as the three built-in boxes do.
+    public string OtCustomHoursJson { get; set; } = "{}";
+
     // ---- One-off rows ----
     // JSON array of `ManualLineItem`. Empty array, never null.
     public string ManualLineItemsJson { get; set; } = "[]";

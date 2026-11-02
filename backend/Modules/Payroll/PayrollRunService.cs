@@ -55,6 +55,8 @@ public class PayrollRunService : IPayrollRunService
     private readonly IUnpaidLeaveSettlementRepository? _settlements;
     private readonly IPayrollDraftStaleness? _drafts;
 
+    private readonly Overtime.IOvertimeTypeService? _overtimeTypes;
+
     public PayrollRunService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
@@ -75,8 +77,10 @@ public class PayrollRunService : IPayrollRunService
         Employees.IEmployeeTransferService? transfers = null,
         IEmployeeScope? scope = null,
         IUnpaidLeaveSettlementRepository? settlements = null,
-        IPayrollDraftStaleness? drafts = null)
+        IPayrollDraftStaleness? drafts = null,
+        Overtime.IOvertimeTypeService? overtimeTypes = null)
     {
+        _overtimeTypes = overtimeTypes;
         _scope = scope;
         _settlements = settlements;
         _drafts = drafts;
@@ -657,6 +661,7 @@ public class PayrollRunService : IPayrollRunService
             var loanRepayment = loanRepayments.GetValueOrDefault(profile.Id);
             var overtime = PayrollOvertimeHours.Resolve(
                 adjustment, approvedOtByUser.GetValueOrDefault(profile.UserId));
+            var otRates = _overtimeTypes is null ? null : await _overtimeTypes.RatesForPolicyAsync(policy);
 
             var settledMonths = carriesByProfile.GetValueOrDefault(profile.Id) ?? [];
             var carries = settledMonths.SelectMany(r => r.Lines).ToList();
@@ -664,7 +669,7 @@ public class PayrollRunService : IPayrollRunService
             var result = PayslipCalculator.Calculate(
                 BuildInput(
                     profile, settings, run, ytd, adjustment, attached, policy,
-                    buckets, unpaidDays, loanRepayment, overtime, carries, perquisite));
+                    buckets, unpaidDays, loanRepayment, overtime, carries, perquisite, otRates));
 
             memberships.TryGetValue(profile.UserId, out var membership);
 
@@ -1333,7 +1338,8 @@ public class PayrollRunService : IPayrollRunService
         decimal loanRepayment,
         PayrollOvertimeHours.Hours overtime,
         IReadOnlyList<UnpaidLeaveCarryForward.Carry>? carries = null,
-        FixedAllowance? taxBornePerquisite = null)
+        FixedAllowance? taxBornePerquisite = null,
+        Overtime.OvertimeRates? otRates = null)
     {
         // The employee's prior-employer carryover (their TP3) folds into the YTD
         // figures, so a mid-year joiner is not over-withheld until December.
@@ -1472,11 +1478,24 @@ public class PayrollRunService : IPayrollRunService
             OtRestHours = cashOt ? overtime.Rest : 0m,
             OtPublicHours = cashOt ? overtime.PublicHoliday : 0m,
 
-            // Left at the calculator's statutory defaults (EA 1955 s.60A) when
-            // the employee has no policy — the floor the Act sets, not zero.
-            OtRateNormal = policy?.OtRateNormalDay ?? 1.5m,
-            OtRateRest = policy?.OtRateRestDay ?? 2.0m,
-            OtRatePublicHoliday = policy?.OtRatePublicHoliday ?? 3.0m,
+            // The policy's own multiplier, else the company's (OvertimeType),
+            // which starts at the statutory floors (EA 1955 s.60A) — so no
+            // policy still pays the floor, not zero.
+            OtRateNormal = otRates?.Normal ?? policy?.OtRateNormalDay ?? 1.5m,
+            OtRateRest = otRates?.Rest ?? policy?.OtRateRestDay ?? 2.0m,
+            OtRatePublicHoliday = otRates?.PublicHoliday ?? policy?.OtRatePublicHoliday ?? 3.0m,
+
+            // The company's own overtime types, each at what this policy pays
+            // for it. Priced even if since archived or switched off for the
+            // policy: the hours were approved (or typed) and are owed.
+            OtCustom = !cashOt || overtime.Custom is null || otRates is null
+                ? []
+                : [
+                    .. overtime.Custom
+                        .Where(h => h.Value > 0m && otRates.Custom.ContainsKey(h.Key))
+                        .Select(h => new CustomOvertime(
+                            h.Key, otRates.Custom[h.Key].Name, h.Value, otRates.Custom[h.Key].Multiplier)),
+                ],
 
             // ---- Attendance ----
             // Derived from the period's attendance, overridable per run.
@@ -1776,6 +1795,7 @@ public class PayrollRunService : IPayrollRunService
             OtNormalHours = r.OtNormalHours,
             OtRestHours = r.OtRestHours,
             OtPublicHours = r.OtPublicHours,
+            OtCustomJson = PayrollRunAdjustments.Serialize(r.OtCustom),
             OtPay = r.OtPay,
             TotalAllowances = r.TotalAllowances,
             TotalReimbursements = r.TotalReimbursements,

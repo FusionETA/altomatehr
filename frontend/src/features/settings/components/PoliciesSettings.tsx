@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Star } from "lucide-react";
 import {
   archivePolicy,
+  getOvertimeTypes,
   getPolicies,
+  OVERTIME_TYPES_PATH,
   restorePolicy,
   setDefaultPolicy,
   type Policy,
 } from "@/features/policies/api";
 import { getLeaveTypes } from "@/features/leave/api";
+import { OvertimeTypesSettings } from "./OvertimeTypesSettings";
 import { PolicyEditorModal } from "./PolicyEditorModal";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -32,6 +35,9 @@ export function PoliciesSettings() {
 
   const policiesQuery = useCachedQuery("/policies", getPolicies);
   const typesQuery = useCachedQuery("/leave-types", getLeaveTypes);
+  // Live: the Overtime types card above edits them.
+  const overtimeTypesQuery = useCachedQuery(OVERTIME_TYPES_PATH, getOvertimeTypes, { refetchOnInvalidate: true });
+  const overtimeTypes = overtimeTypesQuery.data ?? [];
   const loading = policiesQuery.loading || typesQuery.loading;
   // Seeded from the cache so the first frame of a revisit is the real thing
   // rather than the empty default; the effect below keeps it in step with a
@@ -73,126 +79,132 @@ export function PoliciesSettings() {
     }
   }
 
+  // The company's overtime types sit above the policies that rate them.
   return (
-    <div className={`${CARD} space-y-5`}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black text-foreground">Policies</h2>
-          <p className="text-sm text-muted-foreground">
-            Rule bundles assigned to employees — module access, attendance enforcement, OT, and leave
-            entitlements.
-          </p>
-          {!managesAllPolicies ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              You can edit the policies your admin access covers. Only the owner can create a
-              policy, archive one, change the default, or edit a policy that also applies to the
-              company&apos;s admins or owner.
+    <div className="space-y-5 sm:space-y-6">
+      <OvertimeTypesSettings />
+      <div className={`${CARD} space-y-5`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-foreground">Policies</h2>
+            <p className="text-sm text-muted-foreground">
+              Rule bundles assigned to employees — module access, attendance enforcement, OT, and leave
+              entitlements.
             </p>
+            {!managesAllPolicies ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                You can edit the policies your admin access covers. Only the owner can create a
+                policy, archive one, change the default, or edit a policy that also applies to the
+                company&apos;s admins or owner.
+              </p>
+            ) : null}
+          </div>
+          {managesAllPolicies ? (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            New policy
+          </button>
           ) : null}
         </div>
-        {managesAllPolicies ? (
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />
-          New policy
-        </button>
+
+        {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+
+        {loading ? (
+          <SkeletonPanel />
+        ) : policies.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {managesAllPolicies ? "No policies yet." : "No policies are covered by your admin access."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
+            {policies.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p
+                    className={`flex items-center gap-2 font-semibold ${
+                      p.isArchived ? "text-muted-foreground line-through" : "text-foreground"
+                    }`}
+                  >
+                    {p.name}
+                    {p.isDefault ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+                        <Star className="h-3 w-3" /> Default
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.salaryType === "MONTHLY" ? "Monthly" : "Hourly"} ·{" "}
+                    {p.requireGeofence ? "geofenced" : "no geofence"} ·{" "}
+                    {p.otEnabled ? "OT on" : "OT off"}
+                    {p.leaveEntitlements.length > 0 ? ` · ${p.leaveEntitlements.length} leave override(s)` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {p.canEdit === false ? (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="It also applies to the company's admins or owner"
+                    >
+                      Owner only
+                    </span>
+                  ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(p)}
+                    className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Edit
+                  </button>
+                  )}
+                  {managesAllPolicies && !p.isDefault && !p.isArchived ? (
+                    <button
+                      type="button"
+                      disabled={busyId === p.id}
+                      onClick={() => act(p.id, setDefaultPolicy)}
+                      className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    >
+                      Make default
+                    </button>
+                  ) : null}
+                  {managesAllPolicies && !p.isDefault ? (
+                    <button
+                      type="button"
+                      disabled={busyId === p.id}
+                      onClick={() => act(p.id, p.isArchived ? restorePolicy : archivePolicy)}
+                      className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    >
+                      {p.isArchived ? "Restore" : "Archive"}
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {creating ? (
+          <PolicyEditorModal
+            policy={null}
+            leaveTypes={leaveTypes}
+            overtimeTypes={overtimeTypes}
+            onClose={() => setCreating(false)}
+            onSaved={applyPolicy}
+          />
+        ) : null}
+        {editing ? (
+          <PolicyEditorModal
+            policy={editing}
+            leaveTypes={leaveTypes}
+            overtimeTypes={overtimeTypes}
+            onClose={() => setEditing(null)}
+            onSaved={applyPolicy}
+          />
         ) : null}
       </div>
-
-      {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
-
-      {loading ? (
-        <SkeletonPanel />
-      ) : policies.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {managesAllPolicies ? "No policies yet." : "No policies are covered by your admin access."}
-        </p>
-      ) : (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
-          {policies.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p
-                  className={`flex items-center gap-2 font-semibold ${
-                    p.isArchived ? "text-muted-foreground line-through" : "text-foreground"
-                  }`}
-                >
-                  {p.name}
-                  {p.isDefault ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
-                      <Star className="h-3 w-3" /> Default
-                    </span>
-                  ) : null}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {p.salaryType === "MONTHLY" ? "Monthly" : "Hourly"} ·{" "}
-                  {p.requireGeofence ? "geofenced" : "no geofence"} ·{" "}
-                  {p.otEnabled ? "OT on" : "OT off"}
-                  {p.leaveEntitlements.length > 0 ? ` · ${p.leaveEntitlements.length} leave override(s)` : ""}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {p.canEdit === false ? (
-                  <span
-                    className="text-xs text-muted-foreground"
-                    title="It also applies to the company's admins or owner"
-                  >
-                    Owner only
-                  </span>
-                ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditing(p)}
-                  className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Edit
-                </button>
-                )}
-                {managesAllPolicies && !p.isDefault && !p.isArchived ? (
-                  <button
-                    type="button"
-                    disabled={busyId === p.id}
-                    onClick={() => act(p.id, setDefaultPolicy)}
-                    className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                  >
-                    Make default
-                  </button>
-                ) : null}
-                {managesAllPolicies && !p.isDefault ? (
-                  <button
-                    type="button"
-                    disabled={busyId === p.id}
-                    onClick={() => act(p.id, p.isArchived ? restorePolicy : archivePolicy)}
-                    className="rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                  >
-                    {p.isArchived ? "Restore" : "Archive"}
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {creating ? (
-        <PolicyEditorModal
-          policy={null}
-          leaveTypes={leaveTypes}
-          onClose={() => setCreating(false)}
-          onSaved={applyPolicy}
-        />
-      ) : null}
-      {editing ? (
-        <PolicyEditorModal
-          policy={editing}
-          leaveTypes={leaveTypes}
-          onClose={() => setEditing(null)}
-          onSaved={applyPolicy}
-        />
-      ) : null}
     </div>
   );
 }

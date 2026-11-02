@@ -62,7 +62,33 @@ public class TeamChatAlerts : ITeamChatAlerts
         }
     }
 
+    public async Task CompanyStatusChangedAsync(string organizationId, bool deactivated, string? reason)
+    {
+        if (!_options.IsConfigured) return;
+        try
+        {
+            var org = await _organizations.GetByIdAsync(organizationId);
+            Enqueue(CompanyStatusText(org?.Name ?? organizationId, deactivated, reason, _currentUser.Email));
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Couldn't queue the company status alert for {OrganizationId}", organizationId);
+        }
+    }
+
     // ---- The messages ----
+
+    public static string CompanyStatusText(string company, bool deactivated, string? reason, string? by)
+    {
+        var lines = new List<string>
+        {
+            deactivated ? $"⛔ Company deactivated: {Clean(company)}" : $"✅ Company reactivated: {Clean(company)}",
+        };
+        if (!string.IsNullOrWhiteSpace(reason))
+            lines.Add(deactivated ? $"Reason: {Clean(reason)}" : $"Was deactivated for: {Clean(reason)}");
+        if (!string.IsNullOrWhiteSpace(by)) lines.Add($"By: {Clean(by)}");
+        return string.Join("\n", lines);
+    }
 
     public static string SignedInText(
         string? name, string email, string role, string company, string via, string? ip) =>

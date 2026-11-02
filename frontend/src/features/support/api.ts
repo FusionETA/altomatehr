@@ -14,6 +14,10 @@ export type SupportOrganization = {
   ownerEmail: string | null;
   employeeCount: number;
   createdAt: string;
+  // Set while a superadmin has it deactivated: when, why and who.
+  deactivatedAt: string | null;
+  deactivatedReason: string | null;
+  deactivatedBy: string | null;
 };
 
 export const SUPPORT_ORGS_PATH = "/support/organizations";
@@ -21,6 +25,13 @@ export const SUPPORT_ORGS_PATH = "/support/organizations";
 // Every company. Searched in the browser: the list is small and a keystroke
 // should not be a round trip.
 export const getSupportOrganizations = () => apiGet<SupportOrganization[]>(SUPPORT_ORGS_PATH);
+
+// Closes a company to everyone in it (its data is kept); a reason is required.
+export const deactivateOrganization = (id: string, reason: string) =>
+  apiPost<SupportOrganization>(`${SUPPORT_ORGS_PATH}/${encodeURIComponent(id)}/deactivate`, { reason });
+
+export const reactivateOrganization = (id: string) =>
+  apiPost<SupportOrganization>(`${SUPPORT_ORGS_PATH}/${encodeURIComponent(id)}/reactivate`);
 
 export type CreateSupportCompany = {
   orgName: string;

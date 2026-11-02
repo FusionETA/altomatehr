@@ -573,6 +573,9 @@ public class PayrollRunsController : ControllerBase
         return context is null ? NotFound() : Ok(context);
     }
 
+    private static readonly string[] PayloadErrors =
+        ["Unknown adjustment category", "Unknown overtime type", "Overtime hours must be"];
+
     // Replaces the row wholesale — see SavePayrollRunAdjustmentDto for why a
     // partial patch would be ambiguous.
     [RequireScope("payroll:write")]
@@ -584,11 +587,12 @@ public class PayrollRunsController : ControllerBase
 
         if (!result.Found) return NotFound();
 
-        // A non-draft run is a state conflict; an unknown category is the
-        // client's mistake to fix in the payload.
+        // A non-draft run is a state conflict; an unknown category or overtime
+        // type, or out-of-range overtime hours, is the client's mistake to fix
+        // in the payload.
         if (!result.Ok)
         {
-            return result.Error!.StartsWith("Unknown adjustment category", StringComparison.Ordinal)
+            return PayloadErrors.Any(p => result.Error!.StartsWith(p, StringComparison.Ordinal))
                 ? BadRequest(new { error = result.Error })
                 : Conflict(new { error = result.Error });
         }

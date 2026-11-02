@@ -2130,6 +2130,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DeactivatedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("DeactivatedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("DefaultCurrency")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -2304,6 +2315,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("OvertimeTypeId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<string>("ProjectId")
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
@@ -2348,6 +2363,49 @@ namespace AltomateHR.Api.Migrations
                     b.HasIndex("Status", "WorkDate");
 
                     b.ToTable("OvertimeRequests");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Overtime.Entities.OvertimeType", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Kind");
+
+                    b.ToTable("OvertimeTypes");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Partners.Entities.ApiClient", b =>
@@ -2916,6 +2974,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("OtCustomHoursJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<decimal>("OtNormalHours")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3188,6 +3250,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OtCustomJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<decimal>("OtNormalHours")
                         .HasPrecision(8, 2)
@@ -3648,23 +3714,15 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<decimal>("OtRateNormalDay")
+                    b.Property<decimal?>("OtRateNormalDay")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
-                    b.Property<decimal>("OtRatePublicHoliday")
+                    b.Property<decimal?>("OtRatePublicHoliday")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
-                    b.Property<decimal>("OtRatePublicHolidayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDayInShift")
+                    b.Property<decimal?>("OtRateRestDay")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
@@ -3742,6 +3800,41 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("PolicyLeaveEntitlements");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Policies.Entities.PolicyOvertimeRate", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal?>("Multiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OvertimeTypeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PolicyId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PolicyId", "OvertimeTypeId")
+                        .IsUnique();
+
+                    b.ToTable("PolicyOvertimeRates");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Projects.Entities.Project", b =>

@@ -10,4 +10,7 @@ public interface ITeamChatAlerts
 
     // via: how it was made, e.g. "self-serve", "Support" or "provisioning API".
     Task CompanyCreatedAsync(string organizationId, string? ownerUserId, string via);
+
+    // A superadmin deactivated or reactivated it; by whom comes from the session.
+    Task CompanyStatusChangedAsync(string organizationId, bool deactivated, string? reason);
 }

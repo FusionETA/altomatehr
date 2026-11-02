@@ -46,6 +46,22 @@ public class PayrollOvertimeHoursTests
         Assert.Equal(0m, hours.PublicHoliday);
     }
 
+    // Hours for the company's own types come through, approved or typed —
+    // and typed ones replace every approved hour, built-in or not.
+    [Fact]
+    public void CarriesTheCompanysOwnTypes()
+    {
+        var approved = PayrollOvertimeHours.Resolve(
+            null, new ApprovedOvertimeMinutes(60, 0, 0, new Dictionary<string, int> { ["night"] = 90 }));
+        var typed = PayrollOvertimeHours.Resolve(
+            new PayrollRunAdjustment { OtCustomHoursJson = """{"night":2}""" },
+            new ApprovedOvertimeMinutes(600, 0, 0, new Dictionary<string, int> { ["night"] = 90 }));
+
+        Assert.Equal((1m, 1.5m), (approved.Normal, approved.Custom!["night"]));
+        Assert.Equal(PayrollOvertimeHours.Source.Adjustment, typed.Source);
+        Assert.Equal((0m, 2m), (typed.Normal, typed.Custom!["night"]));
+    }
+
     [Fact]
     public void IsNothingWhenThereIsNeither()
     {

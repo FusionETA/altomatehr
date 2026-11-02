@@ -297,6 +297,29 @@ async function toAbTestCoA(page) {
 }
 
 const admin = {
+  // System Settings → Policies: the Overtime types card above the policies
+  // (needs `node setup.mjs overtime-types` for the Night shift row).
+  "policy-editor": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-policies");
+    await page.getByText("Overtime types", { exact: true }).first().waitFor({ timeout: 15000 });
+    await page.getByPlaceholder("New type, e.g. Night shift").waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "policy-editor");
+  },
+  // The policy editor's overtime section on Full-time: blank boxes show the
+  // company's rate greyed, and the own type has an on/off tick.
+  "policy-overtime-rates": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-policies");
+    const edit = page.getByRole("button", { name: "Edit", exact: true }).first();
+    await edit.waitFor({ timeout: 15000 });
+    await edit.click();
+    await page.getByText(/OT rate multipliers/).first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "OT rate multipliers", 120);
+    await shoot(page, "admin", "policy-overtime-rates");
+    await page.keyboard.press("Escape");
+  },
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
   "executive-overview": async (page) => {
     await inDemoCo(page);
@@ -701,6 +724,25 @@ const admin = {
     await shoot(page, "admin", "payroll-adjustments");
     await page.getByRole("button", { name: "Cancel" }).click();
   },
+  // The same drawer scrolled to the Overtime box: one hours box per overtime
+  // type with its rate (needs `node setup.mjs overtime-types ab-outlet-ot-on`;
+  // switch it back with `ab-outlet-ot-off`). Nothing is saved.
+  "payroll-adjustments-overtime": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "November 2026");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    const adjust = page.getByRole("button", { name: /^(Adjust|Edit) Alya Test/ }).first();
+    await adjust.scrollIntoViewIfNeeded();
+    await adjust.click();
+    await page.getByText("Employer HRDF levy", { exact: true }).first().waitFor({ timeout: 20000 });
+    await page.getByText(/Night shift \(1\.5/).first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await scrollTo(page, "Overtime", 60, true);
+    await shoot(page, "admin", "payroll-adjustments-overtime");
+    await page.getByRole("button", { name: "Cancel" }).click();
+  },
   // AB Test Co A has a November 2026 draft (unnamed): starting another run for that
   // month needs a name, and the people already in it are greyed out.
   "payroll-run-picker": async (page) => {
@@ -1045,7 +1087,7 @@ const evan = {
       { name: "permit-to-work.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") },
     ]);
     await settle(page, 2500);
-    await scrollTo(page, "Reason", 40);
+    await scrollTo(page, "Overtime type", 20);
     await shoot(page, "employee", "overtime-form");
     await page.keyboard.press("Escape");
   },
@@ -1138,6 +1180,8 @@ const exec = {
     await go(page, "settings/settings-policies");
     await page.getByText(/Only the owner can create/).first().waitFor({ timeout: 15000 });
     await settle(page);
+    // The Overtime types card sits above the policies: scroll to the Policies card.
+    await scrollTo(page, "Policies", 30, true);
     await shoot(page, "admin", "policies-limited");
   },
   "limited-payroll-runs": async (page) => {

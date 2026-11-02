@@ -538,6 +538,7 @@ function breakdown(
       payslip.otNormalHours > 0 && `${payslip.otNormalHours} normal`,
       payslip.otRestHours > 0 && `${payslip.otRestHours} rest`,
       payslip.otPublicHours > 0 && `${payslip.otPublicHours} PH`,
+      ...(payslip.otCustom ?? []).map((c) => `${c.hours} ${c.name}`),
     ].filter(Boolean);
 
     items.push({

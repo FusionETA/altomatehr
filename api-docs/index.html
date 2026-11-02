@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: f3d8a69
+  api-docs-covered-up-to: 530c662
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -97,6 +97,12 @@
         <a href="#scopes">scopes</a>.</li>
       <li>An unknown or revoked key, or one whose company no longer exists, gets
         <code>401</code>. The response doesn't say which, deliberately.</li>
+      <li>A key whose company has been <strong>deactivated</strong> by AltomateHR gets
+        <code>401</code> on <strong>every</strong> endpoint, <code>GET /whoami</code>
+        included, with a body that does say why:
+        <code>{ "error": "This company's AltomateHR account has been deactivated. Please contact AltomateHR support.", "code": "company_deactivated" }</code>.
+        Don't retry: stop calling, and tell the company to contact AltomateHR support.
+        Nothing is deleted, and the same key works again once the company is reactivated.</li>
       <li>Some endpoints are for people only and answer <code>403</code> to any key: a
         person's own actions (clocking in, applying for leave, filing a claim or overtime,
         notifications), account actions (passwords, switching company) and platform settings
@@ -169,6 +175,7 @@
           <tr><td><code>400</code> / <code>409</code></td><td>The request is valid but not allowed now (e.g. a run that's no longer a draft, a month that already has an unnamed run)</td><td><code>{ "error": "message" }</code></td></tr>
           <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Documents, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
           <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
+          <tr><td><code>401</code></td><td>The key's company has been deactivated. Match on <code>code</code>, not the wording</td><td><code>{ "error": "…", "code": "company_deactivated" }</code></td></tr>
           <tr><td><code>403</code></td><td>Missing scope (including an <code>employees:*</code> scope a Documents action needs), module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
           <tr><td><code>404</code></td><td>Not found in this company</td><td>empty or <code>{ "error": "…" }</code></td></tr>
         </tbody>
@@ -240,7 +247,7 @@
   "scopes": ["employees:read", "payroll:read", "payroll:write"],
   "features": ["onboarding.bulk", "sso.inbound"]
 }</code></pre>
-      <p><code>401</code> when the key is unknown, revoked, or its company no longer exists.</p>
+      <p><code>401</code> when the key is unknown, revoked, or its company no longer exists. A deactivated company's key also gets <code>401</code>, with <code>code: "company_deactivated"</code> (see <a href="#authentication">Authentication</a>).</p>
     </section>
     </section>
 

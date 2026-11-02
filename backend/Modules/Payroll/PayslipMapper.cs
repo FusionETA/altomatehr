@@ -41,6 +41,7 @@ public static class PayslipMapper
         OtNormalHours = p.OtNormalHours,
         OtRestHours = p.OtRestHours,
         OtPublicHours = p.OtPublicHours,
+        OtCustom = PayrollRunAdjustments.ParseOtCustomLines(p.OtCustomJson),
         OtPay = p.OtPay,
         TotalAllowances = p.TotalAllowances,
         TotalReimbursements = p.TotalReimbursements,

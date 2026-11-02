@@ -42,12 +42,14 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
     private readonly ITeamRepository _teams;
     // Optional so hand-built instances in tests need not supply it.
     private readonly IChartOfAccountRepository? _accounts;
+    private readonly Overtime.IOvertimeTypeRepository? _overtimeTypes;
 
     public OrganizationDefaultsService(
         IEmployeePolicyRepository policies, IProjectRepository projects, ITeamRepository teams,
-        IChartOfAccountRepository? accounts = null)
+        IChartOfAccountRepository? accounts = null, Overtime.IOvertimeTypeRepository? overtimeTypes = null)
     {
         _accounts = accounts;
+        _overtimeTypes = overtimeTypes;
         _policies = policies;
         _projects = projects;
         _teams = teams;
@@ -130,11 +132,26 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
             }
         }
 
+        // The three built-in overtime types the policies' rates fall back to.
+        if (_overtimeTypes is not null
+            && !(await _overtimeTypes.GetAllAsync()).Any(t => t.OrganizationId == organizationId))
+        {
+            await _overtimeTypes.AddRangeAsync(Overtime.OvertimeTypeService.BuiltIns.Select(b => new Overtime.Entities.OvertimeType
+            {
+                OrganizationId = organizationId,
+                Name = b.Name,
+                Kind = b.Kind,
+                Multiplier = b.Multiplier,
+                CreatedAt = now,
+                UpdatedAt = now,
+            }));
+        }
+
         return new OrganizationDefaultsResult(policiesCreated, projectCreated, teamCreated, accountsCreated);
     }
 
-    // The legacy defaults, field for field: full module access, geofence on,
-    // selfie off, OT enabled at the statutory multipliers.
+    // The legacy defaults: full module access, geofence on, selfie off, OT
+    // enabled at the company's rates (the statutory multipliers to start).
     private static EmployeePolicy NewPolicy(
         string organizationId, string name, SalaryType salaryType, bool isDefault, DateTime now) => new()
     {
@@ -147,12 +164,8 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
         CanAccessLeave = true,
         RequireGeofence = true,
         RequireSelfie = false,
+        // OT rates left to the company's overtime types (1.5× / 2× / 3×).
         OtEnabled = true,
-        OtRateNormalDay = 1.50m,
-        OtRateRestDay = 2.00m,
-        OtRatePublicHoliday = 3.00m,
-        OtRateRestDayInShift = 1.00m,
-        OtRatePublicHolidayInShift = 2.00m,
         CreatedAt = now,
         UpdatedAt = now,
     };

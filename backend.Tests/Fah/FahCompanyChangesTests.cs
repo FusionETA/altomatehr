@@ -202,7 +202,7 @@ public class FahCompanyChangesTests : IClassFixture<FahCompanyChangesTests.App>
         Assert.Equal(["Alpha", "Beta", "Delta"], plan!.Steps.Select(s => s.Company).Order());   // "all": here + owned, not Gamma
         Assert.Contains("Salary: monthly.", plan.Settings);
         Assert.Contains("Selfie at clock-in on", plan.Settings);
-        Assert.Contains("2× normal day, 2× rest day, 3× public holiday", plan.Settings);
+        Assert.Contains("2× normal day, the company's rate for rest day, the company's rate for public holiday", plan.Settings);
         Assert.Contains("Leave days: Annual Leave 8; other types their own default.", plan.Settings);
         Assert.Contains("No leave type named \"Annual Leave\"", plan.Steps.Single(s => s.Company == "Delta").Detail);
         Assert.DoesNotContain(await _app.PoliciesAsync(o.Alpha), p => p.Name == "Probation");   // nothing made yet

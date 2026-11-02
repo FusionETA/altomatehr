@@ -21,6 +21,8 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
             // this is scoped when it is not.
             .IgnoreQueryFilters()
             .Where(p => !p.IsArchived && p.LeaveDate != null && p.LeaveDate < before)
+            // Not while their company is deactivated; caught up on reactivation.
+            .Where(p => !_db.Organizations.Any(o => o.Id == p.OrganizationId && o.DeactivatedAt != null))
             .OrderBy(p => p.LeaveDate)
             .Take(max)
             .ToListAsync();

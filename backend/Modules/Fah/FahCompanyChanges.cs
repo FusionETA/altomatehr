@@ -135,11 +135,9 @@ public class FahCompanyChanges : IFahCompanyChanges
             ("otEnabled", "Overtime is paid."),
             ("otDailyThresholdMinutes", "OT starts after this many minutes a day (0–1440)."),
             ("otMethod", "CASH (paid) or TIME_BANK (time off)."),
-            ("otRateNormalDay", "OT rate on a normal day, × the hourly rate."),
-            ("otRateRestDay", "OT rate on a rest day."),
-            ("otRatePublicHoliday", "OT rate on a public holiday."),
-            ("otRateRestDayInShift", "Rate for normal hours worked on a rest day."),
-            ("otRatePublicHolidayInShift", "Rate for normal hours worked on a public holiday."),
+            ("otRateNormalDay", "This policy's own OT rate on a normal day, × the hourly rate; null = the company's."),
+            ("otRateRestDay", "This policy's own OT rate on a rest day; null = the company's."),
+            ("otRatePublicHoliday", "This policy's own OT rate on a public holiday; null = the company's."),
             ("otSalaryThreshold", "Only staff earning up to this monthly salary get OT (RM); null = no limit."),
             ("temporary", "A temporary policy."),
         }.ToDictionary(
@@ -360,6 +358,7 @@ public class FahCompanyChanges : IFahCompanyChanges
     private static string SettingsText(SavePolicyDto p, IReadOnlyList<FahLeaveDays> days, string? basedOn)
     {
         static string OnOff(bool on) => on ? "on" : "off";
+        static string Rate(decimal? rate) => rate is { } r ? $"{r:0.##}×" : "the company's rate for";
         var uses = new[] { (p.CanAccessAttendance, "Attendance"), (p.CanAccessClaims, "Claims"), (p.CanAccessLeave, "Leave") }
             .Where(u => u.Item1).Select(u => u.Item2).ToList();
         var text = new StringBuilder();
@@ -377,8 +376,7 @@ public class FahCompanyChanges : IFahCompanyChanges
             + (p.AutoClockOutEnabled ? $"after {p.AutoClockOutAfterMinutes} min." : "off."));
         text.AppendLine(p.OtEnabled
             ? $"OT: {(p.OtMethod == OtMethod.CASH ? "paid" : "time bank")}, after {p.OtDailyThresholdMinutes / 60.0:0.##} h a day; "
-                + $"{p.OtRateNormalDay:0.##}× normal day, {p.OtRateRestDay:0.##}× rest day, {p.OtRatePublicHoliday:0.##}× public holiday; "
-                + $"in-shift {p.OtRateRestDayInShift:0.##}× rest day, {p.OtRatePublicHolidayInShift:0.##}× public holiday"
+                + $"{Rate(p.OtRateNormalDay)} normal day, {Rate(p.OtRateRestDay)} rest day, {Rate(p.OtRatePublicHoliday)} public holiday"
                 + (p.OtSalaryThreshold is { } cap ? $"; only for salaries up to RM {cap:N2}." : ".")
             : "OT: off.");
         text.Append(days.Count == 0
@@ -871,8 +869,6 @@ public class FahCompanyChanges : IFahCompanyChanges
         OtRateNormalDay = p.OtRateNormalDay,
         OtRatePublicHoliday = p.OtRatePublicHoliday,
         OtRateRestDay = p.OtRateRestDay,
-        OtRatePublicHolidayInShift = p.OtRatePublicHolidayInShift,
-        OtRateRestDayInShift = p.OtRateRestDayInShift,
         OtSalaryThreshold = p.OtSalaryThreshold,
         Temporary = p.Temporary,
     };

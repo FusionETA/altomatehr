@@ -50,6 +50,10 @@ public class SavePayrollRunAdjustmentDto
     [Range(0, 999.99)] public decimal OtRestHours { get; set; }
     [Range(0, 999.99)] public decimal OtPublicHours { get; set; }
 
+    // Hours for the company's own overtime types, by overtime type id
+    // (0 to 999.99 each). Any hours here or above replace the approved ones.
+    public Dictionary<string, decimal> OtCustomHours { get; set; } = [];
+
     public List<ManualLineItemDto> ManualLineItems { get; set; } = [];
 
     // Keyed by the profile fixed-allowance's array INDEX as a string.
@@ -80,6 +84,7 @@ public class PayrollRunAdjustmentDto
     public decimal OtNormalHours { get; set; }
     public decimal OtRestHours { get; set; }
     public decimal OtPublicHours { get; set; }
+    public Dictionary<string, decimal> OtCustomHours { get; set; } = [];
 
     public List<ManualLineItemResponseDto> ManualLineItems { get; set; } = [];
     public Dictionary<string, FixedAllowanceOverrideDto> FixedAllowanceOverrides { get; set; } = [];

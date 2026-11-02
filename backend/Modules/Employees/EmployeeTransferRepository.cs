@@ -31,6 +31,10 @@ public class EmployeeTransferRepository : IEmployeeTransferRepository
     public Task<List<string>> GetDueIdsAsync(DateTime today, int max) =>
         _db.EmployeeTransfers.IgnoreQueryFilters()
             .Where(t => (t.Status == EmployeeTransferStatus.PENDING || t.Status == EmployeeTransferStatus.FAILED) && t.EffectiveDate <= today)
+            // Waits while either company is deactivated; still due, it runs
+            // on the first sweep after reactivation.
+            .Where(t => !_db.Organizations.Any(o =>
+                (o.Id == t.OrganizationId || o.Id == t.TargetOrganizationId) && o.DeactivatedAt != null))
             .OrderBy(t => t.EffectiveDate)
             .Take(max)
             .Select(t => t.Id)

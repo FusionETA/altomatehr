@@ -41,6 +41,7 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
         existing.OtNormalHours = adjustment.OtNormalHours;
         existing.OtRestHours = adjustment.OtRestHours;
         existing.OtPublicHours = adjustment.OtPublicHours;
+        existing.OtCustomHoursJson = adjustment.OtCustomHoursJson;
         existing.ManualLineItemsJson = adjustment.ManualLineItemsJson;
         existing.FixedAllowanceOverridesJson = adjustment.FixedAllowanceOverridesJson;
         existing.WorkedHours = adjustment.WorkedHours;

@@ -32,9 +32,12 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
     public Task<AttendanceSession?> GetByIdAsync(string id) =>
         _db.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id);
 
+    // The auto clock-out sweep's candidates. A deactivated company's are left
+    // alone (filtered here, not after the limit, so they can't crowd others out).
     public Task<List<AttendanceSession>> GetOpenStartedBeforeAsync(DateTime cutoff, int limit) =>
         _db.AttendanceSessions
             .Where(s => s.EndedAt == null && s.StartedAt <= cutoff)
+            .Where(s => !_db.Organizations.Any(o => o.Id == s.OrganizationId && o.DeactivatedAt != null))
             .OrderBy(s => s.StartedAt)
             .Take(limit)
             .ToListAsync();

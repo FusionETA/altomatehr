@@ -7,7 +7,7 @@ import { SupportModeBanner } from "./features/support/components/SupportModeBann
 import { SupportPage } from "./features/support/components/SupportPage";
 import { EnableNotificationsPrompt } from "./features/notifications/components/EnableNotificationsPrompt";
 import { LoadingScreen } from "./shared/components/LoadingScreen";
-import { setAuthToken } from "./shared/lib/api-client";
+import { onSessionClosed, setAuthToken } from "./shared/lib/api-client";
 import { connectRealtime, disconnectRealtime } from "./shared/lib/realtime-client";
 import type { SignedInUser } from "./shared/types/session";
 
@@ -23,10 +23,24 @@ function isAdminRole(role: string) {
 const SUPPORT_PARAM = "support";
 const supportInUrl = () => new URLSearchParams(window.location.search).has(SUPPORT_PARAM);
 
+// Carries "why you were signed out" across the reload that follows it.
+const NOTICE_KEY = "altomate:session-notice";
+function takeNotice(): string | null {
+  try {
+    const notice = sessionStorage.getItem(NOTICE_KEY);
+    sessionStorage.removeItem(NOTICE_KEY);
+    return notice;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [user, setUser] = useState<SignedInUser | null>(null);
   const [booting, setBooting] = useState(true);
   const [supportOpen, setSupportOpen] = useState(supportInUrl);
+  // Why the session ended or moved, when the server closed it (company deactivated).
+  const [notice, setNotice] = useState<string | null>(takeNotice);
 
   useEffect(() => {
     const onPop = () => setSupportOpen(supportInUrl());
@@ -50,6 +64,22 @@ function App() {
     return () => disconnectRealtime();
   }, []);
 
+  // The company was deactivated under them. Reloaded like a company switch,
+  // so no screen keeps its data: someone in another company lands there (the
+  // refresh picks it), anyone else on the sign-in page — told why either way.
+  useEffect(
+    () =>
+      onSessionClosed((message) => {
+        try {
+          sessionStorage.setItem(NOTICE_KEY, message);
+        } catch {
+          /* private mode: they're signed out without the reason */
+        }
+        window.location.reload();
+      }),
+    [],
+  );
+
   if (booting) {
     return <LoadingScreen />;
   }
@@ -57,7 +87,9 @@ function App() {
   if (!user) {
     return (
       <LoginForm
+        notice={notice}
         onSuccess={(res) => {
+          setNotice(null);
           setAuthToken(res.token);
           setUser(toSignedInUser(res));
           connectRealtime();
@@ -93,6 +125,20 @@ function App() {
 
   return (
     <>
+      {notice ? (
+        <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm font-medium text-destructive">
+          <span>
+            {notice} You're now in {user.activeOrganizationName}.
+          </span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold transition hover:bg-destructive/10"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       {user.supportMode ? <SupportModeBanner organizationName={user.activeOrganizationName} /> : null}
       {isAdminRole(user.role) ? (
         <AdminShell user={user} onLogout={handleLogout} onOpenSupport={openSupport} />

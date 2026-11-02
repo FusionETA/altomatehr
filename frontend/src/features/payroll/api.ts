@@ -238,6 +238,8 @@ export type Payslip = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  // The company's own overtime types paid, named and rated as at generation.
+  otCustom: PayslipOvertimeLine[];
   otPay: number;
   totalAllowances: number;
   totalReimbursements: number;
@@ -1160,6 +1162,8 @@ export type PayrollRunAdjustment = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  // The company's own overtime types: type id → hours.
+  otCustomHours: Record<string, number>;
   manualLineItems: ManualLineItem[];
   // Keyed by the profile allowance's array index, as a string.
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
@@ -1180,6 +1184,7 @@ export type SavePayrollRunAdjustment = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  otCustomHours: Record<string, number>;
   manualLineItems: {
     category: string;
     label: string | null;
@@ -1243,8 +1248,28 @@ export type PayrollAdjustmentContext = {
   approvedOtNormalHours: number;
   approvedOtRestHours: number;
   approvedOtPublicHours: number;
+  // Every overtime box, in order: the three built-in types under the
+  // company's names (key normalDay / restDay / publicHoliday), then the
+  // company's own types this person's policy offers or that have hours.
+  overtimeTypes: AdjustmentOvertimeType[];
   loanInstallments: LoanInstallmentPreview[];
   editable: boolean;
+};
+
+export type PayslipOvertimeLine = {
+  typeId: string;
+  name: string;
+  hours: number;
+  multiplier: number;
+  amount: number;
+};
+
+export type AdjustmentOvertimeType = {
+  key: string;
+  name: string;
+  builtIn: boolean;
+  multiplier: number;
+  approvedHours: number;
 };
 
 export const getRunAdjustments = (runId: string) =>
