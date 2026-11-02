@@ -488,6 +488,11 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiMonitoringSe
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogWriterBackgroundService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogCleanupBackgroundService>();
 
+// Whether a company is deactivated: read on every request, so cached briefly.
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Organizations.IOrganizationStatus,
+    AltomateHR.Api.Modules.Organizations.OrganizationStatus>();
+
 // Team chat: sign-ins and new companies posted to the team's Bitrix group.
 // Quiet unless Bitrix:WebhookUrl (a secret) and Bitrix:DialogId are both set.
 builder.Services.Configure<AltomateHR.Api.Modules.TeamChat.TeamChatOptions>(
@@ -598,6 +603,7 @@ app.UseCors("frontend");
 app.UseRateLimiter();
 app.UseAuthentication();   // WHO are you?  (JWT or wp_live_ key) — MUST be before UseAuthorization
 app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
+app.UseMiddleware<AltomateHR.Api.Modules.Organizations.CompanyDeactivatedMiddleware>();  // a deactivated company is closed to everyone in it
 app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();
 app.UseMiddleware<AltomateHR.Api.Modules.Employees.EmployeeScopeMiddleware>();  // a policy-limited admin sees only their employees  // a former employer's company is view-only
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)

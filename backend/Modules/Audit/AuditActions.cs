@@ -31,6 +31,8 @@ public static class AuditActions
     // Fusioneta support: opening a customer's org, and provisioning a company.
     public const string SupportEnter = "support.enter";
     public const string SupportCompanyCreate = "support.company.create";
+    public const string SupportCompanyDeactivate = "support.company.deactivate";
+    public const string SupportCompanyReactivate = "support.company.reactivate";
     public const string PayrollLoanUpdate = "payroll.loan.update";
     public const string PayrollLoanDelete = "payroll.loan.delete";
     // Changes to a loan already repaying: the balance re-spread, months

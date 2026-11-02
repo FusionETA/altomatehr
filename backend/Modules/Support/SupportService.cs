@@ -17,6 +17,8 @@ public class SupportService : ISupportService
     private readonly IUserRepository _users;
     private readonly IAuditService _audit;
     private readonly ICurrentUser _currentUser;
+    private readonly IOrganizationStatus? _status;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
 
     public SupportService(
         IOrganizationRepository organizations,
@@ -24,8 +26,12 @@ public class SupportService : ISupportService
         IOrganizationMembershipRepository memberships,
         IUserRepository users,
         IAuditService audit,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IOrganizationStatus? status = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _status = status;
+        _teamChat = teamChat;
         _organizations = organizations;
         _organizationService = organizationService;
         _memberships = memberships;
@@ -62,6 +68,9 @@ public class SupportService : ISupportService
                 OwnerEmail = owner?.Email,
                 EmployeeCount = members.Count(m => OrgRoles.IsOnPayroll(m.Role)),
                 CreatedAt = org.CreatedAt,
+                DeactivatedAt = org.DeactivatedAt,
+                DeactivatedReason = org.DeactivatedReason,
+                DeactivatedBy = org.DeactivatedBy,
             };
         });
 
@@ -138,4 +147,61 @@ public class SupportService : ISupportService
             OwnerCreated = created,
         };
     }
+
+    public async Task<SupportOrganizationDto?> DeactivateAsync(string organizationId, string reason)
+    {
+        var org = await _organizations.GetByIdAsync(organizationId);
+        if (org is null) return null;
+        if (!org.IsDeactivated)
+        {
+            org.DeactivatedAt = DateTime.UtcNow;
+            org.DeactivatedReason = reason.Trim();
+            org.DeactivatedBy = _currentUser.Email;
+            await _organizations.UpdateAsync(org);
+            await ChangedAsync(org, AuditActions.SupportCompanyDeactivate, "Fusioneta support deactivated this company", deactivated: true);
+        }
+        return await RowAsync(org.Id);
+    }
+
+    public async Task<SupportOrganizationDto?> ReactivateAsync(string organizationId)
+    {
+        var org = await _organizations.GetByIdAsync(organizationId);
+        if (org is null) return null;
+        if (org.IsDeactivated)
+        {
+            var reason = org.DeactivatedReason;
+            org.DeactivatedAt = null;
+            org.DeactivatedReason = null;
+            org.DeactivatedBy = null;
+            await _organizations.UpdateAsync(org);
+            await ChangedAsync(org, AuditActions.SupportCompanyReactivate, "Fusioneta support reactivated this company", deactivated: false, reason);
+        }
+        return await RowAsync(org.Id);
+    }
+
+    // The change bites at once, is in the company's log (as "System (Support)",
+    // the person in the internal support log; the reason in neither) and goes
+    // to the team chat.
+    private async Task ChangedAsync(
+        Organizations.Entities.Organization org, string action, string summary, bool deactivated, string? previousReason = null)
+    {
+        _status?.Changed();
+
+        if (_currentUser.UserId is { } supportUserId)
+        {
+            await _audit.WriteAsync(new AuditEvent(
+                action,
+                summary,
+                TargetType: "Organization",
+                TargetId: org.Id,
+                OrganizationId: org.Id,
+                Support: new SupportActor(supportUserId, _currentUser.Email ?? string.Empty)));
+        }
+
+        if (_teamChat is not null)
+            await _teamChat.CompanyStatusChangedAsync(org.Id, deactivated, deactivated ? org.DeactivatedReason : previousReason);
+    }
+
+    private async Task<SupportOrganizationDto?> RowAsync(string organizationId) =>
+        (await ListOrganizationsAsync(null)).FirstOrDefault(r => r.Id == organizationId);
 }

@@ -27,6 +27,7 @@ public class AuthService : IAuthService
     private readonly IOrganizationRepository _organizations;
     private readonly ISuperadminRegistry? _superadmins;
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
+    private readonly IOrganizationStatus? _status;
 
     public AuthService(
         ITokenService tokens,
@@ -40,10 +41,12 @@ public class AuthService : IAuthService
         IAuditService audit,
         IOrganizationRepository organizations,
         ISuperadminRegistry? superadmins = null,
-        TeamChat.ITeamChatAlerts? teamChat = null)
+        TeamChat.ITeamChatAlerts? teamChat = null,
+        IOrganizationStatus? status = null)
     {
         _superadmins = superadmins;
         _teamChat = teamChat;
+        _status = status;
         _tokens = tokens;
         _refreshRepo = refreshRepo;
         _userRepo = userRepo;
@@ -110,7 +113,12 @@ public class AuthService : IAuthService
         // PickHomeAsync). Role comes from that membership.
         var active = await PickHomeAsync(user.Id);
         if (active is null)
+        {
+            // Every company they're in is deactivated: say so.
+            if ((await _directory.GetMembershipsByUserAsync(user.Id)).Any(m => m.HiddenByEmployeeAt is null))
+                throw new CompanyDeactivatedException();
             return null;   // valid credentials, but not a member of any org yet
+        }
 
 
         // Recorded with the role, because the question this answers is usually
@@ -181,6 +189,7 @@ public class AuthService : IAuthService
         // hasn't removed it from their account as a former employee.
         var membership = await _directory.GetMembershipAsync(organizationId, userId);
         if (membership is null || membership.HiddenByEmployeeAt is not null) return null;
+        if (await IsDeactivatedAsync(organizationId)) return null;
 
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
@@ -197,8 +206,10 @@ public class AuthService : IAuthService
         //
         // Current employers first, former ones (left / transferred out) after —
         // the same rule sign-in uses to choose.
+        // A deactivated company isn't offered at all.
+        var deactivated = await DeactivatedIdsAsync();
         var memberships = (await _directory.GetMembershipsByUserAsync(userId))
-            .Where(m => m.HiddenByEmployeeAt is null)
+            .Where(m => m.HiddenByEmployeeAt is null && !deactivated.Contains(m.OrganizationId))
             .ToList();
         var former = await FormerOrgIdsAsync(userId, memberships);
         var orgs = new List<UserOrgDto>(memberships.Count);
@@ -241,8 +252,11 @@ public class AuthService : IAuthService
         // Removed from this company (an admin the Owner removed), or hid it as a
         // former employee: don't refresh into it — move to their home company,
         // or end the session.
+        // Or the company has been deactivated: the same, so someone in two
+        // companies carries on in the other one.
         var membership = await _directory.GetMembershipAsync(stored.OrganizationId, stored.UserId);
-        if (membership is null || membership.HiddenByEmployeeAt is not null)
+        if (membership is null || membership.HiddenByEmployeeAt is not null
+            || await IsDeactivatedAsync(stored.OrganizationId))
         {
             var home = await PickHomeAsync(stored.UserId);
             return home is null
@@ -466,15 +480,23 @@ public class AuthService : IAuthService
     // genuinely employed by two, signs in exactly where they always did.
     private async Task<Employees.Entities.OrganizationMembership?> PickHomeAsync(string userId)
     {
-        // A company they removed from their account ("Leave company") is never home.
+        // A company they removed from their account ("Leave company") is never
+        // home, and nor is a deactivated one.
+        var deactivated = await DeactivatedIdsAsync();
         var memberships = (await _directory.GetMembershipsByUserAsync(userId))
-            .Where(m => m.HiddenByEmployeeAt is null)
+            .Where(m => m.HiddenByEmployeeAt is null && !deactivated.Contains(m.OrganizationId))
             .ToList();
         if (memberships.Count <= 1) return memberships.FirstOrDefault();
 
         var former = await FormerOrgIdsAsync(userId, memberships);
         return OrderByHome(memberships, former).First();
     }
+
+    private async Task<IReadOnlySet<string>> DeactivatedIdsAsync() =>
+        _status is null ? new HashSet<string>() : await _status.DeactivatedIdsAsync();
+
+    private async Task<bool> IsDeactivatedAsync(string organizationId) =>
+        _status is not null && await _status.IsDeactivatedAsync(organizationId);
 
     private static IEnumerable<Employees.Entities.OrganizationMembership> OrderByHome(
         IEnumerable<Employees.Entities.OrganizationMembership> memberships, IReadOnlySet<string> former) =>

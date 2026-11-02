@@ -65,6 +65,15 @@ public class TeamChatTests
             TeamChatAlerts.CompanyCreatedText("Demo Co", null, null, null, "provisioning API"));
     }
 
+    [Fact]
+    public void ADeactivation_SaysWhyAndWho_AndAReactivation_WhatItWasFor()
+    {
+        Assert.Equal("⛔ Company deactivated: Demo Co\nReason: Unpaid since Sep\nBy: support@x.test",
+            TeamChatAlerts.CompanyStatusText("Demo Co", true, "Unpaid since Sep", "support@x.test"));
+        Assert.Equal("✅ Company reactivated: Demo Co\nWas deactivated for: Unpaid since Sep\nBy: support@x.test",
+            TeamChatAlerts.CompanyStatusText("Demo Co", false, "Unpaid since Sep", "support@x.test"));
+    }
+
     // Customer-typed names can't turn into Bitrix formatting or links.
     [Fact]
     public void TypedNames_CantFormatTheMessage()

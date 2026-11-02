@@ -8,6 +8,7 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { usePaged } from "@/shared/lib/use-paged";
 import { getSupportOrganizations, SUPPORT_ORGS_PATH, type SupportOrganization } from "../api";
 import { matchesSearch, planLabel } from "../lib/plan";
+import { CompanyStatusDialog } from "./CompanyStatusDialog";
 import { CreateCompanyCard } from "./CreateCompanyCard";
 import { ManagePlanDialog } from "./ManagePlanDialog";
 import { XeroAppsCard } from "./XeroAppsCard";
@@ -28,6 +29,7 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<SupportTab>("companies");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<SupportOrganization | null>(null);
+  const [statusOf, setStatusOf] = useState<SupportOrganization | null>(null);
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,7 +110,7 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
             ) : (
               <>
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-border/50">
-                  <table className="w-full min-w-[760px] text-sm">
+                  <table className="w-full min-w-[860px] text-sm">
                     <thead>
                       <tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                         <th className="px-4 py-2.5 font-semibold">Company</th>
@@ -121,7 +123,25 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
                     <tbody>
                       {paged.pageItems.map((org) => (
                         <tr key={org.id} className="border-b border-border/30 last:border-0">
-                          <td className="px-4 py-3 font-semibold text-foreground">{org.name}</td>
+                          <td className="px-4 py-3">
+                            <span className="block font-semibold text-foreground">{org.name}</span>
+                            {org.deactivatedAt ? (
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                <span className="mr-1.5 rounded-full bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">
+                                  Deactivated
+                                </span>
+                                {new Date(org.deactivatedAt).toLocaleDateString("en-MY", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                                {org.deactivatedBy ? ` by ${org.deactivatedBy}` : ""}
+                                {org.deactivatedReason ? (
+                                  <span className="block">{org.deactivatedReason}</span>
+                                ) : null}
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {org.ownerEmail ? (
                               <>
@@ -134,7 +154,7 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{org.employeeCount}</td>
                           <td className="px-4 py-3">
-                            <span className="rounded-full border border-border/70 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                            <span className="whitespace-nowrap rounded-full border border-border/70 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                               {planLabel(org)}
                             </span>
                           </td>
@@ -143,15 +163,26 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
                               <button
                                 type="button"
                                 onClick={() => setEditing(org)}
-                                className="rounded-full border border-border/70 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+                                className="whitespace-nowrap rounded-full border border-border/70 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
                               >
                                 Manage plan
                               </button>
                               <button
                                 type="button"
+                                onClick={() => setStatusOf(org)}
+                                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                  org.deactivatedAt
+                                    ? "border-border/70 text-foreground hover:bg-muted"
+                                    : "border-destructive/40 text-destructive hover:bg-destructive/10"
+                                }`}
+                              >
+                                {org.deactivatedAt ? "Reactivate" : "Deactivate"}
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => void enter(org)}
                                 disabled={enteringId !== null}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
                               >
                                 {enteringId === org.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
                                 Enter as support
@@ -175,6 +206,17 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
 
         {tab === "xero" ? <XeroAppsCard /> : null}
       </main>
+
+      {statusOf ? (
+        <CompanyStatusDialog
+          org={statusOf}
+          onClose={() => setStatusOf(null)}
+          onSaved={() => {
+            setStatusOf(null);
+            void query.refresh();
+          }}
+        />
+      ) : null}
 
       {editing ? (
         <ManagePlanDialog

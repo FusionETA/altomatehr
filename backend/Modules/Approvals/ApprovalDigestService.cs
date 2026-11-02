@@ -23,14 +23,17 @@ public class ApprovalDigestService : IApprovalDigestService
     private readonly IClaimsService _claims;
     private readonly IOvertimeService _overtime;
     private readonly INotificationService _notifications;
+    private readonly Organizations.IOrganizationStatus? _status;
 
     public ApprovalDigestService(
         IAttendanceService attendance,
         ILeaveService leave,
         IClaimsService claims,
         IOvertimeService overtime,
-        INotificationService notifications)
+        INotificationService notifications,
+        Organizations.IOrganizationStatus? status = null)
     {
+        _status = status;
         _attendance = attendance;
         _leave = leave;
         _claims = claims;
@@ -52,11 +55,15 @@ public class ApprovalDigestService : IApprovalDigestService
                 .Select(e => (e.ReviewerId, e.OrganizationId, e.PendingCount)).ToList(),
         };
 
+        // No digest for anyone in a deactivated company.
+        var deactivated = _status is null ? new HashSet<string>() : await _status.DeactivatedIdsAsync();
+
         var breakdownByReviewer = new Dictionary<(string ReviewerId, string OrgId), Dictionary<string, int>>();
         foreach (var (module, entries) in byModule)
         {
             foreach (var entry in entries)
             {
+                if (deactivated.Contains(entry.OrgId)) continue;
                 var key = (entry.ReviewerId, entry.OrgId);
                 if (!breakdownByReviewer.TryGetValue(key, out var breakdown))
                 {

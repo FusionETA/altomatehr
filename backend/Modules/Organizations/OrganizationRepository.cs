@@ -19,6 +19,9 @@ public class OrganizationRepository : IOrganizationRepository
     public Task<List<Organization>> GetAllAsync() =>
         _db.Organizations.OrderBy(o => o.Name).ToListAsync();
 
+    public Task<List<string>> GetDeactivatedIdsAsync() =>
+        _db.Organizations.Where(o => o.DeactivatedAt != null).Select(o => o.Id).ToListAsync();
+
     public async Task AddAsync(Organization organization)
     {
         _db.Organizations.Add(organization);

@@ -151,12 +151,40 @@ function validationMessages(errors: unknown): string[] {
   );
 }
 
+// The server can close a session outright — a 401 carrying one of these
+// codes (a company deactivated by support) — which no refresh would fix.
+// The app listens, and signs the person out or moves them on, with the message.
+const SESSION_CLOSED_CODES = ["company_deactivated"];
+type SessionClosedListener = (message: string) => void;
+const sessionClosedListeners = new Set<SessionClosedListener>();
+
+export function onSessionClosed(listener: SessionClosedListener): () => void {
+  sessionClosedListeners.add(listener);
+  return () => sessionClosedListeners.delete(listener);
+}
+
+async function sessionClosedMessage(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.clone().json()) as { code?: unknown; error?: unknown };
+    if (typeof body.code !== "string" || !SESSION_CLOSED_CODES.includes(body.code)) return null;
+    return typeof body.error === "string" ? body.error : "Your session has ended.";
+  } catch {
+    return null;
+  }
+}
+
 // Sends, and on a 401 refreshes once and sends again. `send` is a thunk so
 // the retry rebuilds its headers with the NEW token rather than replaying
 // the expired one.
 async function withRefresh(path: string, send: () => Promise<Response>): Promise<Response> {
   const res = await send();
   if (res.status !== 401 || isAuthPath(path)) return res;
+
+  const closed = await sessionClosedMessage(res);
+  if (closed !== null) {
+    sessionClosedListeners.forEach((listener) => listener(closed));
+    return res;
+  }
 
   return (await refreshAccessToken()) ? send() : res;
 }
