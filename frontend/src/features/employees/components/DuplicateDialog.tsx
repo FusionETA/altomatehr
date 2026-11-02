@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Copy, LoaderCircle } from "lucide-react";
 import { duplicateEmployee, type TransferTarget } from "../api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 
 // Add the same person to another company the admin runs, while they KEEP
@@ -86,33 +87,36 @@ export function DuplicateDialog({
 
         <label className="mt-4 block">
           <span className="text-xs font-semibold text-muted-foreground">Other company</span>
-          <select value={targetId} onChange={(e) => pickTarget(e.target.value)} className={input}>
-            <option value="">Select company…</option>
-            {targets.map((t) => (
-              <option key={t.id} value={t.id} disabled={t.employeeActiveHere}>
-                {t.name}
-                {t.employeeActiveHere ? " (already works here)" : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={targetId} onValueChange={pickTarget}>
+            <SelectTrigger className="mt-1 h-11 rounded-xl" aria-label="Other company">
+              <SelectValue placeholder="Select company…" />
+            </SelectTrigger>
+            <SelectContent>
+              {targets.map((t) => (
+                <SelectItem key={t.id} value={t.id} disabled={t.employeeActiveHere}>
+                  {t.name}
+                  {t.employeeActiveHere ? " (already works here)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         <label className="mt-3 block">
           <span className="text-xs font-semibold text-muted-foreground">Policy there</span>
-          <select
-            value={policyId}
-            onChange={(e) => setPolicyId(e.target.value)}
-            disabled={!target}
-            className={input}
-          >
-            {!target ? <option value="">Pick a company first</option> : null}
-            {target?.policies.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.isDefault ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={policyId} onValueChange={setPolicyId} disabled={!target}>
+            <SelectTrigger className="mt-1 h-11 rounded-xl" aria-label="Policy">
+              <SelectValue placeholder={target ? "Select policy…" : "Pick a company first"} />
+            </SelectTrigger>
+            <SelectContent>
+              {target?.policies.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                  {p.isDefault ? " (default)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         <label className="mt-3 block">

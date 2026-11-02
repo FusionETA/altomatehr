@@ -13,6 +13,7 @@ import { saveFile } from "@/shared/lib/api-client";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { SkeletonRows } from "@/shared/components/Skeleton";
 import { Cp8dConverterModal } from "./Cp8dConverterModal";
+import { PayrollSelect } from "./PayrollSelect";
 import { rm } from "../lib/payroll-format";
 import {
   BUTTON_GHOST,
@@ -370,20 +371,19 @@ function PayrollStartSetting({
       </label>
       <div className="mt-1 flex flex-wrap items-center gap-3">
         <div className="w-56">
-          <select
+          <PayrollSelect
             id="payrollStartMonth"
-            className={INPUT}
-            value={value}
+            value={String(value)}
             disabled={saving || !access.canChangeSettings}
-            onChange={(e) => void change(Number(e.target.value))}
-          >
-            <option value={1}>January or earlier</option>
-            {Array.from({ length: 11 }, (_, i) => i + 2).map((m) => (
-              <option key={m} value={m}>
-                {new Date(2000, m - 1, 1).toLocaleString("en-MY", { month: "long" })}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => next && void change(Number(next))}
+            options={Array.from({ length: 12 }, (_, i) => ({
+              value: String(i + 1),
+              label:
+                i === 0
+                  ? "January or earlier"
+                  : new Date(2000, i, 1).toLocaleString("en-MY", { month: "long" }),
+            }))}
+          />
         </div>
         <span className="text-sm text-foreground">{year}</span>
         {saving ? <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
