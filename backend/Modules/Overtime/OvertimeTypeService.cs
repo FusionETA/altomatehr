@@ -20,6 +20,7 @@ public class OvertimeTypeService : IOvertimeTypeService
     private readonly IPolicyOvertimeRateRepository _policyRates;
     private readonly IPolicyService _policies;
     private readonly IModuleAccessService? _access;
+    private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     // Loaded once per request: a payroll run prices every employee off them.
     private List<OvertimeType>? _loaded;
@@ -29,8 +30,10 @@ public class OvertimeTypeService : IOvertimeTypeService
         IOvertimeTypeRepository types,
         IPolicyOvertimeRateRepository policyRates,
         IPolicyService policies,
-        IModuleAccessService? access = null)
+        IModuleAccessService? access = null,
+        Payroll.IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _types = types;
         _policyRates = policyRates;
         _policies = policies;
@@ -72,10 +75,14 @@ public class OvertimeTypeService : IOvertimeTypeService
         var name = dto.Name.Trim();
         if (NameTaken(types, name, exceptId: id) is { } clash) return clash;
 
+        var rateChanged = type.Multiplier != dto.Multiplier;
         type.Name = name;
         type.Multiplier = dto.Multiplier;
         type.UpdatedAt = DateTime.UtcNow;
         await _types.UpdateAsync(type);
+
+        // Drafts priced at the old rate must be re-run before they're filed.
+        if (rateChanged && _drafts is not null) await _drafts.MarkAllDraftsAsync();
         return new OvertimeTypeSaveResult(true, ToDto(type), null);
     }
 
@@ -126,7 +133,12 @@ public class OvertimeTypeService : IOvertimeTypeService
 
     public async Task<IReadOnlyList<PickableOvertimeTypeDto>> PickableForEmployeeAsync(string employeeId)
     {
-        var rates = await RatesForPolicyAsync(await _policies.GetEffectivePolicyAsync(employeeId));
+        // Banked as time off, or switched off: nothing is paid at any rate,
+        // so offering "Night shift 1.25×" would promise money that never comes.
+        var policy = await _policies.GetEffectivePolicyAsync(employeeId);
+        if (policy is not null && (!policy.OtEnabled || policy.OtMethod != OtMethod.CASH)) return [];
+
+        var rates = await RatesForPolicyAsync(policy);
         return
         [
             .. rates.Custom.Values

@@ -45,8 +45,15 @@ public class SupportController : ControllerBase
     [HttpPost("organizations/{organizationId}/deactivate")]
     public async Task<IActionResult> Deactivate(string organizationId, DeactivateCompanyDto dto)
     {
-        var row = await _support.DeactivateAsync(organizationId, dto.Reason);
-        return row is null ? NotFound() : Ok(row);
+        try
+        {
+            var row = await _support.DeactivateAsync(organizationId, dto.Reason);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     // POST /support/organizations/{id}/reactivate — open it again.

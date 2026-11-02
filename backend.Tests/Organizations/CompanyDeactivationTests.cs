@@ -23,6 +23,7 @@ public class CompanyDeactivationTests
     private const string Admin = "admin@altomate.com";   // the demo Owner, and the superadmin here
     private const string Employee = "employee@altomate.com";
     private const string Password = "password123";
+    private const string CustomerOwner = "owner@customer.test";
 
     [Fact]
     public async Task ASessionInADeactivatedCompany_IsRefusedAtOnce_AndWorksAgainOnReactivation()
@@ -30,15 +31,14 @@ public class CompanyDeactivationTests
         using var app = new App();
         using var support = app.CreateClient();
         await SignInAsync(support, Admin);
-        var second = await CreateCompanyAsync(support, "Second Co");
+        var customer = await CustomerCompanyAsync(support);
 
-        // A second session, inside the second company.
+        // The customer's owner, signed in to their only company.
         using var inside = app.CreateClient();
-        await SignInAsync(inside, Admin);
-        await SwitchAsync(inside, second);
+        await SignInAsync(inside, CustomerOwner);
         Assert.Equal(HttpStatusCode.OK, (await inside.GetAsync("/organizations/current")).StatusCode);
 
-        var deactivated = await support.PostAsJsonAsync($"/support/organizations/{second}/deactivate", new { reason = "Unpaid since Sep" });
+        var deactivated = await support.PostAsJsonAsync($"/support/organizations/{customer}/deactivate", new { reason = "Unpaid since Sep" });
         Assert.Equal(HttpStatusCode.OK, deactivated.StatusCode);
         var row = await Json(deactivated);
         Assert.Equal("Unpaid since Sep", row.GetProperty("deactivatedReason").GetString());
@@ -48,18 +48,34 @@ public class CompanyDeactivationTests
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
         Assert.Equal(CompanyDeactivatedMiddleware.Code, (await Json(refused)).GetProperty("code").GetString());
 
-        // Not offered, and can't be switched into.
-        var orgs = await Json(await support.GetAsync("/auth/orgs"));
-        Assert.DoesNotContain(orgs.EnumerateArray(), o => o.GetProperty("organizationId").GetString() == second);
-        Assert.Equal(HttpStatusCode.Forbidden, (await support.PostAsync($"/auth/switch-org/{second}", null)).StatusCode);
+        // No other company to move to: refreshing ends the session, and
+        // signing in again says why.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await inside.PostAsync("/auth/refresh", null)).StatusCode);
+        using var again = app.CreateClient();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await again.PostAsJsonAsync("/auth/login", new { email = CustomerOwner, password = Password })).StatusCode);
 
-        // Refreshing moves the session to the company that's still open.
-        var refreshed = await Json(await inside.PostAsync("/auth/refresh", null));
-        Assert.NotEqual(second, refreshed.GetProperty("activeOrganizationId").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await support.PostAsync($"/support/organizations/{customer}/reactivate", null)).StatusCode);
+        await SignInAsync(again, CustomerOwner);
+        Assert.Equal(HttpStatusCode.OK, (await again.GetAsync("/organizations/current")).StatusCode);
+    }
 
-        Assert.Equal(HttpStatusCode.OK, (await support.PostAsync($"/support/organizations/{second}/reactivate", null)).StatusCode);
-        await SwitchAsync(inside, second);
-        Assert.Equal(HttpStatusCode.OK, (await inside.GetAsync("/organizations/current")).StatusCode);
+    // A superadmin would be shut out with it, Reactivate button and all.
+    [Fact]
+    public async Task ACompanyASuperadminIsIn_CantBeDeactivated()
+    {
+        using var app = new App();
+        using var support = app.CreateClient();
+        await SignInAsync(support, Admin);
+        var own = (await Json(await support.GetAsync("/organizations/current"))).GetProperty("id").GetString()!;
+        var alsoTheirs = await CreateCompanyAsync(support, "Second Co");
+
+        var ownRefused = await support.PostAsJsonAsync($"/support/organizations/{own}/deactivate", new { reason = "test" });
+        var theirsRefused = await support.PostAsJsonAsync($"/support/organizations/{alsoTheirs}/deactivate", new { reason = "test" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, ownRefused.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, theirsRefused.StatusCode);
+        Assert.Contains("superadmin", (await Json(theirsRefused)).GetProperty("message").GetString());
     }
 
     [Fact]
@@ -75,7 +91,7 @@ public class CompanyDeactivationTests
 
         using var employee = app.CreateClient();
         var refused = await employee.PostAsJsonAsync("/auth/login", new { email = Employee, password = Password });
-        Assert.True(refused.StatusCode == HttpStatusCode.Forbidden, $"{(int)refused.StatusCode} {await refused.Content.ReadAsStringAsync()}");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         Assert.Contains("deactivated", (await Json(refused)).GetProperty("message").GetString());
 
         // A wrong password is still just a wrong password.
@@ -93,9 +109,9 @@ public class CompanyDeactivationTests
         using var app = new App();
         using var support = app.CreateClient();
         await SignInAsync(support, Admin);
-        var second = await CreateCompanyAsync(support, "Second Co");
+        var customer = await CustomerCompanyAsync(support);
 
-        var response = await support.PostAsJsonAsync($"/support/organizations/{second}/deactivate", new { reason = "" });
+        var response = await support.PostAsJsonAsync($"/support/organizations/{customer}/deactivate", new { reason = "" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -121,6 +137,17 @@ public class CompanyDeactivationTests
         var res = await client.PostAsJsonAsync("/organizations", new { name });
         Assert.True(res.IsSuccessStatusCode, $"{(int)res.StatusCode} {res.Headers.WwwAuthenticate} {await res.Content.ReadAsStringAsync()}");
         return (await Json(res)).GetProperty("id").GetString()!;
+    }
+
+    // A customer's company, set up by support, that no superadmin is in.
+    private static async Task<string> CustomerCompanyAsync(HttpClient support)
+    {
+        var res = await support.PostAsJsonAsync("/support/organizations", new
+        {
+            orgName = "Customer Co", ownerName = "Customer Owner", ownerEmail = CustomerOwner, password = Password,
+        });
+        Assert.True(res.IsSuccessStatusCode, await res.Content.ReadAsStringAsync());
+        return (await Json(res)).GetProperty("organizationId").GetString()!;
     }
 
     private static void UseToken(HttpClient client, JsonElement auth) =>

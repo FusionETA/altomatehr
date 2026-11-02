@@ -7,8 +7,9 @@ namespace AltomateHR.Api.Modules.Organizations;
 //
 // 401 with code "company_deactivated", so the app signs out (or moves to
 // another company the person belongs to) instead of retrying. /auth stays
-// open — switching to another company and signing out must still work — and
-// so does Fusioneta support, who may need to look inside.
+// open to a person's session — switching to another company and signing out
+// must still work — but not to an API key (the partner /auth/verify and
+// /auth/organizations live there too). Fusioneta support may look inside.
 public class CompanyDeactivatedMiddleware
 {
     public const string Code = "company_deactivated";
@@ -23,7 +24,8 @@ public class CompanyDeactivatedMiddleware
     {
         if (currentUser.OrganizationId is { } organizationId
             && !currentUser.IsSupport
-            && !context.Request.Path.StartsWithSegments("/auth", StringComparison.OrdinalIgnoreCase)
+            && (currentUser.IsScopedMachine
+                || !context.Request.Path.StartsWithSegments("/auth", StringComparison.OrdinalIgnoreCase))
             && await status.IsDeactivatedAsync(organizationId))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;

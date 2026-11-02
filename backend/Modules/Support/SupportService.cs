@@ -19,6 +19,7 @@ public class SupportService : ISupportService
     private readonly ICurrentUser _currentUser;
     private readonly IOrganizationStatus? _status;
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
+    private readonly ISuperadminRegistry? _superadmins;
 
     public SupportService(
         IOrganizationRepository organizations,
@@ -28,8 +29,10 @@ public class SupportService : ISupportService
         IAuditService audit,
         ICurrentUser currentUser,
         IOrganizationStatus? status = null,
-        TeamChat.ITeamChatAlerts? teamChat = null)
+        TeamChat.ITeamChatAlerts? teamChat = null,
+        ISuperadminRegistry? superadmins = null)
     {
+        _superadmins = superadmins;
         _status = status;
         _teamChat = teamChat;
         _organizations = organizations;
@@ -152,6 +155,24 @@ public class SupportService : ISupportService
     {
         var org = await _organizations.GetByIdAsync(organizationId);
         if (org is null) return null;
+
+        // A company Fusioneta's own superadmins sign in to can't be closed:
+        // they'd be shut out with it, and the Reactivate button with them.
+        if (organizationId == _currentUser.OrganizationId)
+            throw new ArgumentException("This is the company you're signed in to, so it can't be deactivated.");
+        if (_superadmins is not null)
+        {
+            var members = (await _memberships.GetAcrossAllOrgsAsync())
+                .Where(m => m.OrganizationId == organizationId)
+                .Select(m => m.UserId)
+                .ToHashSet(StringComparer.Ordinal);
+            var superadmin = (await _users.GetAllAsync())
+                .FirstOrDefault(u => members.Contains(u.Id) && _superadmins.IsSuperadmin(u.Email));
+            if (superadmin is not null)
+                throw new ArgumentException(
+                    $"{superadmin.Email} is a Fusioneta superadmin in this company, so it can't be deactivated.");
+        }
+
         if (!org.IsDeactivated)
         {
             org.DeactivatedAt = DateTime.UtcNow;

@@ -20,13 +20,17 @@ public class PartnerIdentityService : IPartnerIdentityService
     private readonly IOrganizationService _organizations;
     private readonly IApiKeyService _apiKeys;
 
+    private readonly IOrganizationStatus? _status;
+
     public PartnerIdentityService(
         IProvisioningService provisioning,
         IAuthService auth,
         IDirectoryService directory,
         IOrganizationService organizations,
-        IApiKeyService apiKeys)
+        IApiKeyService apiKeys,
+        IOrganizationStatus? status = null)
     {
+        _status = status;
         _provisioning = provisioning;
         _auth = auth;
         _directory = directory;
@@ -84,11 +88,16 @@ public class PartnerIdentityService : IPartnerIdentityService
 
     // Admin/Owner memberships the caller may see: an org key only its own
     // company — never the person's other employers — a master key all of them.
-    private async Task<List<OrganizationMembership>> AdminMembershipsAsync(PartnerCaller caller, string userId) =>
-        (await _directory.GetMembershipsByUserAsync(userId))
+    // A deactivated company is never one of them.
+    private async Task<List<OrganizationMembership>> AdminMembershipsAsync(PartnerCaller caller, string userId)
+    {
+        var deactivated = _status is null ? new HashSet<string>() : await _status.DeactivatedIdsAsync();
+        return (await _directory.GetMembershipsByUserAsync(userId))
             .Where(m => OrgRoles.IsAdministrative(m.Role))
             .Where(m => caller.OrganizationId is null || m.OrganizationId == caller.OrganizationId)
+            .Where(m => !deactivated.Contains(m.OrganizationId))
             .ToList();
+    }
 
     private async Task<List<PartnerOrganization>> NamedAsync(IEnumerable<OrganizationMembership> memberships)
     {

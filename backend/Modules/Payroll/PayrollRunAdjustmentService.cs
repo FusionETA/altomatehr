@@ -249,7 +249,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         {
             var known = _overtimeTypes is null
                 ? []
-                : (await _overtimeTypes.GetAllAsync(includeArchived: true)).Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
+                : (await _overtimeTypes.GetAllAsync(includeArchived: true))
+                    .Where(t => t.Kind == Overtime.Entities.OvertimeTypeKind.CUSTOM)
+                    .Select(t => t.Id)
+                    .ToHashSet(StringComparer.Ordinal);
             if (dto.OtCustomHours.Keys.FirstOrDefault(k => !known.Contains(k)) is { } unknown)
                 return new PayrollRunAdjustmentSaveResult(true, false, null, $"Unknown overtime type '{unknown}'.");
             if (dto.OtCustomHours.Values.Any(h => h is < 0m or > 999.99m))
