@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 99a79a1
+  user-guide-covered-up-to: 5382ea4
 -->
 <html lang="en">
 <head>
@@ -394,7 +394,7 @@
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
       <li>The ⋮ menu — <span class="btn-name">Change password</span> (not shown if you signed in through Altomate), push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
-        the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
+        the menu until you've read the latest; admins and owners also see the lines meant only for admins), <span class="btn-name">Guide</span> (opens this guide in a new tab),
         <span class="btn-name">Launch Appraisify</span> (opens Appraisify in a new tab, so AltomateHR stays open; if your
         browser blocks the new tab, or AltomateHR is installed as a home-screen app, it opens in the same tab instead), and <span class="btn-name">Log out</span></li>
     </ol>
@@ -964,7 +964,7 @@
         Here, they're archived with the day before as their last day, and the move is added to their Employment history.</li>
       <li><span class="btn-name">Duplicate</span> — they keep working here <em>and</em> are added to the other company
         (same login; they switch between the two). In <strong>Add to another company</strong> pick the
-        <strong>Other company</strong>, <strong>Policy there</strong> and <strong>Join date there</strong>, choose whether to
+        <strong>Other company</strong> from the dropdown, then <strong>Policy there</strong> and <strong>Join date there</strong>, choose whether to
         include statutory numbers and bank, and press <span class="btn-name">Add to company</span>. Set their salary
         at the other company.</li>
     </ul>
@@ -1398,7 +1398,11 @@
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
           or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. <strong>Reimbursed claims</strong> lists
-          approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
+          approved claims waiting to be paid — add them to this run one at a time, or press <span class="btn-name">Add all</span>
+          (with a number, e.g. <em>Add all 12</em>) to add every one in the list. Staff numbers show beside the names. Once
+          there are more than five claims, a search box appears: type an employee's name, staff ID, a claim number or a
+          title, and the button becomes <span class="btn-name">Add these</span> for just the claims that match. Long
+          lists scroll inside the card, so the run's Submit button stays in reach. Each added claim has a ✕ to take it off again. Unpaid leave is deducted automatically from approved
           unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
           <em>Unpaid days not in the Leave module</em> below. The <strong>Needs attention</strong> tab lists anyone
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
@@ -1938,7 +1942,7 @@
     <figure class="shot" data-place="Annual forms">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: the payroll start month card, the monthly runs approved warning and the employee table" loading="lazy">
+          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: the payroll start month card with its month picker, and the employee table" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Annual tax forms</p>

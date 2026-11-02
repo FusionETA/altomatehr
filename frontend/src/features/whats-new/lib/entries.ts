@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 99a79a1
+// whats-new-covered-up-to: 5382ea4
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,12 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-02",
+    new: [
+      admins("The Reimbursed claims card on a payroll run has a search for employee, staff ID or claim number, and an \"Add all\" button for the claims it shows."),
+    ],
+  },
   {
     date: "2026-10-28",
     new: [
