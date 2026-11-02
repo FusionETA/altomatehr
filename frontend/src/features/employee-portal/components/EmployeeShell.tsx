@@ -67,7 +67,7 @@ export function EmployeeShell({
   const sub = nav.child;
   const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const whatsNew = useWhatsNew(user.email);
+  const whatsNew = useWhatsNew(user.email, "everyone");
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
