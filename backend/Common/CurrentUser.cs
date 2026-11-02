@@ -7,10 +7,17 @@ namespace AltomateHR.Api.Common;
 public class CurrentUser : ICurrentUser
 {
     private readonly IHttpContextAccessor _http;
+    private readonly CompanyPrincipal? _company;
 
-    public CurrentUser(IHttpContextAccessor http) => _http = http;
+    public CurrentUser(IHttpContextAccessor http, CompanyPrincipal? company = null)
+    {
+        _http = http;
+        _company = company;
+    }
 
-    private ClaimsPrincipal? Principal => _http.HttpContext?.User;
+    // Inside an ICompanyScopes scope, the person as they are in that company;
+    // otherwise the request's own token.
+    private ClaimsPrincipal? Principal => _company?.Principal ?? _http.HttpContext?.User;
 
     public string? UserId =>
         Principal?.FindFirstValue(ClaimTypes.NameIdentifier)

@@ -35,6 +35,37 @@ public class FahController : ControllerBase
     public async Task<IActionResult> Get(string id) =>
         await _fah.GetAsync(id) is { } conversation ? Ok(conversation) : NotFound();
 
+    // POST /fah/attachments — one file for the next message (multipart, field
+    // "file"). Read and stored, not sent until a /chat message names it.
+    [HttpPost("attachments")]
+    [EnableRateLimiting("fah-files")]
+    [RequestSizeLimit(9 * 1024 * 1024)]   // the per-type limits themselves are the service's, with a clear 400
+    public async Task<IActionResult> Upload(IFormFile? file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Choose a file to attach." });
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var result = await _fah.UploadAsync(file.FileName, buffer.ToArray(), HttpContext.RequestAborted);
+        return result.Attachment is { } attachment ? Ok(attachment) : BadRequest(new { error = result.Error });
+    }
+
+    // DELETE /fah/attachments/{id} — takes back a file that hasn't been sent.
+    [HttpDelete("attachments/{id}")]
+    public async Task<IActionResult> RemoveAttachment(string id) =>
+        await _fah.RemoveAttachmentAsync(id) ? NoContent() : NotFound();
+
+    // GET /fah/conversations/{id}/import/{actionId} — the import file behind an
+    // import card still waiting for Confirm: AltomateHR's own import layout,
+    // to check in Excel or import from Manage Employee instead.
+    [HttpGet("conversations/{id}/import/{actionId}")]
+    public async Task<IActionResult> ImportFile(string id, string actionId)
+    {
+        if (await _fah.ImportFileAsync(id, actionId) is not { } file) return NotFound();
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     // POST /fah/chat — one message. Streams server-sent events: "progress" as
     // FAH checks things, then one "result" (the answer) or "error".
     [HttpPost("chat")]
@@ -120,6 +151,7 @@ public class FahController : ControllerBase
             {
                 status = result.NotFound ? 404 : result.Unavailable ? 503 : 400,
                 error = result.NotFound ? "That chat wasn't found." : result.Error,
+                notSent = result.NotSent,
             });
     }
 }

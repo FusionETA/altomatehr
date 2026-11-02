@@ -66,10 +66,10 @@ public class EmployeeImportTests
         params (string Key, string Value)[] extra) =>
         Row(email, name, number: number, extra: extra);
 
-    private sealed record Harness(
+    internal sealed record Harness(
         EmployeeImportService Service, FakeEmployeeService Employees, FakeProfileService Profiles);
 
-    private static Harness Make(
+    internal static Harness Make(
         IEnumerable<EmployeeDto>? existing = null,
         IEnumerable<EmployeeProfile>? profiles = null,
         IEnumerable<string>? accountsInOtherCompanies = null,
@@ -91,7 +91,7 @@ public class EmployeeImportTests
 
     private static Harness Make(params EmployeeDto[] existing) => Make(existing, null, null);
 
-    private static EmployeeDto Member(
+    internal static EmployeeDto Member(
         string id, string email, string role = "Employee", string? policyId = "pol-full",
         string? shiftId = "shift-office", List<string>? modules = null) => new()
         {
@@ -798,9 +798,31 @@ public class EmployeeImportTests
         Assert.Empty(result.Warnings);
     }
 
+    // ─── Checking only (FAH's import card) ──────────────────────────────
+
+    [Fact]
+    public async Task CheckingOnly_CountsWhatWouldHappen_AndSavesNothing()
+    {
+        var h = Make([Member("u1", "existing@x.test")], [Profile("u1")]);
+        var file = Csv(
+            Row("existing@x.test", jobTitle: "Lead"),
+            NewRow("new@x.test"),
+            NewRow("new@x.test", number: "EMP-101"),   // a repeat: the update it would be
+            Row("broken@x.test", name: "No Number"));
+
+        var result = await h.Service.ImportAsync(file, TabularFormat.Csv, checkOnly: true);
+
+        Assert.Equal(1, result.Created);
+        Assert.Equal(2, result.Updated);
+        Assert.Equal(5, Assert.Single(result.Errors).Row);
+        Assert.Empty(h.Employees.Created);
+        Assert.Empty(h.Employees.Updated);
+        Assert.Empty(result.CreatedAccounts);
+    }
+
     // ─── Doubles ────────────────────────────────────────────────────────
 
-    private sealed class FakeModuleAccess(bool payroll) : AltomateHR.Api.Modules.Organizations.IModuleAccessService
+    internal sealed class FakeModuleAccess(bool payroll) : AltomateHR.Api.Modules.Organizations.IModuleAccessService
     {
         private static readonly string[] Base = ["employees", "leave", "teams", "policies", "overtime"];
 
@@ -811,7 +833,7 @@ public class EmployeeImportTests
             Task.FromResult<IReadOnlyCollection<string>>([.. Base, "payroll"]);
     }
 
-    private sealed class FakeEmployeeService : IEmployeeService
+    internal sealed class FakeEmployeeService : IEmployeeService
     {
         public Task<SetPasswordResult> SetPasswordAsync(string userId, string newPassword) =>
             Task.FromResult(new SetPasswordResult(true, null));
@@ -844,7 +866,7 @@ public class EmployeeImportTests
     // and handed out as DTOs (what the import edits) — converted through JSON,
     // since the two share their field names. GetAsync returns a COPY, so a row
     // that fails and is never saved can't leave its edits behind in the store.
-    private sealed class FakeProfileService(IEnumerable<EmployeeProfile> profiles) : IEmployeeProfileService
+    internal sealed class FakeProfileService(IEnumerable<EmployeeProfile> profiles) : IEmployeeProfileService
     {
         public Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() =>
             Task.FromResult<IReadOnlyList<WorkPermitDto>>([]);

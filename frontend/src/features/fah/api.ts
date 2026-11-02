@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiGetFresh, apiPostStream } from "@/shared/lib/api-client";
+import { ApiError, apiDelete, apiGet, apiGetFile, apiGetFresh, apiPostForm, apiPostStream, saveFile } from "@/shared/lib/api-client";
 
 // FAH, the in-app assistant. A turn streams: progress while FAH checks
 // things, then the answer — see streamTurn.
@@ -8,7 +8,40 @@ export type FahStatus = { available: boolean };
 export type FahStep = { tool: string; ok: boolean };
 
 /** A change FAH is holding for Confirm or Cancel: AltomateHR's own preview of it. */
-export type FahPendingAction = { id: string; tool: string; title: string; preview: string };
+export type FahPendingAction = {
+  id: string;
+  tool: string;
+  title: string;
+  preview: string;
+  /** Set for an employee import: one card, one Confirm, for the whole file. */
+  import: FahImportCard | null;
+  /** Set for a change in several companies: what happens in each, or why it's skipped. */
+  companies: FahCompanyRow[] | null;
+};
+
+export type FahCompanyRow = { company: string; skip: boolean; detail: string };
+
+/** One row of the admin's file: its row number there, what the import would do, and why not. */
+export type FahImportRow = {
+  row: number;
+  status: "add" | "update" | "problem" | "leftout";
+  cells: string[];
+  message: string | null;
+};
+
+export type FahImportCard = {
+  sourceFile: string;
+  adds: number;
+  updates: number;
+  /** Rows the import would refuse: not imported, kept in the download to fix. */
+  problems: number;
+  /** Repeats, or rows skipped as asked: in neither. */
+  leftOut: number;
+  columns: string[];
+  rows: FahImportRow[];
+  /** Rows beyond those listed; the download has them all. */
+  moreRows: number;
+};
 
 export type FahReply = {
   conversationId: string;
@@ -23,13 +56,26 @@ export type FahProgress = { type: "started" | "done"; tool: string; ok?: boolean
 
 export type FahConversationSummary = { id: string; title: string; updatedAt: string };
 
-export type FahMessage = { role: "user" | "assistant"; text: string };
+/** The names of files attached to an admin's message. */
+export type FahMessage = { role: "user" | "assistant"; text: string; attachments: string[] };
 
 export type FahConversation = {
   id: string;
   title: string;
   messages: FahMessage[];
   pendingAction: FahPendingAction | null;
+  /** Its images or PDFs were deleted after 30 days: it can be read, not continued. */
+  filesExpired: boolean;
+};
+
+/** An uploaded file waiting to go with the next message. */
+export type FahAttachment = {
+  id: string;
+  fileName: string;
+  /** "text" is a spreadsheet or Word file, read into text on the server. */
+  kind: "image" | "pdf" | "text";
+  /** e.g. that only the first rows were read. */
+  note: string | null;
 };
 
 export const FAH_STATUS_PATH = "/fah/status";
@@ -42,8 +88,27 @@ export const listFahConversations = () => apiGetFresh<FahConversationSummary[]>(
 export const getFahConversation = (id: string) =>
   apiGetFresh<FahConversation>(`/fah/conversations/${encodeURIComponent(id)}`);
 
+export const uploadFahAttachment = (file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPostForm<FahAttachment>("/fah/attachments", form);
+};
+
+export const removeFahAttachment = (id: string) => apiDelete<void>(`/fah/attachments/${encodeURIComponent(id)}`);
+
+/** The import file behind an import card still waiting, in AltomateHR's own import layout. */
+export const downloadFahImportFile = (conversationId: string, actionId: string) =>
+  apiGetFile(
+    `/fah/conversations/${encodeURIComponent(conversationId)}/import/${encodeURIComponent(actionId)}`,
+    "employees-import.xlsx",
+  ).then(saveFile);
+
+/** The send failed before the message reached the chat: it can be put back and sent again. */
+export const fahMessageNotSent = (err: unknown) =>
+  err instanceof ApiError && (err.body as { notSent?: boolean } | undefined)?.notSent === true;
+
 export const sendFahMessage = (
-  body: { conversationId: string | null; message: string },
+  body: { conversationId: string | null; message: string; attachmentIds: string[] },
   onProgress: (e: FahProgress) => void,
 ) => streamTurn("/fah/chat", body, onProgress);
 

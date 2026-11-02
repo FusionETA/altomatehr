@@ -238,6 +238,19 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // Files attached in FAH: a message can carry five, so more room than
+    // "fah" — still capped, as each image or PDF is stored with the provider.
+    options.AddPolicy("fah-files", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "fah-files"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     // "Write with AI" for document templates — also paid per request, and a
     // drafting session is a handful of turns, not dozens.
     options.AddPolicy("ai-documents", httpContext =>
@@ -266,6 +279,9 @@ builder.Services.AddRateLimiter(options =>
 // Multi-tenancy + request context (ICurrentUser reads the JWT via IHttpContextAccessor)
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+// Acting as the same person in another of their companies (FAH's cross-company changes).
+builder.Services.AddScoped<CompanyPrincipal>();
+builder.Services.AddScoped<ICompanyScopes, CompanyScopes>();
 
 // Realtime (SSE). The HUB is a singleton because it holds open connections,
 // which outlive the request that opened them; the service around it is scoped
@@ -385,6 +401,9 @@ builder.Services.AddHttpClient<IMcpClient, McpClient>(
     http => http.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddScoped<IFahModel, ClaudeFahModel>();
 builder.Services.AddScoped<IFahRepository, FahRepository>();
+builder.Services.AddScoped<IFahAttachmentRepository, FahAttachmentRepository>();
+builder.Services.AddScoped<IFahImportService, FahImportService>();
+builder.Services.AddScoped<IFahCompanyChanges, FahCompanyChanges>();
 builder.Services.AddScoped<IFahService, FahService>();
 builder.Services.AddScoped<IProjectTrackingScope, ProjectTrackingScope>();
 // Same instance behind the narrow upload port the storage classes take.

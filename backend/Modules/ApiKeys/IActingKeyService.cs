@@ -11,6 +11,13 @@ public interface IActingKeyService
     // ActingKeyException when the caller can't have one.
     Task<ActingKey> IssueAsync();
 
+    // The same, for another company of the caller's — FAH answering across
+    // the companies they administer. The key acts in THAT company, so their
+    // role and limits there apply. Only for a company from their own list
+    // (IAuthService.GetOrgsAsync, former employers left out): this checks
+    // they are an admin or owner there, not whether they've left it.
+    Task<ActingKey> IssueForAsync(string organizationId);
+
     // Ends one key (the turn's). A turn cut off before it can (a crash, a
     // restart) leaves its key until ExpiresAt, at most ActingKeyService.Lifetime.
     Task RevokeAsync(string id);

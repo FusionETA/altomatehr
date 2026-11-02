@@ -76,6 +76,7 @@ public class AppDbContext : DbContext
     public DbSet<XeroOwnerSetting> XeroOwnerSettings => Set<XeroOwnerSetting>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<FahConversation> FahConversations => Set<FahConversation>();
+    public DbSet<FahAttachment> FahAttachments => Set<FahAttachment>();
 
     // Not ITenantScoped, so it gets no global query filter — that is the point.
     // See MasterKey: provisioning cannot require a credential that already
@@ -482,6 +483,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<FahConversation>().HasQueryFilter(
             c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<FahConversation>().HasIndex(c => new { c.OrganizationId, c.UserId, c.UpdatedAt });
+        // An attached file, the same: FahAttachmentRepository adds the person.
+        modelBuilder.Entity<FahAttachment>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<FahAttachment>().HasIndex(a => new { a.OrganizationId, a.UserId, a.ConversationId });
+        modelBuilder.Entity<FahAttachment>().Property(a => a.Kind).HasConversion<string>().HasMaxLength(10);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
             p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
                  && (_scope.UserIds == null || _scope.UserIds.Contains(p.UserId)));

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Anthropic;
+using Anthropic.Core;
 using Anthropic.Exceptions;
 using Anthropic.Models.Beta.Messages;
 using Microsoft.Extensions.Options;
@@ -58,6 +59,10 @@ public class ClaudeFahModel : IFahModel
         {
             response = await client.Beta.Messages.Create(parameters, cancellationToken: ct);
         }
+        catch (AnthropicBadRequestException ex)
+        {
+            throw new FahModelException("FAH's AI service couldn't take that message.", ex, rejected: true);
+        }
         catch (AnthropicException ex)
         {
             // API errors, network failures and timeouts alike.
@@ -87,4 +92,40 @@ public class ClaudeFahModel : IFahModel
             response.Usage.CacheCreationInputTokens ?? 0,
             response.Usage.CacheReadInputTokens ?? 0);
     }
+
+    public async Task<string> UploadFileAsync(
+        string fileName, string mediaType, byte[] content, TimeSpan keepFor, CancellationToken ct)
+    {
+        var client = Client();
+        try
+        {
+            var file = await client.Files.Upload(new Anthropic.Models.Files.FileUploadParams
+            {
+                File = new BinaryContent { Stream = new MemoryStream(content), FileName = fileName, ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType) },
+                ExpiresInSeconds = (long)keepFor.TotalSeconds,
+            }, ct);
+            return file.ID;
+        }
+        catch (AnthropicException ex)
+        {
+            throw new FahModelException("FAH couldn't store that file just now. Try again in a moment.", ex);
+        }
+    }
+
+    public async Task DeleteFileAsync(string fileId, CancellationToken ct)
+    {
+        try
+        {
+            await Client().Files.Delete(fileId, cancellationToken: ct);
+        }
+        catch (AnthropicException)
+        {
+            // Already gone, or the service is unreachable: it expires by itself anyway.
+        }
+    }
+
+    private AnthropicClient Client() =>
+        string.IsNullOrWhiteSpace(_apiKey)
+            ? throw new FahModelException("FAH isn't set up: Anthropic:ApiKey is missing.")
+            : new AnthropicClient { ApiKey = _apiKey };
 }

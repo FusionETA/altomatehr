@@ -41,6 +41,16 @@ public class FahConversation : ITenantScoped
     public long CacheReadTokens { get; set; }
     public long OutputTokens { get; set; }
 
+    // Files attached so far, and the PDF pages among them: the chat's limits
+    // (FahFiles.MaxPerChat, MaxPdfPagesPerChat).
+    public int AttachmentCount { get; set; }
+    public int AttachmentPages { get; set; }
+
+    // When the first image or PDF in the chat is deleted by the model
+    // provider (less a margin). The chat can't be continued after it: every
+    // message re-sends the whole chat, files included. Null without one.
+    public DateTime? FilesExpireAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

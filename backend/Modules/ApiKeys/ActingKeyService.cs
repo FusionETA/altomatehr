@@ -18,11 +18,16 @@ public class ActingKeyService : IActingKeyService
         _currentUser = currentUser;
     }
 
-    public async Task<ActingKey> IssueAsync()
+    public Task<ActingKey> IssueAsync() =>
+        _currentUser.OrganizationId is { } orgId
+            ? IssueForAsync(orgId)
+            : throw new ActingKeyException("Sign in to use FAH.");
+
+    public async Task<ActingKey> IssueForAsync(string orgId)
     {
         // A person signed in to the app, never a key minting another key.
         if (!_currentUser.IsAuthenticated || _currentUser.IsScopedMachine
-            || _currentUser.UserId is not { } userId || _currentUser.OrganizationId is not { } orgId)
+            || _currentUser.UserId is not { } userId || _currentUser.OrganizationId is null)
             throw new ActingKeyException("Sign in to use FAH.");
 
         // Support acts as "System (Support)" without a membership; a key would
