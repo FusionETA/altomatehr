@@ -26,6 +26,7 @@ public class AuthService : IAuthService
     private readonly IAuditService _audit;
     private readonly IOrganizationRepository _organizations;
     private readonly ISuperadminRegistry? _superadmins;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
 
     public AuthService(
         ITokenService tokens,
@@ -38,9 +39,11 @@ public class AuthService : IAuthService
         IConfiguration config,
         IAuditService audit,
         IOrganizationRepository organizations,
-        ISuperadminRegistry? superadmins = null)
+        ISuperadminRegistry? superadmins = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
         _superadmins = superadmins;
+        _teamChat = teamChat;
         _tokens = tokens;
         _refreshRepo = refreshRepo;
         _userRepo = userRepo;
@@ -123,7 +126,9 @@ public class AuthService : IAuthService
             ActorEmail: user.Email,
             ActorName: user.Email));
 
-        return await IssueTokensAsync(user.Id, user.Email, active.Role, active.OrganizationId);
+        var result = await IssueTokensAsync(user.Id, user.Email, active.Role, active.OrganizationId);
+        if (_teamChat is not null) await _teamChat.SignedInAsync(user.Id, active.Role, active.OrganizationId, "password");
+        return result;
     }
 
     // ─── Support mode ───────────────────────────────────────────────────

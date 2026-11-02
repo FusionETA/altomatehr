@@ -487,6 +487,20 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiMonitoringSe
     AltomateHR.Api.Modules.ApiMonitoring.ApiMonitoringService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogWriterBackgroundService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogCleanupBackgroundService>();
+
+// Team chat: sign-ins and new companies posted to the team's Bitrix group.
+// Quiet unless Bitrix:WebhookUrl (a secret) and Bitrix:DialogId are both set.
+builder.Services.Configure<AltomateHR.Api.Modules.TeamChat.TeamChatOptions>(
+    builder.Configuration.GetSection(AltomateHR.Api.Modules.TeamChat.TeamChatOptions.SectionName));
+builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ITeamChatQueue,
+    AltomateHR.Api.Modules.TeamChat.TeamChatQueue>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts,
+    AltomateHR.Api.Modules.TeamChat.TeamChatAlerts>();
+// No request logging: the webhook's token is in the URL path, which the
+// default HttpClient logs would write out on every message.
+builder.Services.AddHttpClient<AltomateHR.Api.Modules.TeamChat.IBitrixClient,
+    AltomateHR.Api.Modules.TeamChat.BitrixClient>().RemoveAllLoggers();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatSenderBackgroundService>();
 builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
 builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
 builder.Services.AddScoped<IPartnerAuthService, PartnerAuthService>();
