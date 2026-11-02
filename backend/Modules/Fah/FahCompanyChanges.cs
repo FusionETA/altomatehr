@@ -34,16 +34,14 @@ public class FahCompanyChanges : IFahCompanyChanges
     private readonly IAuthService _auth;
     private readonly ICurrentUser _currentUser;
     private readonly IServiceProvider _services;
-    private readonly IUserRepository _users;
 
     public FahCompanyChanges(
-        ICompanyScopes scopes, IAuthService auth, ICurrentUser currentUser, IServiceProvider services, IUserRepository users)
+        ICompanyScopes scopes, IAuthService auth, ICurrentUser currentUser, IServiceProvider services)
     {
         _scopes = scopes;
         _auth = auth;
         _currentUser = currentUser;
         _services = services;
-        _users = users;
     }
 
     public IReadOnlyList<FahTool> Tools(IReadOnlyList<UserOrgDto> companies)
@@ -597,9 +595,9 @@ public class FahCompanyChanges : IFahCompanyChanges
     private static FahTool CreateAdminTool(bool otherCompanies) => new(IFahCompanyChanges.CreateAdminTool,
         "Add someone as an admin, with the access the owner chooses. Before calling, ask the owner — unless they've "
         + "said — which modules (each View or Manage), which employees (everyone, or only those on certain "
-        + "policies) and whether they may change settings; \"full access\" is an answer. Someone with an "
-        + "AltomateHR account already keeps their password. A brand-new account needs their name and date of "
-        + "birth: the first password is their email followed by the birthday as MMDD. Never ask for or set a "
+        + "policies) and whether they may change settings; \"full access\" is an answer. Also ask their full name "
+        + "and date of birth: if they're new to AltomateHR, the first password is their email followed by the "
+        + "birthday as MMDD (an existing account keeps its password). Never ask for or set a "
         + "password. No welcome email is sent: the owner tells them, or resends it from System Settings → Admins. "
         + (otherCompanies
             ? "Added in the signed-in company unless `in` names others; only in companies the owner owns. "
@@ -609,8 +607,8 @@ public class FahCompanyChanges : IFahCompanyChanges
         Schema(new Dictionary<string, object>
         {
             ["email"] = new { type = "string", description = "Their login email." },
-            ["name"] = new { type = "string", description = "Their full name. Needed for a new account." },
-            ["dateOfBirth"] = new { type = "string", description = "YYYY-MM-DD. Needed only for a new account." },
+            ["name"] = new { type = "string", description = "Their full name." },
+            ["dateOfBirth"] = new { type = "string", description = "YYYY-MM-DD." },
             ["access"] = new
             {
                 type = "object",
@@ -654,27 +652,22 @@ public class FahCompanyChanges : IFahCompanyChanges
         var (access, accessError) = Access(input);
         if (access is null) return (null, accessError);
 
-        // A new account needs a name and the birthday its first password is
-        // made from; an existing one keeps its own name and password.
-        var account = await _users.GetByEmailAsync(email);
-        var name = account?.Name ?? Text(input, "name");
-        DateTime? born = null;
-        if (account is null)
-        {
-            if (name is null) return (null, $"{email} has no AltomateHR account yet: ask for their full name.");
-            if (Text(input, "dateOfBirth") is not { } dob)
-                return (null, $"{email} has no AltomateHR account yet: ask for their date of birth. Their first "
-                    + "password is their email followed by the birthday as MMDD. Don't ask for a password.");
-            if (!DateTime.TryParseExact(dob, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var date)
-                || date >= DateTime.UtcNow.Date || date.Year < 1900)
-                return (null, "dateOfBirth is a past date, YYYY-MM-DD.");
-            born = date;
-        }
+        // Always a name and the birthday a new account's first password is
+        // made from. Whether the email already has an account (in some other
+        // company) is never looked up or said here: that's another tenant's
+        // business. An existing account keeps its own password.
+        if (Text(input, "name") is not { } name) return (null, "Ask for their full name.");
+        if (Text(input, "dateOfBirth") is not { } dob)
+            return (null, "Ask for their date of birth. If they're new to AltomateHR, their first password is their "
+                + "email followed by the birthday as MMDD. Don't ask for a password.");
+        if (!DateTime.TryParseExact(dob, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var born)
+            || born >= DateTime.UtcNow.Date || born.Year < 1900)
+            return (null, "dateOfBirth is a past date, YYYY-MM-DD.");
 
         var (targets, targetError) = CreateTargets(input, companies, here);
         if (targetError is not null) return (null, targetError);
 
-        var admin = access with { Email = email, Name = name!, DateOfBirth = born };
+        var admin = access with { Email = email, Name = name, DateOfBirth = born };
         var steps = new List<FahCompanyStep>();
         foreach (var target in targets)
             steps.Add(await InCompanyAsync(target, async sp =>
@@ -683,9 +676,8 @@ public class FahCompanyChanges : IFahCompanyChanges
                 return Step(target, companies, skip, detail);
             }));
 
-        var who = account is null
-            ? $"New AltomateHR account for {name}. First password: their email followed by their birthday as MMDD."
-            : $"{name} already has an AltomateHR account and keeps their password.";
+        const string who = "If they're new to AltomateHR, their first password is their email followed by their "
+            + "birthday as MMDD; if they already have an account, it keeps its password.";
         return (new FahCompanyPlan(IFahCompanyChanges.CreateAdminTool, $"Add {name} as an admin",
             here.OrganizationId, here.Name, steps, Admin: admin,
             Settings: $"{email}\n{who}\nAccess: {AccessText(admin)}\nNo welcome email is sent: tell them, or resend it from System Settings → Admins."), null);

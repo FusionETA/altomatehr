@@ -80,6 +80,80 @@ public class FahImportServiceTests
         Assert.Equal("PASSPORT", an["idType"]);
     }
 
+    // Only a new person's ID type is guessed. Someone already here keeps the
+    // type on their record: an army number isn't a passport.
+    [Fact]
+    public async Task SomeoneAlreadyHere_KeepsTheirIdType()
+    {
+        const string csv = """
+            Name,Email,IC
+            Siti Hajar,existing@example.test,T1234567
+            """;
+        var (plan, _) = await Service().PrepareAsync([Sheet(csv: csv)],
+            Input("""{"file":"staff.csv","columns":{"name":"Name","email":"Email","idNumber":"IC"}}"""));
+
+        var siti = Assert.Single(plan!.Rows);
+        Assert.Equal(FahImportRowStatus.Update, siti.Status);
+        Assert.Equal("", siti.Values.GetValueOrDefault("idType", ""));
+    }
+
+    // Rows go by their number in Excel, blank rows and all, since that's the
+    // number the admin reads off the sheet and says.
+    [Fact]
+    public async Task RowNumbers_AreExcelsOwn()
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var sheet = workbook.AddWorksheet("Staff");
+        sheet.Cell(1, 1).Value = "Staff list";
+        string[][] lines =
+        [
+            ["Staff Name", "Email Address", "D.O.B"],
+            ["Ali", "ali@example.test", "01/01/1990"],
+            [],
+            ["Siti", "siti@example.test", "02/02/1991"],
+        ];
+        for (var r = 0; r < lines.Length; r++)
+            for (var c = 0; c < lines[r].Length; c++)
+                sheet.Cell(r + 3, c + 1).Value = lines[r][c];
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var file = FahFiles.Prepare("staff.xlsx", stream.ToArray()).File!;
+        var attachment = new FahAttachment { FileName = file.FileName, TableJson = JsonSerializer.Serialize(file.Table) };
+
+        var (plan, error) = await Service().PrepareAsync([attachment], Input("""
+            {"file":"staff.xlsx","headerRow":3,"columns":{"name":"Staff Name","email":"Email Address","dateOfBirth":"D.O.B"},
+             "numberNewPeople":true,"skipRows":[4]}
+            """));
+
+        Assert.Null(error);
+        Assert.Contains("4: Ali,", file.Text);
+        Assert.Contains("6: Siti,", file.Text);
+        Assert.Equal([4, 6], plan!.Rows.Select(r => r.SourceRow));
+        Assert.Equal(FahImportRowStatus.LeftOut, plan.Rows[0].Status);
+        Assert.Equal("siti@example.test", plan.Rows[1].Values["email"]);
+    }
+
+    // A row with something only in columns that weren't mapped is no one —
+    // and must not shift the next rows' problems onto their neighbours.
+    [Fact]
+    public async Task ARowWithNothingMapped_IsNoOne()
+    {
+        const string csv = """
+            Dept,Name,Email,DOB
+            Kitchen,,,
+            ,Ali,ali@example.test,01/01/1990
+            ,Siti,siti@example.test,
+            """;
+        var (plan, error) = await Service().PrepareAsync([Sheet(csv: csv)], Input("""
+            {"file":"staff.csv","columns":{"name":"Name","email":"Email","dateOfBirth":"DOB"},"numberNewPeople":true}
+            """));
+
+        Assert.Null(error);
+        Assert.Equal([3, 4], plan!.Rows.Select(r => r.SourceRow));
+        Assert.Equal(FahImportRowStatus.Add, plan.Rows[0].Status);
+        Assert.Equal(FahImportRowStatus.Problem, plan.Rows[1].Status);
+    }
+
     [Fact]
     public async Task NewPeople_AreNumbered_AfterTheCompanysOwnNumbers()
     {

@@ -52,7 +52,8 @@ public static partial class FahFiles
         IReadOnlyList<FahSheet>? Table = null);
 
     // A spreadsheet's sheet as rows of cells, the header row included.
-    public sealed record FahSheet(string Name, IReadOnlyList<IReadOnlyList<string>> Rows);
+    // Numbers: each row's number in Excel, as shown to the model (null: 1, 2, 3…).
+    public sealed record FahSheet(string Name, IReadOnlyList<IReadOnlyList<string>> Rows, IReadOnlyList<int>? Numbers = null);
 
     public sealed record Outcome(Prepared? File, string? Error)
     {
@@ -200,10 +201,12 @@ public static partial class FahFiles
                 var hidden = sheet.Visibility == XLWorksheetVisibility.Visible ? "" : ", hidden sheet";
                 if (!text.Add($"## Sheet \"{sheet.Name}\" ({rows.Count} rows{hidden})\n")) break;
                 sheetsRead++;
+                // Each line starts with its row number in Excel, so "row 12"
+                // means the same to the admin, the model and the import.
                 foreach (var row in rows)
                 {
                     var cells = row.Cells(1, used.ColumnCount()).Select(CellText);
-                    if (!text.AddRow(string.Join(",", cells.Select(Csv)), sheet.Name, rows.Count)) break;
+                    if (!text.AddRow($"{row.RowNumber()}: {string.Join(",", cells.Select(Csv))}", sheet.Name, rows.Count)) break;
                 }
                 if (text.Full) break;
                 text.Add("\n");
@@ -252,8 +255,10 @@ public static partial class FahFiles
         if (lines.Count == 0) return Outcome.Refused($"{name} has no data in it.");
 
         var text = new TextLimit(MaxTextChars);
-        foreach (var line in lines)
-            if (!text.AddRow(line, null, lines.Count)) break;
+        // Numbered like a workbook's lines; blank lines aren't counted, as the
+        // import doesn't count them either.
+        foreach (var (line, at) in lines.Select((line, at) => (line, at)))
+            if (!text.AddRow($"{at + 1}: {line}", null, lines.Count)) break;
         return new Outcome(new Prepared(
             FahAttachmentKind.Text, "text/plain", name, text.ToString().TrimEnd(), 0, text.Note,
             Table(content, TabularFormat.Csv)), null);
@@ -264,7 +269,8 @@ public static partial class FahFiles
     private static IReadOnlyList<FahSheet> Table(byte[] content, TabularFormat format) =>
         [.. TabularReader.ReadAllSheets(content, format)
             .Where(s => s.Rows.Any(r => r.Any(c => !string.IsNullOrWhiteSpace(c))))
-            .Select(s => new FahSheet(s.Name, [.. s.Rows.Take(MaxTableRows)]))];
+            .Select(s => new FahSheet(s.Name, [.. s.Rows.Take(MaxTableRows)],
+                s.RowNumbers is null ? null : [.. s.RowNumbers.Take(MaxTableRows)]))];
 
     // UTF-8 when it is (Excel adds a BOM), otherwise the Windows default
     // Excel saves CSVs in — read as Latin-1, which keeps every byte.

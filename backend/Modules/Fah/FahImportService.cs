@@ -62,7 +62,7 @@ public partial class FahImportService : IFahImportService
             {
                 ["file"] = new { type = "string", description = "The attached spreadsheet's file name." },
                 ["sheet"] = new { type = "string", description = "For a workbook: the sheet to read. Default: the first sheet with data." },
-                ["headerRow"] = new { type = "integer", description = "The row holding the column headings, 1 = the first row. Default 1." },
+                ["headerRow"] = new { type = "integer", description = "The number of the row holding the column headings, as shown at the start of each line of the sheet. Default: its first row." },
                 ["columns"] = new
                 {
                     type = "object",
@@ -93,7 +93,7 @@ public partial class FahImportService : IFahImportService
                 {
                     type = "array",
                     items = new { type = "integer" },
-                    description = "Row numbers (as in the file, 1 = first row) to leave out.",
+                    description = "Row numbers to leave out, as shown at the start of each line of the sheet (the row numbers in Excel).",
                 },
             },
             required = new[] { "file", "columns" },
@@ -126,10 +126,16 @@ public partial class FahImportService : IFahImportService
         if (table is null)
             return (null, $"\"{attachment.FileName}\" has no sheet called \"{sheetName}\". Sheets: {string.Join(", ", tables.Select(t => t.Name))}.");
 
-        var headerRow = input.TryGetProperty("headerRow", out var h) && h.TryGetInt32(out var hr) ? hr : 1;
-        if (headerRow < 1 || headerRow >= table.Rows.Count)
-            return (null, $"Row {headerRow} can't be the heading row: the sheet has {table.Rows.Count} rows.");
-        var headings = table.Rows[headerRow - 1];
+        // Rows go by their number in the file (Excel skips nothing; blank rows
+        // aren't stored), which is the number the admin sees and says.
+        if (table.Rows.Count == 0) return (null, $"\"{table.Name}\" has no rows.");
+        var numbers = table.Numbers ?? [.. Enumerable.Range(1, table.Rows.Count)];
+        var indexOf = numbers.Select((number, at) => (number, at)).ToDictionary(x => x.number, x => x.at);
+        var headerRow = input.TryGetProperty("headerRow", out var h) && h.TryGetInt32(out var hr) ? hr : numbers[0];
+        if (!indexOf.TryGetValue(headerRow, out var headerAt) || headerAt >= table.Rows.Count - 1)
+            return (null, $"Row {headerRow} can't be the heading row: it must be a row with something in it, with rows "
+                + $"of people below it (the sheet's rows run from {numbers[0]} to {numbers[^1]}).");
+        var headings = table.Rows[headerAt];
 
         // ---- Which column is which field ----
         var columns = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -167,8 +173,8 @@ public partial class FahImportService : IFahImportService
         {
             foreach (var pair in editsJson.EnumerateObject())
             {
-                if (!int.TryParse(pair.Name, out var rowNumber) || rowNumber <= headerRow || rowNumber > table.Rows.Count)
-                    return (null, $"\"{pair.Name}\" in edits isn't a row of people in the sheet (rows {headerRow + 1} to {table.Rows.Count}).");
+                if (!int.TryParse(pair.Name, out var rowNumber) || !indexOf.TryGetValue(rowNumber, out var at) || at <= headerAt)
+                    return (null, $"\"{pair.Name}\" in edits isn't a row of people in the sheet (rows {numbers[headerAt + 1]} to {numbers[^1]}).");
                 if (pair.Value.ValueKind != JsonValueKind.Object)
                     return (null, $"Edits for row {rowNumber} must be an object of field → value.");
                 var fields = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -198,11 +204,15 @@ public partial class FahImportService : IFahImportService
 
         var rows = new List<FahImportRow>();
         var firstRowOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (var i = headerRow; i < table.Rows.Count; i++)
+        for (var i = headerAt + 1; i < table.Rows.Count; i++)
         {
             var cells = table.Rows[i];
-            var sourceRow = i + 1;
-            if (cells.All(string.IsNullOrWhiteSpace)) continue;
+            var sourceRow = numbers[i];
+            // Nothing in a mapped column (a subtotal, a note in an unmapped
+            // one) is no one. Sent on, it would be a blank line the import
+            // drops, and every later row's result would land one row early.
+            if (!edits.ContainsKey(sourceRow)
+                && columns.Values.All(at => at >= cells.Count || string.IsNullOrWhiteSpace(cells[at]))) continue;
 
             var row = new Dictionary<string, string>(constants, StringComparer.Ordinal);
             foreach (var (key, index) in columns)
@@ -236,8 +246,12 @@ public partial class FahImportService : IFahImportService
                 row[EmployeeImportSheet.EmployeeNumberKey] = next;
             }
 
-            rows.Add(new FahImportRow(sourceRow, row,
-                existingEmails.Contains(email) ? FahImportRowStatus.Update : FahImportRowStatus.Add));
+            var isNew = !existingEmails.Contains(email);
+            // Only a new person's ID type is guessed from the number. Someone
+            // already here keeps the type on their record (an army or police
+            // number would otherwise turn into a passport).
+            if (isNew) GuessIdType(row);
+            rows.Add(new FahImportRow(sourceRow, row, isNew ? FahImportRowStatus.Add : FahImportRowStatus.Update));
         }
         if (rows.Count == 0) return (null, "The sheet has headings but no rows of people under them.");
 
@@ -339,13 +353,18 @@ public partial class FahImportService : IFahImportService
         if (row.TryGetValue("idNumber", out var id) && id.Length > 0)
         {
             // "C1234567 (Passport)" → "C1234567".
-            var cleaned = Parenthetical().Replace(id, string.Empty).Trim();
-            row["idNumber"] = cleaned;
-            if (string.IsNullOrWhiteSpace(row.GetValueOrDefault("idType")))
-                row["idType"] = cleaned.Count(char.IsDigit) == 12 && cleaned.All(c => char.IsDigit(c) || c is '-' or ' ')
-                    ? "NRIC"
-                    : "PASSPORT";
+            row["idNumber"] = Parenthetical().Replace(id, string.Empty).Trim();
         }
+    }
+
+    // A 12-digit number is a MyKad; anything else, a passport.
+    private static void GuessIdType(Dictionary<string, string> row)
+    {
+        if (!row.TryGetValue("idNumber", out var id) || id.Length == 0
+            || !string.IsNullOrWhiteSpace(row.GetValueOrDefault("idType"))) return;
+        row["idType"] = id.Count(char.IsDigit) == 12 && id.All(c => char.IsDigit(c) || c is '-' or ' ')
+            ? "NRIC"
+            : "PASSPORT";
     }
 
     private static string Str(JsonElement input, string name) =>

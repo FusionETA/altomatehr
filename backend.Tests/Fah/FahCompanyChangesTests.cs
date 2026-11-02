@@ -295,7 +295,7 @@ public class FahCompanyChangesTests : IClassFixture<FahCompanyChangesTests.App>
 
         Assert.Null(error);
         Assert.Equal(["Alpha", "Beta", "Delta"], plan!.Steps.Select(s => s.Company).Order());
-        Assert.Contains("New AltomateHR account for Nia. First password: their email followed by their birthday as MMDD.", plan.Settings);
+        Assert.Contains("If they're new to AltomateHR, their first password is their email followed by their birthday as MMDD", plan.Settings);
         Assert.Contains("Access: Employees, Payroll (view); only people on Sales; can't change settings.", plan.Settings);
         Assert.Contains("No welcome email is sent", plan.Settings);
         Assert.Equal("New admin.", plan.Steps.Single(s => s.Company == "Beta").Detail);
@@ -313,17 +313,23 @@ public class FahCompanyChangesTests : IClassFixture<FahCompanyChangesTests.App>
         Assert.Equal("", (await _app.MembershipAsync(o.Delta, user.Id))!.PolicyScope);
     }
 
+    // The card never says whether the email has an account, or whose: that
+    // account may belong to another company entirely.
     [Fact]
-    public async Task SomeoneWithAnAccount_KeepsIt_AndNeedsNoBirthday()
+    public async Task SomeoneWithAnAccount_KeepsIt_AndTheCardDoesntSaySo()
     {
         var o = await _app.SeedAsync();
+        var before = await _app.UserAsync("fay@x.test");
 
         var (plan, error) = await _app.AsOwnerAsync(o.Alpha, c => c.PrepareAsync(IFahCompanyChanges.CreateAdminTool,
-            Input("""{"email":"fay@x.test","access":{"full":true},"in":["Beta","Alpha"]}"""), o.Companies));
+            Input("""{"email":"fay@x.test","name":"Someone","dateOfBirth":"1990-03-07","access":{"full":true},"in":["Beta","Alpha"]}"""), o.Companies));
         var (_, made) = await _app.AsOwnerAsync(o.Alpha, c => c.RunAsync(plan!));
 
         Assert.Null(error);
-        Assert.Contains("Fay already has an AltomateHR account and keeps their password.", plan!.Settings);
+        Assert.DoesNotContain("Fay", plan!.Settings);
+        Assert.Equal("Add Someone as an admin", plan.Title);
+        var after = await _app.UserAsync("fay@x.test");
+        Assert.Equal((before!.Name, before.PasswordHash), (after!.Name, after.PasswordHash));
         Assert.Contains("Access: Every module; every employee; can change settings.", plan.Settings);
         Assert.Contains("Already an admin here", plan.Steps.Single(s => s.Company == "Alpha").Detail);
         Assert.True(made);
@@ -338,7 +344,7 @@ public class FahCompanyChangesTests : IClassFixture<FahCompanyChangesTests.App>
         var o = await _app.SeedAsync();
 
         var (plan, _) = await _app.AsAsync(o.Gamma, "Admin", c => c.PrepareAsync(IFahCompanyChanges.CreateAdminTool,
-            Input("""{"email":"fay@x.test","access":{"full":true}}"""), o.Companies));
+            Input("""{"email":"fay@x.test","name":"Fay","dateOfBirth":"1990-03-07","access":{"full":true}}"""), o.Companies));
 
         Assert.Equal("You're Admin here, not the owner.", Assert.Single(plan!.Steps).Detail);
         Assert.Equal(0, plan.Doing);
@@ -350,8 +356,8 @@ public class FahCompanyChangesTests : IClassFixture<FahCompanyChangesTests.App>
     [InlineData("""{"email":"fay@x.test","access":{"modules":{"lunch":"View"},"employees":"all","canChangeSettings":true}}""", "\"lunch\" isn't a module")]
     [InlineData("""{"email":"fay@x.test","access":{"modules":{"payroll":"Admin"},"employees":"all","canChangeSettings":true}}""", "payroll is \"View\" or \"Manage\"")]
     [InlineData("""{"email":"fay@x.test","access":{"modules":{},"employees":[],"canChangeSettings":true}}""", "employees is \"all\" or")]
-    [InlineData("""{"email":"brand-new@nowhere.test","access":{"full":true}}""", "ask for their full name")]
-    [InlineData("""{"email":"brand-new@nowhere.test","name":"Bo","access":{"full":true}}""", "ask for their date of birth")]
+    [InlineData("""{"email":"brand-new@nowhere.test","access":{"full":true}}""", "Ask for their full name")]
+    [InlineData("""{"email":"brand-new@nowhere.test","name":"Bo","access":{"full":true}}""", "Ask for their date of birth")]
     [InlineData("""{"email":"brand-new@nowhere.test","name":"Bo","dateOfBirth":"07/03/1990","access":{"full":true}}""", "YYYY-MM-DD")]
     [InlineData("""{"email":"not an email","access":{"full":true}}""", "Say their login email")]
     public async Task ANewAdminThatDoesntFit_IsExplained(string input, string expected)
