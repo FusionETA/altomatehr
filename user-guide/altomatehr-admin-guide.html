@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 5382ea4
+  user-guide-covered-up-to: 530c662
 -->
 <html lang="en">
 <head>
@@ -372,6 +372,10 @@
         has expired or was already used, the sign-in page says so; go back and press it again. Because your account
         is managed in Altomate, <span class="btn-name">New company</span> and <span class="btn-name">Log out</span>
         aren't shown here — sign out from Altomate.</li>
+      <li><strong>"This company's AltomateHR account has been deactivated"</strong> — the company's account has been
+        switched off by AltomateHR support, so nobody in it can sign in. If you belong to another company, you're
+        taken there and told which one; use the company switcher to move between them. Contact AltomateHR support to
+        have the account switched back on.</li>
       <li>The first time, you're asked to <span class="btn-name">Enable</span> notifications — say yes if you want
         to hear about approvals and requests as they happen.</li>
     </ul>
@@ -551,7 +555,7 @@
       <li><h4>Policies</h4>
         <p>Reusable rules you assign to people instead of setting each one individually: which modules they
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
-          overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
+          overtime method (cash or time bank), overtime rates, and leave entitlements. One policy is the default, marked with a
           <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
           choose another.</p>
         <p>Every admin can edit the policies their access covers, so there's nothing to switch on for Policies under
@@ -559,7 +563,24 @@
           company's admins or owner shows <em>Owner only</em> where <span class="btn-name">Edit</span> would be. Only the
           owner sees <span class="btn-name">New policy</span>, <span class="btn-name">Make default</span> and
           <span class="btn-name">Archive</span> / <span class="btn-name">Restore</span>; an admin sees a short note
-          saying so.</p></li>
+          saying so.</p>
+        <p><strong>Overtime types.</strong> The page starts with an <strong>Overtime types</strong> card: what overtime pays, as a multiple of the hourly
+          rate (for example <em>1.5 ×</em>). Three types come with every company, tagged <strong>Built in</strong>:
+          <strong>Normal day</strong>, <strong>Rest day</strong> and <strong>Public holiday</strong>. Approved overtime
+          lands in one of them on its own, by the calendar. You can rename them and change their rate, but not remove
+          them.</p>
+        <ul>
+          <li><strong>Change one</strong> — edit the name or the number, then press <span class="btn-name">Save</span>
+            beside it.</li>
+          <li><strong>Add your own</strong> (for example <em>Night shift</em>) — type the name and the rate in the last
+            row, then press <span class="btn-name">Add</span>. Your employees can pick it when they submit overtime.</li>
+          <li><strong>Remove one of your own</strong> with the bin button. Hours already approved for it are still paid.</li>
+          <li>Only the owner can change this card. An admin sees it greyed out with a note saying so.</li>
+        </ul>
+        <p><strong>Overtime rates in a policy.</strong> In a policy's editor, once <strong>Overtime enabled</strong> is ticked and the <strong>Overtime method</strong> is <em>Cash (paid out)</em>, the rate boxes appear. A box left <strong>blank</strong> uses
+          the company's rate from the Overtime types card, which shows greyed inside the box. Type a number to give just
+          this policy its own rate. If your company has its own types, they're listed underneath with a tick:
+          untick one to stop that policy's staff picking it, or type a rate to pay it differently. (The two <em>in shift</em> rates that used to be here are gone.)</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
           an owner's access can't be restricted. Each admin row shows their name with their login email underneath, a one-line summary (for example
@@ -640,15 +661,19 @@
           <p class="shot-cap">Work Schedule</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies with the default Full-time policy" loading="lazy">
-          <p class="shot-cap">Policies</p>
+          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies starting with the Overtime types card: Normal day, Rest day and Public holiday marked Built in, a Night shift type of the company's own, and a row to add a new one" loading="lazy">
+          <p class="shot-cap">Overtime types</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: no New policy button, a note that only the owner can create, archive or change the default" loading="lazy">
+          <img src="shots/admin/policy-overtime-rates.png" alt="The Edit policy dialog's overtime section: blank rate boxes showing the company's rates greyed, and a ticked Night shift type with its own rate box" loading="lazy">
+          <p class="shot-cap">Overtime rates in a policy</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: the Overtime types card marked owner only, no New policy button, and a note that only the owner can create, archive or change the default" loading="lazy">
           <p class="shot-cap">Policies, as a limited admin</p>
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
+      <p class="shot-cap shot-cap-main">Work Schedule, Overtime types and Policies</p>
     </figure>
 
     <div class="note"><span class="nt">What a limited admin sees</span>
@@ -1160,7 +1185,8 @@
       — plus hours worked, recent attendance, and PDF exports.</p>
     <h3>Overtime</h3>
     <p>Every overtime submission with its before-work and after-work photos or PDFs (an employee can attach up to ten
-      of each), filterable by status. Read-only — supervisors approve overtime from their own queue.</p>
+      of each), filterable by status. When the employee picked an overtime type (such as <em>Night shift</em>), its name is
+      shown with the request. Read-only — supervisors approve overtime from their own queue.</p>
     <h3>Shifts</h3>
     <p>Define shifts per project (e.g. Day 8:00–17:00), with working days and unpaid break minutes. Whether someone
       is late, and how many hours they were expected to work, come from their shift.</p>
@@ -1397,7 +1423,11 @@
           approved overtime, leave and claims.</p></li>
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
-          or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. <strong>Reimbursed claims</strong> lists
+          or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. The
+          <strong>Overtime</strong> box has one hours box per overtime type, each labelled with the rate it pays
+          (for example <em>Normal day (1.5×)</em>, then your own types such as <em>Night shift</em>); the rate is the
+          employee's policy rate, or the company's. Leave them all blank to pay the approved overtime, or type hours to
+          replace it. <strong>Reimbursed claims</strong> lists
           approved claims waiting to be paid — add them to this run one at a time, or press <span class="btn-name">Add all</span>
           (with a number, e.g. <em>Add all 12</em>) to add every one in the list. Staff numbers show beside the names. Once
           there are more than five claims, a search box appears: type an employee's name, staff ID, a claim number or a
@@ -1602,6 +1632,10 @@
         <div class="shot-item">
           <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Unpaid leave box, the Employer HRDF levy box with the computed RM 30.90 shown greyed, and the start of Overtime" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-adjustments-overtime.png" alt="The adjustments drawer's Overtime box with one hours box per type: Normal day (1.5×), Rest day (2×), Public holiday (3×) and Night shift (1.5×)" loading="lazy">
+          <p class="shot-cap">Overtime hours, one box per type</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/payroll-payslips-search.png" alt="A run's Payslips list narrowed by the search box to one person, with the Total row still showing all 9 employees" loading="lazy">

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 5382ea4
+  user-guide-covered-up-to: 530c662
 -->
 <html lang="en">
 <head>
@@ -418,6 +418,11 @@
       <li><h4>Set a new password</h4><p>Enter the code and a new password twice, then
         <span class="btn-name">Set new password</span>, and sign in.</p></li>
     </ol>
+    <div class="note"><span class="nt">"This company's AltomateHR account has been deactivated"</span>
+      <p>This means your company's account has been switched off by AltomateHR support, so you can't sign in to it. If
+        you work for another company too, you're taken there with a message saying so; otherwise you stay on the sign-in
+        page. Ask your HR team to contact AltomateHR support.</p>
+    </div>
     <div class="note"><span class="nt">Opened from Altomate?</span>
       <p>If you came in through the Altomate app and see “That sign-in link has expired or was already used”, go back
         to Altomate and open altomate HR again — each link works once, for two minutes.</p>
@@ -624,6 +629,13 @@
         Choose several at once or <em>Add more</em>, up to 10 files of 8 MB each; the small × beside a file takes it off.
         The form shows the rate it'll be paid at (normal day, rest day or public holiday). If your company banks
         overtime as time off, it says so. Before files can't be changed after you submit.</p></li>
+      <li><h4>Pick an overtime type (if you see the box)</h4><p>If your company has its own overtime types — for example
+        <em>Night shift</em> — and your overtime is paid in cash, an <strong>Overtime type</strong> box appears on the
+        form. Leave it on <em>Automatic (by the calendar)</em> and the hours are paid as a normal day, rest day or public
+        holiday, depending on the date. Or choose one of the types, each shown with its rate (for example
+        <em>Night shift (1.5×)</em>); the form then says <em>Paid as Night shift</em> instead of the calendar rate. If you
+        don't see the box, your company hasn't added any, or your policy doesn't offer them — nothing to do. The type
+        you pick is shown on your request.</p></li>
       <li><h4>Attach the after-work files</h4><p>When the work's done, open the overtime and <span class="btn-name">Attach
         after</span> (then <span class="btn-name">Add more</span> for extras). It can't be approved without at least one.
         While it's still pending you can remove a file with the ×, and confirm.</p></li>
@@ -633,7 +645,7 @@
     <figure class="shot" data-place="Overtime">
       <div class="shot-grid" data-orient="phone">
         <div class="shot-item">
-          <img src="shots/employee/overtime-form.png" alt="The Submit overtime form with a reason and two before-work files attached" loading="lazy">
+          <img src="shots/employee/overtime-form.png" alt="The Submit overtime form with the Overtime type box set to Automatic (by the calendar), a reason and two before-work files attached" loading="lazy">
           <p class="shot-cap">Submit overtime</p>
         </div>
         <div class="shot-item">
@@ -991,7 +1003,9 @@
         and approve together. Rejections are always one at a time.</li>
       <li>A claim over its spend limit has to be approved on its own.</li>
       <li>Overtime can only be approved once an after-work photo or file is attached. You can open every before and
-        after file from the request.</li>
+        after file from the request. The request's details show its <strong>Overtime type</strong> —
+        <em>Automatic</em> when the employee left it to the calendar, or the type they picked, such as
+        <em>Night shift</em>.</li>
       <li>For attendance, you see each shift with its location (on-site or off-site), any note and photo, and any
         corrected clock-out time requested.</li>
       <li>Leave shows who else is off in the same period.</li>

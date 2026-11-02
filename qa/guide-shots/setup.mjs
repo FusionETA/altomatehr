@@ -75,6 +75,15 @@ async function abToken() {
   return { t: r.data.token };
 }
 
+async function setAbOutletOt(on) {
+  const { t } = await abToken();
+  const policies = (await call(t, "GET", "/policies")).data ?? [];
+  const p = policies.find((x) => x.name === "Outlet Staff");
+  if (!p) throw new Error("no Outlet Staff policy in AB Test Co A");
+  const r = await call(t, "PUT", `/policies/${p.id}`, { ...p, otEnabled: on });
+  console.log("Outlet Staff overtime", on ? "on" : "off", "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+}
+
 // Malaysia "today" + n days, as yyyy-MM-dd.
 function mytDate(n = 0) {
   const d = new Date(Date.now() + 8 * 3600_000 + n * 86400_000);
@@ -389,6 +398,33 @@ const steps = {
       console.log("mileage item type", orgId, found?.code ?? "6150", "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
     }
   },
+
+  // A company-own overtime type, "Night shift" at 1.5x, in AltomateHR Demo Co,
+  // AB Test Co A and Demo Transfer Co, so the Overtime types card, the policy editor, the
+  // overtime form's "Overtime type" picker and the payroll adjustments drawer
+  // have one to show. Rerunnable (skips a company that already has it).
+  "overtime-types": async () => {
+    const orgs = (await call(admin, "GET", "/auth/orgs")).data;
+    const list = Array.isArray(orgs) ? orgs : orgs.organizations;
+    const tokens = [await demoAdmin(), (await abToken()).t];
+    // Evan's phone sessions open in Demo Transfer Co on this machine.
+    const transfer = list.find((o) => o.name === "Demo Transfer Co");
+    if (transfer) tokens.push((await call(admin, "POST", `/auth/switch-org/${transfer.organizationId}`)).data.token);
+    for (const t of tokens) {
+      const types = (await call(t, "GET", "/overtime-types")).data ?? [];
+      if (types.some((x) => x.kind === "CUSTOM" && !x.isArchived && x.name === "Night shift")) {
+        console.log("Night shift already there"); continue;
+      }
+      const r = await call(t, "POST", "/overtime-types", { name: "Night shift", multiplier: 1.5 });
+      console.log("overtime type:", r.status, r.data?.name ?? JSON.stringify(r.data));
+    }
+  },
+
+  // AB Test Co A's "Outlet Staff" policy has overtime off, so a payroll
+  // adjustments drawer there shows no overtime boxes. Switch it on for the
+  // shot (`ab-outlet-ot-on`) and back off afterwards (`ab-outlet-ot-off`).
+  "ab-outlet-ot-on": async () => setAbOutletOt(true),
+  "ab-outlet-ot-off": async () => setAbOutletOt(false),
 
   // Evan's overtime with two before-work files and one after-work file.
   // Adds a request each run.
