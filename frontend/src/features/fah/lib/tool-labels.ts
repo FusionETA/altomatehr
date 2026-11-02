@@ -26,6 +26,11 @@ const LABELS: Record<string, string> = {
   run_payroll: "Recalculating payroll",
   add_payroll_adjustment: "Preparing the adjustment",
   change_payroll_adjustment: "Preparing the change",
+  prepare_employee_import: "Checking the file",
+  create_policy: "Preparing the policy",
+  create_admin: "Preparing the admin",
+  copy_policy_to_companies: "Checking each company",
+  add_admin_to_companies: "Checking each company",
 };
 
 export const toolLabel = (tool: string) => LABELS[tool] ?? "Checking AltomateHR";

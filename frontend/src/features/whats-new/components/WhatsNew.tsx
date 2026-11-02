@@ -1,25 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Sparkles, X } from "lucide-react";
-import { WHATS_NEW, type WhatsNewEntry } from "../lib/entries";
+import { lineText, whatsNewFor, type WhatsNewAudience, type WhatsNewEntry } from "../lib/entries";
 import { hasUnseen, markSeen, readSeen } from "../lib/seen";
 
-// "What's new", for everyone signed in — admins and employees alike.
+// "What's new", for everyone signed in. Admins and owners see every line;
+// employees and supervisors only the lines meant for everyone.
 //
 // The panel's open state lives in the shell (through this hook), not in the
 // menu item: the account menu unmounts the moment it closes, and the panel
 // opened from it has to outlive it.
-export function useWhatsNew(email: string) {
+export function useWhatsNew(email: string, audience: WhatsNewAudience) {
   const [open, setOpen] = useState(false);
-  const [unseen, setUnseen] = useState(() => hasUnseen(readSeen(email)));
+  const [unseen, setUnseen] = useState(() => hasUnseen(readSeen(email), audience));
 
   const show = useCallback(() => {
     setOpen(true);
-    markSeen(email);
+    markSeen(email, audience);
     setUnseen(false);
-  }, [email]);
+  }, [email, audience]);
 
-  const panel = open ? <WhatsNewPanel onClose={() => setOpen(false)} /> : null;
+  const panel = open ? <WhatsNewPanel audience={audience} onClose={() => setOpen(false)} /> : null;
   return { show, unseen, panel };
 }
 
@@ -59,7 +60,8 @@ function formatDay(date: string): string {
   });
 }
 
-function WhatsNewPanel({ onClose }: { onClose: () => void }) {
+function WhatsNewPanel({ audience, onClose }: { audience: WhatsNewAudience; onClose: () => void }) {
+  const entries = whatsNewFor(audience);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -111,11 +113,11 @@ function WhatsNewPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="overflow-y-auto px-6 py-5">
-          {WHATS_NEW.length === 0 ? (
+          {entries.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing here yet.</p>
           ) : (
             <ol className="space-y-8">
-              {WHATS_NEW.map((entry) => (
+              {entries.map((entry) => (
                 <Release key={entry.date} entry={entry} />
               ))}
             </ol>
@@ -144,7 +146,7 @@ function Release({ entry }: { entry: WhatsNewEntry }) {
                 {label}
               </span>
               <ul className="mt-2 space-y-1.5 pl-1">
-                {items.map((item) => (
+                {items.map(lineText).map((item) => (
                   <li key={item} className="flex gap-2 text-sm text-foreground">
                     <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
                     <span>{item}</span>

@@ -82,7 +82,8 @@ or *is this figure right?*" Yes → include it.
 Keep it readable:
 - Several small changes to the same page → **one line**.
 - About **8 lines per day at most**; past that, merge by page.
-- Admin-only changes start with **"Admins:"**, since employees see the same list.
+- Admin-only changes go in **`admins("…")`**: admins and owners see them, employees
+  and supervisors don't. A plain string is for everyone.
 
 ## Writing rules
 
@@ -98,17 +99,20 @@ rewrite it.
 - Leave out detail the reader doesn't need to act: file types and sizes,
   permission names, how it works inside, edge cases, what didn't change.
   The user guide covers the detail.
-- Good: "Admins: you can now search a payroll run's payslips by name, staff
-  ID or job title."
+- Good: `admins("You can now search a payroll run's payslips by name, staff
+  ID or job title.")`
   Too much: "Payroll → a run's Payslips: search by name, employee ID or job
   title. The totals under the table still add up the whole run."
-- Good: "Admins: add your company logo in Settings → Organization. It shows
-  at the top of the letters you create."
-  Too much: "Admins: Settings → Organization → Company logo: upload a PNG,
-  JPG or WebP image up to 2 MB, then replace or remove it (needs the Change
-  settings permission)…"
-- Everyone sees every entry. If a change only applies to admins, say so in the
-  line ("Admins: …") rather than leaving employees puzzled.
+- Good: `admins("Add your company logo in Settings → Organization. It shows
+  at the top of the letters you create.")`
+  Too much: "Settings → Organization → Company logo: upload a PNG, JPG or
+  WebP image up to 2 MB, then replace or remove it (needs the Change settings
+  permission)…"
+- Who sees a line: a plain string is for everyone; `admins("…")` only for
+  admins and owners — so don't start it with "Admins:". Running payroll,
+  settings, Xero and anything only the admin side has is `admins`. A change
+  with a part for everyone and a part for admins is two lines. A day with no
+  plain lines simply doesn't show for employees.
 - Skip changes nobody can see (refactors, tests, tooling, docs, internal
   support pages) unless they fix something a user could have hit — then
   describe the symptom that's gone.

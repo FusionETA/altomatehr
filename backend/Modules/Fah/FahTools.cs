@@ -52,6 +52,45 @@ public static partial class FahTools
 
     public static bool IsOffered(string name) => Reads.Contains(name) || Writes.ContainsKey(name);
 
+    // ---- Across companies ----
+
+    // The argument FAH adds to every lookup for someone who administers
+    // several companies. FAH reads it and takes it off; the MCP server never
+    // sees it — FAH sends the call with a key for that company instead.
+    public const string CompanyArgument = "company";
+
+    public static IReadOnlyList<FahTool> WithCompany(IReadOnlyList<FahTool> tools, string current) =>
+        [.. tools.Select(t => Reads.Contains(t.Name) && t.InputSchema.ValueKind == JsonValueKind.Object
+            ? t with { InputSchema = AddCompany(t.InputSchema, current) }
+            : t)];
+
+    private static JsonElement AddCompany(JsonElement schema, string current)
+    {
+        var node = JsonNode.Parse(schema.GetRawText())!.AsObject();
+        if (node["properties"] is not JsonObject properties)
+        {
+            properties = new JsonObject();
+            node["properties"] = properties;
+        }
+        properties[CompanyArgument] = new JsonObject
+        {
+            ["type"] = "string",
+            ["description"] = $"Which of the admin's companies to look in, by name. Leave out for {current}, the one they're signed into.",
+        };
+        return JsonSerializer.SerializeToElement(node);
+    }
+
+    // The company asked for (null when none), and the arguments without it.
+    public static (string? Company, JsonElement Arguments) SplitCompany(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty(CompanyArgument, out var company))
+            return (null, arguments);
+        var node = JsonNode.Parse(arguments.GetRawText())!.AsObject();
+        node.Remove(CompanyArgument);
+        var name = company.ValueKind == JsonValueKind.String ? company.GetString()?.Trim() : null;
+        return (string.IsNullOrEmpty(name) ? null : name, JsonSerializer.SerializeToElement(node));
+    }
+
     // The real call of a write tool — anything else (a read, or a preview) runs at once.
     public static bool IsCommit(string name, JsonElement arguments) =>
         Writes.ContainsKey(name)

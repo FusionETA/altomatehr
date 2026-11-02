@@ -391,18 +391,18 @@ function CompanyLine({
       {company.owners.length > 1 ? (
         <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           Follows
-          <select
-            value={groupOwner}
-            disabled={busy}
-            onChange={(e) => onMove(e.target.value)}
-            className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground"
-          >
-            {company.owners.map((owner) => (
-              <option key={owner.userId} value={owner.userId}>
-                {owner.name}
-              </option>
-            ))}
-          </select>
+          <Select value={groupOwner} disabled={busy} onValueChange={onMove}>
+            <SelectTrigger className="h-8 w-auto gap-1 rounded-lg px-2.5 text-xs" aria-label="Follows">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {company.owners.map((owner) => (
+                <SelectItem key={owner.userId} value={owner.userId}>
+                  {owner.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
       ) : null}
     </li>

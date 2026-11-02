@@ -31,6 +31,10 @@ async function session(browser, email, device, extra = {}) {
     timezoneId: "Asia/Kuala_Lumpur",
     ...extra,
   });
+  // The FAH assistant isn't live yet, so its corner button must never appear
+  // in a guide shot: tell the app it isn't available.
+  await context.route("**/fah/status", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ available: false }) }));
   const page = await context.newPage();
   // Login is rate limited (5 a minute): if a sign-in doesn't land, wait and retry.
   for (let attempt = 0; ; attempt++) {
@@ -489,12 +493,17 @@ const admin = {
   // The Transfer dialog for someone with no transfer queued (Chan Mei Ling).
   "employee-transfer-dialog": async (page) => {
     await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
     await clickText(page, "Chan Mei Ling");
     await page.getByRole("button", { name: "Transfer", exact: true }).click();
     await page.getByText("Transfer to another company").waitFor();
-    await page.getByLabel("Target company").selectOption({ index: 1 }).catch(async () => {
-      await page.locator("select").first().selectOption({ index: 1 });
-    });
+    // The company picker is the app's designed select (a combobox), not a native one.
+    await page.getByRole("combobox", { name: "Target company" }).click();
+    await page.getByRole("option", { name: "Demo Transfer Co" }).first().click();
+    await page.evaluate(() => document.activeElement?.blur());
     await settle(page);
     await shoot(page, "admin", "employee-transfer-dialog");
     await page.getByRole("button", { name: "Cancel", exact: true }).filter({ visible: true }).last().click();
@@ -740,6 +749,7 @@ const admin = {
     await shoot(page, "admin", "payroll-run-name");
   },
   "annual-forms": async (page) => {
+    await inDemoCo(page);
     await go(page, "payroll");
     await clickText(page, "Annual forms");
     // 2026 is the year the demo runs are in; the default year has none.

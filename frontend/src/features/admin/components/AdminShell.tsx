@@ -86,7 +86,7 @@ export function AdminShell({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  const whatsNew = useWhatsNew(user.email);
+  const whatsNew = useWhatsNew(user.email, "admins");
 
   // Coming back from Xero's consent screen. The app has no router, so the
   // return URL is only ever the app root — without this a successful connect

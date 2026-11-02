@@ -211,7 +211,10 @@ public class EmployeeImportService : IEmployeeImportService
     }
 
     public async Task<EmployeeImportResult> ImportAsync(
-        byte[] content, TabularFormat format, EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep)
+        byte[] content,
+        TabularFormat format,
+        EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep,
+        bool checkOnly = false)
     {
         IReadOnlyList<TabularSheetContent> sheets;
         try
@@ -271,6 +274,9 @@ public class EmployeeImportService : IEmployeeImportService
         var createdAccounts = new List<CreatedAccount>();
         var created = 0;
         var updated = 0;
+        // Checking only: new people the file would add, so a repeat of one
+        // further down counts as the update it would be.
+        var wouldAdd = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 1; i < rows.Count; i++)
         {
@@ -284,6 +290,12 @@ public class EmployeeImportService : IEmployeeImportService
             if (email is null)
             {
                 errors.Add(new TabularImportError(rowNumber, "Email is blank — every row needs one."));
+                continue;
+            }
+
+            if (checkOnly && wouldAdd.Contains(email))
+            {
+                updated++;
                 continue;
             }
 
@@ -313,6 +325,12 @@ public class EmployeeImportService : IEmployeeImportService
                 if (cells.Problems.Count > 0)
                 {
                     errors.Add(new TabularImportError(rowNumber, string.Join(" ", cells.Problems.Distinct())));
+                    continue;
+                }
+                if (checkOnly)
+                {
+                    if (nationalityWarning is not null) warnings.Add(nationalityWarning);
+                    updated++;
                     continue;
                 }
 
@@ -368,6 +386,13 @@ public class EmployeeImportService : IEmployeeImportService
             if (adding.Problems.Count > 0)
             {
                 errors.Add(new TabularImportError(rowNumber, string.Join(" ", adding.Problems.Distinct())));
+                continue;
+            }
+            if (checkOnly)
+            {
+                if (nationalityWarning is not null) warnings.Add(nationalityWarning);
+                wouldAdd.Add(email);
+                created++;
                 continue;
             }
 
